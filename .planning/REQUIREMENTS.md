@@ -10,8 +10,8 @@ Requirements for v0.1. Each maps to a roadmap phase.
 ### Infrastructure (Foundation)
 
 - [x] **INFRA-01**: Project uses plain Vite+Svelte (not SvelteKit) as the frontend framework
-- [ ] **INFRA-02**: Rust backend includes git2 = "0.19", notify = "7", notify-debouncer-mini = "0.5", and tauri-plugin-dialog = "2" in Cargo.toml, and `cargo build` passes
-- [ ] **INFRA-03**: Rust backend has `error.rs` (TrunkError with code/message, serializable), `state.rs` (path-keyed repository registry with Mutex), and `git/types.rs` (all serializable DTO structs) scaffolded before any git2 logic is written
+- [x] **INFRA-02**: Rust backend includes git2 = "0.19", notify = "7", notify-debouncer-mini = "0.5", and tauri-plugin-dialog = "2" in Cargo.toml, and `cargo build` passes
+- [x] **INFRA-03**: Rust backend has `error.rs` (TrunkError with code/message, serializable), `state.rs` (path-keyed repository registry with Mutex), and `git/types.rs` (all serializable DTO structs) scaffolded before any git2 logic is written
 - [x] **INFRA-04**: Frontend uses Tailwind CSS v4 with `@tailwindcss/vite` plugin and a dark theme defined via CSS custom properties
 
 ### Repository
@@ -113,8 +113,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | INFRA-01 | Phase 1 | Complete |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
 | INFRA-04 | Phase 1 | Complete |
 | REPO-01 | Phase 2 | Pending |
 | REPO-02 | Phase 2 | Pending |

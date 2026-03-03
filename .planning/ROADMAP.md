@@ -12,7 +12,7 @@ Trunk is built in strict dependency order: the foundation layer establishes the 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Migrate scaffold to Vite+Svelte, wire Rust dependencies, scaffold error/state/DTO types, and configure Tailwind
+- [x] **Phase 1: Foundation** - Migrate scaffold to Vite+Svelte, wire Rust dependencies, scaffold error/state/DTO types, and configure Tailwind (completed 2026-03-03)
 - [ ] **Phase 2: Repository Open + Commit Graph** - Open a repo via native file picker and render a scrollable, topologically correct visual commit graph
 - [ ] **Phase 3: Branch Sidebar + Checkout** - List all branches/tags/stashes in sidebar and support branch checkout with dirty-workdir error handling
 - [ ] **Phase 4: Working Tree + Staging** - Show live working tree status and support whole-file stage/unstage with auto-refresh via filesystem watcher
@@ -98,7 +98,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/3 | In Progress|  |
+| 1. Foundation | 3/3 | Complete   | 2026-03-03 |
 | 2. Repository Open + Commit Graph | 0/? | Not started | - |
 | 3. Branch Sidebar + Checkout | 0/? | Not started | - |
 | 4. Working Tree + Staging | 0/? | Not started | - |

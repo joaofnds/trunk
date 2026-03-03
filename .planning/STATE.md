@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-foundation-01-PLAN.md
-last_updated: "2026-03-03T20:57:04.343Z"
+stopped_at: Completed 01-foundation-03-PLAN.md
+last_updated: "2026-03-03T23:24:38.436Z"
 last_activity: 2026-03-03 — Roadmap created; ready to begin Phase 1 planning
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 3
   percent: 0
 ---
 
@@ -51,6 +51,8 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-foundation P01 | 3 | 2 tasks | 10 files |
+| Phase 01-foundation P02 | 5 | 2 tasks | 17 files |
+| Phase 01-foundation P03 | 10 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -67,6 +69,10 @@ Recent decisions affecting current work:
 - [Phase 01-foundation]: safeInvoke<T> for all Tauri IPC — parses string rejections into TrunkError{code,message}
 - [Phase 01-foundation]: Tailwind v4 @import tailwindcss syntax with @tailwindcss/vite plugin (no config file needed)
 - [Phase 01-foundation]: Forced dark theme via CSS custom properties --color-* and --lane-* (no OS media query)
+- [Phase 01-foundation]: git2 vendored-libgit2 feature (not bundled) for static libgit2 linking in 0.19
+- [Phase 01-foundation]: RepoState stores PathBuf only — git2::Repository is not Sync; open fresh per command in spawn_blocking
+- [Phase 01-foundation]: All DTO structs use owned types to avoid git2 lifetime parameters in IPC layer
+- [Phase 01-foundation]: Inline style in index.html head (not separate CSS file) to eliminate white flash — fires synchronously before Vite async CSS loads
 
 ### Pending Todos
 
@@ -79,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T20:57:04.339Z
-Stopped at: Completed 01-foundation-01-PLAN.md
+Last session: 2026-03-03T23:24:38.432Z
+Stopped at: Completed 01-foundation-03-PLAN.md
 Resume file: None
