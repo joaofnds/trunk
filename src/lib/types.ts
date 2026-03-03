@@ -1,0 +1,101 @@
+// All TypeScript DTO interfaces mirroring Rust DTOs in src-tauri/src/git/types.rs
+// Use string literal unions (not enum) — matches serde default serialization
+
+export type EdgeType = 'Straight' | 'MergeLeft' | 'MergeRight' | 'ForkLeft' | 'ForkRight';
+export type RefType = 'LocalBranch' | 'RemoteBranch' | 'Tag' | 'Stash';
+export type FileStatusType = 'New' | 'Modified' | 'Deleted' | 'Renamed' | 'Typechange' | 'Conflicted';
+export type DiffOrigin = 'Context' | 'Add' | 'Delete';
+
+export interface GraphEdge {
+  from_column: number;
+  to_column: number;
+  edge_type: EdgeType;
+  color_index: number;
+}
+
+export interface RefLabel {
+  name: string;
+  short_name: string;
+  ref_type: RefType;
+  is_head: boolean;
+}
+
+export interface GraphCommit {
+  oid: string;
+  short_oid: string;
+  summary: string;
+  body: string | null;
+  author_name: string;
+  author_email: string;
+  author_timestamp: number;
+  parent_oids: string[];
+  column: number;
+  edges: GraphEdge[];
+  refs: RefLabel[];
+  is_head: boolean;
+  is_merge: boolean;
+}
+
+export interface BranchInfo {
+  name: string;
+  is_head: boolean;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  last_commit_timestamp: number;
+}
+
+export interface RefsResponse {
+  local: BranchInfo[];
+  remote: BranchInfo[];
+  tags: RefLabel[];
+  stashes: RefLabel[];
+}
+
+export interface FileStatus {
+  path: string;
+  status: FileStatusType;
+  is_binary: boolean;
+}
+
+export interface WorkingTreeStatus {
+  unstaged: FileStatus[];
+  staged: FileStatus[];
+  conflicted: FileStatus[];
+}
+
+export interface DiffLine {
+  origin: DiffOrigin;
+  content: string;
+  old_lineno: number | null;
+  new_lineno: number | null;
+}
+
+export interface DiffHunk {
+  header: string;
+  old_start: number;
+  old_lines: number;
+  new_start: number;
+  new_lines: number;
+  lines: DiffLine[];
+}
+
+export interface FileDiff {
+  path: string;
+  is_binary: boolean;
+  hunks: DiffHunk[];
+}
+
+export interface CommitDetail {
+  oid: string;
+  short_oid: string;
+  summary: string;
+  body: string | null;
+  author_name: string;
+  author_email: string;
+  author_timestamp: number;
+  committer_name: string;
+  committer_email: string;
+  committer_timestamp: number;
+  parent_oids: string[];
+}

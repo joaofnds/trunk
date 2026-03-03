@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+:root {
+  /* Color tokens — dark theme, forced (no OS media query) */
+  --color-bg: #0d1117;
+  --color-surface: #161b22;
+  --color-border: #30363d;
+  --color-text: #c9d1d9;
+  --color-text-muted: #8b949e;
+  --color-accent: #388bfd;
+
+  /* Graph lane colors — must be stable values, not computed */
+  --lane-0: #4dc9f6;
+  --lane-1: #f67019;
+  --lane-2: #f53794;
+  --lane-3: #537bc4;
+  --lane-4: #acc236;
+  --lane-5: #166a8f;
+  --lane-6: #00a950;
+  --lane-7: #58595b;
+
+  /* Typography */
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  margin: 0;
+}
