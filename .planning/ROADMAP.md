@@ -30,7 +30,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. `cargo build` passes with git2, notify, notify-debouncer-mini, and tauri-plugin-dialog present in Cargo.toml
   3. `error.rs` (TrunkError with code/message), `state.rs` (path-keyed repository registry), and `git/types.rs` (all serializable DTO structs) exist and compile
   4. The app renders with a dark theme defined via CSS custom properties; Tailwind v4 utility classes apply correctly in the browser
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Frontend migration: SvelteKit to plain Vite+Svelte + Tailwind v4 dark theme + TypeScript DTO types + safeInvoke wrapper
+- [ ] 01-02-PLAN.md — Rust scaffolding: crate dependencies + full module stub tree + error.rs + state.rs + git/types.rs
+- [ ] 01-03-PLAN.md — Integration verification: automated build checks + visual dark theme confirmation
 
 ### Phase 2: Repository Open + Commit Graph
 **Goal**: A developer can open any local Git repository via a native file picker and immediately see its full commit history as a scrollable visual lane graph
@@ -93,7 +98,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/? | Not started | - |
+| 1. Foundation | 0/3 | Planned | - |
 | 2. Repository Open + Commit Graph | 0/? | Not started | - |
 | 3. Branch Sidebar + Checkout | 0/? | Not started | - |
 | 4. Working Tree + Staging | 0/? | Not started | - |
