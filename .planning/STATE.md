@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-03T19:15:52.832Z"
+stopped_at: Completed 01-foundation-01-PLAN.md
+last_updated: "2026-03-03T20:57:04.343Z"
 last_activity: 2026-03-03 — Roadmap created; ready to begin Phase 1 planning
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
   percent: 0
 ---
 
@@ -50,6 +50,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 01-foundation P01 | 3 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,10 @@ Recent decisions affecting current work:
 - [Pre-phase]: git2 for all local operations; git CLI reserved for remote ops (future)
 - [Pre-phase]: Graph lane algorithm in Rust (O(n)); inline SVG per row; virtual scrolling
 - [Pre-phase]: TrunkError { code, message } as the only IPC error type
+- [Phase 01-foundation]: Use @sveltejs/vite-plugin-svelte directly (not SvelteKit) — desktop app has no routing/SSR needs
+- [Phase 01-foundation]: safeInvoke<T> for all Tauri IPC — parses string rejections into TrunkError{code,message}
+- [Phase 01-foundation]: Tailwind v4 @import tailwindcss syntax with @tailwindcss/vite plugin (no config file needed)
+- [Phase 01-foundation]: Forced dark theme via CSS custom properties --color-* and --lane-* (no OS media query)
 
 ### Pending Todos
 
@@ -74,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-03T19:15:52.829Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-foundation/01-CONTEXT.md
+Last session: 2026-03-03T20:57:04.339Z
+Stopped at: Completed 01-foundation-01-PLAN.md
+Resume file: None
