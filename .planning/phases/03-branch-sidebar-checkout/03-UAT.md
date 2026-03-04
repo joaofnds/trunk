@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 03-branch-sidebar-checkout
 source: [03-01-SUMMARY.md, 03-02-SUMMARY.md, 03-03-SUMMARY.md]
 started: 2026-03-04T14:10:00Z
@@ -77,21 +77,41 @@ skipped: 0
   reason: "User reported: it is not working all the time. Some times it doesn't work, then I restart the app and it works. (same repo)"
   severity: major
   test: 3
-  artifacts: []
-  missing: []
+  root_cause: "BranchSidebar.svelte sets refs = null synchronously in the $effect before loadRefs resolves, causing Remote/Tags/Stashes BranchSection components to be destroyed and recreated. Clicks during the destroy/recreate window find no live handler. Secondary: loadRefs has no cancellation guard so concurrent calls (from checkout + create) can race and re-trigger the same cycle."
+  artifacts:
+    - path: "src/components/BranchSidebar.svelte"
+      issue: "refs = null in $effect (line ~64) destroys BranchSection components on every refresh; no sequence counter on loadRefs prevents stale call from overwriting fresh data"
+  missing:
+    - "Replace refs = null with a separate loading boolean; never null out refs during refresh"
+    - "Add sequence counter to loadRefs to discard stale responses"
+  debug_session: ".planning/debug/branch-sidebar-click-freeze.md"
 
 - truth: "Branch names in the remote section display on a single line, truncated with ellipsis if too long"
   status: failed
   reason: "User reported: remote section is looking super ugly. The text is wrapping over itself"
   severity: major
   test: 6
-  artifacts: []
-  missing: []
+  root_cause: "BranchRow.svelte inner flex container and text node are missing overflow:hidden + whitespace:nowrap + text-ellipsis + min-width:0. Flex children default to min-width:auto so they expand past the 220px sidebar boundary instead of clipping."
+  artifacts:
+    - path: "src/components/BranchRow.svelte"
+      issue: "Text node on line ~43 has no wrapping span with truncate classes; flex container missing overflow:hidden"
+    - path: "src/components/RemoteGroup.svelte"
+      issue: "Indent wrapper div missing overflow:hidden defensive guard"
+  missing:
+    - "Wrap text node in <span class='truncate min-w-0 flex-1'> in BranchRow.svelte"
+    - "Add overflow-hidden to BranchRow inner flex container"
+  debug_session: ".planning/debug/branch-name-truncation.md"
 
 - truth: "After checkout, the commit graph scrolls to show the new HEAD commit"
   status: failed
   reason: "User reported: pass, but if the branch is further down, the graph doesn't scroll to it"
   severity: minor
   test: 8
-  artifacts: []
-  missing: []
+  root_cause: "CommitGraph.svelte has no scroll-to-HEAD logic. SvelteVirtualList always initialises at offset 0. GraphCommit.is_head is already present in the data but never used to drive a scroll call. SvelteVirtualList exposes a scroll({index}) method via bind:this that is never called."
+  artifacts:
+    - path: "src/components/CommitGraph.svelte"
+      issue: "No bind:this on SvelteVirtualList, no $effect to call listRef.scroll({index: headIdx}) after initial load"
+  missing:
+    - "Add bind:this={listRef} on SvelteVirtualList"
+    - "After first batch loads, find headIdx = commits.findIndex(c => c.is_head) and call listRef.scroll({index: headIdx, smoothScroll: false, align: 'top'}) once"
+  debug_session: ".planning/debug/commit-graph-no-scroll-to-head.md"
