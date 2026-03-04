@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-04T12:52:13.760Z"
-last_activity: 2026-03-04 — Phase 2 visual verification approved
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-04T13:19:33Z"
+last_activity: 2026-03-04 — Phase 3 Plan 01 complete (branch commands implemented)
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 9
-  completed_plans: 9
-  percent: 33
+  completed_plans: 10
+  percent: 37
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
-**Current focus:** Phase 2 complete — Phase 3 up next
+**Current focus:** Phase 3 in progress — Plan 01 complete (Rust branch commands)
 
 ## Current Position
 
-Phase: 2 of 6 (Repository Open + Commit Graph) — COMPLETE
-Plan: 6 of 6 — all plans done, verification approved
-Status: Verifying phase, then transition to Phase 3
-Last activity: 2026-03-04 — Phase 2 visual verification approved
+Phase: 3 of 6 (Branch Sidebar + Checkout)
+Plan: 1 of 3 — plan 01 done
+Status: Executing — Plan 02 up next (sidebar UI)
+Last activity: 2026-03-04 — Phase 3 Plan 01 complete (branch commands implemented)
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 37%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 01-foundation P03 | 10 | 2 tasks | 1 files |
 | Phase 02-repository-open-commit-graph P02 | 3min | 2 tasks | 5 files |
 | Phase 02-repository-open-commit-graph P01 | 2m | 2 tasks | 4 files |
+| Phase 03-branch-sidebar-checkout P01 | 4min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Recent decisions affecting current work:
 - [Phase 02-repository-open-commit-graph]: tauri-plugin-store registered immediately after dialog plugin in builder chain
 - [Phase 02-repository-open-commit-graph]: No commands added to generate_handler![] in plan 02-02 — command registration deferred to plan 02-05
 - [Phase 02-repository-open-commit-graph]: make_test_repo() inline in repository::tests — real git2 repo with init + feature branch + merge commit for graph test assertions
+- [Phase 03-branch-sidebar-checkout P01]: is_dirty() excludes WT_NEW — untracked files do not block git checkout per standard git behavior
+- [Phase 03-branch-sidebar-checkout P01]: inner fn pattern (*_inner fns) separates Tauri state from pure git logic enabling direct test calls
+- [Phase 03-branch-sidebar-checkout P01]: OID extraction pattern (target() + find_commit(oid)) used instead of peel_to_commit() to avoid lifetime conflicts
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T12:52:13.755Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-branch-sidebar-checkout/03-CONTEXT.md
+Last session: 2026-03-04T13:19:33Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: .planning/phases/03-branch-sidebar-checkout/03-02-PLAN.md
