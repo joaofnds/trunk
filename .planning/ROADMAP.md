@@ -66,7 +66,12 @@ Plans:
   2. Typing in a search field filters the branch list immediately without a round-trip to the backend
   3. Clicking a branch checks it out; if the working tree is dirty, an inline error banner appears and the branch does not switch
   4. User can create a new local branch, optionally from a specific commit OID, and it appears immediately in the sidebar
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Rust backend (TDD): branches.rs with list_refs, checkout_branch, create_branch + 7 unit tests
+- [ ] 03-02-PLAN.md — Svelte sidebar components: BranchSidebar + BranchSection + BranchRow + RemoteGroup
+- [ ] 03-03-PLAN.md — Wire and verify: register branch commands in lib.rs + 2-pane App.svelte layout + visual verification checkpoint
 
 ### Phase 4: Working Tree + Staging
 **Goal**: A developer can see the real-time state of staged and unstaged files and move files between the two lists, with the view updating automatically when external tools modify the repository
@@ -108,7 +113,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-03 |
 | 2. Repository Open + Commit Graph | 2/6 | In Progress|  |
-| 3. Branch Sidebar + Checkout | 0/? | Not started | - |
+| 3. Branch Sidebar + Checkout | 0/3 | Not started | - |
 | 4. Working Tree + Staging | 0/? | Not started | - |
 | 5. Commit Creation | 0/? | Not started | - |
 | 6. Diff Display | 0/? | Not started | - |
