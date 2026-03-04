@@ -1,4 +1,264 @@
-// Branch commands — list_refs, checkout_branch, create_branch
+use std::collections::HashMap;
+use std::path::PathBuf;
+use tauri::State;
+use git2::{BranchType, Status, StatusOptions};
+use crate::error::TrunkError;
+use crate::git::{graph, types::{BranchInfo, RefLabel, RefType, RefsResponse}};
+use crate::state::{CommitCache, RepoState};
+use crate::git::types::GraphCommit;
+
+/// Opens a repository by looking up its path in the state map.
+fn open_repo_from_state(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<git2::Repository, TrunkError> {
+    let path_buf = state_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    git2::Repository::open(path_buf).map_err(TrunkError::from)
+}
+
+/// Returns true if the repo has any tracked modifications that would block checkout.
+/// Untracked files (WT_NEW) are deliberately excluded — git allows checkout with untracked files.
+fn is_dirty(repo: &git2::Repository) -> Result<bool, git2::Error> {
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(false).include_ignored(false);
+
+    let dirty_flags = Status::INDEX_NEW
+        | Status::INDEX_MODIFIED
+        | Status::INDEX_DELETED
+        | Status::INDEX_RENAMED
+        | Status::INDEX_TYPECHANGE
+        | Status::WT_MODIFIED
+        | Status::WT_DELETED
+        | Status::WT_RENAMED
+        | Status::WT_TYPECHANGE;
+
+    let statuses = repo.statuses(Some(&mut opts))?;
+    Ok(statuses.iter().any(|s| s.status().intersects(dirty_flags)))
+}
+
+/// Inner implementation of list_refs — separated for testability without Tauri state.
+pub fn list_refs_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<RefsResponse, TrunkError> {
+    let mut repo = open_repo_from_state(path, state_map)?;
+
+    // Resolve HEAD name before any mutable borrows
+    let head_name: Option<String> = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(str::to_owned));
+
+    let local: Vec<BranchInfo> = repo
+        .branches(Some(BranchType::Local))?
+        .filter_map(|b| b.ok())
+        .map(|(branch, _)| {
+            let name = branch.name().ok().flatten().unwrap_or("").to_owned();
+            let is_head = head_name.as_deref() == Some(name.as_str());
+            let upstream = branch
+                .upstream()
+                .ok()
+                .and_then(|u| u.name().ok().flatten().map(str::to_owned));
+            let last_commit_timestamp = branch
+                .get()
+                .peel_to_commit()
+                .map(|c| c.author().when().seconds())
+                .unwrap_or(0);
+            BranchInfo {
+                name,
+                is_head,
+                upstream,
+                ahead: 0,
+                behind: 0,
+                last_commit_timestamp,
+            }
+        })
+        .collect();
+
+    // Remote branches — filter out entries where name ends with "/HEAD"
+    let remote: Vec<BranchInfo> = repo
+        .branches(Some(BranchType::Remote))?
+        .filter_map(|b| b.ok())
+        .filter_map(|(branch, _)| {
+            let name = branch.name().ok().flatten()?.to_owned();
+            if name.ends_with("/HEAD") {
+                return None;
+            }
+            Some(BranchInfo {
+                name,
+                is_head: false,
+                upstream: None,
+                ahead: 0,
+                behind: 0,
+                last_commit_timestamp: 0,
+            })
+        })
+        .collect();
+
+    // Tags
+    let mut tags: Vec<RefLabel> = Vec::new();
+    repo.tag_foreach(|_oid, name_bytes| {
+        let name = std::str::from_utf8(name_bytes).unwrap_or("").to_owned();
+        let short_name = name
+            .strip_prefix("refs/tags/")
+            .unwrap_or(&name)
+            .to_owned();
+        tags.push(RefLabel {
+            name,
+            short_name,
+            ref_type: RefType::Tag,
+            is_head: false,
+        });
+        true
+    })?;
+
+    // Stashes — requires &mut repo
+    let mut stashes: Vec<RefLabel> = Vec::new();
+    repo.stash_foreach(|_idx, name, _oid| {
+        stashes.push(RefLabel {
+            name: name.to_owned(),
+            short_name: "stash".to_owned(),
+            ref_type: RefType::Stash,
+            is_head: false,
+        });
+        true
+    })?;
+
+    Ok(RefsResponse {
+        local,
+        remote,
+        tags,
+        stashes,
+    })
+}
+
+#[tauri::command]
+pub async fn list_refs(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<RefsResponse, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || list_refs_inner(&path, &state_map))
+        .await
+        .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+        .map_err(|e| serde_json::to_string(&e).unwrap())
+}
+
+/// Inner implementation of checkout_branch — separated for testability.
+pub fn checkout_branch_inner(
+    path: &str,
+    branch_name: &str,
+    state_map: &HashMap<String, PathBuf>,
+    cache_map: &mut HashMap<String, Vec<GraphCommit>>,
+) -> Result<(), TrunkError> {
+    let repo = open_repo_from_state(path, state_map)?;
+
+    if is_dirty(&repo)? {
+        return Err(TrunkError::new(
+            "dirty_workdir",
+            "Working tree has uncommitted changes",
+        ));
+    }
+
+    repo.set_head(&format!("refs/heads/{}", branch_name))?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().safe()))?;
+    drop(repo);
+
+    // Rebuild graph cache after checkout
+    let path_buf = state_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let mut repo2 = git2::Repository::open(path_buf)?;
+    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    cache_map.insert(path.to_owned(), commits);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn checkout_branch(
+    path: String,
+    branch_name: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let mut cache_map = cache.0.lock().unwrap().clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        checkout_branch_inner(&path, &branch_name, &state_map, &mut cache_map)
+            .map(|_| cache_map)
+    })
+    .await
+    .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+    .map_err(|e| serde_json::to_string(&e).unwrap())?;
+
+    // Update cache in main thread with rebuilt data
+    *cache.0.lock().unwrap() = result;
+
+    Ok(())
+}
+
+/// Inner implementation of create_branch — separated for testability.
+pub fn create_branch_inner(
+    path: &str,
+    name: &str,
+    state_map: &HashMap<String, PathBuf>,
+    cache_map: &mut HashMap<String, Vec<GraphCommit>>,
+) -> Result<(), TrunkError> {
+    let repo = open_repo_from_state(path, state_map)?;
+
+    // Extract head OID first so head_commit doesn't borrow repo across the drop
+    let head_oid = repo.head()?.target().ok_or_else(|| {
+        TrunkError::new("git_error", "HEAD has no target (unborn branch?)")
+    })?;
+    let head_commit = repo.find_commit(head_oid)?;
+    // false = no force; fails if name already exists
+    repo.branch(name, &head_commit, false)?;
+    // Drop head_commit (and its borrow on repo) before mutable operations
+    drop(head_commit);
+
+    // Auto-checkout the new branch
+    repo.set_head(&format!("refs/heads/{}", name))?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().safe()))?;
+    drop(repo);
+
+    // Rebuild graph cache after branch creation
+    let path_buf = state_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let mut repo2 = git2::Repository::open(path_buf)?;
+    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    cache_map.insert(path.to_owned(), commits);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn create_branch(
+    path: String,
+    name: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let mut cache_map = cache.0.lock().unwrap().clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        create_branch_inner(&path, &name, &state_map, &mut cache_map)
+            .map(|_| cache_map)
+    })
+    .await
+    .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+    .map_err(|e| serde_json::to_string(&e).unwrap())?;
+
+    // Update cache in main thread with rebuilt data
+    *cache.0.lock().unwrap() = result;
+
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
