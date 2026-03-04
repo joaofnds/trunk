@@ -35,7 +35,7 @@
 
   <!-- Branch rows for this remote -->
   {#each branches as branch (branch)}
-    <div style="padding-left: 12px;">
+    <div style="padding-left: 12px; overflow: hidden;">
       <BranchRow
         name={branch}
         isLoading={checkingOut === remoteName + '/' + branch}

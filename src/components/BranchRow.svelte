@@ -33,6 +33,7 @@
       padding: 0 12px;
       display: flex;
       align-items: center;
+      overflow: hidden;
       cursor: pointer;
       background: {hovered ? 'var(--color-surface)' : 'transparent'};
       color: {isHead ? 'var(--color-accent)' : isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
@@ -40,7 +41,14 @@
       font-size: 13px;
     "
   >
-    {name}{isLoading ? ' …' : ''}
+    <span style="
+      display: block;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      min-width: 0;
+      flex: 1;
+    ">{name}{isLoading ? ' …' : ''}</span>
   </div>
 
   {#if isError}
