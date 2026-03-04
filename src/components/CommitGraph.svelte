@@ -18,6 +18,8 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let offset = $state(0);
+  let listRef = $state<{ scroll: (opts: { index: number; smoothScroll?: boolean; align?: string }) => Promise<void> } | null>(null);
+  let scrolledToHead = $state(false);
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -41,6 +43,19 @@
 
   $effect(() => {
     loadMore();
+  });
+
+  $effect(() => {
+    // Only scroll once per mount (scrolledToHead guards against re-firing)
+    if (scrolledToHead) return;
+    if (!listRef) return;
+    if (commits.length === 0) return;
+
+    const headIdx = commits.findIndex(c => c.is_head);
+    if (headIdx >= 0) {
+      scrolledToHead = true;
+      listRef.scroll({ index: headIdx, smoothScroll: false, align: 'top' });
+    }
   });
 </script>
 
@@ -70,6 +85,7 @@
     </div>
   {:else}
     <SvelteVirtualList
+      bind:this={listRef}
       items={commits}
       onLoadMore={loadMore}
       loadMoreThreshold={50}
