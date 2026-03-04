@@ -39,9 +39,11 @@
     <TabBar {repoName} onclose={handleClose} />
     <main class="flex-1 overflow-hidden flex">
       <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} />
-      {#key graphKey}
-        <CommitGraph {repoPath} />
-      {/key}
+      <div class="flex-1 overflow-hidden">
+        {#key graphKey}
+          <CommitGraph {repoPath} />
+        {/key}
+      </div>
       <!-- Phase 4 adds StagingPanel here -->
     </main>
   {/if}
