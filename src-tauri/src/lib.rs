@@ -4,7 +4,7 @@ mod git;
 mod state;
 mod watcher;
 
-use state::RepoState;
+use state::{CommitCache, RepoState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,7 +12,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(RepoState(Default::default()))
-        .invoke_handler(tauri::generate_handler![])
+        .manage(CommitCache(Default::default()))
+        .invoke_handler(tauri::generate_handler![
+            commands::repo::open_repo,
+            commands::repo::close_repo,
+            commands::history::get_commit_graph,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
