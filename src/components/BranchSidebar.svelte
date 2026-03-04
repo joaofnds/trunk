@@ -14,7 +14,7 @@
 
   let refs = $state<RefsResponse | null>(null);
   let loading = $state(false);
-  let loadSeq = $state(0);
+  let loadSeq = 0;
   let search = $state('');
   let checkingOutBranch = $state<string | null>(null);
   let checkoutError = $state<{ branch: string; message: string } | null>(null);
