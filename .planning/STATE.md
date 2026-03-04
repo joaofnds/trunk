@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-02-PLAN.md
+stopped_at: Completed 03-03-PLAN.md
 last_updated: "2026-03-04T13:24:40.777Z"
-last_activity: 2026-03-04 — Phase 3 Plan 01 complete (branch commands implemented)
+last_activity: 2026-03-04 — Phase 3 complete (branch sidebar + checkout end-to-end verified)
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 11
-  percent: 37
+  completed_plans: 12
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
-**Current focus:** Phase 3 in progress — Plan 01 complete (Rust branch commands)
+**Current focus:** Phase 4 up next — Staging Panel + Commit (file diff, staging area, commit form)
 
 ## Current Position
 
-Phase: 3 of 6 (Branch Sidebar + Checkout)
-Plan: 1 of 3 — plan 01 done
-Status: Executing — Plan 02 up next (sidebar UI)
-Last activity: 2026-03-04 — Phase 3 Plan 01 complete (branch commands implemented)
+Phase: 3 of 6 (Branch Sidebar + Checkout) — COMPLETE
+Plan: 3 of 3 — all plans done
+Status: Phase 3 complete — Phase 4 (Staging + Commit) up next
+Last activity: 2026-03-04 — Phase 3 Plan 03 complete (integration verified end-to-end)
 
-Progress: [████░░░░░░] 37%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [████░░░░░░] 37%
 | Phase 02-repository-open-commit-graph P01 | 2m | 2 tasks | 4 files |
 | Phase 03-branch-sidebar-checkout P01 | 4min | 3 tasks | 1 files |
 | Phase 03-branch-sidebar-checkout P02 | 2min | 2 tasks | 4 files |
+| Phase 03-branch-sidebar-checkout P03 | 30min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 03-branch-sidebar-checkout P01]: inner fn pattern (*_inner fns) separates Tauri state from pure git logic enabling direct test calls
 - [Phase 03-branch-sidebar-checkout P01]: OID extraction pattern (target() + find_commit(oid)) used instead of peel_to_commit() to avoid lifetime conflicts
 - [Phase 03-branch-sidebar-checkout]: Remote branch checkout calls handleCheckout same as local — Rust checkout_branch returns error for remote branches in v0.1, acceptable behavior
+- [Phase 03-branch-sidebar-checkout P03]: flex-1 wrapper required around CommitGraph in 2-pane layout to prevent zero-width collapse
+- [Phase 03-branch-sidebar-checkout P03]: checkout_branch uses checkout_tree+set_head (not set_head+checkout_head) to update working tree correctly
+- [Phase 03-branch-sidebar-checkout P03]: {#key graphKey} forces CommitGraph remount after checkout/create; graphKey resets to 0 on repo close
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T13:24:40.772Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-04
+Stopped at: Completed 03-03-PLAN.md (Phase 3 complete)
 Resume file: None
