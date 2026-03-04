@@ -116,10 +116,10 @@ pub fn list_refs_inner(
 
     // Stashes — requires &mut repo
     let mut stashes: Vec<RefLabel> = Vec::new();
-    repo.stash_foreach(|_idx, name, _oid| {
+    repo.stash_foreach(|idx, name, _oid| {
         stashes.push(RefLabel {
             name: name.to_owned(),
-            short_name: "stash".to_owned(),
+            short_name: format!("stash@{{{}}}", idx),
             ref_type: RefType::Stash,
             is_head: false,
         });

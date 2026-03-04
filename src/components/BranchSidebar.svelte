@@ -64,7 +64,6 @@
   // Load refs on mount and when repoPath changes
   $effect(() => {
     const path = repoPath;
-    loading = true;
     loadRefs(path);
   });
 
@@ -261,7 +260,7 @@
         expanded={stashesExpanded}
         ontoggle={() => (stashesExpanded = !stashesExpanded)}
       >
-        {#each filteredStashes as stash (stash.name)}
+        {#each filteredStashes as stash (stash.short_name)}
           <BranchRow name={stash.name} />
         {/each}
       </BranchSection>
