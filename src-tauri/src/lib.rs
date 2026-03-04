@@ -10,6 +10,7 @@ use state::RepoState;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(RepoState(Default::default()))
         .invoke_handler(tauri::generate_handler![])
         .run(tauri::generate_context!())
