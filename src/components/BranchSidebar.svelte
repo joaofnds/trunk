@@ -13,6 +13,8 @@
   let { repoPath, onrefreshed }: Props = $props();
 
   let refs = $state<RefsResponse | null>(null);
+  let loading = $state(false);
+  let loadSeq = $state(0);
   let search = $state('');
   let checkingOutBranch = $state<string | null>(null);
   let checkoutError = $state<{ branch: string; message: string } | null>(null);
@@ -62,7 +64,7 @@
   // Load refs on mount and when repoPath changes
   $effect(() => {
     const path = repoPath;
-    refs = null;
+    loading = true;
     loadRefs(path);
   });
 
@@ -72,10 +74,21 @@
   });
 
   async function loadRefs(path: string) {
+    const seq = ++loadSeq;
+    loading = true;
     try {
-      refs = await safeInvoke<RefsResponse>('list_refs', { path });
+      const result = await safeInvoke<RefsResponse>('list_refs', { path });
+      if (seq === loadSeq) {
+        refs = result;
+      }
     } catch {
-      refs = null;
+      if (seq === loadSeq) {
+        refs = null;
+      }
+    } finally {
+      if (seq === loadSeq) {
+        loading = false;
+      }
     }
   }
 
@@ -154,7 +167,7 @@
   <!-- Sections (scrollable) -->
   <div style="flex: 1; overflow-y: auto;">
     <!-- Local branches (expanded by default, show + button) -->
-    {#if refs === null || filteredLocal.length > 0 || (refs?.local.length ?? 0) > 0}
+    {#if loading || filteredLocal.length > 0 || (refs?.local.length ?? 0) > 0}
       <BranchSection
         label="Local"
         count={refs?.local.length ?? 0}
