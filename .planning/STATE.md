@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-03-04T13:24:40.777Z"
-last_activity: 2026-03-04 — Phase 3 complete (branch sidebar + checkout end-to-end verified)
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-03-04T18:27:30Z"
+last_activity: 2026-03-04 — Phase 3 gap-closure complete (branch name truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 3
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 3 of 6 (Branch Sidebar + Checkout) — COMPLETE
-Plan: 3 of 3 — all plans done
+Phase: 3 of 6 (Branch Sidebar + Checkout) — COMPLETE (incl. gap-closure plan 04)
+Plan: 4 of 4 — all plans done (incl. gap-closure)
 Status: Phase 3 complete — Phase 4 (Staging + Commit) up next
-Last activity: 2026-03-04 — Phase 3 Plan 03 complete (integration verified end-to-end)
+Last activity: 2026-03-04 — Phase 3 Plan 04 complete (click freeze fix: loading boolean + sequence counter)
 
 Progress: [█████░░░░░] 50%
 
@@ -58,6 +58,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03-branch-sidebar-checkout P01 | 4min | 3 tasks | 1 files |
 | Phase 03-branch-sidebar-checkout P02 | 2min | 2 tasks | 4 files |
 | Phase 03-branch-sidebar-checkout P03 | 30min | 2 tasks | 2 files |
+| Phase 03-branch-sidebar-checkout P04 | 3min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,8 @@ Recent decisions affecting current work:
 - [Phase 03-branch-sidebar-checkout P03]: flex-1 wrapper required around CommitGraph in 2-pane layout to prevent zero-width collapse
 - [Phase 03-branch-sidebar-checkout P03]: checkout_branch uses checkout_tree+set_head (not set_head+checkout_head) to update working tree correctly
 - [Phase 03-branch-sidebar-checkout P03]: {#key graphKey} forces CommitGraph remount after checkout/create; graphKey resets to 0 on repo close
+- [Phase 03-branch-sidebar-checkout P04]: Use loading boolean (not refs=null) as loading sentinel — keeps Remote/Tags/Stashes sections mounted during data refresh
+- [Phase 03-branch-sidebar-checkout P04]: Sequence counter (loadSeq) in loadRefs discards stale async responses — prevents stale completions from triggering spurious destroy/recreate cycles
 
 ### Pending Todos
 
@@ -100,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 03-03-PLAN.md (Phase 3 complete)
+Stopped at: Completed 03-04-PLAN.md (Phase 3 gap-closure complete)
 Resume file: None
