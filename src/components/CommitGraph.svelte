@@ -1,5 +1,6 @@
 <script lang="ts">
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
+  import { untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import type { GraphCommit } from '../lib/types.js';
   import CommitRow from './CommitRow.svelte';
@@ -42,7 +43,7 @@
   }
 
   $effect(() => {
-    loadMore();
+    untrack(() => loadMore());
   });
 
   $effect(() => {
