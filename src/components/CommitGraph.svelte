@@ -1,6 +1,6 @@
 <script lang="ts">
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import type { GraphCommit } from '../lib/types.js';
   import CommitRow from './CommitRow.svelte';
@@ -55,7 +55,7 @@
     const headIdx = commits.findIndex(c => c.is_head);
     if (headIdx >= 0) {
       scrolledToHead = true;
-      listRef.scroll({ index: headIdx, smoothScroll: false, align: 'top' });
+      tick().then(() => listRef?.scroll({ index: headIdx, smoothScroll: false, align: 'center' }));
     }
   });
 </script>
