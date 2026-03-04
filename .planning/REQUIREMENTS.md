@@ -30,7 +30,7 @@ Requirements for v0.1. Each maps to a roadmap phase.
 ### Branches
 
 - [x] **BRNCH-01**: User can see all local branches, remote branches, tags, and stashes in collapsible sidebar sections with the active branch highlighted
-- [ ] **BRNCH-02**: User can filter the branch list by typing a search string; filtering happens on the frontend without a round-trip to Rust
+- [x] **BRNCH-02**: User can filter the branch list by typing a search string; filtering happens on the frontend without a round-trip to Rust
 - [x] **BRNCH-03**: User can checkout a local branch; if the working tree is dirty, an inline error banner appears with instructions and the branch does not switch
 - [x] **BRNCH-04**: User can create a new local branch, optionally from a specific commit OID
 
@@ -124,7 +124,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GRAPH-03 | Phase 2 | Complete |
 | GRAPH-04 | Phase 2 | Complete |
 | BRNCH-01 | Phase 3 | Complete |
-| BRNCH-02 | Phase 3 | Pending |
+| BRNCH-02 | Phase 3 | Complete |
 | BRNCH-03 | Phase 3 | Complete |
 | BRNCH-04 | Phase 3 | Complete |
 | STAGE-01 | Phase 4 | Pending |
