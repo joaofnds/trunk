@@ -5,6 +5,7 @@
     label: string;
     count: number;
     expanded: boolean;
+    ontoggle: () => void;
     showCreateButton?: boolean;
     oncreate?: () => void;
     children: Snippet;
@@ -13,7 +14,8 @@
   let {
     label,
     count,
-    expanded = $bindable(),
+    expanded,
+    ontoggle,
     showCreateButton = false,
     oncreate,
     children,
@@ -25,8 +27,8 @@
   <div
     role="button"
     tabindex="0"
-    onclick={() => (expanded = !expanded)}
-    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') expanded = !expanded; }}
+    onclick={ontoggle}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
     style="
       height: 28px;
       border-bottom: 1px solid var(--color-border);

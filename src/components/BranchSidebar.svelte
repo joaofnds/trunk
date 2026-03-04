@@ -171,7 +171,8 @@
       <BranchSection
         label="Local"
         count={refs?.local.length ?? 0}
-        bind:expanded={localExpanded}
+        expanded={localExpanded}
+        ontoggle={() => (localExpanded = !localExpanded)}
         showCreateButton={true}
         oncreate={() => { showCreateInput = true; }}
       >
@@ -222,7 +223,8 @@
       <BranchSection
         label="Remote"
         count={refs?.remote.length ?? 0}
-        bind:expanded={remoteExpanded}
+        expanded={remoteExpanded}
+        ontoggle={() => (remoteExpanded = !remoteExpanded)}
       >
         {#each Object.entries(remoteGroups) as [remoteName, branches] (remoteName)}
           <RemoteGroup
@@ -242,7 +244,8 @@
       <BranchSection
         label="Tags"
         count={refs?.tags.length ?? 0}
-        bind:expanded={tagsExpanded}
+        expanded={tagsExpanded}
+        ontoggle={() => (tagsExpanded = !tagsExpanded)}
       >
         {#each filteredTags as tag (tag.name)}
           <BranchRow name={tag.short_name} />
@@ -255,7 +258,8 @@
       <BranchSection
         label="Stashes"
         count={refs?.stashes.length ?? 0}
-        bind:expanded={stashesExpanded}
+        expanded={stashesExpanded}
+        ontoggle={() => (stashesExpanded = !stashesExpanded)}
       >
         {#each filteredStashes as stash (stash.name)}
           <BranchRow name={stash.name} />
