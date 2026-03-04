@@ -47,7 +47,15 @@ Plans:
   3. Lane topology is correct across all scroll positions: forks, merges, and continuations render without visual errors for repos with thousands of commits
   4. Branch, tag, and stash labels appear inline on the commits they point to; merge commits are visually distinct (larger dot with ring stroke)
   5. Recently opened repositories are remembered and presented for quick re-open across app restarts
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — Rust test scaffolds: failing unit test stubs for repo commands, graph algorithm, and ref map helpers
+- [ ] 02-02-PLAN.md — Dependency gate: install tauri-plugin-store + @humanspeak/svelte-virtual-list + register store plugin in lib.rs
+- [ ] 02-03-PLAN.md — Rust backend: git/repository.rs helpers + git/graph.rs lane algorithm + commands/repo.rs + commands/history.rs (all tests green)
+- [ ] 02-04-PLAN.md — Frontend shell: store.ts (recent repos) + WelcomeScreen.svelte + TabBar.svelte + App.svelte app shell
+- [ ] 02-05-PLAN.md — Frontend graph components: CommitGraph.svelte + CommitRow.svelte + LaneSvg.svelte + RefPill.svelte
+- [ ] 02-06-PLAN.md — Wire and verify: register commands in lib.rs + mount CommitGraph in App.svelte + visual verification checkpoint
 
 ### Phase 3: Branch Sidebar + Checkout
 **Goal**: A developer can see the full branch/tag/stash structure of the open repository in a sidebar and switch branches safely, with a visible error when the working tree is dirty
@@ -99,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-03-03 |
-| 2. Repository Open + Commit Graph | 0/? | Not started | - |
+| 2. Repository Open + Commit Graph | 0/6 | Not started | - |
 | 3. Branch Sidebar + Checkout | 0/? | Not started | - |
 | 4. Working Tree + Staging | 0/? | Not started | - |
 | 5. Commit Creation | 0/? | Not started | - |
