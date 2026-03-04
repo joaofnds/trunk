@@ -17,6 +17,9 @@ pub fn run() {
             commands::repo::open_repo,
             commands::repo::close_repo,
             commands::history::get_commit_graph,
+            commands::branches::list_refs,
+            commands::branches::checkout_branch,
+            commands::branches::create_branch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
