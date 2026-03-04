@@ -19,7 +19,7 @@
   let error = $state<string | null>(null);
   let offset = $state(0);
   let listRef = $state<{ scroll: (opts: { index: number; smoothScroll?: boolean; align?: string }) => Promise<void> } | null>(null);
-  let scrolledToHead = $state(false);
+  let scrolledToHead = false;
 
   async function loadMore() {
     if (loading || !hasMore) return;
