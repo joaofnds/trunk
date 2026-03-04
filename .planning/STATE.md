@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: planning
-stopped_at: Completed 02-02-PLAN.md
-last_updated: "2026-03-04T04:20:45.276Z"
+stopped_at: Completed 02-repository-open-commit-graph-01-PLAN.md
+last_updated: "2026-03-04T04:20:56.995Z"
 last_activity: 2026-03-03 — Roadmap created; ready to begin Phase 1 planning
 progress:
   total_phases: 6
@@ -54,6 +54,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-foundation P02 | 5 | 2 tasks | 17 files |
 | Phase 01-foundation P03 | 10 | 2 tasks | 1 files |
 | Phase 02-repository-open-commit-graph P02 | 3min | 2 tasks | 5 files |
+| Phase 02-repository-open-commit-graph P01 | 2m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,7 @@ Recent decisions affecting current work:
 - [Phase 01-foundation]: Inline style in index.html head (not separate CSS file) to eliminate white flash — fires synchronously before Vite async CSS loads
 - [Phase 02-repository-open-commit-graph]: tauri-plugin-store registered immediately after dialog plugin in builder chain
 - [Phase 02-repository-open-commit-graph]: No commands added to generate_handler![] in plan 02-02 — command registration deferred to plan 02-05
+- [Phase 02-repository-open-commit-graph]: make_test_repo() inline in repository::tests — real git2 repo with init + feature branch + merge commit for graph test assertions
 
 ### Pending Todos
 
@@ -88,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T04:20:29.128Z
-Stopped at: Completed 02-02-PLAN.md
+Last session: 2026-03-04T04:20:56.992Z
+Stopped at: Completed 02-repository-open-commit-graph-01-PLAN.md
 Resume file: None
