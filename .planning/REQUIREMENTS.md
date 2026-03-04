@@ -18,11 +18,11 @@ Requirements for v0.1. Each maps to a roadmap phase.
 
 - [ ] **REPO-01**: User can open a Git repository via native file dialog; repository is validated with git2, stored in managed state, and filesystem watcher is started
 - [ ] **REPO-02**: User can close a repository, stopping its filesystem watcher and releasing its managed state
-- [ ] **REPO-03**: App remembers recently opened repositories and presents them for quick access across sessions
+- [x] **REPO-03**: App remembers recently opened repositories and presents them for quick access across sessions
 
 ### Commit Graph
 
-- [ ] **GRAPH-01**: User can view paginated commit history (200 commits per batch) with infinite scroll that fetches the next batch when approaching the end
+- [x] **GRAPH-01**: User can view paginated commit history (200 commits per batch) with infinite scroll that fetches the next batch when approaching the end
 - [ ] **GRAPH-02**: User can see a visual lane graph rendered as inline SVG per row, with correct topology showing forks, merges, and continuations across all scroll positions
 - [ ] **GRAPH-03**: User can see branch, tag, and stash labels displayed inline on the commits they point to
 - [ ] **GRAPH-04**: User can visually distinguish merge commits from regular commits via a larger dot with a ring stroke
@@ -118,8 +118,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-04 | Phase 1 | Complete |
 | REPO-01 | Phase 2 | Pending |
 | REPO-02 | Phase 2 | Pending |
-| REPO-03 | Phase 2 | Pending |
-| GRAPH-01 | Phase 2 | Pending |
+| REPO-03 | Phase 2 | Complete |
+| GRAPH-01 | Phase 2 | Complete |
 | GRAPH-02 | Phase 2 | Pending |
 | GRAPH-03 | Phase 2 | Pending |
 | GRAPH-04 | Phase 2 | Pending |
