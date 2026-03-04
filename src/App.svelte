@@ -1,6 +1,7 @@
 <script lang="ts">
   import WelcomeScreen from './components/WelcomeScreen.svelte';
   import TabBar from './components/TabBar.svelte';
+  import CommitGraph from './components/CommitGraph.svelte';
   import { safeInvoke } from './lib/invoke.js';
 
   let repoPath = $state<string | null>(null);
@@ -30,7 +31,7 @@
   {:else}
     <TabBar {repoName} onclose={handleClose} />
     <main class="flex-1 overflow-hidden">
-      <!-- CommitGraph rendered here in Plan 02-05 -->
+      <CommitGraph {repoPath} />
     </main>
   {/if}
 </div>
