@@ -162,8 +162,12 @@ pub fn checkout_branch_inner(
         ));
     }
 
-    repo.set_head(&format!("refs/heads/{}", branch_name))?;
-    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().safe()))?;
+    let branch_ref = format!("refs/heads/{}", branch_name);
+    {
+        let (object, _reference) = repo.revparse_ext(&branch_ref)?;
+        repo.checkout_tree(&object, Some(&mut git2::build::CheckoutBuilder::new().safe()))?;
+    }
+    repo.set_head(&branch_ref)?;
     drop(repo);
 
     // Rebuild graph cache after checkout
