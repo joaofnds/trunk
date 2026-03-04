@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 
 ## Current Position
 
-Phase: 3 of 6 (Branch Sidebar + Checkout) — COMPLETE (incl. gap-closure plan 04)
-Plan: 4 of 4 — all plans done (incl. gap-closure)
+Phase: 3 of 6 (Branch Sidebar + Checkout) — COMPLETE (incl. gap-closure plans 04 + 05)
+Plan: 5 of 5 — all plans done (incl. gap-closure)
 Status: Phase 3 complete — Phase 4 (Staging + Commit) up next
-Last activity: 2026-03-04 — Phase 3 Plan 04 complete (click freeze fix: loading boolean + sequence counter)
+Last activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 
 Progress: [█████░░░░░] 50%
 
@@ -59,6 +59,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03-branch-sidebar-checkout P02 | 2min | 2 tasks | 4 files |
 | Phase 03-branch-sidebar-checkout P03 | 30min | 2 tasks | 2 files |
 | Phase 03-branch-sidebar-checkout P04 | 3min | 1 tasks | 1 files |
+| Phase 03-branch-sidebar-checkout P05 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ Recent decisions affecting current work:
 - [Phase 03-branch-sidebar-checkout P03]: {#key graphKey} forces CommitGraph remount after checkout/create; graphKey resets to 0 on repo close
 - [Phase 03-branch-sidebar-checkout P04]: Use loading boolean (not refs=null) as loading sentinel — keeps Remote/Tags/Stashes sections mounted during data refresh
 - [Phase 03-branch-sidebar-checkout P04]: Sequence counter (loadSeq) in loadRefs discards stale async responses — prevents stale completions from triggering spurious destroy/recreate cycles
+- [Phase 03-branch-sidebar-checkout P05]: Wrap text in <span> for truncation — flex container must keep display:flex; span provides independent block formatting context for text-overflow:ellipsis
+- [Phase 03-branch-sidebar-checkout P05]: scrolledToHead one-shot flag resets automatically per CommitGraph mount via {#key graphKey} in App.svelte — no explicit reset needed
 
 ### Pending Todos
 
@@ -103,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 03-04-PLAN.md (Phase 3 gap-closure complete)
+Stopped at: Completed 03-05-PLAN.md (Phase 3 all gap-closure complete)
 Resume file: None
