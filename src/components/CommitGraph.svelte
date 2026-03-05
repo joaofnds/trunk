@@ -55,7 +55,11 @@
     const headIdx = commits.findIndex(c => c.is_head);
     if (headIdx >= 0) {
       scrolledToHead = true;
-      tick().then(() => listRef?.scroll({ index: headIdx, smoothScroll: false, align: 'center' }));
+      tick().then(() => listRef?.scroll({ index: headIdx, smoothScroll: false, align: 'top' }));
+    } else if (untrack(() => hasMore)) {
+      // HEAD not in current batch — load the next batch so the effect re-fires with more commits.
+      // untrack prevents hasMore from creating a reactive dependency here.
+      untrack(() => loadMore());
     }
   });
 </script>
@@ -88,6 +92,7 @@
     <SvelteVirtualList
       bind:this={listRef}
       items={commits}
+      defaultEstimatedItemHeight={26}
       onLoadMore={loadMore}
       loadMoreThreshold={50}
       {hasMore}
