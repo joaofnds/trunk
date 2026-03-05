@@ -83,7 +83,13 @@ Plans:
   1. The staging panel shows two distinct lists — unstaged and staged — each with file status labels (New, Modified, Deleted, Renamed, Typechange, Conflicted)
   2. Clicking a file stages or unstages it (whole-file); dedicated "Stage All" and "Unstage All" buttons act on all files at once
   3. When an external tool (terminal, IDE) modifies repository files, the staging panel refreshes automatically within approximately 300ms without any user action
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Rust staging commands (TDD): get_status, stage_file, unstage_file, stage_all, unstage_all + 8 unit tests
+- [ ] 04-02-PLAN.md — Rust watcher + lib.rs wiring: WatcherState + start/stop watcher + open_repo/close_repo integration + staging command registration
+- [ ] 04-03-PLAN.md — Svelte components: FileRow.svelte (status icon + hover action) + StagingPanel.svelte (two sections + auto-refresh listener)
+- [ ] 04-04-PLAN.md — Wire and verify: mount StagingPanel in App.svelte + visual verification checkpoint
 
 ### Phase 5: Commit Creation
 **Goal**: A developer can complete the write loop by creating a commit from staged changes, with the new commit appearing in the graph immediately
@@ -116,6 +122,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation | 3/3 | Complete   | 2026-03-03 |
 | 2. Repository Open + Commit Graph | 2/6 | In Progress|  |
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
-| 4. Working Tree + Staging | 0/? | Not started | - |
+| 4. Working Tree + Staging | 0/4 | Not started | - |
 | 5. Commit Creation | 0/? | Not started | - |
 | 6. Diff Display | 0/? | Not started | - |
