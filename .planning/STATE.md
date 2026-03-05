@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 04-working-tree-staging 04-02-PLAN.md
-last_updated: "2026-03-05T04:08:27.737Z"
+stopped_at: Completed 04-working-tree-staging 04-03-PLAN.md
+last_updated: "2026-03-05T04:16:20.778Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 18
-  completed_plans: 16
+  completed_plans: 17
   percent: 50
 ---
 
@@ -62,6 +62,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03-branch-sidebar-checkout P05 | 2min | 2 tasks | 3 files |
 | Phase 04-working-tree-staging P01 | 4min | 2 tasks | 3 files |
 | Phase 04-working-tree-staging P02 | 5min | 2 tasks | 3 files |
+| Phase 04-working-tree-staging P03 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,9 @@ Recent decisions affecting current work:
 - [Phase 04-working-tree-staging]: is_head_unborn() absent in git2 0.19.0 — detect via repo.head() returning ErrorCode::UnbornBranch
 - [Phase 04-working-tree-staging]: stage_all uses index.add_all(*) not update_all — update_all alone misses new untracked files
 - [Phase 04-working-tree-staging]: WatcherState uses Default impl for ergonomic app.manage() call; AppHandle Emitter trait required in Tauri 2 for emit()
+- [Phase 04-working-tree-staging]: FileRow uses role=listitem on container div to satisfy a11y requirement for mouseenter/mouseleave handlers
+- [Phase 04-working-tree-staging]: Conflicted files rendered in Unstaged section in StagingPanel — cannot be staged until resolved
+- [Phase 04-working-tree-staging]: loadingFiles uses immutable Set update pattern in Svelte 5 (new Set([...prev, path])) since $state requires assignment to trigger reactivity
 
 ### Pending Todos
 
@@ -110,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T04:08:27.733Z
-Stopped at: Completed 04-working-tree-staging 04-02-PLAN.md
+Last session: 2026-03-05T04:16:20.774Z
+Stopped at: Completed 04-working-tree-staging 04-03-PLAN.md
 Resume file: None
