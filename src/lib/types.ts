@@ -86,6 +86,11 @@ export interface FileDiff {
   hunks: DiffHunk[];
 }
 
+export interface HeadCommitMessage {
+  subject: string;
+  body: string | null;
+}
+
 export interface CommitDetail {
   oid: string;
   short_oid: string;
