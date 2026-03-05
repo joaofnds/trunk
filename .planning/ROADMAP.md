@@ -99,7 +99,12 @@ Plans:
   1. Submitting the commit form with a subject line and staged files creates a commit; the new commit appears at the top of the graph immediately
   2. The form refuses to submit and shows a validation message if the subject is empty or the staging area is empty
   3. User can amend the most recent commit, updating its message or adding currently staged changes, and the graph reflects the amended commit
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Rust commit commands (TDD): create_commit, amend_commit, get_head_commit_message + 6 unit tests + HeadCommitMessage DTO
+- [ ] 05-02-PLAN.md — Svelte CommitForm component + StagingPanel layout update (scrollable file sections + always-visible form)
+- [ ] 05-03-PLAN.md — Wire and verify: register commit commands in lib.rs + App.svelte repo-changed listener + end-to-end visual checkpoint
 
 ### Phase 6: Diff Display
 **Goal**: A developer can inspect exactly what changed in any file — before staging, after staging, or in any historical commit — by clicking it
@@ -123,5 +128,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Repository Open + Commit Graph | 2/6 | In Progress|  |
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
 | 4. Working Tree + Staging | 3/4 | In Progress|  |
-| 5. Commit Creation | 0/? | Not started | - |
+| 5. Commit Creation | 0/3 | Not started | - |
 | 6. Diff Display | 0/? | Not started | - |
