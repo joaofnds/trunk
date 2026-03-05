@@ -128,5 +128,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Repository Open + Commit Graph | 2/6 | In Progress|  |
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
 | 4. Working Tree + Staging | 3/4 | In Progress|  |
-| 5. Commit Creation | 0/3 | Not started | - |
+| 5. Commit Creation | 1/3 | In Progress|  |
 | 6. Diff Display | 0/? | Not started | - |

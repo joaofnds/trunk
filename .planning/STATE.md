@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-05T17:25:22.347Z"
+stopped_at: Completed 05-commit-creation-02-PLAN.md
+last_updated: "2026-03-05T17:42:49.993Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 21
+  completed_plans: 19
   percent: 50
 ---
 
@@ -64,6 +64,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04-working-tree-staging P02 | 5min | 2 tasks | 3 files |
 | Phase 04-working-tree-staging P03 | 3min | 2 tasks | 2 files |
 | Phase 04-working-tree-staging P04 | 5min | 2 tasks | 1 files |
+| Phase 05-commit-creation P02 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,9 @@ Recent decisions affecting current work:
 - [Phase 04-working-tree-staging]: loadingFiles uses immutable Set update pattern in Svelte 5 (new Set([...prev, path])) since $state requires assignment to trigger reactivity
 - [Phase 04-working-tree-staging]: StagingPanel mounts with repoPath only — currentBranch derived internally via list_refs, keeping App.svelte changes minimal (import + mount only)
 - [Phase 04-working-tree-staging]: CommitGraph wrapped in flex-1 div prevents zero-width collapse when StagingPanel is added as third sibling
+- [Phase 05-commit-creation]: CommitForm uses oninput on checkbox to fire handleAmendToggle with checked value (Svelte 5 event handling)
+- [Phase 05-commit-creation]: $effect tracks stagedCount and amend to clear stagedError reactively in CommitForm
+- [Phase 05-commit-creation]: Label associated with checkbox via for/id attributes to satisfy Svelte a11y requirement in CommitForm
 
 ### Pending Todos
 
@@ -117,6 +121,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T17:25:22.344Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-commit-creation/05-CONTEXT.md
+Last session: 2026-03-05T17:42:49.990Z
+Stopped at: Completed 05-commit-creation-02-PLAN.md
+Resume file: None
