@@ -3,6 +3,7 @@
   import TabBar from './components/TabBar.svelte';
   import CommitGraph from './components/CommitGraph.svelte';
   import BranchSidebar from './components/BranchSidebar.svelte';
+  import StagingPanel from './components/StagingPanel.svelte';
   import { safeInvoke } from './lib/invoke.js';
 
   let repoPath = $state<string | null>(null);
@@ -44,7 +45,7 @@
           <CommitGraph {repoPath} />
         {/key}
       </div>
-      <!-- Phase 4 adds StagingPanel here -->
+      <StagingPanel repoPath={repoPath!} />
     </main>
   {/if}
 </div>
