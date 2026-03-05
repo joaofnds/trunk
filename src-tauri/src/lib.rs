@@ -5,6 +5,7 @@ mod state;
 mod watcher;
 
 use state::{CommitCache, RepoState};
+use watcher::WatcherState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,6 +14,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(RepoState(Default::default()))
         .manage(CommitCache(Default::default()))
+        .manage(WatcherState(Default::default()))
         .invoke_handler(tauri::generate_handler![
             commands::repo::open_repo,
             commands::repo::close_repo,

@@ -1,13 +1,16 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 use crate::state::{CommitCache, RepoState};
 use crate::git::{graph, repository};
 use crate::error::TrunkError;
+use crate::watcher::{self, WatcherState};
 
 #[tauri::command]
 pub async fn open_repo(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    watcher_state: State<'_, WatcherState>,
+    app: AppHandle,
 ) -> Result<(), String> {
     let path_clone = path.clone();
 
@@ -22,8 +25,9 @@ pub async fn open_repo(
     .map_err(|e| serde_json::to_string(&e).unwrap())?;
 
     let path_buf = std::path::PathBuf::from(&path);
-    state.0.lock().unwrap().insert(path.clone(), path_buf);
-    cache.0.lock().unwrap().insert(path, commits);
+    state.0.lock().unwrap().insert(path.clone(), path_buf.clone());
+    cache.0.lock().unwrap().insert(path.clone(), commits);
+    watcher::start_watcher(path_buf, app, &watcher_state);
 
     Ok(())
 }
@@ -33,9 +37,11 @@ pub async fn close_repo(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    watcher_state: State<'_, WatcherState>,
 ) -> Result<(), String> {
     state.0.lock().unwrap().remove(&path);
     cache.0.lock().unwrap().remove(&path);
+    watcher::stop_watcher(&path, &watcher_state);
     Ok(())
 }
 
