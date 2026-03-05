@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // CRITICAL: All fields use owned types (String, Vec, i64, u32, usize, bool, Option<T>).
 // NO git2 types (Commit<'repo>, Diff<'repo>, etc.) — those carry lifetimes and cannot be stored.
@@ -126,6 +126,12 @@ pub struct FileDiff {
     pub path: String,
     pub is_binary: bool,
     pub hunks: Vec<DiffHunk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeadCommitMessage {
+    pub subject: String,
+    pub body: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
