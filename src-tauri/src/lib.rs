@@ -27,6 +27,9 @@ pub fn run() {
             commands::staging::unstage_file,
             commands::staging::stage_all,
             commands::staging::unstage_all,
+            commands::commit::create_commit,
+            commands::commit::amend_commit,
+            commands::commit::get_head_commit_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

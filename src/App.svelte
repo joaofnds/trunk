@@ -5,6 +5,7 @@
   import BranchSidebar from './components/BranchSidebar.svelte';
   import StagingPanel from './components/StagingPanel.svelte';
   import { safeInvoke } from './lib/invoke.js';
+  import { listen } from '@tauri-apps/api/event';
 
   let repoPath = $state<string | null>(null);
   let repoName = $state<string>('');
@@ -18,6 +19,14 @@
   function handleRefresh() {
     graphKey += 1;
   }
+
+  $effect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<string>('repo-changed', (event) => {
+      if (event.payload === repoPath) handleRefresh();
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  });
 
   async function handleClose() {
     if (repoPath) {
