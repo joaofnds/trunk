@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-05T03:36:04.752Z"
+stopped_at: Completed 04-working-tree-staging/04-01-PLAN.md
+last_updated: "2026-03-05T04:04:49.732Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 18
+  completed_plans: 15
   percent: 50
 ---
 
@@ -60,6 +60,7 @@ Progress: [█████░░░░░] 50%
 | Phase 03-branch-sidebar-checkout P03 | 30min | 2 tasks | 2 files |
 | Phase 03-branch-sidebar-checkout P04 | 3min | 1 tasks | 1 files |
 | Phase 03-branch-sidebar-checkout P05 | 2min | 2 tasks | 3 files |
+| Phase 04-working-tree-staging P01 | 4min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,8 @@ Recent decisions affecting current work:
 - [Phase 03-branch-sidebar-checkout P04]: Sequence counter (loadSeq) in loadRefs discards stale async responses — prevents stale completions from triggering spurious destroy/recreate cycles
 - [Phase 03-branch-sidebar-checkout P05]: Wrap text in <span> for truncation — flex container must keep display:flex; span provides independent block formatting context for text-overflow:ellipsis
 - [Phase 03-branch-sidebar-checkout P05]: scrolledToHead one-shot flag resets automatically per CommitGraph mount via {#key graphKey} in App.svelte — no explicit reset needed
+- [Phase 04-working-tree-staging]: is_head_unborn() absent in git2 0.19.0 — detect via repo.head() returning ErrorCode::UnbornBranch
+- [Phase 04-working-tree-staging]: stage_all uses index.add_all(*) not update_all — update_all alone misses new untracked files
 
 ### Pending Todos
 
@@ -105,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T03:36:04.746Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-working-tree-staging/04-CONTEXT.md
+Last session: 2026-03-05T04:04:49.729Z
+Stopped at: Completed 04-working-tree-staging/04-01-PLAN.md
+Resume file: None
