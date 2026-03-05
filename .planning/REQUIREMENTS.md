@@ -39,7 +39,7 @@ Requirements for v0.1. Each maps to a roadmap phase.
 - [x] **STAGE-01**: User can see the current working tree status with files split into distinct unstaged and staged lists, including file status type (New, Modified, Deleted, Renamed, Typechange, Conflicted)
 - [x] **STAGE-02**: User can stage or unstage individual files (whole-file only; no hunk-level staging in v0.1)
 - [x] **STAGE-03**: User can stage all unstaged files at once and unstage all staged files at once with dedicated buttons
-- [ ] **STAGE-04**: Working tree status refreshes automatically when external tools modify repository files, via filesystem watcher with 300ms debounce
+- [x] **STAGE-04**: Working tree status refreshes automatically when external tools modify repository files, via filesystem watcher with 300ms debounce
 
 ### Commit
 
@@ -130,7 +130,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STAGE-01 | Phase 4 | Complete |
 | STAGE-02 | Phase 4 | Complete |
 | STAGE-03 | Phase 4 | Complete |
-| STAGE-04 | Phase 4 | Pending |
+| STAGE-04 | Phase 4 | Complete |
 | COMIT-01 | Phase 5 | Pending |
 | COMIT-02 | Phase 5 | Pending |
 | COMIT-03 | Phase 5 | Pending |
