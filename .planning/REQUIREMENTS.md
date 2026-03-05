@@ -43,9 +43,9 @@ Requirements for v0.1. Each maps to a roadmap phase.
 
 ### Commit
 
-- [ ] **COMIT-01**: User can create a commit with a subject line and optional description body; author identity is read from gitconfig via `repo.signature()`
+- [x] **COMIT-01**: User can create a commit with a subject line and optional description body; author identity is read from gitconfig via `repo.signature()`
 - [x] **COMIT-02**: App refuses to create a commit if the subject is empty or the staging area is empty, with a visible validation message
-- [ ] **COMIT-03**: User can amend the most recent commit, updating its message or adding currently staged changes to it
+- [x] **COMIT-03**: User can amend the most recent commit, updating its message or adding currently staged changes to it
 
 ### Diffs
 
@@ -131,9 +131,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | STAGE-02 | Phase 4 | Complete |
 | STAGE-03 | Phase 4 | Complete |
 | STAGE-04 | Phase 4 | Complete |
-| COMIT-01 | Phase 5 | Pending |
+| COMIT-01 | Phase 5 | Complete |
 | COMIT-02 | Phase 5 | Complete |
-| COMIT-03 | Phase 5 | Pending |
+| COMIT-03 | Phase 5 | Complete |
 | DIFF-01 | Phase 6 | Pending |
 | DIFF-02 | Phase 6 | Pending |
 | DIFF-03 | Phase 6 | Pending |

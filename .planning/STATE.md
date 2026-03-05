@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 05-commit-creation-02-PLAN.md
-last_updated: "2026-03-05T17:42:49.993Z"
+stopped_at: Completed 05-01-PLAN.md (commit creation commands)
+last_updated: "2026-03-05T17:43:24.749Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 20
   percent: 50
 ---
 
@@ -65,6 +65,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04-working-tree-staging P03 | 3min | 2 tasks | 2 files |
 | Phase 04-working-tree-staging P04 | 5min | 2 tasks | 1 files |
 | Phase 05-commit-creation P02 | 2min | 2 tasks | 3 files |
+| Phase 05-commit-creation P01 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,9 @@ Recent decisions affecting current work:
 - [Phase 05-commit-creation]: CommitForm uses oninput on checkbox to fire handleAmendToggle with checked value (Svelte 5 event handling)
 - [Phase 05-commit-creation]: $effect tracks stagedCount and amend to clear stagedError reactively in CommitForm
 - [Phase 05-commit-creation]: Label associated with checkbox via for/id attributes to satisfy Svelte a11y requirement in CommitForm
+- [Phase 05-commit-creation]: body formatting: empty/whitespace-only body collapses to subject-only message in commit commands
+- [Phase 05-commit-creation]: get_head_commit_message is read-only — no CommitCache invalidation or repo-changed event
+- [Phase 05-commit-creation]: commit commands not registered in lib.rs generate_handler in Plan 01 — deferred to Plan 03
 
 ### Pending Todos
 
@@ -121,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T17:42:49.990Z
-Stopped at: Completed 05-commit-creation-02-PLAN.md
+Last session: 2026-03-05T17:43:24.746Z
+Stopped at: Completed 05-01-PLAN.md (commit creation commands)
 Resume file: None
