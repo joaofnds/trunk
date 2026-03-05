@@ -3,6 +3,7 @@
   import { safeInvoke } from '../lib/invoke.js';
   import type { WorkingTreeStatus } from '../lib/types.js';
   import FileRow from './FileRow.svelte';
+  import CommitForm from './CommitForm.svelte';
 
   interface Props {
     repoPath: string;
@@ -120,123 +121,132 @@
     {/if}
   </div>
 
-  <!-- Unstaged Files section -->
-  <div style="flex-shrink: 0;">
-    <div
-      role="button"
-      tabindex="0"
-      onclick={() => (unstaged_expanded = !unstaged_expanded)}
-      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
-      style="
-        height: 28px;
-        border-bottom: 1px solid var(--color-border);
-        padding: 0 8px;
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        user-select: none;
-      "
-    >
-      <span style="color: var(--color-text-muted); font-size: 10px; margin-right: 4px;">
-        {unstaged_expanded ? '▼' : '▶'}
-      </span>
-      <span style="color: var(--color-text); font-size: 12px; font-weight: 500; flex: 1;">
-        Unstaged Files ({(status?.unstaged.length ?? 0) + (status?.conflicted.length ?? 0)})
-      </span>
-      {#if (status?.unstaged.length ?? 0) > 0 || (status?.conflicted.length ?? 0) > 0}
-        <button
-          onclick={(e) => { e.stopPropagation(); stageAll(); }}
-          style="
-            color: var(--color-text-muted);
-            font-size: 11px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 0 4px;
-            white-space: nowrap;
-          "
-          aria-label="Stage all changes"
-        >
-          Stage All Changes
-        </button>
+  <!-- Scrollable file sections wrapper -->
+  <div style="flex: 1; overflow-y: auto; min-height: 0;">
+    <!-- Unstaged Files section -->
+    <div>
+      <div
+        role="button"
+        tabindex="0"
+        onclick={() => (unstaged_expanded = !unstaged_expanded)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
+        style="
+          height: 28px;
+          border-bottom: 1px solid var(--color-border);
+          padding: 0 8px;
+          display: flex;
+          align-items: center;
+          cursor: pointer;
+          user-select: none;
+        "
+      >
+        <span style="color: var(--color-text-muted); font-size: 10px; margin-right: 4px;">
+          {unstaged_expanded ? '▼' : '▶'}
+        </span>
+        <span style="color: var(--color-text); font-size: 12px; font-weight: 500; flex: 1;">
+          Unstaged Files ({(status?.unstaged.length ?? 0) + (status?.conflicted.length ?? 0)})
+        </span>
+        {#if (status?.unstaged.length ?? 0) > 0 || (status?.conflicted.length ?? 0) > 0}
+          <button
+            onclick={(e) => { e.stopPropagation(); stageAll(); }}
+            style="
+              color: var(--color-text-muted);
+              font-size: 11px;
+              background: none;
+              border: none;
+              cursor: pointer;
+              padding: 0 4px;
+              white-space: nowrap;
+            "
+            aria-label="Stage all changes"
+          >
+            Stage All Changes
+          </button>
+        {/if}
+      </div>
+
+      {#if unstaged_expanded}
+        <div role="list">
+          {#each status?.unstaged ?? [] as f (f.path)}
+            <FileRow
+              file={f}
+              actionLabel="+"
+              isLoading={loadingFiles.has(f.path)}
+              onaction={() => stageFile(f.path)}
+            />
+          {/each}
+          {#each status?.conflicted ?? [] as f (f.path)}
+            <FileRow
+              file={f}
+              actionLabel="+"
+              isLoading={loadingFiles.has(f.path)}
+              onaction={() => stageFile(f.path)}
+            />
+          {/each}
+        </div>
       {/if}
     </div>
 
-    {#if unstaged_expanded}
-      <div role="list">
-        {#each status?.unstaged ?? [] as f (f.path)}
-          <FileRow
-            file={f}
-            actionLabel="+"
-            isLoading={loadingFiles.has(f.path)}
-            onaction={() => stageFile(f.path)}
-          />
-        {/each}
-        {#each status?.conflicted ?? [] as f (f.path)}
-          <FileRow
-            file={f}
-            actionLabel="+"
-            isLoading={loadingFiles.has(f.path)}
-            onaction={() => stageFile(f.path)}
-          />
-        {/each}
+    <!-- Staged Files section -->
+    <div>
+      <div
+        role="button"
+        tabindex="0"
+        onclick={() => (staged_expanded = !staged_expanded)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
+        style="
+          height: 28px;
+          border-bottom: 1px solid var(--color-border);
+          padding: 0 8px;
+          display: flex;
+          align-items: center;
+          cursor: pointer;
+          user-select: none;
+        "
+      >
+        <span style="color: var(--color-text-muted); font-size: 10px; margin-right: 4px;">
+          {staged_expanded ? '▼' : '▶'}
+        </span>
+        <span style="color: var(--color-text); font-size: 12px; font-weight: 500; flex: 1;">
+          Staged Files ({status?.staged.length ?? 0})
+        </span>
+        {#if (status?.staged.length ?? 0) > 0}
+          <button
+            onclick={(e) => { e.stopPropagation(); unstageAll(); }}
+            style="
+              color: var(--color-text-muted);
+              font-size: 11px;
+              background: none;
+              border: none;
+              cursor: pointer;
+              padding: 0 4px;
+              white-space: nowrap;
+            "
+            aria-label="Unstage all"
+          >
+            Unstage All
+          </button>
+        {/if}
       </div>
-    {/if}
-  </div>
 
-  <!-- Staged Files section -->
-  <div style="flex-shrink: 0;">
-    <div
-      role="button"
-      tabindex="0"
-      onclick={() => (staged_expanded = !staged_expanded)}
-      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
-      style="
-        height: 28px;
-        border-bottom: 1px solid var(--color-border);
-        padding: 0 8px;
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        user-select: none;
-      "
-    >
-      <span style="color: var(--color-text-muted); font-size: 10px; margin-right: 4px;">
-        {staged_expanded ? '▼' : '▶'}
-      </span>
-      <span style="color: var(--color-text); font-size: 12px; font-weight: 500; flex: 1;">
-        Staged Files ({status?.staged.length ?? 0})
-      </span>
-      {#if (status?.staged.length ?? 0) > 0}
-        <button
-          onclick={(e) => { e.stopPropagation(); unstageAll(); }}
-          style="
-            color: var(--color-text-muted);
-            font-size: 11px;
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 0 4px;
-            white-space: nowrap;
-          "
-          aria-label="Unstage all"
-        >
-          Unstage All
-        </button>
+      {#if staged_expanded}
+        <div role="list">
+          {#each status?.staged ?? [] as f (f.path)}
+            <FileRow
+              file={f}
+              actionLabel="−"
+              isLoading={loadingFiles.has(f.path)}
+              onaction={() => unstageFile(f.path)}
+            />
+          {/each}
+        </div>
       {/if}
     </div>
-
-    {#if staged_expanded}
-      <div role="list">
-        {#each status?.staged ?? [] as f (f.path)}
-          <FileRow
-            file={f}
-            actionLabel="−"
-            isLoading={loadingFiles.has(f.path)}
-            onaction={() => unstageFile(f.path)}
-          />
-        {/each}
-      </div>
-    {/if}
   </div>
+
+  <!-- Permanent divider above commit form -->
+  <div style="flex-shrink: 0; border-top: 1px solid var(--color-border);"></div>
+
+  <!-- CommitForm — always visible at bottom -->
+  <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} />
 </div>

@@ -129,11 +129,12 @@
   <!-- Amend checkbox row -->
   <div style="display: flex; align-items: center; gap: 6px;">
     <input
+      id="amend-checkbox"
       type="checkbox"
       checked={amend}
       oninput={(e) => handleAmendToggle((e.target as HTMLInputElement).checked)}
     />
-    <label style="font-size: 12px; color: var(--color-text-muted);">
+    <label for="amend-checkbox" style="font-size: 12px; color: var(--color-text-muted);">
       Amend previous commit
     </label>
   </div>
