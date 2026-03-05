@@ -39,7 +39,53 @@ pub fn get_status_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<WorkingTreeStatus, TrunkError> {
-    todo!("implement get_status_inner")
+    let repo = open_repo_from_state(path, state_map)?;
+
+    let mut opts = StatusOptions::new();
+    opts.include_untracked(true)
+        .include_ignored(false)
+        .recurse_untracked_dirs(true);
+
+    let statuses = repo.statuses(Some(&mut opts))?;
+
+    let mut unstaged: Vec<FileStatus> = Vec::new();
+    let mut staged: Vec<FileStatus> = Vec::new();
+    let mut conflicted: Vec<FileStatus> = Vec::new();
+
+    for entry in statuses.iter() {
+        let status = entry.status();
+        let file_path = entry.path().unwrap_or("").to_owned();
+
+        // Check for conflicts first
+        if status.contains(Status::CONFLICTED) {
+            conflicted.push(FileStatus {
+                path: file_path.clone(),
+                status: FileStatusType::Conflicted,
+                is_binary: false,
+            });
+            continue;
+        }
+
+        // Index (staged) entries
+        if let Some(status_type) = classify_index(status) {
+            staged.push(FileStatus {
+                path: file_path.clone(),
+                status: status_type,
+                is_binary: false,
+            });
+        }
+
+        // Working directory (unstaged) entries — a file can appear in both
+        if let Some(status_type) = classify_workdir(status) {
+            unstaged.push(FileStatus {
+                path: file_path,
+                status: status_type,
+                is_binary: false,
+            });
+        }
+    }
+
+    Ok(WorkingTreeStatus { unstaged, staged, conflicted })
 }
 
 pub fn stage_file_inner(
@@ -47,7 +93,18 @@ pub fn stage_file_inner(
     file_path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<(), TrunkError> {
-    todo!("implement stage_file_inner")
+    let repo = open_repo_from_state(path, state_map)?;
+    let mut index = repo.index()?;
+    index.add_path(Path::new(file_path))?;
+    index.write()?;
+    Ok(())
+}
+
+fn is_head_unborn(repo: &git2::Repository) -> bool {
+    match repo.head() {
+        Err(e) => e.code() == git2::ErrorCode::UnbornBranch,
+        Ok(_) => false,
+    }
 }
 
 pub fn unstage_file_inner(
@@ -55,21 +112,63 @@ pub fn unstage_file_inner(
     file_path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<(), TrunkError> {
-    todo!("implement unstage_file_inner")
+    let repo = open_repo_from_state(path, state_map)?;
+
+    if is_head_unborn(&repo) {
+        // No commits yet — just remove from index
+        let mut index = repo.index()?;
+        index.remove_path(Path::new(file_path))?;
+        index.write()?;
+    } else {
+        // Reset the file to HEAD state using reset_default
+        let head_commit = repo.head()?.peel_to_commit()?;
+        repo.reset_default(
+            Some(head_commit.as_object()),
+            std::iter::once(file_path),
+        )?;
+    }
+
+    Ok(())
 }
 
 pub fn stage_all_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<(), TrunkError> {
-    todo!("implement stage_all_inner")
+    let repo = open_repo_from_state(path, state_map)?;
+    let mut index = repo.index()?;
+    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+    index.write()?;
+    Ok(())
 }
 
 pub fn unstage_all_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<(), TrunkError> {
-    todo!("implement unstage_all_inner")
+    let repo = open_repo_from_state(path, state_map)?;
+
+    if is_head_unborn(&repo) {
+        let mut index = repo.index()?;
+        index.clear()?;
+        index.write()?;
+    } else {
+        let head_commit = repo.head()?.peel_to_commit()?;
+        // Collect all staged paths first
+        let staged_paths: Vec<String> = get_status_inner(path, state_map)?
+            .staged
+            .into_iter()
+            .map(|f| f.path)
+            .collect();
+        if !staged_paths.is_empty() {
+            repo.reset_default(
+                Some(head_commit.as_object()),
+                staged_paths.iter().map(String::as_str),
+            )?;
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

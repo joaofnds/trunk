@@ -20,6 +20,11 @@ pub fn run() {
             commands::branches::list_refs,
             commands::branches::checkout_branch,
             commands::branches::create_branch,
+            commands::staging::get_status,
+            commands::staging::stage_file,
+            commands::staging::unstage_file,
+            commands::staging::stage_all,
+            commands::staging::unstage_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
