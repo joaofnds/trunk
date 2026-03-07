@@ -6,6 +6,7 @@
     isLoading?: boolean;
     actionLabel: string;
     onaction: () => void;
+    onclick?: () => void;
   }
 
   let {
@@ -13,6 +14,7 @@
     isLoading = false,
     actionLabel,
     onaction,
+    onclick,
   }: Props = $props();
 
   let hovered = $state(false);
@@ -38,12 +40,14 @@
   role="listitem"
   onmouseenter={() => (hovered = true)}
   onmouseleave={() => (hovered = false)}
+  onclick={() => onclick?.()}
   style="
     height: 26px;
     padding: 0 8px;
     display: flex;
     align-items: center;
     gap: 6px;
+    cursor: {onclick ? 'pointer' : 'default'};
     background: {hovered ? 'var(--color-surface)' : 'transparent'};
     color: {isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
   "

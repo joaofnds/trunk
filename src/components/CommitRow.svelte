@@ -5,14 +5,16 @@
 
   interface Props {
     commit: GraphCommit;
+    onselect?: (oid: string) => void;
   }
 
-  let { commit }: Props = $props();
+  let { commit, onselect }: Props = $props();
 </script>
 
 <div
-  class="flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-default text-[13px]"
+  class="flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
   style="color: var(--color-text);"
+  onclick={() => onselect?.(commit.oid)}
 >
   <!-- Ref pills (fixed-width, left column) -->
   <div class="flex items-center overflow-hidden flex-shrink-0" style="width: 120px;">

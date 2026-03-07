@@ -7,9 +7,10 @@
 
   interface Props {
     repoPath: string;
+    oncommitselect?: (oid: string) => void;
   }
 
-  let { repoPath }: Props = $props();
+  let { repoPath, oncommitselect }: Props = $props();
 
   const BATCH = 200;
   const SKELETON_COUNT = 10;
@@ -98,7 +99,7 @@
       {hasMore}
     >
       {#snippet renderItem(commit)}
-        <CommitRow {commit} />
+        <CommitRow {commit} onselect={oncommitselect} />
       {/snippet}
     </SvelteVirtualList>
 

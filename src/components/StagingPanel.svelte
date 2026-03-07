@@ -8,11 +8,13 @@
   interface Props {
     repoPath: string;
     currentBranch?: string;
+    onfileselect?: (path: string, kind: 'unstaged' | 'staged') => void;
   }
 
   let {
     repoPath,
     currentBranch,
+    onfileselect,
   }: Props = $props();
 
   let status = $state<WorkingTreeStatus | null>(null);
@@ -173,6 +175,7 @@
               actionLabel="+"
               isLoading={loadingFiles.has(f.path)}
               onaction={() => stageFile(f.path)}
+              onclick={() => onfileselect?.(f.path, 'unstaged')}
             />
           {/each}
           {#each status?.conflicted ?? [] as f (f.path)}
@@ -181,6 +184,7 @@
               actionLabel="+"
               isLoading={loadingFiles.has(f.path)}
               onaction={() => stageFile(f.path)}
+              onclick={() => onfileselect?.(f.path, 'unstaged')}
             />
           {/each}
         </div>
@@ -237,6 +241,7 @@
               actionLabel="−"
               isLoading={loadingFiles.has(f.path)}
               onaction={() => unstageFile(f.path)}
+              onclick={() => onfileselect?.(f.path, 'staged')}
             />
           {/each}
         </div>
