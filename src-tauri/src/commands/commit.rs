@@ -2,8 +2,19 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 use crate::error::TrunkError;
-use crate::git::types::HeadCommitMessage;
+use crate::git::{graph, types::HeadCommitMessage};
 use crate::state::{CommitCache, RepoState};
+
+fn refresh_commit_cache(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<Vec<crate::git::types::GraphCommit>, TrunkError> {
+    let path_buf = state_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+    graph::walk_commits(&mut repo, 0, usize::MAX)
+}
 
 fn open_repo_from_state(
     path: &str,
@@ -94,14 +105,15 @@ pub async fn create_commit(
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)
+    let commits = tauri::async_runtime::spawn_blocking(move || {
+        create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+        refresh_commit_cache(&path_clone, &state_map)
     })
     .await
     .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
     .map_err(|e| serde_json::to_string(&e).unwrap())?;
 
-    cache.0.lock().unwrap().remove(&path);
+    cache.0.lock().unwrap().insert(path.clone(), commits);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -117,14 +129,15 @@ pub async fn amend_commit(
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)
+    let commits = tauri::async_runtime::spawn_blocking(move || {
+        amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+        refresh_commit_cache(&path_clone, &state_map)
     })
     .await
     .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
     .map_err(|e| serde_json::to_string(&e).unwrap())?;
 
-    cache.0.lock().unwrap().remove(&path);
+    cache.0.lock().unwrap().insert(path.clone(), commits);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
