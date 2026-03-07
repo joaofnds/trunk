@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Skill(gsd:execute-phase)",
-      "Bash(bun run:*)"
-    ]
-  }
-}
