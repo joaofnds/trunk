@@ -4,9 +4,10 @@
   interface Props {
     fileDiffs: FileDiff[];
     commitDetail: CommitDetail | null;
+    onclose: () => void;
   }
 
-  let { fileDiffs, commitDetail }: Props = $props();
+  let { fileDiffs, commitDetail, onclose }: Props = $props();
 
   let authorTimestamp = $derived(
     commitDetail ? new Date(commitDetail.author_timestamp * 1000).toLocaleString() : ''
@@ -42,14 +43,41 @@
 </script>
 
 <div style="
-  width: 400px;
-  min-width: 400px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--color-border);
-  overflow-y: auto;
+  overflow: hidden;
+  background: var(--color-bg);
 ">
+
+  <!-- Panel toolbar: close button -->
+  <div style="
+    height: 32px;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  ">
+    <button
+      onclick={onclose}
+      aria-label="Close diff"
+      style="
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--color-text-muted);
+        font-size: 16px;
+        line-height: 1;
+        padding: 2px 4px;
+        border-radius: 3px;
+      "
+    >✕</button>
+  </div>
+
+  <!-- Scrollable content area -->
+  <div style="flex: 1; overflow-y: auto; min-height: 0;">
 
   {#if commitDetail}
     <!-- SECTION 1: Commit metadata header -->
@@ -190,4 +218,6 @@
       {/if}
     </div>
   {/each}
+
+  </div><!-- end scrollable content -->
 </div>
