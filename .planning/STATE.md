@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-01-PLAN.md (Rust diff commands)
-last_updated: "2026-03-07T20:19:00.202Z"
+stopped_at: Completed 06-03-PLAN.md (diff integration wiring)
+last_updated: "2026-03-07T20:39:27.510Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 24
-  completed_plans: 23
+  completed_plans: 24
   percent: 50
 ---
 
@@ -69,6 +69,7 @@ Progress: [█████░░░░░] 50%
 | Phase 05-commit-creation P03 | 30min | 2 tasks | 3 files |
 | Phase 06-diff-display P02 | 5min | 1 tasks | 1 files |
 | Phase 06-diff-display P01 | 2min | 2 tasks | 2 files |
+| Phase 06-diff-display P03 | 30min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,9 @@ Recent decisions affecting current work:
 - [Phase 06-diff-display]: DiffPanel uses inline style bindings for diff line colors — origin is runtime data; plain functions (not $derived) for pure transforms
 - [Phase 06-diff-display]: RefCell used in walk_diff_into_file_diffs to allow multiple closures to mutably borrow file_diffs — Rust borrow checker rejects multiple &mut borrows without it
 - [Phase 06-diff-display]: walk_diff_into_file_diffs extracted as shared helper — all three diff commands use identical walking logic, only differ in how they produce the git2::Diff
+- [Phase 06-diff-display]: DiffPanel replaces CommitGraph in center pane (toggle not split) — user feedback found split pane confusing
+- [Phase 06-diff-display]: Deselect-to-close: clicking selected file/commit calls clearDiff() and returns to graph
+- [Phase 06-diff-display]: refetchFileDiff() bypasses toggle logic during repo-changed refresh to keep selection intact
 
 ### Pending Todos
 
@@ -133,6 +137,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T20:19:00.198Z
-Stopped at: Completed 06-01-PLAN.md (Rust diff commands)
+Last session: 2026-03-07T20:39:27.506Z
+Stopped at: Completed 06-03-PLAN.md (diff integration wiring)
 Resume file: None

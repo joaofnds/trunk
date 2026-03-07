@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Branch Sidebar + Checkout** - List all branches/tags/stashes in sidebar and support branch checkout with dirty-workdir error handling (completed 2026-03-04)
 - [ ] **Phase 4: Working Tree + Staging** - Show live working tree status and support whole-file stage/unstage with auto-refresh via filesystem watcher
 - [x] **Phase 5: Commit Creation** - Create commits (and amend) with subject + body, with validation and immediate graph feedback (completed 2026-03-07)
-- [ ] **Phase 6: Diff Display** - Show unified diffs for workdir files, staged files, and historical commits with full commit metadata
+- [x] **Phase 6: Diff Display** - Show unified diffs for workdir files, staged files, and historical commits with full commit metadata (completed 2026-03-07)
 
 ## Phase Details
 
@@ -134,4 +134,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
 | 4. Working Tree + Staging | 3/4 | In Progress|  |
 | 5. Commit Creation | 3/3 | Complete   | 2026-03-07 |
-| 6. Diff Display | 2/3 | In Progress|  |
+| 6. Diff Display | 3/3 | Complete   | 2026-03-07 |
