@@ -49,10 +49,10 @@ Requirements for v0.1. Each maps to a roadmap phase.
 
 ### Diffs
 
-- [ ] **DIFF-01**: User can view a unified diff for an unstaged file by clicking it in the unstaged list (index vs working directory)
-- [ ] **DIFF-02**: User can view a unified diff for a staged file by clicking it in the staged list (HEAD vs index)
-- [ ] **DIFF-03**: User can view all file diffs for a historical commit by clicking it in the commit graph (commit vs its first parent, or vs empty tree for root commits)
-- [ ] **DIFF-04**: User can see full commit metadata (full OID, short OID, author name/email, timestamp, committer if different, full message body) above the diff when a commit is selected
+- [x] **DIFF-01**: User can view a unified diff for an unstaged file by clicking it in the unstaged list (index vs working directory)
+- [x] **DIFF-02**: User can view a unified diff for a staged file by clicking it in the staged list (HEAD vs index)
+- [x] **DIFF-03**: User can view all file diffs for a historical commit by clicking it in the commit graph (commit vs its first parent, or vs empty tree for root commits)
+- [x] **DIFF-04**: User can see full commit metadata (full OID, short OID, author name/email, timestamp, committer if different, full message body) above the diff when a commit is selected
 
 ## v2 Requirements
 
@@ -134,10 +134,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | COMIT-01 | Phase 5 | Complete |
 | COMIT-02 | Phase 5 | Complete |
 | COMIT-03 | Phase 5 | Complete |
-| DIFF-01 | Phase 6 | Pending |
-| DIFF-02 | Phase 6 | Pending |
-| DIFF-03 | Phase 6 | Pending |
-| DIFF-04 | Phase 6 | Pending |
+| DIFF-01 | Phase 6 | Complete |
+| DIFF-02 | Phase 6 | Complete |
+| DIFF-03 | Phase 6 | Complete |
+| DIFF-04 | Phase 6 | Complete |
 
 **Coverage:**
 - v1 requirements: 26 total
