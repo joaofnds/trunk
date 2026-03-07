@@ -115,7 +115,12 @@ Plans:
   2. Clicking a staged file shows the unified diff between HEAD and the index
   3. Clicking a commit in the graph shows the full diff for all files changed in that commit (vs first parent, or vs empty tree for root commits)
   4. When a commit is selected, full metadata (OID, author, timestamp, committer if different, full message body) appears above the diff
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Rust diff commands (TDD): diff_unstaged, diff_staged, diff_commit, get_commit_detail + 8 unit tests + command registration in lib.rs
+- [ ] 06-02-PLAN.md — DiffPanel.svelte: unified diff renderer with hunk/line display, commit metadata header, binary fallback
+- [ ] 06-03-PLAN.md — Wire and verify: click props on FileRow/CommitRow/CommitGraph/StagingPanel + DiffPanel mount in App.svelte + visual verification checkpoint
 
 ## Progress
 
@@ -129,4 +134,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
 | 4. Working Tree + Staging | 3/4 | In Progress|  |
 | 5. Commit Creation | 3/3 | Complete   | 2026-03-07 |
-| 6. Diff Display | 0/? | Not started | - |
+| 6. Diff Display | 0/3 | Not started | - |
