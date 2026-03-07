@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 06-02-PLAN.md (DiffPanel.svelte — diff renderer + commit metadata header)
-last_updated: "2026-03-07T20:16:24.783Z"
+stopped_at: Completed 06-01-PLAN.md (Rust diff commands)
+last_updated: "2026-03-07T20:19:00.202Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 24
-  completed_plans: 22
+  completed_plans: 23
   percent: 50
 ---
 
@@ -68,6 +68,7 @@ Progress: [█████░░░░░] 50%
 | Phase 05-commit-creation P01 | 2min | 2 tasks | 2 files |
 | Phase 05-commit-creation P03 | 30min | 2 tasks | 3 files |
 | Phase 06-diff-display P02 | 5min | 1 tasks | 1 files |
+| Phase 06-diff-display P01 | 2min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,8 @@ Recent decisions affecting current work:
 - [Phase 05-commit-creation]: Cache repopulate-before-emit: create_commit and amend_commit call refresh_commit_cache inside spawn_blocking after writing to git, then insert the result before emitting repo-changed — prevents CommitGraph remount from racing a cleared cache
 - [Phase 05-commit-creation]: refresh_commit_cache helper: extracted as standalone fn in commit.rs, mirrors open_repo walk_commits pattern — any command invalidating CommitCache must repopulate before emitting repo-changed
 - [Phase 06-diff-display]: DiffPanel uses inline style bindings for diff line colors — origin is runtime data; plain functions (not $derived) for pure transforms
+- [Phase 06-diff-display]: RefCell used in walk_diff_into_file_diffs to allow multiple closures to mutably borrow file_diffs — Rust borrow checker rejects multiple &mut borrows without it
+- [Phase 06-diff-display]: walk_diff_into_file_diffs extracted as shared helper — all three diff commands use identical walking logic, only differ in how they produce the git2::Diff
 
 ### Pending Todos
 
@@ -130,6 +133,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-07T20:16:24.779Z
-Stopped at: Completed 06-02-PLAN.md (DiffPanel.svelte — diff renderer + commit metadata header)
+Last session: 2026-03-07T20:19:00.198Z
+Stopped at: Completed 06-01-PLAN.md (Rust diff commands)
 Resume file: None

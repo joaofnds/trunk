@@ -134,4 +134,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
 | 4. Working Tree + Staging | 3/4 | In Progress|  |
 | 5. Commit Creation | 3/3 | Complete   | 2026-03-07 |
-| 6. Diff Display | 1/3 | In Progress|  |
+| 6. Diff Display | 2/3 | In Progress|  |
