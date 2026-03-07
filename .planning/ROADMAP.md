@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Repository Open + Commit Graph** - Open a repo via native file picker and render a scrollable, topologically correct visual commit graph
 - [x] **Phase 3: Branch Sidebar + Checkout** - List all branches/tags/stashes in sidebar and support branch checkout with dirty-workdir error handling (completed 2026-03-04)
 - [ ] **Phase 4: Working Tree + Staging** - Show live working tree status and support whole-file stage/unstage with auto-refresh via filesystem watcher
-- [ ] **Phase 5: Commit Creation** - Create commits (and amend) with subject + body, with validation and immediate graph feedback
+- [x] **Phase 5: Commit Creation** - Create commits (and amend) with subject + body, with validation and immediate graph feedback (completed 2026-03-07)
 - [ ] **Phase 6: Diff Display** - Show unified diffs for workdir files, staged files, and historical commits with full commit metadata
 
 ## Phase Details
@@ -128,5 +128,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Repository Open + Commit Graph | 2/6 | In Progress|  |
 | 3. Branch Sidebar + Checkout | 5/5 | Complete   | 2026-03-04 |
 | 4. Working Tree + Staging | 3/4 | In Progress|  |
-| 5. Commit Creation | 2/3 | In Progress|  |
+| 5. Commit Creation | 3/3 | Complete   | 2026-03-07 |
 | 6. Diff Display | 0/? | Not started | - |

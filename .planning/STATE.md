@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 05-01-PLAN.md (commit creation commands)
-last_updated: "2026-03-05T17:43:24.749Z"
+stopped_at: Completed 05-03-PLAN.md (commit wiring + end-to-end verification)
+last_updated: "2026-03-07T19:50:15.754Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 21
-  completed_plans: 20
+  completed_plans: 21
   percent: 50
 ---
 
@@ -66,6 +66,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04-working-tree-staging P04 | 5min | 2 tasks | 1 files |
 | Phase 05-commit-creation P02 | 2min | 2 tasks | 3 files |
 | Phase 05-commit-creation P01 | 2min | 2 tasks | 2 files |
+| Phase 05-commit-creation P03 | 30min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,8 @@ Recent decisions affecting current work:
 - [Phase 05-commit-creation]: body formatting: empty/whitespace-only body collapses to subject-only message in commit commands
 - [Phase 05-commit-creation]: get_head_commit_message is read-only — no CommitCache invalidation or repo-changed event
 - [Phase 05-commit-creation]: commit commands not registered in lib.rs generate_handler in Plan 01 — deferred to Plan 03
+- [Phase 05-commit-creation]: Cache repopulate-before-emit: create_commit and amend_commit call refresh_commit_cache inside spawn_blocking after writing to git, then insert the result before emitting repo-changed — prevents CommitGraph remount from racing a cleared cache
+- [Phase 05-commit-creation]: refresh_commit_cache helper: extracted as standalone fn in commit.rs, mirrors open_repo walk_commits pattern — any command invalidating CommitCache must repopulate before emitting repo-changed
 
 ### Pending Todos
 
@@ -125,6 +128,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05T17:43:24.746Z
-Stopped at: Completed 05-01-PLAN.md (commit creation commands)
+Last session: 2026-03-07T19:50:15.749Z
+Stopped at: Completed 05-03-PLAN.md (commit wiring + end-to-end verification)
 Resume file: None
