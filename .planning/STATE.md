@@ -135,8 +135,14 @@ None yet.
 
 - [Phase 4]: macOS sandbox behavior for FSEvents in production Tauri builds should be validated against a production .app build, not just tauri dev
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Add WIP entry to commit graph when worktree is dirty | 2026-03-08 | c5ae359 | [1-add-wip-entry-to-commit-graph-when-workt](.planning/quick/1-add-wip-entry-to-commit-graph-when-workt/) |
+
 ## Session Continuity
 
-Last session: 2026-03-08T03:17:39.130Z
-Stopped at: Completed quick-1-1-PLAN.md (WIP row in commit graph)
+Last session: 2026-03-08T03:22:00.000Z
+Stopped at: Completed quick task 1: Add WIP entry to commit graph when worktree is dirty
 Resume file: None
