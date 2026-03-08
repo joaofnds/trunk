@@ -122,8 +122,20 @@ pub struct DiffHunk {
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub enum DiffStatus {
+    Added,
+    Deleted,
+    Modified,
+    Renamed,
+    Copied,
+    Untracked,
+    Unknown,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct FileDiff {
     pub path: String,
+    pub status: DiffStatus,
     pub is_binary: bool,
     pub hunks: Vec<DiffHunk>,
 }

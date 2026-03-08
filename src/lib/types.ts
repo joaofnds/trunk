@@ -80,8 +80,11 @@ export interface DiffHunk {
   lines: DiffLine[];
 }
 
+export type DiffStatus = 'Added' | 'Deleted' | 'Modified' | 'Renamed' | 'Copied' | 'Untracked' | 'Unknown';
+
 export interface FileDiff {
   path: string;
+  status: DiffStatus;
   is_binary: boolean;
   hunks: DiffHunk[];
 }

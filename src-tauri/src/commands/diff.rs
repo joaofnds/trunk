@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
 use crate::error::TrunkError;
-use crate::git::types::{CommitDetail, DiffHunk, DiffLine, DiffOrigin, FileDiff};
+use crate::git::types::{CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffStatus, FileDiff};
 use crate::state::RepoState;
 
 fn open_repo_from_state(
@@ -38,7 +38,16 @@ fn walk_diff_into_file_diffs(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, Trun
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-            file_diffs.borrow_mut().push(FileDiff { path, is_binary, hunks: Vec::new() });
+            let status = match delta.status() {
+                git2::Delta::Added => DiffStatus::Added,
+                git2::Delta::Deleted => DiffStatus::Deleted,
+                git2::Delta::Modified => DiffStatus::Modified,
+                git2::Delta::Renamed => DiffStatus::Renamed,
+                git2::Delta::Copied => DiffStatus::Copied,
+                git2::Delta::Untracked => DiffStatus::Untracked,
+                _ => DiffStatus::Unknown,
+            };
+            file_diffs.borrow_mut().push(FileDiff { path, status, is_binary, hunks: Vec::new() });
             true
         },
         None, // skip binary callbacks

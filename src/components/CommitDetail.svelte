@@ -1,5 +1,15 @@
 <script lang="ts">
-  import type { FileDiff, CommitDetail } from '../lib/types.js';
+  import type { FileDiff, CommitDetail, DiffStatus } from '../lib/types.js';
+
+  const STATUS_ICONS: Record<DiffStatus, { symbol: string; color: string }> = {
+    Added:     { symbol: '+',  color: '#4ade80' },
+    Deleted:   { symbol: '−',  color: '#f87171' },
+    Modified:  { symbol: '✎',  color: '#fb923c' },
+    Renamed:   { symbol: '→',  color: '#60a5fa' },
+    Copied:    { symbol: '⎘',  color: '#c084fc' },
+    Untracked: { symbol: '?',  color: '#facc15' },
+    Unknown:   { symbol: '?',  color: 'var(--color-text-muted)' },
+  };
 
   interface Props {
     commitDetail: CommitDetail;
@@ -148,11 +158,12 @@
             "
           >
             <span style="
-              color: var(--color-text-muted);
+              color: {STATUS_ICONS[fd.status].color};
               font-size: 12px;
+              font-weight: 700;
               min-width: 14px;
               text-align: center;
-            ">✎</span>
+            ">{STATUS_ICONS[fd.status].symbol}</span>
             <span style="
               flex: 1;
               overflow: hidden;
