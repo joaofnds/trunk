@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 02-repository-open-commit-graph
 source: [02-04-SUMMARY.md, 02-05-SUMMARY.md, 02-06-SUMMARY.md]
 started: 2026-03-08T00:00:00Z
@@ -78,7 +78,11 @@ skipped: 1
   reason: "User reported: lanes are broken. Commits show dots but there are no lane lines connecting them at all. No vertical lines, no curves, no fork/merge connections. Just isolated dots in a single column."
   severity: major
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "walk_commits() in graph.rs never emits a Straight edge for a commit's first-parent lane continuation. The first-parent handling block (lines 74-83) assigns the parent to the current column but never pushes a GraphEdge. Only pass-through edges for other active lanes are emitted."
+  artifacts:
+    - path: "src-tauri/src/git/graph.rs"
+      issue: "First-parent handling block (lines 74-83) does lane bookkeeping but never emits a GraphEdge for the straight vertical connection"
+  missing:
+    - "After first-parent lane assignment, push GraphEdge { from_column: col, to_column: col, edge_type: EdgeType::Straight, color_index: col }"
+    - "Add test assertion that non-root linear commits have at least one Straight edge"
+  debug_session: ".planning/debug/svg-lane-lines-broken.md"
