@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 02-repository-open-commit-graph
 source: [02-04-SUMMARY.md, 02-05-SUMMARY.md, 02-06-SUMMARY.md]
 started: 2026-03-08T00:00:00Z
-updated: 2026-03-08T00:15:00Z
+updated: 2026-03-08T00:00:00Z
 ---
 
 ## Current Test
@@ -74,7 +74,7 @@ skipped: 1
 ## Gaps
 
 - truth: "The commit graph shows SVG lane lines connecting commits with straight edges, curved fork/merge connections, merge dot with ring, and regular solid dots"
-  status: failed
+  status: resolved
   reason: "User reported: lanes are broken. Commits show dots but there are no lane lines connecting them at all. No vertical lines, no curves, no fork/merge connections. Just isolated dots in a single column."
   severity: major
   test: 6
