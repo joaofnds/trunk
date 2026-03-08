@@ -8,11 +8,18 @@
   import CommitDetail from './components/CommitDetail.svelte';
   import { safeInvoke } from './lib/invoke.js';
   import type { FileDiff, CommitDetail as CommitDetailType } from './lib/types.js';
+
+  interface DirtyCounts {
+    staged: number;
+    unstaged: number;
+    conflicted: number;
+  }
   import { listen } from '@tauri-apps/api/event';
 
   let repoPath = $state<string | null>(null);
   let repoName = $state<string>('');
   let graphKey = $state(0);
+  let dirtyCounts = $state<DirtyCounts>({ staged: 0, unstaged: 0, conflicted: 0 });
 
   // Staging file selection (from StagingPanel)
   let selectedFile = $state<{ path: string; kind: 'unstaged' | 'staged' } | null>(null);
@@ -24,6 +31,8 @@
   let commitFileDiffs = $state<FileDiff[]>([]);
   let selectedCommitFile = $state<string | null>(null);
 
+  const wipCount = $derived(dirtyCounts.staged + dirtyCounts.unstaged + dirtyCounts.conflicted);
+
   // Center pane: show DiffPanel when a file is selected (from either source)
   let showDiff = $derived(selectedFile !== null || selectedCommitFile !== null);
 
@@ -33,6 +42,16 @@
       ? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
       : stagingDiffFiles
   );
+
+  async function loadDirtyCounts() {
+    if (!repoPath) return;
+    try {
+      const result = await safeInvoke<DirtyCounts>('get_dirty_counts', { path: repoPath });
+      dirtyCounts = result;
+    } catch {
+      // non-fatal — keep previous counts
+    }
+  }
 
   function handleOpen(path: string, name: string) {
     repoPath = path;
@@ -121,10 +140,17 @@
   }
 
   $effect(() => {
+    if (repoPath) {
+      loadDirtyCounts();
+    }
+  });
+
+  $effect(() => {
     let unlisten: (() => void) | undefined;
     listen<string>('repo-changed', (event) => {
       if (event.payload === repoPath) {
         handleRefresh();
+        loadDirtyCounts();
         if (selectedFile) {
           refetchFileDiff(selectedFile.path, selectedFile.kind);
         }
@@ -161,7 +187,7 @@
           <DiffPanel fileDiffs={currentDiffFiles} commitDetail={null} onclose={handleDiffClose} />
         {:else}
           {#key graphKey}
-            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} />
+            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} onWipClick={clearCommit} />
           {/key}
         {/if}
       </div>

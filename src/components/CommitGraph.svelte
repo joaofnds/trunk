@@ -8,9 +8,11 @@
   interface Props {
     repoPath: string;
     oncommitselect?: (oid: string) => void;
+    wipCount?: number;
+    onWipClick?: () => void;
   }
 
-  let { repoPath, oncommitselect }: Props = $props();
+  let { repoPath, oncommitselect, wipCount = 0, onWipClick }: Props = $props();
 
   const BATCH = 200;
   const SKELETON_COUNT = 10;
@@ -90,6 +92,26 @@
       {error}
     </div>
   {:else}
+    {#if wipCount > 0}
+      <div
+        class="wip-row"
+        role="button"
+        tabindex="0"
+        onclick={onWipClick}
+        onkeydown={(e) => e.key === 'Enter' && onWipClick?.()}
+      >
+        <div class="wip-lane">
+          <svg width="30" height="24" viewBox="0 0 30 24">
+            <line x1="15" y1="12" x2="15" y2="24" stroke="var(--lane-0)" stroke-width="2" />
+            <circle cx="15" cy="12" r="5" fill="var(--lane-0)" />
+          </svg>
+        </div>
+        <div class="wip-info">
+          <span class="wip-label">// WIP</span>
+          <span class="wip-badge">{wipCount} file{wipCount === 1 ? '' : 's'}</span>
+        </div>
+      </div>
+    {/if}
     <SvelteVirtualList
       bind:this={listRef}
       items={commits}
@@ -138,3 +160,19 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  .wip-row {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    cursor: pointer;
+    background: color-mix(in srgb, var(--lane-0) 8%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--lane-0) 20%, transparent);
+  }
+  .wip-row:hover { background: color-mix(in srgb, var(--lane-0) 16%, transparent); }
+  .wip-lane { width: 30px; flex-shrink: 0; }
+  .wip-info { display: flex; align-items: center; gap: 8px; padding-left: 4px; }
+  .wip-label { font-style: italic; font-size: 0.85rem; color: var(--lane-0); }
+  .wip-badge { font-size: 0.75rem; background: var(--lane-0); color: #000; border-radius: 9999px; padding: 1px 6px; }
+</style>
