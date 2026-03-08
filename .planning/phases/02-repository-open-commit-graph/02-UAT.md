@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 02-repository-open-commit-graph
 source: [02-04-SUMMARY.md, 02-05-SUMMARY.md, 02-06-SUMMARY.md, 02-07-SUMMARY.md]
 started: 2026-03-08T00:00:00Z
@@ -93,13 +93,21 @@ skipped: 0
   reason: "User reported: now they do have a line, but the branch lane line is completely off. The branch line should fork from the parent commit row. Branch lanes like 'test' and 'vk/76cb-review-c' show as isolated vertical segments instead of forking from the parent commit with a curved connection."
   severity: major
   test: 6
-  artifacts: []
-  missing: []
+  root_cause: "Two interrelated bugs in walk_commits(): (1) No branch-priority heuristic for column assignment — revwalk visits branch tips before shared ancestors, so side branches claim column 0 before main, inverting the visual hierarchy. (2) No fork edges emitted at divergence points — the algorithm only emits edges going downward from a commit to its parents and has no child-tracking mechanism to know when multiple children diverge from a shared ancestor."
+  artifacts:
+    - path: "src-tauri/src/git/graph.rs"
+      issue: "Lines 39-50: column assignment has no priority heuristic for HEAD/first-parent chain"
+    - path: "src-tauri/src/git/graph.rs"
+      issue: "Lines 72-148: parent handling emits no fork edges at divergence points, no child-tracking mechanism"
+  missing:
+    - "Priority heuristic to ensure HEAD/first-parent chain claims column 0 before branch tips"
+    - "Mechanism to emit fork edges at divergence points — either child tracking during walk or second pass inserting fork edges on ancestor rows"
+  debug_session: ".planning/debug/branch-fork-edges-missing.md"
 
 - truth: "Lane lines remain visually continuous across batch boundaries — no color switches"
-  status: failed
+  status: not_a_bug
   reason: "User reported: yes but in some repos it switches colors, something is odd there."
   severity: minor
   test: 8
-  artifacts: []
-  missing: []
+  root_cause: "Not a bug. The full graph is computed once at repo open and cached. Pagination slices the cached array — no recomputation. What the user likely observes is lane column reuse: when a branch terminates near a batch boundary, its column is freed and reused by a new branch. Same column = same color but different branch identity. This is correct behavior."
+  debug_session: ".planning/debug/lane-color-switching-at-batch-boundary.md"
