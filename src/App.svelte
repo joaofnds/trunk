@@ -5,18 +5,34 @@
   import BranchSidebar from './components/BranchSidebar.svelte';
   import StagingPanel from './components/StagingPanel.svelte';
   import DiffPanel from './components/DiffPanel.svelte';
+  import CommitDetail from './components/CommitDetail.svelte';
   import { safeInvoke } from './lib/invoke.js';
-  import type { FileDiff, CommitDetail } from './lib/types.js';
+  import type { FileDiff, CommitDetail as CommitDetailType } from './lib/types.js';
   import { listen } from '@tauri-apps/api/event';
 
   let repoPath = $state<string | null>(null);
   let repoName = $state<string>('');
   let graphKey = $state(0);
 
+  // Staging file selection (from StagingPanel)
   let selectedFile = $state<{ path: string; kind: 'unstaged' | 'staged' } | null>(null);
+  let stagingDiffFiles = $state<FileDiff[]>([]);
+
+  // Commit selection (from CommitGraph)
   let selectedCommitOid = $state<string | null>(null);
-  let diffFiles = $state<FileDiff[]>([]);
-  let diffCommitDetail = $state<CommitDetail | null>(null);
+  let commitDetail = $state<CommitDetailType | null>(null);
+  let commitFileDiffs = $state<FileDiff[]>([]);
+  let selectedCommitFile = $state<string | null>(null);
+
+  // Center pane: show DiffPanel when a file is selected (from either source)
+  let showDiff = $derived(selectedFile !== null || selectedCommitFile !== null);
+
+  // The diffs to display: filtered commit file diff, or staging diff
+  let currentDiffFiles = $derived(
+    selectedCommitFile
+      ? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
+      : stagingDiffFiles
+  );
 
   function handleOpen(path: string, name: string) {
     repoPath = path;
@@ -27,60 +43,80 @@
     graphKey += 1;
   }
 
-  function clearDiff() {
+  function clearStagingDiff() {
     selectedFile = null;
+    stagingDiffFiles = [];
+  }
+
+  function clearCommitFileDiff() {
+    selectedCommitFile = null;
+  }
+
+  function clearCommit() {
     selectedCommitOid = null;
-    diffFiles = [];
-    diffCommitDetail = null;
+    commitDetail = null;
+    commitFileDiffs = [];
+    selectedCommitFile = null;
+  }
+
+  function handleDiffClose() {
+    if (selectedFile) clearStagingDiff();
+    else clearCommitFileDiff();
   }
 
   async function handleFileSelect(path: string, kind: 'unstaged' | 'staged') {
-    // Toggle: clicking the already-selected file closes the diff
     if (selectedFile?.path === path && selectedFile?.kind === kind) {
-      clearDiff();
+      clearStagingDiff();
       return;
     }
-    selectedCommitOid = null;
-    diffCommitDetail = null;
     selectedFile = { path, kind };
     if (!repoPath) return;
     try {
       const command = kind === 'unstaged' ? 'diff_unstaged' : 'diff_staged';
-      diffFiles = await safeInvoke<FileDiff[]>(command, { path: repoPath, filePath: path });
+      stagingDiffFiles = await safeInvoke<FileDiff[]>(command, { path: repoPath, filePath: path });
     } catch {
-      diffFiles = [];
+      stagingDiffFiles = [];
     }
   }
 
   async function handleCommitSelect(oid: string) {
-    // Toggle: clicking the already-selected commit closes the diff
     if (selectedCommitOid === oid) {
-      clearDiff();
+      clearCommit();
       return;
     }
-    selectedFile = null;
+    // Switching to commit view — close any open staging diff
+    clearStagingDiff();
+    selectedCommitFile = null;
     selectedCommitOid = oid;
     if (!repoPath) return;
     try {
       const [files, detail] = await Promise.all([
         safeInvoke<FileDiff[]>('diff_commit', { path: repoPath, oid }),
-        safeInvoke<CommitDetail>('get_commit_detail', { path: repoPath, oid }),
+        safeInvoke<CommitDetailType>('get_commit_detail', { path: repoPath, oid }),
       ]);
-      diffFiles = files;
-      diffCommitDetail = detail;
+      commitFileDiffs = files;
+      commitDetail = detail;
     } catch {
-      diffFiles = [];
-      diffCommitDetail = null;
+      commitFileDiffs = [];
+      commitDetail = null;
     }
+  }
+
+  function handleCommitFileSelect(path: string) {
+    if (selectedCommitFile === path) {
+      clearCommitFileDiff();
+      return;
+    }
+    selectedCommitFile = path;
   }
 
   async function refetchFileDiff(path: string, kind: 'unstaged' | 'staged') {
     if (!repoPath) return;
     try {
       const command = kind === 'unstaged' ? 'diff_unstaged' : 'diff_staged';
-      diffFiles = await safeInvoke<FileDiff[]>(command, { path: repoPath, filePath: path });
+      stagingDiffFiles = await safeInvoke<FileDiff[]>(command, { path: repoPath, filePath: path });
     } catch {
-      diffFiles = [];
+      stagingDiffFiles = [];
     }
   }
 
@@ -89,12 +125,9 @@
     listen<string>('repo-changed', (event) => {
       if (event.payload === repoPath) {
         handleRefresh();
-        // Re-fetch file diff if one is selected (staged/unstaged status may have changed)
-        // Use refetchFileDiff directly to avoid toggling off via handleFileSelect
         if (selectedFile) {
           refetchFileDiff(selectedFile.path, selectedFile.kind);
         }
-        // Do NOT clear selectedCommitOid — historical commits don't change
       }
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
@@ -105,13 +138,14 @@
       try {
         await safeInvoke('close_repo', { path: repoPath });
       } catch {
-        // State is cleaned up regardless of close_repo result
+        // State is cleaned up regardless
       }
     }
     repoPath = null;
     repoName = '';
     graphKey = 0;
-    clearDiff();
+    clearStagingDiff();
+    clearCommit();
   }
 </script>
 
@@ -123,15 +157,25 @@
     <main class="flex-1 overflow-hidden flex">
       <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} />
       <div class="flex-1 overflow-hidden">
-        {#if selectedFile || selectedCommitOid}
-          <DiffPanel fileDiffs={diffFiles} commitDetail={diffCommitDetail} onclose={clearDiff} />
+        {#if showDiff}
+          <DiffPanel fileDiffs={currentDiffFiles} commitDetail={null} onclose={handleDiffClose} />
         {:else}
           {#key graphKey}
             <CommitGraph {repoPath} oncommitselect={handleCommitSelect} />
           {/key}
         {/if}
       </div>
-      <StagingPanel repoPath={repoPath!} onfileselect={handleFileSelect} />
+      {#if selectedCommitOid && commitDetail}
+        <CommitDetail
+          {commitDetail}
+          fileDiffs={commitFileDiffs}
+          selectedFile={selectedCommitFile}
+          onfileselect={handleCommitFileSelect}
+          onclose={clearCommit}
+        />
+      {:else}
+        <StagingPanel repoPath={repoPath!} onfileselect={handleFileSelect} />
+      {/if}
     </main>
   {/if}
 </div>
