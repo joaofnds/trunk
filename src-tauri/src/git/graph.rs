@@ -74,15 +74,36 @@ pub fn walk_commits(
         for (idx, &parent_oid) in parents.iter().enumerate() {
             if idx == 0 {
                 // First parent: continue at current column (if not already reserved elsewhere)
-                if !pending_parents.contains_key(&parent_oid) {
+                if let Some(&existing_col) = pending_parents.get(&parent_oid) {
+                    // Parent already claimed by another child — emit edge from col to existing column
+                    let edge_type = if existing_col == col {
+                        EdgeType::Straight
+                    } else if existing_col < col {
+                        EdgeType::ForkLeft
+                    } else {
+                        EdgeType::ForkRight
+                    };
+                    edges.push(GraphEdge {
+                        from_column: col,
+                        to_column: existing_col,
+                        edge_type,
+                        color_index: existing_col,
+                    });
+                    // current column (col) slot stays None (freed).
+                } else {
                     if col >= active_lanes.len() {
                         active_lanes.resize(col + 1, None);
                     }
                     active_lanes[col] = Some(parent_oid);
                     pending_parents.insert(parent_oid, col);
+                    // Emit Straight edge for first-parent continuation
+                    edges.push(GraphEdge {
+                        from_column: col,
+                        to_column: col,
+                        edge_type: EdgeType::Straight,
+                        color_index: col,
+                    });
                 }
-                // If already in pending from another child, that column wins.
-                // current column (col) slot stays None (freed).
             } else {
                 // Secondary parents: find or assign a column
                 let parent_col = if let Some(&c) = pending_parents.get(&parent_oid) {
