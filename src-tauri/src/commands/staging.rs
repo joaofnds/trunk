@@ -171,6 +171,55 @@ pub fn unstage_all_inner(
     Ok(())
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DirtyCounts {
+    pub staged: usize,
+    pub unstaged: usize,
+    pub conflicted: usize,
+}
+
+#[tauri::command]
+pub async fn get_dirty_counts(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<DirtyCounts, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo = open_repo_from_state(&path, &state_map)?;
+        let statuses = repo.statuses(None).map_err(TrunkError::from)?;
+        let mut staged = 0usize;
+        let mut unstaged = 0usize;
+        let mut conflicted = 0usize;
+        for entry in statuses.iter() {
+            let s = entry.status();
+            if s.intersects(
+                Status::INDEX_NEW
+                    | Status::INDEX_MODIFIED
+                    | Status::INDEX_DELETED
+                    | Status::INDEX_RENAMED
+                    | Status::INDEX_TYPECHANGE,
+            ) {
+                staged += 1;
+            }
+            if s.intersects(
+                Status::WT_MODIFIED
+                    | Status::WT_DELETED
+                    | Status::WT_RENAMED
+                    | Status::WT_TYPECHANGE,
+            ) {
+                unstaged += 1;
+            }
+            if s.intersects(Status::CONFLICTED) {
+                conflicted += 1;
+            }
+        }
+        Ok(DirtyCounts { staged, unstaged, conflicted })
+    })
+    .await
+    .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+    .map_err(|e: TrunkError| serde_json::to_string(&e).unwrap())
+}
+
 #[tauri::command]
 pub async fn get_status(
     path: String,

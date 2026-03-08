@@ -22,6 +22,7 @@ pub fn run() {
             commands::branches::list_refs,
             commands::branches::checkout_branch,
             commands::branches::create_branch,
+            commands::staging::get_dirty_counts,
             commands::staging::get_status,
             commands::staging::stage_file,
             commands::staging::unstage_file,
