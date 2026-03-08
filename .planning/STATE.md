@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed quick-1-1-PLAN.md (WIP row in commit graph)
-last_updated: "2026-03-08T03:17:39.135Z"
+stopped_at: Completed 02-07-PLAN.md (first-parent Straight edge gap closure)
+last_updated: "2026-03-08T22:45:49.245Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 6
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 25
+  completed_plans: 25
   percent: 50
 ---
 
@@ -70,6 +70,7 @@ Progress: [█████░░░░░] 50%
 | Phase 06-diff-display P02 | 5min | 1 tasks | 1 files |
 | Phase 06-diff-display P01 | 2min | 2 tasks | 2 files |
 | Phase 06-diff-display P03 | 30min | 3 tasks | 6 files |
+| Phase 02 P07 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,8 @@ Recent decisions affecting current work:
 - [Phase 06-diff-display]: DiffPanel replaces CommitGraph in center pane (toggle not split) — user feedback found split pane confusing
 - [Phase 06-diff-display]: Deselect-to-close: clicking selected file/commit calls clearDiff() and returns to graph
 - [Phase 06-diff-display]: refetchFileDiff() bypasses toggle logic during repo-changed refresh to keep selection intact
+- [Phase 02]: Emit Straight edge inline with first-parent lane assignment rather than in a separate pass
+- [Phase 02]: Handle already-pending parent case with directional edge (ForkLeft/ForkRight) instead of silently dropping
 
 ### Pending Todos
 
@@ -143,6 +146,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T03:22:00.000Z
-Stopped at: Completed quick task 1: Add WIP entry to commit graph when worktree is dirty
+Last session: 2026-03-08T22:45:49.239Z
+Stopped at: Completed 02-07-PLAN.md (first-parent Straight edge gap closure)
 Resume file: None
