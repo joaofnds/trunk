@@ -20,6 +20,7 @@
   let repoName = $state<string>('');
   let graphKey = $state(0);
   let dirtyCounts = $state<DirtyCounts>({ staged: 0, unstaged: 0, conflicted: 0 });
+  let wipSubject = $state('');
 
   // Staging file selection (from StagingPanel)
   let selectedFile = $state<{ path: string; kind: 'unstaged' | 'staged' } | null>(null);
@@ -187,7 +188,7 @@
           <DiffPanel fileDiffs={currentDiffFiles} commitDetail={null} onclose={handleDiffClose} />
         {:else}
           {#key graphKey}
-            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} onWipClick={clearCommit} />
+            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} onWipClick={clearCommit} />
           {/key}
         {/if}
       </div>
@@ -200,7 +201,7 @@
           onclose={clearCommit}
         />
       {:else}
-        <StagingPanel repoPath={repoPath!} onfileselect={handleFileSelect} />
+        <StagingPanel repoPath={repoPath!} onfileselect={handleFileSelect} onsubjectchange={(v) => (wipSubject = v)} />
       {/if}
     </main>
   {/if}

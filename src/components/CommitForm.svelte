@@ -5,9 +5,10 @@
   interface Props {
     repoPath: string;
     stagedCount: number;
+    onsubjectchange?: (value: string) => void;
   }
 
-  let { repoPath, stagedCount }: Props = $props();
+  let { repoPath, stagedCount, onsubjectchange }: Props = $props();
 
   let subject = $state('');
   let body = $state('');
@@ -92,7 +93,7 @@
     type="text"
     bind:value={subject}
     placeholder="Summary (required)"
-    oninput={() => { if (subjectError) subjectError = ''; }}
+    oninput={(e) => { if (subjectError) subjectError = ''; onsubjectchange?.((e.target as HTMLInputElement).value); }}
     style="
       width: 100%;
       box-sizing: border-box;

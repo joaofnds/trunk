@@ -9,12 +9,14 @@
     repoPath: string;
     currentBranch?: string;
     onfileselect?: (path: string, kind: 'unstaged' | 'staged') => void;
+    onsubjectchange?: (value: string) => void;
   }
 
   let {
     repoPath,
     currentBranch,
     onfileselect,
+    onsubjectchange,
   }: Props = $props();
 
   let status = $state<WorkingTreeStatus | null>(null);
@@ -253,5 +255,5 @@
   <div style="flex-shrink: 0; border-top: 1px solid var(--color-border);"></div>
 
   <!-- CommitForm — always visible at bottom -->
-  <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} />
+  <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} {onsubjectchange} />
 </div>

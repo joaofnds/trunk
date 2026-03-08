@@ -9,10 +9,11 @@
     repoPath: string;
     oncommitselect?: (oid: string) => void;
     wipCount?: number;
+    wipMessage?: string;
     onWipClick?: () => void;
   }
 
-  let { repoPath, oncommitselect, wipCount = 0, onWipClick }: Props = $props();
+  let { repoPath, oncommitselect, wipCount = 0, wipMessage = 'WIP', onWipClick }: Props = $props();
 
   const BATCH = 200;
   const SKELETON_COUNT = 10;
@@ -94,21 +95,23 @@
   {:else}
     {#if wipCount > 0}
       <div
-        class="wip-row"
+        class="flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
+        style="color: var(--color-text-muted);"
         role="button"
         tabindex="0"
         onclick={onWipClick}
         onkeydown={(e) => e.key === 'Enter' && onWipClick?.()}
       >
-        <div class="wip-lane">
-          <svg width="30" height="24" viewBox="0 0 30 24">
-            <line x1="15" y1="12" x2="15" y2="24" stroke="var(--lane-0)" stroke-width="2" />
-            <circle cx="15" cy="12" r="5" fill="var(--lane-0)" />
-          </svg>
-        </div>
-        <div class="wip-info">
-          <span class="wip-label">// WIP</span>
-          <span class="wip-badge">{wipCount} file{wipCount === 1 ? '' : 's'}</span>
+        <!-- Ref pills placeholder (same width as CommitRow) -->
+        <div style="width: 120px; flex-shrink: 0;"></div>
+        <!-- Lane SVG: hollow dot at column 0 with line down to first commit -->
+        <svg width="18" height="26" style="overflow: visible; flex-shrink: 0;">
+          <line x1="9" y1="13" x2="9" y2="26" stroke="var(--lane-0)" stroke-width="2" />
+          <circle cx="9" cy="13" r="4" fill="transparent" stroke="var(--lane-0)" stroke-width="2" />
+        </svg>
+        <!-- Message -->
+        <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2" style="color: var(--color-text-muted);">
+          {wipMessage}
         </div>
       </div>
     {/if}
