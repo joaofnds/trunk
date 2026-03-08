@@ -212,6 +212,22 @@ mod tests {
                 );
             }
         }
+
+        // Every non-root commit must have a Straight edge at its own column
+        for c in &commits[..commits.len()-1] {
+            let has_own_straight = c.edges.iter().any(|e| {
+                matches!(e.edge_type, EdgeType::Straight)
+                    && e.from_column == c.column
+                    && e.to_column == c.column
+            });
+            assert!(has_own_straight, "commit {} missing first-parent Straight edge", c.short_oid);
+        }
+        // Root commit should NOT have a self-straight edge
+        let root = commits.last().unwrap();
+        let root_has_self_straight = root.edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::Straight) && e.from_column == root.column && e.to_column == root.column
+        });
+        assert!(!root_has_self_straight, "root commit should not have self-straight edge");
     }
 
     #[test]
@@ -257,5 +273,17 @@ mod tests {
             first[0].oid, second[0].oid,
             "first OID of batch 1 and batch 2 should differ"
         );
+    }
+
+    #[test]
+    fn merge_has_first_parent_straight() {
+        let dir = make_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let merge = commits.iter().find(|c| c.is_merge).expect("no merge commit");
+        let has_straight = merge.edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::Straight) && e.from_column == merge.column
+        });
+        assert!(has_straight, "merge commit missing first-parent Straight edge");
     }
 }
