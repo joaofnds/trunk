@@ -1,7 +1,7 @@
 ---
-status: resolved
+status: complete
 phase: 02-repository-open-commit-graph
-source: [02-04-SUMMARY.md, 02-05-SUMMARY.md, 02-06-SUMMARY.md]
+source: [02-04-SUMMARY.md, 02-05-SUMMARY.md, 02-06-SUMMARY.md, 02-07-SUMMARY.md]
 started: 2026-03-08T00:00:00Z
 updated: 2026-03-08T00:00:00Z
 ---
@@ -35,7 +35,7 @@ result: pass
 ### 6. SVG lane lines
 expected: The commit graph shows SVG lane lines connecting commits. Straight edges are vertical lines. Fork and merge points use curved (Bezier) connections. Merge commits show a larger dot with a ring. Regular commits show a smaller solid dot.
 result: issue
-reported: "lanes are broken. Commits show dots but there are no lane lines connecting them at all. No vertical lines, no curves, no fork/merge connections. Just isolated dots in a single column."
+reported: "now they do have a line, but the branch lane line is completely off. The branch line should fork from the parent commit row. Branch lanes like 'test' and 'vk/76cb-review-c' show as isolated vertical segments instead of forking from the parent commit with a curved connection."
 severity: major
 
 ### 7. Infinite scroll pagination
@@ -44,8 +44,9 @@ result: pass
 
 ### 8. Lane continuity across batch boundary
 expected: Scroll past the ~200th commit (batch boundary). Lane lines remain visually continuous — no breaks, jumps, or misaligned lanes where one batch ends and the next begins.
-result: skipped
-reason: Cannot test — lanes are entirely broken per test 6
+result: issue
+reported: "yes but in some repos it switches colors, something is odd there."
+severity: minor
 
 ### 9. Close repo returns to welcome
 expected: Click the X button on the tab bar. The commit graph disappears and the welcome screen reappears with the "Open Repository" button.
@@ -67,9 +68,9 @@ result: pass
 
 total: 12
 passed: 10
-issues: 1
+issues: 2
 pending: 0
-skipped: 1
+skipped: 0
 
 ## Gaps
 
@@ -86,3 +87,19 @@ skipped: 1
     - "After first-parent lane assignment, push GraphEdge { from_column: col, to_column: col, edge_type: EdgeType::Straight, color_index: col }"
     - "Add test assertion that non-root linear commits have at least one Straight edge"
   debug_session: ".planning/debug/svg-lane-lines-broken.md"
+
+- truth: "Fork and merge points use curved (Bezier) connections — branch lanes fork from the parent commit row"
+  status: failed
+  reason: "User reported: now they do have a line, but the branch lane line is completely off. The branch line should fork from the parent commit row. Branch lanes like 'test' and 'vk/76cb-review-c' show as isolated vertical segments instead of forking from the parent commit with a curved connection."
+  severity: major
+  test: 6
+  artifacts: []
+  missing: []
+
+- truth: "Lane lines remain visually continuous across batch boundaries — no color switches"
+  status: failed
+  reason: "User reported: yes but in some repos it switches colors, something is odd there."
+  severity: minor
+  test: 8
+  artifacts: []
+  missing: []
