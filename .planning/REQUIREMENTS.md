@@ -1,7 +1,7 @@
 # Requirements: Trunk v0.2 Commit Graph
 
 **Defined:** 2026-03-09
-**Core Value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
+**Core Value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
 
 ## v0.2 Requirements
 
@@ -68,25 +68,25 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LANE-01 | — | Pending |
-| LANE-02 | — | Pending |
-| LANE-03 | — | Pending |
-| LANE-04 | — | Pending |
-| LANE-05 | — | Pending |
-| ALGO-01 | — | Pending |
-| ALGO-02 | — | Pending |
-| ALGO-03 | — | Pending |
-| VIS-01 | — | Pending |
-| VIS-02 | — | Pending |
-| VIS-03 | — | Pending |
-| DIFF-01 | — | Pending |
-| DIFF-02 | — | Pending |
+| LANE-01 | Phase 8 | Pending |
+| LANE-02 | Phase 9 | Pending |
+| LANE-03 | Phase 8 | Pending |
+| LANE-04 | Phase 8 | Pending |
+| LANE-05 | Phase 7 | Pending |
+| ALGO-01 | Phase 7 | Pending |
+| ALGO-02 | Phase 7 | Pending |
+| ALGO-03 | Phase 7 | Pending |
+| VIS-01 | Phase 10 | Pending |
+| VIS-02 | Phase 10 | Pending |
+| VIS-03 | Phase 10 | Pending |
+| DIFF-01 | Phase 11 | Pending |
+| DIFF-02 | Phase 11 | Pending |
 
 **Coverage:**
 - v0.2 requirements: 13 total
-- Mapped to phases: 0
-- Unmapped: 13 ⚠️
+- Mapped to phases: 13
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-09*
-*Last updated: 2026-03-09 after initial definition*
+*Last updated: 2026-03-09 after roadmap creation*
