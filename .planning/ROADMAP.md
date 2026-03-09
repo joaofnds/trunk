@@ -25,7 +25,7 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
 
 **Milestone Goal:** GitKraken-quality commit graph with proper lane rendering -- vertical rails, smooth bezier curves, consistent lane colors, lane packing, and visual merge commit distinction.
 
-- [ ] **Phase 7: Lane Algorithm Hardening** - Battle-tested Rust algorithm with correct data for all graph topologies
+- [x] **Phase 7: Lane Algorithm Hardening** - Battle-tested Rust algorithm with correct data for all graph topologies (2/2 plans) — completed 2026-03-09
 - [ ] **Phase 8: Straight Rail Rendering** - Continuous vertical lane lines through the entire commit graph
 - [ ] **Phase 9: Bezier Curve Rendering** - Smooth merge/fork curves completing the GitKraken-quality graph shape
 - [ ] **Phase 10: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements
@@ -45,8 +45,8 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
 **Plans:** 2 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Core algorithm hardening: GraphResult type, ghost lane fix, octopus protection, max_columns, branch color counter, 9 new tests (TDD)
-- [ ] 07-02-PLAN.md -- Integration propagation: CommitCache, Tauri commands, TypeScript types, LaneSvg consistent width
+- [x] 07-01-PLAN.md -- Core algorithm hardening: GraphResult type, ghost lane fix, octopus protection, max_columns, branch color counter, 9 new tests (TDD)
+- [x] 07-02-PLAN.md -- Integration propagation: CommitCache, Tauri commands, TypeScript types, LaneSvg consistent width
 
 ### Phase 8: Straight Rail Rendering
 **Goal**: Users see continuous vertical colored lines connecting commits in each branch, with all active lanes drawn through every row
@@ -101,7 +101,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 4. Working Tree + Staging | v0.1 | 4/4 | Complete | 2026-03-07 |
 | 5. Commit Creation | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
-| 7. Lane Algorithm Hardening | v0.2 | 0/2 | Planning | - |
+| 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 0/0 | Not started | - |
 | 9. Bezier Curve Rendering | v0.2 | 0/0 | Not started | - |
 | 10. WIP Row + Visual Polish | v0.2 | 0/0 | Not started | - |
