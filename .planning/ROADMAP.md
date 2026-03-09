@@ -57,7 +57,10 @@ Plans:
   2. Every commit row draws rails for all active branches passing through that row, not just the branch that owns the commit
   3. A branch maintains the same lane color from tip to base -- the color does not change or jump between commits
   4. Commit dots render on top of lane lines (not behind or clipped by them)
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 08-01-PLAN.md -- Full lane rendering: vivid color palette, vertical rails, Manhattan-routed merge/fork edges, commit dot layering
 
 ### Phase 9: Bezier Curve Rendering
 **Goal**: Merge and fork points use smooth cubic Bezier curves instead of jagged diagonal lines
@@ -102,7 +105,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 5. Commit Creation | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
-| 8. Straight Rail Rendering | v0.2 | 0/0 | Not started | - |
+| 8. Straight Rail Rendering | v0.2 | 0/1 | Planning | - |
 | 9. Bezier Curve Rendering | v0.2 | 0/0 | Not started | - |
 | 10. WIP Row + Visual Polish | v0.2 | 0/0 | Not started | - |
 | 11. Differentiators | v0.2 | 0/0 | Not started | - |
