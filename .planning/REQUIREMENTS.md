@@ -30,7 +30,7 @@ Requirements for GitKraken-quality commit graph lane rendering. Each maps to roa
 ### Differentiators
 
 - [ ] **DIFF-01**: User sees branch/tag ref pills colored to match their lane color
-- [ ] **DIFF-02**: User can resize the graph column width via drag handle
+- [x] **DIFF-02**: User can resize the graph column width via drag handle
 
 ## Future Requirements
 
@@ -80,7 +80,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VIS-02 | Phase 10 | Complete |
 | VIS-03 | Phase 10 | Complete |
 | DIFF-01 | Phase 11 | Pending |
-| DIFF-02 | Phase 11 | Pending |
+| DIFF-02 | Phase 11 | Complete |
 
 **Coverage:**
 - v0.2 requirements: 13 total

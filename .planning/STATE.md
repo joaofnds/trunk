@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 9 -- WIP Row + Visual Polish
+**Current focus:** Phase 10 -- Differentiators
 
 ## Current Position
 
-Phase: 9 of 10 (WIP Row + Visual Polish)
-Plan: 1 of 1 -- Complete
-Status: Phase complete
-Last activity: 2026-03-09 -- Phase 9 Plan 01 complete (merge hollow dots + WIP virtual list)
+Phase: 10 of 10 (Differentiators)
+Plan: 2 of 2 -- Complete
+Status: Plan 10-02 complete
+Last activity: 2026-03-09 -- Phase 10 Plan 02 complete (6-column header with resizable columns)
 
-Progress: [██████████] 100% (4/4 v0.2 phases)
+Progress: [████████░░] 83% (5/6 v0.2 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4 (v0.2)
+- Total plans completed: 5 (v0.2)
 - Average duration: 4min
-- Total execution time: 17min
+- Total execution time: 19min
 
 **By Phase:**
 
@@ -46,6 +46,7 @@ Progress: [██████████] 100% (4/4 v0.2 phases)
 | 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
 | 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
 | 09 - WIP Row + Visual Polish | 1/1 | 2min | 2min |
+| 10 - Differentiators | 1/2 | 2min | 2min |
 
 *Updated after each plan completion*
 
@@ -65,6 +66,8 @@ Recent decisions affecting current work:
 - [Phase 08]: [08-01]: Vivid GitHub-dark-inspired 8-color palette replacing low-contrast originals; commit dot uses color_index (not column)
 - [Phase 09]: WIP synthetic item uses sentinel oid '__wip__' rather than extending GraphCommit type
 - [Phase 09]: Hollow merge dot uses fill=var(--color-bg) to hide rail line; unused .wip-row CSS removed
+- [Phase 10-02]: Message column flex-1 absorbs remaining space; column widths persist on mouseup only to avoid excessive store writes
+- [Phase 10-02]: Graph column min-width enforces maxColumns * laneWidth to prevent SVG clipping
 
 ### Quick Tasks Completed
 
@@ -85,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T22:26:02.395Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-differentiators/10-CONTEXT.md
+Last session: 2026-03-09T22:42:36Z
+Stopped at: Completed 10-02-PLAN.md
+Resume file: .planning/phases/10-differentiators/10-02-SUMMARY.md

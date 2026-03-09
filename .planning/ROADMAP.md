@@ -81,7 +81,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Branch and tag ref pills next to commit messages are colored to match their lane color in the graph
   2. User can drag a handle to resize the graph column width, and the new width persists across scrolling
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 10-01-PLAN.md -- Lane-colored ref pills with connector line (backend color_index on RefLabel + pill styling + SVG connector)
@@ -103,4 +103,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | 1/1 | Complete   | 2026-03-09 | - |
-| 10. Differentiators | v0.2 | 0/2 | Not started | - |
+| 10. Differentiators | 1/2 | In Progress|  | - |
