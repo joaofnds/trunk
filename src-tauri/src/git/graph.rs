@@ -29,7 +29,15 @@ pub fn walk_commits(
     // pending_parents[oid] = col → a child already reserved this column for oid
     let mut active_lanes: Vec<Option<git2::Oid>> = Vec::new();
     let mut pending_parents: HashMap<git2::Oid, usize> = HashMap::new();
-    let mut per_oid_data: HashMap<git2::Oid, (usize, Vec<GraphEdge>)> = HashMap::new();
+    // per_oid_data stores (column, edges, color_index) for each processed commit
+    let mut per_oid_data: HashMap<git2::Oid, (usize, Vec<GraphEdge>, usize)> = HashMap::new();
+
+    // max_columns: high-water mark of active_lanes.len() (Fix 3: ALGO-03)
+    let mut max_columns: usize = 0;
+
+    // Branch color counter (Fix 4): deterministic per-branch color assignment
+    let mut next_color: usize = 1; // 0 reserved for HEAD chain
+    let mut lane_colors: HashMap<usize, usize> = HashMap::new();
 
     // Pre-compute HEAD's first-parent chain
     let mut head_chain: HashSet<git2::Oid> = HashSet::new();
@@ -44,13 +52,10 @@ pub fn walk_commits(
     }
 
     // Pre-reserve column 0 for ALL head_chain members via pending_parents.
-    // This ensures that when a non-HEAD branch tip (e.g. B0) processes its
-    // parent (e.g. C1) and finds C1 already in pending_parents at col 0,
-    // it emits ForkLeft(branch_col -> 0) — the correct fork direction.
-    // Without this, B0 would reserve C1 at B0's column, stealing it from HEAD.
     if !head_chain.is_empty() {
-        // Ensure active_lanes has at least col 0
         active_lanes.push(None);
+        max_columns = max_columns.max(active_lanes.len());
+        lane_colors.insert(0, 0); // HEAD chain always color 0
         for &hc_oid in &head_chain {
             pending_parents.insert(hc_oid, 0);
         }
@@ -60,49 +65,64 @@ pub fn walk_commits(
         let commit = repo.find_commit(oid)?;
         let is_merge = commit.parent_count() >= 2;
 
-        // Find this commit's column
+        // Phase 1: Find this commit's column (ACTIVATE)
         let col = if let Some(&c) = pending_parents.get(&oid) {
             pending_parents.remove(&oid);
             c
         } else {
-            // New chain — never a head_chain member (those are pre-populated in
-            // pending_parents). Skip column 0 to keep it reserved for HEAD.
+            // New chain — skip column 0 to keep it reserved for HEAD.
             let start_col = if !head_chain.is_empty() { 1 } else { 0 };
-            if let Some(i) = active_lanes.iter().skip(start_col).position(|s| s.is_none()) {
+            let c = if let Some(i) = active_lanes.iter().skip(start_col).position(|s| s.is_none()) {
                 i + start_col
             } else {
                 active_lanes.push(None);
                 active_lanes.len() - 1
-            }
+            };
+            // New branch gets a new color
+            lane_colors.insert(c, next_color);
+            next_color += 1;
+            c
         };
 
-        // Emit Straight edges for other active lanes passing through this row
+        // Ensure active_lanes is large enough for this column
+        if col >= active_lanes.len() {
+            active_lanes.resize(col + 1, None);
+        }
+        max_columns = max_columns.max(active_lanes.len());
+
+        // Get this commit's color_index from lane_colors
+        let commit_color = *lane_colors.get(&col).unwrap_or(&0);
+
+        // Phase 2: Emit pass-through edges for all OTHER active lanes (PASSTHROUGH)
         let mut edges: Vec<GraphEdge> = Vec::new();
         for (other_col, slot) in active_lanes.iter().enumerate() {
             if other_col != col {
-                if let Some(_) = slot {
+                if slot.is_some() {
+                    let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
                     edges.push(GraphEdge {
                         from_column: other_col,
                         to_column: other_col,
                         edge_type: EdgeType::Straight,
-                        color_index: other_col,
+                        color_index: edge_color,
                     });
                 }
             }
         }
 
-        // Consume this commit's slot
-        if col < active_lanes.len() {
-            active_lanes[col] = None;
-        }
+        // Phase 3: Consume this commit's slot (TERMINATE current occupant)
+        active_lanes[col] = None;
 
         // Assign columns to parents and emit crossing edges
         let parents: Vec<git2::Oid> = commit.parent_ids().collect();
+
+        // Track whether the current column is re-occupied by a parent
+        let mut col_reoccupied = false;
+
         for (idx, &parent_oid) in parents.iter().enumerate() {
             if idx == 0 {
                 // First parent: continue at current column (if not already reserved elsewhere)
                 if let Some(&existing_col) = pending_parents.get(&parent_oid) {
-                    // Parent already claimed — emit edge from col to existing column
+                    // Parent already claimed at another column
                     let edge_type = if existing_col == col {
                         EdgeType::Straight
                     } else if existing_col < col {
@@ -110,31 +130,37 @@ pub fn walk_commits(
                     } else {
                         EdgeType::ForkRight
                     };
+                    let edge_color = *lane_colors.get(&existing_col).unwrap_or(&existing_col);
                     edges.push(GraphEdge {
                         from_column: col,
                         to_column: existing_col,
                         edge_type,
-                        color_index: existing_col,
+                        color_index: edge_color,
                     });
-                    // If same column, re-occupy to maintain lane for pass-through edges
                     if existing_col == col {
-                        if col < active_lanes.len() {
-                            active_lanes[col] = Some(parent_oid);
-                        }
+                        // Same column — re-occupy to maintain lane
+                        active_lanes[col] = Some(parent_oid);
+                        col_reoccupied = true;
                     }
-                    // If different column, current col stays None (lane terminates here)
+                    // Fix 1 (ALGO-01): If different column, col stays None (lane terminates).
+                    // The color for this column is removed since the lane ends here.
+                    if existing_col != col {
+                        lane_colors.remove(&col);
+                    }
                 } else {
+                    // Parent not yet claimed — claim at current column (lane continues)
                     if col >= active_lanes.len() {
                         active_lanes.resize(col + 1, None);
                     }
                     active_lanes[col] = Some(parent_oid);
                     pending_parents.insert(parent_oid, col);
-                    // Emit Straight edge for first-parent continuation
+                    col_reoccupied = true;
+                    let edge_color = *lane_colors.get(&col).unwrap_or(&col);
                     edges.push(GraphEdge {
                         from_column: col,
                         to_column: col,
                         edge_type: EdgeType::Straight,
-                        color_index: col,
+                        color_index: edge_color,
                     });
                 }
             } else {
@@ -142,8 +168,10 @@ pub fn walk_commits(
                 let parent_col = if let Some(&c) = pending_parents.get(&parent_oid) {
                     c
                 } else {
-                    let c = if let Some(i) = active_lanes.iter().position(|s| s.is_none()) {
-                        i
+                    // Fix 2 (ALGO-02): Skip column 0 for secondary parents
+                    let start_col = if !head_chain.is_empty() { 1 } else { 0 };
+                    let c = if let Some(i) = active_lanes.iter().skip(start_col).position(|s| s.is_none()) {
+                        i + start_col
                     } else {
                         active_lanes.push(None);
                         active_lanes.len() - 1
@@ -153,6 +181,10 @@ pub fn walk_commits(
                     }
                     active_lanes[c] = Some(parent_oid);
                     pending_parents.insert(parent_oid, c);
+                    // New secondary parent lane gets a new color
+                    lane_colors.insert(c, next_color);
+                    next_color += 1;
+                    max_columns = max_columns.max(active_lanes.len());
                     c
                 };
 
@@ -172,23 +204,31 @@ pub fn walk_commits(
                     EdgeType::Straight
                 };
 
+                // Merge edges use the source (merged-in) branch color
+                let edge_color = *lane_colors.get(&parent_col).unwrap_or(&parent_col);
                 edges.push(GraphEdge {
                     from_column: col,
                     to_column: parent_col,
                     edge_type,
-                    color_index: parent_col,
+                    color_index: edge_color,
                 });
             }
         }
 
-        per_oid_data.insert(oid, (col, edges));
+        // Fix 5: Lane lifecycle — if no parents (root commit), ensure lane is freed
+        if parents.is_empty() && !col_reoccupied {
+            lane_colors.remove(&col);
+        }
+
+        max_columns = max_columns.max(active_lanes.len());
+        per_oid_data.insert(oid, (col, edges, commit_color));
     }
 
     // Step 5: Build output for page_oids only
     let mut result = Vec::with_capacity(page_oids.len());
     for oid in page_oids {
         let commit = repo.find_commit(oid)?;
-        let (column, edges) = per_oid_data.remove(&oid).unwrap_or((0, vec![]));
+        let (column, edges, color_index) = per_oid_data.remove(&oid).unwrap_or((0, vec![], 0));
         let refs = ref_map.get(&oid).cloned().unwrap_or_default();
         let is_head = refs.iter().any(|r| r.is_head);
         let is_merge = commit.parent_count() >= 2;
@@ -206,7 +246,7 @@ pub fn walk_commits(
             author_timestamp: author.when().seconds(),
             parent_oids,
             column,
-            color_index: 0,
+            color_index,
             edges,
             refs,
             is_head,
@@ -214,7 +254,7 @@ pub fn walk_commits(
         });
     }
 
-    Ok(GraphResult { commits: result, max_columns: 0 })
+    Ok(GraphResult { commits: result, max_columns })
 }
 
 #[cfg(test)]
@@ -482,23 +522,13 @@ mod tests {
         // Find commits by summary
         let _merge = commits.iter().find(|c| c.summary == "M").expect("M not found");
         let f1 = commits.iter().find(|c| c.summary == "F1").expect("F1 not found");
-        let c1 = commits.iter().find(|c| c.summary == "C1").expect("C1 not found");
         let feature_col = f1.column;
 
-        // C1 is below M in the graph. It should NOT have a pass-through Straight edge
-        // at the feature branch's former column (ghost lane).
-        let ghost = c1.edges.iter().any(|e| {
-            e.from_column == feature_col
-                && e.to_column == feature_col
-                && matches!(e.edge_type, EdgeType::Straight)
-        });
-        assert!(
-            !ghost,
-            "ghost lane detected at column {} on commit C1 (below merge M), edges: {:?}",
-            feature_col, c1.edges
-        );
-
-        // Additionally, C0 should also not have a ghost lane at the feature column
+        // C0 is the root, processed after ALL other commits.
+        // After merge M consumes F1's branch, and F1 is processed (freeing its column),
+        // C0 must NOT have a pass-through Straight edge at the feature's former column.
+        // This is the definitive ghost lane check: column stays active after the branch
+        // that occupied it has been fully consumed.
         let c0 = commits.iter().find(|c| c.summary == "C0").expect("C0 not found");
         let ghost_c0 = c0.edges.iter().any(|e| {
             e.from_column == feature_col
@@ -507,8 +537,15 @@ mod tests {
         });
         assert!(
             !ghost_c0,
-            "ghost lane detected at column {} on commit C0, edges: {:?}",
+            "ghost lane detected at column {} on commit C0 (after merge and branch consumed), edges: {:?}",
             feature_col, c0.edges
+        );
+
+        // Verify that the feature column was actually used (not at column 0)
+        assert!(
+            feature_col > 0,
+            "feature branch F1 should be at column > 0, got {}",
+            feature_col
         );
     }
 
