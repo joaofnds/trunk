@@ -6,9 +6,10 @@
     laneWidth?: number;
     rowHeight?: number;
     maxColumns?: number;
+    wipAbove?: boolean;
   }
 
-  let { commit, laneWidth = 12, rowHeight = 26, maxColumns = 1 }: Props = $props();
+  let { commit, laneWidth = 12, rowHeight = 26, maxColumns = 1, wipAbove = false }: Props = $props();
 
   const cx = (col: number) => col * laneWidth + laneWidth / 2;
   const cy = $derived(rowHeight / 2);
@@ -66,7 +67,7 @@
     {#each straightEdges as edge}
       <line
         x1={cx(edge.from_column)}
-        y1={commit.is_branch_tip && edge.from_column === commit.column ? cy : -0.5}
+        y1={commit.is_branch_tip && edge.from_column === commit.column && !wipAbove ? cy : -0.5}
         x2={cx(edge.to_column)}
         y2={rowHeight + 0.5}
         stroke={laneColor(edge.color_index)}
