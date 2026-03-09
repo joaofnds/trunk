@@ -104,9 +104,8 @@
       >
         <!-- Ref pills placeholder (same width as CommitRow) -->
         <div style="width: 120px; flex-shrink: 0;"></div>
-        <!-- Lane SVG: hollow dot at column 0 with line down to first commit -->
+        <!-- Lane SVG: hollow dot at column 0 -->
         <svg width="18" height="26" style="overflow: visible; flex-shrink: 0;">
-          <line x1="9" y1="13" x2="9" y2="26" stroke="var(--lane-0)" stroke-width="2" />
           <circle cx="9" cy="13" r="4" fill="transparent" stroke="var(--lane-0)" stroke-width="2" />
         </svg>
         <!-- Message -->

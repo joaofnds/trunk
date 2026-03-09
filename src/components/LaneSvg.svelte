@@ -13,38 +13,10 @@
   const cy = rowHeight / 2;
   const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
 
-  const maxCol = $derived(
-    Math.max(
-      commit.column,
-      ...commit.edges.flatMap((e) => [e.from_column, e.to_column])
-    )
-  );
-  const svgWidth = $derived(Math.max((maxCol + 1) * laneWidth, laneWidth));
+  const svgWidth = $derived((commit.column + 1) * laneWidth);
 </script>
 
 <svg width={svgWidth} height={rowHeight} style="overflow: visible; flex-shrink: 0;">
-  <!-- Edges drawn first, below the commit dot -->
-  {#each commit.edges as edge}
-    {#if edge.edge_type === 'Straight'}
-      <line
-        x1={cx(edge.from_column)}
-        y1={0}
-        x2={cx(edge.to_column)}
-        y2={rowHeight}
-        stroke={laneColor(edge.color_index)}
-        stroke-width="2"
-      />
-    {:else}
-      <!-- ForkLeft, ForkRight, MergeLeft, MergeRight — Bézier curve -->
-      <path
-        d={`M ${cx(edge.from_column)} ${cy} C ${cx(edge.from_column)} ${rowHeight}, ${cx(edge.to_column)} ${0}, ${cx(edge.to_column)} ${rowHeight}`}
-        fill="none"
-        stroke={laneColor(edge.color_index)}
-        stroke-width="2"
-      />
-    {/if}
-  {/each}
-
   <!-- Commit dot -->
   <circle
     cx={cx(commit.column)}
