@@ -116,9 +116,7 @@
       r={4}
       fill="none"
       stroke={laneColor(0)}
-      stroke-width={2}
-      stroke-dasharray="0.5 3"
-      stroke-linecap="round"
+      stroke-width={1.5}
     />
   {:else if commit.is_merge}
     <circle
