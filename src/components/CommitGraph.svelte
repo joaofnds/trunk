@@ -11,9 +11,10 @@
     wipCount?: number;
     wipMessage?: string;
     onWipClick?: () => void;
+    refreshSignal?: number;
   }
 
-  let { repoPath, oncommitselect, wipCount = 0, wipMessage = 'WIP', onWipClick }: Props = $props();
+  let { repoPath, oncommitselect, wipCount = 0, wipMessage = 'WIP', onWipClick, refreshSignal }: Props = $props();
 
   const BATCH = 200;
   const SKELETON_COUNT = 10;
@@ -46,8 +47,33 @@
     }
   }
 
+  async function refresh() {
+    try {
+      const batch = await safeInvoke<GraphCommit[]>('get_commit_graph', {
+        path: repoPath,
+        offset: 0,
+      });
+      // Swap data atomically — old data stays visible until this assignment
+      commits = batch;
+      offset = batch.length;
+      hasMore = batch.length >= BATCH;
+      error = null;
+    } catch (e) {
+      const err = e as TrunkError;
+      error = err.message ?? 'Failed to load commits';
+      // Keep old commits visible on error — do NOT clear
+    }
+  }
+
   $effect(() => {
     untrack(() => loadMore());
+  });
+
+  $effect(() => {
+    // Access refreshSignal to create reactive dependency
+    if (refreshSignal !== undefined && refreshSignal > 0) {
+      untrack(() => refresh());
+    }
   });
 
   $effect(() => {

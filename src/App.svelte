@@ -18,7 +18,7 @@
 
   let repoPath = $state<string | null>(null);
   let repoName = $state<string>('');
-  let graphKey = $state(0);
+  let refreshSignal = $state(0);
   let dirtyCounts = $state<DirtyCounts>({ staged: 0, unstaged: 0, conflicted: 0 });
   let wipSubject = $state('');
 
@@ -60,7 +60,7 @@
   }
 
   function handleRefresh() {
-    graphKey += 1;
+    refreshSignal += 1;
   }
 
   function clearStagingDiff() {
@@ -148,16 +148,25 @@
 
   $effect(() => {
     let unlisten: (() => void) | undefined;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
     listen<string>('repo-changed', (event) => {
       if (event.payload === repoPath) {
-        handleRefresh();
-        loadDirtyCounts();
-        if (selectedFile) {
-          refetchFileDiff(selectedFile.path, selectedFile.kind);
-        }
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          handleRefresh();
+          loadDirtyCounts();
+          if (selectedFile) {
+            refetchFileDiff(selectedFile.path, selectedFile.kind);
+          }
+        }, 200);
       }
     }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+
+    return () => {
+      unlisten?.();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
   });
 
   async function handleClose() {
@@ -170,7 +179,7 @@
     }
     repoPath = null;
     repoName = '';
-    graphKey = 0;
+    refreshSignal = 0;
     clearStagingDiff();
     clearCommit();
   }
@@ -187,9 +196,7 @@
         {#if showDiff}
           <DiffPanel fileDiffs={currentDiffFiles} commitDetail={null} onclose={handleDiffClose} />
         {:else}
-          {#key graphKey}
-            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} onWipClick={clearCommit} />
-          {/key}
+            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} onWipClick={clearCommit} {refreshSignal} />
         {/if}
       </div>
       {#if selectedCommitOid && commitDetail}
