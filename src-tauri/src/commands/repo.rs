@@ -14,11 +14,11 @@ pub async fn open_repo(
 ) -> Result<(), String> {
     let path_clone = path.clone();
 
-    let commits = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<crate::git::types::GraphCommit>, TrunkError> {
+    let result = tauri::async_runtime::spawn_blocking(move || -> Result<crate::git::types::GraphResult, TrunkError> {
         let path_buf = std::path::PathBuf::from(&path_clone);
         repository::validate_and_open(&path_buf)?;
         let mut repo = git2::Repository::open(&path_buf)?;
-        Ok(graph::walk_commits(&mut repo, 0, usize::MAX)?.commits)
+        graph::walk_commits(&mut repo, 0, usize::MAX)
     })
     .await
     .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
@@ -26,7 +26,7 @@ pub async fn open_repo(
 
     let path_buf = std::path::PathBuf::from(&path);
     state.0.lock().unwrap().insert(path.clone(), path_buf.clone());
-    cache.0.lock().unwrap().insert(path.clone(), commits);
+    cache.0.lock().unwrap().insert(path.clone(), result);
     watcher::start_watcher(path_buf, app, &watcher_state);
 
     Ok(())

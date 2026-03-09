@@ -5,7 +5,7 @@ use git2::{BranchType, Status, StatusOptions};
 use crate::error::TrunkError;
 use crate::git::{graph, types::{BranchInfo, RefLabel, RefType, RefsResponse}};
 use crate::state::{CommitCache, RepoState};
-use crate::git::types::GraphCommit;
+use crate::git::types::{GraphCommit, GraphResult};
 
 /// Opens a repository by looking up its path in the state map.
 fn open_repo_from_state(
@@ -151,7 +151,7 @@ pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, Vec<GraphCommit>>,
+    cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
     let repo = open_repo_from_state(path, state_map)?;
 
@@ -175,8 +175,8 @@ pub fn checkout_branch_inner(
         .get(path)
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?.commits;
-    cache_map.insert(path.to_owned(), commits);
+    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
 }
@@ -210,7 +210,7 @@ pub fn create_branch_inner(
     path: &str,
     name: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, Vec<GraphCommit>>,
+    cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
     let repo = open_repo_from_state(path, state_map)?;
 
@@ -234,8 +234,8 @@ pub fn create_branch_inner(
         .get(path)
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?.commits;
-    cache_map.insert(path.to_owned(), commits);
+    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
 }
@@ -279,7 +279,7 @@ mod tests {
         path: &str,
         branch_name: &str,
         state_map: &std::collections::HashMap<String, std::path::PathBuf>,
-        cache_map: &mut std::collections::HashMap<String, Vec<crate::git::types::GraphCommit>>,
+        cache_map: &mut std::collections::HashMap<String, crate::git::types::GraphResult>,
     ) -> Result<(), crate::error::TrunkError> {
         super::checkout_branch_inner(path, branch_name, state_map, cache_map)
     }
@@ -288,7 +288,7 @@ mod tests {
         path: &str,
         name: &str,
         state_map: &std::collections::HashMap<String, std::path::PathBuf>,
-        cache_map: &mut std::collections::HashMap<String, Vec<crate::git::types::GraphCommit>>,
+        cache_map: &mut std::collections::HashMap<String, crate::git::types::GraphResult>,
     ) -> Result<(), crate::error::TrunkError> {
         super::create_branch_inner(path, name, state_map, cache_map)
     }

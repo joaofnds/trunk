@@ -9,4 +9,4 @@ pub struct RepoState(pub Mutex<HashMap<String, PathBuf>>);
 
 // Caches the full commit graph per open repo path.
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
-pub struct CommitCache(pub Mutex<HashMap<String, Vec<crate::git::types::GraphCommit>>>);
+pub struct CommitCache(pub Mutex<HashMap<String, crate::git::types::GraphResult>>);
