@@ -55,3 +55,31 @@ export async function setRightPaneWidth(width: number): Promise<void> {
   await store.set(RIGHT_PANE_KEY, width);
   await store.save();
 }
+
+export interface ColumnWidths {
+  ref: number;
+  graph: number;
+  author: number;
+  date: number;
+  sha: number;
+  // message is flex-1, no fixed width
+}
+
+const COLUMN_WIDTHS_KEY = 'column_widths';
+
+const DEFAULT_WIDTHS: ColumnWidths = {
+  ref: 120,
+  graph: 120,
+  author: 120,
+  date: 100,
+  sha: 80,
+};
+
+export async function getColumnWidths(): Promise<ColumnWidths> {
+  return (await store.get<ColumnWidths>(COLUMN_WIDTHS_KEY)) ?? DEFAULT_WIDTHS;
+}
+
+export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
+  await store.set(COLUMN_WIDTHS_KEY, widths);
+  await store.save();
+}
