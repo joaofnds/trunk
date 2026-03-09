@@ -47,4 +47,4 @@ Resume file: None
 
 2 pending todos:
 1. **Fix commit graph lines and WIP row styling** (ui) — 2026-03-08
-2. **Add app UI zoom support via Cmd-+** (ui) — 2026-03-09
+2. **Add resizable and collapsible left and right panes** (ui) — 2026-03-09
