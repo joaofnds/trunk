@@ -26,9 +26,15 @@
   <LaneSvg {commit} {maxColumns} />
 
   <!-- Commit message (right, fills remaining space) -->
-  <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2">
-    <span class="text-[var(--color-text-muted)] mr-1.5 font-mono text-[11px]"
-      >{commit.short_oid}</span
-    >{commit.summary}
-  </div>
+  {#if commit.oid === '__wip__'}
+    <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2 italic" style="color: var(--color-text-muted);">
+      {commit.summary}
+    </div>
+  {:else}
+    <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2">
+      <span class="text-[var(--color-text-muted)] mr-1.5 font-mono text-[11px]"
+        >{commit.short_oid}</span
+      >{commit.summary}
+    </div>
+  {/if}
 </div>

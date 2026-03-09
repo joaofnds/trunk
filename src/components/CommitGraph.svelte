@@ -2,7 +2,7 @@
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
-  import type { GraphCommit, GraphResponse } from '../lib/types.js';
+  import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import CommitRow from './CommitRow.svelte';
 
   interface Props {
@@ -27,6 +27,32 @@
   let offset = $state(0);
   let listRef = $state<{ scroll: (opts: { index: number; smoothScroll?: boolean; align?: string }) => Promise<void> } | null>(null);
   let scrolledToHead = false;
+
+  function makeWipItem(msg: string): GraphCommit {
+    return {
+      oid: '__wip__',
+      short_oid: '',
+      summary: msg,
+      body: null,
+      author_name: '',
+      author_email: '',
+      author_timestamp: 0,
+      parent_oids: [],
+      column: 0,
+      color_index: 0,
+      edges: [{ from_column: 0, to_column: 0, edge_type: 'Straight' as EdgeType, color_index: 0 }],
+      refs: [],
+      is_head: false,
+      is_merge: false,
+      is_branch_tip: false,
+    };
+  }
+
+  const displayItems = $derived(
+    wipCount > 0
+      ? [makeWipItem(wipMessage), ...commits]
+      : commits
+  );
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -83,9 +109,9 @@
     // Only scroll once per mount (scrolledToHead guards against re-firing)
     if (scrolledToHead) return;
     if (!listRef) return;
-    if (commits.length === 0) return;
+    if (displayItems.length === 0) return;
 
-    const headIdx = commits.findIndex(c => c.is_head);
+    const headIdx = displayItems.findIndex(c => c.is_head);
     if (headIdx >= 0) {
       scrolledToHead = true;
       tick().then(() => listRef?.scroll({ index: headIdx, smoothScroll: false, align: 'top' }));
@@ -122,37 +148,16 @@
       {error}
     </div>
   {:else}
-    {#if wipCount > 0}
-      <div
-        class="flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
-        style="color: var(--color-text-muted);"
-        role="button"
-        tabindex="0"
-        onclick={onWipClick}
-        onkeydown={(e) => e.key === 'Enter' && onWipClick?.()}
-      >
-        <!-- Ref pills placeholder (same width as CommitRow) -->
-        <div style="width: 120px; flex-shrink: 0;"></div>
-        <!-- Lane SVG: hollow dot at column 0 -->
-        <svg width={maxColumns * 12} height="26" style="overflow: visible; flex-shrink: 0;">
-          <circle cx="6" cy="13" r="4" fill="transparent" stroke="var(--lane-0)" stroke-width="2" />
-        </svg>
-        <!-- Message -->
-        <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2" style="color: var(--color-text-muted);">
-          {wipMessage}
-        </div>
-      </div>
-    {/if}
     <SvelteVirtualList
       bind:this={listRef}
-      items={commits}
+      items={displayItems}
       defaultEstimatedItemHeight={26}
       onLoadMore={loadMore}
       loadMoreThreshold={50}
       {hasMore}
     >
       {#snippet renderItem(commit)}
-        <CommitRow {commit} onselect={oncommitselect} {maxColumns} />
+        <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} />
       {/snippet}
     </SvelteVirtualList>
 
@@ -192,18 +197,3 @@
   {/if}
 </div>
 
-<style>
-  .wip-row {
-    display: flex;
-    align-items: center;
-    height: 28px;
-    cursor: pointer;
-    background: color-mix(in srgb, var(--lane-0) 8%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--lane-0) 20%, transparent);
-  }
-  .wip-row:hover { background: color-mix(in srgb, var(--lane-0) 16%, transparent); }
-  .wip-lane { width: 30px; flex-shrink: 0; }
-  .wip-info { display: flex; align-items: center; gap: 8px; padding-left: 4px; }
-  .wip-label { font-style: italic; font-size: 0.85rem; color: var(--lane-0); }
-  .wip-badge { font-size: 0.75rem; background: var(--lane-0); color: #000; border-radius: 9999px; padding: 1px 6px; }
-</style>
