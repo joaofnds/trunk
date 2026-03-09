@@ -110,6 +110,7 @@ pub fn list_refs_inner(
             short_name,
             ref_type: RefType::Tag,
             is_head: false,
+            color_index: 0,
         });
         true
     })?;
@@ -122,6 +123,7 @@ pub fn list_refs_inner(
             short_name: format!("stash@{{{}}}", idx),
             ref_type: RefType::Stash,
             is_head: false,
+            color_index: 0,
         });
         true
     })?;

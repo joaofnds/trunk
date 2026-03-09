@@ -35,6 +35,7 @@ pub struct RefLabel {
     pub short_name: String,
     pub ref_type: RefType,
     pub is_head: bool,
+    pub color_index: usize,
 }
 
 #[derive(Debug, Serialize, Clone)]

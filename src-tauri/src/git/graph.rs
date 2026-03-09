@@ -259,7 +259,10 @@ pub fn walk_commits(
     for oid in page_oids {
         let commit = repo.find_commit(oid)?;
         let (column, edges, color_index, is_branch_tip) = per_oid_data.remove(&oid).unwrap_or((0, vec![], 0, false));
-        let refs = ref_map.get(&oid).cloned().unwrap_or_default();
+        let mut refs = ref_map.get(&oid).cloned().unwrap_or_default();
+        for r in &mut refs {
+            r.color_index = color_index;
+        }
         let is_head = refs.iter().any(|r| r.is_head);
         let is_merge = commit.parent_count() >= 2;
         let parent_oids: Vec<String> = commit.parent_ids().map(|o| o.to_string()).collect();
@@ -980,5 +983,46 @@ mod tests {
                 c.short_oid, c.color_index
             );
         }
+    }
+
+    #[test]
+    fn ref_label_color_index() {
+        let dir = make_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+        // Every commit that has refs should have each ref's color_index match the commit's color_index
+        for commit in &result.commits {
+            for r in &commit.refs {
+                assert_eq!(
+                    r.color_index, commit.color_index,
+                    "ref '{}' color_index {} does not match commit {} color_index {}",
+                    r.short_name, r.color_index, commit.short_oid, commit.color_index
+                );
+            }
+        }
+
+        // At least one commit should have refs (the test repo has branches)
+        let commits_with_refs = result.commits.iter().filter(|c| !c.refs.is_empty()).count();
+        assert!(
+            commits_with_refs > 0,
+            "expected at least one commit with refs"
+        );
+    }
+
+    #[test]
+    fn ref_label_no_refs_no_panic() {
+        let dir = make_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+        // Find a commit without refs — should have empty refs vec (no panic)
+        let no_refs = result.commits.iter().find(|c| c.refs.is_empty());
+        assert!(
+            no_refs.is_some(),
+            "expected at least one commit without refs in test repo"
+        );
+        let c = no_refs.unwrap();
+        assert!(c.refs.is_empty(), "refs should be empty vec, not None/panic");
     }
 }

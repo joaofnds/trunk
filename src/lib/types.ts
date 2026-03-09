@@ -18,6 +18,7 @@ export interface RefLabel {
   short_name: string;
   ref_type: RefType;
   is_head: boolean;
+  color_index: number;
 }
 
 export interface GraphCommit {

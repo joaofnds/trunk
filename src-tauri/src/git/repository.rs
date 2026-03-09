@@ -41,6 +41,7 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
                 short_name,
                 ref_type,
                 is_head,
+                color_index: 0,
             });
         }
     }
@@ -51,6 +52,7 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
             short_name: "stash".to_owned(),
             ref_type: RefType::Stash,
             is_head: false,
+            color_index: 0,
         });
         true
     });
