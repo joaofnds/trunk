@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v0.1 MVP** — Phases 1-6 (shipped 2026-03-09)
-- 🚧 **v0.2 Commit Graph** — Phases 7-11 (in progress)
+- 🚧 **v0.2 Commit Graph** — Phases 7-10 (in progress)
 
 ## Phases
 
@@ -26,10 +26,9 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
 **Milestone Goal:** GitKraken-quality commit graph with proper lane rendering -- vertical rails, smooth bezier curves, consistent lane colors, lane packing, and visual merge commit distinction.
 
 - [x] **Phase 7: Lane Algorithm Hardening** - Battle-tested Rust algorithm with correct data for all graph topologies (2/2 plans) — completed 2026-03-09
-- [ ] **Phase 8: Straight Rail Rendering** - Continuous vertical lane lines through the entire commit graph
-- [ ] **Phase 9: Bezier Curve Rendering** - Smooth merge/fork curves completing the GitKraken-quality graph shape
-- [ ] **Phase 10: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements
-- [ ] **Phase 11: Differentiators** - Lane-colored ref pills and resizable graph column
+- [x] **Phase 8: Straight Rail Rendering** - Continuous vertical lane lines through the entire commit graph (1/1 plans) — completed 2026-03-09
+- [ ] **Phase 9: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements
+- [ ] **Phase 10: Differentiators** - Lane-colored ref pills and resizable graph column
 
 ## Phase Details
 
@@ -62,19 +61,9 @@ Plans:
 Plans:
 - [ ] 08-01-PLAN.md -- Full lane rendering: vivid color palette, vertical rails, Manhattan-routed merge/fork edges, commit dot layering
 
-### Phase 9: Bezier Curve Rendering
-**Goal**: Merge and fork points use smooth cubic Bezier curves instead of jagged diagonal lines
-**Depends on**: Phase 8
-**Requirements**: LANE-02
-**Success Criteria** (what must be TRUE):
-  1. When a branch merges, the connection from the source lane to the merge commit is a smooth S-curve, not a straight diagonal
-  2. When a branch forks, the connection from the parent commit to the new lane is a smooth S-curve
-  3. Curves align seamlessly at row boundaries -- no visible kink or offset where a curve crosses from one row SVG to the next
-**Plans**: TBD
-
-### Phase 10: WIP Row + Visual Polish
+### Phase 9: WIP Row + Visual Polish
 **Goal**: The graph distinguishes merge commits visually, connects the WIP row to HEAD, and reduces visual noise from merge commits
-**Depends on**: Phase 9
+**Depends on**: Phase 8
 **Requirements**: VIS-01, VIS-02, VIS-03
 **Success Criteria** (what must be TRUE):
   1. Merge commits display as hollow circles with a lane-colored stroke, visually distinct from regular filled-circle commits
@@ -82,9 +71,9 @@ Plans:
   3. Merge commits render with reduced opacity so the eye naturally focuses on regular work commits
 **Plans**: TBD
 
-### Phase 11: Differentiators
+### Phase 10: Differentiators
 **Goal**: Branch/tag labels integrate visually with the graph, and users can control graph column width
-**Depends on**: Phase 10
+**Depends on**: Phase 9
 **Requirements**: DIFF-01, DIFF-02
 **Success Criteria** (what must be TRUE):
   1. Branch and tag ref pills next to commit messages are colored to match their lane color in the graph
@@ -94,7 +83,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
+Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -105,7 +94,6 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 5. Commit Creation | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
-| 8. Straight Rail Rendering | v0.2 | 0/1 | Planning | - |
-| 9. Bezier Curve Rendering | v0.2 | 0/0 | Not started | - |
-| 10. WIP Row + Visual Polish | v0.2 | 0/0 | Not started | - |
-| 11. Differentiators | v0.2 | 0/0 | Not started | - |
+| 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
+| 9. WIP Row + Visual Polish | v0.2 | 0/0 | Not started | - |
+| 10. Differentiators | v0.2 | 0/0 | Not started | - |

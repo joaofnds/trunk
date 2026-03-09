@@ -4,14 +4,14 @@ milestone: v0.2
 milestone_name: Commit Graph
 status: completed
 stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-09T17:59:28.073Z"
+last_updated: "2026-03-09T21:08:02.464Z"
 last_activity: 2026-03-09 -- Phase 8 Plan 1 complete
 progress:
-  total_phases: 5
+  total_phases: 4
   completed_phases: 2
   total_plans: 3
   completed_plans: 3
-  percent: 40
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-09)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 8 -- Straight Rail Rendering
+**Current focus:** Phase 9 -- WIP Row + Visual Polish
 
 ## Current Position
 
-Phase: 8 of 11 (Straight Rail Rendering)
-Plan: 1 of 1 -- COMPLETE
-Status: Phase 8 complete
-Last activity: 2026-03-09 -- Phase 8 Plan 1 complete
+Phase: 9 of 10 (WIP Row + Visual Polish)
+Plan: 0 of 0 -- Not started
+Status: Ready to plan
+Last activity: 2026-03-09 -- Phase 9 (Bezier Curve Rendering) removed; already satisfied by Phase 8
 
-Progress: [████░░░░░░] 40% (2/5 v0.2 phases)
+Progress: [█████░░░░░] 50% (2/4 v0.2 phases)
 
 ## Performance Metrics
 
@@ -82,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T17:59:28.070Z
-Stopped at: Completed 08-01-PLAN.md
+Last session: 2026-03-09
+Stopped at: Removed Phase 9 (Bezier Curve Rendering) — already satisfied by Phase 8. Ready to plan Phase 9 (WIP Row + Visual Polish)
 Resume file: None
