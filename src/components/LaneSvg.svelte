@@ -61,6 +61,7 @@
       stroke={laneColor(0)}
       stroke-width={1.5}
       stroke-dasharray="1 4"
+      stroke-dashoffset="-3"
       stroke-linecap="round"
     />
   {:else}
