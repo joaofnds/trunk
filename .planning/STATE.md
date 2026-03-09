@@ -45,6 +45,5 @@ Resume file: None
 
 ### Pending Todos
 
-2 pending todos:
-1. **Fix commit graph lines and WIP row styling** (ui) — 2026-03-08
-2. **Add resizable and collapsible left and right panes** (ui) — 2026-03-09
+1 pending todo:
+1. **Add resizable and collapsible left and right panes** (ui) — 2026-03-09
