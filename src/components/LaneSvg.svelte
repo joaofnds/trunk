@@ -65,15 +65,35 @@
     />
   {:else}
     {#each straightEdges as edge}
-      <line
-        x1={cx(edge.from_column)}
-        y1={commit.is_branch_tip && edge.from_column === commit.column && !wipAbove ? cy : -0.5}
-        x2={cx(edge.to_column)}
-        y2={rowHeight + 0.5}
-        stroke={laneColor(edge.color_index)}
-        stroke-width={2.5}
-        stroke-linecap="round"
-      />
+      {#if wipAbove && edge.from_column === commit.column && commit.is_branch_tip}
+        <!-- Dashed segment: top of row down to dot (WIP connector) -->
+        <line
+          x1={cx(edge.from_column)} y1={-0.5}
+          x2={cx(edge.to_column)} y2={cy}
+          stroke={laneColor(edge.color_index)}
+          stroke-width={1.5}
+          stroke-dasharray="3 4"
+          stroke-linecap="butt"
+        />
+        <!-- Solid segment: dot down to bottom of row -->
+        <line
+          x1={cx(edge.from_column)} y1={cy}
+          x2={cx(edge.to_column)} y2={rowHeight + 0.5}
+          stroke={laneColor(edge.color_index)}
+          stroke-width={2.5}
+          stroke-linecap="round"
+        />
+      {:else}
+        <line
+          x1={cx(edge.from_column)}
+          y1={commit.is_branch_tip && edge.from_column === commit.column ? cy : -0.5}
+          x2={cx(edge.to_column)}
+          y2={rowHeight + 0.5}
+          stroke={laneColor(edge.color_index)}
+          stroke-width={2.5}
+          stroke-linecap="round"
+        />
+      {/if}
     {/each}
   {/if}
 
