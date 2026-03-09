@@ -28,7 +28,7 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
 - [x] **Phase 7: Lane Algorithm Hardening** - Battle-tested Rust algorithm with correct data for all graph topologies (2/2 plans) — completed 2026-03-09
 - [x] **Phase 8: Straight Rail Rendering** - Continuous vertical lane lines through the entire commit graph (1/1 plans) — completed 2026-03-09
 - [x] **Phase 9: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements (completed 2026-03-09)
-- [ ] **Phase 10: Differentiators** - Lane-colored ref pills and resizable graph column
+- [x] **Phase 10: Differentiators** - Lane-colored ref pills and resizable graph column (completed 2026-03-09)
 
 ## Phase Details
 
@@ -81,7 +81,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Branch and tag ref pills next to commit messages are colored to match their lane color in the graph
   2. User can drag a handle to resize the graph column width, and the new width persists across scrolling
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 10-01-PLAN.md -- Lane-colored ref pills with connector line (backend color_index on RefLabel + pill styling + SVG connector)
@@ -103,4 +103,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | 1/1 | Complete   | 2026-03-09 | - |
-| 10. Differentiators | 1/2 | In Progress|  | - |
+| 10. Differentiators | 2/2 | Complete   | 2026-03-09 | - |

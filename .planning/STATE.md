@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: Commit Graph
 status: completed
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-09T22:26:02.398Z"
-last_activity: 2026-03-09 -- Phase 9 Plan 01 complete (merge hollow dots + WIP virtual list)
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-09T22:44:19Z"
+last_activity: 2026-03-09 -- Phase 10 Plan 01 complete (lane-colored ref pills)
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 4
-  completed_plans: 4
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -27,17 +27,17 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 
 Phase: 10 of 10 (Differentiators)
 Plan: 2 of 2 -- Complete
-Status: Plan 10-02 complete
-Last activity: 2026-03-09 -- Phase 10 Plan 02 complete (6-column header with resizable columns)
+Status: Phase complete
+Last activity: 2026-03-09 -- Phase 10 Plan 01 complete (lane-colored ref pills)
 
-Progress: [████████░░] 83% (5/6 v0.2 plans)
+Progress: [██████████] 100% (6/6 v0.2 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5 (v0.2)
+- Total plans completed: 6 (v0.2)
 - Average duration: 4min
-- Total execution time: 19min
+- Total execution time: 23min
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [████████░░] 83% (5/6 v0.2 plans)
 | 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
 | 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
 | 09 - WIP Row + Visual Polish | 1/1 | 2min | 2min |
-| 10 - Differentiators | 1/2 | 2min | 2min |
+| 10 - Differentiators | 2/2 | 6min | 3min |
 
 *Updated after each plan completion*
 
@@ -66,6 +66,8 @@ Recent decisions affecting current work:
 - [Phase 08]: [08-01]: Vivid GitHub-dark-inspired 8-color palette replacing low-contrast originals; commit dot uses color_index (not column)
 - [Phase 09]: WIP synthetic item uses sentinel oid '__wip__' rather than extending GraphCommit type
 - [Phase 09]: Hollow merge dot uses fill=var(--color-bg) to hide rail line; unused .wip-row CSS removed
+- [Phase 10-01]: RefLabel.color_index set from commit color_index during graph output assembly; inline styles for dynamic lane colors
+- [Phase 10-01]: Remote-only detection: RemoteBranch with no sibling LocalBranch or Tag on same commit
 - [Phase 10-02]: Message column flex-1 absorbs remaining space; column widths persist on mouseup only to avoid excessive store writes
 - [Phase 10-02]: Graph column min-width enforces maxColumns * laneWidth to prevent SVG clipping
 
@@ -88,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T22:42:36Z
-Stopped at: Completed 10-02-PLAN.md
-Resume file: .planning/phases/10-differentiators/10-02-SUMMARY.md
+Last session: 2026-03-09T22:44:19Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: .planning/phases/10-differentiators/10-01-SUMMARY.md
