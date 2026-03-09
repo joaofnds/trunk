@@ -69,7 +69,10 @@ Plans:
   1. Merge commits display as hollow circles with a lane-colored stroke, visually distinct from regular filled-circle commits
   2. When the working tree is dirty, the WIP row connects to the HEAD commit via a dashed lane line (not floating disconnected)
   3. Merge commits render with reduced opacity so the eye naturally focuses on regular work commits
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 09-01-PLAN.md -- Merge hollow dots, WIP virtual list integration with dashed connector, visual verification
 
 ### Phase 10: Differentiators
 **Goal**: Branch/tag labels integrate visually with the graph, and users can control graph column width
@@ -95,5 +98,5 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
-| 9. WIP Row + Visual Polish | v0.2 | 0/0 | Not started | - |
+| 9. WIP Row + Visual Polish | v0.2 | 0/1 | In progress | - |
 | 10. Differentiators | v0.2 | 0/0 | Not started | - |
