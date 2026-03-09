@@ -26,8 +26,15 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 Milestone v0.1 MVP shipped 2026-03-09.
 Next: `/gsd:new-milestone` to define v0.2 scope.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 1 | Add WIP entry to commit graph when worktree is dirty | 2026-03-08 | c5ae359 | [1-add-wip-entry-to-commit-graph-when-workt](.planning/quick/1-add-wip-entry-to-commit-graph-when-workt/) |
+| 2 | Remove graph lanes, keep only dots | 2026-03-09 | cf816a8 | [2-remove-graph-lanes-keep-only-dots](.planning/quick/2-remove-graph-lanes-keep-only-dots/) |
+
 ## Session Continuity
 
-Last session: 2026-03-09T04:45:37.452Z
-Stopped at: Completed quick-2-PLAN.md
+Last session: 2026-03-09
+Stopped at: Completed quick task 2 — remove graph lanes
 Resume file: None
