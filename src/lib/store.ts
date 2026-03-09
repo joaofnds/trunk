@@ -23,3 +23,14 @@ export async function removeRecentRepo(path: string): Promise<void> {
   await store.set(RECENT_KEY, updated);
   await store.save();
 }
+
+const ZOOM_KEY = 'zoom_level';
+
+export async function getZoomLevel(): Promise<number> {
+  return (await store.get<number>(ZOOM_KEY)) ?? 1;
+}
+
+export async function setZoomLevel(level: number): Promise<void> {
+  await store.set(ZOOM_KEY, level);
+  await store.save();
+}

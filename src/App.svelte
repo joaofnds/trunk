@@ -7,6 +7,7 @@
   import DiffPanel from './components/DiffPanel.svelte';
   import CommitDetail from './components/CommitDetail.svelte';
   import { safeInvoke } from './lib/invoke.js';
+  import { getZoomLevel, setZoomLevel } from './lib/store.js';
   import type { FileDiff, CommitDetail as CommitDetailType } from './lib/types.js';
 
   interface DirtyCounts {
@@ -16,6 +17,7 @@
   }
   import { listen } from '@tauri-apps/api/event';
 
+  let zoomLevel = $state(1);
   let repoPath = $state<string | null>(null);
   let repoName = $state<string>('');
   let refreshSignal = $state(0);
@@ -167,6 +169,35 @@
       unlisten?.();
       if (debounceTimer) clearTimeout(debounceTimer);
     };
+  });
+
+  $effect(() => {
+    getZoomLevel().then((level) => { zoomLevel = level; });
+  });
+
+  $effect(() => {
+    document.documentElement.style.zoom = String(zoomLevel);
+  });
+
+  $effect(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      if (!e.metaKey && !e.ctrlKey) return;
+      if (e.key === '=' || e.key === '+') {
+        e.preventDefault();
+        zoomLevel = +(Math.min(3, zoomLevel + 0.1).toFixed(1));
+        setZoomLevel(zoomLevel);
+      } else if (e.key === '-') {
+        e.preventDefault();
+        zoomLevel = +(Math.max(0.5, zoomLevel - 0.1).toFixed(1));
+        setZoomLevel(zoomLevel);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        zoomLevel = 1;
+        setZoomLevel(zoomLevel);
+      }
+    }
+    window.addEventListener('keydown', handleKeydown);
+    return () => window.removeEventListener('keydown', handleKeydown);
   });
 
   async function handleClose() {
