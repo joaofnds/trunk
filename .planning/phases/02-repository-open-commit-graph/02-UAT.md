@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 02-repository-open-commit-graph
 source: [02-08-SUMMARY.md, previous UAT re-test]
 started: 2026-03-09T00:00:00Z
-updated: 2026-03-09T00:10:00Z
+updated: 2026-03-09T00:15:00Z
 ---
 
 ## Current Test
@@ -43,13 +43,23 @@ skipped: 0
   reason: "User reported: branch lanes are still fucked up — all commits on a single vertical line, no forking to side columns for branches. Ref pills visible but lanes don't branch out."
   severity: major
   test: 1
-  artifacts: []
-  missing: []
+  root_cause: "active_lanes[0] was initialized as None during head_chain pre-population (line 53 of graph.rs). Pass-through edge logic only emits Straight edges for columns where active_lanes[col].is_some(). Column 0 was None so no vertical line was drawn — fork curves connected to empty space."
+  artifacts:
+    - path: "src-tauri/src/git/graph.rs"
+      issue: "active_lanes.push(None) at line 53 should be active_lanes.push(head_oid)"
+  missing:
+    - "Initialize active_lanes[0] with head_oid so pass-through Straight edges are emitted at column 0 on every row"
+  debug_session: ".planning/debug/svg-lane-lines-broken.md"
 
 - truth: "Branch lanes fork from the parent commit row with curved connections, HEAD on column 0, side branches on columns > 0"
   status: failed
   reason: "User reported: still wrong — branches not forking to side columns, everything on a single vertical line"
   severity: major
   test: 2
-  artifacts: []
-  missing: []
+  root_cause: "Same root cause as test 1 — active_lanes[0] initialized as None meant no continuous main lane existed for fork edges to visually connect to"
+  artifacts:
+    - path: "src-tauri/src/git/graph.rs"
+      issue: "active_lanes.push(None) at line 53 should be active_lanes.push(head_oid)"
+  missing:
+    - "Initialize active_lanes[0] with head_oid"
+  debug_session: ".planning/debug/svg-lane-lines-broken.md"
