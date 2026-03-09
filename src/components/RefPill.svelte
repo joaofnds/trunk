@@ -7,33 +7,39 @@
 
   let { refs }: Props = $props();
 
+  const base =
+    'inline-flex items-center rounded-full px-1.5 py-0 text-[11px] leading-5 whitespace-nowrap max-w-[100px] truncate font-medium';
+
   function pillClasses(ref: RefLabel): string {
-    const base =
-      'inline-flex items-center rounded-full px-1.5 py-0 text-[11px] leading-5 whitespace-nowrap max-w-[100px] truncate';
     if (ref.is_head) {
-      return `${base} bg-[var(--color-accent)] text-white font-bold`;
+      return `${base} font-bold`;
     }
-    switch (ref.ref_type) {
-      case 'LocalBranch':
-        return `${base} bg-green-700 text-green-100`;
-      case 'RemoteBranch':
-        return `${base} bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)]`;
-      case 'Tag':
-        return `${base} bg-green-700 text-green-100`;
-      case 'Stash':
-        return `${base} bg-[var(--color-surface)] text-[var(--color-text-muted)]`;
-    }
+    return base;
+  }
+
+  function pillStyle(ref: RefLabel): string {
+    const bg = `background: var(--lane-${ref.color_index % 8})`;
+    const color = 'color: white';
+    const opacity = isRemoteOnly(ref) ? 'opacity: 0.5' : '';
+    return [bg, color, opacity].filter(Boolean).join('; ');
+  }
+
+  function isRemoteOnly(ref: RefLabel): boolean {
+    if (ref.ref_type !== 'RemoteBranch') return false;
+    return !refs.some(
+      (r) => r !== ref && (r.ref_type === 'LocalBranch' || r.ref_type === 'Tag')
+    );
   }
 
   function pillPrefix(ref: RefLabel): string {
-    if (ref.ref_type === 'Tag') return '◆ ';
-    if (ref.ref_type === 'Stash') return '⚑ ';
+    if (ref.ref_type === 'Tag') return '\u25C6 ';
+    if (ref.ref_type === 'Stash') return '\u2691 ';
     return '';
   }
 </script>
 
 {#if refs.length > 0}
-  <span class={pillClasses(refs[0])}>{pillPrefix(refs[0])}{refs[0].short_name}</span>
+  <span class={pillClasses(refs[0])} style={pillStyle(refs[0])}>{pillPrefix(refs[0])}{refs[0].short_name}</span>
   {#if refs.length > 1}
     <span
       class="text-[11px] text-[var(--color-text-muted)] ml-1 cursor-default"
