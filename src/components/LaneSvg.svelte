@@ -57,23 +57,23 @@
   <!-- Layer 1: Vertical rail lines (bottom) -->
   {#if commit.oid === '__wip__'}
     <line
-      x1={cx(0)} y1={cy} x2={cx(0)} y2={rowHeight + 0.5}
+      x1={cx(0)} y1={cy + 4} x2={cx(0)} y2={rowHeight + 0.5}
       stroke={laneColor(0)}
       stroke-width={1.5}
-      stroke-dasharray="3 4"
-      stroke-linecap="butt"
+      stroke-dasharray="1 4"
+      stroke-linecap="round"
     />
   {:else}
     {#each straightEdges as edge}
       {#if wipAbove && edge.from_column === commit.column && commit.is_branch_tip}
-        <!-- Dashed segment: top of row down to dot (WIP connector) -->
+        <!-- Dotted segment: top of row down to dot (WIP connector) -->
         <line
           x1={cx(edge.from_column)} y1={-0.5}
           x2={cx(edge.to_column)} y2={cy}
           stroke={laneColor(edge.color_index)}
           stroke-width={1.5}
-          stroke-dasharray="3 4"
-          stroke-linecap="butt"
+          stroke-dasharray="1 4"
+          stroke-linecap="round"
         />
         <!-- Solid segment: dot down to bottom of row -->
         <line
