@@ -42,7 +42,11 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
   2. An octopus merge (3+ parents) renders without the graph width growing beyond the number of actually active branches
   3. Every commit row SVG has the same width, and the commit message column does not jitter horizontally when scrolling
   4. Freed lane columns are reused by new branches, keeping the graph compact
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 07-01-PLAN.md -- Core algorithm hardening: GraphResult type, ghost lane fix, octopus protection, max_columns, branch color counter, 9 new tests (TDD)
+- [ ] 07-02-PLAN.md -- Integration propagation: CommitCache, Tauri commands, TypeScript types, LaneSvg consistent width
 
 ### Phase 8: Straight Rail Rendering
 **Goal**: Users see continuous vertical colored lines connecting commits in each branch, with all active lanes drawn through every row
@@ -97,7 +101,7 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10 -> 11
 | 4. Working Tree + Staging | v0.1 | 4/4 | Complete | 2026-03-07 |
 | 5. Commit Creation | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
-| 7. Lane Algorithm Hardening | v0.2 | 0/0 | Not started | - |
+| 7. Lane Algorithm Hardening | v0.2 | 0/2 | Planning | - |
 | 8. Straight Rail Rendering | v0.2 | 0/0 | Not started | - |
 | 9. Bezier Curve Rendering | v0.2 | 0/0 | Not started | - |
 | 10. WIP Row + Visual Polish | v0.2 | 0/0 | Not started | - |
