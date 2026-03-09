@@ -105,8 +105,8 @@
         <!-- Ref pills placeholder (same width as CommitRow) -->
         <div style="width: 120px; flex-shrink: 0;"></div>
         <!-- Lane SVG: hollow dot at column 0 -->
-        <svg width="18" height="26" style="overflow: visible; flex-shrink: 0;">
-          <circle cx="9" cy="13" r="4" fill="transparent" stroke="var(--lane-0)" stroke-width="2" />
+        <svg width="12" height="26" style="overflow: visible; flex-shrink: 0;">
+          <circle cx="6" cy="13" r="4" fill="transparent" stroke="var(--lane-0)" stroke-width="2" />
         </svg>
         <!-- Message -->
         <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2" style="color: var(--color-text-muted);">
