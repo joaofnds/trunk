@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.1
 milestone_name: milestone
 status: completed
-stopped_at: Completed 02-07-PLAN.md (first-parent Straight edge gap closure)
-last_updated: "2026-03-08T22:51:46.679Z"
+stopped_at: Completed 02-08-PLAN.md (HEAD-priority column assignment and branch fork topology)
+last_updated: "2026-03-09T03:42:53.081Z"
 last_activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 progress:
   total_phases: 6
   completed_phases: 6
-  total_plans: 25
-  completed_plans: 25
+  total_plans: 26
+  completed_plans: 26
   percent: 50
 ---
 
@@ -30,7 +30,7 @@ Plan: 5 of 5 — all plans done (incl. gap-closure)
 Status: Phase 3 complete — Phase 4 (Staging + Commit) up next
 Last activity: 2026-03-04 — Phase 3 Plan 05 complete (branch truncation + graph scroll-to-HEAD)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -71,6 +71,7 @@ Progress: [█████░░░░░] 50%
 | Phase 06-diff-display P01 | 2min | 2 tasks | 2 files |
 | Phase 06-diff-display P03 | 30min | 3 tasks | 6 files |
 | Phase 02 P07 | 2min | 1 tasks | 1 files |
+| Phase 02 P08 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,7 @@ Recent decisions affecting current work:
 - [Phase 06-diff-display]: refetchFileDiff() bypasses toggle logic during repo-changed refresh to keep selection intact
 - [Phase 02]: Emit Straight edge inline with first-parent lane assignment rather than in a separate pass
 - [Phase 02]: Handle already-pending parent case with directional edge (ForkLeft/ForkRight) instead of silently dropping
+- [Phase 02]: Pre-populate pending_parents for HEAD first-parent chain before walk loop to prevent branch tips from stealing column 0
 
 ### Pending Todos
 
@@ -146,6 +148,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-08T22:45:49.239Z
-Stopped at: Completed 02-07-PLAN.md (first-parent Straight edge gap closure)
+Last session: 2026-03-09T03:42:53.076Z
+Stopped at: Completed 02-08-PLAN.md (HEAD-priority column assignment and branch fork topology)
 Resume file: None
