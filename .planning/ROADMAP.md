@@ -27,7 +27,7 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
 
 - [x] **Phase 7: Lane Algorithm Hardening** - Battle-tested Rust algorithm with correct data for all graph topologies (2/2 plans) — completed 2026-03-09
 - [x] **Phase 8: Straight Rail Rendering** - Continuous vertical lane lines through the entire commit graph (1/1 plans) — completed 2026-03-09
-- [ ] **Phase 9: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements
+- [x] **Phase 9: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements (completed 2026-03-09)
 - [ ] **Phase 10: Differentiators** - Lane-colored ref pills and resizable graph column
 
 ## Phase Details
@@ -69,7 +69,7 @@ Plans:
   1. Merge commits display as hollow circles with a lane-colored stroke, visually distinct from regular filled-circle commits
   2. When the working tree is dirty, the WIP row connects to the HEAD commit via a dashed lane line (not floating disconnected)
   3. Merge commits render with reduced opacity so the eye naturally focuses on regular work commits
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 09-01-PLAN.md -- Merge hollow dots, WIP virtual list integration with dashed connector, visual verification
@@ -98,5 +98,5 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
-| 9. WIP Row + Visual Polish | v0.2 | 0/1 | In progress | - |
+| 9. WIP Row + Visual Polish | 1/1 | Complete   | 2026-03-09 | - |
 | 10. Differentiators | v0.2 | 0/0 | Not started | - |

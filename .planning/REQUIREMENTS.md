@@ -23,9 +23,9 @@ Requirements for GitKraken-quality commit graph lane rendering. Each maps to roa
 
 ### Visual Polish
 
-- [ ] **VIS-01**: User can visually distinguish merge commits from regular commits (hollow circle with lane-colored stroke)
-- [ ] **VIS-02**: User sees a dashed lane line connecting the WIP row to the HEAD commit
-- [ ] **VIS-03**: User sees merge commits rendered with reduced opacity to focus on actual work commits
+- [x] **VIS-01**: User can visually distinguish merge commits from regular commits (hollow circle with lane-colored stroke)
+- [x] **VIS-02**: User sees a dashed lane line connecting the WIP row to the HEAD commit
+- [x] **VIS-03**: User sees merge commits rendered with reduced opacity to focus on actual work commits
 
 ### Differentiators
 
@@ -76,9 +76,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ALGO-01 | Phase 7 | Complete |
 | ALGO-02 | Phase 7 | Complete |
 | ALGO-03 | Phase 7 | Complete |
-| VIS-01 | Phase 10 | Pending |
-| VIS-02 | Phase 10 | Pending |
-| VIS-03 | Phase 10 | Pending |
+| VIS-01 | Phase 10 | Complete |
+| VIS-02 | Phase 10 | Complete |
+| VIS-03 | Phase 10 | Complete |
 | DIFF-01 | Phase 11 | Pending |
 | DIFF-02 | Phase 11 | Pending |
 

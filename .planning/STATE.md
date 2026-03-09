@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: Commit Graph
-status: planning
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-09T21:20:50.371Z"
-last_activity: 2026-03-09 -- Phase 9 (Bezier Curve Rendering) removed; already satisfied by Phase 8
+status: completed
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-09T21:38:31.208Z"
+last_activity: 2026-03-09 -- Phase 9 Plan 01 complete (merge hollow dots + WIP virtual list)
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
-  percent: 50
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 9 of 10 (WIP Row + Visual Polish)
-Plan: 0 of 0 -- Not started
-Status: Ready to plan
-Last activity: 2026-03-09 -- Phase 9 (Bezier Curve Rendering) removed; already satisfied by Phase 8
+Plan: 1 of 1 -- Complete
+Status: Phase complete
+Last activity: 2026-03-09 -- Phase 9 Plan 01 complete (merge hollow dots + WIP virtual list)
 
-Progress: [█████░░░░░] 50% (2/4 v0.2 phases)
+Progress: [██████████] 100% (4/4 v0.2 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3 (v0.2)
-- Average duration: 5min
-- Total execution time: 15min
+- Total plans completed: 4 (v0.2)
+- Average duration: 4min
+- Total execution time: 17min
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [█████░░░░░] 50% (2/4 v0.2 phases)
 |-------|-------|-------|----------|
 | 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
 | 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
+| 09 - WIP Row + Visual Polish | 1/1 | 2min | 2min |
 
 *Updated after each plan completion*
 
@@ -62,6 +63,8 @@ Recent decisions affecting current work:
 - [Phase 07-02]: GraphResponse IPC struct wraps commits slice + max_columns at command boundary; LaneSvg uses Math.max(maxColumns, column+1) as defensive guard
 - [Phase 08]: [08-01]: Three-layer SVG rendering (rails -> edges -> dots) with Manhattan routing and 0.5px overlap for sub-pixel gap prevention
 - [Phase 08]: [08-01]: Vivid GitHub-dark-inspired 8-color palette replacing low-contrast originals; commit dot uses color_index (not column)
+- [Phase 09]: WIP synthetic item uses sentinel oid '__wip__' rather than extending GraphCommit type
+- [Phase 09]: Hollow merge dot uses fill=var(--color-bg) to hide rail line; unused .wip-row CSS removed
 
 ### Quick Tasks Completed
 
@@ -82,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T21:20:50.368Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-wip-row-visual-polish/09-CONTEXT.md
+Last session: 2026-03-09T21:38:31.205Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: None
