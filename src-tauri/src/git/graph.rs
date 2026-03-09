@@ -29,8 +29,8 @@ pub fn walk_commits(
     // pending_parents[oid] = col → a child already reserved this column for oid
     let mut active_lanes: Vec<Option<git2::Oid>> = Vec::new();
     let mut pending_parents: HashMap<git2::Oid, usize> = HashMap::new();
-    // per_oid_data stores (column, edges, color_index) for each processed commit
-    let mut per_oid_data: HashMap<git2::Oid, (usize, Vec<GraphEdge>, usize)> = HashMap::new();
+    // per_oid_data stores (column, edges, color_index, is_branch_tip) for each processed commit
+    let mut per_oid_data: HashMap<git2::Oid, (usize, Vec<GraphEdge>, usize, bool)> = HashMap::new();
 
     // max_columns: high-water mark of active_lanes.len() (Fix 3: ALGO-03)
     let mut max_columns: usize = 0;
@@ -90,23 +90,53 @@ pub fn walk_commits(
         }
         max_columns = max_columns.max(active_lanes.len());
 
+        // Branch tip: no child has set up this lane (active_lanes[col] is None)
+        let is_branch_tip = col >= active_lanes.len() || active_lanes[col].is_none();
+
         // Get this commit's color_index from lane_colors
         let commit_color = *lane_colors.get(&col).unwrap_or(&0);
 
         // Phase 2: Emit pass-through edges for all OTHER active lanes (PASSTHROUGH)
+        // Also detect fork-in lanes: lanes held by a child that forked from this commit.
+        // For those, emit a fork-out edge from this commit's column to the branch column.
         let mut edges: Vec<GraphEdge> = Vec::new();
+        let mut fork_in_cols: Vec<usize> = Vec::new();
         for (other_col, slot) in active_lanes.iter().enumerate() {
             if other_col != col {
-                if slot.is_some() {
-                    let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
-                    edges.push(GraphEdge {
-                        from_column: other_col,
-                        to_column: other_col,
-                        edge_type: EdgeType::Straight,
-                        color_index: edge_color,
-                    });
+                if let Some(&occupant) = slot.as_ref() {
+                    if occupant == oid {
+                        // Fork-in: a child kept this lane alive pointing to us.
+                        // Emit fork-out edge from our column to the branch column.
+                        fork_in_cols.push(other_col);
+                        let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
+                        let edge_type = if other_col < col {
+                            EdgeType::ForkLeft
+                        } else {
+                            EdgeType::ForkRight
+                        };
+                        edges.push(GraphEdge {
+                            from_column: col,
+                            to_column: other_col,
+                            edge_type,
+                            color_index: edge_color,
+                        });
+                    } else {
+                        // Normal pass-through
+                        let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
+                        edges.push(GraphEdge {
+                            from_column: other_col,
+                            to_column: other_col,
+                            edge_type: EdgeType::Straight,
+                            color_index: edge_color,
+                        });
+                    }
                 }
             }
+        }
+        // Clean up fork-in lanes (branch terminated at this commit)
+        for &fc in &fork_in_cols {
+            active_lanes[fc] = None;
+            lane_colors.remove(&fc);
         }
 
         // Phase 3: Consume this commit's slot (TERMINATE current occupant)
@@ -122,30 +152,30 @@ pub fn walk_commits(
             if idx == 0 {
                 // First parent: continue at current column (if not already reserved elsewhere)
                 if let Some(&existing_col) = pending_parents.get(&parent_oid) {
-                    // Parent already claimed at another column
-                    let edge_type = if existing_col == col {
-                        EdgeType::Straight
-                    } else if existing_col < col {
-                        EdgeType::ForkLeft
-                    } else {
-                        EdgeType::ForkRight
-                    };
-                    let edge_color = *lane_colors.get(&existing_col).unwrap_or(&existing_col);
-                    edges.push(GraphEdge {
-                        from_column: col,
-                        to_column: existing_col,
-                        edge_type,
-                        color_index: edge_color,
-                    });
                     if existing_col == col {
                         // Same column — re-occupy to maintain lane
+                        let edge_color = *lane_colors.get(&existing_col).unwrap_or(&existing_col);
+                        edges.push(GraphEdge {
+                            from_column: col,
+                            to_column: col,
+                            edge_type: EdgeType::Straight,
+                            color_index: edge_color,
+                        });
                         active_lanes[col] = Some(parent_oid);
                         col_reoccupied = true;
-                    }
-                    // Fix 1 (ALGO-01): If different column, col stays None (lane terminates).
-                    // The color for this column is removed since the lane ends here.
-                    if existing_col != col {
-                        lane_colors.remove(&col);
+                    } else {
+                        // Different column — keep lane alive so the PARENT emits the fork-out edge.
+                        // This creates pass-through rails at this column on intermediate rows,
+                        // giving the branch its own visible lane.
+                        active_lanes[col] = Some(parent_oid);
+                        col_reoccupied = true;
+                        let edge_color = *lane_colors.get(&col).unwrap_or(&col);
+                        edges.push(GraphEdge {
+                            from_column: col,
+                            to_column: col,
+                            edge_type: EdgeType::Straight,
+                            color_index: edge_color,
+                        });
                     }
                 } else {
                     // Parent not yet claimed — claim at current column (lane continues)
@@ -221,14 +251,14 @@ pub fn walk_commits(
         }
 
         max_columns = max_columns.max(active_lanes.len());
-        per_oid_data.insert(oid, (col, edges, commit_color));
+        per_oid_data.insert(oid, (col, edges, commit_color, is_branch_tip));
     }
 
     // Step 5: Build output for page_oids only
     let mut result = Vec::with_capacity(page_oids.len());
     for oid in page_oids {
         let commit = repo.find_commit(oid)?;
-        let (column, edges, color_index) = per_oid_data.remove(&oid).unwrap_or((0, vec![], 0));
+        let (column, edges, color_index, is_branch_tip) = per_oid_data.remove(&oid).unwrap_or((0, vec![], 0, false));
         let refs = ref_map.get(&oid).cloned().unwrap_or_default();
         let is_head = refs.iter().any(|r| r.is_head);
         let is_merge = commit.parent_count() >= 2;
@@ -251,6 +281,7 @@ pub fn walk_commits(
             refs,
             is_head,
             is_merge,
+            is_branch_tip,
         });
     }
 
@@ -445,20 +476,23 @@ mod tests {
         // Topic branch tip must NOT be at column 0
         assert!(b0.column > 0, "B0 (topic branch) should be at column > 0, got {}", b0.column);
 
-        // B0 must have a fork edge toward column 0 (connecting to parent C1)
-        let has_fork_to_main = b0.edges.iter().any(|e| {
-            matches!(e.edge_type, EdgeType::ForkLeft) && e.to_column == 0
+        // B0 should have a Straight edge at its own column (branch lane continues toward parent)
+        let b0_has_straight = b0.edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::Straight) && e.from_column == b0.column && e.to_column == b0.column
         });
-        assert!(has_fork_to_main, "B0 should have ForkLeft edge toward column 0, edges: {:?}", b0.edges);
+        assert!(b0_has_straight, "B0 should have Straight edge at its own column, edges: {:?}", b0.edges);
 
-        // Main chain commits should NOT have ForkLeft/ForkRight edges originating from their own column
-        for main_commit in [c2, c1, c0] {
-            let has_own_fork = main_commit.edges.iter().any(|e| {
-                matches!(e.edge_type, EdgeType::ForkLeft | EdgeType::ForkRight)
-                    && e.from_column == main_commit.column
-            });
-            assert!(!has_own_fork, "main commit {} should not have fork edges from its own column", main_commit.summary);
-        }
+        // B0 should NOT have fork edges (fork-out is emitted on the parent C1)
+        let b0_has_fork = b0.edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::ForkLeft | EdgeType::ForkRight)
+        });
+        assert!(!b0_has_fork, "B0 should not have fork edges, edges: {:?}", b0.edges);
+
+        // C1 (parent of B0) must have a fork-out edge toward B0's column
+        let c1_has_fork_out = c1.edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::ForkRight) && e.from_column == c1.column && e.to_column == b0.column
+        });
+        assert!(c1_has_fork_out, "C1 should have ForkRight edge toward B0's column {}, edges: {:?}", b0.column, c1.edges);
     }
 
     // ---- 9 new tests for lane algorithm hardening ----

@@ -35,6 +35,7 @@ export interface GraphCommit {
   refs: RefLabel[];
   is_head: boolean;
   is_merge: boolean;
+  is_branch_tip: boolean;
 }
 
 export interface GraphResponse {

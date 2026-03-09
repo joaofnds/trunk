@@ -53,6 +53,7 @@ pub struct GraphCommit {
     pub refs: Vec<RefLabel>,
     pub is_head: bool,
     pub is_merge: bool,
+    pub is_branch_tip: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]

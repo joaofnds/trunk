@@ -36,13 +36,13 @@
     switch (edge.edge_type) {
       case 'MergeLeft':
       case 'MergeRight': {
-        // Horizontal from commit, arc down, vertical to row bottom
+        // From commit dot → horizontal toward parent col → arc down → vertical to row bottom
         const sweep = goingRight ? 1 : 0;
         return `M ${x1} ${cy} H ${hTarget} A ${r} ${r} 0 0 ${sweep} ${x2} ${cy + r} V ${rowHeight + 0.5}`;
       }
       case 'ForkLeft':
       case 'ForkRight': {
-        // Horizontal from commit, arc up, vertical to row top
+        // From parent dot → horizontal toward branch col → arc up → vertical to row top
         const sweep = goingRight ? 0 : 1;
         return `M ${x1} ${cy} H ${hTarget} A ${r} ${r} 0 0 ${sweep} ${x2} ${cy - r} V ${-0.5}`;
       }
@@ -57,7 +57,7 @@
   {#each straightEdges as edge}
     <line
       x1={cx(edge.from_column)}
-      y1={-0.5}
+      y1={commit.is_branch_tip && edge.from_column === commit.column ? cy : -0.5}
       x2={cx(edge.to_column)}
       y2={rowHeight + 0.5}
       stroke={laneColor(edge.color_index)}
