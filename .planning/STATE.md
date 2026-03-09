@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: Commit Graph
-status: planning
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-09T16:05:55.471Z"
-last_activity: 2026-03-09 -- Roadmap created for v0.2 Commit Graph (phases 7-11)
+status: executing
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-09T16:30:56Z"
+last_activity: 2026-03-09 -- Completed plan 07-01 Lane Algorithm Hardening
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 10
 ---
 
 # Project State
@@ -26,24 +26,24 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 7 of 11 (Lane Algorithm Hardening) -- first phase of v0.2
-Plan: --
-Status: Ready to plan
-Last activity: 2026-03-09 -- Roadmap created for v0.2 Commit Graph (phases 7-11)
+Plan: 1 of 2 complete
+Status: Executing
+Last activity: 2026-03-09 -- Completed plan 07-01 Lane Algorithm Hardening
 
-Progress: [░░░░░░░░░░] 0% (v0.2)
+Progress: [█░░░░░░░░░] 10% (v0.2)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v0.2)
-- Average duration: --
-- Total execution time: --
+- Total plans completed: 1 (v0.2)
+- Average duration: 8min
+- Total execution time: 8min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 07 - Lane Algorithm Hardening | 1/2 | 8min | 8min |
 
 *Updated after each plan completion*
 
@@ -56,6 +56,8 @@ Recent decisions affecting current work:
 
 - [v0.1]: Lanes removed, dots only for v0.1 -- v0.1 lane rendering had visual bugs; dedicated v0.2 milestone for graph
 - [v0.2 research]: Sub-pixel gaps between row SVGs were likely the v0.1 failure cause -- use overflow:visible with 0.5px overlap
+- [07-01]: Ghost lane test asserts on root commit (always processed last) rather than sibling commits with non-deterministic walk order
+- [07-01]: Merge edges use source (merged-in) branch color; callers extract .commits from GraphResult (full GraphResult storage deferred to 07-02)
 
 ### Quick Tasks Completed
 
@@ -76,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T16:05:55.468Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-lane-algorithm-hardening/07-CONTEXT.md
+Last session: 2026-03-09T16:30:56Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: .planning/phases/07-lane-algorithm-hardening/07-01-SUMMARY.md

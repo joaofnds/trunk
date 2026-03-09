@@ -13,13 +13,13 @@ Requirements for GitKraken-quality commit graph lane rendering. Each maps to roa
 - [ ] **LANE-02**: User sees smooth bezier curves when branches merge or fork (not jagged diagonals)
 - [ ] **LANE-03**: User sees all active branch lanes drawn through every commit row, not just that branch's own commits
 - [ ] **LANE-04**: User sees consistent lane colors per branch from tip to base (color does not jump between commits)
-- [ ] **LANE-05**: User sees a compact graph where freed columns are reclaimed after branch merges
+- [x] **LANE-05**: User sees a compact graph where freed columns are reclaimed after branch merges
 
 ### Graph Algorithm
 
-- [ ] **ALGO-01**: Lane algorithm produces no ghost lanes (cleared lanes must not render in subsequent rows)
-- [ ] **ALGO-02**: Lane algorithm handles octopus merges (3+ parents) without graph width explosion
-- [ ] **ALGO-03**: All commit rows have consistent SVG width based on max active columns (no message column jitter)
+- [x] **ALGO-01**: Lane algorithm produces no ghost lanes (cleared lanes must not render in subsequent rows)
+- [x] **ALGO-02**: Lane algorithm handles octopus merges (3+ parents) without graph width explosion
+- [x] **ALGO-03**: All commit rows have consistent SVG width based on max active columns (no message column jitter)
 
 ### Visual Polish
 
@@ -72,10 +72,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LANE-02 | Phase 9 | Pending |
 | LANE-03 | Phase 8 | Pending |
 | LANE-04 | Phase 8 | Pending |
-| LANE-05 | Phase 7 | Pending |
-| ALGO-01 | Phase 7 | Pending |
-| ALGO-02 | Phase 7 | Pending |
-| ALGO-03 | Phase 7 | Pending |
+| LANE-05 | Phase 7 | Complete |
+| ALGO-01 | Phase 7 | Complete |
+| ALGO-02 | Phase 7 | Complete |
+| ALGO-03 | Phase 7 | Complete |
 | VIS-01 | Phase 10 | Pending |
 | VIS-02 | Phase 10 | Pending |
 | VIS-03 | Phase 10 | Pending |
