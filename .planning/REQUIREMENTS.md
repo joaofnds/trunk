@@ -9,10 +9,10 @@ Requirements for GitKraken-quality commit graph lane rendering. Each maps to roa
 
 ### Lane Rendering
 
-- [ ] **LANE-01**: User sees continuous vertical colored lines connecting commits in the same branch
+- [x] **LANE-01**: User sees continuous vertical colored lines connecting commits in the same branch
 - [ ] **LANE-02**: User sees smooth bezier curves when branches merge or fork (not jagged diagonals)
-- [ ] **LANE-03**: User sees all active branch lanes drawn through every commit row, not just that branch's own commits
-- [ ] **LANE-04**: User sees consistent lane colors per branch from tip to base (color does not jump between commits)
+- [x] **LANE-03**: User sees all active branch lanes drawn through every commit row, not just that branch's own commits
+- [x] **LANE-04**: User sees consistent lane colors per branch from tip to base (color does not jump between commits)
 - [x] **LANE-05**: User sees a compact graph where freed columns are reclaimed after branch merges
 
 ### Graph Algorithm
@@ -68,10 +68,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LANE-01 | Phase 8 | Pending |
+| LANE-01 | Phase 8 | Complete |
 | LANE-02 | Phase 9 | Pending |
-| LANE-03 | Phase 8 | Pending |
-| LANE-04 | Phase 8 | Pending |
+| LANE-03 | Phase 8 | Complete |
+| LANE-04 | Phase 8 | Complete |
 | LANE-05 | Phase 7 | Complete |
 | ALGO-01 | Phase 7 | Complete |
 | ALGO-02 | Phase 7 | Complete |

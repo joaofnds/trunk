@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: Commit Graph
-status: planning
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-09T17:38:52.705Z"
-last_activity: 2026-03-09 -- Phase 7 complete, transitioning to Phase 8
+status: completed
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-09T17:59:28.073Z"
+last_activity: 2026-03-09 -- Phase 8 Plan 1 complete
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 20
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
+  percent: 40
 ---
 
 # Project State
@@ -26,24 +26,25 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 8 of 11 (Straight Rail Rendering)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-09 -- Phase 7 complete, transitioning to Phase 8
+Plan: 1 of 1 -- COMPLETE
+Status: Phase 8 complete
+Last activity: 2026-03-09 -- Phase 8 Plan 1 complete
 
-Progress: [██░░░░░░░░] 20% (1/5 v0.2 phases)
+Progress: [████░░░░░░] 40% (2/5 v0.2 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2 (v0.2)
-- Average duration: 6min
-- Total execution time: 12min
+- Total plans completed: 3 (v0.2)
+- Average duration: 5min
+- Total execution time: 15min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
+| 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
 
 *Updated after each plan completion*
 
@@ -59,6 +60,8 @@ Recent decisions affecting current work:
 - [07-01]: Ghost lane test asserts on root commit (always processed last) rather than sibling commits with non-deterministic walk order
 - [07-01]: Merge edges use source (merged-in) branch color; callers extract .commits from GraphResult (full GraphResult storage deferred to 07-02)
 - [Phase 07-02]: GraphResponse IPC struct wraps commits slice + max_columns at command boundary; LaneSvg uses Math.max(maxColumns, column+1) as defensive guard
+- [Phase 08]: [08-01]: Three-layer SVG rendering (rails -> edges -> dots) with Manhattan routing and 0.5px overlap for sub-pixel gap prevention
+- [Phase 08]: [08-01]: Vivid GitHub-dark-inspired 8-color palette replacing low-contrast originals; commit dot uses color_index (not column)
 
 ### Quick Tasks Completed
 
@@ -79,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-09T17:38:52.702Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-straight-rail-rendering/08-CONTEXT.md
+Last session: 2026-03-09T17:59:28.070Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: None
