@@ -7,7 +7,7 @@
   import DiffPanel from './components/DiffPanel.svelte';
   import CommitDetail from './components/CommitDetail.svelte';
   import { safeInvoke } from './lib/invoke.js';
-  import { getZoomLevel, setZoomLevel } from './lib/store.js';
+  import { getZoomLevel, setZoomLevel, getLeftPaneWidth, setLeftPaneWidth, getRightPaneWidth, setRightPaneWidth } from './lib/store.js';
   import type { FileDiff, CommitDetail as CommitDetailType } from './lib/types.js';
 
   interface DirtyCounts {
@@ -18,6 +18,10 @@
   import { listen } from '@tauri-apps/api/event';
 
   let zoomLevel = $state(1);
+  let leftPaneWidth = $state(220);
+  let leftPaneCollapsed = $state(false);
+  let rightPaneWidth = $state(240);
+  let rightPaneCollapsed = $state(false);
   let repoPath = $state<string | null>(null);
   let repoName = $state<string>('');
   let refreshSignal = $state(0);
@@ -176,6 +180,11 @@
   });
 
   $effect(() => {
+    getLeftPaneWidth().then((w) => { leftPaneWidth = w; });
+    getRightPaneWidth().then((w) => { rightPaneWidth = w; });
+  });
+
+  $effect(() => {
     document.documentElement.style.zoom = String(zoomLevel);
   });
 
@@ -194,11 +203,67 @@
         e.preventDefault();
         zoomLevel = 1;
         setZoomLevel(zoomLevel);
+      } else if (e.key === 'j' || e.key === 'J') {
+        e.preventDefault();
+        leftPaneCollapsed = !leftPaneCollapsed;
+      } else if (e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        rightPaneCollapsed = !rightPaneCollapsed;
       }
     }
     window.addEventListener('keydown', handleKeydown);
     return () => window.removeEventListener('keydown', handleKeydown);
   });
+
+  function startLeftResize(e: MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftPaneCollapsed ? 0 : leftPaneWidth;
+
+    function onMouseMove(ev: MouseEvent) {
+      const newWidth = Math.max(0, startWidth + ev.clientX - startX);
+      if (newWidth < 50) {
+        leftPaneCollapsed = true;
+      } else {
+        leftPaneCollapsed = false;
+        leftPaneWidth = Math.min(600, newWidth);
+      }
+    }
+
+    function onMouseUp() {
+      if (!leftPaneCollapsed) setLeftPaneWidth(leftPaneWidth);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    }
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
+
+  function startRightResize(e: MouseEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = rightPaneCollapsed ? 0 : rightPaneWidth;
+
+    function onMouseMove(ev: MouseEvent) {
+      const newWidth = Math.max(0, startWidth - (ev.clientX - startX));
+      if (newWidth < 50) {
+        rightPaneCollapsed = true;
+      } else {
+        rightPaneCollapsed = false;
+        rightPaneWidth = Math.min(700, newWidth);
+      }
+    }
+
+    function onMouseUp() {
+      if (!rightPaneCollapsed) setRightPaneWidth(rightPaneWidth);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    }
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }
 
   async function handleClose() {
     if (repoPath) {
@@ -216,31 +281,53 @@
   }
 </script>
 
+<style>
+  .pane-divider {
+    width: 4px;
+    flex-shrink: 0;
+    cursor: col-resize;
+    user-select: none;
+    background: linear-gradient(to right, transparent 1.5px, var(--color-border) 1.5px, var(--color-border) 2.5px, transparent 2.5px);
+    transition: background 0.15s;
+  }
+  .pane-divider:hover {
+    background: linear-gradient(to right, transparent 1px, var(--color-accent) 1px, var(--color-accent) 3px, transparent 3px);
+  }
+</style>
+
 <div class="flex flex-col h-screen" style="background: var(--color-bg);">
   {#if repoPath === null}
     <WelcomeScreen onopen={handleOpen} />
   {:else}
     <TabBar {repoName} onclose={handleClose} />
     <main class="flex-1 overflow-hidden flex">
-      <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} />
+      <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
+        <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} />
+      </div>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>
       <div class="flex-1 overflow-hidden">
         {#if showDiff}
           <DiffPanel fileDiffs={currentDiffFiles} commitDetail={null} onclose={handleDiffClose} />
         {:else}
-            <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} onWipClick={clearCommit} {refreshSignal} />
+          <CommitGraph {repoPath} oncommitselect={handleCommitSelect} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} onWipClick={clearCommit} {refreshSignal} />
         {/if}
       </div>
-      {#if selectedCommitOid && commitDetail}
-        <CommitDetail
-          {commitDetail}
-          fileDiffs={commitFileDiffs}
-          selectedFile={selectedCommitFile}
-          onfileselect={handleCommitFileSelect}
-          onclose={clearCommit}
-        />
-      {:else}
-        <StagingPanel repoPath={repoPath!} onfileselect={handleFileSelect} onsubjectchange={(v) => (wipSubject = v)} />
-      {/if}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="pane-divider" style="display: {rightPaneCollapsed ? 'none' : 'block'};" onmousedown={startRightResize}></div>
+      <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
+        {#if selectedCommitOid && commitDetail}
+          <CommitDetail
+            {commitDetail}
+            fileDiffs={commitFileDiffs}
+            selectedFile={selectedCommitFile}
+            onfileselect={handleCommitFileSelect}
+            onclose={clearCommit}
+          />
+        {:else}
+          <StagingPanel repoPath={repoPath!} onfileselect={handleFileSelect} onsubjectchange={(v) => (wipSubject = v)} />
+        {/if}
+      </div>
     </main>
   {/if}
 </div>

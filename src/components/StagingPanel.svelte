@@ -87,12 +87,11 @@
 </script>
 
 <div style="
-  width: 240px;
-  min-width: 240px;
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-left: 1px solid var(--color-border);
   overflow: hidden;
 ">
   <!-- Panel header -->

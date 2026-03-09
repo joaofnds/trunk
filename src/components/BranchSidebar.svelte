@@ -135,10 +135,9 @@
 </script>
 
 <aside style="
-  width: 220px;
-  min-width: 220px;
+  width: 100%;
+  min-width: 0;
   background: var(--color-bg);
-  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;

@@ -34,3 +34,24 @@ export async function setZoomLevel(level: number): Promise<void> {
   await store.set(ZOOM_KEY, level);
   await store.save();
 }
+
+const LEFT_PANE_KEY = 'left_pane_width';
+const RIGHT_PANE_KEY = 'right_pane_width';
+
+export async function getLeftPaneWidth(): Promise<number> {
+  return (await store.get<number>(LEFT_PANE_KEY)) ?? 220;
+}
+
+export async function setLeftPaneWidth(width: number): Promise<void> {
+  await store.set(LEFT_PANE_KEY, width);
+  await store.save();
+}
+
+export async function getRightPaneWidth(): Promise<number> {
+  return (await store.get<number>(RIGHT_PANE_KEY)) ?? 240;
+}
+
+export async function setRightPaneWidth(width: number): Promise<void> {
+  await store.set(RIGHT_PANE_KEY, width);
+  await store.save();
+}
