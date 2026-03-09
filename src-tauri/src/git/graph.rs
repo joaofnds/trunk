@@ -307,4 +307,83 @@ mod tests {
         });
         assert!(has_straight, "merge commit missing first-parent Straight edge");
     }
+
+    #[test]
+    fn branch_fork_topology() {
+        // Create repo: main has C0->C1->C2, topic diverges from C1 with B0
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+
+        // C0 (root)
+        std::fs::write(dir.path().join("f0.txt"), "f0").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("f0.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let c0 = repo.commit(Some("refs/heads/main"), &sig, &sig, "C0", &tree, &[]).unwrap();
+
+        // C1 (child of C0, on main)
+        std::fs::write(dir.path().join("f1.txt"), "f1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("f1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let c0_commit = repo.find_commit(c0).unwrap();
+        let c1 = repo.commit(Some("refs/heads/main"), &sig, &sig, "C1", &tree, &[&c0_commit]).unwrap();
+
+        // C2 (child of C1, on main — HEAD)
+        std::fs::write(dir.path().join("f2.txt"), "f2").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("f2.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let c1_commit = repo.find_commit(c1).unwrap();
+        let _c2 = repo.commit(Some("refs/heads/main"), &sig, &sig, "C2", &tree, &[&c1_commit]).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        // B0 (child of C1, on topic — unmerged branch)
+        std::fs::write(dir.path().join("b0.txt"), "b0").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("b0.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let _b0 = repo.commit(Some("refs/heads/topic"), &sig, &sig, "B0", &tree, &[&c1_commit]).unwrap();
+
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+        // Find commits by summary
+        let c2 = commits.iter().find(|c| c.summary == "C2").expect("C2 not found");
+        let c1 = commits.iter().find(|c| c.summary == "C1").expect("C1 not found");
+        let c0 = commits.iter().find(|c| c.summary == "C0").expect("C0 not found");
+        let b0 = commits.iter().find(|c| c.summary == "B0").expect("B0 not found");
+
+        // HEAD chain (C2, C1, C0) must all be at column 0
+        assert_eq!(c2.column, 0, "C2 (HEAD) should be at column 0");
+        assert_eq!(c1.column, 0, "C1 should be at column 0");
+        assert_eq!(c0.column, 0, "C0 should be at column 0");
+
+        // Topic branch tip must NOT be at column 0
+        assert!(b0.column > 0, "B0 (topic branch) should be at column > 0, got {}", b0.column);
+
+        // B0 must have a fork edge toward column 0 (connecting to parent C1)
+        let has_fork_to_main = b0.edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::ForkLeft) && e.to_column == 0
+        });
+        assert!(has_fork_to_main, "B0 should have ForkLeft edge toward column 0, edges: {:?}", b0.edges);
+
+        // Main chain commits should NOT have ForkLeft/ForkRight edges originating from their own column
+        for main_commit in [c2, c1, c0] {
+            let has_own_fork = main_commit.edges.iter().any(|e| {
+                matches!(e.edge_type, EdgeType::ForkLeft | EdgeType::ForkRight)
+                    && e.from_column == main_commit.column
+            });
+            assert!(!has_own_fork, "main commit {} should not have fork edges from its own column", main_commit.summary);
+        }
+    }
 }
