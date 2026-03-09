@@ -22,9 +22,7 @@
   <circle
     cx={cx(commit.column)}
     cy={cy}
-    r={commit.is_merge ? 6 : 4}
-    fill={laneColor(commit.column % 8)}
-    stroke={commit.is_merge ? 'var(--color-bg)' : 'none'}
-    stroke-width={commit.is_merge ? 2 : 0}
+    r={4}
+    fill={laneColor(commit.color_index)}
   />
 </svg>
