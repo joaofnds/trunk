@@ -30,10 +30,16 @@ export interface GraphCommit {
   author_timestamp: number;
   parent_oids: string[];
   column: number;
+  color_index: number;
   edges: GraphEdge[];
   refs: RefLabel[];
   is_head: boolean;
   is_merge: boolean;
+}
+
+export interface GraphResponse {
+  commits: GraphCommit[];
+  max_columns: number;
 }
 
 export interface BranchInfo {

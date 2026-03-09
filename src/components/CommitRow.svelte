@@ -6,9 +6,10 @@
   interface Props {
     commit: GraphCommit;
     onselect?: (oid: string) => void;
+    maxColumns?: number;
   }
 
-  let { commit, onselect }: Props = $props();
+  let { commit, onselect, maxColumns = 1 }: Props = $props();
 </script>
 
 <div
@@ -22,7 +23,7 @@
   </div>
 
   <!-- Lane SVG (center, flex-shrink: 0 to avoid compression) -->
-  <LaneSvg {commit} />
+  <LaneSvg {commit} {maxColumns} />
 
   <!-- Commit message (right, fills remaining space) -->
   <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap ml-2">

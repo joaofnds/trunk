@@ -2,7 +2,7 @@
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
-  import type { GraphCommit } from '../lib/types.js';
+  import type { GraphCommit, GraphResponse } from '../lib/types.js';
   import CommitRow from './CommitRow.svelte';
 
   interface Props {
@@ -20,6 +20,7 @@
   const SKELETON_COUNT = 10;
 
   let commits = $state<GraphCommit[]>([]);
+  let maxColumns = $state(1);
   let hasMore = $state(true);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -32,13 +33,14 @@
     loading = true;
     error = null;
     try {
-      const batch = await safeInvoke<GraphCommit[]>('get_commit_graph', {
+      const response = await safeInvoke<GraphResponse>('get_commit_graph', {
         path: repoPath,
         offset,
       });
-      commits.push(...batch);
-      offset += batch.length;
-      if (batch.length < BATCH) hasMore = false;
+      commits.push(...response.commits);
+      maxColumns = response.max_columns;
+      offset += response.commits.length;
+      if (response.commits.length < BATCH) hasMore = false;
     } catch (e) {
       const err = e as TrunkError;
       error = err.message ?? 'Failed to load commits';
@@ -49,14 +51,15 @@
 
   async function refresh() {
     try {
-      const batch = await safeInvoke<GraphCommit[]>('get_commit_graph', {
+      const response = await safeInvoke<GraphResponse>('get_commit_graph', {
         path: repoPath,
         offset: 0,
       });
       // Swap data atomically — old data stays visible until this assignment
-      commits = batch;
-      offset = batch.length;
-      hasMore = batch.length >= BATCH;
+      commits = response.commits;
+      maxColumns = response.max_columns;
+      offset = response.commits.length;
+      hasMore = response.commits.length >= BATCH;
       error = null;
     } catch (e) {
       const err = e as TrunkError;
@@ -131,7 +134,7 @@
         <!-- Ref pills placeholder (same width as CommitRow) -->
         <div style="width: 120px; flex-shrink: 0;"></div>
         <!-- Lane SVG: hollow dot at column 0 -->
-        <svg width="12" height="26" style="overflow: visible; flex-shrink: 0;">
+        <svg width={maxColumns * 12} height="26" style="overflow: visible; flex-shrink: 0;">
           <circle cx="6" cy="13" r="4" fill="transparent" stroke="var(--lane-0)" stroke-width="2" />
         </svg>
         <!-- Message -->
@@ -149,7 +152,7 @@
       {hasMore}
     >
       {#snippet renderItem(commit)}
-        <CommitRow {commit} onselect={oncommitselect} />
+        <CommitRow {commit} onselect={oncommitselect} {maxColumns} />
       {/snippet}
     </SvelteVirtualList>
 
