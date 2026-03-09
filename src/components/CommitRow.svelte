@@ -7,10 +7,9 @@
     commit: GraphCommit;
     onselect?: (oid: string) => void;
     maxColumns?: number;
-    wipAbove?: boolean;
   }
 
-  let { commit, onselect, maxColumns = 1, wipAbove = false }: Props = $props();
+  let { commit, onselect, maxColumns = 1 }: Props = $props();
 </script>
 
 <div
@@ -24,7 +23,7 @@
   </div>
 
   <!-- Lane SVG (center, flex-shrink: 0 to avoid compression) -->
-  <LaneSvg {commit} {maxColumns} {wipAbove} />
+  <LaneSvg {commit} {maxColumns} />
 
   <!-- Commit message (right, fills remaining space) -->
   {#if commit.oid === '__wip__'}

@@ -157,7 +157,7 @@
       {hasMore}
     >
       {#snippet renderItem(commit)}
-        <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} wipAbove={commit.is_head && wipCount > 0} />
+        <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} />
       {/snippet}
     </SvelteVirtualList>
 

@@ -6,10 +6,9 @@
     laneWidth?: number;
     rowHeight?: number;
     maxColumns?: number;
-    wipAbove?: boolean;
   }
 
-  let { commit, laneWidth = 12, rowHeight = 26, maxColumns = 1, wipAbove = false }: Props = $props();
+  let { commit, laneWidth = 12, rowHeight = 26, maxColumns = 1 }: Props = $props();
 
   const cx = (col: number) => col * laneWidth + laneWidth / 2;
   const cy = $derived(rowHeight / 2);
@@ -56,8 +55,9 @@
 <svg width={svgWidth} height={rowHeight} style="overflow: visible; flex-shrink: 0;">
   <!-- Layer 1: Vertical rail lines (bottom) -->
   {#if commit.oid === '__wip__'}
+    <!-- Single continuous dotted line from WIP circle to HEAD dot in next row -->
     <line
-      x1={cx(0)} y1={cy + 4} x2={cx(0)} y2={rowHeight + 0.5}
+      x1={cx(0)} y1={cy + 4} x2={cx(0)} y2={rowHeight + cy}
       stroke={laneColor(0)}
       stroke-width={1.5}
       stroke-dasharray="1 4"
@@ -65,35 +65,15 @@
     />
   {:else}
     {#each straightEdges as edge}
-      {#if wipAbove && edge.from_column === commit.column && commit.is_branch_tip}
-        <!-- Dotted segment: top of row down to dot (WIP connector) -->
-        <line
-          x1={cx(edge.from_column)} y1={-0.5}
-          x2={cx(edge.to_column)} y2={cy}
-          stroke={laneColor(edge.color_index)}
-          stroke-width={1.5}
-          stroke-dasharray="1 4"
-          stroke-linecap="round"
-        />
-        <!-- Solid segment: dot down to bottom of row -->
-        <line
-          x1={cx(edge.from_column)} y1={cy}
-          x2={cx(edge.to_column)} y2={rowHeight + 0.5}
-          stroke={laneColor(edge.color_index)}
-          stroke-width={2.5}
-          stroke-linecap="round"
-        />
-      {:else}
-        <line
-          x1={cx(edge.from_column)}
-          y1={commit.is_branch_tip && edge.from_column === commit.column ? cy : -0.5}
-          x2={cx(edge.to_column)}
-          y2={rowHeight + 0.5}
-          stroke={laneColor(edge.color_index)}
-          stroke-width={2.5}
-          stroke-linecap="round"
-        />
-      {/if}
+      <line
+        x1={cx(edge.from_column)}
+        y1={commit.is_branch_tip && edge.from_column === commit.column ? cy : -0.5}
+        x2={cx(edge.to_column)}
+        y2={rowHeight + 0.5}
+        stroke={laneColor(edge.color_index)}
+        stroke-width={2.5}
+        stroke-linecap="round"
+      />
     {/each}
   {/if}
 
