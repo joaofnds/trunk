@@ -8,6 +8,18 @@ Trunk is a fast, native, cross-platform desktop Git GUI built with Tauri 2 + Sve
 
 A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
 
+## Current Milestone: v0.2 Commit Graph
+
+**Goal:** GitKraken-quality commit graph with proper lane rendering — vertical rails, smooth bezier merge/fork curves, consistent lane colors, lane packing, and visual merge commit distinction.
+
+**Target features:**
+- Vertical lane rails (continuous colored lines per branch)
+- Smooth bezier curves for merge/fork connections
+- Consistent lane colors per branch
+- Lane packing (reclaim lanes when branches merge)
+- Colored commit nodes with merge commit distinction
+- Correct lane algorithm handling complex topologies
+
 ## Requirements
 
 ### Validated
@@ -26,12 +38,12 @@ A developer can open any Git repository, browse its full commit history as a vis
 
 ### Active
 
+- [ ] GitKraken-quality commit graph with lane rendering — v0.2
 - [ ] Push / Pull / Fetch with SSH/HTTPS auth
 - [ ] Hunk-level staging (stage individual hunks, not just whole files)
 - [ ] Stash create/pop
 - [ ] Resizable panels (splitters)
 - [ ] Keyboard shortcuts for common operations
-- [ ] Merge commit visual distinction (GRAPH-04 gap from v0.1)
 - [ ] Deterministic StagingPanel refresh after checkout/create-branch
 
 ### Out of Scope
@@ -80,5 +92,7 @@ A developer can open any Git repository, browse its full commit history as a vis
 | Cache repopulate before emit | Prevents CommitGraph remount from racing a cleared cache | ✓ Good — eliminated race conditions in commit/amend flows |
 | DiffPanel replaces CommitGraph (toggle not split) | User feedback found split pane confusing | ✓ Good — simpler UX |
 
+| Lanes removed, dots only for v0.1 | v0.1 lane rendering had visual bugs; simpler to ship dots and revisit with dedicated focus | ✓ Good — shipped v0.1 clean, dedicated v0.2 milestone for graph |
+
 ---
-*Last updated: 2026-03-09 after v0.1 milestone*
+*Last updated: 2026-03-09 after v0.2 milestone start*
