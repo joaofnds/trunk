@@ -60,7 +60,7 @@
       x1={cx(0)} y1={cy} x2={cx(0)} y2={rowHeight + 0.5}
       stroke={laneColor(0)}
       stroke-width={2.5}
-      stroke-dasharray="6 4"
+      stroke-dasharray="4 6"
       stroke-linecap="round"
     />
   {:else}
