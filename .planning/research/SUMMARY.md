@@ -1,229 +1,178 @@
 # Project Research Summary
 
-**Project:** Trunk — Desktop Git GUI
-**Domain:** Native desktop Git GUI client (Tauri 2 + Rust + Svelte 5)
-**Researched:** 2026-03-03
+**Project:** Trunk v0.2 -- GitKraken-quality Commit Graph
+**Domain:** DAG commit graph visualization in a desktop Git GUI (Tauri 2 + Svelte 5 + Rust)
+**Researched:** 2026-03-09
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Trunk is a native desktop Git GUI built on Tauri 2 (Rust backend + OS webview) with a Svelte 5 frontend. The architecture is already decided and documented in the PRD: a strict two-process model where the Rust backend owns all git operations via `git2` and the Svelte frontend communicates exclusively through Tauri's IPC bridge using `invoke()` and `listen()`. This is a well-understood pattern for Tauri apps, and the chosen stack (Rust 1.93.1, Bun 1.3.8, Svelte 5.53.6, Tauri 2.10.2) is verified from actual lockfiles — not assumed. The primary opportunity this project has over competitors (GitKraken, Sourcetree) is native feel and performance at scale: Tauri's OS webview delivers a significantly smaller binary and faster startup than Electron-based alternatives, and the Rust lane algorithm can handle 100k+ commits without the slowdowns competitors suffer.
+Building GitKraken-quality commit graph lane rendering requires zero new dependencies. The existing Rust backend already computes all necessary lane data (column assignments, edge types, pass-through edges, color indices) via an O(n) single-pass algorithm. The frontend gap is purely rendering: `LaneSvg.svelte` currently draws only a commit dot and ignores the rich edge data the backend provides. The work is a single component rewrite (LaneSvg.svelte) plus minor Rust/TypeScript plumbing to expose two new fields (`max_columns` and `is_branch_tip`). The rendering technique is per-row inline SVG with `overflow: visible`, using cubic Bezier `C` commands with a 0.8 control-point factor for smooth curves -- the same approach used by vscode-git-graph, the most popular open-source git graph renderer.
 
-The recommended build order is foundation-first: migrate the current SvelteKit scaffold to plain Vite+Svelte (SvelteKit adds routing and SSR machinery that is pure waste for a single-window desktop app), then establish the Rust infrastructure (error types, state management, DTO layer), then build features in dependency order: repo open → commit graph → branch sidebar → staging/working tree → commit creation → diff display. The commit graph is the "wow" moment that earns user trust and must be correct from day one — the virtual scrolling and lane algorithm must handle large repos and correct topology from the start, not as a later optimization.
+The recommended approach is a strict bottom-up build order: harden the Rust lane algorithm first (fix potential ghost lanes and lane collisions, add octopus merge test fixtures), then add the two new data fields, then rewrite LaneSvg in three incremental steps (straight rails, then curves, then dot/polish). This order ensures rendering code always consumes correct data, and each step produces a visible improvement that can be verified before moving on. The 8 table-stakes features identified in research all have existing backend support; the work is almost entirely frontend SVG rendering.
 
-The critical risks are architectural, not feature-related. The three that require attention before any feature code is written: (1) `git2::Repository` is not `Sync` — the state architecture must avoid holding a mutex across long-running operations or the UI will freeze; (2) git2 types carry repo lifetimes and cannot be stored or returned across the IPC boundary — a DTO translation layer must be established before any git2 code is written; (3) Tauri IPC errors arrive in JavaScript as strings, not Error objects — a typed invoke wrapper is needed from day one to prevent silent error swallowing. These three are rewrites if addressed late; they are trivial to prevent if addressed first.
-
----
+The primary risks are sub-pixel gaps between adjacent row SVGs (the likely cause of v0.1's lane rendering failure), inconsistent SVG widths causing jagged commit message alignment, and Bezier curve misalignment at row boundaries. All three have well-documented prevention strategies: 0.5px line overlap with `overflow: visible`, fixed graph pane width from `max_columns`, and a single logical curve split across rows rather than two independent curves. These must be addressed in the first rendering phase -- they are the difference between "looks broken" and "looks professional."
 
 ## Key Findings
 
 ### Recommended Stack
 
-The stack is entirely pinned and verified from actual lockfiles. The key technologies are production-ready and the correct choices for this domain. The one immediate action required before any other work: **migrate from SvelteKit to plain Vite+Svelte**. The scaffold currently uses SvelteKit with `adapter-static`, which adds routing, SSR, and `.svelte-kit/` generated files that are wasted overhead for a single-window desktop app. See STACK.md for the 8-step migration procedure.
+No new dependencies are needed. The rendering is pure SVG path math -- at most 5-6 path types, each a single `<path>` element with a computed `d` attribute. Libraries like d3, snap.svg, and svg.js were evaluated and rejected (30-100KB for what amounts to string concatenation). Canvas rendering was also rejected -- it breaks text selection, accessibility, CSS styling, and Svelte's declarative model.
 
-**Core technologies:**
-- **Rust 1.93.1 + Tauri 2.10.2**: Desktop shell, IPC bridge, native APIs — Tauri 2 is the current stable major with significant API changes from Tauri 1; documentation for Tauri 1 is abundant but wrong for this project
-- **git2 0.19**: libgit2 Rust bindings — covers all v0.1 local git operations (open, revwalk, index, refs, diff, commit); chosen over gitoxide (gix) for its broader API maturity
-- **Svelte 5.53.6 + Vite 6.4.1**: Frontend framework + build tool — Svelte 5 runes (`$state`, `$derived`, `$effect`, `$props`) are the required paradigm; zero Svelte 4 legacy patterns
-- **Tailwind CSS v4 + `@tailwindcss/vite`**: Styling — v4 only; v3 is incompatible with the Vite 6 pipeline
-- **notify 7 + notify-debouncer-mini 0.5**: Cross-platform filesystem watching — 300ms debounce to handle event storms from external git operations
-- **Bun 1.3.8**: Package manager and dev server runner — already pinned in mise.toml
-
-Tauri 1 vs Tauri 2 is a meaningful distinction: the `invoke` import path changed (`@tauri-apps/api/tauri` → `@tauri-apps/api/core`), plugins moved to crates.io, and permissions now use capability files in `src-tauri/capabilities/` instead of `allowlist`. The scaffold already uses the correct Tauri 2 patterns.
+**Core technologies (all existing, unchanged):**
+- **Tauri 2 + Rust + git2:** Desktop shell and git operations -- provides the lane algorithm and commit data
+- **Svelte 5:** UI framework -- `$derived` reactivity for path string computation, fine-grained updates
+- **Pure inline SVG:** Per-row `<svg>` with `overflow: visible` -- no SVG library needed, ~50 lines of path math
+- **@humanspeak/svelte-virtual-list:** Virtual scrolling -- ~40 DOM nodes regardless of history size
+- **CSS custom properties:** Lane colors via `var(--lane-N)` -- enables theme customization without component changes
 
 ### Expected Features
 
-The Git GUI market is mature with well-established expectations. Table stakes are non-negotiable — absence of any of them causes users to immediately dismiss the tool. Trunk's primary differentiator opportunity is performance at scale and native feel, which the Rust/Tauri architecture directly enables.
+**Must have (table stakes -- defines "GitKraken-quality"):**
+- T1: Vertical lane rails -- continuous colored lines per active branch
+- T2: Smooth Bezier curves for merge/fork connections
+- T3: Lane color consistency per branch (already working via `color_index`)
+- T4: Lane packing / column reclamation (already implemented in Rust, needs verification)
+- T5: Merge commit visual distinction (partially done, needs polish)
+- T6: Pass-through lanes for all active branches through every row
+- T7: HEAD-chain pinned to column 0 (already implemented in Rust)
+- T8: WIP row connected to HEAD commit via lane line
 
-**Must have (table stakes) — v0.1:**
-- Visual commit graph with lane rendering — the core reason to use a GUI over `git log`
-- Branch/tag/stash sidebar — navigation foundation
-- Working tree status with staged/unstaged split — staging workflow entry
-- Whole-file stage and unstage — minimum viable write operation
-- File diff view (workdir, staged, commit) — confidence before committing
-- Create commit with subject + body — completing the write loop
-- Commit detail view on click (metadata + diff) — history exploration
-- Checkout branch with dirty-workdir error handling — daily workflow, must not fail silently
-- Open repository with native file picker — entry point to everything
-- Auto-refresh on external changes (filesystem watch) — makes the app feel alive
+**Should have (differentiators, ship soon after MVP):**
+- D5: Dim/ghost merge commits -- CSS opacity toggle, reduces noise
+- D2: Ref label color connection to lane -- small colored indicator matching branch lane
+- D4: Graph width control -- configurable `laneWidth` via drag handle
 
-**Should have — v0.2:**
-- Hunk-level staging — power users will notice the absence; plan architecture for it from v0.1
-- Remote operations (push/pull/fetch) — requires SSH/HTTPS auth surface; defer entirely, show explicit placeholder
-- Inline diff in staging panel — differentiator; Fork does this well
-- Stash create/pop — listing is sufficient for v0.1
-
-**Defer (v2+):**
-- Conflict resolution UI (v0.3+) — high complexity, high correctness bar
-- Search/filter commits — nice-to-have, not day-one
-- Multi-repo tabs — show the tab bar for architecture visibility, but non-functional in v0.1
-- Syntax-highlighted diffs (v0.3+) — aspirational, not essential
-- Settings/preferences panel, auto-update, terminal emulator, forge integration (PR/issues) — all explicitly out of scope
-
-**Hard constraints (do not defer quietly):**
-- Dirty-workdir error on checkout: users hit this day one; silent failure destroys trust
-- Binary file handling in diffs: rendering binary data as text is a crash/hang risk
-- Large repo performance: the graph must render large repos correctly from launch; this is Trunk's stated differentiator
+**Defer to v0.3+:**
+- D1: Crossing-lane detection with visual offset (complex, edge case)
+- D3: Collapsible merge trains (significant new feature requiring UI state + lane recalculation)
+- D6: Author avatars (network dependency)
+- D7: Keyboard navigation (separate milestone)
+- D8: Animated edge transitions (polish, may conflict with virtual scrolling)
+- D9: Branch-specific color overrides (requires config store + Rust algorithm change)
 
 ### Architecture Approach
 
-The architecture follows a strict two-process model: Svelte 5 SPA (renderer, Vite-served webview) and Rust backend (main process). All communication goes through Tauri IPC: `invoke()` for user-initiated commands (request/response), `listen()` for Rust-initiated events (filesystem change notifications). The Rust backend is organized into thin command dispatchers (`commands/`) that delegate to git logic modules (`git/`), with managed state (`RepoState`) storing a path-keyed map of open repositories. The path string is the repository's canonical identifier across the IPC boundary.
+The architecture change is minimal by design. The Rust algorithm already emits all edge data (pass-through straights, forks, merges) per commit row. Two small additions are needed: a `max_columns` field for consistent SVG width across all rows, and an `is_branch_tip` boolean for correct incoming-rail rendering. The frontend change is concentrated in a single component rewrite (`LaneSvg.svelte`) that classifies edges into three render categories (passthrough, continuation, curve) and draws them in z-order (rails, curves, dot). No changes to `CommitRow`, `CommitGraph`, `CommitCache`, or the IPC layer are required beyond threading the new fields through.
 
 **Major components:**
-1. **`state.rs` — `Mutex<HashMap<String, Repository>>`**: Repository handle registry; path is the key; accessed by all command handlers
-2. **`error.rs` — `TrunkError { code, message }`**: The only error type at the IPC boundary; structured `code` field enables frontend to branch on error type without string matching
-3. **`git/graph.rs` — Lane algorithm (O(n))**:  Single-pass Revwalk with `SORT_TOPOLOGICAL | SORT_TIME`; emits `GraphCommit` with absolute lane indices, not pixel coordinates
-4. **`watcher.rs` — notify-debouncer-mini (300ms)**: Watches workdir (not `.git/` internals); emits `fs_changed` event as a nudge; frontend always re-fetches, event carries no payload
-5. **`CommitGraph.svelte` — Virtual scroll**: Only renders visible rows (~40 DOM nodes regardless of repo size); SVG lanes per row, indexed by absolute commit position not DOM slot position
-6. **`RightPanel.svelte` — Staging workflow**: File lists (staged/unstaged), stage/unstage actions, commit form; all write operations go through Rust commands
+1. **graph.rs (minor change)** -- Track `max_columns` and `is_branch_tip` during the existing walk
+2. **types.rs/types.ts (minor change)** -- New `GraphResponse` wrapper struct and `is_branch_tip` field
+3. **LaneSvg.svelte (full rewrite)** -- Edge classification, SVG path rendering (straights + Beziers + dot)
+4. **CommitGraph/CommitRow (prop threading)** -- Pass `maxColumns` down to LaneSvg
 
 ### Critical Pitfalls
 
-1. **`Repository` not `Sync` — mutex contention on long operations**: A slow revwalk over 10k commits holds the mutex while the UI tries to refresh status. Prevention: store only `PathBuf` in managed state, re-open `Repository` per operation inside `spawn_blocking` for read-heavy commands. Address in Phase 1 — wrong architecture here forces a rewrite of all command handlers.
+1. **Sub-pixel gaps between rows (#1, CRITICAL)** -- Draw lines from `y=-0.5` to `y=rowHeight+0.5` with `overflow: visible`. Use `stroke-width: 2` (even number) and `stroke-linecap: round`. Test at 100%, 110%, 125%, 150%, 200% zoom. This was likely the primary cause of v0.1's lane rendering failure.
 
-2. **git2 lifetime traps — cannot store or return `Commit<'repo>` types**: git2 types carry repo lifetimes; they cannot be stored in structs or returned across threads. Prevention: define owned DTO structs (e.g., `GraphCommit { oid: String, summary: String, ... }`) that implement `serde::Serialize` before writing any git2 code. Establish a `git_to_dto()` translation layer in Phase 1.
+2. **Inconsistent SVG width / jagged message alignment (#6, CRITICAL)** -- Use `max_columns * laneWidth` for ALL rows' SVG width instead of per-commit column width. The Rust algorithm returns this as page-level metadata. Consider setting width via CSS custom property `--graph-width` to avoid 40-component re-render storms (#8).
 
-3. **Virtual scroll coordinate desync — DOM slot index vs absolute commit index**: If SVG lane rendering is indexed by DOM slot position instead of absolute commit index, lanes are correct at the top of the list and broken everywhere else. Prevention: Rust lane algorithm emits absolute commit indices; Svelte virtual scroll passes absolute index (not DOM position) to each `GraphRow.svelte`.
+3. **Bezier curve misalignment at row boundaries (#2, CRITICAL)** -- Define each fork/merge curve as a single logical Bezier spanning the full row height. Source row draws from commit dot (y=MID) to row bottom (y=rowHeight). Destination row continues with a straight rail from its top. Do NOT attempt to split one curve across two independent SVGs with independent control points.
 
-4. **`notify` watcher firing on own writes — event loop**: Every staging/commit operation writes to `.git/index` or `.git/refs/`, which triggers the watcher, which triggers a status refresh. Prevention: watch working tree directories but filter `.git/` internals; 300ms debounce (already decided); suppress watcher events for 500ms after backend-initiated writes.
+4. **Ghost lanes after merge (#4, CRITICAL)** -- Verify the Rust algorithm properly clears `active_lanes` slots after merges. Add dedicated test: after a merge, the merged branch's column must have NO `Straight` edge in subsequent rows. Check `pending_parents` interaction at line 145 of graph.rs for potential lane collision (#9).
 
-5. **Tauri IPC errors arrive as strings, not Error objects**: `await invoke()` rejects with a raw string; `catch(e) { e.message }` returns `undefined`. Prevention: create a typed `safeInvoke<T>()` wrapper that parses the error string into a `{ code, message }` object. Do this before wiring any commands.
-
----
+5. **Pass-through edges not rendered (#10, CRITICAL)** -- The renderer must draw EVERY `Straight` edge from the Rust algorithm, including those where `from_column == to_column` and `from_column != commit.column`. These are active branch rails passing through the row. Missing these was likely a contributing factor to v0.1's visual bugs.
 
 ## Implications for Roadmap
 
-Based on combined research, the natural phase structure follows strict dependency order. Each phase has a clear output that enables the next. The commit graph is prioritized above staging because it is the app's primary value proposition and the feature that earns user trust. Staging and commit creation follow naturally once the repo is open and visible.
+Based on research, suggested phase structure:
 
-### Phase 1: Foundation
+### Phase 1: Lane Algorithm Hardening
 
-**Rationale:** Every subsequent module depends on these primitives. Getting them wrong forces a rewrite. This phase has no UI features — it is infrastructure only.
-**Delivers:** Working Vite+Svelte scaffold with Tailwind; Rust module structure with correct types, error handling, and state architecture; all dependencies installed.
-**Addresses:** Prerequisite for all features.
-**Avoids:**
-- Pitfall 1 (`Repository` not `Sync`): establish correct state architecture (path-only state + re-open per operation)
-- Pitfall 2 (git2 lifetimes): define all DTO structs and the `git_to_dto()` pattern before any git2 code
-- Pitfall 6 (`TrunkError` not Serialize): define `AppError` with `From<git2::Error>` before the first command
-- Pitfall 8 (invoke error swallowing): create typed `safeInvoke` wrapper before any command is wired
+**Rationale:** All frontend rendering depends on correct data from Rust. Fixing algorithm bugs after rendering code exists means debugging two layers simultaneously. This was likely a pain point in v0.1.
+**Delivers:** Verified, tested lane algorithm with no ghost lanes, no lane collisions, correct octopus merge handling, and two new data fields (`max_columns`, `is_branch_tip`).
+**Addresses:** T4 (lane packing verification), T7 (HEAD pinning verification), foundation for all rendering.
+**Avoids:** Pitfalls #4 (ghost lanes), #5 (octopus explosion), #9 (lane collision).
+**Scope:** Add `GraphResponse` struct, `is_branch_tip` field, `max_columns` tracking. Add test fixtures for octopus merges, nested merges, long-running branches. Add collision detection assertions. Update `CommitCache` and IPC types.
 
-**Key tasks:**
-- Migrate SvelteKit → plain Vite+Svelte (8-step procedure in STACK.md)
-- Add git2, notify, notify-debouncer-mini, tauri-plugin-dialog to Cargo.toml
-- Scaffold `error.rs`, `state.rs`, `git/types.rs` (all serializable DTOs)
-- Add Tailwind CSS v4 with `@tailwindcss/vite`
-- Configure Tauri 2 capability file with `dialog:allow-open`
+### Phase 2: SVG Rendering Foundation (Straight Rails)
 
-### Phase 2: Repository Open + Commit Graph
+**Rationale:** Straight vertical rails are the single biggest visual leap from "dots only" to "real graph." They exercise 80%+ of the rendering pipeline (SVG width, pass-through edges, z-ordering, row continuity) without the complexity of Bezier curves. This phase proves the per-row SVG approach works and catches the sub-pixel gap issue early.
+**Delivers:** Continuous vertical lane rails through the entire graph, consistent SVG width, properly z-ordered commit dots. The graph immediately looks like a real git graph.
+**Addresses:** T1 (vertical rails), T6 (pass-through lanes), T3 (color consistency visual verification), T5 (merge dot polish).
+**Avoids:** Pitfalls #1 (sub-pixel gaps), #6 (SVG width inconsistency), #10 (missing pass-through edges), #13 (dot z-order).
 
-**Rationale:** The commit graph is the core value proposition and the "wow" moment. Everything else is built around it. Repo open is the required entry point — nothing works without it.
-**Delivers:** A working app that opens a repository and renders a scrollable commit graph with correct visual lanes.
-**Features:** Open repository (native file picker), visual commit graph (table stakes), auto-display of branches in lane colors.
-**Uses:** `git2` Revwalk with `SORT_TOPOLOGICAL | SORT_TIME` (Pitfall 9), virtual scroll (constant DOM nodes), SVG per row.
-**Avoids:**
-- Pitfall 3 (virtual scroll desync): define `ROW_HEIGHT` as single constant; test at >100% zoom
-- Pitfall 4 (SVG lane coordinate mismatch): Rust emits lane indices, not pixels; frontend does pixel math
-- Pitfall 17 (SVG viewBox mismatch): `LANE_WIDTH` defined once in CSS custom properties, referenced in all SVG math
-- Pitfall 18 (HEAD edge cases): handle empty repo, detached HEAD from the start
+### Phase 3: Bezier Curve Rendering
 
-### Phase 3: Branch Sidebar + Checkout
+**Rationale:** Curves are the hardest per-row SVG rendering problem and should be isolated into their own phase so failures are easy to diagnose. With straight rails already working, adding curves is additive -- if curves break, you can revert without losing the rail progress.
+**Delivers:** Smooth cubic Bezier fork/merge edges. The graph goes from "functional" to "GitKraken-quality."
+**Addresses:** T2 (smooth curves).
+**Avoids:** Pitfalls #2 (curve row-boundary misalignment), #11 (jagged curves at low stroke width).
 
-**Rationale:** Branch navigation is the entry point to daily workflows. Users need to see where HEAD is and switch branches before staging makes sense.
-**Delivers:** Sidebar listing local branches, remote branches, tags, and stashes with active branch highlighted. Checkout with dirty-workdir error handling.
-**Features:** Branch list in sidebar (table stakes), checkout branch (table stakes), dirty-workdir error banner (must not be deferred).
-**Implements:** `commands/branches.rs`, `Sidebar.svelte`.
-**Avoids:**
-- Dirty-workdir silent failure: `checkout_branch` must return `TrunkError { code: "dirty_workdir" }` and the frontend must surface a visible banner — not silently succeed or show a generic error
+### Phase 4: WIP Row and Polish
 
-### Phase 4: Working Tree + Staging + Filesystem Watch
+**Rationale:** With all commit rows rendering correctly, the WIP row integration and visual polish are incremental additions that bring the graph to release quality.
+**Delivers:** WIP row connected to HEAD via dashed lane line, tuned lane width (12px to 16px), color palette accessibility fix for `--lane-7`, dimmed merge commits toggle.
+**Addresses:** T8 (WIP row connection), D5 (dim merge commits), lane color accessibility (#12).
+**Avoids:** Pitfall #16 (WIP not in lane graph), #12 (color palette contrast).
 
-**Rationale:** Staging depends on having a repo open (Phase 2). The filesystem watcher depends on the repo path from `open_repo`. These belong together because the watcher is the mechanism that makes the staging panel feel live.
-**Delivers:** Real-time working tree status panel showing staged/unstaged files; whole-file stage and unstage; auto-refresh when external tools (terminal, IDE) modify files.
-**Features:** Working tree status (table stakes), whole-file stage/unstage (table stakes), auto-refresh on external changes (table stakes).
-**Avoids:**
-- Pitfall 5 (notify fires on own writes): filter `.git/` internals from watch scope; debounce 300ms; suppress post-command events
-- Pitfall 10 (Windows path separators): normalize to forward slashes in JS path comparisons
-- Pitfall 12 (macOS sandbox kills FSEvents): test production `.app` build, not just `tauri dev`
-- Pitfall 15 (index write-back missing): always call `index.write()` after any index modification
+### Phase 5: Differentiator Features (optional for v0.2)
 
-### Phase 5: Commit Creation
-
-**Rationale:** Create commit is the final step in the core write loop. It depends on a working staging area (Phase 4). The commit must trigger a graph refresh to close the feedback loop.
-**Delivers:** Commit form in the right panel with subject + body fields; created commit immediately appears in the graph.
-**Features:** Create commit with message (table stakes).
-**Avoids:**
-- Pitfall 13 (wrong author identity): always use `repo.signature()`, never hardcoded values; fall back to UI prompt only if `repo.signature()` returns an error
-
-### Phase 6: Diff Display
-
-**Rationale:** Diffs are display-only with no new state. They can be added last without blocking any other feature. They complete the inspection workflow: click a commit in the graph → see what changed; click a file in the staging panel → see the diff before staging.
-**Delivers:** Unified diff view for workdir files, staged files, and historical commits. Click commit → diff; click file in panel → diff.
-**Features:** File diff view (table stakes), commit detail view (table stakes).
-**Avoids:**
-- Pitfall 11 (large diff blocks IPC): hard-limit diff to 5000 lines / 500KB; return `{ lines, truncated: bool }`; surface "diff too large" prompt to user
+**Rationale:** These are polish features that elevate the graph from "functional" to "delightful." They are independent of each other and can ship in any order after the core rendering is solid.
+**Delivers:** Ref label color connection, graph width control, re-render optimization via CSS variable.
+**Addresses:** D2 (ref label connection), D4 (graph width control).
+**Avoids:** Pitfall #8 (re-render storms from reactive width recalculation).
 
 ### Phase Ordering Rationale
 
-- **Foundation before everything**: DTO types, error types, and state architecture are referenced by every subsequent module. Wrong choices here propagate into every command and require a full rewrite.
-- **Graph before staging**: The graph is the primary value proposition; it earns trust that makes users willing to try the staging workflow. Also, graph requires only read operations which simplifies the initial mutex/concurrency design.
-- **Sidebar before staging**: Users need to see the branch structure before staging makes sense contextually. Checkout error handling must be correct before users encounter it.
-- **Staging before commit**: The commit form is meaningless without a staging area.
-- **Diffs last**: Display-only, no new state, no new dependencies. Completes the workflow without blocking any earlier feature.
+- **Data before rendering:** Phases 1-2 ensure the Rust algorithm is battle-tested before the frontend consumes its output. This avoids the v0.1 failure mode of debugging algorithm bugs through rendering symptoms.
+- **Rails before curves:** Phase 2 (straight lines) exercises the entire rendering pipeline with minimal geometry complexity. Phase 3 (curves) adds only the Bezier path computation without changing any other rendering infrastructure.
+- **Core before polish:** Phases 1-3 deliver a fully functional graph. Phases 4-5 are refinement that can be cut from v0.2 scope if time is tight.
+- **Pitfall-driven ordering:** Each phase explicitly addresses the pitfalls relevant to its scope, preventing the accumulation of visual bugs that killed v0.1.
 
 ### Research Flags
 
-Phases with areas needing deeper research during planning:
-- **Phase 2 (Graph):** The virtual scroll + SVG lane rendering is the most technically complex UI component. The lane algorithm implementation in Rust should be specified in detail before coding begins. Consider a short research-phase spike for the specific SVG coordinate math and scroll handler implementation.
-- **Phase 4 (Watcher):** macOS sandbox behavior for FSEvents in production Tauri builds may need verification against current Tauri 2 macOS entitlements documentation. PITFALLS.md rates this MEDIUM confidence.
+Phases likely needing deeper research during planning:
+- **Phase 1:** May need phase research for the `pending_parents` / `active_lanes` interaction that causes lane collisions (Pitfall #9). The current code analysis identified the risk but the fix needs careful validation against the actual algorithm logic.
+- **Phase 3:** May need phase research for the Bezier control point factor. Research found 0.8 (vscode-git-graph) and 0.4 (DoltHub interpretation) -- these may describe the same thing differently (0.8 of half-row-height = 0.4 of full-row-height). Empirical tuning will be needed.
 
-Phases with well-established patterns (skip research-phase):
-- **Phase 1 (Foundation):** SvelteKit migration steps are explicit in STACK.md; Tauri 2 capability file format is documented; DTO/error patterns are fully specified in ARCHITECTURE.md.
-- **Phase 5 (Commit):** `repo.signature()` is a single well-documented git2 API call; commit creation pattern is straightforward.
-- **Phase 6 (Diff):** diff commands map directly to git2 `Diff` API; the IPC truncation pattern is specified.
-
----
+Phases with standard patterns (skip research-phase):
+- **Phase 2:** Straight SVG line rendering is fully specified. The formulas, z-ordering, and sub-pixel gap fix are all documented with high confidence.
+- **Phase 4:** WIP row integration and CSS polish are straightforward implementation tasks.
+- **Phase 5:** Ref label coloring and graph width control are CSS/prop changes with no algorithmic complexity.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Versions verified directly from Cargo.lock, bun.lock, package.json, and mise.toml — not assumed from docs |
-| Features | MEDIUM | Table stakes categorization is stable and well-established; competitive differentiator rankings based on training data (mid-2025); web research tools unavailable during research session |
-| Architecture | HIGH | PRD.md is the authoritative source; all decisions already made by project author; Tauri 2 / Svelte 5 / git2 patterns verified against installed versions |
-| Pitfalls | HIGH (most) / MEDIUM (some) | Core Rust/git2/Tauri pitfalls are HIGH confidence from documented API behavior; Svelte 5 runes reactivity edge cases and macOS sandbox behavior are MEDIUM — verify during implementation |
+| Stack | HIGH | Zero new dependencies. SVG path commands are a web standard. Bezier formula verified from vscode-git-graph source code. |
+| Features | MEDIUM-HIGH | Table stakes cross-referenced across GitKraken, Fork, Sourcetree, vscode-git-graph. Feature prioritization is clear. Minor uncertainty on optimal lane width (12px vs 16px). |
+| Architecture | HIGH | Existing codebase deeply analyzed. Change surface is small (one component rewrite + minor Rust plumbing). Data flow verified against Git Extensions and react-commits-graph architectures. |
+| Pitfalls | HIGH | 16 pitfalls identified with specific codebase line references. v0.1 failure modes reconstructed from code analysis. Prevention strategies verified against browser documentation and working implementations. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Competitor feature parity**: FEATURES.md notes that web research was unavailable. The table-stakes list is stable, but competitive differentiators should be spot-checked against current competitor feature pages before the roadmap is finalized. Particularly: has any competitor shipped hunk-level staging improvements or performance fixes since mid-2025?
-- **macOS sandbox + FSEvents in production**: The interaction between Tauri 2's macOS app bundle, FSEvents entitlements, and the `notify` crate should be validated by building and testing a production `.app` bundle early (during or immediately after Phase 4), not just relying on `tauri dev` behavior.
-- **git2 `Repository` thread safety in practice**: PITFALLS.md recommends re-opening `Repository` per operation for read-heavy commands rather than sharing a single handle. The exact pattern to use with Tauri 2's async command handlers should be validated against current Tauri 2 state management docs before Phase 1 state architecture is finalized.
-- **Svelte 5 runes reactivity edge cases**: Pitfalls 7 and 14 are rated MEDIUM confidence. The `$props()` destructuring reactivity behavior and object mutation tracking should be verified against current Svelte 5 documentation, as Svelte 5 was relatively new at the training data cutoff.
-
----
+- **Bezier control point factor ambiguity:** Research found 0.8 (vscode-git-graph's `grid.y * 0.8`) and 0.4 (architecture doc's `rowHeight * 0.4`). These likely describe the same curve from different reference frames. Resolve empirically during Phase 3.
+- **Lane width (12px vs 16px):** STACK.md uses 12px throughout; ARCHITECTURE.md recommends 16px. Start with 16px per architecture recommendation, adjust during Phase 2 based on visual appearance with real repo data.
+- **WIP row synthetic node approach:** Either a synthetic WIP node in Rust or a frontend column calculation. The Rust approach is cleaner but touches more code. Decide during Phase 4 planning.
+- **Lane collision fix specifics (Pitfall #9):** The secondary parent column assignment at graph.rs line 145 may collide with `pending_parents` reservations. Needs careful code analysis during Phase 1 to determine if the bug exists in practice or is only theoretical.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `/Users/joaofnds/code/trunk/src-tauri/Cargo.lock` — exact locked versions of tauri, serde, tokio, git2
-- `/Users/joaofnds/code/trunk/node_modules/*/package.json` — exact installed versions of svelte, vite, @tauri-apps/api
-- `/Users/joaofnds/code/trunk/package.json` — declared dependency ranges
-- `/Users/joaofnds/code/trunk/src-tauri/Cargo.toml` — declared Rust dependency ranges
-- `/Users/joaofnds/code/trunk/PRD.md` — authoritative architecture decisions from project author
-- `/Users/joaofnds/code/trunk/mise.toml` — pinned Rust 1.93.1 and Bun 1.3.8
+- [vscode-git-graph source (graph.ts)](https://github.com/mhutchie/vscode-git-graph/blob/develop/web/graph.ts) -- Bezier formula (0.8 factor), rendering architecture
+- [SVG Paths MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths) -- Cubic Bezier `C` command specification
+- [SVG overflow MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/overflow) -- `overflow: visible` behavior
+- [SVG shape-rendering MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/shape-rendering) -- `crispEdges` behavior
+- [Mastering SVG Seams (junkangworld)](https://junkangworld.com/blog/mastering-svg-seams-5-pro-fixes-for-flawless-shapes-2025) -- Anti-aliasing gap prevention
+- [Fix for gap between inline SVG elements](https://codepen.io/elliz/pen/dOOrxO) -- `display: block` fix
+- Trunk codebase: `graph.rs`, `types.rs`, `LaneSvg.svelte`, `CommitRow.svelte`, `CommitGraph.svelte`, `state.rs`, `history.rs`
 
 ### Secondary (MEDIUM confidence)
-- Training-data knowledge of Tauri 2 IPC, managed state, capability system (cutoff August 2025) — verify against https://v2.tauri.app
-- Training-data knowledge of Svelte 5 runes reactivity model — verify against https://svelte.dev/docs/svelte/what-are-runes
-- Training-data knowledge of GitKraken, Fork, Sourcetree, Tower, GitHub Desktop, Sublime Merge feature sets (mid-2025) — spot-check against current competitor feature pages
-- Training-data knowledge of macOS FSEvents sandbox behavior in Tauri 2 production builds
+- [DoltHub: Drawing a Commit Graph](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/) -- Bezier control point interpolation, column assignment
+- [pvigier: Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) -- Algorithm comparison, performance benchmarks
+- [Git Extensions Revision Graph wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph) -- Per-row segment rendering architecture
+- [GitKraken Commit Graph features page](https://www.gitkraken.com/features/commit-graph) -- Visual reference for target quality
+- [vscode-git-graph issues #194, #254](https://github.com/mhutchie/vscode-git-graph/issues/194) -- Color/position mapping, maintainer explanations
+- [SmartGit branch-line coloring discussion](https://smartgit.userecho.com/communities/1/topics/6-log-make-branch-line-coloring-easier-to-understand-sg-11160) -- Color assignment strategies
 
-### Tertiary (verify during implementation)
-- Tailwind CSS v4 `@tailwindcss/vite` integration — verify against https://tailwindcss.com/docs/installation/vite
-- git2 crate API — verify against https://docs.rs/git2/latest/git2/
-- notify crate v7 API — verify against https://docs.rs/notify/latest/notify/
+### Tertiary (LOW confidence)
+- [Hacker News: graph algorithms discussion](https://news.ycombinator.com/item?id=21079643) -- Anecdotal tool comparisons
+- [gitgraph.js paginated rendering issue #215](https://github.com/nicoespeon/gitgraph.js/issues/215) -- Bitbucket's block rendering approach
+- [Codebase HQ: Building Commit Graphs](https://www.codebasehq.com/blog/building-commit-graphs) -- Row-based rendering with yStep spacing
 
 ---
-
-*Research completed: 2026-03-03*
+*Research completed: 2026-03-09*
 *Ready for roadmap: yes*

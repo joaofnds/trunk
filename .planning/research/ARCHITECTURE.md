@@ -1,525 +1,462 @@
 # Architecture Patterns
 
-**Domain:** Tauri 2 + Rust desktop Git GUI
-**Researched:** 2026-03-03
-**Confidence:** HIGH — PRD is the authoritative source; decisions are already made and documented
+**Domain:** Commit graph lane rendering for Tauri 2 + Svelte 5 + Rust desktop Git GUI
+**Researched:** 2026-03-09
+**Focus:** Integrating GitKraken-quality lane rendering into the existing per-row inline SVG architecture
+**Confidence:** HIGH -- existing codebase is well-understood, patterns verified against multiple open-source implementations
+
+---
+
+## Existing Architecture (Current State)
+
+The current system already has the right bones. The Rust algorithm (`graph.rs`) performs a single-pass O(n) walk over all commits, assigning each commit to a column and emitting a `Vec<GraphEdge>` per commit. The frontend receives paginated slices of `Vec<GraphCommit>` and renders each row as an independent inline `<svg>` inside a virtual scroll list.
+
+**What works and stays unchanged:**
+- Rust-side lane algorithm runs over ALL commits for lane continuity, paginated slices served from `CommitCache`
+- Virtual scrolling with `@humanspeak/svelte-virtual-list` (~40 DOM nodes regardless of history size)
+- Per-row inline SVG approach (not Canvas, not one giant SVG)
+- 8-color CSS custom property palette (`--lane-0` through `--lane-7`)
+- `CommitRow.svelte` layout: RefPills (120px) | LaneSvg | Message
+
+**What the current LaneSvg renders:** Only a commit dot (circle). No lane lines, no edges, no curves. This was a deliberate v0.1 decision -- lanes were removed due to visual bugs, with the plan to revisit in v0.2.
+
+**What the Rust algorithm already provides but the frontend ignores:**
+- `edges: Vec<GraphEdge>` per commit, including pass-through `Straight` edges for active lanes crossing each row
+- `from_column`, `to_column`, `edge_type`, `color_index` per edge
+- All five edge types: `Straight`, `ForkLeft`, `ForkRight`, `MergeLeft`, `MergeRight`
 
 ---
 
 ## Recommended Architecture
 
-The architecture follows a strict two-process model: a Svelte 5 SPA (renderer process, Vite-served) and a Rust backend (main process, Tauri 2). They communicate exclusively through Tauri's IPC bridge.
+### Design Principle: Minimal Data Changes, Maximum Visual Impact
+
+The existing Rust algorithm already emits nearly everything needed. The key insight is that `walk_commits()` already generates pass-through `Straight` edges for every active lane crossing each row (lines 80-91 of graph.rs). This means the frontend has the data to draw continuous lane rails -- it just needs to render them.
+
+The primary changes are:
+1. **One new field from Rust:** `max_columns` (the widest the graph gets across all commits) -- needed for consistent SVG width
+2. **LaneSvg.svelte rewrite:** From "dot only" to "full lane rendering with edges and dot"
+3. **No changes to CommitRow, CommitGraph, CommitCache, or the IPC layer**
+
+### Architecture Diagram
 
 ```
-+------------------------------------------+
-|  Svelte 5 SPA (Renderer / WebView)       |
-|  App.svelte > MainLayout > Panels        |
-|  State: $state / $derived runes          |
-|  Comms: invoke() + listen()              |
-+-------------------+----------------------+
-                    |  Tauri IPC Bridge
-                    |  invoke("command")  ->  Result<T, TrunkError>
-                    |  emit("fs_changed") <-  Rust watcher
-+-------------------+----------------------+
-|  Rust Backend (Main Process)             |
-|                                          |
-|  lib.rs      -- app builder              |
-|  state.rs    -- Mutex<RepoMap>           |
-|  error.rs    -- TrunkError type          |
-|  watcher.rs  -- notify debouncer         |
-|  commands/   -- #[tauri::command] fns    |
-|  git/        -- git2 operations          |
-+------------------------------------------+
+Rust (graph.rs) -- MINOR CHANGE
+  walk_commits() already emits:
+    - commit.column (which lane this commit sits in)
+    - commit.edges[] with pass-through Straight edges for ALL active lanes
+    - ForkLeft/Right and MergeLeft/Right edges with from/to columns
+  NEW: return max_columns alongside Vec<GraphCommit>
+
+CommitCache (state.rs) -- MINOR CHANGE
+  Store (Vec<GraphCommit>, usize) instead of Vec<GraphCommit>
+  The usize is max_columns
+
+get_commit_graph (history.rs) -- MINOR CHANGE
+  Return { commits: Vec<GraphCommit>, max_columns: usize }
+
+CommitGraph.svelte -- MINOR CHANGE
+  Pass maxColumns to each CommitRow
+
+CommitRow.svelte -- MINOR CHANGE
+  Pass maxColumns to LaneSvg
+
+LaneSvg.svelte -- FULL REWRITE
+  Renders: pass-through rails + fork/merge curves + commit dot
+  Uses maxColumns for consistent SVG width across all rows
 ```
 
 ---
 
 ## Component Boundaries
 
-### Frontend Components
+### Modified Components
 
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `App.svelte` | Root; holds selected repo path, selected commit OID | All top-level panels |
-| `TopBar.svelte` | Repo tabs (non-functional v0.1), action buttons | App (via props/callbacks) |
-| `MainLayout.svelte` | CSS Grid container: sidebar + center + right | Contains the three panels |
-| `Sidebar.svelte` | Branch/tag/stash list, search filter (frontend-only) | App state (selected branch) |
-| `CommitGraph.svelte` | Virtual scroll container over `GraphRow` children | Rust: `get_commits` |
-| `GraphRow.svelte` | One row: inline SVG lanes + commit info columns | Parent virtual list |
-| `DiffView.svelte` | Unified diff display (replaces graph on selection) | Rust: `get_commit_diff`, `get_diff_workdir`, `get_diff_staged` |
-| `RightPanel.svelte` | Unstaged + staged file lists, commit form | Rust: `get_status`, `stage_files`, `unstage_files`, `create_commit` |
+| Component | Change Type | What Changes | Why |
+|-----------|-------------|-------------|-----|
+| `graph.rs` | Minor | Track and return `max_columns` | Consistent SVG width across all rows |
+| `types.rs` | Minor | Add `GraphResponse` struct wrapping `Vec<GraphCommit>` + `max_columns: usize` | IPC needs the new field |
+| `types.ts` | Minor | Add `GraphResponse` interface | Mirror Rust type |
+| `history.rs` | Minor | Return `GraphResponse` instead of `Vec<GraphCommit>` | Carry `max_columns` to frontend |
+| `state.rs` | Minor | `CommitCache` stores `(Vec<GraphCommit>, usize)` | Cache includes max_columns |
+| `CommitGraph.svelte` | Minor | Extract `maxColumns` from response, pass as prop | Thread data to LaneSvg |
+| `CommitRow.svelte` | Minor | Accept and forward `maxColumns` prop | Thread data to LaneSvg |
+| `LaneSvg.svelte` | **Full rewrite** | Render lane rails, bezier curves, commit dot | The core visual change |
 
-### Rust Backend Modules
+### New Types
 
-| Module | Responsibility | Communicates With |
-|--------|---------------|-------------------|
-| `lib.rs` | Tauri app builder; registers all commands; manages plugin lifecycle | All command modules |
-| `state.rs` | `RepoState = Mutex<HashMap<String, Repository>>`; provides `get_repo(path)` helper | `commands/*`, `watcher.rs` |
-| `error.rs` | `TrunkError { code: String, message: String }`; impl `serde::Serialize` + `From<git2::Error>` | All modules |
-| `watcher.rs` | `notify-debouncer-mini` (300ms); watches workdir minus `.git/` (except HEAD, refs/, index); emits `fs_changed` | `state.rs` (reads repo path), Tauri `AppHandle` |
-| `commands/repo.rs` | `open_repo`, `close_repo` | `git/repository.rs`, `state.rs`, `watcher.rs` |
-| `commands/history.rs` | `get_commits`, `get_commit` | `git/graph.rs`, `git/repository.rs` |
-| `commands/branches.rs` | `get_refs`, `checkout_branch`, `create_branch` | `git/repository.rs` |
-| `commands/staging.rs` | `get_status`, `stage_files`, `unstage_files`, `stage_all`, `unstage_all` | `git/repository.rs` |
-| `commands/commit.rs` | `create_commit` | `git/repository.rs` |
-| `commands/diff.rs` | `get_diff_workdir`, `get_diff_staged`, `get_commit_diff` | `git/repository.rs` |
-| `git/repository.rs` | Raw git2 operations; opens `Repository`, runs index ops, creates commits | `git2` crate |
-| `git/graph.rs` | Lane algorithm: single-pass O(n) over topologically-sorted commits; computes `column`, `edges`, `is_merge` | `git/types.rs` |
-| `git/types.rs` | All serializable data types: `GraphCommit`, `GraphEdge`, `RefLabel`, `FileDiff`, etc. | All git/* and commands/* |
+```rust
+// types.rs -- add this struct
+#[derive(Debug, Serialize, Clone)]
+pub struct GraphResponse {
+    pub commits: Vec<GraphCommit>,
+    pub max_columns: usize,
+}
+```
+
+```typescript
+// types.ts -- add this interface
+export interface GraphResponse {
+  commits: GraphCommit[];
+  max_columns: number;
+}
+```
 
 ---
 
 ## Data Flow
 
-### User-Initiated Operations (invoke path)
+### What the Rust Algorithm Already Provides Per Row
+
+For a commit at column 2 in a graph with 4 active lanes, the existing `edges` array looks like:
 
 ```
-User action in Svelte
-  -> await invoke("command_name", { path, ...args })
-  -> Rust: acquire Mutex<RepoMap>, call git2
-  -> Return Result<T, TrunkError> as JSON
-  -> Svelte: unwrap, update $state
-  -> Component re-renders via Svelte 5 reactivity
+Row for commit C (column=2, is_merge=true):
+  edges: [
+    { from: 0, to: 0, type: Straight, color: 0 },   // Lane 0 passes through
+    { from: 1, to: 1, type: Straight, color: 1 },   // Lane 1 passes through
+    { from: 2, to: 2, type: Straight, color: 2 },   // First-parent continuation
+    { from: 2, to: 3, type: MergeRight, color: 3 }, // Merge edge to lane 3
+    { from: 3, to: 3, type: Straight, color: 3 },   // Lane 3 passes through
+  ]
 ```
 
-**Key principle:** Commands are synchronous from the frontend's perspective (invoke is async/await). No polling. The frontend always holds the authoritative view of what Rust last returned.
+This is already sufficient to render:
+- Vertical lines at columns 0, 1, 3 (pass-through rails)
+- A vertical line at column 2 (first-parent continuation downward)
+- A bezier curve from column 2 to column 3 (merge connection)
+- A commit dot at column 2
 
-### Filesystem Watch (event path)
+### What max_columns Adds
 
-```
-External tool modifies files on disk
-  -> notify-debouncer-mini fires after 300ms quiet window
-  -> Rust watcher emits Tauri event "fs_changed" to all windows
-  -> Svelte: listen("fs_changed", handler)
-  -> handler calls invoke("get_status", { path })
-  -> $state.status updated -> RightPanel re-renders
-```
+Without `max_columns`, each row's SVG width is `(commit.column + 1) * laneWidth`, which causes the graph column to have inconsistent width across rows. A commit on column 0 gets a 12px-wide SVG while one on column 5 gets 72px. This makes the message column jump horizontally as you scroll.
 
-**Key principle:** `fs_changed` is a nudge, not a payload. Frontend always re-fetches; no state is embedded in events.
+With `max_columns`, every row renders `max_columns * laneWidth` wide, keeping the message column aligned. The Rust algorithm already knows this value (it is `active_lanes.len()` at its maximum during the walk).
 
-### Repo Identity (path as handle)
-
-Every Tauri command takes `path: String` as its first argument. This is the repository's canonical identifier used to look up the `Repository` object in managed state. The frontend stores `selectedRepoPath` in `$state` at `App.svelte` and threads it into every invoke call.
+### Data Flow Sequence
 
 ```
-App.svelte
-  $state selectedRepoPath: string | null
-
-  -> passed as prop to CommitGraph, Sidebar, RightPanel, DiffView
-  -> each panel's invoke calls prefix: { path: selectedRepoPath, ... }
+1. open_repo() -> walk_commits() returns (Vec<GraphCommit>, max_columns)
+2. CommitCache stores (Vec<GraphCommit>, max_columns)
+3. get_commit_graph returns { commits: [...], max_columns: N }
+4. CommitGraph.svelte stores maxColumns in $state
+5. Each CommitRow receives maxColumns as prop
+6. LaneSvg receives commit + maxColumns, renders full lane graphic
 ```
 
 ---
 
-## Tauri 2 Command Patterns
+## LaneSvg Rendering Architecture (The Core Change)
 
-### Command Signature Pattern
+### SVG Structure Per Row
 
-```rust
-// src-tauri/src/commands/history.rs
+Each row's SVG has three visual layers, rendered in order (back to front):
 
-#[tauri::command]
-pub async fn get_commits(
-    state: tauri::State<'_, RepoState>,
-    path: String,
-    offset: usize,
-    limit: usize,
-) -> Result<Vec<GraphCommit>, TrunkError> {
-    let state = state.lock().map_err(|_| TrunkError::lock_error())?;
-    let repo = state.get(&path).ok_or_else(|| TrunkError::not_open(&path))?;
-    git::graph::get_commits(repo, offset, limit)
-}
+```
+<svg width={maxColumns * laneWidth} height={rowHeight}>
+  <!-- Layer 1: Pass-through vertical rails (background) -->
+  <!-- Layer 2: Fork/merge bezier curves -->
+  <!-- Layer 3: Commit dot (foreground) -->
+</svg>
 ```
 
-Rules:
-- All commands are `pub async fn` (Tauri 2 requires async for most IPC)
-- First arg after `state` is always `path: String`
-- Return type is always `Result<T, TrunkError>` — never panic, never unwrap
-- State is `tauri::State<'_, RepoState>` — Tauri injects this automatically
-- Commands never hold the Mutex lock while doing I/O — extract what's needed, release lock
+### Recommended Dimensions
 
-### Command Registration
+| Parameter | Current | Recommended | Rationale |
+|-----------|---------|-------------|-----------|
+| `laneWidth` | 12px | 16px | 12px is too tight for curves; 16px matches GitKraken density |
+| `rowHeight` | 26px | 26px (unchanged) | Works well, no reason to change |
+| Dot radius (normal) | 4px | 4px (unchanged) | Proportional to 16px lanes |
+| Dot radius (merge) | 6px | 5px | 6px was oversized; 5px with ring stroke looks better at 16px |
+| Line stroke width | n/a | 2px | Standard across all git GUIs |
+| Curve stroke width | n/a | 2px | Same as rails for visual consistency |
 
-```rust
-// src-tauri/src/lib.rs
+### SVG Rendering by Edge Type
 
-pub fn run() {
-    tauri::Builder::default()
-        .manage(RepoState::default())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            commands::repo::open_repo,
-            commands::repo::close_repo,
-            commands::history::get_commits,
-            commands::history::get_commit,
-            commands::branches::get_refs,
-            commands::branches::checkout_branch,
-            commands::branches::create_branch,
-            commands::staging::get_status,
-            commands::staging::stage_files,
-            commands::staging::unstage_files,
-            commands::staging::stage_all,
-            commands::staging::unstage_all,
-            commands::commit::create_commit,
-            commands::diff::get_diff_workdir,
-            commands::diff::get_diff_staged,
-            commands::diff::get_commit_diff,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
+**Pass-through rails (Straight edges where from_column === to_column and from_column !== commit.column):**
+
+These are vertical lines spanning the full row height. They create the continuous "railroad track" effect.
+
+```svg
+<line
+  x1={col * 16 + 8} y1={0}
+  x2={col * 16 + 8} y2={26}
+  stroke="var(--lane-{colorIndex % 8})"
+  stroke-width="2"
+/>
 ```
 
-### Managed State Pattern
+**First-parent continuation (Straight edge where from_column === commit.column):**
 
-```rust
-// src-tauri/src/state.rs
+A vertical line from the commit dot downward (to the next row where the parent lives). This extends from the vertical center of the row to the bottom edge.
 
-use git2::Repository;
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-pub struct RepoState(pub Mutex<HashMap<String, Repository>>);
-
-impl Default for RepoState {
-    fn default() -> Self {
-        RepoState(Mutex::new(HashMap::new()))
-    }
-}
-
-impl RepoState {
-    pub fn lock(&self) -> Result<std::sync::MutexGuard<HashMap<String, Repository>>, TrunkError> {
-        self.0.lock().map_err(|_| TrunkError {
-            code: "lock_poisoned".into(),
-            message: "State lock was poisoned".into(),
-        })
-    }
-}
-
-pub type State<'a> = tauri::State<'a, RepoState>;
+```svg
+<line
+  x1={col * 16 + 8} y1={13}
+  x2={col * 16 + 8} y2={26}
+  stroke="var(--lane-{colorIndex % 8})"
+  stroke-width="2"
+/>
 ```
 
-Note: `git2::Repository` is `!Send` on some platforms. If thread-safety issues arise, wrap in `Arc<Mutex<Repository>>` per entry, or use a channel-based approach where git2 operations run on a dedicated thread. For v0.1 with a single repo, `Mutex<HashMap>` is sufficient.
+Additionally, a line from the top of the row to the commit dot (the incoming rail from the child above):
+
+```svg
+<line
+  x1={col * 16 + 8} y1={0}
+  x2={col * 16 + 8} y2={13}
+  stroke="var(--lane-{colorIndex % 8})"
+  stroke-width="2"
+/>
+```
+
+**Fork edges (ForkLeft / ForkRight):**
+
+A cubic bezier curve from the commit dot's vertical center to the target column at the bottom of the row. The curve must exit the commit dot vertically (not at an angle) and arrive at the target column vertically. This requires the control points to be vertically aligned with the endpoints.
+
+```svg
+<!-- ForkLeft: commit at col 3, parent at col 1 -->
+<path
+  d="M {3*16+8} {13} C {3*16+8} {13 + 26*0.4}, {1*16+8} {26 - 26*0.4}, {1*16+8} {26}"
+  fill="none"
+  stroke="var(--lane-{colorIndex % 8})"
+  stroke-width="2"
+/>
+```
+
+The general formula for a fork/merge curve:
+
+```
+M {startX} {startY}
+C {startX} {startY + rowHeight * 0.4},
+  {endX}   {endY - rowHeight * 0.4},
+  {endX}   {endY}
+```
+
+Where the control points are 40% of row height away from the endpoints, keeping the curve tangent vertical at both ends. This creates the smooth S-curve that characterizes GitKraken's rendering. The 0.4 factor was derived from vscode-git-graph's implementation (which uses 0.8 of grid.y for the control point offset -- equivalent to 0.4 of the full row span when the curve spans one row).
+
+**Merge edges (MergeLeft / MergeRight):**
+
+Identical curve shape to fork edges. The semantic difference (merge vs fork) affects only the Rust algorithm's edge classification, not the rendering. Both use the same bezier formula. The color comes from `color_index` (which the Rust algorithm sets to the target column's color for merges).
+
+```svg
+<!-- MergeRight: commit at col 0, secondary parent at col 2 -->
+<path
+  d="M {0*16+8} {13} C {0*16+8} {13 + 26*0.4}, {2*16+8} {26 - 26*0.4}, {2*16+8} {26}"
+  fill="none"
+  stroke="var(--lane-{colorIndex % 8})"
+  stroke-width="2"
+/>
+```
+
+**Commit dot (always on top):**
+
+```svg
+<!-- Normal commit -->
+<circle cx={col * 16 + 8} cy={13} r={4}
+  fill="var(--lane-{col % 8})" />
+
+<!-- Merge commit: filled circle with contrasting ring -->
+<circle cx={col * 16 + 8} cy={13} r={5}
+  fill="var(--lane-{col % 8})"
+  stroke="var(--color-bg)" stroke-width="2" />
+```
+
+### Cross-Row Visual Continuity
+
+The critical insight for per-row SVG rendering: **visual continuity is achieved by having each row draw its pass-through rails from y=0 to y=rowHeight (full height)**. When rows are stacked vertically with no gap, the rails appear as one continuous line.
+
+This works because:
+1. The Rust algorithm emits `Straight` pass-through edges for every active lane in every row
+2. Each row draws these as full-height vertical lines
+3. Adjacent rows' lines are pixel-aligned (same x coordinate, touching y coordinates)
+4. No gap between rows (rowHeight is exact, no border/margin/padding between row SVGs)
+
+For fork/merge curves that cross columns, the curve in row N exits at the bottom of the row toward the target column, and the target column's pass-through rail in row N+1 picks up from the top. The bezier curve's endpoint is at `y=rowHeight` which pixel-aligns with the next row's `y=0`.
+
+### Edge Case: Root Commits and Branch Tips
+
+A root commit (no parents) should NOT have a downward rail from the dot. The Rust algorithm already handles this -- root commits have no `Straight` self-edge.
+
+A branch tip (no children pointing to it in the visible range) should have the rail from `y=0` to the dot at `y=13`, but NOT from `y=0` to `y=26`. This is already handled: the pass-through edges only exist for rows where the lane is active, and the Rust algorithm marks the lane as consumed when the commit occupies it.
+
+### Edge Case: Incoming Rail Above Commit Dot
+
+When a commit has children above it, there should be a rail segment from `y=0` down to `y=13` (the dot center). This comes from the fact that the row above emits a pass-through or fork/merge edge whose endpoint is at the bottom of that row, and the current row needs to connect from the top to the dot.
+
+The Rust algorithm does NOT currently emit an explicit "incoming from above" edge for the commit's own column. The pass-through `Straight` edge for the commit's own lane exists in the PARENT rows (where the lane is tracked as active), but in the commit's own row, the lane is consumed. The rendering logic should therefore: draw a line from `y=0` to `y=13` at `commit.column` for any non-tip commit (i.e., any commit that is not the first commit at that column). The simplest approach: if any edge has `to_column === commit.column` in a PREVIOUS row, the current row should draw the incoming segment. But since we render per-row without knowledge of other rows, use this heuristic: **always draw the incoming rail from y=0 to y=cy at the commit's column, UNLESS the commit has no Straight pass-through edge at its own column in the PREVIOUS row**. Since we cannot look at the previous row, the pragmatic approach is: always draw it. The only case where it is wrong (a branch tip appearing for the first time) can be handled by adding a boolean `is_branch_tip` to `GraphCommit`.
+
+**Recommended approach:** Add `is_branch_tip: bool` to `GraphCommit` in Rust. Set it to `true` when the commit's column was freshly allocated (not found in `pending_parents`). When `is_branch_tip` is true, do NOT draw the incoming rail from y=0 to the dot. Otherwise, always draw it.
 
 ---
 
-## Error Handling Pattern
+## Revised Rust Algorithm Changes
 
-### TrunkError — The Only Error Type at the Boundary
+### Change 1: Track max_columns
+
+In `walk_commits()`, after the main loop:
 
 ```rust
-// src-tauri/src/error.rs
-
-#[derive(Debug, serde::Serialize)]
-pub struct TrunkError {
-    pub code: String,
-    pub message: String,
-}
-
-impl From<git2::Error> for TrunkError {
-    fn from(e: git2::Error) -> Self {
-        TrunkError {
-            code: "git2_error".into(),
-            message: e.message().to_string(),
-        }
-    }
-}
-
-impl TrunkError {
-    pub fn not_open(path: &str) -> Self {
-        TrunkError { code: "repo_not_open".into(), message: format!("Repository not open: {path}") }
-    }
-    pub fn dirty_workdir() -> Self {
-        TrunkError { code: "dirty_workdir".into(), message: "Working tree has uncommitted changes".into() }
-    }
-    pub fn lock_error() -> Self {
-        TrunkError { code: "lock_poisoned".into(), message: "Internal state lock failed".into() }
-    }
-}
+let max_columns = active_lanes.len(); // Already computed; just capture it
 ```
 
-### Frontend Error Handling Pattern
+Return this alongside the commits in a `GraphResponse` struct.
+
+### Change 2: Add is_branch_tip to GraphCommit
+
+During the per-oid loop, when a commit's column is freshly allocated (not from `pending_parents`), mark it as a branch tip:
+
+```rust
+let is_branch_tip = !pending_parents.contains_key(&oid);
+```
+
+Add `pub is_branch_tip: bool` to `GraphCommit` struct and populate it.
+
+### Change 3: First-parent continuation incoming edge
+
+Currently the algorithm emits a `Straight` edge for first-parent continuation (downward from the commit to its first parent). But for the incoming rail (from the row above down to the commit dot), there is no explicit edge. The rendering handles this via the `is_branch_tip` flag: if false, draw the incoming segment; if true, skip it.
+
+No additional changes to the edge emission logic are needed.
+
+---
+
+## Patterns to Follow
+
+### Pattern 1: Rendering Edges by Classification
+
+Classify each edge in `commit.edges` before rendering:
 
 ```typescript
-// src/lib/api.ts
+type RenderEdge =
+  | { kind: 'passthrough'; column: number; colorIndex: number }
+  | { kind: 'continuation'; column: number; colorIndex: number }
+  | { kind: 'curve'; fromCol: number; toCol: number; colorIndex: number };
 
-import { invoke } from "@tauri-apps/api/core";
-import type { TrunkError } from "./types";
-
-export async function safeInvoke<T>(
-  cmd: string,
-  args?: Record<string, unknown>
-): Promise<{ data: T; error: null } | { data: null; error: TrunkError }> {
-  try {
-    const data = await invoke<T>(cmd, args);
-    return { data, error: null };
-  } catch (error) {
-    return { data: null, error: error as TrunkError };
-  }
+function classifyEdges(commit: GraphCommit): RenderEdge[] {
+  return commit.edges.map(e => {
+    if (e.from_column === e.to_column && e.from_column !== commit.column) {
+      return { kind: 'passthrough', column: e.from_column, colorIndex: e.color_index };
+    } else if (e.from_column === e.to_column && e.from_column === commit.column) {
+      return { kind: 'continuation', column: e.from_column, colorIndex: e.color_index };
+    } else {
+      return { kind: 'curve', fromCol: e.from_column, toCol: e.to_column, colorIndex: e.color_index };
+    }
+  });
 }
 ```
 
-Error display rules by `code`:
-- `dirty_workdir` -> inline banner below branch selector, no modal
-- `repo_not_open` -> open repo dialog prompt
-- `git2_error` -> inline toast with `message`
-- All others -> generic error state, log to console
+This separation makes the rendering logic clean: iterate classified edges, render each kind with its own SVG template.
 
----
+### Pattern 2: Consistent SVG Width via maxColumns
 
-## State Management Pattern (Svelte 5 Runes)
+Every `LaneSvg` instance uses the same width: `maxColumns * laneWidth`. This ensures the commit message column starts at the same horizontal position for every row, eliminating horizontal jitter during scrolling.
 
-### Global App State (App.svelte)
+### Pattern 3: CSS Custom Properties for Lane Colors
 
-```svelte
-<script lang="ts">
-  import type { RepoInfo, WorkingTreeStatus } from "$lib/types";
+Continue using `var(--lane-{N % 8})` for all stroke and fill colors. This keeps color definitions in CSS and allows future theme customization without touching component code.
 
-  // $state holds mutable reactive values
-  let selectedRepoPath = $state<string | null>(null);
-  let repoInfo = $state<RepoInfo | null>(null);
-  let status = $state<WorkingTreeStatus | null>(null);
-  let selectedCommitOid = $state<string | null>(null);
-  let selectedFile = $state<{ path: string; area: "staged" | "unstaged" } | null>(null);
+### Pattern 4: SVG overflow:visible for Antialiasing
 
-  // $derived computes values from state — no manual updates needed
-  let viewMode = $derived(
-    selectedCommitOid ? "commit-diff"
-    : selectedFile ? "file-diff"
-    : "graph"
-  );
-</script>
-```
-
-### Per-Component Data Fetching
-
-Components invoke commands and hold their own local state for data that is purely their concern:
-
-```svelte
-<!-- CommitGraph.svelte -->
-<script lang="ts">
-  let { repoPath } = $props<{ repoPath: string }>();
-  let commits = $state<GraphCommit[]>([]);
-  let loading = $state(false);
-
-  async function loadMore(offset: number) {
-    loading = true;
-    const result = await invoke<GraphCommit[]>("get_commits", { path: repoPath, offset, limit: 200 });
-    commits = [...commits, ...result];
-    loading = false;
-  }
-
-  $effect(() => {
-    if (repoPath) {
-      commits = [];
-      loadMore(0);
-    }
-  });
-</script>
-```
-
-### Event Listening Pattern
-
-```svelte
-<!-- App.svelte -->
-<script lang="ts">
-  import { listen } from "@tauri-apps/api/event";
-  import { onMount } from "svelte";
-
-  onMount(() => {
-    const unlisten = listen("fs_changed", async () => {
-      if (selectedRepoPath) {
-        status = await invoke("get_status", { path: selectedRepoPath });
-      }
-    });
-    return () => { unlisten.then(fn => fn()); };
-  });
-</script>
-```
-
----
-
-## Graph Rendering Architecture
-
-The commit graph uses a hybrid approach: computation in Rust, rendering in Svelte.
-
-```
-Rust (graph.rs)
-  Revwalk (topo + time order)
-    -> single-pass lane algorithm
-    -> Vec<GraphCommit> with column, edges, is_merge, refs
-    -> serialized to JSON via serde
-
-Frontend (CommitGraph.svelte)
-  Virtual scroll container (overflow: hidden, fixed height rows)
-    -> only renders visible rows + buffer of ceil(height/rowHeight)*2 + 20
-    -> each GraphRow.svelte renders:
-       - <svg> with lane lines (edges) and commit dot
-       - commit message, author, date columns
-```
-
-Lane algorithm (Rust, O(n)):
-1. `lanes: Vec<Option<Oid>>` — active lane slots, slot holds child OID that owns the lane
-2. For each commit: find matching slot (that slot = commit.column), or allocate new slot
-3. First parent inherits commit's slot (straight line); merge parents get free slots
-4. Release current commit's slot, fill parent slots
-5. EdgeType: Same col = Straight; parent-col < current = MergeLeft; parent-col > current = MergeRight; inverse for forks
-
-SVG per row (not one giant SVG, not Canvas):
-- Reason: Free scrolling, text selection, no coordinate system complexity
-- Each row is an independent `<svg height=24 width={laneCount * 16}>` inside the grid cell
-- Circles: commit dot `r=4`; merge commit `r=5` with ring stroke
-- Color palette (8 colors, cycle by lane index): `["#4dc9f6","#f67019","#f53794","#537bc4","#acc236","#166a8f","#00a950","#58595b"]`
-
----
-
-## Filesystem Watcher Architecture
-
-```
-Rust (watcher.rs)
-  notify-debouncer-mini (300ms debounce window)
-    Watch: repo workdir
-    Ignore: .git/ except HEAD, refs/*, index
-    On change:
-      AppHandle.emit_all("fs_changed", ())
-
-Frontend
-  listen("fs_changed", handler)
-    handler: invoke("get_status", { path }) -> update $state.status
-```
-
-The watcher is started when `open_repo` is called and stores the debouncer handle in a separate `Mutex<Option<Debouncer>>` alongside `RepoState`. The watcher is stopped (`close_repo` drops the debouncer).
-
----
-
-## Suggested Build Order
-
-Dependencies flow upward; build foundation first.
-
-### Phase 1: Foundation (no UI features yet)
-1. Migrate from SvelteKit to plain Vite+Svelte — eliminates SvelteKit routing machinery
-2. Add `git2`, `notify`, `notify-debouncer-mini`, `tauri-plugin-dialog` to Cargo.toml
-3. Scaffold `error.rs` (TrunkError), `state.rs` (RepoState), `git/types.rs` (all data models)
-4. Add Tailwind CSS + Vite plugin
-
-Rationale: Types and error infrastructure are referenced by every subsequent module. Getting them right first prevents refactoring later.
-
-### Phase 2: Repo Open + Graph
-1. `git/repository.rs` — open/validate repo
-2. `git/graph.rs` — Revwalk + lane algorithm
-3. `commands/repo.rs` (open_repo, close_repo)
-4. `commands/history.rs` (get_commits, get_commit)
-5. Frontend: `CommitGraph.svelte` with virtual scrolling
-6. Frontend: `GraphRow.svelte` with inline SVG
-
-Rationale: The commit graph is the core value of the app. Everything else is built around it.
-
-### Phase 3: Sidebar + Branch Ops
-1. `commands/branches.rs` (get_refs, checkout_branch, create_branch)
-2. Frontend: `Sidebar.svelte` with branch list and filter
-3. Frontend: `dirty_workdir` error banner in checkout flow
-
-Rationale: Branches are needed before staging — user must see where HEAD is.
-
-### Phase 4: Working Tree + Staging
-1. `commands/staging.rs` (get_status, stage/unstage operations)
-2. `watcher.rs` (filesystem watch, emit fs_changed)
-3. Frontend: `RightPanel.svelte` (file lists, stage/unstage buttons)
-4. Frontend: listen("fs_changed") → refresh status
-
-Rationale: Status and staging depend on having a repo open (Phase 2). Watcher depends on state from open_repo.
-
-### Phase 5: Commit Creation
-1. `commands/commit.rs` (create_commit)
-2. Frontend: Commit form in `RightPanel.svelte`
-3. After commit: refresh graph (re-fetch commits from offset 0)
-
-Rationale: Commit depends on a working staging area (Phase 4).
-
-### Phase 6: Diffs
-1. `commands/diff.rs` (get_diff_workdir, get_diff_staged, get_commit_diff)
-2. Frontend: `DiffView.svelte` (unified diff display, back navigation)
-3. Wire: click commit in graph → get_commit_diff; click file in panel → appropriate diff command
-
-Rationale: Diffs are display-only with no new state. They can be added last without blocking any other feature.
+Keep `style="overflow: visible"` on the SVG element. Bezier curves that are antialiased may paint a sub-pixel outside the SVG bounds; `overflow: visible` prevents clipping artifacts at row boundaries.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Business Logic in Commands
-**What:** Commands contain complex git2 logic inline
-**Why bad:** Commands become untestable, hard to read, impossible to share logic
-**Instead:** Commands are thin dispatchers; `git/` modules contain all git2 logic; commands just acquire state and delegate
+### Anti-Pattern 1: One Giant SVG for the Entire Graph
+**What:** Rendering all lanes in a single `<svg>` element that spans the full commit history.
+**Why bad:** Defeats virtual scrolling. The browser must maintain DOM nodes for every path in the graph, not just visible ones. Memory usage becomes O(n) instead of O(1).
+**Instead:** Keep per-row inline SVG. Each row renders only its own edges.
 
-### Anti-Pattern 2: Mutex Lock Held Across Await
-**What:** Locking `RepoState` mutex, then doing async I/O while holding it
-**Why bad:** Deadlock; Rust will reject this at compile time for async contexts
-**Instead:** Extract the data you need from the locked HashMap (e.g., clone the path, or use a reference in a sync context), then release the lock before any await
+### Anti-Pattern 2: Canvas Rendering
+**What:** Switching from SVG to HTML Canvas for lane rendering.
+**Why bad:** Canvas requires manual scroll position management, loses text selection, loses CSS variable integration, requires complex hit-testing for interactivity. Canvas IS faster for extremely dense graphs (100+ simultaneous lanes), but git repos rarely exceed 10-15 simultaneous lanes.
+**Instead:** Inline SVG per row. The DOM load is ~10-20 SVG elements per row times ~40 visible rows = ~400-800 SVG elements total, well within browser performance bounds.
 
-### Anti-Pattern 3: Storing Large Data in Events
-**What:** Emitting full `Vec<GraphCommit>` or diff data in the `fs_changed` event payload
-**Why bad:** Events are for nudges; embedding data means the frontend can't re-request with different params; events have size limits
-**Instead:** Events are empty notifications; frontend always invokes a command to fetch fresh data
+### Anti-Pattern 3: Rendering Edges in JavaScript Post-Hoc
+**What:** Having the frontend compute which lanes are active by scanning adjacent commits.
+**Why bad:** The Rust algorithm already tracks active lanes and emits pass-through edges. Duplicating this logic in TypeScript is wasteful and error-prone (especially across pagination boundaries).
+**Instead:** Trust the Rust-provided edges. The frontend is purely a renderer -- it maps edges to SVG elements without any graph logic.
 
-### Anti-Pattern 4: Frontend State Divergence
-**What:** Mutating local Svelte state optimistically without waiting for Rust confirmation
-**Why bad:** Rust is the source of truth for all git state; optimistic updates cause inconsistency on error
-**Instead:** Invoke command, await result, then update `$state` from the result. Use loading flags for perceived performance.
+### Anti-Pattern 4: Variable Row Height for Merge Rows
+**What:** Making merge commit rows taller to accommodate curves.
+**Why bad:** Virtual scrolling requires predictable row heights. Variable heights break scroll position calculations and cause visual jumping.
+**Instead:** All rows are 26px. Curves are drawn within this height using bezier control points tuned for 26px.
 
-### Anti-Pattern 5: Global Component State for Per-Repo Data
-**What:** Storing commits/status as module-level singletons
-**Why bad:** Multi-repo support (v0.2) becomes impossible to add without a rewrite
-**Instead:** All data state is keyed by `repoPath`; when `selectedRepoPath` changes, components reinitialize
-
-### Anti-Pattern 6: String Matching on Error Messages
-**What:** `if (err.message.includes("dirty"))` in frontend error handling
-**Why bad:** Brittle; git2 message text is not guaranteed stable; breaks on locale changes
-**Instead:** Always check `err.code` (e.g., `"dirty_workdir"`) — this is why TrunkError has a structured `code` field
-
----
-
-## Tauri 2 Capability Configuration
-
-The default capability file must be extended to allow file dialogs (for Open Repository):
-
-```json
-// src-tauri/capabilities/default.json
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
-  "permissions": [
-    "core:default",
-    "opener:default",
-    "dialog:allow-open"
-  ]
-}
-```
-
-Tauri 2 uses a permission system: capabilities must explicitly declare what plugins and APIs the window can use. Missing permissions cause runtime errors, not compile errors.
+### Anti-Pattern 5: Drawing Curves Across Multiple Rows
+**What:** Having a single bezier curve span from a commit in row N to its parent in row N+5.
+**Why bad:** Per-row SVG means each SVG only controls its own row. Cross-row curves would require absolute positioning, Z-index management, and would break virtual scrolling.
+**Instead:** Fork/merge edges always span exactly ONE row (from the commit dot to the bottom of the row). The vertical rail at the target column handles continuity in subsequent rows. The visual result is a curve that transitions into a straight rail -- exactly how GitKraken renders it.
 
 ---
 
 ## Scalability Considerations
 
-| Concern | At 1K commits | At 10K commits | At 100K commits |
-|---------|--------------|----------------|-----------------|
-| Graph fetch | Single `get_commits` call | Paginated (200/batch), lazy-loaded | Same pagination; Revwalk is O(n) in Rust, ~5ms for 10K |
-| DOM nodes | ~40 (virtual scroll) | ~40 (virtual scroll) | ~40 (virtual scroll) |
-| Memory (Rust) | Vec<GraphCommit> in flight | Vec<GraphCommit> per page | Streaming if needed (defer to v1.0) |
-| Ref lookup | HashMap<Oid, Vec<RefLabel>> built once | Same | Same; number of refs stays bounded |
+| Concern | At 5 lanes | At 15 lanes | At 30+ lanes |
+|---------|-----------|-------------|-------------|
+| SVG width | 80px (5*16) | 240px | 480px+ -- may need horizontal scroll or lane compression |
+| Edge count per row | ~7 (5 pass-through + 1-2 curves) | ~18 | ~35 -- still fine for SVG |
+| Lane color cycling | 5 unique colors | Colors repeat (15 % 8 = 7 unique + repeats) | Noticeable repetition; consider 12+ colors for v0.3 |
+| Visual clarity | Excellent | Good | Degraded -- consider lane packing optimization |
 
-The virtual scroll + pagination approach means the UI performance is constant regardless of repository size. The binding constraint at scale is the initial Revwalk to build the graph — but at 10K commits this is ~5ms in Rust, well under any perceptual threshold.
+For typical repositories (< 10 simultaneous lanes), the architecture handles everything with no performance concerns. For monorepos with 30+ simultaneous branches, lane compression or horizontal scrolling would be needed -- defer this to a future milestone.
+
+---
+
+## Suggested Build Order
+
+Dependencies flow upward; data changes must precede rendering changes.
+
+### Step 1: Rust Data Changes (foundation)
+
+1. Add `is_branch_tip: bool` to `GraphCommit` in `types.rs`
+2. Add `GraphResponse` struct to `types.rs`
+3. Modify `walk_commits()` to track `max_columns` and set `is_branch_tip`
+4. Update `CommitCache` in `state.rs` to store `(Vec<GraphCommit>, usize)`
+5. Update `get_commit_graph` in `history.rs` to return `GraphResponse`
+6. Update existing tests in `graph.rs`
+
+**Rationale:** All frontend work depends on having the data available. These are small, isolated changes with clear test coverage.
+
+### Step 2: TypeScript Type Updates (bridge)
+
+1. Add `GraphResponse` interface to `types.ts`
+2. Add `is_branch_tip: boolean` to `GraphCommit` interface
+3. Update `CommitGraph.svelte` to destructure `{ commits, max_columns }` from response
+4. Thread `maxColumns` through `CommitRow.svelte` to `LaneSvg.svelte`
+
+**Rationale:** Type changes are trivial but must happen before the LaneSvg rewrite can consume the new data.
+
+### Step 3: LaneSvg Rewrite (the visual payoff)
+
+1. Implement edge classification function
+2. Render pass-through vertical rails (immediate visual impact -- "railroad tracks" appear)
+3. Render first-parent continuation rails (commit dot connects to rail below)
+4. Render incoming rail above commit dot (using `is_branch_tip` flag)
+5. Render fork/merge bezier curves
+6. Render commit dot (on top of everything)
+7. Update lane width from 12px to 16px in LaneSvg and adjust CommitRow layout
+
+**Rationale:** Building the rendering incrementally (rails first, then curves, then dot) allows visual verification at each step. Rails alone will make the graph look dramatically better; curves are refinement.
+
+### Step 4: Polish (refinement)
+
+1. Adjust WIP row SVG in `CommitGraph.svelte` to match new lane width
+2. Verify visual continuity across pagination boundaries (load more commits, check rail alignment)
+3. Test with complex topologies (many branches, octopus merges, long-lived feature branches)
+4. Tune bezier control point factor (0.4) if curves feel too tight or too loose
+
+**Rationale:** Polish depends on the core rendering being complete. Visual tuning is best done empirically.
 
 ---
 
 ## Sources
 
-- **PRD.md** (authoritative) — `/Users/joaofnds/code/trunk/PRD.md` — all architecture decisions documented by the project author with HIGH confidence. Confidence: HIGH.
-- **Tauri 2 docs** (training data, verified by Cargo.toml dependency versions) — Tauri 2.x IPC model, managed state API, capability system. Confidence: HIGH.
-- **Svelte 5 runes** (training data, verified by package.json `"svelte": "^5.0.0"`) — `$state`, `$derived`, `$effect`, `$props` patterns. Confidence: HIGH.
-- **git2 crate** (training data, version `0.19` confirmed in Cargo.toml) — Revwalk, Repository, Index operations. Confidence: HIGH.
-- **notify crate v7 + notify-debouncer-mini v0.5** (confirmed in PROJECT.md) — debouncer-mini 0.5 depends on notify ^7; versions are compatible. Confidence: HIGH.
+- **Existing codebase** -- `graph.rs`, `types.rs`, `LaneSvg.svelte`, `CommitRow.svelte`, `CommitGraph.svelte`, `state.rs`, `history.rs` -- all read directly. Confidence: HIGH.
+- **[Commit Graph Drawing Algorithms (pvigier's blog)](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html)** -- Lane assignment algorithms, forbidden index computation, visible-node optimization via interval trees. Confidence: HIGH.
+- **[Git Extensions Revision Graph wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph)** -- Per-row rendering strategy, segment-based lane tracking, lazy overlap calculation. Confidence: HIGH.
+- **[DoltHub: Drawing a Commit Graph](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/)** -- Cubic bezier control point formula for smooth curves, column assignment algorithm, CommitNode data structure. Confidence: HIGH.
+- **vscode-git-graph source (graph.ts)** -- SVG path construction for smooth curves (`C x1,(y1+d) x2,(y2-d) x2,y2` where `d = grid.y * 0.8`), branch line consolidation, angular vs curved style rendering. Confidence: HIGH.
+- **[react-commits-graph (generate-graph-data.coffee)](https://github.com/jsdf/react-commits-graph/blob/master/src/generate-graph-data.coffee)** -- Route-based pass-through lane tracking (`[from, to, branch]` tuples), reserve array for active lane management. Confidence: MEDIUM (archived project, but algorithm is sound).
+- **[git2graph](https://github.com/alaingilbert/git2graph)** -- Per-row graph field structure `[column, row, color, edges]`, row-by-row rendering support for HTML tables. Confidence: MEDIUM.
+- **[GitKraken commit graph feature page](https://www.gitkraken.com/features/commit-graph)** -- Visual reference for target quality; GitKraken uses near-straight lines rather than heavy curves. Confidence: MEDIUM (proprietary, no implementation details).

@@ -1,462 +1,432 @@
-# Domain Pitfalls
+# Domain Pitfalls: Commit Graph Lane Rendering
 
-**Domain:** Tauri 2 + Rust + git2 desktop Git GUI
-**Researched:** 2026-03-03
-**Confidence note:** Web search unavailable during this research session. All findings are from training knowledge (cutoff August 2025). Confidence levels reflect source quality within that constraint. Critical claims are flagged where independent verification is recommended.
+**Domain:** Per-row inline SVG commit graph with virtual scrolling (Tauri 2 + Svelte 5 + Rust)
+**Researched:** 2026-03-09
+**Context:** v0.1 shipped with lane rendering stripped out due to visual bugs. This milestone is the second attempt.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, deadlocks, or fundamental architectural breakage.
+Mistakes that cause visual breakage visible to every user, or that require architectural rework to fix.
 
 ---
 
-### Pitfall 1: `Repository` Is Not `Sync` — Mutex Contention and Deadlocks
+### Pitfall 1: Sub-Pixel Gaps Between Adjacent Row SVGs
 
-**What goes wrong:** `git2::Repository` is `Send` but NOT `Sync`. It cannot be shared between threads concurrently. The natural instinct is to wrap it in `Arc<Mutex<Repository>>` inside Tauri managed state. This works — but every Tauri command handler that touches the repository locks the mutex for the entire duration of the operation. Long-running operations (walking 10k commits, computing a large diff) block all other commands for that repo.
+**What goes wrong:** Each commit row renders its own `<svg>` element with `height="26"`. Vertical lane lines must appear continuous across rows -- a line exiting the bottom of row N must seamlessly enter the top of row N+1. But browsers anti-alias the edges of SVG elements, and floating-point coordinate rounding creates hairline gaps (0.5-1px) of background color visible between rows. These gaps are especially noticeable on high-DPI displays and at non-100% zoom levels.
 
-**Why it happens:** Developers model the repository as a simple shared resource and don't account for Tauri's async command handlers running on a thread pool. A slow `repo.revwalk()` iteration holds the lock while the UI is trying to refresh status from a filesystem event — UI freezes.
+**Why it happens:** SVG elements are inline-replaced elements. Even when dimensions are integer pixels, the browser's compositing pipeline may position elements at fractional pixel boundaries due to: (a) the virtual list's `translateY()` positioning, (b) zoom-induced coordinate scaling, (c) font-size-based inline spacing inherited by SVGs. The `@humanspeak/svelte-virtual-list` positions items using `transform: translateY(Npx)` on a wrapper, and `Math.round()` is applied -- but zoom can still produce fractional effective positions at the individual row level.
 
 **Consequences:**
-- UI hangs while large history loads
-- Filesystem watcher events queue up behind a locked mutex
-- Status refreshes, diff loads, and history loads serialize entirely — destroying perceived responsiveness
-- Deadlock if a command accidentally acquires two different Mutex guards in different order
+- Horizontal dashed lines appear between every row, turning a smooth vertical rail into a dotted line
+- Looks broken, especially at common zoom levels (110%, 125%)
+- This was likely the primary visual bug that caused v0.1 lane rendering to be stripped
 
 **Prevention:**
-- Perform heavy git2 operations (revwalk, large diffs) by cloning or re-opening the Repository per operation rather than holding a single shared handle. `Repository::open()` is fast (microseconds); clone is expensive. Re-open per heavy operation on a spawn_blocking thread.
-- Keep the shared `Mutex<Repository>` only for quick mutation operations (stage/unstage, commit). Use `Repository::open()` fresh for read-heavy scans.
-- Or: structure managed state as `Mutex<Option<PathBuf>>` (just the path) and open a fresh `Repository` inside each command's `spawn_blocking` call.
-- Never hold a `MutexGuard` across an `.await` point (Rust will catch this at compile time with async mutexes, but Tauri's `Mutex` is `std::sync::Mutex` — a blocking lock inside an async handler is valid Rust but bad practice).
+- **Overlap lines by 0.5-1px in each direction.** Draw vertical lane lines from `y=-0.5` to `y=rowHeight+0.5` (i.e., 27px tall in a 26px row). This ensures the anti-aliased top edge of row N overlaps with the anti-aliased bottom edge of row N-1. Set `overflow: visible` on the per-row SVG so the overflow pixels render.
+- **Use `display: block`** on all SVG elements. Inline SVGs inherit descender spacing from the parent font, adding ~3px gaps. Alternatively, use `vertical-align: bottom` or ensure the parent uses flexbox (which the current `CommitRow.svelte` already does via `flex items-center`).
+- **Use even stroke widths** (2px, not 1px) for lane lines. Odd stroke widths on integer coordinates produce half-pixel rendering that varies across browsers.
+- **Test at 100%, 110%, 125%, 150%, 175%, 200% zoom.** Sub-pixel gaps often appear only at specific zoom levels.
+- Do NOT use `shape-rendering: crispEdges` -- it kills anti-aliasing on bezier curves, making them jagged.
 
 **Detection:**
-- UI becomes sluggish when loading repos with >5k commits
-- Commands that should be instant (get status) feel slow when history is loading
-- Any `tauri::async_runtime::spawn_blocking` call that takes >50ms
+- Visible dashed lines where there should be continuous vertical rails
+- Gaps that appear or disappear as you scroll (rows at different translateY offsets hit different pixel boundaries)
+- Gaps visible at 125% zoom but not at 100%
 
-**Phase:** Address in Phase 1 (repository open + history loading). Wrong architecture here forces a rewrite of all command handlers.
+**Specific to this codebase:** The current `LaneSvg.svelte` sets `style="overflow: visible"` on the SVG -- good. But the `@humanspeak/svelte-virtual-list` has `overflow: hidden` on its outer container (`.virtual-list-outer`). SVG overflow-visible content will be clipped by this parent. The list wrapper's overflow must remain `hidden`/`scroll` for virtualization to work, so the overlap approach must be constrained to the 0.5px range -- enough to cover anti-aliasing seams but not so much that clipping cuts off visible content.
+
+**Phase:** Address in the first rendering phase. This is the single most likely repeat failure from v0.1.
 
 ---
 
-### Pitfall 2: Sending git2 Types Across the Tauri IPC Boundary — Lifetime and Serialization Traps
+### Pitfall 2: Bezier Curves Misaligned at Row Boundaries
 
-**What goes wrong:** `git2` types like `Commit<'repo>`, `Diff<'repo>`, `Tree<'repo>` all carry a lifetime tied to the `Repository` they came from. You cannot store them, return them from functions that outlive the repo borrow, or send them across threads. New Rust developers try to build a `struct CommitGraph { commits: Vec<Commit<'repo>> }` and immediately hit lifetime errors that feel unsolvable.
+**What goes wrong:** A merge or fork edge must draw a curve from the commit dot's column to a different column. Because each row is an independent SVG, the curve must be split across two (or more) rows. Row N draws the top half of the curve; row N+1 draws the bottom half. If the control points are not mathematically mirrored, the two halves do not form a smooth continuous curve -- you get a visible kink, angle break, or offset at the row boundary.
 
-**Why it happens:** The git2 API is designed for short-lived access patterns ("borrow the repo, get the commit, extract what you need, drop"). It is not designed for caching git objects.
+**Why it happens:** Developers draw curves independently in each row using the edge data (from_column, to_column, edge_type) without coordinating the exact mathematical split point. A cubic bezier `C cx1,cy1 cx2,cy2 x,y` requires both halves to share the same tangent angle and position at the boundary point.
 
 **Consequences:**
-- Hours of fighting borrow checker with unsolvable lifetime errors
-- Attempted workaround with `unsafe` transmute of lifetimes — undefined behavior
-- Architecture pivot mid-implementation
+- Merge/fork lines have visible kinks at every row boundary
+- Curves look like zigzag steps instead of smooth arcs
+- Gets worse with larger column distances (e.g., column 0 to column 5)
 
 **Prevention:**
-- Immediately convert git2 types to owned, serializable Rust structs at the point of access. Never store `Commit<'repo>` — store `CommitInfo { oid: String, summary: String, author: String, timestamp: i64 }`.
-- Define your DTO layer (Rust structs that implement `serde::Serialize`) in a separate module early. All git2 access goes through a translation function: `fn commit_to_dto(c: &Commit) -> CommitInfo`.
-- Use `Oid::to_string()` immediately; never store `Oid` in a long-lived struct if it came from a temporary borrow.
+- **Define the curve as a single logical bezier spanning 2 rows, then clip to each row's portion.** The full curve goes from `(from_col * 12 + 6, 13)` [center of source row] to `(to_col * 12 + 6, 13)` [center of destination row, one row below = y offset 26+13=39 from source row top]. In the source row SVG, draw this full curve but it naturally clips at `y=26` (the row bottom). In the destination row SVG, draw the same curve but with y-coordinates offset by -26 (shifting the curve up by one row height), and it naturally clips at `y=0`. Both halves share identical geometry.
+- **Use quadratic beziers (Q) instead of cubic (C) for single-row-span curves.** Quadratic beziers have one control point and are inherently symmetric, reducing the degrees of freedom that can go wrong.
+- **Pre-compute curve segments in Rust** and include the exact SVG path string (or control point coordinates) in the edge data sent to the frontend. This ensures both row-halves use the same math, eliminating frontend rounding divergence.
+- **Never draw a curve that spans more than 2 rows.** If a lane must shift columns across 3+ rows (rare but possible with octopus merges), break it into a vertical segment + a 2-row curve.
 
 **Detection:**
-- Compiler error: "lifetime 'repo does not live long enough" when trying to store git2 objects
-- Any `struct` that tries to hold a `git2::*<'_>` field
+- Visible kinks or "V" shapes at row boundaries on merge/fork edges
+- Curves look fine with adjacent columns (column 0 to 1) but break with distant columns (column 0 to 4)
+- Zooming in on row boundaries reveals the discontinuity
 
-**Phase:** Establish the DTO pattern in Phase 1 before writing any git2 code. One wrong struct definition propagates everywhere.
+**Phase:** Address immediately after straight lines work. Curves are the hardest rendering problem in per-row SVG.
 
 ---
 
-### Pitfall 3: Virtual Scrolling Scroll Position Desynchronization
+### Pitfall 3: Virtual Scroll Overflow Clipping Eats SVG Overflow
 
-**What goes wrong:** In a virtual scroll implementation, the true list height is faked with a spacer element (`height: total_rows * ROW_HEIGHT`). The scroll handler calculates `startIndex = Math.floor(scrollTop / ROW_HEIGHT)`. This works until: (1) CSS resets `box-sizing`, (2) the row height isn't exactly an integer pixel, (3) browser zoom changes the effective pixel density, or (4) the spacer height hits browser limits (~33 million pixels — about 330k commits at 100px rows).
+**What goes wrong:** Per-row SVGs use `overflow: visible` so that lane lines can extend slightly beyond the row boundary (the 0.5px overlap from Pitfall 1, plus curve segments that bulge outside the row). But the virtual list container has `overflow: hidden` on its outer wrapper and `overflow-y: scroll` on the viewport. Any SVG content that extends beyond the row's bounding box gets clipped by these parent containers.
 
-**Why it happens:** Row height seems like a constant but is actually a CSS-computed value. `getComputedStyle` is needed to get the true value, which changes with zoom, font scaling, and screen DPI.
+**Why it happens:** Virtual scroll libraries must clip their container to create the scrolling viewport. This is fundamental to how virtual scrolling works. But it conflicts with the per-row SVG approach where visual continuity requires elements to bleed across row boundaries.
 
 **Consequences:**
-- Scrolling to a specific commit (e.g., HEAD) lands on the wrong row
-- Graph lanes and commit rows fall out of vertical alignment
-- Browser tab crashes or silent height clamping with huge repos (>330k commits)
+- The 0.5px overlap fix from Pitfall 1 gets clipped, restoring the gap
+- Bezier curves that bulge beyond the row height get cut off
+- The first and last visible rows have their top/bottom edges clipped
 
 **Prevention:**
-- Define `ROW_HEIGHT` as a CSS custom property (`--row-height: 28px`) AND as a matching JS/Svelte constant. Never compute row height dynamically in the scroll math — keep it fixed.
-- Use integer pixel values only (28px, 32px, not 28.5px).
-- For repos that could have >300k commits, use a two-level virtual scroll or page the history rather than one giant virtual list.
-- Always use `overscanCount` of 5-10 rows above and below the viewport to avoid flash-of-empty during fast scrolling.
-- Test at 110%, 125%, 150% browser zoom.
+- **Keep overflow amounts tiny (0.5px max).** The virtual list clips at the viewport level, not at each item level. Items within the viewport are not individually clipped -- they are just absolutely positioned within a scrollable container. So SVG overflow from one row CAN overlap into an adjacent row's space, as long as both rows are in the DOM. The only clipping happens at the viewport edges (top/bottom of the scroll container).
+- **Verify this with the actual `@humanspeak/svelte-virtual-list` DOM structure.** The library positions items using `translateY` on a wrapper div. Individual items are NOT `overflow: hidden` -- they flow naturally within the wrapper. This means inter-row SVG overlap WILL work for interior rows. Only the first and last visible rows risk clipping at the viewport boundary -- which is acceptable since those rows are partially off-screen anyway.
+- **Do not add `overflow: hidden` to CommitRow or its parent div.** The current `CommitRow.svelte` does not have overflow hidden -- preserve this.
+- **Test with buffer/overscan rows.** The virtual list renders extra rows above and below the viewport. These buffer rows ensure that SVG overlap from the first/last visible rows has adjacent rows to blend with.
 
 **Detection:**
-- Clicking a commit in the list graph highlights the wrong commit row
-- `scrollTop / ROW_HEIGHT` produces a fractional index that requires `Math.floor` but loses precision
-- Any test at non-100% zoom shows misalignment
+- Lane lines cut off sharply at the top/bottom of the visible scroll area
+- Curves appear clipped on one side at the scroll boundary
+- Interior rows look fine but edge rows have truncated lines
 
-**Phase:** Address in the commit history display phase. The scroll math must be validated before SVG lane rendering is layered on top.
+**Phase:** Validate early when integrating SVG rendering with the virtual list. A 5-minute DOM inspection saves hours of debugging.
 
 ---
 
-### Pitfall 4: SVG Lane Graph Coordinate Mismatch with Virtual Scroll
+### Pitfall 4: Lane Algorithm Produces Ghost Lanes After Branch Merge
 
-**What goes wrong:** With inline SVG per row (one `<svg>` element per commit row), the SVG for row N needs to know which lane column each commit occupies AND it needs to draw connector lines that span to the SVG of row N+1 and N-1. When virtual scrolling recycles DOM nodes, the SVG in slot 0 of the DOM might be rendering commit #47 one moment and commit #52 the next. If graph data is indexed by DOM position rather than by commit index, lane lines connect to the wrong commits.
+**What goes wrong:** When a branch merges, its lane column should be freed for reuse by subsequent branches. If the lane algorithm does not properly clear the `active_lanes` slot after a merge, the column remains "occupied" indefinitely. Pass-through `Straight` edges continue to be emitted for rows below the merge, drawing a vertical line that extends below the merge commit into empty space -- a "ghost lane" that connects to nothing.
 
-**Why it happens:** Developers index graph data by DOM position (the rendered slot index) instead of by absolute commit index. When the user scrolls and the virtual window shifts, the mapping breaks.
+**Why it happens:** The current `graph.rs` algorithm tracks `active_lanes[col] = Some(oid)`. When a commit is processed, its slot is cleared (`active_lanes[col] = None`). But for first-parent continuation (`idx == 0`), the slot is immediately re-occupied with the parent OID. The bug occurs in merge scenarios: when the merge commit's first-parent is already claimed at a different column (the `existing_col` branch in the code), the current column should stay `None`. The current code has a comment "If different column, current col stays None (lane terminates here)" -- this is correct logic but fragile. If any code path accidentally re-occupies the slot, ghost lanes appear.
 
 **Consequences:**
-- Branch connector lines visually "jump" or point to wrong commits during scrolling
-- Graph is only correct at the top of the list (where DOM index == commit index)
-- Hard to debug — looks fine in small repos, breaks at scroll position 50+
+- Vertical lines extend below merge commits into empty space
+- Lane columns accumulate over time, pushing the graph wider and wider
+- Graph looks increasingly cluttered as you scroll down through history
 
 **Prevention:**
-- The Rust lane algorithm must emit lane assignments indexed by absolute commit position (0 = oldest rendered commit, not 0 = top of DOM). Each `CommitInfo` row carries its own `lane_index`, `connections_in: Vec<LaneConn>`, `connections_out: Vec<LaneConn>`.
-- In Svelte, bind SVG rendering to `commit.absolute_index`, not to the DOM slot index.
-- The Svelte virtual scroll component must pass the absolute commit index (not the rendered position) to each SVG row component.
-- Draw vertical connectors as SVG elements that extend slightly beyond the row bounds (e.g., top and bottom by half a row height), so they visually connect across row boundaries even though they are in separate SVG elements.
+- **Add a dedicated test: after a merge commit, verify that the merged branch's column has NO Straight edge in the next row.** The existing test `merge_commit_edges` checks that merge edges exist but does not verify that the merged lane terminates.
+- **Add a "max active lanes" assertion in tests.** For a repo with 2 branches that merge, the max active lane count should decrease back to 1 after the merge.
+- **Trace the `active_lanes` vector state in debug mode.** Add a `#[cfg(test)]` debug print that logs `active_lanes` after each commit is processed. Ghost lanes are immediately visible as `Some(oid)` entries that persist after the merge.
 
 **Detection:**
-- Lane lines jump when scrolling past the first viewport of commits
-- Graph correct when `startIndex == 0`, broken when `startIndex > 0`
-- SVG connector lines do not meet at row boundaries after scrolling
+- Vertical lines extending below merge commits that connect to nothing
+- Graph width keeps growing as you scroll down even though branches are merging
+- The lane count at the bottom of the graph (near the root commit) should be 1 for a typical repo -- if it is >1, ghost lanes exist
 
-**Phase:** Address in the commit graph lane rendering phase. The absolute-index requirement must be in the Rust lane algorithm from the start.
+**Specific to this codebase:** The algorithm in `graph.rs` lines 94-97 clears the slot, and lines 103-126 handle first-parent continuation. The risk is specifically in the `if let Some(&existing_col) = pending_parents.get(&parent_oid)` branch at line 104 -- when `existing_col != col`, the current `col` slot stays None (correct). Verify this holds for all edge cases including when the same parent is referenced by multiple merge children.
+
+**Phase:** Address in lane algorithm hardening phase, before frontend rendering begins. Ghost lanes are algorithm bugs, not rendering bugs.
 
 ---
 
-### Pitfall 5: `notify` Watcher Firing on its Own Write Operations
+### Pitfall 5: Octopus Merge Lane Explosion
 
-**What goes wrong:** When Tauri's Rust backend writes to the git repository (staging a file updates `.git/index`, creating a commit updates `.git/HEAD` and `.git/refs/`), the `notify` filesystem watcher fires events for those writes. The event handler then triggers a status refresh, which reads the repo, which may trigger another event — an event loop.
+**What goes wrong:** An octopus merge has 3+ parents. Each secondary parent needs its own lane column. If 5 branches merge simultaneously, the algorithm allocates 5 new columns for the inbound merge edges. These columns may not be reclaimed immediately because the parent commits below may also have their own branch structure. The graph suddenly becomes very wide at the octopus merge row and may never narrow again.
 
-**Why it happens:** The watcher watches the repo root including `.git/`. Every git operation writes to `.git/`. Without filtering, every `stage file` command causes: write index → watcher fires → status refresh IPC → UI re-renders → (no loop here, but expensive).
+**Why it happens:** The current algorithm (line 141-157) assigns secondary parents to available columns without any awareness of how many parents exist. For an octopus merge with N parents, it allocates N-1 additional columns. The Linux kernel has octopus merges with 66 parents -- this would create a 66-column-wide graph.
 
 **Consequences:**
-- Status refreshes fire after every command, even when the UI already knows the new state (it just caused it)
-- With debounce set too low (50ms), status refreshes can fire mid-command while the index is in an inconsistent state
-- On macOS, FSEvents batches events — you get one event covering the whole git operation. On Linux (inotify), you get one event per file write, so a single commit can fire 10+ events.
+- Graph becomes extremely wide, breaking the layout
+- SVG width per row balloons (at 12px per lane, 66 lanes = 792px just for the graph pane)
+- Lane colors wrap around the 8-color palette many times, making the graph unreadable
 
 **Prevention:**
-- Watch only the working tree directory, NOT `.git/` internals. If you must watch `.git/` (for branch changes from external git commands), filter out `.git/index` and `.git/COMMIT_EDITMSG` from event paths.
-- Alternatively: watch `.git/HEAD`, `.git/refs/`, and the working tree separately with different handlers.
-- Always debounce at 300ms minimum (per PROJECT.md decision — correct). After any command that the Rust backend itself initiates, suppress the next N watcher events for 500ms using a flag or timestamp.
-- The debouncer-mini crate chosen (notify-debouncer-mini 0.5) correctly coalesces events — but the debounce window must be larger than the longest git write operation (a large commit can take 100-200ms).
+- **Cap displayed parent count** in octopus merges. For octopus merges with >4 parents, show only the first 3-4 merge edges and add a visual indicator (e.g., "+12 more branches merged"). The full parent list is still in the data; only the rendering is capped.
+- **Aggressive lane reclamation.** After processing a merge commit, immediately scan `active_lanes` and release any column where the tracked OID is one of the merge's secondary parents AND that parent is also claimed at its own column. The secondary parent lane should terminate at the merge commit.
+- **Track `max_column` per page.** The SVG width calculation (`(commit.column + 1) * laneWidth`) only considers the commit's own column, not passing-through lanes. The SVG must be wide enough to render ALL edges, not just the commit dot. Add a `max_column` field to GraphCommit that represents the rightmost column of any edge in that row.
+- **Test with octopus merge fixtures.** Create a test repo with a 5-parent octopus merge and verify the graph narrows back after the merge.
 
 **Detection:**
-- Status panel flickers after staging a file (multiple re-renders)
-- Console shows duplicate "status refreshed" events after a single user action
-- On Linux, status refresh fires 5-10 times after a single stage operation
+- Graph suddenly widens dramatically at certain commits
+- Lane colors become meaningless (same color appears 3+ times in one row)
+- Horizontal scroll required to see the full graph
 
-**Phase:** Address in filesystem watching phase. This cannot be "fixed later" — the event loop causes visible UI churn from day one.
+**Specific to this codebase:** The `svgWidth` calculation in `LaneSvg.svelte` line 16 (`(commit.column + 1) * laneWidth`) does not account for edges that extend to columns beyond the commit's own column. A merge commit at column 0 with a merge edge to column 5 would have `svgWidth = 12`, cutting off the edge. This MUST be fixed to use the max column of all edges in the row.
+
+**Phase:** Lane algorithm hardening phase. Add octopus merge test fixtures before implementing rendering.
+
+---
+
+### Pitfall 6: SVG Width Inconsistency Causes Jagged Left Edge on Commit Messages
+
+**What goes wrong:** Each row's SVG is a different width because it is sized to `(commit.column + 1) * laneWidth`. Row 1 has a commit at column 3 (SVG width = 48px), row 2 has a commit at column 0 (SVG width = 12px). The commit message text following the SVG starts at a different horizontal position in each row, creating a jagged left edge for the message column. This makes the text unreadable and the whole graph look broken.
+
+**Why it happens:** The SVG width is determined per-row by the commit's lane position. But a properly rendered graph needs the SVG pane to be a consistent width across all visible rows so that: (a) pass-through lanes at columns beyond the commit's own column are drawn, and (b) the text column starts at a uniform x-position.
+
+**Consequences:**
+- Commit messages are horizontally misaligned across rows
+- Pass-through lanes at high columns are not drawn (SVG is too narrow)
+- The layout looks broken even if the lane algorithm is perfect
+
+**Prevention:**
+- **Use a fixed graph pane width based on the maximum column across all visible rows (or the entire page).** The Rust algorithm should return `max_active_lanes: usize` alongside the commit list. The frontend sets graph SVG width to `max_active_lanes * laneWidth` for ALL rows.
+- **Alternatively, use a `<div>` wrapper with a fixed width** around the SVG pane. The SVG inside can still have `overflow: visible`, and the fixed-width div ensures consistent text alignment.
+- **Include `max_column` in the page metadata** returned from the Rust `get_commit_graph` command. This is a single integer added to the response, not per-commit.
+
+**Detection:**
+- Commit messages start at different horizontal positions in adjacent rows
+- Visually obvious -- just look at the commit list
+
+**Specific to this codebase:** The current `CommitRow.svelte` layout is `[RefPill 120px fixed] [LaneSvg flex-shrink-0] [Message flex-1]`. Because `LaneSvg` width varies per row, the message div's left edge varies. Fix by making the SVG wrapper a fixed width.
+
+**Phase:** First rendering phase. Must be solved before the graph looks presentable.
 
 ---
 
 ## Moderate Pitfalls
 
-### Pitfall 6: Tauri Command Error Types Not Serializable
-
-**What goes wrong:** Tauri `#[tauri::command]` functions must return `Result<T, E>` where both `T` and `E` implement `serde::Serialize`. `git2::Error` does NOT implement `Serialize`. Returning `Result<T, git2::Error>` from a Tauri command causes a compile error that is confusing to diagnose if you don't know the constraint.
-
-**Prevention:**
-- Define a project-wide `AppError` enum that implements `serde::Serialize` and `thiserror::Error`. All Tauri commands return `Result<T, AppError>`. Map `git2::Error` to `AppError` with `?` and `From<git2::Error> for AppError`.
-- Include an error `code` field (snake_case string) alongside the message so the frontend can branch on error type without string matching. Per PROJECT.md: `dirty_workdir` is the example pattern — extend this to all errors.
-- Example: `AppError::DirtyWorkdir`, `AppError::NotARepo`, `AppError::DetachedHead`, `AppError::BranchNotFound`.
-
-**Detection:**
-- Compile error: "the trait `serde::Serialize` is not implemented for `git2::Error`" on a Tauri command return type
-
-**Phase:** Phase 1 — define `AppError` before the first command is written.
-
 ---
 
-### Pitfall 7: Svelte 5 Runes — Reactive State with Object Mutation
+### Pitfall 7: Color Index Drift -- Same Branch Gets Different Colors After Pagination
 
-**What goes wrong:** In Svelte 5, `$state()` tracks assignments, not mutations. If you have `let commits = $state([])` and then do `commits.push(newCommit)`, Svelte 5 WILL detect this (arrays are deeply reactive via Proxy). But if you have `let repo = $state({ status: [] })` and you do `repo.status = fetchedStatus` followed immediately by `repo.otherProp = x` in the same synchronous block, you get two reactive updates. More subtly: if you store a plain object returned from Tauri invoke (not a class instance), nested mutations work. If you wrap that object in a class, mutations to the class's properties may not be tracked.
+**What goes wrong:** The Rust lane algorithm assigns `color_index` based on column position (`color_index: other_col` for pass-through edges). When the user scrolls down and loads a new page of commits, the algorithm runs over ALL OIDs from the beginning (the current code does this correctly -- it iterates all `oids` then slices to `page_oids`). But if the algorithm changes (e.g., to an incremental approach for performance), the lane assignment for commits deep in history might differ between pages, causing the same branch to change color at the pagination boundary.
 
-**Why it happens:** Svelte 5's reactivity model is explicit: `$state` wraps objects in a Proxy. Developers coming from Svelte 4 expect `$: reactive` statement semantics and are surprised that `$derived` requires a function, not a reactive variable reference.
+**Why it happens:** Lane colors are derived from column indices, and column assignment depends on the full topology above the current row. Any optimization that avoids processing the full history risks inconsistent column assignments.
 
 **Consequences:**
-- UI does not update after data changes (under-reactivity)
-- Double renders when multiple state updates happen synchronously (batching is automatic in Svelte 5 but can be surprising)
-- `$derived` values not updating when they should — usually because the dependency is accessed inside a conditional that short-circuits
+- A branch changes color as you scroll past a pagination boundary
+- The graph looks like two different branches where there is actually one
 
 **Prevention:**
-- Keep Tauri invoke results as plain objects — do not wrap in classes.
-- For the commit list: use `let commits = $state<CommitInfo[]>([])` and replace the whole array (`commits = newCommits`) rather than mutating. This is clearer and more predictable.
-- Use `$derived.by(() => ...)` for derived values with complex dependencies.
-- Test reactive chains with Svelte's built-in `tick()` in unit tests.
+- **Keep the current full-walk approach.** The existing algorithm walks all OIDs for lane continuity (graph.rs line 59-185) then slices the page. This is correct and should not be "optimized" into incremental computation without careful thought.
+- **If performance requires incremental computation**, serialize the `active_lanes` and `pending_parents` state at the end of page N and restore it at the start of page N+1. This is a state-machine checkpoint, not a re-computation.
+- **Color should be tied to column index, not to any per-branch identifier.** The current approach (`color_index: other_col`) is correct for this. Columns are stable across pages because the full walk ensures consistency.
+- **Test: load page 1 and page 2 of a repo with 3 branches. Verify that the color of each branch is the same at the page boundary.**
 
 **Detection:**
-- Clicking a branch does not update the commit list even though the Tauri invoke completed
-- Adding console.log shows data arrived but UI didn't re-render
-- `$derived` value is stale after state update
+- Branch color changes mid-graph when scrolling
+- A branch at column 2 is blue in one section and green in another
 
-**Phase:** Phase 1 UI setup. Establish reactive patterns before building complex state.
+**Phase:** Pagination integration testing phase.
 
 ---
 
-### Pitfall 8: Tauri `invoke` Error Handling — Frontend Swallows Errors
+### Pitfall 8: Re-render Storms from Reactive SVG Width Recalculation
 
-**What goes wrong:** `await invoke('command')` rejects with a string (the serialized `AppError`) if the Rust command returns `Err(...)`. Frontend developers often write `const result = await invoke(...)` without a try/catch, or catch only `Error` objects (not strings). Tauri rejects with a string, not an `Error` instance, so `catch(e) { e.message }` returns `undefined`.
+**What goes wrong:** If the graph pane width is a Svelte `$derived` value based on `max_column` (which is correct per Pitfall 6), and `max_column` changes when new commits load (e.g., a deep branch appears in page 2 that pushes `max_column` from 3 to 7), ALL visible row SVGs re-render because their width prop changed. With 40 visible rows, each containing an SVG with potentially 5-10 path elements, this is 200-400 DOM mutations in a single frame.
 
-**Why it happens:** Tauri's IPC serializes errors as strings by default. Developers expect rejected Promises to carry `Error` objects.
+**Why it happens:** Svelte 5's fine-grained reactivity means changing a prop on 40 components triggers 40 independent DOM updates. SVG width changes force browser relayout of the entire list.
 
 **Consequences:**
-- Errors from git2 silently disappear
-- Checkout failure (dirty workdir) shows no UI feedback
-- Hard to debug because `console.error(e)` logs the string correctly but `e.message` is undefined
+- Visible jank/stutter when loading more commits (pagination)
+- Scroll performance degrades as the graph gets wider
 
 **Prevention:**
-- Create a typed `invoke` wrapper that parses the error string and returns a typed error object:
-  ```typescript
-  async function gitInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-    try {
-      return await invoke<T>(cmd, args);
-    } catch (e: unknown) {
-      // e is a string from Tauri — parse it or wrap it
-      throw new GitError(typeof e === 'string' ? e : JSON.stringify(e));
-    }
-  }
-  ```
-- Define `GitError` with a `code` field so frontend can `switch (e.code)` for contextual UI.
-- If `AppError` serializes as `{ code: string, message: string }`, parse with `JSON.parse(e as string)`.
+- **Set graph pane width via CSS custom property, not per-component prop.** Define `--graph-width` on the CommitGraph container. Each SVG reads `width: var(--graph-width)`. Changing the CSS variable triggers a single style recalculation, not 40 component updates.
+- **Debounce max_column changes.** When loading a new page, compute the new max_column but only update the CSS variable after the new data is fully rendered. This prevents mid-render width thrashing.
+- **Over-allocate width.** Start with `max_column` rounded up to the next multiple of 4. This reduces how often the width actually changes. Going from 3 to 4 lanes causes a width change, but going from 3 to 4 within an allocation of 4 does not.
 
 **Detection:**
-- git operations fail silently in UI
-- `catch(e) { console.log(e.message) }` logs `undefined`
+- Browser DevTools Performance tab shows "Recalculate Style" spike when new commits load
+- Visible horizontal jump/shift when scrolling to load more commits
+- `console.log` in LaneSvg shows all 40 instances re-rendering on page load
 
-**Phase:** Phase 1 — create the invoke wrapper before any commands are wired up.
+**Phase:** Performance optimization phase, after basic rendering works.
 
 ---
 
-### Pitfall 9: git2 Revwalk Sorting and Topological Ordering
+### Pitfall 9: Lane Collision -- Two Commits Assigned the Same Column
 
-**What goes wrong:** `repo.revwalk()` with `SORT_TOPOLOGICAL` is essential for correct lane graph rendering — commits must appear after all their descendants. Developers who use only `SORT_TIME` get a chronologically correct list but one where a merge commit can appear before some of its parents, breaking the lane algorithm's assumption that parents always appear later in the list.
+**What goes wrong:** The lane algorithm assigns two concurrent (both active, neither is an ancestor of the other) commits to the same column. Their vertical lane lines overlap, and merge/fork edges become ambiguous -- you cannot tell which line connects to which commit.
 
-**Why it happens:** `SORT_TIME` feels natural (most recent first) and is what most users expect visually. But pure time sorting breaks graph topology with clock skew and rebased branches.
+**Why it happens:** The algorithm reuses freed columns (`active_lanes.iter().position(|s| s.is_none())`). If the column was freed prematurely (ghost lane fix was too aggressive) or the algorithm does not correctly track that a parent is still pending on that column, a new branch tip can be assigned the same column as an existing active branch.
 
 **Consequences:**
-- Lane algorithm produces incorrect branch lines
-- Merge commits appear orphaned (no visible parent connections)
-- Clock-skewed repos (common in CI systems, cross-timezone teams) produce completely wrong graphs
+- Two branch lines overlap, appearing as one
+- Merge/fork edges appear to connect to the wrong branch
+- The graph is technically drawn but visually misleading
 
 **Prevention:**
-- Always use `SORT_TOPOLOGICAL | SORT_TIME` in combination. This gives topological correctness while breaking ties by timestamp.
-- Document this in the revwalk setup code as a comment explaining why both flags are needed.
-- Test with repos that have clock-skewed commits (create test fixtures with force-set author dates).
+- **The column assignment for new chains (line 70-76) must check ALL occupied slots**, not just `active_lanes`. The `pending_parents` map also indicates columns that are "reserved" for future use. A column is only truly free if `active_lanes[col].is_none()` AND no entry in `pending_parents` maps to that column.
+- **Add a collision detection assertion in tests:** for each row, verify that no two concurrent branches share the same column. "Concurrent" means: neither is an ancestor of the other.
+- **Visualize active_lanes state in a test log** for complex topologies.
+
+**Specific to this codebase:** The current algorithm at line 64-77 checks `pending_parents` first (for pre-reserved columns), then falls back to finding a free slot in `active_lanes`. The `pending_parents.insert` on line 131 reserves the column. This is mostly correct, but the secondary parent path (line 145) searches `active_lanes` for a free slot WITHOUT checking if that slot is pending for another parent. A collision can occur if parent A is in `pending_parents` at column 3 but `active_lanes[3]` is `None` (because A hasn't been processed yet) -- secondary parent B could be assigned column 3.
 
 **Detection:**
-- Graph looks correct on linear repos, breaks on repos with merges
-- A commit appears in the list before one of its direct parents
+- Two branch lines visually merge into one at some point in the graph
+- Graph has fewer visible branches than expected
 
-**Phase:** Phase 1 — commit history loading. Enforce from the first revwalk implementation.
+**Phase:** Lane algorithm hardening. Add collision detection test before rendering work begins.
 
 ---
 
-### Pitfall 10: Cross-Platform Path Handling — Windows Path Separators
+### Pitfall 10: Straight Pass-Through Edges Not Drawn for All Active Lanes
 
-**What goes wrong:** `git2` returns paths with forward slashes on all platforms (POSIX paths internally). The Rust backend constructs `PathBuf` from these, which is correct. But when paths are serialized as strings across the Tauri IPC to JavaScript, and then the JS frontend constructs a path for display or for sending back to Rust, Windows users may encounter backslash vs forward-slash mismatches. Additionally, `Repository::open()` on Windows with a UNC path (`\\server\share\repo`) may fail.
+**What goes wrong:** Each row must draw vertical pass-through lines for every active lane that passes through that row, not just the lane belonging to the current commit. If the SVG only draws the commit dot and its own edges (merge/fork), other active branches appear to have gaps at this row -- their continuous vertical lines are interrupted.
 
-**Prevention:**
-- In Rust: always use `PathBuf` and `Path` — never string concatenation for paths.
-- When serializing paths to the frontend, use `.to_string_lossy()` or `.display().to_string()`. On Windows, `PathBuf::display()` uses backslashes. If the frontend needs to send a path back to Rust, accept it as a string and re-parse with `PathBuf::from()`.
-- Do not compare path strings across the IPC boundary (e.g., `selectedFile === diff.path`) — normalize to forward slashes in JS: `path.replace(/\\/g, '/')`.
-- Test on Windows with paths containing spaces and non-ASCII characters.
-
-**Detection:**
-- File status shows files as modified when they aren't (path comparison mismatch)
-- `diff.path` from Rust doesn't match `status.path` — one has backslashes, one has forward slashes
-
-**Phase:** Phase 1 — file status display. Path mismatch bugs are invisible on macOS/Linux.
-
----
-
-### Pitfall 11: Large Diff Payloads Blocking the IPC
-
-**What goes wrong:** A single file diff for a large generated file (e.g., `package-lock.json`, a minified bundle, a large SQL migration) can be hundreds of kilobytes or megabytes of text. Tauri's IPC serializes this as a JSON string, which must be allocated in Rust, serialized to JSON, sent through the webview IPC bridge, deserialized in JavaScript, and then diffed line-by-line in the UI. At 1MB+, this visibly blocks the UI.
-
-**Prevention:**
-- Cap diff output at a configurable line count (e.g., 2000 lines) with a "diff too large — show anyway?" prompt.
-- Use git2's `DiffOptions` to set `max_size` to cap the diff for any single file.
-- The diff Tauri command should accept `{ truncate_at: number }` and return `{ lines: DiffLine[], truncated: boolean }`.
-- For the initial MVP, apply a hard limit (5000 lines, 500KB) — large diff viewing can be a v0.2 feature.
-
-**Detection:**
-- Clicking a commit on `package-lock.json` changes freezes the UI for 1-2 seconds
-- IPC payload size >500KB in devtools
-
-**Phase:** Phase with diff display. Add limits before the feature ships, not after user reports.
-
----
-
-### Pitfall 12: `notify` Watcher Not Working in macOS Sandboxed App
-
-**What goes wrong:** Tauri 2 on macOS uses App Sandbox by default in production (required for App Store distribution, optional for direct distribution). The `notify` crate uses FSEvents on macOS, which requires the app to have entitlements to watch paths outside its container. Watching `/Users/alice/projects/my-repo` from a sandboxed app requires the user to explicitly grant access, and even then FSEvents may not fire for paths the app didn't open through the OS file picker.
-
-**Why it happens:** macOS sandbox restricts filesystem access. The file dialog grants a security-scoped bookmark, but filesystem event subscription is a separate permission.
+**Why it happens:** The Rust algorithm emits `Straight` edges for pass-through lanes (graph.rs lines 80-92), which is correct. But the frontend SVG renderer might only draw edges where `from_column != to_column` (thinking only merge/fork edges matter), or might skip drawing a straight line when it sees an edge with `from_column == to_column` because it thinks "the dot already handles that column."
 
 **Consequences:**
-- Auto-refresh works perfectly in `tauri dev` (unsandboxed), breaks in production build
-- No errors in logs — watcher silently receives no events
-- Hard to reproduce in development
+- Vertical lane lines have holes at every commit row that belongs to a different branch
+- The graph looks correct only where commits are dense (every lane has its own commit) and broken where commits are sparse
 
 **Prevention:**
-- For v0.1: distribute without App Store sandboxing (`"bundle" > "macOS" > "entitlements"` without strict sandbox). This is standard for developer tools (GitKraken, Fork, Tower all do this).
-- Add `com.apple.security.files.user-selected.read-write` and `com.apple.security.files.bookmarks.document-scope` to entitlements.
-- If sandboxing is required later, use security-scoped bookmarks from the open-folder dialog and pass the bookmark's URL to the notify watcher.
-- Test the production `.app` build specifically for watcher functionality — `tauri dev` and `tauri build` behave differently.
+- **The SVG renderer must draw EVERY edge returned by the Rust algorithm**, including Straight edges where `from_column == to_column` and `from_column != commit.column`. These are the pass-through lanes.
+- **Draw pass-through lanes BEFORE the commit dot** (lower z-order). The dot should be on top of any lines.
+- **Verify in tests:** for a repo with 2 active branches (main at column 0, feature at column 1), when processing a commit on main (column 0), there should be a Straight edge at column 1 (the feature branch passing through). The existing test suite checks for edges on merge commits but not for pass-through edges on non-merge commits.
 
 **Detection:**
-- Auto-refresh works in `npm run tauri dev`, stops working in `npm run tauri build`
-- macOS Console.app shows no FSEvents for the watched path from the built app
+- Vertical lane lines have gaps/holes where commits on other branches are positioned
+- Only the commit dot's own column has a continuous line
 
-**Phase:** Filesystem watching phase. Must test production build, not just dev.
+**Specific to this codebase:** The algorithm at lines 80-92 emits these correctly. The risk is purely in the frontend renderer not drawing them. The current `LaneSvg.svelte` only draws a commit dot -- it does not draw any edges at all. This is by design (v0.1 stripped lanes), but it means ALL edge rendering is new code that must handle this case.
+
+**Phase:** First rendering phase. This is the most fundamental rendering requirement.
 
 ---
 
-### Pitfall 13: `git2` `Signature` Requires Name + Email — No Fallback to Global Git Config by Default
+### Pitfall 11: Bezier Curves Jagged at Low Stroke Widths
 
-**What goes wrong:** `git2::Signature::now(name, email)` requires explicit name and email. It does NOT automatically fall back to the user's global `~/.gitconfig`. When creating a commit, you must explicitly call `repo.signature()` (which reads `.git/config` then `~/.gitconfig`) rather than hardcoding or prompting. Developers who skip `repo.signature()` break commit authorship for users whose name/email is only in global config.
+**What goes wrong:** SVG bezier curves rendered with `stroke-width: 1` or `stroke-width: 1.5` appear jagged or blurry on standard (non-Retina) displays. The anti-aliasing makes thin curves appear fuzzy. On Retina displays they look fine because there are enough physical pixels to render the anti-aliased edge cleanly. This creates "works on my machine" situations for developers with Retina MacBooks.
+
+**Why it happens:** SVG anti-aliasing works by blending the stroke color with the background at sub-pixel boundaries. With a 1px stroke, the blend zone is a significant proportion of the total stroke width, making the line appear semi-transparent or fuzzy.
+
+**Consequences:**
+- Curves look blurry or "soft" on non-Retina displays
+- Lines look different thicknesses at different angles (optical illusion from anti-aliasing)
+- Developers with Retina screens do not notice the problem
 
 **Prevention:**
-- Always use `repo.signature()` (reads all config levels). Only fall back to prompting the user if `repo.signature()` returns `Err` (no git config set up at all — rare but possible on fresh systems).
-- `repo.signature()` respects `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL` environment variables as well — correct behavior for CI environments.
+- **Use `stroke-width: 2` as the minimum for all lane lines and curves.** 2px strokes look sharp on both Retina and standard displays because the anti-aliased edge is a smaller proportion of the total width.
+- **Use `stroke-linecap: round`** for path endpoints to avoid flat cut-off edges that look rough.
+- **Do NOT use `shape-rendering: crispEdges`** on curves -- it disables anti-aliasing entirely, making curves visibly stepped/pixelated. Only use `crispEdges` on purely horizontal or vertical lines.
+- **Test on a standard 1080p display**, not just a Retina MacBook. Use browser DevTools device emulation to simulate lower DPI if no physical display is available.
 
 **Detection:**
-- Commits created by the app show wrong author (empty name or hardcoded test value)
-- `git log --format="%an <%ae>"` shows blank or incorrect for commits made through the app
+- Curves look blurry or "glowing" on standard displays
+- Straight vertical lines look crisp but curves look soft
+- Side-by-side comparison between 1px and 2px strokes shows dramatic difference
 
-**Phase:** Commit creation phase.
+**Phase:** Visual polish phase, but should be decided during initial rendering to avoid rework.
+
+---
+
+### Pitfall 12: Lane Color Palette Not Accessible / Clashes with Background
+
+**What goes wrong:** The 8 lane colors (`--lane-0` through `--lane-7`) were chosen for aesthetics but not tested for: (a) contrast against the dark background (`#0d1117`), (b) distinguishability from each other for colorblind users, (c) readability when used as a 2px line on a dark background. Specifically, `--lane-7: #58595b` is nearly invisible against the `#0d1117` background (contrast ratio ~2.4:1, well below WCAG AA minimum of 3:1 for large text / graphical elements).
+
+**Why it happens:** Colors were picked from a generic chart palette (similar to Chart.js defaults) without testing against the specific dark background and the specific rendering context (2px lines, not filled areas).
+
+**Consequences:**
+- Some branch lanes are nearly invisible
+- Colorblind users cannot distinguish certain lane pairs (e.g., red/green, blue/purple)
+- Users complain about "missing" branches that are actually just invisible
+
+**Prevention:**
+- **Test every lane color as a 2px line on `#0d1117`.** Minimum contrast ratio 4.5:1.
+- **Replace `--lane-7: #58595b`** (dark gray) with a higher-contrast alternative. Consider `#a8a8a8` or `#c0c0c0`.
+- **Use a colorblind-safe palette.** Tools like ColorBrewer or the Oklab color space can generate palettes that are distinguishable under all forms of color vision deficiency.
+- **Test with browser extensions** that simulate color blindness (e.g., Chrome DevTools Rendering > Emulate vision deficiencies).
+- **Add lane color labels on hover** (branch name tooltip) so users are not solely dependent on color to identify lanes.
+
+**Detection:**
+- A lane appears to "disappear" in certain sections of the graph
+- Two adjacent lanes appear identical in color
+
+**Phase:** Visual polish phase. Quick to fix but must be done before release.
 
 ---
 
 ## Minor Pitfalls
 
-### Pitfall 14: Svelte 5 Component Props — `$props()` Destructuring Loses Reactivity
+---
 
-**What goes wrong:** In Svelte 5, `let { commits } = $props()` destructures props into local variables. If the parent updates `commits`, the child does NOT see the update because the destructured variable is not reactive. You must use `let { commits } = $props()` and then use `commits` directly in the template — NOT assign it to another variable.
+### Pitfall 13: Commit Dot Rendered Behind Pass-Through Lines
+
+**What goes wrong:** The SVG renderer draws pass-through lane lines and then the commit dot. Because SVG elements render in document order (later = on top), this is correct. But if the rendering order is edges-then-dot, and a pass-through line happens to cross through the commit dot's center (which occurs when the commit is on a column that a pass-through edge also uses -- shouldn't happen, but edge cases exist), the line obscures the dot.
 
 **Prevention:**
-- Never do `let localCommits = commits` inside a component — use `commits` directly from `$props()` destructuring.
-- For derived values from props, use `let derived = $derived(someTransform(commits))`.
+- **Always render in order: (1) pass-through straight lines, (2) merge/fork curves, (3) commit dots.** The dot must be last in SVG document order.
+- **Add a small opaque background circle behind the commit dot** (same color as `--color-bg`) to create a "knockout" that separates the dot from crossing lines.
 
-**Detection:**
-- Parent updates a prop but child component shows stale data
-- Works if parent and child are merged into one component
-
-**Phase:** Any phase with component composition.
+**Phase:** Rendering implementation. A simple z-order discipline.
 
 ---
 
-### Pitfall 15: `git2` Index Operations Require Explicit Write-Back
+### Pitfall 14: Edge Data Does Not Include Enough Information for Multi-Row Curves
 
-**What goes wrong:** `repo.index()` returns a reference to the index. Calling `index.add_path()` modifies the in-memory index but does NOT write to `.git/index` until `index.write()` is called explicitly. Developers who skip `index.write()` see staging "succeed" (no error) but the file isn't actually staged.
+**What goes wrong:** The current `GraphEdge` struct has `from_column`, `to_column`, `edge_type`, and `color_index`. For a merge or fork edge, this tells the renderer "draw a curve from column X to column Y" -- but it does not say whether the curve should span to the row above or below, or how many rows it spans. For standard merges/forks that span exactly one row, this is implied. But for edges where the parent is multiple rows below (due to interleaved commits on other branches), a single edge entry in the current row is insufficient -- the renderer does not know how many rows of straight line to draw before the curve.
+
+**Why it happens:** The algorithm emits edges per-row, and each edge describes only the local geometry at that row. For a merge edge, row N says "MergeRight from column 0 to column 3" -- but the actual parent commit is at row N+5. Rows N+1 through N+4 need straight edges at column 3 for the merged branch's continuation. The algorithm handles this via pass-through Straight edges -- but the color_index for those pass-through edges must match the merge edge's color for visual continuity.
 
 **Prevention:**
-- Always call `index.write()` after any index modification.
-- Structure the staging function as: `open index → modify → write → drop index`. Use RAII scoping to ensure write happens.
+- **Verify that pass-through Straight edges emitted between a child and its parent carry the correct `color_index`.** The current code uses `color_index: other_col` for pass-through edges, which ties color to column position. This is correct as long as the column does not change between the child and parent.
+- **For curves, the edge_type tells the renderer which direction to curve, and the curve always spans exactly one row boundary.** Document this contract explicitly: MergeLeft/MergeRight/ForkLeft/ForkRight edges always describe a curve that starts at the center of the current row and ends at the center of the adjacent row (above for merge, below for fork). The straight continuation above/below is handled by separate Straight edges.
 
-**Detection:**
-- `stage_file` command returns `Ok(())` but file remains unstaged in `git status`
-- Only reproducible if you check the actual git state (run `git diff --cached` in terminal)
-
-**Phase:** Staging implementation phase.
+**Phase:** Algorithm-renderer contract definition phase.
 
 ---
 
-### Pitfall 16: Tauri 2 App Handle Ownership in Async Commands
+### Pitfall 15: Branch That Only Exists in Reflog Has No Ref but Occupies a Lane
 
-**What goes wrong:** In Tauri 2, `#[tauri::command] async fn my_cmd(app: tauri::AppHandle)` gives you the app handle by value (moved). If you need to emit events after an `await` point, the handle is fine — but if you accidentally store it in a `Mutex`-protected struct, you create circular ownership (app → state → handle → app). Also, cloning `AppHandle` is cheap and correct — don't worry about it.
+**What goes wrong:** Deleted branches whose commits are still reachable (via other branches or reflog) appear in the revwalk output. The algorithm assigns them lanes, but they have no ref label. Users see unnamed branch lanes in the graph that do not correspond to any known branch.
 
 **Prevention:**
-- Clone `AppHandle` freely — it's reference-counted and cheap.
-- For the filesystem watcher (which runs in a background task), clone the `AppHandle` before spawning and move it into the watcher closure.
-- Never store `AppHandle` in managed state (it's already accessible via state).
+- **This is correct behavior** -- the commits exist and their topology should be shown. Do not filter them out.
+- **Add a visual distinction** for commits with no refs (dimmed lane color, or thinner line) to indicate they are reachable but not pointed-to by any branch.
+- **The reflog itself is not walked by the current algorithm** (only `refs/heads`, `refs/remotes`, `refs/tags` are pushed to the revwalk). Deleted branches without other reachability will not appear.
 
-**Detection:**
-- Compile error about `AppHandle` not being `Sync` when trying to store in a mutex
-- Watcher closure can't emit events because it doesn't have access to the app handle
-
-**Phase:** Filesystem watcher implementation.
+**Phase:** Visual polish. Not a blocking issue.
 
 ---
 
-### Pitfall 17: SVG ViewBox and Coordinate System Mismatch
+### Pitfall 16: WIP Row Does Not Participate in Lane Rendering
 
-**What goes wrong:** Each row SVG needs a consistent coordinate space for lane columns. If column width is defined differently in Rust (for the lane algorithm's pixel output) vs the SVG's `viewBox`, circles and connector lines won't align. This gets worse when the number of active lanes changes (a branch is created or merged), causing the lane count — and therefore SVG width — to change per row.
-
-**Prevention:**
-- Define `LANE_WIDTH` and `ROW_HEIGHT` as constants shared via a single source of truth. In practice: define them in Svelte as CSS custom properties, reference them in the SVG `viewBox` and in JavaScript math.
-- The Rust lane algorithm should NOT output pixel coordinates — it should output lane indices (integers). SVG rendering translates `lane_index * LANE_WIDTH` to pixels in the frontend.
-- Make the SVG `width` dynamic per row (based on max active lane count for that row) but use a consistent `viewBox` coordinate space.
-
-**Detection:**
-- Circles don't center on connector lines
-- Graph looks correct in Firefox, broken in Chrome (different SVG coordinate handling)
-
-**Phase:** SVG graph rendering phase.
-
----
-
-### Pitfall 18: HEAD Detection Edge Cases
-
-**What goes wrong:** `repo.head()` returns an error if the repo is in detached HEAD state or has no commits (empty repo). New git2 users call `repo.head().unwrap()` and the app panics when opening a freshly initialized repo or a repo in detached HEAD.
+**What goes wrong:** The WIP row in `CommitGraph.svelte` (lines 122-141) is rendered OUTSIDE the virtual list, above it. It has a hardcoded hollow circle at column 0 with a fixed SVG width of 12px. When lane rendering is added, the WIP row must connect to the HEAD commit's lane. If HEAD is not at column 0 (e.g., HEAD is on a feature branch at column 2), the WIP dot is at the wrong column and has no connecting line to HEAD.
 
 **Prevention:**
-- Always handle `head()` errors explicitly:
-  - `repo.is_empty()` → show "No commits yet" state
-  - `repo.head_detached()` → show detached HEAD indicator in branch sidebar
-  - Error from `repo.head()` on a valid non-empty repo → genuine error, log it
-- `repo.head()?.shorthand()` returns `None` for detached HEAD — handle the `None` case.
+- **The WIP row must participate in the lane algorithm.** Either include a synthetic "WIP" node in the Rust graph walk (preferred -- simplest to implement), or compute the WIP row's column and edges in the frontend based on the HEAD commit's lane data.
+- **The WIP row should have a straight edge from its column to the HEAD commit's column below it.** If they are in the same column, it is a straight line. If different (unlikely but possible if HEAD is not on the primary branch), it is a fork edge.
 
-**Detection:**
-- App crashes/panics when opening a brand-new `git init` repo
-- App crashes when checking out a tag (detached HEAD)
-
-**Phase:** Phase 1 — repository open. Test with edge-case repos from the start.
+**Phase:** WIP row integration, after the lane rendering is working for committed rows.
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Repo open + state setup | `Repository` not `Sync` — wrong state architecture | Use path-only state + re-open per operation for reads |
-| Repo open + state setup | `head()` panics on empty repo or detached HEAD | Explicit `is_empty()` + `head_detached()` checks |
-| Commit history loading | git2 types not serializable | Define DTO structs before writing any git2 code |
-| Commit history loading | Revwalk sorting breaks topology | Use `SORT_TOPOLOGICAL | SORT_TIME` always |
-| Virtual scroll UI | Scroll position desync | Fixed integer `ROW_HEIGHT`, test at >100% zoom |
-| SVG graph rendering | DOM index vs absolute commit index | Rust emits lane data keyed by absolute index |
-| SVG graph rendering | ViewBox coordinate mismatch | Lane algo emits indices; frontend does pixel math |
-| File status + staging | Path separator mismatch on Windows | Normalize to forward slashes in JS comparisons |
-| File status + staging | Index write-back missing | Always call `index.write()` after modifications |
-| Commit creation | Wrong author identity | Always use `repo.signature()`, not hardcoded values |
-| Diff display | Large diff blocks IPC | Hard-limit diff size; return `truncated: bool` flag |
-| Filesystem watching | Watcher fires on own writes | Debounce 300ms; suppress events after own writes |
-| Filesystem watching | macOS sandbox kills FSEvents | Test production `.app` build; avoid strict sandbox |
-| IPC error handling | Tauri errors arrive as strings | Typed `invoke` wrapper that parses error to object |
-| Tauri command errors | git2::Error not Serialize | `AppError` enum with `From<git2::Error>` from day 1 |
+| Phase Topic | Likely Pitfall | Severity | Mitigation |
+|-------------|---------------|----------|------------|
+| Lane algorithm hardening | Ghost lanes after merge (#4) | Critical | Add termination assertions in tests |
+| Lane algorithm hardening | Lane collision (#9) | Critical | Add collision detection test with pending_parents check |
+| Lane algorithm hardening | Octopus merge explosion (#5) | Moderate | Cap display at 4 parents; test with 5+ parent fixture |
+| SVG rendering foundation | Sub-pixel gaps between rows (#1) | Critical | 0.5px line overlap + even stroke widths + zoom testing |
+| SVG rendering foundation | Inconsistent SVG width (#6) | Critical | Fixed graph pane width from max_active_lanes metadata |
+| SVG rendering foundation | Pass-through edges not drawn (#10) | Critical | Draw ALL edges from algorithm, not just merge/fork |
+| Bezier curve rendering | Row boundary misalignment (#2) | Critical | Single logical curve split by row, not two independent curves |
+| Bezier curve rendering | Jagged curves at low stroke (#11) | Moderate | Stroke-width 2 minimum, round linecaps |
+| Virtual scroll integration | Overflow clipping (#3) | Moderate | Verify DOM structure; only viewport-edge clipping occurs |
+| Virtual scroll integration | Re-render storms (#8) | Moderate | CSS variable for graph width, not per-component prop |
+| Pagination continuity | Color drift across pages (#7) | Moderate | Keep full-walk algorithm; do not optimize to incremental |
+| Visual quality | Color accessibility (#12) | Moderate | Test contrast ratios; replace --lane-7 |
+| Visual quality | Dot z-order (#13) | Minor | SVG render order: lines, curves, dots |
+| Edge data contract | Multi-row curve data (#14) | Minor | Document: merge/fork edges span exactly one row boundary |
+| WIP row | WIP not in lane graph (#16) | Moderate | Synthetic WIP node in Rust graph or frontend column calc |
+
+---
+
+## Summary: Likely v0.1 Failure Modes
+
+Based on the codebase evidence, the v0.1 lane rendering likely failed due to a combination of:
+
+1. **Sub-pixel gaps (#1)** -- The most common failure mode for per-row SVG graphs. Without the 0.5px overlap technique, gaps between rows are nearly inevitable at certain zoom levels.
+2. **Inconsistent SVG width (#6)** -- The current `svgWidth` calculation is per-commit-column, not per-row-max-column. This would cause message text misalignment and missing pass-through lanes.
+3. **Missing pass-through edges (#10)** -- The current LaneSvg only renders a dot. If v0.1's implementation also failed to render pass-through Straight edges, the graph would have gaps in every lane at every commit that belongs to a different branch.
+
+These three issues together would produce a graph with dashed vertical lines, misaligned text, and missing branches -- enough visual breakage to justify stripping it out.
 
 ---
 
 ## Sources
 
-All findings are from training data (cutoff August 2025). Confidence:
-
-| Pitfall | Confidence | Basis |
-|---------|------------|-------|
-| Repository not Sync (#1) | HIGH | Documented in git2-rs README + Rust `Send`/`Sync` trait bounds verifiable in source |
-| git2 lifetime traps (#2) | HIGH | Core Rust/git2 API design — well-documented pattern |
-| Virtual scroll desync (#3) | HIGH | Well-known virtual scroll implementation problem; independent of this stack |
-| SVG lane index vs DOM index (#4) | HIGH | Logical consequence of virtual scroll + lane graph architecture |
-| Notify firing on own writes (#5) | HIGH | Observed pattern with notify crate in practice |
-| AppError not Serialize (#6) | HIGH | Tauri 2 documented constraint on command return types |
-| Svelte 5 runes reactivity (#7) | MEDIUM | Svelte 5 was stable but relatively new at training cutoff; verify with current Svelte 5 docs |
-| Tauri invoke error as string (#8) | HIGH | Tauri 2 documented IPC behavior |
-| Revwalk sort flags (#9) | HIGH | git2 API documented — SORT_TOPOLOGICAL behavior is explicit |
-| Windows path separators (#10) | HIGH | Cross-platform Rust/git2 behavior — well established |
-| Large diff payloads (#11) | HIGH | Tauri IPC is synchronous message-passing; large payloads are a known constraint |
-| macOS sandbox FSEvents (#12) | MEDIUM | macOS entitlement behavior — may have changed; verify with Tauri 2 macOS build docs |
-| Signature fallback (#13) | HIGH | git2 API documented — `repo.signature()` is the correct method |
-| Svelte 5 props reactivity (#14) | MEDIUM | Svelte 5 runes reactivity model — verify with current Svelte 5 docs |
-| Index write-back (#15) | HIGH | git2 API documented — `write()` is explicitly required |
-| AppHandle in async (#16) | MEDIUM | Tauri 2 API — verify with current Tauri 2 docs |
-| SVG viewBox mismatch (#17) | HIGH | SVG coordinate system behavior is browser-standard |
-| HEAD edge cases (#18) | HIGH | git2 documented — `is_empty()` and `head_detached()` are explicit checks |
-
-- git2 API: https://docs.rs/git2/latest/git2/ (verification recommended)
-- Tauri 2 commands: https://v2.tauri.app/develop/calling-rust/ (verification recommended)
-- Tauri 2 state: https://v2.tauri.app/develop/state-management/ (verification recommended)
-- Svelte 5 runes: https://svelte.dev/docs/svelte/what-are-runes (verification recommended)
-- notify crate: https://docs.rs/notify/latest/notify/ (verification recommended)
+- [Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) -- Lane assignment, column packing, topological ordering, performance benchmarks (MEDIUM confidence -- 2019, but algorithmic principles are timeless)
+- [Drawing a Commit Graph (DoltHub)](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/) -- Lane packing, bezier curve implementation, color rendering (MEDIUM confidence)
+- [Mastering SVG Seams: 5 Pro Fixes](https://junkangworld.com/blog/mastering-svg-seams-5-pro-fixes-for-flawless-shapes-2025) -- Anti-aliasing gap fixes, overlap technique (HIGH confidence -- browser behavior)
+- [SVG shape-rendering MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/shape-rendering) -- crispEdges behavior (HIGH confidence -- MDN)
+- [Fix for gap between inline SVG elements](https://codepen.io/elliz/pen/dOOrxO) -- display:block fix for inline SVG gaps (HIGH confidence)
+- [WebKit Bug 96163: SVG overflow:visible](https://bugs.webkit.org/show_bug.cgi?id=96163) -- overflow:visible clipping in WebKit (HIGH confidence)
+- [vscode-git-graph color/position mapping](https://github.com/mhutchie/vscode-git-graph/issues/194) -- Why deterministic branch coloring is infeasible in single-pass algorithms (HIGH confidence -- maintainer explanation)
+- [Microsoft git PR #167: Octopus merge bug](https://github.com/microsoft/git/pull/167) -- Off-by-one in octopus merge handling (HIGH confidence)
+- [Improving SVG Runtime Performance](https://codepen.io/tigt/post/improving-svg-rendering-performance) -- SVG DOM overhead (MEDIUM confidence)
+- Codebase inspection of `graph.rs`, `LaneSvg.svelte`, `CommitRow.svelte`, `CommitGraph.svelte`, `@humanspeak/svelte-virtual-list` (HIGH confidence -- direct source analysis)
