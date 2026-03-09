@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::error::TrunkError;
 use crate::git::types::{EdgeType, GraphCommit, GraphEdge};
 use crate::git::repository;
@@ -31,6 +31,31 @@ pub fn walk_commits(
     let mut pending_parents: HashMap<git2::Oid, usize> = HashMap::new();
     let mut per_oid_data: HashMap<git2::Oid, (usize, Vec<GraphEdge>)> = HashMap::new();
 
+    // Pre-compute HEAD's first-parent chain
+    let mut head_chain: HashSet<git2::Oid> = HashSet::new();
+    if let Ok(head_ref) = repo.head() {
+        if let Some(oid) = head_ref.target() {
+            let mut current = Some(oid);
+            while let Some(c_oid) = current {
+                head_chain.insert(c_oid);
+                current = repo.find_commit(c_oid).ok().and_then(|c| c.parent_id(0).ok());
+            }
+        }
+    }
+
+    // Pre-reserve column 0 for ALL head_chain members via pending_parents.
+    // This ensures that when a non-HEAD branch tip (e.g. B0) processes its
+    // parent (e.g. C1) and finds C1 already in pending_parents at col 0,
+    // it emits ForkLeft(branch_col -> 0) — the correct fork direction.
+    // Without this, B0 would reserve C1 at B0's column, stealing it from HEAD.
+    if !head_chain.is_empty() {
+        // Ensure active_lanes has at least col 0
+        active_lanes.push(None);
+        for &hc_oid in &head_chain {
+            pending_parents.insert(hc_oid, 0);
+        }
+    }
+
     for &oid in &oids {
         let commit = repo.find_commit(oid)?;
         let is_merge = commit.parent_count() >= 2;
@@ -40,9 +65,11 @@ pub fn walk_commits(
             pending_parents.remove(&oid);
             c
         } else {
-            // New chain: find first free lane or create one
-            if let Some(i) = active_lanes.iter().position(|s| s.is_none()) {
-                i
+            // New chain — never a head_chain member (those are pre-populated in
+            // pending_parents). Skip column 0 to keep it reserved for HEAD.
+            let start_col = if !head_chain.is_empty() { 1 } else { 0 };
+            if let Some(i) = active_lanes.iter().skip(start_col).position(|s| s.is_none()) {
+                i + start_col
             } else {
                 active_lanes.push(None);
                 active_lanes.len() - 1
@@ -75,7 +102,7 @@ pub fn walk_commits(
             if idx == 0 {
                 // First parent: continue at current column (if not already reserved elsewhere)
                 if let Some(&existing_col) = pending_parents.get(&parent_oid) {
-                    // Parent already claimed by another child — emit edge from col to existing column
+                    // Parent already claimed — emit edge from col to existing column
                     let edge_type = if existing_col == col {
                         EdgeType::Straight
                     } else if existing_col < col {
@@ -89,7 +116,13 @@ pub fn walk_commits(
                         edge_type,
                         color_index: existing_col,
                     });
-                    // current column (col) slot stays None (freed).
+                    // If same column, re-occupy to maintain lane for pass-through edges
+                    if existing_col == col {
+                        if col < active_lanes.len() {
+                            active_lanes[col] = Some(parent_oid);
+                        }
+                    }
+                    // If different column, current col stays None (lane terminates here)
                 } else {
                     if col >= active_lanes.len() {
                         active_lanes.resize(col + 1, None);
