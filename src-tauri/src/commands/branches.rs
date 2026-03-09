@@ -175,7 +175,7 @@ pub fn checkout_branch_inner(
         .get(path)
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?.commits;
     cache_map.insert(path.to_owned(), commits);
 
     Ok(())
@@ -234,7 +234,7 @@ pub fn create_branch_inner(
         .get(path)
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    let commits = graph::walk_commits(&mut repo2, 0, usize::MAX)?.commits;
     cache_map.insert(path.to_owned(), commits);
 
     Ok(())

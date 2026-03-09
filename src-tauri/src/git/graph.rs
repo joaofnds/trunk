@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use crate::error::TrunkError;
-use crate::git::types::{EdgeType, GraphCommit, GraphEdge};
+use crate::git::types::{EdgeType, GraphCommit, GraphEdge, GraphResult};
 use crate::git::repository;
 
 pub fn walk_commits(
     repo: &mut git2::Repository,
     offset: usize,
     limit: usize,
-) -> Result<Vec<GraphCommit>, TrunkError> {
+) -> Result<GraphResult, TrunkError> {
     // Step 1: Build ref map (needs &mut repo for stash_foreach)
     let ref_map = repository::build_ref_map(repo);
 
@@ -206,6 +206,7 @@ pub fn walk_commits(
             author_timestamp: author.when().seconds(),
             parent_oids,
             column,
+            color_index: 0,
             edges,
             refs,
             is_head,
@@ -213,7 +214,7 @@ pub fn walk_commits(
         });
     }
 
-    Ok(result)
+    Ok(GraphResult { commits: result, max_columns: 0 })
 }
 
 #[cfg(test)]
@@ -252,7 +253,7 @@ mod tests {
         }
 
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
         assert_eq!(commits.len(), 3);
         for c in &commits {
             assert_eq!(c.column, 0, "expected all commits at column 0");
@@ -288,7 +289,7 @@ mod tests {
     fn merge_commit_edges() {
         let dir = make_test_repo();
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
         let merge = commits.iter().find(|c| c.is_merge).expect("no merge commit found");
         let has_merge_edge = merge.edges.iter().any(|e| {
             matches!(e.edge_type, EdgeType::MergeLeft | EdgeType::MergeRight)
@@ -300,7 +301,7 @@ mod tests {
     fn is_merge_flag() {
         let dir = make_test_repo();
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
         let merge_count = commits.iter().filter(|c| c.is_merge).count();
         let non_merge_count = commits.iter().filter(|c| !c.is_merge).count();
         assert_eq!(merge_count, 1, "expected exactly 1 merge commit");
@@ -311,7 +312,7 @@ mod tests {
     fn walk_first_batch() {
         let dir = make_large_test_repo();
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, 200).unwrap();
+        let commits = walk_commits(&mut repo, 0, 200).unwrap().commits;
         assert_eq!(commits.len(), 200);
     }
 
@@ -319,8 +320,8 @@ mod tests {
     fn walk_second_batch() {
         let dir = make_large_test_repo();
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let first = walk_commits(&mut repo, 0, 200).unwrap();
-        let second = walk_commits(&mut repo, 200, 200).unwrap();
+        let first = walk_commits(&mut repo, 0, 200).unwrap().commits;
+        let second = walk_commits(&mut repo, 200, 200).unwrap().commits;
         assert!(!second.is_empty(), "second batch should not be empty");
         assert!(second.len() <= 200);
         assert_ne!(
@@ -333,7 +334,7 @@ mod tests {
     fn merge_has_first_parent_straight() {
         let dir = make_test_repo();
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
         let merge = commits.iter().find(|c| c.is_merge).expect("no merge commit");
         let has_straight = merge.edges.iter().any(|e| {
             matches!(e.edge_type, EdgeType::Straight) && e.from_column == merge.column
@@ -388,7 +389,7 @@ mod tests {
         let _b0 = repo.commit(Some("refs/heads/topic"), &sig, &sig, "B0", &tree, &[&c1_commit]).unwrap();
 
         let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
 
         // Find commits by summary
         let c2 = commits.iter().find(|c| c.summary == "C2").expect("C2 not found");
@@ -417,6 +418,496 @@ mod tests {
                     && e.from_column == main_commit.column
             });
             assert!(!has_own_fork, "main commit {} should not have fork edges from its own column", main_commit.summary);
+        }
+    }
+
+    // ---- 9 new tests for lane algorithm hardening ----
+
+    /// Helper: create a repo with root -> C1 on main, root -> F1 on feature, merge M
+    fn make_merge_repo() -> (tempfile::TempDir, git2::Oid, git2::Oid, git2::Oid, git2::Oid) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+
+        // C0 (root)
+        std::fs::write(dir.path().join("f0.txt"), "f0").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("f0.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let c0 = repo.commit(Some("refs/heads/main"), &sig, &sig, "C0", &tree, &[]).unwrap();
+
+        // C1 (main, child of C0)
+        std::fs::write(dir.path().join("f1.txt"), "f1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("f1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let c0_commit = repo.find_commit(c0).unwrap();
+        let c1 = repo.commit(Some("refs/heads/main"), &sig, &sig, "C1", &tree, &[&c0_commit]).unwrap();
+
+        // F1 (feature, child of C0)
+        std::fs::write(dir.path().join("feat.txt"), "feat").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("feat.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let f1 = repo.commit(Some("refs/heads/feature"), &sig, &sig, "F1", &tree, &[&c0_commit]).unwrap();
+
+        // M (merge on main: parents C1 + F1)
+        std::fs::write(dir.path().join("merge.txt"), "merge").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("merge.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let c1_commit = repo.find_commit(c1).unwrap();
+        let f1_commit = repo.find_commit(f1).unwrap();
+        let m = repo.commit(Some("refs/heads/main"), &sig, &sig, "M", &tree, &[&c1_commit, &f1_commit]).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        (dir, c0, c1, f1, m)
+    }
+
+    #[test]
+    fn no_ghost_lanes_after_merge() {
+        let (dir, _c0, _c1, _f1, _m) = make_merge_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = &result.commits;
+
+        // Find commits by summary
+        let _merge = commits.iter().find(|c| c.summary == "M").expect("M not found");
+        let f1 = commits.iter().find(|c| c.summary == "F1").expect("F1 not found");
+        let c1 = commits.iter().find(|c| c.summary == "C1").expect("C1 not found");
+        let feature_col = f1.column;
+
+        // C1 is below M in the graph. It should NOT have a pass-through Straight edge
+        // at the feature branch's former column (ghost lane).
+        let ghost = c1.edges.iter().any(|e| {
+            e.from_column == feature_col
+                && e.to_column == feature_col
+                && matches!(e.edge_type, EdgeType::Straight)
+        });
+        assert!(
+            !ghost,
+            "ghost lane detected at column {} on commit C1 (below merge M), edges: {:?}",
+            feature_col, c1.edges
+        );
+
+        // Additionally, C0 should also not have a ghost lane at the feature column
+        let c0 = commits.iter().find(|c| c.summary == "C0").expect("C0 not found");
+        let ghost_c0 = c0.edges.iter().any(|e| {
+            e.from_column == feature_col
+                && e.to_column == feature_col
+                && matches!(e.edge_type, EdgeType::Straight)
+        });
+        assert!(
+            !ghost_c0,
+            "ghost lane detected at column {} on commit C0, edges: {:?}",
+            feature_col, c0.edges
+        );
+    }
+
+    #[test]
+    fn no_ghost_lanes_criss_cross() {
+        // Create: root, branch-a commit (from root), branch-b commit (from root),
+        // merge-ab (merges b into a on main)
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+
+        // Root
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("root.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let root = repo.commit(Some("refs/heads/main"), &sig, &sig, "Root", &tree, &[]).unwrap();
+        let root_commit = repo.find_commit(root).unwrap();
+
+        // A1 on main (child of root)
+        std::fs::write(dir.path().join("a1.txt"), "a1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let a1 = repo.commit(Some("refs/heads/main"), &sig, &sig, "A1", &tree, &[&root_commit]).unwrap();
+        let a1_commit = repo.find_commit(a1).unwrap();
+
+        // B1 on branch-b (child of root)
+        std::fs::write(dir.path().join("b1.txt"), "b1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("b1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let b1 = repo.commit(Some("refs/heads/branch-b"), &sig, &sig, "B1", &tree, &[&root_commit]).unwrap();
+        let b1_commit = repo.find_commit(b1).unwrap();
+
+        // Merge-AB on main (merges B1 into A1)
+        std::fs::write(dir.path().join("merge_ab.txt"), "merge_ab").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("merge_ab.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let _merge_ab = repo.commit(Some("refs/heads/main"), &sig, &sig, "Merge-AB", &tree, &[&a1_commit, &b1_commit]).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = &result.commits;
+
+        let b1_found = commits.iter().find(|c| c.summary == "B1").expect("B1 not found");
+        let b1_col = b1_found.column;
+
+        // After the merge, Root should have no ghost lane at b1's column
+        let root_found = commits.iter().find(|c| c.summary == "Root").expect("Root not found");
+        let ghost = root_found.edges.iter().any(|e| {
+            e.from_column == b1_col
+                && e.to_column == b1_col
+                && matches!(e.edge_type, EdgeType::Straight)
+        });
+        assert!(
+            !ghost,
+            "ghost lane detected at column {} on Root after criss-cross merge, edges: {:?}",
+            b1_col, root_found.edges
+        );
+    }
+
+    #[test]
+    fn octopus_merge_compact() {
+        // Create: root, 3 branch commits from root, octopus merge on main
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+
+        // Root
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("root.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let root = repo.commit(Some("refs/heads/main"), &sig, &sig, "Root", &tree, &[]).unwrap();
+        let root_commit = repo.find_commit(root).unwrap();
+
+        // Main-1 (child of root, on main -- so octopus first parent is not root directly)
+        std::fs::write(dir.path().join("main1.txt"), "main1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("main1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let main1 = repo.commit(Some("refs/heads/main"), &sig, &sig, "Main-1", &tree, &[&root_commit]).unwrap();
+        let main1_commit = repo.find_commit(main1).unwrap();
+
+        // branch-a (child of root)
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let ba = repo.commit(Some("refs/heads/branch-a"), &sig, &sig, "BA", &tree, &[&root_commit]).unwrap();
+        let ba_commit = repo.find_commit(ba).unwrap();
+
+        // branch-b (child of root)
+        std::fs::write(dir.path().join("b.txt"), "b").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("b.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let bb = repo.commit(Some("refs/heads/branch-b"), &sig, &sig, "BB", &tree, &[&root_commit]).unwrap();
+        let bb_commit = repo.find_commit(bb).unwrap();
+
+        // branch-c (child of root)
+        std::fs::write(dir.path().join("c.txt"), "c").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("c.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let bc = repo.commit(Some("refs/heads/branch-c"), &sig, &sig, "BC", &tree, &[&root_commit]).unwrap();
+        let bc_commit = repo.find_commit(bc).unwrap();
+
+        // Octopus merge on main: parents = Main-1, BA, BB, BC
+        std::fs::write(dir.path().join("octopus.txt"), "octopus").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("octopus.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let _octopus = repo.commit(
+            Some("refs/heads/main"), &sig, &sig, "Octopus",
+            &tree, &[&main1_commit, &ba_commit, &bb_commit, &bc_commit],
+        ).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+        // max_columns should be at most parent_count + 1 (main + 3 branches + possibly 1 for main-1's continuation)
+        assert!(
+            result.max_columns <= 5,
+            "octopus merge max_columns {} exceeds 5 (main + 4 parents max)",
+            result.max_columns
+        );
+    }
+
+    #[test]
+    fn octopus_no_column_zero_theft() {
+        // Same octopus repo as above
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+
+        // Root
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("root.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let root = repo.commit(Some("refs/heads/main"), &sig, &sig, "Root", &tree, &[]).unwrap();
+        let root_commit = repo.find_commit(root).unwrap();
+
+        // Main-1
+        std::fs::write(dir.path().join("main1.txt"), "main1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("main1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let main1 = repo.commit(Some("refs/heads/main"), &sig, &sig, "Main-1", &tree, &[&root_commit]).unwrap();
+        let main1_commit = repo.find_commit(main1).unwrap();
+
+        // branch-a
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let ba = repo.commit(Some("refs/heads/branch-a"), &sig, &sig, "BA", &tree, &[&root_commit]).unwrap();
+        let ba_commit = repo.find_commit(ba).unwrap();
+
+        // branch-b
+        std::fs::write(dir.path().join("b.txt"), "b").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("b.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let bb = repo.commit(Some("refs/heads/branch-b"), &sig, &sig, "BB", &tree, &[&root_commit]).unwrap();
+        let bb_commit = repo.find_commit(bb).unwrap();
+
+        // Octopus merge on main: parents = Main-1, BA, BB
+        std::fs::write(dir.path().join("octopus.txt"), "octopus").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("octopus.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let _octopus = repo.commit(
+            Some("refs/heads/main"), &sig, &sig, "Octopus",
+            &tree, &[&main1_commit, &ba_commit, &bb_commit],
+        ).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = &result.commits;
+
+        // Find the octopus merge commit
+        let octopus = commits.iter().find(|c| c.summary == "Octopus").expect("Octopus not found");
+
+        // No secondary parent should have column 0
+        // Secondary parents are BA, BB (indices 1, 2 in parent_oids)
+        for parent_oid_str in octopus.parent_oids.iter().skip(1) {
+            let parent = commits.iter().find(|c| &c.oid == parent_oid_str);
+            if let Some(p) = parent {
+                assert_ne!(
+                    p.column, 0,
+                    "secondary parent {} at column 0 (column 0 theft)",
+                    p.summary
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn consistent_max_columns() {
+        let dir = make_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+        assert!(result.max_columns > 0, "max_columns should be > 0");
+        for commit in &result.commits {
+            assert!(
+                commit.column < result.max_columns,
+                "commit {} at column {} >= max_columns {}",
+                commit.short_oid, commit.column, result.max_columns
+            );
+        }
+    }
+
+    #[test]
+    fn max_columns_pagination() {
+        let dir = make_large_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+
+        let full = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let page1 = walk_commits(&mut repo, 0, 100).unwrap();
+        let page2 = walk_commits(&mut repo, 100, 100).unwrap();
+
+        assert_eq!(
+            full.max_columns, page1.max_columns,
+            "max_columns differs: full={} vs page1={}",
+            full.max_columns, page1.max_columns
+        );
+        assert_eq!(
+            full.max_columns, page2.max_columns,
+            "max_columns differs: full={} vs page2={}",
+            full.max_columns, page2.max_columns
+        );
+    }
+
+    #[test]
+    fn freed_column_reuse() {
+        // Create: root -> main-1 -> merge-a (merges branch-a) -> main-2 -> branch-b from main-2
+        // branch-a should use some column > 0, then after merge-a frees it,
+        // branch-b should reuse that same column.
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+
+        // Root
+        std::fs::write(dir.path().join("root.txt"), "root").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("root.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let root = repo.commit(Some("refs/heads/main"), &sig, &sig, "Root", &tree, &[]).unwrap();
+        let root_commit = repo.find_commit(root).unwrap();
+
+        // Main-1 (child of root)
+        std::fs::write(dir.path().join("main1.txt"), "main1").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("main1.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let main1 = repo.commit(Some("refs/heads/main"), &sig, &sig, "Main-1", &tree, &[&root_commit]).unwrap();
+        let main1_commit = repo.find_commit(main1).unwrap();
+
+        // Branch-A (child of root)
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let ba = repo.commit(Some("refs/heads/branch-a"), &sig, &sig, "BranchA", &tree, &[&root_commit]).unwrap();
+        let ba_commit = repo.find_commit(ba).unwrap();
+
+        // Merge-A (merges branch-a into main, first parent = main1)
+        std::fs::write(dir.path().join("merge_a.txt"), "merge_a").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("merge_a.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let merge_a = repo.commit(Some("refs/heads/main"), &sig, &sig, "Merge-A", &tree, &[&main1_commit, &ba_commit]).unwrap();
+        let merge_a_commit = repo.find_commit(merge_a).unwrap();
+
+        // Main-2 (child of merge-a)
+        std::fs::write(dir.path().join("main2.txt"), "main2").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("main2.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let main2 = repo.commit(Some("refs/heads/main"), &sig, &sig, "Main-2", &tree, &[&merge_a_commit]).unwrap();
+        let main2_commit = repo.find_commit(main2).unwrap();
+
+        // Branch-B (child of main-2, on a separate branch)
+        std::fs::write(dir.path().join("b.txt"), "b").unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("b.txt")).unwrap();
+        idx.write().unwrap();
+        let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+        let _bb = repo.commit(Some("refs/heads/branch-b"), &sig, &sig, "BranchB", &tree, &[&main2_commit]).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = &result.commits;
+
+        let branch_a = commits.iter().find(|c| c.summary == "BranchA").expect("BranchA not found");
+        let branch_b = commits.iter().find(|c| c.summary == "BranchB").expect("BranchB not found");
+
+        assert!(branch_a.column > 0, "BranchA should be at column > 0");
+        assert!(branch_b.column > 0, "BranchB should be at column > 0");
+        assert_eq!(
+            branch_a.column, branch_b.column,
+            "BranchB (col {}) should reuse BranchA's freed column (col {})",
+            branch_b.column, branch_a.column
+        );
+    }
+
+    #[test]
+    fn color_index_deterministic() {
+        let dir = make_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result1 = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let result2 = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+        assert_eq!(result1.commits.len(), result2.commits.len());
+        for (c1, c2) in result1.commits.iter().zip(result2.commits.iter()) {
+            assert_eq!(
+                c1.color_index, c2.color_index,
+                "color_index mismatch for commit {}: {} vs {}",
+                c1.short_oid, c1.color_index, c2.color_index
+            );
+            // Also check edge color_index consistency
+            assert_eq!(c1.edges.len(), c2.edges.len());
+            for (e1, e2) in c1.edges.iter().zip(c2.edges.iter()) {
+                assert_eq!(
+                    e1.color_index, e2.color_index,
+                    "edge color_index mismatch on commit {}: {} vs {}",
+                    c1.short_oid, e1.color_index, e2.color_index
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn color_index_head_zero() {
+        let dir = make_test_repo();
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+        let commits = &result.commits;
+
+        // HEAD commit must have color_index == 0
+        let head = commits.iter().find(|c| c.is_head).expect("no HEAD commit");
+        assert_eq!(
+            head.color_index, 0,
+            "HEAD commit should have color_index 0, got {}",
+            head.color_index
+        );
+
+        // All commits at column 0 (HEAD's first-parent chain) should have color_index 0
+        for c in commits.iter().filter(|c| c.column == 0) {
+            assert_eq!(
+                c.color_index, 0,
+                "HEAD chain commit {} (col 0) should have color_index 0, got {}",
+                c.short_oid, c.color_index
+            );
         }
     }
 }

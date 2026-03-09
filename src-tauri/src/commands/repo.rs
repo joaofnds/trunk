@@ -18,7 +18,7 @@ pub async fn open_repo(
         let path_buf = std::path::PathBuf::from(&path_clone);
         repository::validate_and_open(&path_buf)?;
         let mut repo = git2::Repository::open(&path_buf)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX)
+        Ok(graph::walk_commits(&mut repo, 0, usize::MAX)?.commits)
     })
     .await
     .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?

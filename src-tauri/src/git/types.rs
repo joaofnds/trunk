@@ -48,10 +48,17 @@ pub struct GraphCommit {
     pub author_timestamp: i64,
     pub parent_oids: Vec<String>,
     pub column: usize,
+    pub color_index: usize,
     pub edges: Vec<GraphEdge>,
     pub refs: Vec<RefLabel>,
     pub is_head: bool,
     pub is_merge: bool,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct GraphResult {
+    pub commits: Vec<GraphCommit>,
+    pub max_columns: usize,
 }
 
 #[derive(Debug, Serialize, Clone)]
