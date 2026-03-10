@@ -277,8 +277,10 @@
     width: 4px;
     cursor: col-resize;
     user-select: none;
+    background: linear-gradient(to right, transparent 1.5px, var(--color-border) 1.5px, var(--color-border) 2.5px, transparent 2.5px);
+    transition: background 0.15s;
   }
   .col-resize-handle:hover {
-    background: var(--color-accent);
+    background: linear-gradient(to right, transparent 1px, var(--color-accent) 1px, var(--color-accent) 3px, transparent 3px);
   }
 </style>
