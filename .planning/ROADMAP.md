@@ -81,12 +81,14 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Branch and tag ref pills next to commit messages are colored to match their lane color in the graph
   2. User can drag a handle to resize the graph column width, and the new width persists across scrolling
-**Plans:** 3/3 plans complete
+**Plans:** 5 plans
 
 Plans:
 - [x] 10-01-PLAN.md -- Lane-colored ref pills with connector line (backend color_index on RefLabel + pill styling + SVG connector)
 - [x] 10-02-PLAN.md -- Resizable 6-column layout with fixed header row and persistent column widths
-- [ ] 10-03-PLAN.md -- Gap closure: fix connector line/WIP dotted line and visible column dividers
+- [x] 10-03-PLAN.md -- Gap closure: fix connector line/WIP dotted line and visible column dividers
+- [ ] 10-04-PLAN.md -- Gap closure: connector line positioning/dimming, overflow pill, WIP hover, data row dividers
+- [ ] 10-05-PLAN.md -- Gap closure: header right-click context menu for column visibility toggling
 
 ## Progress
 
@@ -104,4 +106,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
-| 10. Differentiators | 3/3 | Complete    | 2026-03-10 | - |
+| 10. Differentiators | v0.2 | 3/5 | In Progress | - |
