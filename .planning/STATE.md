@@ -83,10 +83,11 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-3 pending todos:
-1. **Git push does not trigger app graph update** (general) -- 2026-03-10
+4 pending todos:
+1. **Make commit dot bigger and lanes thinner** (ui) -- 2026-03-10
 2. **WIP HEAD row background covers dotted line on hover** (ui) -- 2026-03-10
-3. **Make commit dot bigger and lanes thinner** (ui) -- 2026-03-10
+3. **Second commit connector line disconnected from first commit** (ui) -- 2026-03-10
+4. **Persist left and right pane open/close state** (ui) -- 2026-03-10
 
 ### Blockers/Concerns
 
