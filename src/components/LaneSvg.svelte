@@ -11,7 +11,7 @@
 
   let { commit, laneWidth = LANE_WIDTH, rowHeight = ROW_HEIGHT, maxColumns = 1 }: Props = $props();
 
-  const cx = (col: number) => col * laneWidth + laneWidth / 2 + 0.5;
+  const cx = (col: number) => col * laneWidth + laneWidth / 2;
   const cy = $derived(rowHeight / 2);
   const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
   const svgWidth = $derived(Math.max(maxColumns, commit.column + 1) * laneWidth);
@@ -21,7 +21,8 @@
     commit.edges.filter((e) => e.from_column === e.to_column)
   );
 
-  // Root commits (no parent) have no straight edge but still need a rail from above
+  // Non-branch-tip commits without a straight edge in their own column (e.g. root commits)
+  // still need a rail connecting from above to their dot
   const needsIncomingRail = $derived(
     !commit.is_branch_tip &&
     commit.oid !== '__wip__' &&

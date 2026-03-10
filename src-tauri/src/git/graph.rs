@@ -245,7 +245,7 @@ pub fn walk_commits(
             }
         }
 
-        // Fix 5: Lane lifecycle — if no parents (root commit), ensure lane is freed
+        // Lane lifecycle — if no parents (root commit), ensure lane is freed
         if parents.is_empty() && !col_reoccupied {
             lane_colors.remove(&col);
         }
