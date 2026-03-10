@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: Commit Graph
 status: completed
-stopped_at: Completed 10-03-PLAN.md
-last_updated: "2026-03-10T00:54:13.538Z"
-last_activity: "2026-03-09 -- Phase 10 Plan 03 complete (gap closure: connector line + column dividers)"
+stopped_at: Completed 10-04-PLAN.md
+last_updated: "2026-03-10T01:23:30Z"
+last_activity: "2026-03-09 -- Phase 10 Plan 04 complete (UAT visual fixes: connector line, overflow pill, WIP hover, dividers)"
 progress:
   total_phases: 4
   completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 9
+  completed_plans: 9
   percent: 100
 ---
 
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 10 of 10 (Differentiators)
-Plan: 3 of 3 -- Complete
+Plan: 4 of 4 -- Complete
 Status: Phase complete
-Last activity: 2026-03-09 -- Phase 10 Plan 03 complete (gap closure: connector line + column dividers)
+Last activity: 2026-03-09 -- Phase 10 Plan 04 complete (UAT visual fixes: connector line, overflow pill, WIP hover, dividers)
 
-Progress: [██████████] 100% (7/7 v0.2 plans)
+Progress: [██████████] 100% (9/9 v0.2 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7 (v0.2)
-- Average duration: 4min
-- Total execution time: 25min
+- Total plans completed: 9 (v0.2)
+- Average duration: 3min
+- Total execution time: 29min
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [██████████] 100% (7/7 v0.2 plans)
 | 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
 | 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
 | 09 - WIP Row + Visual Polish | 1/1 | 2min | 2min |
-| 10 - Differentiators | 3/3 | 8min | 3min |
+| 10 - Differentiators | 4/4 | 10min | 3min |
 
 *Updated after each plan completion*
 
@@ -72,6 +72,8 @@ Recent decisions affecting current work:
 - [Phase 10-02]: Graph column min-width enforces maxColumns * laneWidth to prevent SVG clipping
 - [Phase 10-03]: Connector line moved from LaneSvg SVG to CommitRow absolute div to span across ref and graph column boundaries
 - [Phase 10-03]: Graph column overflow-hidden removed to allow WIP dotted line SVG overflow to extend into next row
+- [Phase 10-04]: Connector line left offset uses 8px (row padding) + measured refContainerWidth via bind:clientWidth for precise positioning after pills
+- [Phase 10-04]: Column dividers use inline border-right style rather than pseudo-elements for simplicity and consistency
 
 ### Quick Tasks Completed
 
@@ -94,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T00:47:01Z
-Stopped at: Completed 10-03-PLAN.md
-Resume file: .planning/phases/10-differentiators/10-03-SUMMARY.md
+Last session: 2026-03-10T01:23:30Z
+Stopped at: Completed 10-04-PLAN.md
+Resume file: .planning/phases/10-differentiators/10-04-SUMMARY.md
