@@ -44,9 +44,9 @@
 </script>
 
 {#if showAll}
-  <div class="flex items-center gap-1">
+  <div class="flex flex-col gap-0.5">
     {#each refs as ref}
-      <span class={pillClasses(ref, true)} style={pillStyle(ref)}>{pillPrefix(ref)}{ref.short_name}</span>
+      <span class="{pillClasses(ref, true)} w-full" style={pillStyle(ref)}>{pillPrefix(ref)}{ref.short_name}</span>
     {/each}
   </div>
 {:else if refs.length > 0}

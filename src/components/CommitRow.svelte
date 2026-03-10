@@ -62,7 +62,7 @@
       {#if refHovered && commit.refs.length > 1}
         <!-- Expanded overlay: all pills in a floating pill-shaped container -->
         <div
-          class="absolute left-1 top-1/2 -translate-y-1/2 z-50 flex items-center gap-1 rounded-full px-2 py-0.5 shadow-lg"
+          class="absolute left-1 top-1/2 -translate-y-1/2 z-50 flex flex-col rounded-lg px-2 py-1.5 shadow-lg"
           style="background: var(--color-surface-elevated, var(--color-surface)); border: 1px solid rgba(255,255,255,0.08);"
         >
           <RefPill refs={commit.refs} showAll={true} />
