@@ -78,19 +78,6 @@
     {/each}
   {/if}
 
-  <!-- Ref connector line: pill area to commit dot -->
-  {#if commit.refs.length > 0 && commit.oid !== '__wip__' && cx(commit.column) > laneWidth}
-    <line
-      x1={0}
-      y1={cy}
-      x2={cx(commit.column)}
-      y2={cy}
-      stroke={laneColor(commit.color_index)}
-      stroke-width={1.5}
-      stroke-linecap="round"
-    />
-  {/if}
-
   <!-- Layer 2: Merge/Fork connection paths (middle) -->
   {#each connectionEdges as edge}
     <path

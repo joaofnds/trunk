@@ -29,17 +29,25 @@
 </script>
 
 <div
-  class="flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
+  class="relative flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
   style="color: var(--color-text);"
   onclick={() => onselect?.(commit.oid)}
 >
+  <!-- Connector line: spans from left edge through ref column to commit dot in graph column -->
+  {#if commit.refs.length > 0 && commit.oid !== '__wip__'}
+    <div
+      class="absolute left-0 pointer-events-none"
+      style="width: {columnWidths.ref + commit.column * 12 + 6 + 8}px; top: 50%; height: 1.5px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); z-index: 0;"
+    ></div>
+  {/if}
+
   <!-- Column 1: Branch/Tag refs -->
-  <div class="flex items-center overflow-hidden flex-shrink-0" style="width: {columnWidths.ref}px;">
+  <div class="relative z-[1] flex items-center overflow-hidden flex-shrink-0" style="width: {columnWidths.ref}px;">
     <RefPill refs={commit.refs} />
   </div>
 
   <!-- Column 2: Graph -->
-  <div class="flex items-center flex-shrink-0 overflow-hidden" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * 12}px;">
+  <div class="flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * 12}px;">
     <LaneSvg {commit} {maxColumns} />
   </div>
 
