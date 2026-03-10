@@ -4,8 +4,8 @@
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
+  import { Menu, CheckMenuItem } from '@tauri-apps/api/menu';
   import CommitRow from './CommitRow.svelte';
-  import HeaderContextMenu from './HeaderContextMenu.svelte';
 
   interface Props {
     repoPath: string;
@@ -32,7 +32,6 @@
 
   let columnWidths = $state<ColumnWidths>({ ref: 120, graph: 120, author: 120, date: 100, sha: 80 });
   let columnVisibility = $state<ColumnVisibility>({ ref: true, graph: true, message: true, author: true, date: true, sha: true });
-  let contextMenu = $state<{ x: number; y: number } | null>(null);
 
   $effect(() => {
     getColumnWidths().then((w) => { columnWidths = w; });
@@ -68,6 +67,35 @@
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+  }
+
+  const columnLabels: { key: keyof ColumnVisibility; label: string }[] = [
+    { key: 'ref', label: 'Branch/Tag' },
+    { key: 'graph', label: 'Graph' },
+    { key: 'message', label: 'Message' },
+    { key: 'author', label: 'Author' },
+    { key: 'date', label: 'Date' },
+    { key: 'sha', label: 'SHA' },
+  ];
+
+  async function showHeaderContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    const items = await Promise.all(
+      columnLabels.map((col) =>
+        CheckMenuItem.new({
+          text: col.label,
+          checked: columnVisibility[col.key],
+          enabled: col.key !== 'message',
+          action: () => {
+            if (col.key === 'message') return;
+            columnVisibility = { ...columnVisibility, [col.key]: !columnVisibility[col.key] };
+            setColumnVisibility(columnVisibility);
+          },
+        })
+      )
+    );
+    const menu = await Menu.new({ items });
+    await menu.popup();
   }
 
   function makeWipItem(msg: string): GraphCommit {
@@ -171,7 +199,7 @@
   <div
     class="flex items-center px-2 flex-shrink-0"
     style="height: 24px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); font-size: 11px; color: var(--color-text-muted); user-select: none;"
-    oncontextmenu={(e) => { e.preventDefault(); contextMenu = { x: e.clientX, y: e.clientY }; }}
+    oncontextmenu={showHeaderContextMenu}
   >
     {#if columnVisibility.ref}
       <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.ref}px;">
@@ -214,16 +242,6 @@
       </div>
     {/if}
   </div>
-
-  {#if contextMenu}
-    <HeaderContextMenu
-      x={contextMenu.x}
-      y={contextMenu.y}
-      visibility={columnVisibility}
-      onchange={(v) => { columnVisibility = v; setColumnVisibility(v); }}
-      onclose={() => { contextMenu = null; }}
-    />
-  {/if}
 
   <!-- Content area (grows to fill remaining space) -->
   <div class="flex-1 overflow-hidden">
