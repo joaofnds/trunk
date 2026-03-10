@@ -3,18 +3,22 @@
 
   interface Props {
     refs: RefLabel[];
+    showAll?: boolean;
   }
 
-  let { refs }: Props = $props();
+  let { refs, showAll = false }: Props = $props();
 
   const base =
-    'inline-flex items-center rounded-full px-1.5 py-0 text-[11px] leading-5 whitespace-nowrap max-w-[100px] truncate font-medium';
+    'inline-flex items-center rounded-full px-1.5 py-0 text-[11px] leading-5 whitespace-nowrap font-medium';
 
-  function pillClasses(ref: RefLabel): string {
+  const baseCollapsed = base + ' max-w-[100px] truncate';
+
+  function pillClasses(ref: RefLabel, expanded: boolean = false): string {
+    const b = expanded ? base : baseCollapsed;
     if (ref.is_head) {
-      return `${base} font-bold`;
+      return `${b} font-bold`;
     }
-    return base;
+    return b;
   }
 
   function pillStyle(ref: RefLabel): string {
@@ -39,6 +43,12 @@
   }
 </script>
 
-{#if refs.length > 0}
+{#if showAll}
+  <div class="flex items-center gap-1">
+    {#each refs as ref}
+      <span class={pillClasses(ref, true)} style={pillStyle(ref)}>{pillPrefix(ref)}{ref.short_name}</span>
+    {/each}
+  </div>
+{:else if refs.length > 0}
   <span class={pillClasses(refs[0])} style={pillStyle(refs[0])}>{pillPrefix(refs[0])}{refs[0].short_name}</span>
 {/if}

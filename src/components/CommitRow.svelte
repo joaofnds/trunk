@@ -35,6 +35,7 @@
   );
 
   let refContainerWidth = $state(0);
+  let refHovered = $state(false);
 </script>
 
 <div
@@ -52,18 +53,38 @@
       ></div>
     {/if}
 
-    <div class="relative z-[1] flex items-center overflow-hidden flex-shrink-0 pl-1 pr-1" style="width: {columnWidths.ref}px;">
-      <div class="flex items-center" bind:clientWidth={refContainerWidth}>
-        <RefPill refs={commit.refs} />
-      </div>
-      {#if commit.refs.length > 1}
-        <span
-          class="relative z-[1] inline-flex items-center rounded-full px-1 text-[10px] leading-4 whitespace-nowrap font-medium ml-1 cursor-default"
-          style="background: var(--lane-{commit.refs[0].color_index % 8}); color: white; filter: brightness(0.75);"
-          title={commit.refs.slice(1).map((r) => r.short_name).join(', ')}
+    <div
+      class="relative z-[1] flex items-center flex-shrink-0 pl-1 pr-1 {refHovered ? 'overflow-visible' : 'overflow-hidden'}"
+      style="width: {columnWidths.ref}px;"
+      onmouseenter={() => refHovered = true}
+      onmouseleave={() => refHovered = false}
+    >
+      {#if refHovered && commit.refs.length > 1}
+        <!-- Expanded overlay: all pills in a floating pill-shaped container -->
+        <div
+          class="absolute left-1 top-1/2 -translate-y-1/2 z-50 flex items-center gap-1 rounded-full px-2 py-0.5 shadow-lg"
+          style="background: var(--color-surface-elevated, var(--color-surface)); border: 1px solid rgba(255,255,255,0.08);"
         >
-          +{commit.refs.length - 1}
-        </span>
+          <RefPill refs={commit.refs} showAll={true} />
+        </div>
+        <!-- Invisible measure div to keep refContainerWidth stable -->
+        <div class="flex items-center invisible" bind:clientWidth={refContainerWidth}>
+          <RefPill refs={commit.refs} />
+        </div>
+      {:else}
+        <!-- Default: first pill + overflow count -->
+        <div class="flex items-center" bind:clientWidth={refContainerWidth}>
+          <RefPill refs={commit.refs} />
+        </div>
+        {#if commit.refs.length > 1}
+          <span
+            class="relative z-[1] inline-flex items-center rounded-full px-1 text-[10px] leading-4 whitespace-nowrap font-medium ml-1 cursor-default"
+            style="background: var(--lane-{commit.refs[0].color_index % 8}); color: white; filter: brightness(0.75);"
+            title={commit.refs.slice(1).map((r) => r.short_name).join(', ')}
+          >
+            +{commit.refs.length - 1}
+          </span>
+        {/if}
       {/if}
     </div>
   {/if}
