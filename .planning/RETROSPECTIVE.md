@@ -45,6 +45,48 @@
 
 ---
 
+## Milestone: v0.2 — Commit Graph
+
+**Shipped:** 2026-03-10
+**Phases:** 4 | **Plans:** 9 | **Commits:** 76 | **Timeline:** 2 days
+
+### What Was Built
+- Hardened Rust lane algorithm with ghost lane fix, octopus protection, max_columns, and branch color counter
+- Three-layer SVG lane rendering (rails -> edges -> dots) with vivid 8-color palette
+- Manhattan-routed merge/fork edges with 6px rounded corners
+- Merge commits as hollow circles, WIP row in virtual list with dashed connector
+- Lane-colored ref pills with remote dimming and connector lines
+- 6-column resizable layout with LazyStore-persisted widths and column visibility toggles
+
+### What Worked
+- **Dedicated milestone for graph rendering**: Deferring lanes from v0.1 was the right call — focused effort produced a clean result in 2 days
+- **GraphResult wrapper type**: Returning max_columns alongside commits eliminated SVG width inconsistency at the root
+- **Three-layer SVG architecture**: Separating rails/edges/dots made it easy to add conditional rendering (hollow merge dots, dashed WIP) without conflicts
+- **Gap closure as numbered plans**: Plans 10-03, 10-04, 10-05 cleanly addressed UAT findings without disrupting the main plan sequence
+- **LazyStore pattern reuse**: ColumnWidths and ColumnVisibility both followed the same getter/setter/persistence pattern — second use was trivial
+
+### What Was Inefficient
+- **Phase 10 needed 5 plans for 2 requirements**: DIFF-01 and DIFF-02 spawned 3 gap-closure plans (10-03, 10-04, 10-05) — initial plans underestimated the visual integration complexity of connector lines spanning multiple columns
+- **ROADMAP plan checkboxes got stale**: Plans 10-04 and 10-05 were marked `[ ]` even though SUMMARY files existed — same issue as v0.1
+- **VIS-03 reinterpreted silently**: "Reduced opacity" became "hollow dot only" — the requirement text should have been updated to match the implementation decision
+
+### Patterns Established
+- **GraphResult wrapper**: walk_commits returns struct with commits + max_columns, not bare Vec
+- **Branch color counter**: Monotonic counter, HEAD=0, freed columns remove entries
+- **Sentinel oid pattern**: `'__wip__'` for synthetic items in GraphCommit array
+- **displayItems derived**: Wrapping backend data with frontend-only synthetic items
+- **LazyStore for UI state**: Column widths and visibility both use this pattern
+- **Cross-column visual elements**: Absolute-positioned divs at row level, not within column SVGs
+- **Native Tauri Menu API**: Preferred over custom Svelte context menus for native UX
+
+### Key Lessons
+1. **Visual integration is harder than rendering**: Drawing individual elements is straightforward; making them work together across column boundaries required 3 additional plans
+2. **Keep ROADMAP checkboxes in sync**: This is the second milestone where plan checkboxes got stale — consider automating or removing them
+3. **Update requirement text when reinterpreting**: When a design decision changes the meaning of a requirement, update REQUIREMENTS.md immediately
+4. **52 tests, zero regressions**: The test suite from v0.1 protected against algorithm regressions effectively through all 4 phases
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -52,7 +94,10 @@
 | Milestone | Days | Phases | Plans | Key Change |
 |-----------|------|--------|-------|------------|
 | v0.1 | 7 | 6 | 27 | First milestone — established all patterns |
+| v0.2 | 2 | 4 | 9 | Focused visual milestone — gap closure plans for UAT findings |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. (Single milestone so far — will populate after v0.2)
+1. **Gap closure plans are a recurring pattern**: Both milestones needed additional plans to address UAT findings — budget for 1-2 gap closure plans per phase
+2. **ROADMAP checkboxes get stale**: Both milestones had plan checkboxes out of sync with reality — consider automating
+3. **Test suite protects against regressions**: 50+ Rust tests caught zero regressions across both milestones — investment in TDD pays off

@@ -8,18 +8,6 @@ Trunk is a fast, native, cross-platform desktop Git GUI built with Tauri 2 + Sve
 
 A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
 
-## Current Milestone: v0.2 Commit Graph
-
-**Goal:** GitKraken-quality commit graph with proper lane rendering — vertical rails, smooth bezier merge/fork curves, consistent lane colors, lane packing, and visual merge commit distinction.
-
-**Target features:**
-- Vertical lane rails (continuous colored lines per branch)
-- Smooth bezier curves for merge/fork connections
-- Consistent lane colors per branch
-- Lane packing (reclaim lanes when branches merge)
-- Colored commit nodes with merge commit distinction
-- Correct lane algorithm handling complex topologies
-
 ## Requirements
 
 ### Validated
@@ -35,10 +23,14 @@ A developer can open any Git repository, browse its full commit history as a vis
 - ✓ Show full commit detail (metadata + diff) when a commit is clicked — v0.1
 - ✓ Checkout branches with dirty-workdir error handling — v0.1
 - ✓ Watch filesystem and auto-refresh status on external changes — v0.1
+- ✓ GitKraken-quality commit graph with lane rendering — v0.2
+- ✓ Continuous vertical colored lines per branch with lane packing — v0.2
+- ✓ Manhattan-routed merge/fork edges with vivid 8-color palette — v0.2
+- ✓ Merge commit visual distinction (hollow dots) and WIP dashed connector — v0.2
+- ✓ Lane-colored ref pills and resizable 6-column layout — v0.2
 
 ### Active
 
-- [ ] GitKraken-quality commit graph with lane rendering — v0.2
 - [ ] Push / Pull / Fetch with SSH/HTTPS auth
 - [ ] Hunk-level staging (stage individual hunks, not just whole files)
 - [ ] Stash create/pop
@@ -61,11 +53,12 @@ A developer can open any Git repository, browse its full commit history as a vis
 ## Context
 
 - **Stack**: Tauri 2 + Svelte 5 (Vite SPA, not SvelteKit) + Rust with `git2` crate (libgit2 bindings)
-- **Current state**: Shipped v0.1 with ~53,990 LOC Rust, ~2,043 LOC Svelte, ~193 LOC TypeScript. 17 Tauri commands, 10 Svelte components, 6 phases complete.
-- **Architecture**: Svelte UI communicates with Rust backend via Tauri `invoke` (commands) and `listen` (events). Rust holds `RepoState` (path-keyed PathBuf registry), `CommitCache` (cached graph data), and `WatcherState` (filesystem watchers) in managed state.
+- **Current state**: Shipped v0.2 with ~3,344 LOC Rust, ~2,458 LOC Svelte, ~290 LOC TypeScript. 10 phases complete across 2 milestones.
+- **Architecture**: Svelte UI communicates with Rust backend via Tauri `invoke` (commands) and `listen` (events). Rust holds `RepoState` (path-keyed PathBuf registry), `CommitCache` (cached GraphResult with max_columns), and `WatcherState` (filesystem watchers) in managed state.
 - **Remote ops**: `git2` used for all local read/write; shell-out to `git` CLI reserved for remote operations (future milestones) due to libgit2 unreliable SSH/HTTPS auth
-- **Graph rendering**: Inline SVG per row (not Canvas/one giant SVG) with virtual scrolling. Lane algorithm runs in Rust — O(n), ~5ms for 10k commits.
-- **Patterns established**: inner-fn pattern for testable Tauri commands, safeInvoke<T> for all IPC, sequence counter for stale async guard, cache-repopulate-before-emit for mutation commands
+- **Graph rendering**: Three-layer inline SVG per row (rails -> edges -> dots) with virtual scrolling. Lane algorithm runs in Rust — O(n), ~5ms for 10k commits. Manhattan-routed merge/fork edges with 8-color vivid palette. GraphResult wraps commits + max_columns for consistent SVG widths.
+- **Graph UI**: 6-column resizable layout (ref, graph, message, author, date, SHA) with LazyStore-persisted widths, native Tauri context menu for column visibility, lane-colored ref pills
+- **Patterns established**: inner-fn pattern for testable Tauri commands, safeInvoke<T> for all IPC, sequence counter for stale async guard, cache-repopulate-before-emit for mutation commands, LazyStore for UI state persistence, sentinel oid ('__wip__') for synthetic virtual list items
 - **Motivation**: Personal learning project (Tauri/Rust/Svelte) + building a better tool for personal use + eventual open source release
 
 ## Constraints
@@ -96,6 +89,12 @@ A developer can open any Git repository, browse its full commit history as a vis
 | GraphResult wrapper return type | walk_commits returns struct with commits + max_columns metadata instead of bare Vec | ✓ Good — enables consistent SVG widths, clean separation |
 | GraphResponse IPC struct at command boundary | Separate from internal GraphResult; slices commits for pagination | ✓ Good — clean internal/external type separation |
 | Branch color counter with deterministic color_index | HEAD gets 0, new branches get incrementing colors, freed columns remove entries | ✓ Good — enables consistent per-branch coloring in frontend |
+| Three-layer SVG rendering (rails -> edges -> dots) | Correct z-stacking: rails behind edges behind dots; each layer is a separate SVG group | ✓ Good — clean visual layering, easy to add new element types |
+| Manhattan routing for merge/fork edges | Horizontal + arc + vertical path segments with 6px corner radius; simpler than full bezier | ✓ Good — clean visual appearance, straightforward path math |
+| Vivid 8-color dark-theme palette | GitHub-dark-inspired high-contrast colors replacing low-contrast originals | ✓ Good — all colors readable against #0d1117 |
+| WIP sentinel oid ('__wip__') | Synthetic virtual list item rather than extending GraphCommit type | ✓ Good — keeps TypeScript type aligned with Rust backend struct |
+| LazyStore for UI state persistence | Column widths and visibility persisted via Tauri store with lazy load | ✓ Good — consistent pattern for all UI state |
+| Native Tauri Menu API over custom Svelte component | Replaced HeaderContextMenu.svelte with @tauri-apps/api/menu | ✓ Good — native look and feel, simpler code |
 
 ---
-*Last updated: 2026-03-09 after Phase 7*
+*Last updated: 2026-03-10 after v0.2 milestone*

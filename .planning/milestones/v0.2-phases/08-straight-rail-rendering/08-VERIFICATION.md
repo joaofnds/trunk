@@ -70,10 +70,11 @@ human_verification:
 | Requirement | Source Plan | Description | Status | Evidence |
 |-------------|------------|-------------|--------|----------|
 | LANE-01 | 08-01-PLAN.md | User sees continuous vertical colored lines connecting commits in the same branch | SATISFIED | Straight edges render as continuous `<line>` elements with 0.5px overlap. Branch tips truncate at dot center via `is_branch_tip`. Fork-in lanes stay active on intermediate rows (graph.rs:167-178). |
+| LANE-02 | 08-01-PLAN.md | User sees smooth curves when branches merge or fork (not jagged diagonals) | SATISFIED | LaneSvg.svelte `buildEdgePath()` uses Manhattan routing with SVG arc corners (`A` commands) for all 4 edge types (MergeLeft/Right, ForkLeft/Right). Smooth 90-degree arcs at connection points, not jagged diagonals. |
 | LANE-03 | 08-01-PLAN.md | User sees all active branch lanes drawn through every commit row, not just that branch's own commits | SATISFIED | Backend emits pass-through Straight edges for all occupied lanes (graph.rs:99-135). Fork-in lanes maintain pass-through visibility between child and parent. Frontend renders all `straightEdges` without ownership filtering. |
 | LANE-04 | 08-01-PLAN.md | User sees consistent lane colors per branch from tip to base (color does not jump between commits) | SATISFIED | `lane_colors` HashMap provides consistent color_index per column. Colors assigned at branch creation and propagated through all edges. |
 
-No orphaned requirements -- all Phase 8 requirement IDs in REQUIREMENTS.md (LANE-01, LANE-03, LANE-04) are accounted for in the plan and marked complete in REQUIREMENTS.md traceability table.
+No orphaned requirements -- all Phase 8 requirement IDs in REQUIREMENTS.md (LANE-01, LANE-02, LANE-03, LANE-04) are accounted for in the plan and marked complete in REQUIREMENTS.md traceability table.
 
 ### Anti-Patterns Found
 

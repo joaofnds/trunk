@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v0.1 MVP** — Phases 1-6 (shipped 2026-03-09)
-- 🚧 **v0.2 Commit Graph** — Phases 7-10 (in progress)
+- ✅ **v0.2 Commit Graph** — Phases 7-10 (shipped 2026-03-10)
 
 ## Phases
 
@@ -21,79 +21,19 @@ Full details: [milestones/v0.1-ROADMAP.md](milestones/v0.1-ROADMAP.md)
 
 </details>
 
-### 🚧 v0.2 Commit Graph (In Progress)
+<details>
+<summary>✅ v0.2 Commit Graph (Phases 7-10) — SHIPPED 2026-03-10</summary>
 
-**Milestone Goal:** GitKraken-quality commit graph with proper lane rendering -- vertical rails, smooth bezier curves, consistent lane colors, lane packing, and visual merge commit distinction.
+- [x] Phase 7: Lane Algorithm Hardening (2/2 plans) — completed 2026-03-09
+- [x] Phase 8: Straight Rail Rendering (1/1 plans) — completed 2026-03-09
+- [x] Phase 9: WIP Row + Visual Polish (1/1 plans) — completed 2026-03-09
+- [x] Phase 10: Differentiators (5/5 plans) — completed 2026-03-10
 
-- [x] **Phase 7: Lane Algorithm Hardening** - Battle-tested Rust algorithm with correct data for all graph topologies (2/2 plans) — completed 2026-03-09
-- [x] **Phase 8: Straight Rail Rendering** - Continuous vertical lane lines through the entire commit graph (1/1 plans) — completed 2026-03-09
-- [x] **Phase 9: WIP Row + Visual Polish** - WIP lane connection and merge commit visual refinements (completed 2026-03-09)
-- [x] **Phase 10: Differentiators** - Lane-colored ref pills and resizable graph column (completed 2026-03-09)
+Full details: [milestones/v0.2-ROADMAP.md](milestones/v0.2-ROADMAP.md)
 
-## Phase Details
-
-### Phase 7: Lane Algorithm Hardening
-**Goal**: The Rust lane algorithm produces correct, complete data for every graph topology -- no ghost lanes, no column explosions, consistent widths
-**Depends on**: Nothing (first v0.2 phase; builds on existing v0.1 algorithm)
-**Requirements**: ALGO-01, ALGO-02, ALGO-03, LANE-05
-**Success Criteria** (what must be TRUE):
-  1. After a branch merges, its former lane column produces no edges in subsequent rows (no ghost lanes)
-  2. An octopus merge (3+ parents) renders without the graph width growing beyond the number of actually active branches
-  3. Every commit row SVG has the same width, and the commit message column does not jitter horizontally when scrolling
-  4. Freed lane columns are reused by new branches, keeping the graph compact
-**Plans:** 2 plans
-
-Plans:
-- [x] 07-01-PLAN.md -- Core algorithm hardening: GraphResult type, ghost lane fix, octopus protection, max_columns, branch color counter, 9 new tests (TDD)
-- [x] 07-02-PLAN.md -- Integration propagation: CommitCache, Tauri commands, TypeScript types, LaneSvg consistent width
-
-### Phase 8: Straight Rail Rendering
-**Goal**: Users see continuous vertical colored lines connecting commits in each branch, with all active lanes drawn through every row
-**Depends on**: Phase 7
-**Requirements**: LANE-01, LANE-03, LANE-04
-**Success Criteria** (what must be TRUE):
-  1. Each branch has a continuous vertical colored line from its tip commit to its base, with no gaps between rows at any zoom level
-  2. Every commit row draws rails for all active branches passing through that row, not just the branch that owns the commit
-  3. A branch maintains the same lane color from tip to base -- the color does not change or jump between commits
-  4. Commit dots render on top of lane lines (not behind or clipped by them)
-**Plans:** 1 plan
-
-Plans:
-- [x] 08-01-PLAN.md -- Full lane rendering: vivid color palette, vertical rails, Manhattan-routed merge/fork edges, commit dot layering
-
-### Phase 9: WIP Row + Visual Polish
-**Goal**: The graph distinguishes merge commits visually, connects the WIP row to HEAD, and reduces visual noise from merge commits
-**Depends on**: Phase 8
-**Requirements**: VIS-01, VIS-02, VIS-03
-**Success Criteria** (what must be TRUE):
-  1. Merge commits display as hollow circles with a lane-colored stroke, visually distinct from regular filled-circle commits
-  2. When the working tree is dirty, the WIP row connects to the HEAD commit via a dashed lane line (not floating disconnected)
-  3. Merge commits render with reduced opacity so the eye naturally focuses on regular work commits
-**Plans:** 1/1 plans complete
-
-Plans:
-- [x] 09-01-PLAN.md -- Merge hollow dots, WIP virtual list integration with dashed connector, visual verification
-
-### Phase 10: Differentiators
-**Goal**: Branch/tag labels integrate visually with the graph, and users can control graph column width
-**Depends on**: Phase 9
-**Requirements**: DIFF-01, DIFF-02
-**Success Criteria** (what must be TRUE):
-  1. Branch and tag ref pills next to commit messages are colored to match their lane color in the graph
-  2. User can drag a handle to resize the graph column width, and the new width persists across scrolling
-**Plans:** 5/5 plans complete
-
-Plans:
-- [x] 10-01-PLAN.md -- Lane-colored ref pills with connector line (backend color_index on RefLabel + pill styling + SVG connector)
-- [x] 10-02-PLAN.md -- Resizable 6-column layout with fixed header row and persistent column widths
-- [x] 10-03-PLAN.md -- Gap closure: fix connector line/WIP dotted line and visible column dividers
-- [ ] 10-04-PLAN.md -- Gap closure: connector line positioning/dimming, overflow pill, WIP hover, data row dividers
-- [ ] 10-05-PLAN.md -- Gap closure: header right-click context menu for column visibility toggling
+</details>
 
 ## Progress
-
-**Execution Order:**
-Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -106,4 +46,4 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
-| 10. Differentiators | 5/5 | Complete    | 2026-03-10 | - |
+| 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |

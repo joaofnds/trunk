@@ -1,5 +1,23 @@
 # Milestones
 
+## v0.2 Commit Graph (Shipped: 2026-03-10)
+
+**Phases:** 4 | **Plans:** 9 | **Commits:** 76 | **Timeline:** 2 days
+**LOC:** ~3,344 Rust / ~2,458 Svelte / ~290 TypeScript
+**Git range:** 80a714c (test(07-01)) → 2c18aa2 (docs(phase-07))
+
+**Delivered:** GitKraken-quality commit graph with continuous vertical lane rails, Manhattan-routed merge/fork edges, vivid 8-color palette, hollow merge dots, WIP dashed connector, lane-colored ref pills, resizable 6-column layout, and column visibility toggles.
+
+**Key accomplishments:**
+1. Hardened lane algorithm with ghost lane fix, octopus merge protection, max_columns tracking, and deterministic branch color counter
+2. Three-layer SVG lane rendering with vivid 8-color palette, continuous vertical rails, and Manhattan-routed merge/fork edges
+3. Merge commits display as hollow circles, WIP row integrated into virtual list with dashed connector to HEAD
+4. Lane-colored ref pills with remote dimming and horizontal connector lines to commit dots
+5. Spreadsheet-style 6-column resizable layout with LazyStore-persisted column widths
+6. Header right-click context menu with per-column visibility toggles via native Tauri Menu API
+
+---
+
 ## v0.1 MVP (Shipped: 2026-03-09)
 
 **Phases:** 6 | **Plans:** 27 (26 complete) | **Commits:** 155 | **Timeline:** 7 days
