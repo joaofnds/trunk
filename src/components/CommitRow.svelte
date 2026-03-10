@@ -26,6 +26,13 @@
   }
 
   const isWip = $derived(commit.oid === '__wip__');
+
+  const allRemoteOnly = $derived(
+    commit.refs.length > 0 &&
+    commit.refs.every(r => r.ref_type === 'RemoteBranch')
+  );
+
+  let refContainerWidth = $state(0);
 </script>
 
 <div
@@ -33,47 +40,49 @@
   style="color: var(--color-text);"
   onclick={() => onselect?.(commit.oid)}
 >
-  <!-- Connector line: spans from left edge through ref column to commit dot in graph column -->
+  <!-- Connector line: spans from after pills to commit dot in graph column -->
   {#if commit.refs.length > 0 && commit.oid !== '__wip__'}
     <div
-      class="absolute left-0 pointer-events-none"
-      style="width: {columnWidths.ref + commit.column * 12 + 6 + 8}px; top: 50%; height: 1.5px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); z-index: 0;"
+      class="absolute pointer-events-none"
+      style="left: {8 + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth + commit.column * 12 + 6}px; top: 50%; height: 1.5px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;"
     ></div>
   {/if}
 
   <!-- Column 1: Branch/Tag refs -->
-  <div class="relative z-[1] flex items-center overflow-hidden flex-shrink-0" style="width: {columnWidths.ref}px;">
-    <RefPill refs={commit.refs} />
+  <div class="relative z-[1] flex items-center overflow-hidden flex-shrink-0 pl-1 pr-1" style="width: {columnWidths.ref}px; border-right: 1px solid var(--color-border);">
+    <div class="flex items-center" bind:clientWidth={refContainerWidth}>
+      <RefPill refs={commit.refs} />
+    </div>
   </div>
 
   <!-- Column 2: Graph -->
-  <div class="flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * 12}px;">
+  <div class="relative z-[1] flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * 12}px; border-right: 1px solid var(--color-border);">
     <LaneSvg {commit} {maxColumns} />
   </div>
 
   <!-- Column 3: Message (flex-1) -->
   {#if isWip}
-    <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);">
+    <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic px-1" style="color: var(--color-text-muted); border-right: 1px solid var(--color-border);">
       {commit.summary}
     </div>
   {:else}
-    <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+    <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap px-1" style="border-right: 1px solid var(--color-border);">
       {commit.summary}
     </div>
   {/if}
 
   <!-- Column 4: Author -->
-  <div class="flex-shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12px]" style="width: {columnWidths.author}px; color: var(--color-text-muted);">
+  <div class="flex-shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] px-1" style="width: {columnWidths.author}px; color: var(--color-text-muted); border-right: 1px solid var(--color-border);">
     {#if !isWip}{commit.author_name}{/if}
   </div>
 
   <!-- Column 5: Date -->
-  <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: {columnWidths.date}px; color: var(--color-text-muted);">
+  <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px] px-1" style="width: {columnWidths.date}px; color: var(--color-text-muted); border-right: 1px solid var(--color-border);">
     {#if !isWip}{relativeDate(commit.author_timestamp)}{/if}
   </div>
 
   <!-- Column 6: SHA -->
-  <div class="flex-shrink-0 font-mono text-[11px]" style="width: {columnWidths.sha}px; color: var(--color-text-muted);">
+  <div class="flex-shrink-0 font-mono text-[11px] px-1" style="width: {columnWidths.sha}px; color: var(--color-text-muted);">
     {#if !isWip}{commit.short_oid}{/if}
   </div>
 </div>
