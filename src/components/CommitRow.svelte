@@ -48,7 +48,7 @@
     {#if commit.refs.length > 0 && commit.oid !== '__wip__' && columnVisibility.graph}
       <div
         class="absolute pointer-events-none"
-        style="left: {8 + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth + commit.column * LANE_WIDTH + LANE_WIDTH / 2}px; top: 50%; height: {EDGE_STROKE}px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;{commit.is_head ? '' : ' filter: brightness(0.75);'}"
+        style="left: {12 + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth - 4 + commit.column * LANE_WIDTH + LANE_WIDTH / 2}px; top: 50%; height: {EDGE_STROKE}px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;{commit.is_head ? '' : ' filter: brightness(0.75);'}"
       ></div>
     {/if}
 
