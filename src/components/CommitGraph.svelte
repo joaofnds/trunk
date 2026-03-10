@@ -35,7 +35,7 @@
     getColumnWidths().then((w) => { columnWidths = w; });
   });
 
-  function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
+  function startColumnResize(column: keyof ColumnWidths, e: MouseEvent, invert = false) {
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = columnWidths[column];
@@ -48,7 +48,7 @@
     };
 
     function onMouseMove(ev: MouseEvent) {
-      const delta = ev.clientX - startX;
+      const delta = (ev.clientX - startX) * (invert ? -1 : 1);
       const newWidth = Math.max(minWidths[column], Math.min(400, startWidth + delta));
       columnWidths = { ...columnWidths, [column]: newWidth };
     }
@@ -164,30 +164,32 @@
     class="flex items-center px-2 flex-shrink-0"
     style="height: 24px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); font-size: 11px; color: var(--color-text-muted); user-select: none;"
   >
-    <div class="flex-shrink-0 relative pl-1" style="width: {columnWidths.ref}px;">
+    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.ref}px;">
       Branch/Tag
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="col-resize-handle" onmousedown={(e) => startColumnResize('ref', e)}></div>
     </div>
-    <div class="flex-shrink-0 relative" style="width: {columnWidths.graph}px;">
+    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.graph}px;">
       Graph
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="col-resize-handle" onmousedown={(e) => startColumnResize('graph', e)}></div>
     </div>
-    <div class="flex-1 relative pl-1">
+    <div class="flex-1 relative px-2">
       Message
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e, true)}></div>
     </div>
-    <div class="flex-shrink-0 relative" style="width: {columnWidths.author}px;">
+    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.author}px;">
       Author
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e)}></div>
+      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e, true)}></div>
     </div>
-    <div class="flex-shrink-0 relative" style="width: {columnWidths.date}px;">
+    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.date}px;">
       Date
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e)}></div>
+      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('sha', e, true)}></div>
     </div>
-    <div class="flex-shrink-0" style="width: {columnWidths.sha}px;">
+    <div class="flex-shrink-0 px-2" style="width: {columnWidths.sha}px;">
       SHA
     </div>
   </div>

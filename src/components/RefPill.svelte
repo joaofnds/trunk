@@ -21,7 +21,8 @@
     const bg = `background: var(--lane-${ref.color_index % 8})`;
     const color = 'color: white';
     const opacity = isRemoteOnly(ref) ? 'opacity: 0.5' : '';
-    return [bg, color, opacity].filter(Boolean).join('; ');
+    const brightness = ref.is_head ? '' : 'filter: brightness(0.75)';
+    return [bg, color, opacity, brightness].filter(Boolean).join('; ');
   }
 
   function isRemoteOnly(ref: RefLabel): boolean {
@@ -40,13 +41,4 @@
 
 {#if refs.length > 0}
   <span class={pillClasses(refs[0])} style={pillStyle(refs[0])}>{pillPrefix(refs[0])}{refs[0].short_name}</span>
-  {#if refs.length > 1}
-    <span
-      class="inline-flex items-center rounded-full px-1 text-[10px] leading-4 whitespace-nowrap font-medium ml-1 cursor-default"
-      style="background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border);"
-      title={refs.slice(1).map((r) => r.short_name).join(', ')}
-    >
-      +{refs.length - 1}
-    </span>
-  {/if}
 {/if}
