@@ -80,6 +80,7 @@ Recent decisions affecting current work:
 | 1 | Add WIP entry to commit graph when worktree is dirty | 2026-03-08 | c5ae359 | | [1-add-wip-entry-to-commit-graph-when-workt](.planning/quick/1-add-wip-entry-to-commit-graph-when-workt/) |
 | 2 | Remove graph lanes, keep only dots | 2026-03-09 | cf816a8 | | [2-remove-graph-lanes-keep-only-dots](.planning/quick/2-remove-graph-lanes-keep-only-dots/) |
 | 5 | Fix graph pane flicker on commit | 2026-03-09 | 460cd83 | Verified | [5-the-ui-flickers-a-lot-when-i-commit-the-](.planning/quick/5-the-ui-flickers-a-lot-when-i-commit-the-/) |
+| 6 | Branch overflow pill hover-expand | 2026-03-10 | 154ad71 | | [6-let-s-make-the-branch-overflow-pill-expa](.planning/quick/6-let-s-make-the-branch-overflow-pill-expa/) |
 
 ### Pending Todos
 
@@ -95,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T01:58:51Z
-Stopped at: Completed 10-05-PLAN.md
-Resume file: .planning/phases/10-differentiators/10-05-SUMMARY.md
+Last session: 2026-03-10T00:00:00Z
+Stopped at: Completed quick-6-PLAN.md
+Resume file: .planning/quick/6-let-s-make-the-branch-overflow-pill-expa/6-SUMMARY.md
