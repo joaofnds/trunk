@@ -147,9 +147,8 @@
 
   async function refresh() {
     try {
-      const response = await safeInvoke<GraphResponse>('get_commit_graph', {
+      const response = await safeInvoke<GraphResponse>('refresh_commit_graph', {
         path: repoPath,
-        offset: 0,
       });
       // Swap data atomically -- old data stays visible until this assignment
       commits = response.commits;
