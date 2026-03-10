@@ -83,3 +83,32 @@ export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
   await store.set(COLUMN_WIDTHS_KEY, widths);
   await store.save();
 }
+
+export interface ColumnVisibility {
+  ref: boolean;
+  graph: boolean;
+  message: boolean;
+  author: boolean;
+  date: boolean;
+  sha: boolean;
+}
+
+const COLUMN_VISIBILITY_KEY = 'column_visibility';
+
+const DEFAULT_VISIBILITY: ColumnVisibility = {
+  ref: true,
+  graph: true,
+  message: true,
+  author: true,
+  date: true,
+  sha: true,
+};
+
+export async function getColumnVisibility(): Promise<ColumnVisibility> {
+  return (await store.get<ColumnVisibility>(COLUMN_VISIBILITY_KEY)) ?? DEFAULT_VISIBILITY;
+}
+
+export async function setColumnVisibility(visibility: ColumnVisibility): Promise<void> {
+  await store.set(COLUMN_VISIBILITY_KEY, visibility);
+  await store.save();
+}
