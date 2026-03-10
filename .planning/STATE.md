@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: Commit Graph
 status: completed
-stopped_at: Completed 10-04-PLAN.md
-last_updated: "2026-03-10T01:23:30Z"
-last_activity: "2026-03-09 -- Phase 10 Plan 04 complete (UAT visual fixes: connector line, overflow pill, WIP hover, dividers)"
+stopped_at: Completed 10-05-PLAN.md
+last_updated: "2026-03-10T01:58:51Z"
+last_activity: "2026-03-09 -- Phase 10 Plan 05 complete (header context menu with column visibility toggles)"
 progress:
   total_phases: 4
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 10
+  completed_plans: 10
   percent: 100
 ---
 
@@ -26,18 +26,18 @@ See: .planning/PROJECT.md (updated 2026-03-09)
 ## Current Position
 
 Phase: 10 of 10 (Differentiators)
-Plan: 4 of 4 -- Complete
+Plan: 5 of 5 -- Complete
 Status: Phase complete
-Last activity: 2026-03-09 -- Phase 10 Plan 04 complete (UAT visual fixes: connector line, overflow pill, WIP hover, dividers)
+Last activity: 2026-03-09 -- Phase 10 Plan 05 complete (header context menu with column visibility toggles)
 
-Progress: [██████████] 100% (9/9 v0.2 plans)
+Progress: [██████████] 100% (10/10 v0.2 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9 (v0.2)
+- Total plans completed: 10 (v0.2)
 - Average duration: 3min
-- Total execution time: 29min
+- Total execution time: 31min
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [██████████] 100% (9/9 v0.2 plans)
 | 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
 | 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
 | 09 - WIP Row + Visual Polish | 1/1 | 2min | 2min |
-| 10 - Differentiators | 4/4 | 10min | 3min |
+| 10 - Differentiators | 5/5 | 12min | 2min |
 
 *Updated after each plan completion*
 
@@ -74,6 +74,8 @@ Recent decisions affecting current work:
 - [Phase 10-03]: Graph column overflow-hidden removed to allow WIP dotted line SVG overflow to extend into next row
 - [Phase 10-04]: Connector line left offset uses 8px (row padding) + measured refContainerWidth via bind:clientWidth for precise positioning after pills
 - [Phase 10-04]: Column dividers use inline border-right style rather than pseudo-elements for simplicity and consistency
+- [Phase 10-05]: ColumnVisibility follows same LazyStore pattern as ColumnWidths; Message column locked as always-visible
+- [Phase 10-05]: Connector line hidden with ref column since it spans from pills to graph dot
 
 ### Quick Tasks Completed
 
@@ -96,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-10T01:23:30Z
-Stopped at: Completed 10-04-PLAN.md
-Resume file: .planning/phases/10-differentiators/10-04-SUMMARY.md
+Last session: 2026-03-10T01:58:51Z
+Stopped at: Completed 10-05-PLAN.md
+Resume file: .planning/phases/10-differentiators/10-05-SUMMARY.md
