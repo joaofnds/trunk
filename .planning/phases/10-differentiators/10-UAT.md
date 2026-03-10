@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 10-differentiators
 source: [10-01-SUMMARY.md, 10-02-SUMMARY.md]
 started: 2026-03-09T23:00:00Z
-updated: 2026-03-09T23:15:00Z
+updated: 2026-03-10T00:00:00Z
 ---
 
 ## Current Test
@@ -55,7 +55,7 @@ skipped: 0
 ## Gaps
 
 - truth: "Commits with ref pills show a horizontal connector line to the commit dot; WIP dotted line connects to HEAD commit"
-  status: failed
+  status: resolved
   reason: "User reported: this is currently not working, and furthermore, I just noticed that the WIP dotted line is not connecting to the HEAD commit anymore"
   severity: major
   test: 3
@@ -71,7 +71,7 @@ skipped: 0
   debug_session: ".planning/debug/connector-line-wip-broken.md"
 
 - truth: "Column dividers are visible without hovering so users can locate resize handles"
-  status: failed
+  status: resolved
   reason: "User reported: it does work when hovering, but we should have a visible divider even without hovering, so we know where the divider is, and don't have to hunt it"
   severity: minor
   test: 6
