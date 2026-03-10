@@ -4,13 +4,13 @@ milestone: v0.2
 milestone_name: Commit Graph
 status: completed
 stopped_at: Completed 10-05-PLAN.md
-last_updated: "2026-03-10T01:58:51Z"
-last_activity: "2026-03-09 -- Phase 10 Plan 05 complete (header context menu with column visibility toggles)"
+last_updated: "2026-03-10T03:02:58.045Z"
+last_activity: 2026-03-09 -- Phase 10 Plan 05 complete (header context menu with column visibility toggles)
 progress:
   total_phases: 4
   completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 9
+  completed_plans: 9
   percent: 100
 ---
 
