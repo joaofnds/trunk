@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 10-differentiators
 source: [10-01-SUMMARY.md, 10-02-SUMMARY.md]
 started: 2026-03-09T23:00:00Z
@@ -59,17 +59,26 @@ skipped: 0
   reason: "User reported: this is currently not working, and furthermore, I just noticed that the WIP dotted line is not connecting to the HEAD commit anymore"
   severity: major
   test: 3
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "Two issues: (1) Connector line guard `cx(commit.column) > laneWidth` fails for column-0 commits since cx(0)=6 < 12, so line never renders. Also ref pills and graph SVG are now in separate column divs so SVG can't bridge the gap. (2) WIP dotted line relies on SVG overflow:visible but the graph column div in CommitRow.svelte has overflow-hidden, clipping the line."
+  artifacts:
+    - path: "src/components/LaneSvg.svelte"
+      issue: "Connector line guard condition fails for column-0; line can't cross column boundaries"
+    - path: "src/components/CommitRow.svelte"
+      issue: "Graph column div has overflow-hidden, clipping WIP dotted line"
+  missing:
+    - "Rethink connector line to work across separate column divs (absolute positioning or negative margins)"
+    - "Remove overflow-hidden from graph column div or change to overflow-visible"
+  debug_session: ".planning/debug/connector-line-wip-broken.md"
 
 - truth: "Column dividers are visible without hovering so users can locate resize handles"
   status: failed
   reason: "User reported: it does work when hovering, but we should have a visible divider even without hovering, so we know where the divider is, and don't have to hunt it"
   severity: minor
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: ".col-resize-handle CSS has no default background/border - handles are transparent until hovered. Only :hover state applies var(--color-accent). Codebase already has a pattern in App.svelte .pane-divider using linear-gradient for subtle 1px border line."
+  artifacts:
+    - path: "src/components/CommitGraph.svelte"
+      issue: ".col-resize-handle missing default visual indicator"
+  missing:
+    - "Add linear-gradient background to .col-resize-handle default state following App.svelte .pane-divider pattern"
+  debug_session: ".planning/debug/column-dividers-not-visible.md"
