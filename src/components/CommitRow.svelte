@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { GraphCommit } from '../lib/types.js';
   import type { ColumnWidths, ColumnVisibility } from '../lib/store.js';
+  import { LANE_WIDTH, ROW_HEIGHT, EDGE_STROKE } from '../lib/graph-constants.js';
   import LaneSvg from './LaneSvg.svelte';
   import RefPill from './RefPill.svelte';
 
@@ -37,7 +38,8 @@
 </script>
 
 <div
-  class="relative flex items-center h-[26px] px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
+  class="relative flex items-center px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
+  style:height="{ROW_HEIGHT}px"
   style="color: var(--color-text);"
   onclick={() => onselect?.(commit.oid)}
 >
@@ -46,7 +48,7 @@
     {#if commit.refs.length > 0 && commit.oid !== '__wip__' && columnVisibility.graph}
       <div
         class="absolute pointer-events-none"
-        style="left: {8 + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth + commit.column * 12 + 6}px; top: 50%; height: 1.5px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;{commit.is_head ? '' : ' filter: brightness(0.75);'}"
+        style="left: {8 + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth + commit.column * LANE_WIDTH + LANE_WIDTH / 2}px; top: 50%; height: {EDGE_STROKE}px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;{commit.is_head ? '' : ' filter: brightness(0.75);'}"
       ></div>
     {/if}
 
@@ -68,7 +70,7 @@
 
   <!-- Column 2: Graph -->
   {#if columnVisibility.graph}
-    <div class="relative z-[1] flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * 12}px;">
+    <div class="relative z-[1] flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * LANE_WIDTH}px;">
       <LaneSvg {commit} {maxColumns} />
     </div>
   {/if}

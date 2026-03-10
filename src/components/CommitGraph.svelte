@@ -4,6 +4,7 @@
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
+  import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
   import { Menu, CheckMenuItem } from '@tauri-apps/api/menu';
   import CommitRow from './CommitRow.svelte';
 
@@ -47,7 +48,7 @@
     const startWidth = columnWidths[column];
     const minWidths: Record<keyof ColumnWidths, number> = {
       ref: 60,
-      graph: Math.max(maxColumns, 1) * 12,
+      graph: Math.max(maxColumns, 1) * LANE_WIDTH,
       author: 60,
       date: 60,
       sha: 50,
@@ -247,7 +248,7 @@
     {#if commits.length === 0 && loading}
       <!-- Initial skeleton loading -->
       {#each { length: SKELETON_COUNT } as _}
-        <div class="flex items-center gap-2 px-2 animate-pulse" style="height: 26px">
+        <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {ROW_HEIGHT}px">
           <div
             class="rounded-full flex-shrink-0"
             style="background: var(--color-border); width: 64px; height: 12px;"
@@ -271,7 +272,7 @@
       <SvelteVirtualList
         bind:this={listRef}
         items={displayItems}
-        defaultEstimatedItemHeight={26}
+        defaultEstimatedItemHeight={ROW_HEIGHT}
         onLoadMore={loadMore}
         loadMoreThreshold={50}
         {hasMore}
@@ -284,7 +285,7 @@
       <!-- Mid-scroll skeleton (more commits loading) -->
       {#if loading && commits.length > 0}
         {#each { length: 3 } as _}
-          <div class="flex items-center gap-2 px-2 animate-pulse" style="height: 26px">
+          <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {ROW_HEIGHT}px">
             <div
               class="rounded-full flex-shrink-0"
               style="background: var(--color-border); width: 64px; height: 12px;"
