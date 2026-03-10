@@ -59,7 +59,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 08-01-PLAN.md -- Full lane rendering: vivid color palette, vertical rails, Manhattan-routed merge/fork edges, commit dot layering
+- [x] 08-01-PLAN.md -- Full lane rendering: vivid color palette, vertical rails, Manhattan-routed merge/fork edges, commit dot layering
 
 ### Phase 9: WIP Row + Visual Polish
 **Goal**: The graph distinguishes merge commits visually, connects the WIP row to HEAD, and reduces visual noise from merge commits
@@ -72,7 +72,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 09-01-PLAN.md -- Merge hollow dots, WIP virtual list integration with dashed connector, visual verification
+- [x] 09-01-PLAN.md -- Merge hollow dots, WIP virtual list integration with dashed connector, visual verification
 
 ### Phase 10: Differentiators
 **Goal**: Branch/tag labels integrate visually with the graph, and users can control graph column width
@@ -81,11 +81,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Branch and tag ref pills next to commit messages are colored to match their lane color in the graph
   2. User can drag a handle to resize the graph column width, and the new width persists across scrolling
-**Plans:** 2/2 plans complete
+**Plans:** 3 plans (2 complete + 1 gap closure)
 
 Plans:
-- [ ] 10-01-PLAN.md -- Lane-colored ref pills with connector line (backend color_index on RefLabel + pill styling + SVG connector)
-- [ ] 10-02-PLAN.md -- Resizable 6-column layout with fixed header row and persistent column widths
+- [x] 10-01-PLAN.md -- Lane-colored ref pills with connector line (backend color_index on RefLabel + pill styling + SVG connector)
+- [x] 10-02-PLAN.md -- Resizable 6-column layout with fixed header row and persistent column widths
+- [ ] 10-03-PLAN.md -- Gap closure: fix connector line/WIP dotted line and visible column dividers
 
 ## Progress
 
@@ -102,5 +103,5 @@ Phases execute in numeric order: 7 -> 8 -> 9 -> 10
 | 6. Diff Display | v0.1 | 3/3 | Complete | 2026-03-07 |
 | 7. Lane Algorithm Hardening | v0.2 | 2/2 | Complete | 2026-03-09 |
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
-| 9. WIP Row + Visual Polish | 1/1 | Complete   | 2026-03-09 | - |
-| 10. Differentiators | 2/2 | Complete    | 2026-03-10 | - |
+| 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
+| 10. Differentiators | v0.2 | 2/3 | In Progress | - |
