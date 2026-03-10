@@ -1,9 +1,9 @@
 ---
 phase: 7
 slug: lane-algorithm-hardening
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-09
 ---
 
@@ -38,16 +38,16 @@ created: 2026-03-09
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 07-01-01 | 01 | 0 | ALGO-01 | unit | `cd src-tauri && cargo test --lib git::graph::tests::no_ghost_lanes_after_merge -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-02 | 01 | 0 | ALGO-01 | unit | `cd src-tauri && cargo test --lib git::graph::tests::no_ghost_lanes_criss_cross -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-03 | 01 | 0 | ALGO-02 | unit | `cd src-tauri && cargo test --lib git::graph::tests::octopus_merge_compact -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-04 | 01 | 0 | ALGO-02 | unit | `cd src-tauri && cargo test --lib git::graph::tests::octopus_no_column_zero_theft -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-05 | 01 | 0 | ALGO-03 | unit | `cd src-tauri && cargo test --lib git::graph::tests::consistent_max_columns -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-06 | 01 | 0 | ALGO-03 | unit | `cd src-tauri && cargo test --lib git::graph::tests::max_columns_pagination -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-07 | 01 | 0 | LANE-05 | unit | `cd src-tauri && cargo test --lib git::graph::tests::freed_column_reuse -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-08 | 01 | 0 | ALL | unit | `cd src-tauri && cargo test --lib git::graph::tests::color_index_deterministic -- --exact` | ❌ W0 | ⬜ pending |
-| 07-01-09 | 01 | 0 | ALL | unit | `cd src-tauri && cargo test --lib git::graph::tests::color_index_head_zero -- --exact` | ❌ W0 | ⬜ pending |
-| 07-ALL | ALL | ALL | ALL | regression | `cd src-tauri && cargo test --lib git::graph` | ✅ (7 tests) | ⬜ pending |
+| 07-01-01 | 01 | 0 | ALGO-01 | unit | `cd src-tauri && cargo test --lib git::graph::tests::no_ghost_lanes_after_merge -- --exact` | ✅ | ✅ green |
+| 07-01-02 | 01 | 0 | ALGO-01 | unit | `cd src-tauri && cargo test --lib git::graph::tests::no_ghost_lanes_criss_cross -- --exact` | ✅ | ✅ green |
+| 07-01-03 | 01 | 0 | ALGO-02 | unit | `cd src-tauri && cargo test --lib git::graph::tests::octopus_merge_compact -- --exact` | ✅ | ✅ green |
+| 07-01-04 | 01 | 0 | ALGO-02 | unit | `cd src-tauri && cargo test --lib git::graph::tests::octopus_no_column_zero_theft -- --exact` | ✅ | ✅ green |
+| 07-01-05 | 01 | 0 | ALGO-03 | unit | `cd src-tauri && cargo test --lib git::graph::tests::consistent_max_columns -- --exact` | ✅ | ✅ green |
+| 07-01-06 | 01 | 0 | ALGO-03 | unit | `cd src-tauri && cargo test --lib git::graph::tests::max_columns_pagination -- --exact` | ✅ | ✅ green |
+| 07-01-07 | 01 | 0 | LANE-05 | unit | `cd src-tauri && cargo test --lib git::graph::tests::freed_column_reuse -- --exact` | ✅ | ✅ green |
+| 07-01-08 | 01 | 0 | ALL | unit | `cd src-tauri && cargo test --lib git::graph::tests::color_index_deterministic -- --exact` | ✅ | ✅ green |
+| 07-01-09 | 01 | 0 | ALL | unit | `cd src-tauri && cargo test --lib git::graph::tests::color_index_head_zero -- --exact` | ✅ | ✅ green |
+| 07-ALL | ALL | ALL | ALL | regression | `cd src-tauri && cargo test --lib git::graph` | ✅ (18 tests) | ✅ green |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -55,15 +55,7 @@ created: 2026-03-09
 
 ## Wave 0 Requirements
 
-- [ ] `src-tauri/src/git/graph.rs::tests::no_ghost_lanes_after_merge` — stub for ALGO-01
-- [ ] `src-tauri/src/git/graph.rs::tests::no_ghost_lanes_criss_cross` — stub for ALGO-01
-- [ ] `src-tauri/src/git/graph.rs::tests::octopus_merge_compact` — stub for ALGO-02
-- [ ] `src-tauri/src/git/graph.rs::tests::octopus_no_column_zero_theft` — stub for ALGO-02
-- [ ] `src-tauri/src/git/graph.rs::tests::consistent_max_columns` — stub for ALGO-03
-- [ ] `src-tauri/src/git/graph.rs::tests::max_columns_pagination` — stub for ALGO-03
-- [ ] `src-tauri/src/git/graph.rs::tests::freed_column_reuse` — stub for LANE-05
-- [ ] `src-tauri/src/git/graph.rs::tests::color_index_deterministic` — stub for color model
-- [ ] `src-tauri/src/git/graph.rs::tests::color_index_head_zero` — stub for color model
+Existing infrastructure covers all phase requirements. All 9 planned tests were implemented during plan 07-01 execution (TDD approach).
 
 ---
 
@@ -77,11 +69,21 @@ created: 2026-03-09
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 10s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 10s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-03-10
+
+---
+
+## Validation Audit 2026-03-10
+
+| Metric | Count |
+|--------|-------|
+| Gaps found | 0 |
+| Resolved | 0 |
+| Escalated | 0 |
