@@ -3,8 +3,9 @@
   import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
-  import { getColumnWidths, setColumnWidths, type ColumnWidths } from '../lib/store.js';
+  import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import CommitRow from './CommitRow.svelte';
+  import HeaderContextMenu from './HeaderContextMenu.svelte';
 
   interface Props {
     repoPath: string;
@@ -30,9 +31,15 @@
   let scrolledToHead = false;
 
   let columnWidths = $state<ColumnWidths>({ ref: 120, graph: 120, author: 120, date: 100, sha: 80 });
+  let columnVisibility = $state<ColumnVisibility>({ ref: true, graph: true, message: true, author: true, date: true, sha: true });
+  let contextMenu = $state<{ x: number; y: number } | null>(null);
 
   $effect(() => {
     getColumnWidths().then((w) => { columnWidths = w; });
+  });
+
+  $effect(() => {
+    getColumnVisibility().then((v) => { columnVisibility = v; });
   });
 
   function startColumnResize(column: keyof ColumnWidths, e: MouseEvent, invert = false) {
@@ -160,39 +167,63 @@
 
 <div class="h-full overflow-hidden flex flex-col" style="background: var(--color-bg);">
   <!-- Header row (always visible) -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="flex items-center px-2 flex-shrink-0"
     style="height: 24px; background: var(--color-surface); border-bottom: 1px solid var(--color-border); font-size: 11px; color: var(--color-text-muted); user-select: none;"
+    oncontextmenu={(e) => { e.preventDefault(); contextMenu = { x: e.clientX, y: e.clientY }; }}
   >
-    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.ref}px;">
-      Branch/Tag
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('ref', e)}></div>
-    </div>
-    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.graph}px;">
-      Graph
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('graph', e)}></div>
-    </div>
-    <div class="flex-1 relative px-2">
-      Message
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e, true)}></div>
-    </div>
-    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.author}px;">
-      Author
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e, true)}></div>
-    </div>
-    <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.date}px;">
-      Date
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="col-resize-handle" onmousedown={(e) => startColumnResize('sha', e, true)}></div>
-    </div>
-    <div class="flex-shrink-0 px-2" style="width: {columnWidths.sha}px;">
-      SHA
-    </div>
+    {#if columnVisibility.ref}
+      <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.ref}px;">
+        Branch/Tag
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="col-resize-handle" onmousedown={(e) => startColumnResize('ref', e)}></div>
+      </div>
+    {/if}
+    {#if columnVisibility.graph}
+      <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.graph}px;">
+        Graph
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="col-resize-handle" onmousedown={(e) => startColumnResize('graph', e)}></div>
+      </div>
+    {/if}
+    {#if columnVisibility.message}
+      <div class="flex-1 relative px-2">
+        Message
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e, true)}></div>
+      </div>
+    {/if}
+    {#if columnVisibility.author}
+      <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.author}px;">
+        Author
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e, true)}></div>
+      </div>
+    {/if}
+    {#if columnVisibility.date}
+      <div class="flex-shrink-0 relative px-2" style="width: {columnWidths.date}px;">
+        Date
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="col-resize-handle" onmousedown={(e) => startColumnResize('sha', e, true)}></div>
+      </div>
+    {/if}
+    {#if columnVisibility.sha}
+      <div class="flex-shrink-0 px-2" style="width: {columnWidths.sha}px;">
+        SHA
+      </div>
+    {/if}
   </div>
+
+  {#if contextMenu}
+    <HeaderContextMenu
+      x={contextMenu.x}
+      y={contextMenu.y}
+      visibility={columnVisibility}
+      onchange={(v) => { columnVisibility = v; setColumnVisibility(v); }}
+      onclose={() => { contextMenu = null; }}
+    />
+  {/if}
 
   <!-- Content area (grows to fill remaining space) -->
   <div class="flex-1 overflow-hidden">
@@ -229,7 +260,7 @@
         {hasMore}
       >
         {#snippet renderItem(commit)}
-          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} />
+          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} {columnVisibility} />
         {/snippet}
       </SvelteVirtualList>
 
