@@ -7,7 +7,7 @@
   import DiffPanel from './components/DiffPanel.svelte';
   import CommitDetail from './components/CommitDetail.svelte';
   import { safeInvoke } from './lib/invoke.js';
-  import { getZoomLevel, setZoomLevel, getLeftPaneWidth, setLeftPaneWidth, getRightPaneWidth, setRightPaneWidth } from './lib/store.js';
+  import { getZoomLevel, setZoomLevel, getLeftPaneWidth, setLeftPaneWidth, getRightPaneWidth, setRightPaneWidth, getLeftPaneCollapsed, setLeftPaneCollapsed, getRightPaneCollapsed, setRightPaneCollapsed, getOpenRepo, setOpenRepo } from './lib/store.js';
   import type { FileDiff, CommitDetail as CommitDetailType } from './lib/types.js';
 
   interface DirtyCounts {
@@ -63,6 +63,7 @@
   function handleOpen(path: string, name: string) {
     repoPath = path;
     repoName = name;
+    setOpenRepo({ path, name });
   }
 
   function handleRefresh() {
@@ -176,12 +177,27 @@
   });
 
   $effect(() => {
+    getOpenRepo().then(async (repo) => {
+      if (!repo) return;
+      try {
+        await safeInvoke('open_repo', { path: repo.path });
+        repoPath = repo.path;
+        repoName = repo.name;
+      } catch {
+        setOpenRepo(null);
+      }
+    });
+  });
+
+  $effect(() => {
     getZoomLevel().then((level) => { zoomLevel = level; });
   });
 
   $effect(() => {
     getLeftPaneWidth().then((w) => { leftPaneWidth = w; });
     getRightPaneWidth().then((w) => { rightPaneWidth = w; });
+    getLeftPaneCollapsed().then((c) => { leftPaneCollapsed = c; });
+    getRightPaneCollapsed().then((c) => { rightPaneCollapsed = c; });
   });
 
   $effect(() => {
@@ -206,9 +222,11 @@
       } else if (e.key === 'j' || e.key === 'J') {
         e.preventDefault();
         leftPaneCollapsed = !leftPaneCollapsed;
+        setLeftPaneCollapsed(leftPaneCollapsed);
       } else if (e.key === 'k' || e.key === 'K') {
         e.preventDefault();
         rightPaneCollapsed = !rightPaneCollapsed;
+        setRightPaneCollapsed(rightPaneCollapsed);
       }
     }
     window.addEventListener('keydown', handleKeydown);
@@ -231,7 +249,12 @@
     }
 
     function onMouseUp() {
-      if (!leftPaneCollapsed) setLeftPaneWidth(leftPaneWidth);
+      if (leftPaneCollapsed) {
+        setLeftPaneCollapsed(true);
+      } else {
+        setLeftPaneWidth(leftPaneWidth);
+        setLeftPaneCollapsed(false);
+      }
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     }
@@ -256,7 +279,12 @@
     }
 
     function onMouseUp() {
-      if (!rightPaneCollapsed) setRightPaneWidth(rightPaneWidth);
+      if (rightPaneCollapsed) {
+        setRightPaneCollapsed(true);
+      } else {
+        setRightPaneWidth(rightPaneWidth);
+        setRightPaneCollapsed(false);
+      }
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     }
@@ -278,6 +306,7 @@
     refreshSignal = 0;
     clearStagingDiff();
     clearCommit();
+    setOpenRepo(null);
   }
 </script>
 

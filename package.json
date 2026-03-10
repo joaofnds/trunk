@@ -16,7 +16,8 @@
     "@humanspeak/svelte-virtual-list": "^0.4.2",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-store": "^2.4.2"
+    "@tauri-apps/plugin-store": "^2.4.2",
+    "@tauri-apps/plugin-window-state": "^2.4.1"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

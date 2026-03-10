@@ -56,6 +56,38 @@ export async function setRightPaneWidth(width: number): Promise<void> {
   await store.save();
 }
 
+const LEFT_PANE_COLLAPSED_KEY = 'left_pane_collapsed';
+const RIGHT_PANE_COLLAPSED_KEY = 'right_pane_collapsed';
+
+export async function getLeftPaneCollapsed(): Promise<boolean> {
+  return (await store.get<boolean>(LEFT_PANE_COLLAPSED_KEY)) ?? false;
+}
+
+export async function setLeftPaneCollapsed(collapsed: boolean): Promise<void> {
+  await store.set(LEFT_PANE_COLLAPSED_KEY, collapsed);
+  await store.save();
+}
+
+export async function getRightPaneCollapsed(): Promise<boolean> {
+  return (await store.get<boolean>(RIGHT_PANE_COLLAPSED_KEY)) ?? false;
+}
+
+export async function setRightPaneCollapsed(collapsed: boolean): Promise<void> {
+  await store.set(RIGHT_PANE_COLLAPSED_KEY, collapsed);
+  await store.save();
+}
+
+const OPEN_REPO_KEY = 'open_repo';
+
+export async function getOpenRepo(): Promise<RecentRepo | null> {
+  return (await store.get<RecentRepo>(OPEN_REPO_KEY)) ?? null;
+}
+
+export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
+  await store.set(OPEN_REPO_KEY, repo);
+  await store.save();
+}
+
 export interface ColumnWidths {
   ref: number;
   graph: number;
