@@ -83,8 +83,9 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-1 pending todo:
-1. **Add resizable and collapsible left and right panes** (ui) -- 2026-03-09
+2 pending todos:
+1. **Git push does not trigger app graph update** (general) -- 2026-03-10
+2. **WIP HEAD row background covers dotted line on hover** (ui) -- 2026-03-10
 
 ### Blockers/Concerns
 
