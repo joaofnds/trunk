@@ -41,7 +41,7 @@
 <div
   class="relative flex items-center px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
   style:height="{ROW_HEIGHT}px"
-  style="color: var(--color-text);"
+  style="color: var(--color-text); {refHovered ? 'z-index: 10;' : ''}"
   onclick={() => onselect?.(commit.oid)}
 >
   <!-- Connector line + Column 1: Branch/Tag refs (hidden together) -->
@@ -59,32 +59,38 @@
       onmouseenter={() => refHovered = true}
       onmouseleave={() => refHovered = false}
     >
-      {#if refHovered && commit.refs.length > 1}
-        <!-- Expanded overlay: all pills in a floating pill-shaped container -->
-        <div
-          class="absolute left-1 top-1/2 -translate-y-1/2 z-50 flex flex-col rounded-lg px-2 py-1.5 shadow-lg"
-          style="background: var(--color-surface-elevated, var(--color-surface)); border: 1px solid rgba(255,255,255,0.08);"
-        >
-          <RefPill refs={commit.refs} showAll={true} />
-        </div>
-        <!-- Invisible measure div to keep refContainerWidth stable -->
-        <div class="flex items-center invisible" bind:clientWidth={refContainerWidth}>
-          <RefPill refs={commit.refs} />
-        </div>
-      {:else}
-        <!-- Default: first pill + overflow count -->
-        <div class="flex items-center" bind:clientWidth={refContainerWidth}>
-          <RefPill refs={commit.refs} />
-        </div>
-        {#if commit.refs.length > 1}
+      <!-- Default: first pill + overflow count -->
+      <div class="flex items-center" bind:clientWidth={refContainerWidth}>
+        <RefPill refs={commit.refs} />
+      </div>
+      {#if commit.refs.length > 1}
+        <!-- +N badge; hidden while overlay is visible so there's no double-badge -->
+        <div class="relative ml-1 flex-shrink-0">
           <span
-            class="relative z-[1] inline-flex items-center rounded-full px-1 text-[10px] leading-4 whitespace-nowrap font-medium ml-1 cursor-default"
+            class="inline-flex items-center rounded-full px-1 text-[10px] leading-4 whitespace-nowrap font-medium cursor-default"
             style="background: var(--lane-{commit.refs[0].color_index % 8}); color: white; filter: brightness(0.75);"
             title={commit.refs.slice(1).map((r) => r.short_name).join(', ')}
           >
             +{commit.refs.length - 1}
           </span>
-        {/if}
+          <!-- Expanded overlay: single pill listing all branches, clip-path reveals from top-left -->
+          <div
+            class="absolute left-0 top-0 z-50 rounded-lg shadow-lg"
+            style="
+              background: var(--lane-{commit.refs[0].color_index % 8});
+              padding: 4px 8px;
+              white-space: nowrap;
+              clip-path: {refHovered ? 'inset(0 0% 0% 0 round 8px)' : 'inset(0 100% 100% 0 round 8px)'};
+              opacity: {refHovered ? '1' : '0'};
+              transition: clip-path 180ms ease, opacity 120ms ease;
+              pointer-events: {refHovered ? 'auto' : 'none'};
+            "
+          >
+            {#each commit.refs.slice(1) as ref}
+              <div class="text-[11px] leading-5 font-medium text-white whitespace-nowrap">{ref.short_name}</div>
+            {/each}
+          </div>
+        </div>
       {/if}
     </div>
   {/if}
