@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: planning
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-03-11T03:03:50.043Z"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-03-11T03:07:39.098Z"
 last_activity: 2026-03-10 — Roadmap created for v0.3 Actions (phases 11-14); 23/23 requirements mapped
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -48,6 +48,7 @@ Progress: [░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 11-stash-operations P01 | 3 | 3 tasks | 5 files |
 | Phase 11-stash-operations P02 | 3 | 2 tasks | 3 files |
+| Phase 11-stash-operations P03 | 2min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Recent decisions affecting current work:
 - [Phase 11-01]: stash_pop/stash_apply check CONFLICTED status post-call because git2 may return Ok(()) even when conflicts occurred
 - [Phase 11-stash-operations]: IIFE $derived(() => { ... })() pattern for displayItems enables imperative splice logic while keeping Svelte 5 reactivity
 - [Phase 11-stash-operations]: Stash graph sentinel OID pattern: __stash_N__ prefix used to differentiate synthetic stash rows in LaneSvg dot layer
+- [Phase 11-stash-operations]: Reuse BranchSection showCreateButton/oncreate props for stash '+' button — zero changes to BranchSection.svelte
+- [Phase 11-stash-operations]: RefsResponse.stashes corrected from RefLabel[] to StashEntry[] — was missed in plan 11-02
 
 ### Pending Todos
 
@@ -85,6 +88,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-11T03:03:50.040Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-03-11T03:07:39.095Z
+Stopped at: Completed 11-03-PLAN.md
 Resume file: None
