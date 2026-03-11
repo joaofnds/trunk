@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: planning
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-11T02:35:18.127Z"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-03-11T02:58:35.897Z"
 last_activity: 2026-03-10 — Roadmap created for v0.3 Actions (phases 11-14); 23/23 requirements mapped
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
   percent: 0
 ---
 
@@ -46,6 +46,7 @@ Progress: [░░░░░░░░░] 0%
 | — | — | — | — |
 
 *Updated after each plan completion*
+| Phase 11-stash-operations P01 | 3 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -61,6 +62,9 @@ Recent decisions affecting current work:
 - [v0.3 roadmap]: Stash list backend must return parent OID per entry so graph can position stash rows at correct commit
 - [v0.3 roadmap]: Stash graph rendering is plan 11-02 — extends WIP sentinel pattern with square dots + dashed connectors; also owns STASH-07 right-click context menu on stash rows
 - [v0.3 roadmap]: Stash sidebar UI is plan 11-03 — create form + pop/apply/drop actions (STASH-01, STASH-03, STASH-04, STASH-05, STASH-06)
+- [Phase 11-01]: Two-pass stash OID resolution: stash_foreach collects (idx, name, *oid) Vec, parent resolution runs after foreach releases mutable borrow
+- [Phase 11-01]: Block-scope pattern for Statuses drop: wrap repo.statuses() check in {} block before calling &mut repo function
+- [Phase 11-01]: stash_pop/stash_apply check CONFLICTED status post-call because git2 may return Ok(()) even when conflicts occurred
 
 ### Pending Todos
 
@@ -78,6 +82,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-11T02:35:18.124Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-stash-operations/11-CONTEXT.md
+Last session: 2026-03-11T02:58:35.895Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None

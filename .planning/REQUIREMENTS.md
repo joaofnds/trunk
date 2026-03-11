@@ -9,12 +9,12 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 ### Stash
 
-- [ ] **STASH-01**: User can create a stash with an optional name
+- [x] **STASH-01**: User can create a stash with an optional name
 - [ ] **STASH-02**: User can see stash entries in the commit graph as synthetic rows with square dots and dashed connectors, positioned at their parent commit (same sentinel pattern as WIP row)
-- [ ] **STASH-03**: User can view the stash list in the sidebar
-- [ ] **STASH-04**: User can pop a stash entry (apply and remove)
-- [ ] **STASH-05**: User can apply a stash entry without removing it
-- [ ] **STASH-06**: User can drop a stash entry without applying it
+- [x] **STASH-03**: User can view the stash list in the sidebar
+- [x] **STASH-04**: User can pop a stash entry (apply and remove)
+- [x] **STASH-05**: User can apply a stash entry without removing it
+- [x] **STASH-06**: User can drop a stash entry without applying it
 - [ ] **STASH-07**: User can right-click a stash row in the commit graph to see a context menu with pop, apply, and drop actions
 
 ### Commit Menu
