@@ -1,432 +1,369 @@
-# Domain Pitfalls: Commit Graph Lane Rendering
+# Pitfalls Research
 
-**Domain:** Per-row inline SVG commit graph with virtual scrolling (Tauri 2 + Svelte 5 + Rust)
-**Researched:** 2026-03-09
-**Context:** v0.1 shipped with lane rendering stripped out due to visual bugs. This milestone is the second attempt.
+**Domain:** Desktop Git GUI — adding remote ops, stash, and commit context menu to Tauri 2 + Svelte 5 + Rust
+**Researched:** 2026-03-10
+**Confidence:** HIGH (based on direct codebase inspection + git2/Tauri API knowledge)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause visual breakage visible to every user, or that require architectural rework to fix.
+---
+
+### Pitfall 1: SSH Credential Callback Blocks the Async Runtime
+
+**What goes wrong:** When shelling out to the `git` CLI for push/pull/fetch, the child process inherits no terminal. If git needs an SSH passphrase or HTTPS credentials it cannot find via agent or `.netrc`, it tries to prompt interactively on stdin. With no tty, git hangs indefinitely waiting for input that never comes. Because the shell-out is running inside `spawn_blocking`, the Tokio thread pool thread is permanently blocked. If enough push/pull operations are triggered in parallel, the entire async runtime can stall.
+
+**Why it happens:** `Command::new("git").arg("push")` inside `spawn_blocking` creates a child with inherited stdio. Git's SSH transport calls `ssh-askpass` or reads stdin. In a Tauri app there is no controlling terminal. The process blocks on `stdin.read()` forever. The `spawn_blocking` thread does not time out; it waits as long as the child is alive.
+
+**How to avoid:**
+- Pass `-o BatchMode=yes` via `GIT_SSH_COMMAND` or `core.sshCommand` config to force git to fail fast rather than prompt: `GIT_SSH_COMMAND=ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new`.
+- Set `GIT_TERMINAL_PROMPT=0` in the child process environment so git does not attempt interactive HTTPS credential prompts.
+- Set `GIT_ASKPASS=/bin/false` (or `GIT_ASKPASS=true` on macOS, which returns success without printing anything) so askpass helper fails silently.
+- Wrap the `Command::spawn()` call with a `tokio::time::timeout` at the Tauri command boundary before entering `spawn_blocking`, or use `std::process::Child::wait_timeout` from the `wait-timeout` crate inside `spawn_blocking`.
+- Pipe all of stdin, stdout, stderr explicitly (`Stdio::piped()`) so the child never inherits the terminal.
+
+**Warning signs:**
+- The push/pull command invoked from Svelte never resolves or rejects — the `safeInvoke` promise hangs.
+- The app becomes unresponsive to other commands while a remote op is in flight (signals thread pool saturation).
+- The git child process appears in `ps aux` with state `S+` (sleeping, waiting for input).
+
+**Phase to address:** Remote ops implementation phase. This must be solved before any user testing of push/pull.
 
 ---
 
-### Pitfall 1: Sub-Pixel Gaps Between Adjacent Row SVGs
+### Pitfall 2: Non-Fast-Forward Push Rejection Looks Like a Generic Error
 
-**What goes wrong:** Each commit row renders its own `<svg>` element with `height="26"`. Vertical lane lines must appear continuous across rows -- a line exiting the bottom of row N must seamlessly enter the top of row N+1. But browsers anti-alias the edges of SVG elements, and floating-point coordinate rounding creates hairline gaps (0.5-1px) of background color visible between rows. These gaps are especially noticeable on high-DPI displays and at non-100% zoom levels.
+**What goes wrong:** When a push is rejected because the remote has diverged (non-fast-forward), git exits with code 1 and writes the rejection reason to stderr, not stdout. The rejection message format varies: `! [rejected] main -> main (non-fast-forward)` or `error: failed to push some refs`. If the Rust command maps all non-zero exit codes to `TrunkError { code: "git_error", message: <stderr> }` and the Svelte UI shows only `err.message`, users see raw git stderr text instead of a clear, actionable message.
 
-**Why it happens:** SVG elements are inline-replaced elements. Even when dimensions are integer pixels, the browser's compositing pipeline may position elements at fractional pixel boundaries due to: (a) the virtual list's `translateY()` positioning, (b) zoom-induced coordinate scaling, (c) font-size-based inline spacing inherited by SVGs. The `@humanspeak/svelte-virtual-list` positions items using `transform: translateY(Npx)` on a wrapper, and `Math.round()` is applied -- but zoom can still produce fractional effective positions at the individual row level.
+**Why it happens:** The `Command::output()` pattern captures stdout and stderr as raw `Vec<u8>`. A naive implementation returns `stderr` as the error message unconditionally. But stderr output for a non-fast-forward rejection contains ANSI color codes, `remote:` prefixed lines, and other noise that is not user-friendly.
 
-**Consequences:**
-- Horizontal dashed lines appear between every row, turning a smooth vertical rail into a dotted line
-- Looks broken, especially at common zoom levels (110%, 125%)
-- This was likely the primary visual bug that caused v0.1 lane rendering to be stripped
+**How to avoid:**
+- Parse the stderr output for specific git rejection patterns. A non-fast-forward rejection always contains the string `"(non-fast-forward)"` or `"(fetch first)"`. Check for these before emitting a generic error.
+- Return a structured error code: `TrunkError { code: "push_rejected_non_ff", message: "..." }` so the Svelte UI can show a specific dialog explaining that pull-then-push is needed.
+- Strip ANSI escape codes from stderr before including it in error messages (use a simple regex `\x1b\[[0-9;]*m`).
+- Keep a separate `push_output` field in the success response (for cases where git exits 0 but writes informational messages to stderr like `remote: Resolving deltas`).
 
-**Prevention:**
-- **Overlap lines by 0.5-1px in each direction.** Draw vertical lane lines from `y=-0.5` to `y=rowHeight+0.5` (i.e., 27px tall in a 26px row). This ensures the anti-aliased top edge of row N overlaps with the anti-aliased bottom edge of row N-1. Set `overflow: visible` on the per-row SVG so the overflow pixels render.
-- **Use `display: block`** on all SVG elements. Inline SVGs inherit descender spacing from the parent font, adding ~3px gaps. Alternatively, use `vertical-align: bottom` or ensure the parent uses flexbox (which the current `CommitRow.svelte` already does via `flex items-center`).
-- **Use even stroke widths** (2px, not 1px) for lane lines. Odd stroke widths on integer coordinates produce half-pixel rendering that varies across browsers.
-- **Test at 100%, 110%, 125%, 150%, 175%, 200% zoom.** Sub-pixel gaps often appear only at specific zoom levels.
-- Do NOT use `shape-rendering: crispEdges` -- it kills anti-aliasing on bezier curves, making them jagged.
+**Warning signs:**
+- The error display shows raw text like `! [rejected]   main -> main (non-fast-forward)` with no guidance.
+- Users report "push failed" but cannot understand why.
+- ANSI color codes appear as literal characters in the UI error message.
 
-**Detection:**
-- Visible dashed lines where there should be continuous vertical rails
-- Gaps that appear or disappear as you scroll (rows at different translateY offsets hit different pixel boundaries)
-- Gaps visible at 125% zoom but not at 100%
-
-**Specific to this codebase:** The current `LaneSvg.svelte` sets `style="overflow: visible"` on the SVG -- good. But the `@humanspeak/svelte-virtual-list` has `overflow: hidden` on its outer container (`.virtual-list-outer`). SVG overflow-visible content will be clipped by this parent. The list wrapper's overflow must remain `hidden`/`scroll` for virtualization to work, so the overlap approach must be constrained to the 0.5px range -- enough to cover anti-aliasing seams but not so much that clipping cuts off visible content.
-
-**Phase:** Address in the first rendering phase. This is the single most likely repeat failure from v0.1.
+**Phase to address:** Remote ops implementation phase. Define the error taxonomy before writing command handlers.
 
 ---
 
-### Pitfall 2: Bezier Curves Misaligned at Row Boundaries
+### Pitfall 3: SSH Key Discovery Fails on macOS Without ssh-agent Running
 
-**What goes wrong:** A merge or fork edge must draw a curve from the commit dot's column to a different column. Because each row is an independent SVG, the curve must be split across two (or more) rows. Row N draws the top half of the curve; row N+1 draws the bottom half. If the control points are not mathematically mirrored, the two halves do not form a smooth continuous curve -- you get a visible kink, angle break, or offset at the row boundary.
+**What goes wrong:** `git push` over SSH works in the terminal because the user's ssh-agent has their key loaded. But when Tauri launches the app (especially via `open -a Trunk.app` from Finder), the process does not inherit the user's login shell environment. `SSH_AUTH_SOCK` is not set in the Tauri child process environment, so the ssh-agent socket is not found. Git SSH falls back to looking for keys at `~/.ssh/id_rsa`, `~/.ssh/id_ed25519`, etc. — but on macOS, keys with passphrases are in the keychain, not agent-loadable without the running agent. The push fails with `Permission denied (publickey)`.
 
-**Why it happens:** Developers draw curves independently in each row using the edge data (from_column, to_column, edge_type) without coordinating the exact mathematical split point. A cubic bezier `C cx1,cy1 cx2,cy2 x,y` requires both halves to share the same tangent angle and position at the boundary point.
+**Why it happens:** macOS GUI apps launched from Finder (or via `open`) inherit only a minimal environment from `launchd`, not the interactive shell environment. The `SSH_AUTH_SOCK` socket path is only set for processes descended from the user's login shell. The `tauri::async_runtime::spawn_blocking` inherits Tauri's process environment, not the shell environment.
 
-**Consequences:**
-- Merge/fork lines have visible kinks at every row boundary
-- Curves look like zigzag steps instead of smooth arcs
-- Gets worse with larger column distances (e.g., column 0 to column 5)
+**How to avoid:**
+- Before spawning the git subprocess, read `SSH_AUTH_SOCK` from the running shell: execute `launchctl getenv SSH_AUTH_SOCK` (macOS) to find the socket even when not set in the process environment. Inject the result into the child process env if found.
+- Alternatively, set `GIT_SSH_COMMAND` to a wrapper that explicitly passes `-i ~/.ssh/id_ed25519` as a fallback if `SSH_AUTH_SOCK` is absent.
+- For the v0.3 milestone, document this as a known limitation and tell users to launch from the terminal (`open /Applications/Trunk.app`) so SSH_AUTH_SOCK is inherited. This is acceptable for a personal tool.
+- On macOS, `~/.ssh/config` with `AddKeysToAgent yes` and `UseKeychain yes` can mitigate this by loading keys into agent on first use; but only if the user has configured this.
 
-**Prevention:**
-- **Define the curve as a single logical bezier spanning 2 rows, then clip to each row's portion.** The full curve goes from `(from_col * 12 + 6, 13)` [center of source row] to `(to_col * 12 + 6, 13)` [center of destination row, one row below = y offset 26+13=39 from source row top]. In the source row SVG, draw this full curve but it naturally clips at `y=26` (the row bottom). In the destination row SVG, draw the same curve but with y-coordinates offset by -26 (shifting the curve up by one row height), and it naturally clips at `y=0`. Both halves share identical geometry.
-- **Use quadratic beziers (Q) instead of cubic (C) for single-row-span curves.** Quadratic beziers have one control point and are inherently symmetric, reducing the degrees of freedom that can go wrong.
-- **Pre-compute curve segments in Rust** and include the exact SVG path string (or control point coordinates) in the edge data sent to the frontend. This ensures both row-halves use the same math, eliminating frontend rounding divergence.
-- **Never draw a curve that spans more than 2 rows.** If a lane must shift columns across 3+ rows (rare but possible with octopus merges), break it into a vertical segment + a 2-row curve.
+**Warning signs:**
+- Push works when the user runs Trunk from the terminal but fails when launched from Finder/Dock.
+- `Permission denied (publickey)` in the git stderr output.
+- `SSH_AUTH_SOCK` is not set in the Rust process: check with `std::env::var("SSH_AUTH_SOCK")`.
 
-**Detection:**
-- Visible kinks or "V" shapes at row boundaries on merge/fork edges
-- Curves look fine with adjacent columns (column 0 to 1) but break with distant columns (column 0 to 4)
-- Zooming in on row boundaries reveals the discontinuity
-
-**Phase:** Address immediately after straight lines work. Curves are the hardest rendering problem in per-row SVG.
+**Phase to address:** Remote ops implementation phase. Must be verified on macOS with app launched via Finder (not cargo tauri dev).
 
 ---
 
-### Pitfall 3: Virtual Scroll Overflow Clipping Eats SVG Overflow
+### Pitfall 4: Remote Tracking Branches Not Updated in `CommitCache` After Fetch
 
-**What goes wrong:** Per-row SVGs use `overflow: visible` so that lane lines can extend slightly beyond the row boundary (the 0.5px overlap from Pitfall 1, plus curve segments that bulge outside the row). But the virtual list container has `overflow: hidden` on its outer wrapper and `overflow-y: scroll` on the viewport. Any SVG content that extends beyond the row's bounding box gets clipped by these parent containers.
+**What goes wrong:** After a successful `git fetch`, the remote tracking refs (e.g., `refs/remotes/origin/main`) have moved to new commits. But the `CommitCache` in Tauri state still holds the pre-fetch `GraphResult`. The Svelte UI reads from cache and sees remote branch pills still pointing at old commits. The `BranchSidebar` still shows old remote branch positions. The user has to manually close and reopen the repo to see the updated state.
 
-**Why it happens:** Virtual scroll libraries must clip their container to create the scrolling viewport. This is fundamental to how virtual scrolling works. But it conflicts with the per-row SVG approach where visual continuity requires elements to bleed across row boundaries.
+**Why it happens:** The existing mutation pattern (cache-repopulate-before-emit, established in `commit.rs`) is correct but must be applied to remote ops too. A fetch command that shells out to git CLI performs no git2 mutations — so there is no obvious code path that triggers cache repopulation. It is easy to forget that fetch changes remote ref positions, which the cache must reflect.
 
-**Consequences:**
-- The 0.5px overlap fix from Pitfall 1 gets clipped, restoring the gap
-- Bezier curves that bulge beyond the row height get cut off
-- The first and last visible rows have their top/bottom edges clipped
+**How to avoid:**
+- After the `git fetch` subprocess exits with code 0, immediately call `graph::walk_commits` to rebuild the `CommitCache`, then emit `repo-changed` — exactly the same pattern as `create_commit_inner` + `refresh_commit_cache`.
+- Also re-call `list_refs_inner` or emit `repo-changed` so the `BranchSidebar` refreshes. The existing `repo-changed` event listener in `App.svelte` calls `handleRefresh()` which increments `refreshSignal`, which triggers `CommitGraph.refresh()`. This should cover the graph. But `BranchSidebar` must also observe `refreshSignal` (or its own event listener) to re-fetch refs.
+- Verify that `BranchSidebar.svelte` reacts to `repo-changed` events, not just its own mount lifecycle.
 
-**Prevention:**
-- **Keep overflow amounts tiny (0.5px max).** The virtual list clips at the viewport level, not at each item level. Items within the viewport are not individually clipped -- they are just absolutely positioned within a scrollable container. So SVG overflow from one row CAN overlap into an adjacent row's space, as long as both rows are in the DOM. The only clipping happens at the viewport edges (top/bottom of the scroll container).
-- **Verify this with the actual `@humanspeak/svelte-virtual-list` DOM structure.** The library positions items using `translateY` on a wrapper div. Individual items are NOT `overflow: hidden` -- they flow naturally within the wrapper. This means inter-row SVG overlap WILL work for interior rows. Only the first and last visible rows risk clipping at the viewport boundary -- which is acceptable since those rows are partially off-screen anyway.
-- **Do not add `overflow: hidden` to CommitRow or its parent div.** The current `CommitRow.svelte` does not have overflow hidden -- preserve this.
-- **Test with buffer/overscan rows.** The virtual list renders extra rows above and below the viewport. These buffer rows ensure that SVG overlap from the first/last visible rows has adjacent rows to blend with.
+**Warning signs:**
+- After fetch, the commit graph shows the correct new commits but remote branch pills still show the old position.
+- `git log --oneline origin/main` in the terminal shows new commits that are absent in the Trunk graph.
 
-**Detection:**
-- Lane lines cut off sharply at the top/bottom of the visible scroll area
-- Curves appear clipped on one side at the scroll boundary
-- Interior rows look fine but edge rows have truncated lines
-
-**Phase:** Validate early when integrating SVG rendering with the virtual list. A 5-minute DOM inspection saves hours of debugging.
+**Phase to address:** Remote ops implementation phase, specifically fetch handling.
 
 ---
 
-### Pitfall 4: Lane Algorithm Produces Ghost Lanes After Branch Merge
+### Pitfall 5: `stash_save` vs `stash_push` API Confusion — Staged Changes Behavior
 
-**What goes wrong:** When a branch merges, its lane column should be freed for reuse by subsequent branches. If the lane algorithm does not properly clear the `active_lanes` slot after a merge, the column remains "occupied" indefinitely. Pass-through `Straight` edges continue to be emitted for rows below the merge, drawing a vertical line that extends below the merge commit into empty space -- a "ghost lane" that connects to nothing.
+**What goes wrong:** The git2 Rust crate exposes `Repository::stash_save` which is the legacy stash API. It stashes both staged and unstaged changes by default, losing the staged/unstaged distinction (the index is collapsed into the stash). If the user has carefully staged a subset of their changes, stashing with the legacy API discards that staging state. When they pop the stash, everything appears as unstaged modifications.
 
-**Why it happens:** The current `graph.rs` algorithm tracks `active_lanes[col] = Some(oid)`. When a commit is processed, its slot is cleared (`active_lanes[col] = None`). But for first-parent continuation (`idx == 0`), the slot is immediately re-occupied with the parent OID. The bug occurs in merge scenarios: when the merge commit's first-parent is already claimed at a different column (the `existing_col` branch in the code), the current column should stay `None`. The current code has a comment "If different column, current col stays None (lane terminates here)" -- this is correct logic but fragile. If any code path accidentally re-occupies the slot, ghost lanes appear.
+The `git stash push --keep-index` behavior (which preserves the index) is not directly exposed by `stash_save`. The user might expect Git-like behavior where staged changes can optionally be preserved.
 
-**Consequences:**
-- Vertical lines extend below merge commits into empty space
-- Lane columns accumulate over time, pushing the graph wider and wider
-- Graph looks increasingly cluttered as you scroll down through history
+**Why it happens:** `Repository::stash_save` maps to `git stash save`, which is deprecated in favor of `git stash push`. In libgit2, the stash flags `GIT_STASH_KEEP_INDEX` (value `1`) can be passed, but the git2 Rust bindings expose this through `StashFlags::KEEP_INDEX`, which may not be obvious.
 
-**Prevention:**
-- **Add a dedicated test: after a merge commit, verify that the merged branch's column has NO Straight edge in the next row.** The existing test `merge_commit_edges` checks that merge edges exist but does not verify that the merged lane terminates.
-- **Add a "max active lanes" assertion in tests.** For a repo with 2 branches that merge, the max active lane count should decrease back to 1 after the merge.
-- **Trace the `active_lanes` vector state in debug mode.** Add a `#[cfg(test)]` debug print that logs `active_lanes` after each commit is processed. Ghost lanes are immediately visible as `Some(oid)` entries that persist after the merge.
+**How to avoid:**
+- Use `repo.stash_save2(&sig, "WIP", Some(StashFlags::DEFAULT))` for the initial implementation. Explicitly document in code and UI that stashing clears the index.
+- Do NOT attempt to implement `--keep-index` in v0.3 unless specifically needed. The complexity is not worth it for an MVP stash feature.
+- In the UI: show a clear warning "Stashing will unstage all changes" so users are not surprised.
+- Check `git2::StashFlags` in the current `0.19` version of the crate to confirm exact API.
 
-**Detection:**
-- Vertical lines extending below merge commits that connect to nothing
-- Graph width keeps growing as you scroll down even though branches are merging
-- The lane count at the bottom of the graph (near the root commit) should be 1 for a typical repo -- if it is >1, ghost lanes exist
+**Warning signs:**
+- After stash pop, files that were staged appear as unstaged.
+- Users report that stashing "loses" their carefully staged changes.
 
-**Specific to this codebase:** The algorithm in `graph.rs` lines 94-97 clears the slot, and lines 103-126 handle first-parent continuation. The risk is specifically in the `if let Some(&existing_col) = pending_parents.get(&parent_oid)` branch at line 104 -- when `existing_col != col`, the current `col` slot stays None (correct). Verify this holds for all edge cases including when the same parent is referenced by multiple merge children.
-
-**Phase:** Address in lane algorithm hardening phase, before frontend rendering begins. Ghost lanes are algorithm bugs, not rendering bugs.
+**Phase to address:** Stash implementation phase.
 
 ---
 
-### Pitfall 5: Octopus Merge Lane Explosion
+### Pitfall 6: Stash Index Instability — `stash@{0}` Shifts on Every Stash Operation
 
-**What goes wrong:** An octopus merge has 3+ parents. Each secondary parent needs its own lane column. If 5 branches merge simultaneously, the algorithm allocates 5 new columns for the inbound merge edges. These columns may not be reclaimed immediately because the parent commits below may also have their own branch structure. The graph suddenly becomes very wide at the octopus merge row and may never narrow again.
+**What goes wrong:** Git stash uses a LIFO stack. `stash@{0}` always refers to the most recently created stash. When the user creates a new stash, what was `stash@{0}` becomes `stash@{1}`. When the user pops `stash@{0}`, what was `stash@{1}` becomes `stash@{0}`. If the Svelte UI stores a stash by its `stash@{N}` index (which is what the current `RefLabel.short_name` stores), and the user creates or pops a stash between loading the sidebar and triggering a pop action, the pop operation applies to the wrong stash.
 
-**Why it happens:** The current algorithm (line 141-157) assigns secondary parents to available columns without any awareness of how many parents exist. For an octopus merge with N parents, it allocates N-1 additional columns. The Linux kernel has octopus merges with 66 parents -- this would create a 66-column-wide graph.
+**Why it happens:** The `branches.rs` `stash_foreach` callback uses `stash@{idx}` as the `short_name`. This string is display-only, but if any Tauri command takes a stash index as an integer argument and operates on `refs/stash^{N}` by position, the position can shift between the time the list was fetched and the time the command runs.
 
-**Consequences:**
-- Graph becomes extremely wide, breaking the layout
-- SVG width per row balloons (at 12px per lane, 66 lanes = 792px just for the graph pane)
-- Lane colors wrap around the 8-color palette many times, making the graph unreadable
+**How to avoid:**
+- The git2 API for stash pop takes an index (`usize`). When the user triggers "Pop stash" on `stash@{0}`, immediately re-fetch the stash list before executing the pop, and verify the OID at that index still matches the OID the user was looking at. If not, abort with an error.
+- Alternatively, store the stash OID (not index) in the UI and look it up positionally on the Rust side by scanning the stash list for a matching OID before popping.
+- For v0.3 single-stash-slot simplicity: only support creating one stash and always operating on `stash@{0}`. Make this explicit in the UI.
 
-**Prevention:**
-- **Cap displayed parent count** in octopus merges. For octopus merges with >4 parents, show only the first 3-4 merge edges and add a visual indicator (e.g., "+12 more branches merged"). The full parent list is still in the data; only the rendering is capped.
-- **Aggressive lane reclamation.** After processing a merge commit, immediately scan `active_lanes` and release any column where the tracked OID is one of the merge's secondary parents AND that parent is also claimed at its own column. The secondary parent lane should terminate at the merge commit.
-- **Track `max_column` per page.** The SVG width calculation (`(commit.column + 1) * laneWidth`) only considers the commit's own column, not passing-through lanes. The SVG must be wide enough to render ALL edges, not just the commit dot. Add a `max_column` field to GraphCommit that represents the rightmost column of any edge in that row.
-- **Test with octopus merge fixtures.** Create a test repo with a 5-parent octopus merge and verify the graph narrows back after the merge.
+**Warning signs:**
+- Users pop the wrong stash after creating a new one.
+- The stash list in the sidebar becomes desynchronized with the actual stash stack.
 
-**Detection:**
-- Graph suddenly widens dramatically at certain commits
-- Lane colors become meaningless (same color appears 3+ times in one row)
-- Horizontal scroll required to see the full graph
-
-**Specific to this codebase:** The `svgWidth` calculation in `LaneSvg.svelte` line 16 (`(commit.column + 1) * laneWidth`) does not account for edges that extend to columns beyond the commit's own column. A merge commit at column 0 with a merge edge to column 5 would have `svgWidth = 12`, cutting off the edge. This MUST be fixed to use the max column of all edges in the row.
-
-**Phase:** Lane algorithm hardening phase. Add octopus merge test fixtures before implementing rendering.
+**Phase to address:** Stash implementation phase.
 
 ---
 
-### Pitfall 6: SVG Width Inconsistency Causes Jagged Left Edge on Commit Messages
+### Pitfall 7: Stash Apply vs Pop — Dirty Workdir After Pop Without Drop
 
-**What goes wrong:** Each row's SVG is a different width because it is sized to `(commit.column + 1) * laneWidth`. Row 1 has a commit at column 3 (SVG width = 48px), row 2 has a commit at column 0 (SVG width = 12px). The commit message text following the SVG starts at a different horizontal position in each row, creating a jagged left edge for the message column. This makes the text unreadable and the whole graph look broken.
+**What goes wrong:** `git2` exposes both `stash_apply` (apply without removing from stack) and `stash_pop` (apply and remove). If the pop fails (e.g., merge conflict), git2 may partially apply changes and leave the stash entry still on the stack, or it may have already removed it. The error message from git2 on conflict is `GIT_ECONFLICT`, but this is not guaranteed to mean "the stash was not consumed."
 
-**Why it happens:** The SVG width is determined per-row by the commit's lane position. But a properly rendered graph needs the SVG pane to be a consistent width across all visible rows so that: (a) pass-through lanes at columns beyond the commit's own column are drawn, and (b) the text column starts at a uniform x-position.
+Additionally, if `stash_apply` is used incorrectly instead of `stash_pop`, the stash entry remains after apply. Users who do not notice this accumulate duplicate stash entries.
 
-**Consequences:**
-- Commit messages are horizontally misaligned across rows
-- Pass-through lanes at high columns are not drawn (SVG is too narrow)
-- The layout looks broken even if the lane algorithm is perfect
+**How to avoid:**
+- Always use `stash_pop` (not `stash_apply`) for the "pop stash" action. This is semantically correct.
+- Handle `git2::ErrorCode::MergeConflict` (returned by `stash_pop` when conflicts exist): return error code `stash_conflict` to the frontend. Display a clear message that stash pop had conflicts and the working tree has been partially restored.
+- Check whether the stash entry was consumed on conflict: call `stash_foreach` immediately after a failed pop and compare the count before and after. Emit the appropriate state.
+- After any stash pop (success or failure), rebuild cache and emit `repo-changed`.
 
-**Prevention:**
-- **Use a fixed graph pane width based on the maximum column across all visible rows (or the entire page).** The Rust algorithm should return `max_active_lanes: usize` alongside the commit list. The frontend sets graph SVG width to `max_active_lanes * laneWidth` for ALL rows.
-- **Alternatively, use a `<div>` wrapper with a fixed width** around the SVG pane. The SVG inside can still have `overflow: visible`, and the fixed-width div ensures consistent text alignment.
-- **Include `max_column` in the page metadata** returned from the Rust `get_commit_graph` command. This is a single integer added to the response, not per-commit.
+**Warning signs:**
+- After a failed pop, the stash list still shows the entry but the working tree has some changes applied.
+- After a successful pop, the stash list still shows the entry (stash_apply was used instead of stash_pop).
 
-**Detection:**
-- Commit messages start at different horizontal positions in adjacent rows
-- Visually obvious -- just look at the commit list
-
-**Specific to this codebase:** The current `CommitRow.svelte` layout is `[RefPill 120px fixed] [LaneSvg flex-shrink-0] [Message flex-1]`. Because `LaneSvg` width varies per row, the message div's left edge varies. Fix by making the SVG wrapper a fixed width.
-
-**Phase:** First rendering phase. Must be solved before the graph looks presentable.
+**Phase to address:** Stash implementation phase.
 
 ---
 
-## Moderate Pitfalls
+### Pitfall 8: Tauri Native Menu `popup()` Positions at Wrong Coordinates When Window Is Scaled
+
+**What goes wrong:** The existing `showHeaderContextMenu` in `CommitGraph.svelte` calls `menu.popup()` with no position argument, which positions the menu at the current cursor position. This works correctly. However, for a commit row right-click context menu, if the developer passes an explicit `{ x, y }` position from the mouse event, the coordinates must be in physical pixels, not CSS logical pixels. When `document.documentElement.style.zoom` is set (the app uses zoom for scaling), `e.clientX/e.clientY` are in CSS pixels, not physical pixels. On a Retina display at zoom 1.25, physical pixels = CSS pixels × devicePixelRatio × zoom, and passing CSS coordinates causes the menu to appear at the wrong position.
+
+**Why it happens:** Tauri's `menu.popup({ position: { x, y } })` expects physical pixel coordinates. The browser's `MouseEvent.clientX` reports CSS logical pixels. The mismatch is compounded by the app-level `document.documentElement.style.zoom` used for accessibility scaling.
+
+**How to avoid:**
+- Use `menu.popup()` with no position argument. Tauri reads the OS cursor position directly, bypassing CSS coordinate transforms entirely. This is already the pattern used in the working header context menu.
+- Never pass explicit `x, y` from `e.clientX/e.clientY` to `popup()`. The no-argument form is always correct.
+- If an explicit position is ever needed, transform: `physicalX = e.clientX * window.devicePixelRatio * currentZoomLevel`.
+
+**Warning signs:**
+- Context menu appears far from where the user right-clicked.
+- Offset is proportional to zoom level (larger zoom = larger offset).
+- Works correctly at zoom = 1.0 but breaks at other zoom levels.
+
+**Phase to address:** Context menu implementation phase.
 
 ---
 
-### Pitfall 7: Color Index Drift -- Same Branch Gets Different Colors After Pagination
+### Pitfall 9: Context Menu Action on Stale Commit Data (Race Between Menu Open and Repo Change)
 
-**What goes wrong:** The Rust lane algorithm assigns `color_index` based on column position (`color_index: other_col` for pass-through edges). When the user scrolls down and loads a new page of commits, the algorithm runs over ALL OIDs from the beginning (the current code does this correctly -- it iterates all `oids` then slices to `page_oids`). But if the algorithm changes (e.g., to an incremental approach for performance), the lane assignment for commits deep in history might differ between pages, causing the same branch to change color at the pagination boundary.
+**What goes wrong:** The user right-clicks a commit row. While the menu is open (menu.popup() is async), an external git operation changes the repo (e.g., a filesystem watcher fires, `repo-changed` is emitted, the graph refreshes, and the commit at the right-clicked OID is now gone — e.g., after a rebase). The user clicks "Cherry-pick" in the menu. The Tauri command runs with the OID from the now-stale commit, which may no longer exist or may resolve to a different commit.
 
-**Why it happens:** Lane colors are derived from column indices, and column assignment depends on the full topology above the current row. Any optimization that avoids processing the full history risks inconsistent column assignments.
+**Why it happens:** `menu.popup()` is awaited, which means Svelte's reactive updates can fire during the await. If `commits` state is replaced (as it is in `CommitGraph.refresh()`), the `commit` variable captured in the menu action closure may point to a commit object that is no longer in the rendered list.
 
-**Consequences:**
-- A branch changes color as you scroll past a pagination boundary
-- The graph looks like two different branches where there is actually one
+**How to avoid:**
+- Capture the commit OID in a local variable before calling `menu.popup()`. The OID is a string (immutable). Even if the `commits` array is replaced, the OID string captured in the closure is stable.
+- In the Rust command handler, validate the OID with `repo.find_commit(oid)` before performing any mutation. If not found, return `TrunkError { code: "commit_not_found", ... }`.
+- The existing `safeInvoke` + error code pattern handles this gracefully — the UI just needs to show an appropriate message.
 
-**Prevention:**
-- **Keep the current full-walk approach.** The existing algorithm walks all OIDs for lane continuity (graph.rs line 59-185) then slices the page. This is correct and should not be "optimized" into incremental computation without careful thought.
-- **If performance requires incremental computation**, serialize the `active_lanes` and `pending_parents` state at the end of page N and restore it at the start of page N+1. This is a state-machine checkpoint, not a re-computation.
-- **Color should be tied to column index, not to any per-branch identifier.** The current approach (`color_index: other_col`) is correct for this. Columns are stable across pages because the full walk ensures consistency.
-- **Test: load page 1 and page 2 of a repo with 3 branches. Verify that the color of each branch is the same at the page boundary.**
+**Warning signs:**
+- "Commit not found" errors occurring intermittently on cherry-pick/revert/create-tag.
+- Errors more frequent on repos with active file watchers (live coding projects).
 
-**Detection:**
-- Branch color changes mid-graph when scrolling
-- A branch at column 2 is blue in one section and green in another
-
-**Phase:** Pagination integration testing phase.
+**Phase to address:** Context menu implementation phase.
 
 ---
 
-### Pitfall 8: Re-render Storms from Reactive SVG Width Recalculation
+### Pitfall 10: Cherry-pick on a Merge Commit — No Clear Error
 
-**What goes wrong:** If the graph pane width is a Svelte `$derived` value based on `max_column` (which is correct per Pitfall 6), and `max_column` changes when new commits load (e.g., a deep branch appears in page 2 that pushes `max_column` from 3 to 7), ALL visible row SVGs re-render because their width prop changed. With 40 visible rows, each containing an SVG with potentially 5-10 path elements, this is 200-400 DOM mutations in a single frame.
+**What goes wrong:** Cherry-picking a merge commit requires specifying the `-m` (mainline) parent number. Without `-m`, `git cherry-pick` (and libgit2's cherry-pick) fails with an error about merge commits requiring mainline specification. If the context menu does not disable "Cherry-pick" for merge commits, users click it and get a confusing error from git2 that says "Commit is a merge commit" or similar, with no guidance about what `-m` means or how to proceed.
 
-**Why it happens:** Svelte 5's fine-grained reactivity means changing a prop on 40 components triggers 40 independent DOM updates. SVG width changes force browser relayout of the entire list.
+**Why it happens:** git2's `Repository::cherrypick` has a `cherrypick_opts` parameter including `mainline: u32`. A value of 0 means "not specified" and will fail for merge commits. Developers implementing cherry-pick often test only on regular commits and miss the merge commit case.
 
-**Consequences:**
-- Visible jank/stutter when loading more commits (pagination)
-- Scroll performance degrades as the graph gets wider
+**How to avoid:**
+- Disable the "Cherry-pick" menu item when `commit.is_merge` is true. The `GraphCommit` struct already includes `is_merge: bool`. Use `MenuItem::new({ enabled: !commit.is_merge, ... })` for the cherry-pick item.
+- Display a tooltip or use a separator label like "Cherry-pick (not available for merge commits)" rather than silently disabling.
+- If cherry-pick of merge commits is desired in the future, add a separate "Cherry-pick (with mainline)" action.
 
-**Prevention:**
-- **Set graph pane width via CSS custom property, not per-component prop.** Define `--graph-width` on the CommitGraph container. Each SVG reads `width: var(--graph-width)`. Changing the CSS variable triggers a single style recalculation, not 40 component updates.
-- **Debounce max_column changes.** When loading a new page, compute the new max_column but only update the CSS variable after the new data is fully rendered. This prevents mid-render width thrashing.
-- **Over-allocate width.** Start with `max_column` rounded up to the next multiple of 4. This reduces how often the width actually changes. Going from 3 to 4 lanes causes a width change, but going from 3 to 4 within an allocation of 4 does not.
+**Warning signs:**
+- Users report "cherry-pick fails on some commits."
+- Errors come from the Rust side with git2 error code `GIT_EINVALIDSPEC` or similar.
 
-**Detection:**
-- Browser DevTools Performance tab shows "Recalculate Style" spike when new commits load
-- Visible horizontal jump/shift when scrolling to load more commits
-- `console.log` in LaneSvg shows all 40 instances re-rendering on page load
-
-**Phase:** Performance optimization phase, after basic rendering works.
+**Phase to address:** Context menu implementation phase (menu item state management).
 
 ---
 
-### Pitfall 9: Lane Collision -- Two Commits Assigned the Same Column
+### Pitfall 11: Revert on a Merge Commit — Same `mainline` Issue
 
-**What goes wrong:** The lane algorithm assigns two concurrent (both active, neither is an ancestor of the other) commits to the same column. Their vertical lane lines overlap, and merge/fork edges become ambiguous -- you cannot tell which line connects to which commit.
+**What goes wrong:** Same as cherry-pick. `Repository::revert` (and `git revert`) on a merge commit requires `-m mainline`. Without it, git2 returns an error. The context menu should disable or handle revert on merge commits the same way as cherry-pick.
 
-**Why it happens:** The algorithm reuses freed columns (`active_lanes.iter().position(|s| s.is_none())`). If the column was freed prematurely (ghost lane fix was too aggressive) or the algorithm does not correctly track that a parent is still pending on that column, a new branch tip can be assigned the same column as an existing active branch.
+**How to avoid:**
+- Disable "Revert" for `commit.is_merge === true` in the same way as cherry-pick.
+- Both cherry-pick and revert share this constraint — implement the disabled state check once in a shared helper.
 
-**Consequences:**
-- Two branch lines overlap, appearing as one
-- Merge/fork edges appear to connect to the wrong branch
-- The graph is technically drawn but visually misleading
-
-**Prevention:**
-- **The column assignment for new chains (line 70-76) must check ALL occupied slots**, not just `active_lanes`. The `pending_parents` map also indicates columns that are "reserved" for future use. A column is only truly free if `active_lanes[col].is_none()` AND no entry in `pending_parents` maps to that column.
-- **Add a collision detection assertion in tests:** for each row, verify that no two concurrent branches share the same column. "Concurrent" means: neither is an ancestor of the other.
-- **Visualize active_lanes state in a test log** for complex topologies.
-
-**Specific to this codebase:** The current algorithm at line 64-77 checks `pending_parents` first (for pre-reserved columns), then falls back to finding a free slot in `active_lanes`. The `pending_parents.insert` on line 131 reserves the column. This is mostly correct, but the secondary parent path (line 145) searches `active_lanes` for a free slot WITHOUT checking if that slot is pending for another parent. A collision can occur if parent A is in `pending_parents` at column 3 but `active_lanes[3]` is `None` (because A hasn't been processed yet) -- secondary parent B could be assigned column 3.
-
-**Detection:**
-- Two branch lines visually merge into one at some point in the graph
-- Graph has fewer visible branches than expected
-
-**Phase:** Lane algorithm hardening. Add collision detection test before rendering work begins.
+**Phase to address:** Context menu implementation phase.
 
 ---
 
-### Pitfall 10: Straight Pass-Through Edges Not Drawn for All Active Lanes
+### Pitfall 12: Async Tauri Command Triggered From Menu Item — No Loading State
 
-**What goes wrong:** Each row must draw vertical pass-through lines for every active lane that passes through that row, not just the lane belonging to the current commit. If the SVG only draws the commit dot and its own edges (merge/fork), other active branches appear to have gaps at this row -- their continuous vertical lines are interrupted.
+**What goes wrong:** Menu item actions in Tauri (`@tauri-apps/api/menu` item callbacks) are synchronous callback functions. When an async Tauri command is triggered from a menu item (e.g., cherry-pick, revert, create branch from commit), the callback fires and returns immediately. The async IPC call runs in the background. There is no loading indicator, and if the user clicks the same menu item again or performs another operation before the first completes, a race condition occurs.
 
-**Why it happens:** The Rust algorithm emits `Straight` edges for pass-through lanes (graph.rs lines 80-92), which is correct. But the frontend SVG renderer might only draw edges where `from_column != to_column` (thinking only merge/fork edges matter), or might skip drawing a straight line when it sees an edge with `from_column == to_column` because it thinks "the dot already handles that column."
+Additionally, cherry-pick and revert are slow operations on large repos (they run a full merge computation). The user may think the app is frozen.
 
-**Consequences:**
-- Vertical lane lines have holes at every commit row that belongs to a different branch
-- The graph looks correct only where commits are dense (every lane has its own commit) and broken where commits are sparse
+**How to avoid:**
+- Use the existing `sequence counter` pattern from the codebase (incremented before the IPC call, checked on completion). If the sequence counter has advanced when the response arrives, discard the result.
+- Set a `loading` state in the Svelte component before the `safeInvoke` call. Disable the commit row right-click (or show a spinner overlay) while loading.
+- Use a `pendingOperation = $state<string | null>(null)` variable: set it to `"cherry-pick"` before the call, null after. The menu can check this to disable itself.
+- The menu is already dismissed after the user clicks an item, so the second-click problem is limited to rapid successive right-clicks. The sequence counter guards against this.
 
-**Prevention:**
-- **The SVG renderer must draw EVERY edge returned by the Rust algorithm**, including Straight edges where `from_column == to_column` and `from_column != commit.column`. These are the pass-through lanes.
-- **Draw pass-through lanes BEFORE the commit dot** (lower z-order). The dot should be on top of any lines.
-- **Verify in tests:** for a repo with 2 active branches (main at column 0, feature at column 1), when processing a commit on main (column 0), there should be a Straight edge at column 1 (the feature branch passing through). The existing test suite checks for edges on merge commits but not for pass-through edges on non-merge commits.
+**Warning signs:**
+- Clicking cherry-pick twice on the same commit creates two cherry-pick commits.
+- App appears frozen during revert/cherry-pick with no feedback.
 
-**Detection:**
-- Vertical lane lines have gaps/holes where commits on other branches are positioned
-- Only the commit dot's own column has a continuous line
-
-**Specific to this codebase:** The algorithm at lines 80-92 emits these correctly. The risk is purely in the frontend renderer not drawing them. The current `LaneSvg.svelte` only draws a commit dot -- it does not draw any edges at all. This is by design (v0.1 stripped lanes), but it means ALL edge rendering is new code that must handle this case.
-
-**Phase:** First rendering phase. This is the most fundamental rendering requirement.
+**Phase to address:** Context menu implementation phase.
 
 ---
 
-### Pitfall 11: Bezier Curves Jagged at Low Stroke Widths
+## Technical Debt Patterns
 
-**What goes wrong:** SVG bezier curves rendered with `stroke-width: 1` or `stroke-width: 1.5` appear jagged or blurry on standard (non-Retina) displays. The anti-aliasing makes thin curves appear fuzzy. On Retina displays they look fine because there are enough physical pixels to render the anti-aliased edge cleanly. This creates "works on my machine" situations for developers with Retina MacBooks.
-
-**Why it happens:** SVG anti-aliasing works by blending the stroke color with the background at sub-pixel boundaries. With a 1px stroke, the blend zone is a significant proportion of the total stroke width, making the line appear semi-transparent or fuzzy.
-
-**Consequences:**
-- Curves look blurry or "soft" on non-Retina displays
-- Lines look different thicknesses at different angles (optical illusion from anti-aliasing)
-- Developers with Retina screens do not notice the problem
-
-**Prevention:**
-- **Use `stroke-width: 2` as the minimum for all lane lines and curves.** 2px strokes look sharp on both Retina and standard displays because the anti-aliased edge is a smaller proportion of the total width.
-- **Use `stroke-linecap: round`** for path endpoints to avoid flat cut-off edges that look rough.
-- **Do NOT use `shape-rendering: crispEdges`** on curves -- it disables anti-aliasing entirely, making curves visibly stepped/pixelated. Only use `crispEdges` on purely horizontal or vertical lines.
-- **Test on a standard 1080p display**, not just a Retina MacBook. Use browser DevTools device emulation to simulate lower DPI if no physical display is available.
-
-**Detection:**
-- Curves look blurry or "glowing" on standard displays
-- Straight vertical lines look crisp but curves look soft
-- Side-by-side comparison between 1px and 2px strokes shows dramatic difference
-
-**Phase:** Visual polish phase, but should be decided during initial rendering to avoid rework.
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Shell out to `git` CLI for push/pull without timeout | Simpler implementation | Hung threads block the runtime | Never — always set `GIT_TERMINAL_PROMPT=0` and a timeout |
+| Return raw git stderr as error message | Zero parsing needed | Raw ANSI text shown to users | Never — at minimum strip ANSI codes and detect common patterns |
+| Use stash index (integer) as stable identifier | Simple API call | Pop wrong stash after concurrent modification | Acceptable for v0.3 if single-stash workflow is documented |
+| Disable cherry-pick/revert for merge commits rather than supporting `-m` | Avoids complex mainline selection UI | Feature gap | Acceptable for v0.3 — add proper support in v0.4 |
+| `menu.popup()` with no position (cursor-relative) | Correct positioning without coordinate math | Cannot pin menu to specific UI element | Acceptable — OS cursor position is always correct |
+| Emit `repo-changed` once for all mutations | Simplicity | Over-refreshes (graph + refs) on fetch | Acceptable — refresh is fast; optimization can come later |
 
 ---
 
-### Pitfall 12: Lane Color Palette Not Accessible / Clashes with Background
+## Integration Gotchas
 
-**What goes wrong:** The 8 lane colors (`--lane-0` through `--lane-7`) were chosen for aesthetics but not tested for: (a) contrast against the dark background (`#0d1117`), (b) distinguishability from each other for colorblind users, (c) readability when used as a 2px line on a dark background. Specifically, `--lane-7: #58595b` is nearly invisible against the `#0d1117` background (contrast ratio ~2.4:1, well below WCAG AA minimum of 3:1 for large text / graphical elements).
-
-**Why it happens:** Colors were picked from a generic chart palette (similar to Chart.js defaults) without testing against the specific dark background and the specific rendering context (2px lines, not filled areas).
-
-**Consequences:**
-- Some branch lanes are nearly invisible
-- Colorblind users cannot distinguish certain lane pairs (e.g., red/green, blue/purple)
-- Users complain about "missing" branches that are actually just invisible
-
-**Prevention:**
-- **Test every lane color as a 2px line on `#0d1117`.** Minimum contrast ratio 4.5:1.
-- **Replace `--lane-7: #58595b`** (dark gray) with a higher-contrast alternative. Consider `#a8a8a8` or `#c0c0c0`.
-- **Use a colorblind-safe palette.** Tools like ColorBrewer or the Oklab color space can generate palettes that are distinguishable under all forms of color vision deficiency.
-- **Test with browser extensions** that simulate color blindness (e.g., Chrome DevTools Rendering > Emulate vision deficiencies).
-- **Add lane color labels on hover** (branch name tooltip) so users are not solely dependent on color to identify lanes.
-
-**Detection:**
-- A lane appears to "disappear" in certain sections of the graph
-- Two adjacent lanes appear identical in color
-
-**Phase:** Visual polish phase. Quick to fix but must be done before release.
+| Integration | Common Mistake | Correct Approach |
+|-------------|----------------|------------------|
+| git CLI subprocess | Inherit parent stdio, no timeout | `Stdio::piped()` on all streams + `wait_timeout` |
+| git CLI subprocess | Trust exit code 0 means clean success | Also check stderr for `remote:` warnings and `!` rejection lines |
+| git2 stash_save | Pass `StashFlags::DEFAULT` only | Check if `KEEP_INDEX` flag is needed; document behavior in UI |
+| git2 stash_pop | Ignore error on merge conflict | Check `git2::ErrorCode::MergeConflict`, report conflict state, rebuild cache |
+| Tauri Menu API | Pass `e.clientX/Y` to `popup({ position })` | Use `popup()` with no arguments — reads OS cursor directly |
+| Tauri Menu API | Build menu synchronously, show stale state | Build menu items with current `commit.is_merge` state fresh on each right-click |
+| Cache after remote ops | Forget to repopulate `CommitCache` after fetch | Always run `walk_commits` + `cache.insert` + emit `repo-changed` after any mutation |
+| BranchInfo `ahead`/`behind` | Leave as `0` (already zero in current code) | For v0.3 scope, this is intentional — add actual ahead/behind counts in v0.4 |
 
 ---
 
-## Minor Pitfalls
+## Performance Traps
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| Blocking main thread on `git push` | UI freezes during push | Always use `spawn_blocking` — this is already the pattern | Immediately if done on async thread |
+| Rebuilding `CommitCache` on every fetch even with no new commits | Unnecessary work on `git fetch --dry-run` equivalent | Check if fetch returned new objects before rebuilding; or just always rebuild (fast enough for typical repos) | Not a real problem until repo has 100k+ commits |
+| Menu item `Promise.all` for building all menu items | Slow menu open on repos with many refs | Build static menu items first; dynamic items (branch list) can be a submenu built lazily | Breaks at 100+ refs if building one MenuItem per ref |
+| `stash_foreach` inside a command that already holds the Mutex | Deadlock | Use the inner-fn pattern — lock once, pass data; never re-lock | Any time a command calls list_refs_inner which calls stash_foreach while the outer lock is held |
 
 ---
 
-### Pitfall 13: Commit Dot Rendered Behind Pass-Through Lines
+## Security Mistakes
 
-**What goes wrong:** The SVG renderer draws pass-through lane lines and then the commit dot. Because SVG elements render in document order (later = on top), this is correct. But if the rendering order is edges-then-dot, and a pass-through line happens to cross through the commit dot's center (which occurs when the commit is on a column that a pass-through edge also uses -- shouldn't happen, but edge cases exist), the line obscures the dot.
-
-**Prevention:**
-- **Always render in order: (1) pass-through straight lines, (2) merge/fork curves, (3) commit dots.** The dot must be last in SVG document order.
-- **Add a small opaque background circle behind the commit dot** (same color as `--color-bg`) to create a "knockout" that separates the dot from crossing lines.
-
-**Phase:** Rendering implementation. A simple z-order discipline.
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| Pass arbitrary repo-provided remote URL to `git push` without validation | SSRF via `git://evil.internal` if user opens a malicious repo | Validate that the remote URL is in an allowed scheme list (`https://`, `git@`, `ssh://`) before shelling out; display the remote URL in confirmation dialog |
+| Log or display SSH private key paths in error messages | Key path exposure in crash logs | Sanitize any error that contains `~/.ssh/` paths in user-visible output |
+| Pass user-entered branch name to `git push` shell argument without quoting | Shell injection if branch name contains spaces or special chars | Use `Command::arg()` with separate arguments (not shell string), which avoids injection entirely since exec replaces the process |
 
 ---
 
-### Pitfall 14: Edge Data Does Not Include Enough Information for Multi-Row Curves
+## UX Pitfalls
 
-**What goes wrong:** The current `GraphEdge` struct has `from_column`, `to_column`, `edge_type`, and `color_index`. For a merge or fork edge, this tells the renderer "draw a curve from column X to column Y" -- but it does not say whether the curve should span to the row above or below, or how many rows it spans. For standard merges/forks that span exactly one row, this is implied. But for edges where the parent is multiple rows below (due to interleaved commits on other branches), a single edge entry in the current row is insufficient -- the renderer does not know how many rows of straight line to draw before the curve.
-
-**Why it happens:** The algorithm emits edges per-row, and each edge describes only the local geometry at that row. For a merge edge, row N says "MergeRight from column 0 to column 3" -- but the actual parent commit is at row N+5. Rows N+1 through N+4 need straight edges at column 3 for the merged branch's continuation. The algorithm handles this via pass-through Straight edges -- but the color_index for those pass-through edges must match the merge edge's color for visual continuity.
-
-**Prevention:**
-- **Verify that pass-through Straight edges emitted between a child and its parent carry the correct `color_index`.** The current code uses `color_index: other_col` for pass-through edges, which ties color to column position. This is correct as long as the column does not change between the child and parent.
-- **For curves, the edge_type tells the renderer which direction to curve, and the curve always spans exactly one row boundary.** Document this contract explicitly: MergeLeft/MergeRight/ForkLeft/ForkRight edges always describe a curve that starts at the center of the current row and ends at the center of the adjacent row (above for merge, below for fork). The straight continuation above/below is handled by separate Straight edges.
-
-**Phase:** Algorithm-renderer contract definition phase.
-
----
-
-### Pitfall 15: Branch That Only Exists in Reflog Has No Ref but Occupies a Lane
-
-**What goes wrong:** Deleted branches whose commits are still reachable (via other branches or reflog) appear in the revwalk output. The algorithm assigns them lanes, but they have no ref label. Users see unnamed branch lanes in the graph that do not correspond to any known branch.
-
-**Prevention:**
-- **This is correct behavior** -- the commits exist and their topology should be shown. Do not filter them out.
-- **Add a visual distinction** for commits with no refs (dimmed lane color, or thinner line) to indicate they are reachable but not pointed-to by any branch.
-- **The reflog itself is not walked by the current algorithm** (only `refs/heads`, `refs/remotes`, `refs/tags` are pushed to the revwalk). Deleted branches without other reachability will not appear.
-
-**Phase:** Visual polish. Not a blocking issue.
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| No progress feedback during push/pull | Users think the app is frozen during slow network operations | Show an inline status indicator ("Pushing...") in the toolbar or a toast; emit intermediate `push_progress` events from Rust if possible |
+| "Push rejected" with no actionable guidance | Users do not know they need to pull first | Detect non-fast-forward code and show "Pull first, then push" with a button to trigger pull |
+| Stash creates without confirmation when workdir is clean | Creates an empty stash entry | Check `is_dirty` before stashing; if clean, show "Nothing to stash" rather than creating an empty stash |
+| Context menu appears on WIP row | WIP row is synthetic (`oid === '__wip__'`); cherry-pick/revert/create-tag on WIP makes no sense | Exclude WIP row from right-click context menu entirely, or show a read-only "Uncommitted changes" label |
+| "Create branch from commit" always checks out the new branch | Unexpected HEAD change if user just wanted to mark the commit | Ask or provide option: "Create only" vs "Create and checkout" |
+| Fetch vs Pull confusion | Users think fetch updates their branch but it only updates remote tracking refs | Clear labels: "Fetch" = "Download remote changes (no merge)"; "Pull" = "Fetch + merge into current branch" |
 
 ---
 
-### Pitfall 16: WIP Row Does Not Participate in Lane Rendering
+## "Looks Done But Isn't" Checklist
 
-**What goes wrong:** The WIP row in `CommitGraph.svelte` (lines 122-141) is rendered OUTSIDE the virtual list, above it. It has a hardcoded hollow circle at column 0 with a fixed SVG width of 12px. When lane rendering is added, the WIP row must connect to the HEAD commit's lane. If HEAD is not at column 0 (e.g., HEAD is on a feature branch at column 2), the WIP dot is at the wrong column and has no connecting line to HEAD.
-
-**Prevention:**
-- **The WIP row must participate in the lane algorithm.** Either include a synthetic "WIP" node in the Rust graph walk (preferred -- simplest to implement), or compute the WIP row's column and edges in the frontend based on the HEAD commit's lane data.
-- **The WIP row should have a straight edge from its column to the HEAD commit's column below it.** If they are in the same column, it is a straight line. If different (unlikely but possible if HEAD is not on the primary branch), it is a fork edge.
-
-**Phase:** WIP row integration, after the lane rendering is working for committed rows.
-
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Severity | Mitigation |
-|-------------|---------------|----------|------------|
-| Lane algorithm hardening | Ghost lanes after merge (#4) | Critical | Add termination assertions in tests |
-| Lane algorithm hardening | Lane collision (#9) | Critical | Add collision detection test with pending_parents check |
-| Lane algorithm hardening | Octopus merge explosion (#5) | Moderate | Cap display at 4 parents; test with 5+ parent fixture |
-| SVG rendering foundation | Sub-pixel gaps between rows (#1) | Critical | 0.5px line overlap + even stroke widths + zoom testing |
-| SVG rendering foundation | Inconsistent SVG width (#6) | Critical | Fixed graph pane width from max_active_lanes metadata |
-| SVG rendering foundation | Pass-through edges not drawn (#10) | Critical | Draw ALL edges from algorithm, not just merge/fork |
-| Bezier curve rendering | Row boundary misalignment (#2) | Critical | Single logical curve split by row, not two independent curves |
-| Bezier curve rendering | Jagged curves at low stroke (#11) | Moderate | Stroke-width 2 minimum, round linecaps |
-| Virtual scroll integration | Overflow clipping (#3) | Moderate | Verify DOM structure; only viewport-edge clipping occurs |
-| Virtual scroll integration | Re-render storms (#8) | Moderate | CSS variable for graph width, not per-component prop |
-| Pagination continuity | Color drift across pages (#7) | Moderate | Keep full-walk algorithm; do not optimize to incremental |
-| Visual quality | Color accessibility (#12) | Moderate | Test contrast ratios; replace --lane-7 |
-| Visual quality | Dot z-order (#13) | Minor | SVG render order: lines, curves, dots |
-| Edge data contract | Multi-row curve data (#14) | Minor | Document: merge/fork edges span exactly one row boundary |
-| WIP row | WIP not in lane graph (#16) | Moderate | Synthetic WIP node in Rust graph or frontend column calc |
+- [ ] **Remote fetch:** Verify remote tracking branch pills in commit graph move to new positions after fetch, not just the sidebar branch list.
+- [ ] **Remote push:** Verify that the local branch's upstream tracking info is updated after push (the `ahead/behind` count resets to 0/0).
+- [ ] **Stash create:** Verify working tree is clean after stash (all tracked modifications gone), not just that the stash list entry appears.
+- [ ] **Stash pop:** Verify the stash entry is removed from the stash list AND the working tree changes are restored.
+- [ ] **Stash on unborn HEAD:** Test what happens if user tries to stash in a repo with no commits — git2's `stash_save` requires at least one commit. Return a clear error.
+- [ ] **Cherry-pick:** Verify the new commit appears at HEAD and the graph refreshes — commit cache repopulation must happen.
+- [ ] **Revert:** Same as cherry-pick — verify a new revert commit appears (revert does not undo the history, it adds a new commit).
+- [ ] **Context menu on merge commit:** Verify cherry-pick and revert items are disabled (grayed out), not hidden — hidden items are confusing.
+- [ ] **Context menu on WIP row:** Verify no context menu appears (or a WIP-specific one with only relevant actions).
+- [ ] **SSH push from Finder-launched app:** Test push from a freshly launched .app bundle, not from `cargo tauri dev` (different environment).
+- [ ] **HTTPS push:** Test with a repo using HTTPS remote — must fail gracefully with `GIT_TERMINAL_PROMPT=0` rather than hanging.
 
 ---
 
-## Summary: Likely v0.1 Failure Modes
+## Recovery Strategies
 
-Based on the codebase evidence, the v0.1 lane rendering likely failed due to a combination of:
+| Pitfall | Recovery Cost | Recovery Steps |
+|---------|---------------|----------------|
+| Hung push/pull thread (Pitfall 1) | HIGH | Kill the app; the child git process may need manual `kill`; add timeout before shipping |
+| Wrong stash popped (Pitfall 6) | MEDIUM | Use `git stash list` + `git stash apply stash@{N}` in terminal to recover; educate users about stash indexing |
+| Cache not refreshed after fetch (Pitfall 4) | LOW | Close and reopen the repo; no data loss |
+| Cherry-pick/revert conflict on stash pop | MEDIUM | User resolves in terminal; Trunk shows conflict state in staging panel |
+| Menu shows at wrong position (Pitfall 8) | LOW | Switch from explicit position to `popup()` with no arguments |
+| Merge commit cherry-pick error (Pitfall 10) | LOW | Add `enabled: !commit.is_merge` guard; no data consequences |
 
-1. **Sub-pixel gaps (#1)** -- The most common failure mode for per-row SVG graphs. Without the 0.5px overlap technique, gaps between rows are nearly inevitable at certain zoom levels.
-2. **Inconsistent SVG width (#6)** -- The current `svgWidth` calculation is per-commit-column, not per-row-max-column. This would cause message text misalignment and missing pass-through lanes.
-3. **Missing pass-through edges (#10)** -- The current LaneSvg only renders a dot. If v0.1's implementation also failed to render pass-through Straight edges, the graph would have gaps in every lane at every commit that belongs to a different branch.
+---
 
-These three issues together would produce a graph with dashed vertical lines, misaligned text, and missing branches -- enough visual breakage to justify stripping it out.
+## Pitfall-to-Phase Mapping
+
+| Pitfall | Prevention Phase | Verification |
+|---------|------------------|--------------|
+| SSH blocking stdin (P1) | Remote ops: subprocess wrapper | Test with no SSH agent; verify command resolves within 5 seconds |
+| Non-FF push UX (P2) | Remote ops: error taxonomy | Push to a repo with diverged history; verify actionable error appears |
+| SSH key discovery (P3) | Remote ops: environment setup | Test by launching .app from Finder on macOS with SSH remote |
+| Cache stale after fetch (P4) | Remote ops: fetch command | Verify graph updates remote ref pill positions immediately after fetch |
+| stash_save staged behavior (P5) | Stash: create implementation | Stage a file, stash, pop — verify file returns to staged state (or document limitation) |
+| Stash index instability (P6) | Stash: pop implementation | Create 2 stashes, pop stash@{1} — verify correct stash is removed |
+| stash_pop on conflict (P7) | Stash: pop error handling | Introduce a conflict before popping; verify error code and working tree state |
+| Menu position with zoom (P8) | Context menu: positioning | Test at zoom 1.5 — menu must appear at cursor |
+| Stale commit on menu action (P9) | Context menu: OID capture | Trigger repo-changed between right-click and action; verify correct OID used |
+| Cherry-pick on merge commit (P10) | Context menu: item state | Right-click a merge commit; verify cherry-pick is disabled |
+| Revert on merge commit (P11) | Context menu: item state | Same as cherry-pick — same test |
+| Async menu action no loading state (P12) | Context menu: feedback | Trigger slow operation (large revert); verify UI shows loading state |
 
 ---
 
 ## Sources
 
-- [Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) -- Lane assignment, column packing, topological ordering, performance benchmarks (MEDIUM confidence -- 2019, but algorithmic principles are timeless)
-- [Drawing a Commit Graph (DoltHub)](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/) -- Lane packing, bezier curve implementation, color rendering (MEDIUM confidence)
-- [Mastering SVG Seams: 5 Pro Fixes](https://junkangworld.com/blog/mastering-svg-seams-5-pro-fixes-for-flawless-shapes-2025) -- Anti-aliasing gap fixes, overlap technique (HIGH confidence -- browser behavior)
-- [SVG shape-rendering MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/shape-rendering) -- crispEdges behavior (HIGH confidence -- MDN)
-- [Fix for gap between inline SVG elements](https://codepen.io/elliz/pen/dOOrxO) -- display:block fix for inline SVG gaps (HIGH confidence)
-- [WebKit Bug 96163: SVG overflow:visible](https://bugs.webkit.org/show_bug.cgi?id=96163) -- overflow:visible clipping in WebKit (HIGH confidence)
-- [vscode-git-graph color/position mapping](https://github.com/mhutchie/vscode-git-graph/issues/194) -- Why deterministic branch coloring is infeasible in single-pass algorithms (HIGH confidence -- maintainer explanation)
-- [Microsoft git PR #167: Octopus merge bug](https://github.com/microsoft/git/pull/167) -- Off-by-one in octopus merge handling (HIGH confidence)
-- [Improving SVG Runtime Performance](https://codepen.io/tigt/post/improving-svg-rendering-performance) -- SVG DOM overhead (MEDIUM confidence)
-- Codebase inspection of `graph.rs`, `LaneSvg.svelte`, `CommitRow.svelte`, `CommitGraph.svelte`, `@humanspeak/svelte-virtual-list` (HIGH confidence -- direct source analysis)
+- Codebase inspection of `branches.rs`, `commit.rs`, `error.rs`, `state.rs`, `App.svelte`, `CommitGraph.svelte`, `types.ts`, `invoke.ts`, `Cargo.toml` (HIGH confidence — direct source analysis)
+- git2 Rust crate documentation — `stash_save`, `stash_pop`, `StashFlags`, `cherrypick`, `revert` (HIGH confidence — official API)
+- Tauri 2 `@tauri-apps/api/menu` — `Menu.new`, `MenuItem.new`, `menu.popup()` position behavior (HIGH confidence — existing working usage in codebase at `CommitGraph.svelte` line 98-99)
+- git subprocess credential handling — `GIT_TERMINAL_PROMPT`, `GIT_ASKPASS`, `GIT_SSH_COMMAND`, `BatchMode` SSH option (HIGH confidence — git documentation)
+- macOS SSH agent environment inheritance — `launchctl getenv SSH_AUTH_SOCK` pattern (MEDIUM confidence — macOS-specific, known pattern in Electron/Tauri apps)
+- git non-fast-forward rejection stderr format — `! [rejected]` pattern (HIGH confidence — git behavior documented and stable)
+
+---
+
+*Pitfalls research for: v0.3 Actions — remote ops, stash, commit context menu on Tauri 2 + Svelte 5 + git2*
+*Researched: 2026-03-10*

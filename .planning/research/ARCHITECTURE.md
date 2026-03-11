@@ -1,462 +1,725 @@
-# Architecture Patterns
+# Architecture Research
 
-**Domain:** Commit graph lane rendering for Tauri 2 + Svelte 5 + Rust desktop Git GUI
-**Researched:** 2026-03-09
-**Focus:** Integrating GitKraken-quality lane rendering into the existing per-row inline SVG architecture
-**Confidence:** HIGH -- existing codebase is well-understood, patterns verified against multiple open-source implementations
-
----
-
-## Existing Architecture (Current State)
-
-The current system already has the right bones. The Rust algorithm (`graph.rs`) performs a single-pass O(n) walk over all commits, assigning each commit to a column and emitting a `Vec<GraphEdge>` per commit. The frontend receives paginated slices of `Vec<GraphCommit>` and renders each row as an independent inline `<svg>` inside a virtual scroll list.
-
-**What works and stays unchanged:**
-- Rust-side lane algorithm runs over ALL commits for lane continuity, paginated slices served from `CommitCache`
-- Virtual scrolling with `@humanspeak/svelte-virtual-list` (~40 DOM nodes regardless of history size)
-- Per-row inline SVG approach (not Canvas, not one giant SVG)
-- 8-color CSS custom property palette (`--lane-0` through `--lane-7`)
-- `CommitRow.svelte` layout: RefPills (120px) | LaneSvg | Message
-
-**What the current LaneSvg renders:** Only a commit dot (circle). No lane lines, no edges, no curves. This was a deliberate v0.1 decision -- lanes were removed due to visual bugs, with the plan to revisit in v0.2.
-
-**What the Rust algorithm already provides but the frontend ignores:**
-- `edges: Vec<GraphEdge>` per commit, including pass-through `Straight` edges for active lanes crossing each row
-- `from_column`, `to_column`, `edge_type`, `color_index` per edge
-- All five edge types: `Straight`, `ForkLeft`, `ForkRight`, `MergeLeft`, `MergeRight`
+**Domain:** Tauri 2 + Svelte 5 + Rust desktop Git GUI — v0.3 remote ops, stash, commit context menu
+**Researched:** 2026-03-10
+**Confidence:** HIGH — existing codebase fully read; all integration points derived from code, not assumptions
 
 ---
 
-## Recommended Architecture
+## Existing Architecture Summary
 
-### Design Principle: Minimal Data Changes, Maximum Visual Impact
+Before describing what changes, here is what is already in place and MUST NOT be disrupted.
 
-The existing Rust algorithm already emits nearly everything needed. The key insight is that `walk_commits()` already generates pass-through `Straight` edges for every active lane crossing each row (lines 80-91 of graph.rs). This means the frontend has the data to draw continuous lane rails -- it just needs to render them.
+**Rust managed state:**
+- `RepoState(Mutex<HashMap<String, PathBuf>>)` — path registry; `git2::Repository` is NOT stored (not Sync)
+- `CommitCache(Mutex<HashMap<String, GraphResult>>)` — cached lane graph per repo
+- `WatcherState(Mutex<WatcherMap>)` — filesystem watchers per repo
 
-The primary changes are:
-1. **One new field from Rust:** `max_columns` (the widest the graph gets across all commits) -- needed for consistent SVG width
-2. **LaneSvg.svelte rewrite:** From "dot only" to "full lane rendering with edges and dot"
-3. **No changes to CommitRow, CommitGraph, CommitCache, or the IPC layer**
+**Command pattern (inner-fn):** Every Tauri command delegates immediately to a pure `_inner` function that takes `&HashMap<String, PathBuf>` and returns `Result<T, TrunkError>`. The Tauri command does: lock state → clone → `spawn_blocking` → update cache → emit `repo-changed`. The inner fn has no Tauri dependency and is directly unit-testable.
 
-### Architecture Diagram
+**Mutation pattern (cache-repopulate-before-emit):** After any mutation, call `refresh_commit_cache()` inside the same `spawn_blocking` block, update `CommitCache` under the lock, then emit `repo-changed`. This prevents the frontend from seeing a stale empty cache when it re-renders.
+
+**IPC:** `safeInvoke<T>` on the frontend wraps all `invoke()` calls and parses `TrunkError` JSON from Rust error strings. All commands return `Result<T, String>` where the `String` is `serde_json::to_string(&TrunkError)`.
+
+**Event bus:** Rust emits `repo-changed` (payload: path string) after mutations. Frontend subscribes with `listen()` in `App.svelte` and increments `refreshSignal` to trigger `CommitGraph.svelte` refresh.
+
+**Native context menu (already used):** `CommitGraph.svelte` already uses `@tauri-apps/api/menu` — `Menu.new({ items })` + `menu.popup()` — for the column header right-click. This exact same pattern applies to per-commit context menus.
+
+---
+
+## System Overview
 
 ```
-Rust (graph.rs) -- MINOR CHANGE
-  walk_commits() already emits:
-    - commit.column (which lane this commit sits in)
-    - commit.edges[] with pass-through Straight edges for ALL active lanes
-    - ForkLeft/Right and MergeLeft/Right edges with from/to columns
-  NEW: return max_columns alongside Vec<GraphCommit>
+┌─────────────────────────────────────────────────────────────────┐
+│  Svelte 5 Frontend (WebView)                                     │
+│                                                                  │
+│  App.svelte                                                      │
+│    ├── CommitGraph.svelte  ← NEW: oncontextmenu per row          │
+│    │     └── CommitRow.svelte  ← NEW: contextmenu handler        │
+│    ├── BranchSidebar.svelte  ← NEW: remote op buttons            │
+│    └── StagingPanel.svelte  ← NEW: stash save/pop controls       │
+│                                                                  │
+│  invoke.ts (safeInvoke<T>) ← no changes needed                  │
+│  types.ts  ← NEW: RemoteOpProgress, StashEntry                   │
+├─────────────────────────────────────────────────────────────────┤
+│  Tauri IPC Layer                                                 │
+│    invoke  → Rust #[tauri::command]                              │
+│    emit    ← Rust app.emit(event, payload)                       │
+├─────────────────────────────────────────────────────────────────┤
+│  Rust Backend (src-tauri/src/)                                   │
+│                                                                  │
+│  commands/                                                       │
+│    remote.rs  ← NEW: push, pull, fetch                           │
+│    stash.rs   ← NEW: stash_save, stash_pop, stash_drop           │
+│    commit.rs  ← EXTEND: checkout_commit, cherry_pick, revert,   │
+│                          create_tag                               │
+│    branches.rs  (existing: checkout_branch, create_branch)       │
+│                                                                  │
+│  git/                                                            │
+│    remote.rs  ← NEW: shell-out wrappers (push/pull/fetch)        │
+│    stash.rs   ← NEW: git2 stash operations                       │
+│                                                                  │
+│  state.rs  ← no changes                                          │
+│  watcher.rs  ← no changes                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-CommitCache (state.rs) -- MINOR CHANGE
-  Store (Vec<GraphCommit>, usize) instead of Vec<GraphCommit>
-  The usize is max_columns
+---
 
-get_commit_graph (history.rs) -- MINOR CHANGE
-  Return { commits: Vec<GraphCommit>, max_columns: usize }
+## Feature 1: Remote Operations (Push / Pull / Fetch)
 
-CommitGraph.svelte -- MINOR CHANGE
-  Pass maxColumns to each CommitRow
+### Why Shell-Out (Decision Already Made)
 
-CommitRow.svelte -- MINOR CHANGE
-  Pass maxColumns to LaneSvg
+`git2` / libgit2 has incomplete and unreliable SSH agent forwarding and HTTPS credential helper integration. All major open-source Tauri git clients (GitButler, Aho) shell out to the `git` CLI for remote operations. The git CLI handles SSH agents, macOS Keychain, git-credential-helper, and SSH passphrase prompts natively. libgit2 requires reimplementing the entire credential callback chain — which is brittle and platform-specific. This decision is already recorded in `PROJECT.md`.
 
-LaneSvg.svelte -- FULL REWRITE
-  Renders: pass-through rails + fork/merge curves + commit dot
-  Uses maxColumns for consistent SVG width across all rows
+### Async Long-Running Commands in Tauri
+
+The existing pattern uses `tauri::async_runtime::spawn_blocking` for blocking git2 calls. Remote ops cannot use `spawn_blocking` in the same way because:
+1. They can take 10-60+ seconds
+2. They produce stderr output (progress lines like `remote: Counting objects: 100%`)
+3. They may require interactive credential input
+
+**Correct approach: `tokio::process::Command` (async, non-blocking)**
+
+Tauri 2's async runtime is Tokio. `tokio::process::Command` lets you spawn a subprocess, capture stdout/stderr line-by-line asynchronously, and emit each line as a Tauri event — without blocking the async executor and without `spawn_blocking`.
+
+```rust
+// Pattern for streaming remote ops
+#[tauri::command]
+pub async fn git_fetch(
+    path: String,
+    remote: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let path_buf = {
+        let map = state.0.lock().unwrap();
+        map.get(&path)
+            .ok_or_else(|| /* TrunkError JSON */ )?
+            .clone()
+    };
+
+    let mut child = tokio::process::Command::new("git")
+        .args(["fetch", "--progress", &remote])
+        .current_dir(&path_buf)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(/* ... */)?;
+
+    // Stream stderr (git remote progress goes to stderr)
+    if let Some(stderr) = child.stderr.take() {
+        let app_clone = app.clone();
+        let path_clone = path.clone();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = app_clone.emit("remote-progress", RemoteProgress {
+                    path: path_clone.clone(),
+                    line,
+                });
+            }
+        });
+    }
+
+    let status = child.wait().await.map_err(/* ... */)?;
+    if !status.success() {
+        return Err(/* TrunkError JSON: exit code */);
+    }
+
+    // cache-repopulate-before-emit pattern
+    let path_clone = path.clone();
+    let state_map = state.0.lock().unwrap().clone();
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        let path_buf = state_map.get(&path_clone).ok_or(/* ... */)?;
+        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+        graph::walk_commits(&mut repo, 0, usize::MAX)
+    })
+    .await
+    .map_err(/* ... */)?
+    .map_err(/* ... */)?;
+
+    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    let _ = app.emit("repo-changed", path);
+    Ok(())
+}
+```
+
+**Note on `spawn_blocking` vs `tokio::process::Command`:** The existing commands use `spawn_blocking` because git2 is synchronous. Remote shell-out uses `tokio::process::Command` which is natively async — no `spawn_blocking` wrapper needed.
+
+### Progress Streaming to Frontend
+
+New event: `remote-progress` with payload `{ path: string; line: string }`.
+
+Git remote progress appears on stderr. Example lines:
+```
+remote: Counting objects: 100% (52/52), done.
+remote: Compressing objects: 100% (35/35), done.
+Receiving objects: 100% (52/52), 4.55 KiB | 1.52 MiB/s, done.
+```
+
+**Frontend pattern:**
+```typescript
+// In BranchSidebar.svelte or a dedicated RemoteOpsModal.svelte
+let progressLines = $state<string[]>([]);
+let remoteOpRunning = $state(false);
+
+async function handleFetch() {
+    remoteOpRunning = true;
+    progressLines = [];
+    const unlisten = await listen<{ path: string; line: string }>('remote-progress', (e) => {
+        if (e.payload.path === repoPath) {
+            progressLines = [...progressLines, e.payload.line];
+        }
+    });
+    try {
+        await safeInvoke('git_fetch', { path: repoPath, remote: 'origin' });
+    } finally {
+        unlisten();
+        remoteOpRunning = false;
+    }
+}
+```
+
+The `unlisten()` call in `finally` ensures the listener is removed after the command resolves.
+
+### SSH / HTTPS Credential Handling
+
+**SSH (agent-based):** When the git CLI runs, it calls the SSH agent normally via the running `ssh-agent` / macOS Keychain. No special handling needed for repos already set up with SSH keys.
+
+**SSH passphrase prompts:** If the key has a passphrase and is not in the agent, `git fetch` will block waiting for terminal input. Since the process has no controlling terminal, it will fail with "Permission denied (publickey)". The frontend should show the error from stderr and guide the user to add the key to ssh-agent.
+
+**HTTPS credentials:** The `git` CLI will use whatever credential helper is configured (macOS Keychain via `git-credential-osxkeychain`, Windows Credential Manager, etc.). If no helper is configured and credentials are needed, git will block waiting for stdin — which will fail the same way (no TTY).
+
+**Recommended approach for v0.3:** Do NOT implement a credential input UI. Instead:
+1. Capture the exit code and full stderr output
+2. On failure, surface the stderr in a modal/error display
+3. Document that repos must have credentials configured in the system (SSH key in agent, or HTTPS credentials in OS keychain)
+
+This is what GitButler and other Tauri git clients do for v1. A credential prompt UI is a later feature requiring `tauri-plugin-dialog` for secure text input or a dedicated Tauri window.
+
+**The `GIT_TERMINAL_PROMPT=0` env var:** Set this on the spawned process to prevent git from blocking forever waiting for credentials it will never receive:
+
+```rust
+tokio::process::Command::new("git")
+    .env("GIT_TERMINAL_PROMPT", "0")  // Fail fast instead of blocking
+    .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")  // SSH: fail fast on passphrase prompt
+    .args(["fetch", "--progress", remote])
+    .current_dir(&path_buf)
+    // ...
+```
+
+### New Rust Commands (Remote)
+
+| Command | Rust fn | git CLI args | Emits |
+|---------|---------|-------------|-------|
+| `git_fetch` | `git_fetch` | `git fetch [remote] --progress` | `remote-progress`, `repo-changed` |
+| `git_pull` | `git_pull` | `git pull [remote] [branch] --progress` | `remote-progress`, `repo-changed` |
+| `git_push` | `git_push` | `git push [remote] [branch] --progress` | `remote-progress`, `repo-changed` |
+
+**No new git module file needed for remote ops** — these are thin wrappers around `tokio::process::Command`. Put them in `commands/remote.rs` directly. There is no "inner function" testable equivalent for shell-out commands (the test would require a real git remote), so unit tests are skipped for remote commands; integration tests with a bare repo can be added later.
+
+### New Rust Type
+
+```rust
+// In types.rs (or directly in commands/remote.rs)
+#[derive(Debug, Serialize, Clone)]
+pub struct RemoteProgress {
+    pub path: String,
+    pub line: String,
+}
+```
+
+---
+
+## Feature 2: Stash Operations
+
+### git2 Stash API Coverage
+
+The `git2` crate provides native stash operations. The existing codebase already uses `stash_foreach` (in `branches.rs` for listing stashes and in `repository.rs` for building the ref map). The full API available:
+
+| git2 method | Signature | Notes |
+|-------------|-----------|-------|
+| `repo.stash_save` | `(&mut self, stasher: &Signature, message: &str, flags: Option<StashFlags>) -> Result<Oid>` | Requires `&mut repo`. `StashFlags::DEFAULT` stashes tracked changes. |
+| `repo.stash_apply` | `(&mut self, index: usize, opts: Option<&mut StashApplyOptions>) -> Result<()>` | Apply without removing. |
+| `repo.stash_pop` | `(&mut self, index: usize, opts: Option<&mut StashApplyOptions>) -> Result<()>` | Apply and remove. |
+| `repo.stash_drop` | `(&mut self, index: usize) -> Result<()>` | Remove without applying. |
+| `repo.stash_foreach` | `(&mut self, callback: F) -> Result<()>` | Iterate. Already used. |
+
+**Critical:** All stash methods require `&mut Repository`. This is already the pattern used in `branches.rs` (`list_refs_inner` calls `repo.stash_foreach` with `&mut repo`).
+
+`StashFlags` for `stash_save`:
+- `StashFlags::DEFAULT` — stash all tracked changes (staged + unstaged)
+- `StashFlags::INCLUDE_UNTRACKED` — also stash untracked files
+- `StashFlags::KEEP_INDEX` — keep staged changes in the index after stashing
+
+For v0.3, `StashFlags::DEFAULT` is the right choice. Include-untracked is a follow-on feature.
+
+### Stash and CommitCache
+
+Stash operations mutate the working tree and the stash ref list. After `stash_save` or `stash_pop`, both the commit graph (stash commits appear/disappear in the graph) and the refs list (stashes panel in sidebar) need to refresh.
+
+**Pattern: follow cache-repopulate-before-emit exactly as existing mutation commands.**
+
+After `stash_save` or `stash_pop` completes, call `walk_commits` to rebuild the graph, update `CommitCache`, then emit `repo-changed`. The frontend's existing `repo-changed` listener handles the refresh automatically.
+
+### Stash and WatcherState
+
+The filesystem watcher (`notify`) is watching the entire repo directory including `.git`. Any mutation (including stash) triggers a `repo-changed` event from the watcher. This means if the user stashes from the terminal while Trunk is open, the UI will auto-refresh. No changes needed to `WatcherState`.
+
+The watcher fires AFTER stash commands complete (it watches filesystem events). There is no double-refresh risk: the command itself emits `repo-changed` after updating the cache, and the watcher may fire a second event — but the frontend's `refreshSignal` increment is idempotent (it just refreshes the graph again).
+
+### New Rust Commands (Stash)
+
+| Command | Rust fn | git2 call | Args |
+|---------|---------|-----------|------|
+| `stash_save` | `stash_save` | `repo.stash_save(&sig, message, None)` | `path: String, message: String` |
+| `stash_pop` | `stash_pop` | `repo.stash_pop(index, None)` | `path: String, index: usize` |
+| `stash_drop` | `stash_drop` | `repo.stash_drop(index)` | `path: String, index: usize` |
+
+`stash_apply` (without removing) is less commonly needed for v0.3. Include `stash_drop` because the sidebar already shows stashes and users will want to delete them.
+
+### Inner-fn Pattern for Stash
+
+```rust
+// commands/stash.rs
+
+pub fn stash_save_inner(
+    path: &str,
+    message: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<(), TrunkError> {
+    let path_buf = state_map.get(path)
+        .ok_or_else(|| TrunkError::new("not_open", /* ... */))?;
+    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+    let sig = repo.signature().map_err(TrunkError::from)?;
+    repo.stash_save(&sig, message, None).map_err(TrunkError::from)?;
+    Ok(())
+}
+
+pub fn stash_pop_inner(
+    path: &str,
+    index: usize,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<(), TrunkError> {
+    let path_buf = state_map.get(path)
+        .ok_or_else(|| TrunkError::new("not_open", /* ... */))?;
+    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+    repo.stash_pop(index, None).map_err(TrunkError::from)?;
+    Ok(())
+}
+```
+
+The Tauri command wrappers follow the same `spawn_blocking` + cache-repopulate + `repo-changed` emit pattern as `create_commit`.
+
+### New git module file
+
+Create `src-tauri/src/git/stash.rs` (optional but recommended) if stash logic becomes complex. For simple save/pop/drop, the inner fns can live directly in `commands/stash.rs`.
+
+---
+
+## Feature 3: Commit Row Context Menu
+
+### Existing Native Menu Pattern
+
+`CommitGraph.svelte` already has a working example:
+
+```typescript
+// Existing: column header right-click
+async function showHeaderContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    const items = await Promise.all(columnLabels.map(col => CheckMenuItem.new({ ... })));
+    const menu = await Menu.new({ items });
+    await menu.popup();  // Pops at cursor position automatically
+}
+```
+
+`menu.popup()` with no arguments uses the current cursor position. This is already the correct API.
+
+### Per-Commit Dynamic Menu
+
+The commit context menu must:
+1. Be triggered on `contextmenu` event on a `CommitRow`
+2. Know which commit was right-clicked (the `oid`, `short_oid`, `summary`)
+3. Show relevant actions based on commit state (e.g., HEAD commit gets different options)
+4. Execute actions that require the `repoPath`
+
+**Component design:** Add `oncontextmenu` to `CommitRow.svelte`. Pass a callback up through `CommitGraph.svelte` to `App.svelte`, or handle it entirely within `CommitGraph.svelte`.
+
+Since `CommitGraph.svelte` already owns `repoPath` (it's a prop), it can implement the context menu handler directly without lifting state to `App.svelte`.
+
+```typescript
+// In CommitGraph.svelte
+
+async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
+    e.preventDefault();
+    e.stopPropagation();  // Prevent row click (commit select) from firing
+
+    const items = await buildCommitMenuItems(commit);
+    const menu = await Menu.new({ items });
+    await menu.popup();
+}
+
+async function buildCommitMenuItems(commit: GraphCommit): Promise<MenuItem[]> {
+    // Build items array based on commit state
+    const isWip = commit.oid === '__wip__';
+    if (isWip) return [];  // No context menu for WIP row
+
+    return [
+        await MenuItem.new({
+            text: 'Copy SHA',
+            action: () => navigator.clipboard.writeText(commit.oid),
+        }),
+        await MenuItem.new({
+            text: 'Copy Message',
+            action: () => navigator.clipboard.writeText(commit.summary),
+        }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+        await MenuItem.new({
+            text: 'Checkout Commit',
+            action: () => handleCheckoutCommit(commit.oid),
+        }),
+        await MenuItem.new({
+            text: 'Create Branch Here',
+            action: () => handleCreateBranchAt(commit.oid),
+        }),
+        await MenuItem.new({
+            text: 'Create Tag Here',
+            action: () => handleCreateTagAt(commit.oid),
+        }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+        await MenuItem.new({
+            text: 'Cherry-pick',
+            action: () => handleCherryPick(commit.oid),
+        }),
+        await MenuItem.new({
+            text: 'Revert',
+            action: () => handleRevert(commit.oid),
+        }),
+    ];
+}
+```
+
+### Passing the Handler into CommitRow
+
+`CommitRow.svelte` currently accepts:
+```typescript
+interface Props {
+    commit: GraphCommit;
+    onselect?: (oid: string) => void;
+    maxColumns?: number;
+    columnWidths: ColumnWidths;
+    columnVisibility: ColumnVisibility;
+}
+```
+
+Add `oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void` to Props.
+
+In CommitRow's root div:
+```svelte
+<div
+  ...
+  oncontextmenu={(e) => oncontextmenu?.(e, commit)}
+>
+```
+
+In CommitGraph's virtual list snippet:
+```svelte
+{#snippet renderItem(commit)}
+    <CommitRow
+        {commit}
+        onselect={...}
+        oncontextmenu={showCommitContextMenu}
+        {maxColumns}
+        {columnWidths}
+        {columnVisibility}
+    />
+{/snippet}
+```
+
+### New Rust Commands (Commit Context Menu Actions)
+
+| Action | Rust command | git2 / CLI | Notes |
+|--------|-------------|-----------|-------|
+| Checkout commit | `checkout_commit` | `repo.set_head_detached(oid)` + `repo.checkout_tree` | Detaches HEAD; git2 supported |
+| Create branch at commit | Extend existing `create_branch` | Add `from_oid: Option<String>` param | If provided, create from that commit instead of HEAD |
+| Create tag | `create_tag` | `repo.tag_lightweight(name, &obj, false)` | Lightweight tag; annotated tags are v0.4+ |
+| Cherry-pick | `cherry_pick` | Shell-out: `git cherry-pick <oid>` | git2 has `repo.cherrypick()` but conflict handling is complex; shell-out is safer for v0.3 |
+| Revert | `revert` | Shell-out: `git revert <oid> --no-edit` | Same reasoning as cherry-pick |
+
+**Cherry-pick and revert via shell-out:** git2 has `Repository::cherrypick()` and `Repository::revert()`, but both require manual conflict resolution handling (setting merge state, writing CHERRY_PICK_HEAD / REVERT_HEAD). The git CLI handles this cleanly, produces a commit automatically (for revert), and reports conflicts clearly in stderr. Using shell-out for these two is consistent with using shell-out for remote ops and avoids reimplementing merge state management.
+
+**Checkout commit (detached HEAD):** git2 supports this cleanly:
+```rust
+pub fn checkout_commit_inner(
+    path: &str,
+    oid_str: &str,
+    state_map: &HashMap<String, PathBuf>,
+    cache_map: &mut HashMap<String, GraphResult>,
+) -> Result<(), TrunkError> {
+    let path_buf = state_map.get(path).ok_or_else(|| /* ... */)?;
+    let repo = git2::Repository::open(path_buf)?;
+    let oid = git2::Oid::from_str(oid_str).map_err(TrunkError::from)?;
+    let commit = repo.find_commit(oid).map_err(TrunkError::from)?;
+    let obj = commit.as_object();
+    repo.checkout_tree(obj, Some(&mut git2::build::CheckoutBuilder::new().safe()))?;
+    repo.set_head_detached(oid)?;
+    drop(repo);
+    // Rebuild cache
+    let mut repo2 = git2::Repository::open(path_buf)?;
+    cache_map.insert(path.to_owned(), graph::walk_commits(&mut repo2, 0, usize::MAX)?);
+    Ok(())
+}
+```
+
+**Create tag:** git2 lightweight tag:
+```rust
+repo.tag_lightweight(name, &obj, false)  // false = no force
+```
+
+---
+
+## Data Flow Changes
+
+### New Events
+
+| Event | Payload Type | Direction | When |
+|-------|-------------|-----------|------|
+| `remote-progress` | `{ path: string; line: string }` | Rust → Frontend | During push/pull/fetch, one event per output line |
+| `repo-changed` | `string` (path) | Rust → Frontend | After ANY mutation (existing; unchanged) |
+
+No new persistent event channels. `remote-progress` is fire-and-forget; the frontend subscribes during the operation and unsubscribes after the invoke resolves.
+
+### New IPC Commands
+
+**Remote:**
+- `git_fetch(path, remote)` → `Result<(), String>`
+- `git_pull(path, remote, branch)` → `Result<(), String>`
+- `git_push(path, remote, branch)` → `Result<(), String>`
+
+**Stash:**
+- `stash_save(path, message)` → `Result<(), String>`
+- `stash_pop(path, index)` → `Result<(), String>`
+- `stash_drop(path, index)` → `Result<(), String>`
+
+**Commit context menu actions:**
+- `checkout_commit(path, oid)` → `Result<(), String>`
+- `create_tag(path, name, oid)` → `Result<(), String>`
+- `cherry_pick(path, oid)` → `Result<(), String>`  (shell-out)
+- `revert_commit(path, oid)` → `Result<(), String>`  (shell-out)
+- `create_branch` — extend existing to accept `from_oid: Option<String>`
+
+### New TypeScript Types
+
+```typescript
+// types.ts additions
+
+export interface RemoteProgress {
+    path: string;
+    line: string;
+}
+
+export interface StashEntry {
+    index: number;
+    name: string;
+    short_name: string;  // "stash@{0}"
+}
 ```
 
 ---
 
 ## Component Boundaries
 
-### Modified Components
+### Modified Components (Rust)
 
-| Component | Change Type | What Changes | Why |
-|-----------|-------------|-------------|-----|
-| `graph.rs` | Minor | Track and return `max_columns` | Consistent SVG width across all rows |
-| `types.rs` | Minor | Add `GraphResponse` struct wrapping `Vec<GraphCommit>` + `max_columns: usize` | IPC needs the new field |
-| `types.ts` | Minor | Add `GraphResponse` interface | Mirror Rust type |
-| `history.rs` | Minor | Return `GraphResponse` instead of `Vec<GraphCommit>` | Carry `max_columns` to frontend |
-| `state.rs` | Minor | `CommitCache` stores `(Vec<GraphCommit>, usize)` | Cache includes max_columns |
-| `CommitGraph.svelte` | Minor | Extract `maxColumns` from response, pass as prop | Thread data to LaneSvg |
-| `CommitRow.svelte` | Minor | Accept and forward `maxColumns` prop | Thread data to LaneSvg |
-| `LaneSvg.svelte` | **Full rewrite** | Render lane rails, bezier curves, commit dot | The core visual change |
+| File | Change | Why |
+|------|--------|-----|
+| `commands/mod.rs` | pub mod remote; pub mod stash; new pub use exports | Registration |
+| `lib.rs` invoke_handler | Add all new commands | Registration |
+| `commands/branches.rs` | Extend `create_branch` with optional `from_oid` | Branch-at-commit support |
+| `commands/commit.rs` | Add `checkout_commit_inner`, `create_tag_inner` | Context menu actions |
 
-### New Types
+### New Files (Rust)
 
-```rust
-// types.rs -- add this struct
-#[derive(Debug, Serialize, Clone)]
-pub struct GraphResponse {
-    pub commits: Vec<GraphCommit>,
-    pub max_columns: usize,
-}
-```
+| File | Contents |
+|------|----------|
+| `src-tauri/src/commands/remote.rs` | `git_fetch`, `git_pull`, `git_push` using `tokio::process::Command` |
+| `src-tauri/src/commands/stash.rs` | `stash_save`, `stash_pop`, `stash_drop` with inner-fn pattern |
 
-```typescript
-// types.ts -- add this interface
-export interface GraphResponse {
-  commits: GraphCommit[];
-  max_columns: number;
-}
-```
+### Modified Components (Frontend)
 
----
+| File | Change | Why |
+|------|--------|-----|
+| `CommitRow.svelte` | Add `oncontextmenu` prop | Per-commit right-click |
+| `CommitGraph.svelte` | Add `showCommitContextMenu`, pass handler to CommitRow | Context menu logic lives here (has repoPath) |
+| `BranchSidebar.svelte` | Add fetch/pull/push buttons + progress display | Remote op triggers |
+| `StagingPanel.svelte` | Add stash save button + stash list with pop/drop | Stash controls |
+| `App.svelte` | Listen for `remote-progress` if global overlay needed; otherwise no changes | Optional |
+| `types.ts` | Add `RemoteProgress`, `StashEntry` | IPC type mirrors |
 
-## Data Flow
+### New Files (Frontend)
 
-### What the Rust Algorithm Already Provides Per Row
-
-For a commit at column 2 in a graph with 4 active lanes, the existing `edges` array looks like:
-
-```
-Row for commit C (column=2, is_merge=true):
-  edges: [
-    { from: 0, to: 0, type: Straight, color: 0 },   // Lane 0 passes through
-    { from: 1, to: 1, type: Straight, color: 1 },   // Lane 1 passes through
-    { from: 2, to: 2, type: Straight, color: 2 },   // First-parent continuation
-    { from: 2, to: 3, type: MergeRight, color: 3 }, // Merge edge to lane 3
-    { from: 3, to: 3, type: Straight, color: 3 },   // Lane 3 passes through
-  ]
-```
-
-This is already sufficient to render:
-- Vertical lines at columns 0, 1, 3 (pass-through rails)
-- A vertical line at column 2 (first-parent continuation downward)
-- A bezier curve from column 2 to column 3 (merge connection)
-- A commit dot at column 2
-
-### What max_columns Adds
-
-Without `max_columns`, each row's SVG width is `(commit.column + 1) * laneWidth`, which causes the graph column to have inconsistent width across rows. A commit on column 0 gets a 12px-wide SVG while one on column 5 gets 72px. This makes the message column jump horizontally as you scroll.
-
-With `max_columns`, every row renders `max_columns * laneWidth` wide, keeping the message column aligned. The Rust algorithm already knows this value (it is `active_lanes.len()` at its maximum during the walk).
-
-### Data Flow Sequence
-
-```
-1. open_repo() -> walk_commits() returns (Vec<GraphCommit>, max_columns)
-2. CommitCache stores (Vec<GraphCommit>, max_columns)
-3. get_commit_graph returns { commits: [...], max_columns: N }
-4. CommitGraph.svelte stores maxColumns in $state
-5. Each CommitRow receives maxColumns as prop
-6. LaneSvg receives commit + maxColumns, renders full lane graphic
-```
+No new Svelte components strictly required. Remote progress output can be displayed inline in `BranchSidebar.svelte` or in a small overlay. If the progress output grows complex, extract a `RemoteProgressToast.svelte`.
 
 ---
 
-## LaneSvg Rendering Architecture (The Core Change)
+## Architectural Patterns for New Features
 
-### SVG Structure Per Row
+### Pattern 1: Async Shell-Out with Event Streaming
 
-Each row's SVG has three visual layers, rendered in order (back to front):
+**What:** Use `tokio::process::Command` (not `spawn_blocking`) for remote ops. Stream stderr to frontend via `app.emit` in a spawned task. Await process exit before resolving the command.
 
-```
-<svg width={maxColumns * laneWidth} height={rowHeight}>
-  <!-- Layer 1: Pass-through vertical rails (background) -->
-  <!-- Layer 2: Fork/merge bezier curves -->
-  <!-- Layer 3: Commit dot (foreground) -->
-</svg>
-```
+**When to use:** Any long-running CLI subprocess where progress feedback matters.
 
-### Recommended Dimensions
+**Trade-offs:** The invoke call blocks until the subprocess exits (which is correct — the frontend awaits it and can show a spinner). The streaming events provide incremental feedback. The `finally { unlisten() }` pattern on the frontend is essential to avoid listener leaks.
 
-| Parameter | Current | Recommended | Rationale |
-|-----------|---------|-------------|-----------|
-| `laneWidth` | 12px | 16px | 12px is too tight for curves; 16px matches GitKraken density |
-| `rowHeight` | 26px | 26px (unchanged) | Works well, no reason to change |
-| Dot radius (normal) | 4px | 4px (unchanged) | Proportional to 16px lanes |
-| Dot radius (merge) | 6px | 5px | 6px was oversized; 5px with ring stroke looks better at 16px |
-| Line stroke width | n/a | 2px | Standard across all git GUIs |
-| Curve stroke width | n/a | 2px | Same as rails for visual consistency |
+### Pattern 2: git2 Stash with &mut Repository
 
-### SVG Rendering by Edge Type
+**What:** All stash operations require `&mut repo`. Open a fresh `git2::Repository::open(path_buf)` bound as `mut` inside the `spawn_blocking` closure. This is already the established pattern for any operation needing `&mut repo` (e.g., `stash_foreach` in `branches.rs`).
 
-**Pass-through rails (Straight edges where from_column === to_column and from_column !== commit.column):**
+**When to use:** Any git2 operation that takes `&mut self` on Repository.
 
-These are vertical lines spanning the full row height. They create the continuous "railroad track" effect.
+**Trade-offs:** Opening a fresh repo handle per command is the documented design constraint (`git2::Repository is not Sync`). The overhead is negligible.
 
-```svg
-<line
-  x1={col * 16 + 8} y1={0}
-  x2={col * 16 + 8} y2={26}
-  stroke="var(--lane-{colorIndex % 8})"
-  stroke-width="2"
-/>
-```
+### Pattern 3: Native Context Menu at Cursor Position
 
-**First-parent continuation (Straight edge where from_column === commit.column):**
+**What:** On `contextmenu` event, call `e.preventDefault()` (suppress browser right-click), build a `Menu` from `@tauri-apps/api/menu`, and call `menu.popup()` with no arguments (uses current cursor position automatically).
 
-A vertical line from the commit dot downward (to the next row where the parent lives). This extends from the vertical center of the row to the bottom edge.
+**When to use:** Any per-row or per-item right-click in the commit graph or sidebar.
 
-```svg
-<line
-  x1={col * 16 + 8} y1={13}
-  x2={col * 16 + 8} y2={26}
-  stroke="var(--lane-{colorIndex % 8})"
-  stroke-width="2"
-/>
-```
+**Trade-offs:** `Menu.new({ items })` is async (each `MenuItem.new` is a Tauri IPC call). Building a 8-item menu takes ~10-20ms. This is acceptable for a right-click action. Do not cache the menu object — it captures action closures that reference mutable state.
 
-Additionally, a line from the top of the row to the commit dot (the incoming rail from the child above):
+### Pattern 4: Shell-Out for Cherry-Pick / Revert
 
-```svg
-<line
-  x1={col * 16 + 8} y1={0}
-  x2={col * 16 + 8} y2={13}
-  stroke="var(--lane-{colorIndex % 8})"
-  stroke-width="2"
-/>
-```
+**What:** Use `tokio::process::Command` with `git cherry-pick <oid>` and `git revert <oid> --no-edit`. Check exit code; surface stderr on failure.
 
-**Fork edges (ForkLeft / ForkRight):**
+**When to use:** git2 operations that require complex merge state management (cherry-pick, revert, merge).
 
-A cubic bezier curve from the commit dot's vertical center to the target column at the bottom of the row. The curve must exit the commit dot vertically (not at an angle) and arrive at the target column vertically. This requires the control points to be vertically aligned with the endpoints.
-
-```svg
-<!-- ForkLeft: commit at col 3, parent at col 1 -->
-<path
-  d="M {3*16+8} {13} C {3*16+8} {13 + 26*0.4}, {1*16+8} {26 - 26*0.4}, {1*16+8} {26}"
-  fill="none"
-  stroke="var(--lane-{colorIndex % 8})"
-  stroke-width="2"
-/>
-```
-
-The general formula for a fork/merge curve:
-
-```
-M {startX} {startY}
-C {startX} {startY + rowHeight * 0.4},
-  {endX}   {endY - rowHeight * 0.4},
-  {endX}   {endY}
-```
-
-Where the control points are 40% of row height away from the endpoints, keeping the curve tangent vertical at both ends. This creates the smooth S-curve that characterizes GitKraken's rendering. The 0.4 factor was derived from vscode-git-graph's implementation (which uses 0.8 of grid.y for the control point offset -- equivalent to 0.4 of the full row span when the curve spans one row).
-
-**Merge edges (MergeLeft / MergeRight):**
-
-Identical curve shape to fork edges. The semantic difference (merge vs fork) affects only the Rust algorithm's edge classification, not the rendering. Both use the same bezier formula. The color comes from `color_index` (which the Rust algorithm sets to the target column's color for merges).
-
-```svg
-<!-- MergeRight: commit at col 0, secondary parent at col 2 -->
-<path
-  d="M {0*16+8} {13} C {0*16+8} {13 + 26*0.4}, {2*16+8} {26 - 26*0.4}, {2*16+8} {26}"
-  fill="none"
-  stroke="var(--lane-{colorIndex % 8})"
-  stroke-width="2"
-/>
-```
-
-**Commit dot (always on top):**
-
-```svg
-<!-- Normal commit -->
-<circle cx={col * 16 + 8} cy={13} r={4}
-  fill="var(--lane-{col % 8})" />
-
-<!-- Merge commit: filled circle with contrasting ring -->
-<circle cx={col * 16 + 8} cy={13} r={5}
-  fill="var(--lane-{col % 8})"
-  stroke="var(--color-bg)" stroke-width="2" />
-```
-
-### Cross-Row Visual Continuity
-
-The critical insight for per-row SVG rendering: **visual continuity is achieved by having each row draw its pass-through rails from y=0 to y=rowHeight (full height)**. When rows are stacked vertically with no gap, the rails appear as one continuous line.
-
-This works because:
-1. The Rust algorithm emits `Straight` pass-through edges for every active lane in every row
-2. Each row draws these as full-height vertical lines
-3. Adjacent rows' lines are pixel-aligned (same x coordinate, touching y coordinates)
-4. No gap between rows (rowHeight is exact, no border/margin/padding between row SVGs)
-
-For fork/merge curves that cross columns, the curve in row N exits at the bottom of the row toward the target column, and the target column's pass-through rail in row N+1 picks up from the top. The bezier curve's endpoint is at `y=rowHeight` which pixel-aligns with the next row's `y=0`.
-
-### Edge Case: Root Commits and Branch Tips
-
-A root commit (no parents) should NOT have a downward rail from the dot. The Rust algorithm already handles this -- root commits have no `Straight` self-edge.
-
-A branch tip (no children pointing to it in the visible range) should have the rail from `y=0` to the dot at `y=13`, but NOT from `y=0` to `y=26`. This is already handled: the pass-through edges only exist for rows where the lane is active, and the Rust algorithm marks the lane as consumed when the commit occupies it.
-
-### Edge Case: Incoming Rail Above Commit Dot
-
-When a commit has children above it, there should be a rail segment from `y=0` down to `y=13` (the dot center). This comes from the fact that the row above emits a pass-through or fork/merge edge whose endpoint is at the bottom of that row, and the current row needs to connect from the top to the dot.
-
-The Rust algorithm does NOT currently emit an explicit "incoming from above" edge for the commit's own column. The pass-through `Straight` edge for the commit's own lane exists in the PARENT rows (where the lane is tracked as active), but in the commit's own row, the lane is consumed. The rendering logic should therefore: draw a line from `y=0` to `y=13` at `commit.column` for any non-tip commit (i.e., any commit that is not the first commit at that column). The simplest approach: if any edge has `to_column === commit.column` in a PREVIOUS row, the current row should draw the incoming segment. But since we render per-row without knowledge of other rows, use this heuristic: **always draw the incoming rail from y=0 to y=cy at the commit's column, UNLESS the commit has no Straight pass-through edge at its own column in the PREVIOUS row**. Since we cannot look at the previous row, the pragmatic approach is: always draw it. The only case where it is wrong (a branch tip appearing for the first time) can be handled by adding a boolean `is_branch_tip` to `GraphCommit`.
-
-**Recommended approach:** Add `is_branch_tip: bool` to `GraphCommit` in Rust. Set it to `true` when the commit's column was freshly allocated (not found in `pending_parents`). When `is_branch_tip` is true, do NOT draw the incoming rail from y=0 to the dot. Otherwise, always draw it.
-
----
-
-## Revised Rust Algorithm Changes
-
-### Change 1: Track max_columns
-
-In `walk_commits()`, after the main loop:
-
-```rust
-let max_columns = active_lanes.len(); // Already computed; just capture it
-```
-
-Return this alongside the commits in a `GraphResponse` struct.
-
-### Change 2: Add is_branch_tip to GraphCommit
-
-During the per-oid loop, when a commit's column is freshly allocated (not from `pending_parents`), mark it as a branch tip:
-
-```rust
-let is_branch_tip = !pending_parents.contains_key(&oid);
-```
-
-Add `pub is_branch_tip: bool` to `GraphCommit` struct and populate it.
-
-### Change 3: First-parent continuation incoming edge
-
-Currently the algorithm emits a `Straight` edge for first-parent continuation (downward from the commit to its first parent). But for the incoming rail (from the row above down to the commit dot), there is no explicit edge. The rendering handles this via the `is_branch_tip` flag: if false, draw the incoming segment; if true, skip it.
-
-No additional changes to the edge emission logic are needed.
-
----
-
-## Patterns to Follow
-
-### Pattern 1: Rendering Edges by Classification
-
-Classify each edge in `commit.edges` before rendering:
-
-```typescript
-type RenderEdge =
-  | { kind: 'passthrough'; column: number; colorIndex: number }
-  | { kind: 'continuation'; column: number; colorIndex: number }
-  | { kind: 'curve'; fromCol: number; toCol: number; colorIndex: number };
-
-function classifyEdges(commit: GraphCommit): RenderEdge[] {
-  return commit.edges.map(e => {
-    if (e.from_column === e.to_column && e.from_column !== commit.column) {
-      return { kind: 'passthrough', column: e.from_column, colorIndex: e.color_index };
-    } else if (e.from_column === e.to_column && e.from_column === commit.column) {
-      return { kind: 'continuation', column: e.from_column, colorIndex: e.color_index };
-    } else {
-      return { kind: 'curve', fromCol: e.from_column, toCol: e.to_column, colorIndex: e.color_index };
-    }
-  });
-}
-```
-
-This separation makes the rendering logic clean: iterate classified edges, render each kind with its own SVG template.
-
-### Pattern 2: Consistent SVG Width via maxColumns
-
-Every `LaneSvg` instance uses the same width: `maxColumns * laneWidth`. This ensures the commit message column starts at the same horizontal position for every row, eliminating horizontal jitter during scrolling.
-
-### Pattern 3: CSS Custom Properties for Lane Colors
-
-Continue using `var(--lane-{N % 8})` for all stroke and fill colors. This keeps color definitions in CSS and allows future theme customization without touching component code.
-
-### Pattern 4: SVG overflow:visible for Antialiasing
-
-Keep `style="overflow: visible"` on the SVG element. Bezier curves that are antialiased may paint a sub-pixel outside the SVG bounds; `overflow: visible` prevents clipping artifacts at row boundaries.
+**Trade-offs:** Loses the "inner-fn testable" property. Prefer this over re-implementing git conflict state handling. Integration tests with real repos are needed instead of unit tests.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: One Giant SVG for the Entire Graph
-**What:** Rendering all lanes in a single `<svg>` element that spans the full commit history.
-**Why bad:** Defeats virtual scrolling. The browser must maintain DOM nodes for every path in the graph, not just visible ones. Memory usage becomes O(n) instead of O(1).
-**Instead:** Keep per-row inline SVG. Each row renders only its own edges.
+### Anti-Pattern 1: spawn_blocking for Remote Ops
 
-### Anti-Pattern 2: Canvas Rendering
-**What:** Switching from SVG to HTML Canvas for lane rendering.
-**Why bad:** Canvas requires manual scroll position management, loses text selection, loses CSS variable integration, requires complex hit-testing for interactivity. Canvas IS faster for extremely dense graphs (100+ simultaneous lanes), but git repos rarely exceed 10-15 simultaneous lanes.
-**Instead:** Inline SVG per row. The DOM load is ~10-20 SVG elements per row times ~40 visible rows = ~400-800 SVG elements total, well within browser performance bounds.
+**What:** Wrapping `std::process::Command` (blocking) in `spawn_blocking` for push/pull/fetch.
 
-### Anti-Pattern 3: Rendering Edges in JavaScript Post-Hoc
-**What:** Having the frontend compute which lanes are active by scanning adjacent commits.
-**Why bad:** The Rust algorithm already tracks active lanes and emits pass-through edges. Duplicating this logic in TypeScript is wasteful and error-prone (especially across pagination boundaries).
-**Instead:** Trust the Rust-provided edges. The frontend is purely a renderer -- it maps edges to SVG elements without any graph logic.
+**Why bad:** Blocks a thread-pool thread for 10-60+ seconds. `tokio::process::Command` is natively async and does not consume a thread-pool thread while the subprocess runs.
 
-### Anti-Pattern 4: Variable Row Height for Merge Rows
-**What:** Making merge commit rows taller to accommodate curves.
-**Why bad:** Virtual scrolling requires predictable row heights. Variable heights break scroll position calculations and cause visual jumping.
-**Instead:** All rows are 26px. Curves are drawn within this height using bezier control points tuned for 26px.
+**Instead:** Use `tokio::process::Command`.
 
-### Anti-Pattern 5: Drawing Curves Across Multiple Rows
-**What:** Having a single bezier curve span from a commit in row N to its parent in row N+5.
-**Why bad:** Per-row SVG means each SVG only controls its own row. Cross-row curves would require absolute positioning, Z-index management, and would break virtual scrolling.
-**Instead:** Fork/merge edges always span exactly ONE row (from the commit dot to the bottom of the row). The vertical rail at the target column handles continuity in subsequent rows. The visual result is a curve that transitions into a straight rail -- exactly how GitKraken renders it.
+### Anti-Pattern 2: Blocking on stdin for Credentials
+
+**What:** Spawning `git fetch` without `GIT_TERMINAL_PROMPT=0`, allowing git to block indefinitely waiting for a username/password on stdin that will never arrive.
+
+**Why bad:** The Tauri command will hang and never resolve. The frontend spinner will spin forever.
+
+**Instead:** Always set `GIT_TERMINAL_PROMPT=0` and `ssh -o BatchMode=yes` on the SSH command. On credential failure, git exits with a non-zero code and useful error text in stderr. Surface the stderr to the user.
+
+### Anti-Pattern 3: git2 for Cherry-Pick / Revert
+
+**What:** Using `repo.cherrypick()` / `repo.revert()` from git2.
+
+**Why bad:** Requires implementing the full conflict state machine: detect conflicts, update CHERRY_PICK_HEAD / REVERT_HEAD, prompt user for resolution, complete the operation. This is a multi-screen feature, not a single command.
+
+**Instead:** Shell out to `git cherry-pick` and `git revert --no-edit`. If conflicts occur, the command fails with a clear error message. Conflict resolution UI is deferred to v0.4+.
+
+### Anti-Pattern 4: Lifting Context Menu to App.svelte
+
+**What:** Passing commit context menu callbacks up to `App.svelte` to centralize all action handlers.
+
+**Why bad:** The actions (cherry-pick, create-tag, etc.) need `repoPath` and `refreshSignal`, which are already in scope in `CommitGraph.svelte`. Lifting them adds unnecessary prop drilling.
+
+**Instead:** Handle commit context menu actions inside `CommitGraph.svelte`. Only bubble up to `App.svelte` if an action needs to trigger something in a sibling component (e.g., opening the staging panel for cherry-pick conflicts — but that is v0.4+).
+
+### Anti-Pattern 5: One Event Listener Per Row
+
+**What:** Adding a `remote-progress` listener inside each `CommitRow.svelte`.
+
+**Why bad:** Virtual scroll creates/destroys rows. If listener setup/teardown is tied to row lifecycle, listeners will be created/destroyed during scrolling.
+
+**Instead:** Attach `remote-progress` listeners at `App.svelte` or `BranchSidebar.svelte` level, scoped to the duration of a remote operation only.
 
 ---
 
-## Scalability Considerations
+## Build Order
 
-| Concern | At 5 lanes | At 15 lanes | At 30+ lanes |
-|---------|-----------|-------------|-------------|
-| SVG width | 80px (5*16) | 240px | 480px+ -- may need horizontal scroll or lane compression |
-| Edge count per row | ~7 (5 pass-through + 1-2 curves) | ~18 | ~35 -- still fine for SVG |
-| Lane color cycling | 5 unique colors | Colors repeat (15 % 8 = 7 unique + repeats) | Noticeable repetition; consider 12+ colors for v0.3 |
-| Visual clarity | Excellent | Good | Degraded -- consider lane packing optimization |
+Dependencies flow upward. Complete each phase fully before starting the next.
 
-For typical repositories (< 10 simultaneous lanes), the architecture handles everything with no performance concerns. For monorepos with 30+ simultaneous branches, lane compression or horizontal scrolling would be needed -- defer this to a future milestone.
+### Phase 1: Stash Commands (Rust only)
+
+1. Create `src-tauri/src/commands/stash.rs` with `stash_save_inner`, `stash_pop_inner`, `stash_drop_inner` and their Tauri command wrappers
+2. Register in `commands/mod.rs` and `lib.rs` invoke_handler
+3. Add unit tests using `make_test_repo()` and `repo.stash_save()`
+
+**Rationale:** Stash uses only git2 (already depended on). No new Cargo dependencies. Testable in isolation. Unlocks stash UI work immediately.
+
+### Phase 2: Stash UI
+
+1. Update `StagingPanel.svelte` with stash save button and stash list (pop/drop per entry)
+2. Stash list is already available from `list_refs` response (`stashes: RefLabel[]`)
+3. Wire `stash_save` invoke with the current WIP subject line as the message
+4. Wire `stash_pop(0)` for quick pop of latest stash
+
+**Rationale:** No new backend work needed. Completes the stash feature.
+
+### Phase 3: Commit Context Menu (Frontend + Rust for new actions)
+
+1. Add `oncontextmenu` prop to `CommitRow.svelte`
+2. Implement `showCommitContextMenu` in `CommitGraph.svelte`
+3. Add Copy SHA and Copy Message (no backend needed — navigator.clipboard)
+4. Add `checkout_commit` command in Rust (extends `commands/commit.rs`)
+5. Add `create_tag` command in Rust (extends `commands/commit.rs`)
+6. Add `cherry_pick` and `revert_commit` shell-out commands in Rust
+7. Extend `create_branch` with `from_oid` parameter
+
+**Rationale:** Copy SHA/message works immediately. Git2 actions (checkout, tag, branch) come next. Shell-out actions (cherry-pick, revert) come last since they share the shell-out infrastructure with remote ops.
+
+### Phase 4: Remote Operations (Rust + Frontend)
+
+1. Add `tokio::process::Command` remote commands to `commands/remote.rs`
+2. Add `RemoteProgress` type and `remote-progress` event
+3. Register new commands in `lib.rs`
+4. Add progress listener + remote buttons to `BranchSidebar.svelte`
+5. Test with real repos (push requires a remote — test with local bare repos)
+
+**Rationale:** Remote ops are the most complex feature (async streaming, error handling, credential edge cases). Build last after all simpler features are working and patterns are established.
 
 ---
 
-## Suggested Build Order
+## Integration Points Summary
 
-Dependencies flow upward; data changes must precede rendering changes.
-
-### Step 1: Rust Data Changes (foundation)
-
-1. Add `is_branch_tip: bool` to `GraphCommit` in `types.rs`
-2. Add `GraphResponse` struct to `types.rs`
-3. Modify `walk_commits()` to track `max_columns` and set `is_branch_tip`
-4. Update `CommitCache` in `state.rs` to store `(Vec<GraphCommit>, usize)`
-5. Update `get_commit_graph` in `history.rs` to return `GraphResponse`
-6. Update existing tests in `graph.rs`
-
-**Rationale:** All frontend work depends on having the data available. These are small, isolated changes with clear test coverage.
-
-### Step 2: TypeScript Type Updates (bridge)
-
-1. Add `GraphResponse` interface to `types.ts`
-2. Add `is_branch_tip: boolean` to `GraphCommit` interface
-3. Update `CommitGraph.svelte` to destructure `{ commits, max_columns }` from response
-4. Thread `maxColumns` through `CommitRow.svelte` to `LaneSvg.svelte`
-
-**Rationale:** Type changes are trivial but must happen before the LaneSvg rewrite can consume the new data.
-
-### Step 3: LaneSvg Rewrite (the visual payoff)
-
-1. Implement edge classification function
-2. Render pass-through vertical rails (immediate visual impact -- "railroad tracks" appear)
-3. Render first-parent continuation rails (commit dot connects to rail below)
-4. Render incoming rail above commit dot (using `is_branch_tip` flag)
-5. Render fork/merge bezier curves
-6. Render commit dot (on top of everything)
-7. Update lane width from 12px to 16px in LaneSvg and adjust CommitRow layout
-
-**Rationale:** Building the rendering incrementally (rails first, then curves, then dot) allows visual verification at each step. Rails alone will make the graph look dramatically better; curves are refinement.
-
-### Step 4: Polish (refinement)
-
-1. Adjust WIP row SVG in `CommitGraph.svelte` to match new lane width
-2. Verify visual continuity across pagination boundaries (load more commits, check rail alignment)
-3. Test with complex topologies (many branches, octopus merges, long-lived feature branches)
-4. Tune bezier control point factor (0.4) if curves feel too tight or too loose
-
-**Rationale:** Polish depends on the core rendering being complete. Visual tuning is best done empirically.
+| Existing Component | What Touches It | Change Type |
+|--------------------|-----------------|-------------|
+| `commands/commit.rs` | Add `checkout_commit_inner`, `create_tag_inner` | Extend |
+| `commands/branches.rs` | `create_branch` gains `from_oid: Option<String>` | Extend |
+| `commands/mod.rs` | Add `pub mod remote; pub mod stash;` | Extend |
+| `lib.rs` | Register new commands in invoke_handler | Extend |
+| `CommitRow.svelte` | Add `oncontextmenu` prop | Extend |
+| `CommitGraph.svelte` | Add context menu handler | Extend |
+| `BranchSidebar.svelte` | Remote op buttons + progress output | Extend |
+| `StagingPanel.svelte` | Stash save/pop/drop UI | Extend |
+| `types.ts` | Add `RemoteProgress`, `StashEntry` | Extend |
+| `state.rs` | No changes | Unchanged |
+| `watcher.rs` | No changes | Unchanged |
+| `error.rs` | No changes | Unchanged |
+| `invoke.ts` | No changes | Unchanged |
+| `App.svelte` | Minimal changes (optional remote-progress global listener) | Minimal |
 
 ---
 
 ## Sources
 
-- **Existing codebase** -- `graph.rs`, `types.rs`, `LaneSvg.svelte`, `CommitRow.svelte`, `CommitGraph.svelte`, `state.rs`, `history.rs` -- all read directly. Confidence: HIGH.
-- **[Commit Graph Drawing Algorithms (pvigier's blog)](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html)** -- Lane assignment algorithms, forbidden index computation, visible-node optimization via interval trees. Confidence: HIGH.
-- **[Git Extensions Revision Graph wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph)** -- Per-row rendering strategy, segment-based lane tracking, lazy overlap calculation. Confidence: HIGH.
-- **[DoltHub: Drawing a Commit Graph](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/)** -- Cubic bezier control point formula for smooth curves, column assignment algorithm, CommitNode data structure. Confidence: HIGH.
-- **vscode-git-graph source (graph.ts)** -- SVG path construction for smooth curves (`C x1,(y1+d) x2,(y2-d) x2,y2` where `d = grid.y * 0.8`), branch line consolidation, angular vs curved style rendering. Confidence: HIGH.
-- **[react-commits-graph (generate-graph-data.coffee)](https://github.com/jsdf/react-commits-graph/blob/master/src/generate-graph-data.coffee)** -- Route-based pass-through lane tracking (`[from, to, branch]` tuples), reserve array for active lane management. Confidence: MEDIUM (archived project, but algorithm is sound).
-- **[git2graph](https://github.com/alaingilbert/git2graph)** -- Per-row graph field structure `[column, row, color, edges]`, row-by-row rendering support for HTML tables. Confidence: MEDIUM.
-- **[GitKraken commit graph feature page](https://www.gitkraken.com/features/commit-graph)** -- Visual reference for target quality; GitKraken uses near-straight lines rather than heavy curves. Confidence: MEDIUM (proprietary, no implementation details).
+- **Existing codebase** — `commands/commit.rs`, `commands/branches.rs`, `commands/repo.rs`, `commands/history.rs`, `git/repository.rs`, `state.rs`, `watcher.rs`, `CommitGraph.svelte`, `CommitRow.svelte`, `App.svelte`, `lib.rs`, `Cargo.toml` — all read directly. Confidence: HIGH.
+- **git2 stash API** — `stash_save`, `stash_pop`, `stash_drop`, `stash_foreach` signatures verified against docs.rs knowledge. `stash_foreach` already used in production code in `branches.rs` and `repository.rs`. Confidence: HIGH.
+- **Tauri 2 tokio::process::Command pattern** — Tauri 2 runtime is Tokio; `tokio::process::Command` is the standard async subprocess API. Pattern consistent with how GitButler handles remote ops (confirmed via PROJECT.md note that major Tauri git clients shell out). Confidence: HIGH.
+- **menu.popup() cursor position** — Verified against existing `showHeaderContextMenu` in `CommitGraph.svelte` which uses `menu.popup()` with no args. Confidence: HIGH.
+- **GIT_TERMINAL_PROMPT=0** — Standard git environment variable for non-interactive credential suppression. Confidence: HIGH.
+
+---
+
+*Architecture research for: Trunk v0.3 — remote ops, stash, commit context menu*
+*Researched: 2026-03-10*

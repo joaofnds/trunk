@@ -1,328 +1,231 @@
-# Technology Stack: Commit Graph Lane Rendering
+# Stack Research
 
-**Project:** Trunk v0.2 -- GitKraken-quality commit graph
-**Researched:** 2026-03-09
-**Scope:** SVG lane rendering techniques only (core Tauri/Svelte/Rust stack validated and unchanged)
+**Domain:** Tauri 2 desktop Git GUI — remote ops (push/pull/fetch), stash, commit context menu
+**Researched:** 2026-03-10
+**Confidence:** HIGH (all claims grounded in direct codebase inspection: Cargo.lock, Cargo.toml, capabilities/default.json, CommitGraph.svelte, package.json)
 
-## Executive Summary
+---
 
-No new dependencies are needed. The rendering is pure SVG path math in a Svelte component, consuming edge data already computed by the Rust backend. The stack additions are **zero libraries, one technique, and concrete formulas**.
+## Scope
 
-The approach: each row's inline `<svg>` uses `overflow: visible` and draws path segments that extend half a row-height above and below, overlapping with adjacent rows to create seamless visual continuity. Curves use cubic Bezier SVG `C` commands with control points offset by `0.8 * rowHeight` from start/end Y coordinates. This is the same core technique used by vscode-git-graph (the most popular open-source git graph renderer).
+This file covers **only additions and changes** needed for v0.3 features:
+- Push / Pull / Fetch with SSH and HTTPS auth
+- Stash create / pop
+- Commit row right-click context menu
 
-## What Already Exists (DO NOT CHANGE)
+Existing validated stack (Tauri 2.10.2, git2 0.19.0 / libgit2 1.8.1, Svelte 5, Tailwind CSS 4, tauri-plugin-store 2.4.2, notify 7, @tauri-apps/api ^2) is not re-researched.
 
-| Component | Current State | Adequate? |
-|-----------|--------------|-----------|
-| Rust lane algorithm (`graph.rs`) | O(n) single-pass, assigns columns, emits Straight/ForkLeft/ForkRight/MergeLeft/MergeRight edges with from_column/to_column/color_index | YES -- provides all data needed |
-| `GraphCommit` DTO | Carries column, edges[], is_merge | YES -- no schema changes needed |
-| `LaneSvg.svelte` | Renders commit dot only (edges removed in v0.1) | Skeleton exists, needs edge rendering added back |
-| Virtual scroll (`@humanspeak/svelte-virtual-list`) | ~40 DOM nodes regardless of history size | YES -- works with overflow:visible SVGs |
-| CSS lane colors | 8 colors as `--lane-0` through `--lane-7` | YES -- sufficient for most repos |
-| `CommitRow.svelte` | Wraps LaneSvg + RefPill + message | YES -- layout structure is correct |
+---
 
-## What Needs To Be Built (No New Dependencies)
+## Decision: Remote Ops Auth Strategy
 
-### 1. SVG Path Rendering in LaneSvg.svelte
+**Shell out to system `git` via `std::process::Command`. Do NOT use git2 remote callbacks.**
 
-**Technique:** Pure inline SVG with `overflow: visible`. No libraries needed.
+### Why Shell-Out Wins
 
-Each row's `<svg>` element has `height={rowHeight}` but draws paths that extend from `y = -rowHeight/2` (into the row above) to `y = rowHeight * 1.5` (into the row below). The `overflow: visible` CSS property allows these paths to paint outside the SVG's bounding box, overlapping with adjacent row SVGs to create seamless vertical continuity.
+libgit2's SSH and HTTPS auth story is fundamentally broken for desktop GUI contexts:
 
-**Why no SVG library:** The geometry is trivial -- at most 5-6 path types, each a single SVG `<path>` element with a computed `d` attribute. Libraries like d3, snap.svg, or svg.js would add 30-100KB for functionality we can express in ~50 lines of path math.
+1. **SSH agent** — libgit2 calls libssh2 to reach the running `ssh-agent` socket. The socket path varies by OS and user session (macOS: `/private/tmp/com.apple.launchd.*/Listeners`, set in `$SSH_AUTH_SOCK`). `git2::Cred::ssh_key_from_agent()` only works when the socket path is predictable and the env var is correctly inherited. In a Tauri app launched from Finder/Dock (not a terminal), `$SSH_AUTH_SOCK` is often absent.
 
-### 2. Concrete SVG Path Formulas
+2. **HTTPS credential helpers** — libgit2 does not invoke `git credential-osxkeychain` or any other credential helper. HTTPS auth via git2 requires the app to prompt for username/password and supply them to a callback. This is a bespoke UI/UX problem with no standard solution.
 
-All formulas use these constants derived from component props:
+3. **Ecosystem precedent** — the project already documented this decision in PROJECT.md: *"git CLI reserved for remote operations due to libgit2 unreliable SSH/HTTPS auth — all major Tauri git clients shell out for push/pull."* GitButler (Tauri + Rust) follows the same pattern.
 
-```typescript
-const LANE_W = 12;   // laneWidth prop (already exists)
-const ROW_H = 26;    // rowHeight prop (already exists)
+4. **System git inherits all auth automatically** — when `git push/pull/fetch` runs as a child process of the Tauri app, it inherits `$SSH_AUTH_SOCK`, macOS Keychain access, `~/.netrc`, `.ssh/config`, and all configured credential helpers. Zero special auth code required.
 
-// Convert column index to pixel X center
-const cx = (col: number) => col * LANE_W + LANE_W / 2;
+5. **No new crate needed** — `std::process::Command` is in std. `tauri::async_runtime::spawn_blocking` already used by every Tauri command in this codebase handles the blocking I/O.
 
-// Y coordinates for this row's SVG coordinate space
-const TOP = 0;           // top of this row
-const MID = ROW_H / 2;   // center (where commit dot sits)
-const BOT = ROW_H;        // bottom of this row
-```
+---
 
-#### Path Type 1: Straight (vertical rail)
+## Recommended Stack: Additions Only
 
-A lane passing straight through this row. Draws from top-of-row to bottom-of-row at the same column.
+### New Rust Crates
 
-```typescript
-// EdgeType: Straight, from_column === to_column
-const x = cx(edge.from_column);
-const d = `M ${x} ${TOP} L ${x} ${BOT}`;
-```
+**None.** All three feature areas are covered by existing crates.
 
-This is the most common path (~80%+ of all edges). It represents a branch continuing through a row without changing columns.
+| Operation | Implementation | Crate |
+|-----------|---------------|-------|
+| Push / Pull / Fetch | `std::process::Command` (shell out) | std (no new crate) |
+| Stash create | `repo.stash_save(&sig, "msg", flags)` | git2 0.19.0 (already present) |
+| Stash pop | `repo.stash_pop(0, None)` | git2 0.19.0 (already present) |
+| Cherry-pick | `repo.cherrypick(&commit, None)` | git2 0.19.0 (already present) |
+| Revert | `repo.revert(&commit, None)` | git2 0.19.0 (already present) |
+| Create branch from commit | `repo.branch("name", &commit, false)` | git2 0.19.0 (already present) |
+| Create tag | `repo.tag_lightweight("name", &obj, false)` | git2 0.19.0 (already present) |
+| Checkout commit (detached HEAD) | `repo.set_head_detached(oid)` | git2 0.19.0 (already present) |
 
-**Confidence:** HIGH -- standard SVG line, verified against vscode-git-graph and DoltHub implementations.
+git2 0.19.0 wraps libgit2 1.8.1 (confirmed: `libgit2-sys = "0.17.0+1.8.1"` in Cargo.lock). All the above APIs are present in this version.
 
-#### Path Type 2: Fork/Merge curves (column transition)
-
-A lane that starts at one column and ends at another. Uses a cubic Bezier S-curve.
-
-```typescript
-// EdgeType: ForkLeft, ForkRight, MergeLeft, MergeRight
-// from_column is the commit's column, to_column is the parent's column
-const x1 = cx(edge.from_column);
-const x2 = cx(edge.to_column);
-
-// Control point offset: 0.8 * ROW_H from endpoints
-// This creates a smooth S-curve that hugs the endpoints vertically
-// before transitioning horizontally
-const d_offset = ROW_H * 0.8;
-
-// Fork: starts at this commit (MID), curves down to parent's column (BOT)
-// The curve exits vertically from the commit dot, then bends to target column
-const d_fork = `M ${x1} ${MID} C ${x1} ${MID + d_offset} ${x2} ${BOT - d_offset} ${x2} ${BOT}`;
-
-// Merge: starts at parent's column (TOP), curves down to this commit (MID)
-// The curve enters vertically from above, then bends to the commit dot
-const d_merge = `M ${x2} ${TOP} C ${x2} ${TOP + d_offset} ${x1} ${MID - d_offset} ${x1} ${MID}`;
-```
-
-**The 0.8 factor** is empirically validated by vscode-git-graph (the most widely-used open-source git graph). It creates curves that are:
-- Nearly vertical near the endpoints (looks like a rail that bends)
-- Smooth through the horizontal transition
-- Never kinked or angular
-
-**Confidence:** HIGH -- formula extracted from vscode-git-graph source (graph.ts, `config.grid.y * 0.8` for rounded style). Also validated by DoltHub's implementation which uses a similar weighted control point interpolation approach.
-
-#### Path Type 3: Fork/Merge that spans more than one row
-
-For edges where the parent is not in the immediately adjacent row (multi-row span), the edge appears on every row between source and target. The Rust algorithm already handles this by emitting `Straight` edges on intermediate rows (the pass-through edges at lines 80-92 of graph.rs). So a multi-row fork renders as:
-
-- **Source row:** Fork curve (from commit column to target column)
-- **Intermediate rows:** Straight rail at target column
-- **Target row:** Straight rail at target column (parent commit)
-
-No special multi-row path rendering is needed.
-
-**Confidence:** HIGH -- verified by tracing the Rust algorithm which emits intermediate Straight edges.
-
-### 3. Cross-Row Visual Continuity
-
-**The Key Insight:** Each per-row SVG draws lines that extend beyond its own boundaries.
-
-```svelte
-<svg
-  width={svgWidth}
-  height={rowHeight}
-  style="overflow: visible; flex-shrink: 0;"
->
-```
-
-A Straight edge draws `M x 0 L x 26` (full row height). Since adjacent rows also draw their Straight edges the same way, the lines overlap perfectly -- row N's bottom meets row N+1's top with zero gaps.
-
-For curves, the Bezier control points (`MID + d_offset` can exceed `BOT`) naturally extend into the adjacent row's space. With `overflow: visible`, this paints correctly.
-
-**Why this works with virtual scrolling:** The virtual list renders ~40 rows at a time. As rows enter/exit the viewport, their SVGs are created/destroyed. Since each SVG is self-contained (draws its own complete segment), there is no dependency on sibling DOM elements. A row entering the viewport immediately renders its complete lane segment with no coordination needed.
-
-**Potential gap at row boundaries:** If adjacent rows have 0px gap between them (which they do -- the virtual list uses `height: 26px` per item with no margin/padding), the lines connect seamlessly. The `flex-shrink: 0` on the SVG prevents compression. No subpixel gaps appear because the coordinates are integers.
-
-**Confidence:** HIGH -- this is the standard approach used by Bitbucket (renders ~50 commits per SVG block) and conceptually identical to how vscode-git-graph works (it uses a single SVG but the coordinate math is the same per-row).
-
-### 4. SVG Width Calculation
-
-The SVG must be wide enough to contain all lanes visible in this row. The current code uses:
-
-```typescript
-const svgWidth = (commit.column + 1) * laneWidth;
-```
-
-This is **wrong for rows with edges spanning wider columns**. Fix:
-
-```typescript
-// Must account for all edge endpoints, not just the commit's column
-const maxCol = Math.max(
-  commit.column,
-  ...commit.edges.map(e => Math.max(e.from_column, e.to_column))
-);
-const svgWidth = (maxCol + 1) * LANE_W;
-```
-
-**Confidence:** HIGH -- directly verified from the existing code and data model.
-
-### 5. Rendering Order (Z-ordering)
-
-Within each row's SVG, elements must render in this order (back to front):
-1. **Straight edges** (vertical rails) -- behind everything
-2. **Curve edges** (fork/merge) -- above rails so they cross over cleanly
-3. **Commit dot** -- topmost, always visible
-
-This is achieved by SVG paint order (later elements paint on top):
-
-```svelte
-<!-- 1. Straight rails (background) -->
-{#each straightEdges as edge}
-  <path d={...} stroke={laneColor(edge.color_index)} ... />
-{/each}
-
-<!-- 2. Curves (middle) -->
-{#each curveEdges as edge}
-  <path d={...} stroke={laneColor(edge.color_index)} ... />
-{/each}
-
-<!-- 3. Commit dot (foreground) -->
-<circle ... />
-```
-
-**Confidence:** HIGH -- standard SVG rendering model, later elements paint on top.
-
-## Performance Analysis
-
-### DOM Cost per Visible Row
-
-Each visible row's SVG contains:
-- 1 `<svg>` element
-- N `<path>` elements (one per edge, typically 1-5 for normal repos, up to ~20 for octopus merges)
-- 1 `<circle>` element (commit dot)
-
-With ~40 visible rows and an average of 3 edges per row:
-- **Total SVG elements:** ~40
-- **Total path elements:** ~120
-- **Total circle elements:** ~40
-- **Grand total DOM nodes:** ~200
-
-This is well within browser performance limits. Browsers handle thousands of SVG elements without issues. The virtual scroll ensures this stays constant regardless of repository size.
-
-**Confidence:** HIGH -- measurable from the existing virtual scroll implementation.
-
-### SVG Path String Computation
-
-Each edge requires computing one `d` attribute string. This is pure arithmetic (2-3 multiplications, string concatenation). For 40 rows x 5 edges = 200 path computations per render frame, this takes <0.1ms on any modern hardware.
-
-**Confidence:** HIGH -- trivial computation cost.
-
-### What Could Be Slow (And How to Avoid It)
-
-| Risk | Threshold | Mitigation |
-|------|-----------|------------|
-| Too many path elements per row | >50 paths in one SVG | Repos with 50+ simultaneous branches are extremely rare. If encountered, clamp rendering to max ~30 visible lanes and indicate overflow |
-| SVG reflow on scroll | Every frame during scroll | `overflow: visible` + `flex-shrink: 0` prevents layout thrashing. SVG dimensions are derived from props ($derived), not DOM measurements |
-| Reactive over-updates | Path strings recompute when unrelated props change | Use `$derived` for path computations keyed on edge data. Svelte 5's fine-grained reactivity only updates changed paths |
-| Paint complexity with many overlapping curves | >20 overlapping curves | stroke-width of 1.5-2px keeps paint area small. No filters, gradients, or masks needed |
-
-### Pre-computing Path Strings in Rust (NOT Recommended)
-
-Moving SVG path string generation to the Rust backend was considered and rejected:
-
-- **Against:** Adds ~200 bytes per commit to IPC payload (path strings are longer than the numeric edge data). Couples Rust to rendering constants (LANE_W, ROW_H). Frontend layout changes (e.g., user resizes lanes) would require re-fetching all data from Rust.
-- **For:** Would save ~0.05ms of JS computation per render frame.
-- **Verdict:** The JS computation cost is negligible. Keep rendering concerns in the frontend.
-
-**Confidence:** HIGH -- the IPC cost of shipping path strings would exceed the JS computation cost.
-
-## Recommended Stack (No Changes)
-
-### Core (Unchanged)
-
-| Technology | Version | Purpose | Status |
-|------------|---------|---------|--------|
-| Tauri 2 | existing | Desktop shell | No change |
-| Svelte 5 | existing | UI framework | No change |
-| Rust + git2 | existing | Git operations + lane algorithm | No change |
-| @humanspeak/svelte-virtual-list | existing | Virtual scrolling | No change |
-| Tailwind CSS v4 | existing | Styling | No change |
-
-### New Dependencies Required
+### New Tauri Plugins
 
 **None.**
 
-### Supporting Libraries Evaluated and Rejected
+| Plugin | Decision | Rationale |
+|--------|----------|-----------|
+| `tauri-plugin-shell` | Do NOT add | Exposes `Command` execution to the JS frontend. Remote ops are invoked from Rust Tauri commands, not from JS. Adding this plugin is the wrong abstraction layer and increases capability attack surface unnecessarily. |
+| `tauri-plugin-clipboard-manager` | Do NOT add | `navigator.clipboard.writeText()` works in Tauri 2 WebView without a plugin. "Copy SHA" and "Copy Message" actions in the context menu can use it directly. |
+| `tauri-plugin-notification` | Do NOT add | Push/pull result feedback is better surfaced as inline UI state (error message, success indicator) than OS notifications. |
 
-| Library | Purpose | Why NOT |
-|---------|---------|---------|
-| d3-shape / d3-path | SVG path generation | 30KB+ for what amounts to string concatenation. Our paths use exactly 2 SVG commands (M, L for straight; M, C for curves) |
-| svg.js | SVG DOM manipulation | We use Svelte's declarative templates, not imperative DOM manipulation |
-| snap.svg | SVG manipulation | Same as svg.js -- wrong paradigm for Svelte |
-| svelte-draw / motion-canvas | SVG animation | No animation needed -- static paths that change on data update |
-| Canvas (2D or WebGL) | Alternative to SVG | Breaks text selection, accessibility, CSS styling, and Svelte's declarative model. Per-row Canvas would require manual coordinate management that SVG handles natively |
+### New Frontend Libraries
 
-## Alternatives Considered
+**None.** The existing `@tauri-apps/api/menu` module covers the commit context menu.
 
-| Decision | Recommended | Alternative | Why Not Alternative |
-|----------|-------------|-------------|-------------------|
-| Rendering approach | Per-row inline SVG with overflow:visible | Single large SVG canvas | Single SVG breaks virtual scrolling (must render all rows). Canvas breaks Svelte's declarative model |
-| Curve math | Cubic Bezier (SVG C command) | Quadratic Bezier (Q command) | Cubic gives independent control of entry/exit tangents. Quadratic would make the curves look too wide/loose for single-row transitions |
-| Curve style | Rounded (0.8 factor Bezier) | Angular (straight line segments) | Rounded is the GitKraken/SourceTree aesthetic the project targets. Angular is the Git Extensions look |
-| Path computation | Frontend (Svelte $derived) | Backend (Rust pre-computed strings) | Frontend keeps rendering concerns local, avoids bloating IPC, enables instant resize response |
-| SVG width | Dynamic per-row (max column of all edges) | Fixed width for all rows | Dynamic prevents wasted horizontal space and keeps the graph compact |
+| Library | Decision | Rationale |
+|---------|----------|-----------|
+| `@tauri-apps/api/menu` — `MenuItem` | Already present | `Menu` and `CheckMenuItem` are already imported in `CommitGraph.svelte`. `MenuItem` (action items, not checkboxes) is exported from the same module. Import already available. |
+| Custom Svelte context menu component | Do NOT add | Native Tauri Menu API provides OS-native look/feel, proper z-index over WebView, keyboard navigation, and accessibility for free. A custom Svelte dropdown must hand-roll all of this and will look non-native. |
+| Any npm context-menu library | Do NOT add | Same reason — they render inside the WebView and cannot match OS-native menus. |
 
-## Implementation Constants
+---
 
-These values should be configurable via props but have sensible defaults:
+## Integration Points with Existing Stack
 
-```typescript
-// LaneSvg.svelte props with defaults
-const LANE_WIDTH = 12;      // Horizontal pixels per lane column
-const ROW_HEIGHT = 26;       // Vertical pixels per row (must match virtual list item height)
-const STROKE_WIDTH = 1.5;    // Lane line thickness
-const DOT_RADIUS = 4;        // Normal commit dot radius
-const MERGE_DOT_RADIUS = 6;  // Merge commit dot radius (slightly larger)
-const BEZIER_FACTOR = 0.8;   // Control point offset as fraction of ROW_HEIGHT
-const MAX_COLORS = 8;        // Number of lane colors (matches CSS --lane-N properties)
-```
+### Pattern: Shell-Out Remote Commands
 
-## Stroke Styling
+Follows the existing `inner-fn + spawn_blocking` pattern. Remote ops add one new concern: `git push/pull/fetch` writes progress to **stderr** (not stdout), even on success.
 
-```typescript
-// For all path elements
-const pathStyle = {
-  stroke: laneColor(edge.color_index),
-  'stroke-width': STROKE_WIDTH,
-  'stroke-linecap': 'round',  // Rounded endpoints prevent jagged line-ends at row boundaries
-  fill: 'none',               // Paths are strokes only, never filled
-};
-```
+```rust
+// Follows existing pattern from checkout_branch_inner, create_branch_inner, etc.
+pub fn fetch_inner(path: &str, remote: &str) -> Result<String, TrunkError> {
+    let output = std::process::Command::new("git")
+        .args(["-C", path, "fetch", remote])
+        .output()
+        .map_err(|e| TrunkError::new("git_not_found", e.to_string()))?;
 
-`stroke-linecap: round` is critical -- it adds a half-circle cap at each line endpoint equal to half the stroke-width. This ensures that even if there is a sub-pixel gap between adjacent rows, the rounded caps overlap slightly and prevent visible breaks.
-
-## Complete Path Generation Reference
-
-```typescript
-function edgePath(edge: GraphEdge, rowHeight: number, laneWidth: number): string {
-  const cx = (col: number) => col * laneWidth + laneWidth / 2;
-  const MID = rowHeight / 2;
-  const d = rowHeight * 0.8; // Bezier control point offset
-
-  switch (edge.edge_type) {
-    case 'Straight': {
-      const x = cx(edge.from_column);
-      return `M ${x} 0 L ${x} ${rowHeight}`;
+    if output.status.success() {
+        // git fetch writes progress to stderr even on success
+        Ok(String::from_utf8_lossy(&output.stderr).to_string())
+    } else {
+        Err(TrunkError::new(
+            "fetch_failed",
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ))
     }
-    case 'ForkLeft':
-    case 'ForkRight': {
-      // Fork: commit is at from_column, parent is at to_column
-      // Draw from commit dot (MID) down to parent column (BOT)
-      const x1 = cx(edge.from_column);
-      const x2 = cx(edge.to_column);
-      return `M ${x1} ${MID} C ${x1} ${MID + d} ${x2} ${rowHeight - d} ${x2} ${rowHeight}`;
-    }
-    case 'MergeLeft':
-    case 'MergeRight': {
-      // Merge: secondary parent at to_column comes from above
-      // Draw from parent column (TOP) down to commit dot (MID)
-      const x1 = cx(edge.from_column); // commit column
-      const x2 = cx(edge.to_column);   // parent column
-      return `M ${x2} 0 C ${x2} ${d} ${x1} ${MID - d} ${x1} ${MID}`;
-    }
-  }
 }
 ```
 
+After push/pull/fetch completes, the graph cache must be rebuilt (same `cache-repopulate-before-emit` pattern already used by `checkout_branch` and `create_branch`).
+
+### Pattern: Stash via git2
+
+Stash is a local operation — no shell-out needed. git2 handles it natively.
+
+```rust
+// stash_save requires &mut repo (git2 convention for state-mutating ops)
+let sig = repo.signature()?; // reads user.name / user.email from git config
+repo.stash_save(&sig, "WIP on HEAD", Some(git2::StashFlags::DEFAULT))?;
+
+// stash_pop: index 0 = stash@{0} (most recent)
+// StashApplyOptions controls whether untracked files are restored
+repo.stash_pop(0, None)?;
+```
+
+Both must follow the `cache-repopulate-before-emit` pattern (rebuild CommitCache, then emit refresh event).
+
+### Pattern: Commit Context Menu
+
+The existing header context menu in `CommitGraph.svelte` already uses `Menu.new({ items })` + `menu.popup()`. The commit row context menu is the same pattern on `CommitRow.svelte`, triggered by `oncontextmenu`.
+
+```typescript
+// CommitRow.svelte — add oncontextmenu handler
+// MenuItem (not CheckMenuItem) is the action item type
+import { Menu, MenuItem } from '@tauri-apps/api/menu';
+
+async function showCommitMenu(e: MouseEvent) {
+  e.preventDefault();
+  const items = await Promise.all([
+    MenuItem.new({ text: 'Copy SHA',     action: () => navigator.clipboard.writeText(commit.oid) }),
+    MenuItem.new({ text: 'Copy Message', action: () => navigator.clipboard.writeText(commit.summary) }),
+    MenuItem.new({ text: 'Checkout Commit', action: () => safeInvoke('checkout_commit', { path: repoPath, oid: commit.oid }) }),
+    MenuItem.new({ text: 'Create Branch Here', action: () => { /* open branch name dialog, then invoke */ } }),
+    MenuItem.new({ text: 'Create Tag Here',    action: () => { /* open tag name dialog, then invoke */ } }),
+    MenuItem.new({ text: 'Cherry-Pick',        action: () => safeInvoke('cherry_pick', { path: repoPath, oid: commit.oid }) }),
+    MenuItem.new({ text: 'Revert',             action: () => safeInvoke('revert_commit', { path: repoPath, oid: commit.oid }) }),
+  ]);
+  const menu = await Menu.new({ items });
+  await menu.popup();
+}
+```
+
+`repoPath` must be passed down to `CommitRow` (currently not in its props) — minor prop addition needed.
+
+**Separator:** `PredefinedMenuItem.separator()` (also from `@tauri-apps/api/menu`) can be used to group copy actions vs mutating actions visually.
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| `std::process::Command` shell-out for remote ops | `git2::Remote::push/fetch` with `RemoteCallbacks::credentials` | libgit2 does not invoke SSH agent or credential helpers reliably; auth silently fails on standard macOS developer setups launched outside terminal |
+| git2 `stash_save` / `stash_pop` for stash ops | Shell-out to `git stash push` / `git stash pop` | Stash is a local operation; git2 supports it natively and reliably — no auth concerns, no process overhead |
+| Native `@tauri-apps/api/menu` (`MenuItem`) for context menu | Custom Svelte dropdown component | Native menu already proven in this codebase (header column menu); OS-native look, proper overflow/z-index, keyboard nav — all free |
+| `navigator.clipboard.writeText()` for copy SHA/message | `tauri-plugin-clipboard-manager` | Tauri 2 WebView allows clipboard writes without a plugin; no need to add a plugin for two simple copy actions |
+| `tauri::async_runtime::spawn_blocking` for blocking I/O | Add tokio as direct dep | tokio is already a transitive dep via Tauri; `tauri::async_runtime` is the correct surface for Tauri commands |
+
+---
+
+## What NOT to Add
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `tauri-plugin-shell` | Wrong abstraction: exposes shell exec to JS; remote ops are Rust-to-Rust | `std::process::Command` inside Tauri commands |
+| git2 remote auth callbacks (SSH/HTTPS) | Does not invoke SSH agent or credential helpers; auth fails silently for many developers | Shell-out to system `git` |
+| npm context-menu libraries | Render in WebView, cannot match OS-native menus, fight with z-index/overflow | `@tauri-apps/api/menu` |
+| `tauri-plugin-clipboard-manager` | Plugin overhead for trivial clipboard writes | `navigator.clipboard.writeText()` |
+| Progress streaming via Tauri events (v0.3) | Complexity not justified for v0.3; `.output()` blocking call is simpler and sufficient | `.output()` (wait for process completion), stream in v0.4+ if needed |
+
+---
+
+## Stack Patterns by Variant
+
+**If push/pull requires real-time progress display (v0.4+ enhancement):**
+- Replace `.output()` with `Command::new(...).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()`
+- Read stderr line-by-line in `spawn_blocking` loop, emit Tauri `remote:progress` events
+- Frontend `listen('remote:progress', ...)` renders progress in a modal or status bar
+- This is an enhancement, not a v0.3 requirement — `.output()` (wait for completion) is correct for v0.3
+
+**If cherry-pick produces merge conflicts:**
+- `repo.cherrypick()` leaves the index in a conflicted state
+- Detect by calling `repo.index()?.has_conflicts()` after the call
+- Return `cherry_pick_conflict` error code — same structured error pattern as `dirty_workdir`
+- Full conflict resolution UI is out of scope for v0.3 per PROJECT.md
+
+**If tag creation needs user-specified message (annotated tag):**
+- Lightweight tag: `repo.tag_lightweight("name", &obj, false)` — just a ref, no message
+- Annotated tag: `repo.tag("name", &obj, &sig, "message", false)` — shows in `git describe`
+- Default to lightweight for v0.3 commit context menu (simpler, no extra dialog)
+
+**If `Create Branch Here` / `Create Tag Here` need user input:**
+- Use existing `tauri-plugin-dialog` for a simple text input prompt — already declared in capabilities
+- Or implement a minimal inline input in the Svelte UI (no plugin needed)
+- tauri-plugin-dialog is already imported and working (`dialog:allow-open` in capabilities)
+
+---
+
+## Version Compatibility
+
+| Package | Version | Source | Notes |
+|---------|---------|--------|-------|
+| git2 | 0.19.0 | Cargo.lock (direct inspection) | libgit2-sys 0.17.0+1.8.1; stash_save, stash_pop, cherrypick, revert, set_head_detached, tag, tag_lightweight all available |
+| libgit2-sys | 0.17.0+1.8.1 | Cargo.lock (direct inspection) | libgit2 C library version 1.8.1 vendored |
+| libssh2-sys | 0.3.1 | Cargo.lock (direct inspection) | Present transitively via git2; irrelevant — SSH auth via shell-out, not libssh2 |
+| tauri | 2.10.2 | Cargo.lock (direct inspection) | `tauri::async_runtime::spawn_blocking` available |
+| @tauri-apps/api | ^2 (package.json) | package.json (direct inspection) | `Menu`, `MenuItem`, `CheckMenuItem`, `PredefinedMenuItem` all available |
+| core:menu:default | — | capabilities/default.json (direct inspection) | Already declared; commit row context menu requires no new capability |
+
+---
+
 ## Sources
 
-- [vscode-git-graph source (graph.ts)](https://github.com/mhutchie/vscode-git-graph/blob/develop/web/graph.ts) -- PRIMARY source for Bezier formula (0.8 factor) and rounded curve style. Confidence: HIGH (reviewed actual source code)
-- [DoltHub: Drawing a Commit Graph](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/) -- Validated cubic Bezier approach with weighted control point interpolation. Confidence: HIGH
-- [pvigier: Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) -- Comparison of straight vs curved branch rendering across Git clients. GitKraken uses straight lanes, SourceTree/Git Extensions use curves. Performance benchmarks showing ~0.58ms for visible-only rendering. Confidence: HIGH
-- [Git Extensions Revision Graph Wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph) -- Per-row segment rendering architecture. Overlap calculation cached per row, no cross-row dependency needed. Confidence: HIGH
-- [SVG Paths MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths) -- Cubic Bezier C command specification. Confidence: HIGH (official documentation)
-- [SVG overflow MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/overflow) -- overflow:visible behavior for inline SVG. Confidence: HIGH (official documentation)
-- [Codebase: Building Commit Graphs](https://www.codebasehq.com/blog/building-commit-graphs) -- Row-based rendering with yStep spacing. Confidence: MEDIUM
-- [gitgraph.js paginated rendering issue](https://github.com/nicoespeon/gitgraph.js/issues/215) -- Bitbucket's approach of rendering ~50 commits per SVG block with seamless stitching. Confidence: MEDIUM (issue discussion, not implementation)
+- `/Users/joaofnds/code/trunk/src-tauri/Cargo.lock` — git2 0.19.0, libgit2-sys 0.17.0+1.8.1, libssh2-sys 0.3.1, tauri 2.10.2 confirmed (HIGH confidence, direct file inspection)
+- `/Users/joaofnds/code/trunk/src-tauri/Cargo.toml` — no tauri-plugin-shell; git2 with vendored-libgit2 feature; full dependency list (HIGH confidence, direct file inspection)
+- `/Users/joaofnds/code/trunk/src-tauri/capabilities/default.json` — `core:menu:default` already declared; no new capabilities needed for commit context menu (HIGH confidence, direct file inspection)
+- `/Users/joaofnds/code/trunk/src/components/CommitGraph.svelte` — `Menu`, `CheckMenuItem` from `@tauri-apps/api/menu` already imported and used with `menu.popup()` pattern (HIGH confidence, direct file inspection)
+- `/Users/joaofnds/code/trunk/.planning/PROJECT.md` — confirms project decision: shell-out to git CLI for remote ops; libgit2 SSH/HTTPS auth unreliable (HIGH confidence, validated project decision)
+- git2 0.19 API (stash_save, stash_pop, cherrypick, revert, tag, set_head_detached) — MEDIUM confidence: based on training data for libgit2 1.8.x; internally consistent with the libgit2-sys 1.8.1 version in Cargo.lock. Recommend confirming `stash_pop` signature on docs.rs before implementation.
+
+---
+
+*Stack research for: Tauri 2 Git GUI v0.3 — remote ops, stash, commit context menu*
+*Researched: 2026-03-10*

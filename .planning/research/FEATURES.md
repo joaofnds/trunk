@@ -1,208 +1,334 @@
-# Feature Landscape: Commit Graph Lane Rendering
+# Feature Research
 
-**Domain:** DAG commit graph visualization in desktop Git GUI
-**Researched:** 2026-03-09
-**Overall confidence:** MEDIUM-HIGH (cross-referenced multiple open-source implementations, blog posts with working code, and feature pages from GitKraken/Fork/Sourcetree/Git Extensions/SmartGit)
-
----
-
-## Table Stakes
-
-Features that users of GitKraken, Fork, Sourcetree, and similar tools consider baseline. Missing any of these and the graph feels "broken" or "toy-like."
-
-| # | Feature | Why Expected | Complexity | Notes |
-|---|---------|--------------|------------|-------|
-| T1 | **Vertical lane rails (continuous colored lines)** | Every commercial Git GUI draws continuous vertical lines per active lane. Without them, users cannot visually trace which commits belong together. Dots alone force mental reconstruction of the DAG topology. | Medium | The current LaneSvg.svelte renders only a dot -- no lines at all. The Rust backend already computes edges with `from_column`, `to_column`, and `EdgeType` (Straight, ForkLeft, ForkRight, MergeLeft, MergeRight). The SVG just needs to render them. Per-row inline SVGs must have lines that extend from `y=0` to `y=rowHeight` so adjacent rows visually connect. |
-| T2 | **Smooth curved edges for merge/fork connections** | GitKraken, Fork, and Sourcetree all draw smooth curves (not jagged diagonals) when a lane merges into or forks from another lane. Jagged 45-degree diagonals look amateurish. Cubic bezier curves are the standard approach. | Medium | SVG `<path>` with cubic bezier `C` command. For a fork/merge from column A to column B across one row: `M ax 0 C ax cy, bx cy, bx rowHeight` where `cy` is a control point offset (typically 40-60% of rowHeight). The DoltHub implementation uses weighted interpolation coefficients (0.1/0.9 for control points). |
-| T3 | **Lane color consistency per branch** | Each branch rail should maintain one color from tip to base. If color jumps between commits on the same lane, it confuses users into thinking it is a different branch. | Low | Current code uses `color_index: column_number % 8`. This is already lane-consistent since a branch stays in one column. The color only needs to persist when a lane merges into another lane (the receiving lane keeps its original color). Already handled by `color_index` on each edge. |
-| T4 | **Lane packing (reclaim freed columns)** | When a branch merges, its column becomes available. Without packing, the graph grows ever-wider (one new column per branch, never reclaimed). Wide graphs push the commit message off-screen. | Medium | The existing Rust algorithm already does this: `active_lanes[col] = None` when a branch terminates, and new branches scan for `None` slots before appending. Verify this works correctly with nested merges. The "straight branches" approach from pvigier's research sets positions to `nil` rather than removing them, which is exactly what the current code does. |
-| T5 | **Merge commit visual distinction** | Users need to instantly distinguish merge commits from regular commits. GitKraken uses a larger node; Fork uses a double circle; Mermaid uses a filled double circle; gitk uses a diamond. A merge commit with the same visual as a normal commit hides important topology. | Low | Current code already sets `is_merge` and renders a larger circle (r=6 vs r=4) with a background-colored stroke. This is adequate. Consider also filling merge dots with background color and using a thicker colored stroke (hollow dot) for stronger distinction. |
-| T6 | **Pass-through lanes (other active lanes render through each row)** | When a row's commit is on column 2, columns 0, 1, 3, 4 etc. that have active lanes must draw straight vertical lines through that row. Without pass-through lines, the graph appears to have "gaps" where long-running branches momentarily vanish. | Low | The Rust algorithm already emits `Straight` edges for all other active lanes at each commit row. The SVG just needs to draw a vertical line for each `Straight` edge where `from_column == to_column`. |
-| T7 | **Correct HEAD-chain column 0 pinning** | HEAD's first-parent chain should always occupy column 0 (leftmost). This is the user's primary reference point. GitKraken, Fork, and Sourcetree all pin the current branch to the left. | Low | Already implemented in Rust: `head_chain` pre-reserves column 0 for all first-parent ancestors of HEAD. Branch tips that diverge from HEAD get columns >= 1. Verified by `branch_fork_topology` test. |
-| T8 | **WIP row with lane connection** | The "uncommitted changes" / WIP row at the top should connect to the HEAD commit via a lane line (typically dashed or in a muted color). Without it, the WIP row floats disconnected above the graph. vscode-git-graph and GitKraken both show uncommitted changes connected to the graph. | Low | Current WIP row has a hollow circle at column 0 but no line connecting down to the first commit. Need a dashed vertical line segment from WIP dot to first commit's row. |
+**Domain:** Git GUI — Remote operations, stash management, commit context menu
+**Researched:** 2026-03-10
+**Confidence:** HIGH (based on direct analysis of GitKraken, Fork, GitHub Desktop, Tower, SourceTree, VS Code Git; all are well-documented, mature tools with established UX patterns)
 
 ---
 
-## Differentiators
+## Feature Landscape
 
-Features present in top-tier tools (GitKraken, Fork) but absent from many others. Implementing them elevates the graph from "functional" to "polished."
+### Table Stakes (Users Expect These)
 
-| # | Feature | Value Proposition | Complexity | Notes |
-|---|---------|-------------------|------------|-------|
-| D1 | **Crossing-lane detection with visual offset** | When two edges cross (a merge line crosses over an active lane), the crossing should be visually indicated -- either a small gap in the background line, or a slight curve to suggest "over/under." GitKraken handles this cleanly; many simpler tools just let lines overlap and become unreadable. | High | Requires detecting when a merge/fork edge from column A to column B passes through intermediate columns. For each intermediate column that has an active lane, either: (a) draw the crossing edge with a small gap/bridge at the intersection, or (b) route the edge to avoid the crossing entirely. Option (a) is simpler. |
-| D2 | **Ref label connection to graph lane** | Branch/tag pills should visually align with or connect to their lane's color. GitKraken colors ref pills to match their lane; Fork draws a small colored bar connecting the pill to the graph. This removes the cognitive step of "which branch is this pill for?" | Medium | Current RefPill uses a fixed-width 120px column to the left of the graph. Could add a small colored dot or bar between the pill and the graph, colored to match `lane-N`. Or color the pill's border/background to match. |
-| D3 | **Collapsible merge trains** | For long merge histories (especially merge-heavy workflows like GitHub PRs), the ability to collapse a merge commit's second-parent chain keeps the graph compact. Fork recently added expand/collapse merge commits via click or keyboard arrow keys. | High | Requires UI state tracking (which merges are collapsed), modifying the commit list to hide/show child commits of the collapsed merge's second parent chain, and redrawing lane assignments. This is a significant feature best deferred to after initial lane rendering ships. |
-| D4 | **Graph width control (compact mode)** | GitKraken allows resizing the graph column width, even down to a single column. Useful for repos with many branches where the graph would otherwise consume half the screen. | Medium | Change `laneWidth` from fixed 12px to a configurable value. Add a drag handle on the graph column border, or a compact/normal toggle. The SVG width already derives from `(column + 1) * laneWidth`. |
-| D5 | **Dim/ghost merge commits** | GitKraken offers "dim merge commits" to reduce visual noise. In merge-heavy repos, merge commits can outnumber real work commits 2:1. Dimming them (lower opacity) lets users focus on actual code changes. | Low | CSS opacity on CommitRow when `commit.is_merge === true`. Could be a toggle in the UI or always-on with hover-to-reveal. |
-| D6 | **Author avatars on commit nodes** | GitKraken shows author avatars (Gravatar) on commit nodes. This provides instant visual attribution without reading text. | Medium | Requires Gravatar URL generation from email hash, image caching, and rendering small circular images at the commit node position instead of (or overlaid on) the colored dot. Network dependency makes this a "nice to have." |
-| D7 | **Keyboard navigation within graph** | Arrow keys to move selection up/down commits, left/right to navigate merge parents. Fork and Tower are praised for keyboard-driven graph exploration. | Medium | Requires tracking selected commit index, handling ArrowUp/ArrowDown to move selection, scrolling viewport to keep selection visible. ArrowLeft/ArrowRight could follow first-parent vs second-parent chains. |
-| D8 | **Animated edge transitions** | When the graph redraws (after commit, branch switch, pull), edges animate smoothly rather than jump. This reduces cognitive disorientation. | Medium | SVG path transitions via CSS `transition` on `d` attribute, or FLIP animation technique. May conflict with virtual scrolling if row DOM nodes are recycled. |
-| D9 | **Branch-specific color override** | Let users assign fixed colors to branch names (e.g., "main is always blue, develop is always green"). Sourcetree and SmartGit users request this constantly (Atlassian JIRA SRCTREEWIN-3477 has 20+ votes). | Medium | Requires a small config store mapping branch names to color indices. The Rust algorithm would need to look up branch names when assigning `color_index` instead of just using column number. |
+Features that users assume any Git GUI provides. Missing these = product feels incomplete or unshippable.
+
+#### Remote Operations
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Fetch all remotes** | Every Git GUI has a fetch button. It is the safest remote op (read-only). Users click it habitually before starting work. | LOW | Shell out to `git fetch --all`. Stream stderr for progress. No auth prompt needed for already-configured remotes. Depends on: existing RemoteState/sidebar already shows remote branches. |
+| **Pull current branch** | Users expect a single "Pull" action for the checked-out branch. Fetches and merges (or rebases) in one step. | MEDIUM | Shell out to `git pull`. Must handle fast-forward vs merge-commit outcomes. Must detect and surface rejection (diverged history, conflicts). Depends on: checkout already implemented. |
+| **Push current branch** | Core workflow action. After committing locally, users push to origin. | MEDIUM | Shell out to `git push`. Must handle: no upstream set (offer to set it), rejected push (non-fast-forward), auth failures. Depends on: commit creation already implemented. |
+| **Visual upstream tracking** | Users expect the UI to show how many commits ahead/behind the remote branch they are (e.g., "↑2 ↓1"). Every Git GUI shows this in the branch list. | LOW | `git rev-list --count HEAD..@{u}` and `..@{u}..HEAD`. Add ahead/behind counts to the branch sidebar. Depends on: branch sidebar already implemented. |
+| **Progress feedback during remote ops** | Remote ops can take seconds or minutes. Without progress, users assume the app is frozen. Every Git GUI shows a spinner, progress bar, or streaming output during push/pull/fetch. | MEDIUM | Spawn git CLI in a child process, stream stderr line-by-line to frontend via Tauri event (not a single await). Parse standard git progress lines ("Counting objects: 42", "remote: Enumerating objects: 5"). Show in a status bar or modal. |
+| **Auth failure shown clearly** | When push/pull fails due to auth, the error message must be human-readable, not raw git stderr. GitKraken, Fork, Tower all translate "Authentication failed" into actionable guidance. | MEDIUM | Detect "Authentication failed", "Permission denied (publickey)", "could not read Username" in stderr. Surface these as structured error states with a retry option. Depends on: structured error code pattern already established in codebase. |
+
+#### Stash
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Stash current changes (create)** | Every Git GUI has a "Stash" button in the toolbar or staging panel. It is a daily workflow action when context-switching. | LOW | Shell out to `git stash push` (preferred over deprecated `git stash save`). Refresh working tree status after. Depends on: staging panel + filesystem watcher already exist. |
+| **Pop most-recent stash** | The complement of stash create. Users expect stash to be a stack they can push/pop. At minimum, popping the top entry is table stakes. | LOW | Shell out to `git stash pop`. Detect conflicts (exit code 1). Refresh commit graph and working tree after. Depends on: stash create. |
+| **Stash list visible in sidebar** | The sidebar already shows a "Stashes" section (per v0.1 requirements). Stash entries must be visible. | ALREADY DONE | Already listed in sidebar from v0.1. This research is about operations, not display. |
+| **Apply stash (without dropping)** | Apply stash without removing it from the stack. Users use this to apply the same changes to multiple branches, or to apply and keep the stash as a backup. GitKraken, Fork, Tower all offer Apply as a separate action from Pop. | LOW | Shell out to `git stash apply stash@{N}`. Distinguish from pop in the UI. Same conflict detection as pop. |
+| **Drop stash entry** | Remove a stash entry without applying it. Standard cleanup action. All major tools support this. | LOW | Shell out to `git stash drop stash@{N}`. Confirm dialog before dropping. |
+| **Named stash on create** | Allow providing a description when creating a stash (`git stash push -m "description"`). Without names, stash list shows only timestamps and branch names, making old stashes impossible to identify. Fork, GitKraken, and Tower all offer an optional message field on stash creation. | LOW | Add an optional message field to the stash dialog. If empty, use `git stash push` (git auto-generates the description). If provided, use `git stash push -m "message"`. |
+
+#### Commit Context Menu
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| **Copy commit SHA** | Power users constantly need to copy SHAs for `git cherry-pick`, Jira tickets, code review links, etc. Every Git GUI puts "Copy SHA" at the top of the commit right-click menu. | LOW | Access to clipboard via Tauri's `writeText`. Already noted in PROJECT.md as a target feature. |
+| **Copy commit message** | Less common than SHA copy but expected. Fork and GitKraken include it. | LOW | Same mechanism as copy SHA. |
+| **Checkout commit (detached HEAD)** | Users expect to be able to checkout a specific commit to examine its state. GitKraken, Fork, Sourcetree all provide this. | LOW | Shell out to `git checkout <sha>`. Update HEAD display after. Show warning about detached HEAD state. Depends on: checkout already implemented (established pattern). |
+| **Create branch from commit** | The standard way to rescue a commit, start a hotfix, or experiment from a specific point. All Git GUIs offer "Create branch here" in the commit context menu. | MEDIUM | Dialog: prompt for branch name. Shell out to `git branch <name> <sha>`. Optionally offer to checkout the new branch immediately. Depends on: branch creation already established (checkout flow). |
+| **Create tag from commit** | Tagging releases, annotating significant commits. Fork, GitKraken, Tower, Sourcetree all include this. | MEDIUM | Dialog: prompt for tag name, optional annotation message. Shell out to `git tag <name> <sha>` (lightweight) or `git tag -a <name> <sha> -m "message"` (annotated). |
+| **Cherry-pick commit** | Apply a specific commit to the current branch. Universally present in Git GUI context menus. Users expect this as a "grab this commit" action. | MEDIUM | Shell out to `git cherry-pick <sha>`. Detect conflicts (exit code 1). Show commit message preview in confirmation dialog. Refresh graph + working tree after. |
+| **Revert commit** | Create a new commit that undoes the changes introduced by a specific commit. Fork, GitKraken, Tower, Sourcetree all include this. Users expect it as the "safe undo" for pushed commits. | MEDIUM | Shell out to `git revert <sha> --no-edit`. Detect conflicts. Refresh graph after. The `--no-edit` flag uses the auto-generated message; a more polished version offers an edit dialog. |
 
 ---
 
-## Anti-Features
+### Differentiators (Competitive Advantage)
 
-Features to explicitly NOT build for the lane rendering milestone. Building them now adds complexity that delays shipping or creates maintenance burden without proportional value.
+Features present in top-tier tools but not universally expected. Implementing them elevates the product above commodity tools.
 
-| Anti-Feature | Why Avoid | What to Do Instead |
-|--------------|-----------|-------------------|
-| **Canvas-based graph rendering** | The current inline SVG per-row approach works well with virtual scrolling, is accessible, allows text selection, and is simpler to implement. Canvas would require a complete rewrite of the rendering layer, custom hit testing, and re-implementing scrolling. The pvigier benchmarks show SVG performance is adequate when only visible rows are rendered (~40 DOM nodes). | Keep inline SVG per row. Only revisit Canvas if SVG proves too slow with 20+ active lanes (unlikely for most repos). |
-| **Single-SVG graph column** | Rendering the entire graph as one tall SVG defeats virtual scrolling. Memory grows with commit count. This is how gitgraph.js works and it cannot handle large repos. | Keep per-row SVGs. Lines connect visually because each row's SVG extends from `y=0` to `y=rowHeight`, making adjacent rows seamless. |
-| **Octopus merge fan rendering** | Octopus merges (3+ parents) are rare in practice (Linux kernel is the poster child). Building special fan-out rendering for them adds complexity for a case most users never see. The gitgraph.js library was archived without ever implementing it. | Treat octopus merges as multiple binary merge edges. If commit C has parents P1, P2, P3, render three separate merge edges (C->P1, C->P2, C->P3). The existing edge model already supports this -- each parent gets its own `GraphEdge`. |
-| **Full-graph layout optimization (minimize crossings globally)** | Global crossing minimization is NP-hard (Sugiyama framework). The topological + time-sorted single-pass algorithm is O(n) and produces good-enough results. GitKraken and Fork also use greedy single-pass approaches, not global optimization. | Keep the greedy single-pass algorithm. If specific topologies produce ugly crossings, fix them with targeted heuristics (e.g., prefer placing first-parent in same column, prefer merging toward column 0). |
-| **Horizontal scrolling for wide graphs** | If the graph is so wide it needs horizontal scrolling, the real problem is too many active branches. Horizontal scrolling breaks the mental model of "scroll down = go back in time." | Instead, implement lane packing aggressively and consider compact mode (D4). If a repo genuinely has 30 simultaneous branches, show a condensed view rather than scrolling. |
-| **Real-time graph streaming** | Streaming commits into the graph as they are computed (rather than batch loading) adds complexity to lane assignment (you cannot assign lanes without seeing future commits in the topological order). | Keep the current batch approach: compute all lanes in Rust over the full commit set, paginate the results. The existing ~5ms for 10k commits makes streaming unnecessary. |
-| **3D or perspective graph views** | Some tools experiment with 3D DAG visualization. It is universally considered less readable than 2D. | 2D flat graph only. |
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| **Push --force-with-lease (not --force)** | Tower and Fork use `--force-with-lease` instead of plain `--force` when the user chooses "force push." This prevents overwriting others' work if the remote changed since your last fetch. Plain `--force` in a GUI is dangerous and considered a red flag by senior developers. | LOW | Swap `git push --force` for `git push --force-with-lease`. Add a confirmation dialog with explanation when force-push is attempted. |
+| **Streaming progress with parsed output** | GitHub Desktop and Fork show phase-by-phase progress ("Counting objects", "Compressing", "Writing") with a real progress bar. Most tools just show a spinner. Parsed progress reduces user anxiety during slow operations. | MEDIUM | Parse git's `--progress` output format. Git emits `\r`-terminated progress lines on stderr. Parse them in Rust and emit structured progress events to the frontend. |
+| **Stash preview on hover/click** | Clicking a stash in the sidebar shows the diff of what's stashed, without applying it. Fork and Tower do this. Users need to see what a stash contains before deciding whether to apply it. | MEDIUM | Shell out to `git stash show -p stash@{N}`. Parse as a diff. Reuse existing DiffPanel component. Depends on: stash list in sidebar + DiffPanel already implemented. |
+| **Push new branch with upstream tracking** | When pushing a branch that has no upstream, automatically set tracking (`git push -u origin <branch>`). Tower and Fork do this seamlessly. Without it, users get confusing "no upstream configured" errors. | LOW | Detect "no upstream" condition. Offer to push with `-u origin <branch>`. Store result. |
+| **Revert with edit message** | Offer an edit dialog for the revert commit message instead of auto-accepting the generated "Revert 'xyz'" message. Fork and GitKraken offer this. | LOW | Remove `--no-edit` flag, instead open a commit-message dialog pre-filled with the auto-generated message. Reuse existing commit dialog UI. |
+| **Cherry-pick series (multiple commits)** | Select multiple commits in the graph and cherry-pick them in order. GitKraken and Fork support this; most simpler tools don't. | HIGH | Requires multi-select in the commit graph (not yet built). Defer until multi-select is implemented. |
+
+---
+
+### Anti-Features (Commonly Requested, Often Problematic)
+
+Features that seem useful but create disproportionate complexity or risk for v0.3.
+
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|-----------------|-------------|
+| **In-app SSH key management** | Users want the GUI to handle SSH keys without terminal setup | Enormous scope: key generation, passphrase storage, agent integration, platform keychain access. Every major tool that tried this (Atlassian SourceTree) shipped years of bugs. libgit2's SSH support is unreliable (already noted in PROJECT.md). | Shell out to system git, which uses the user's existing SSH agent and `~/.ssh/config`. Document the expected setup. |
+| **Credential manager integration** | Store passwords/tokens for HTTPS remotes | OS keychain APIs differ by platform (Keychain on macOS, Credential Manager on Windows, libsecret on Linux). Implementing correctly is a multi-week project per platform. | Rely on git's credential helper (`git config credential.helper`). The system git invocation inherits the user's configured helper. |
+| **Conflict resolution UI** | After a failed merge/pull/cherry-pick, show a 3-way merge editor | 3-way diff UI is the most complex component in any Git GUI (see: Kaleidoscope, P4Merge, IntelliJ IDEA's merge tool). Building it correctly takes months. Already explicitly deferred to v0.4+ in PROJECT.md. | Show a clear "conflicts detected" state, list the conflicting files, and provide a button to open them in the user's editor (`code .` / `open .`). |
+| **Interactive rebase (reorder/squash/fixup)** | Power users want to clean up history before pushing | Interactive rebase requires a fake editor that intercepts `GIT_SEQUENCE_EDITOR`, complex state management for the in-progress rebase, and handling every failure mode. Tower spent significant engineering on this. | Defer to v0.5+. For v0.3, revert + cherry-pick covers most cleanup needs. |
+| **Force push without warning** | Users want the convenience of force pushing without extra clicks | Destructive. In any collaborative repo, force-pushing without review causes data loss. The extra click exists for a reason. | Always show a confirmation dialog that explains what force push does and what `--force-with-lease` protects against. |
+| **Stash include untracked with no confirmation** | Some tools auto-include untracked files in stash | Silently stashing untracked files surprises users who did not expect their new files to disappear. | Default to `git stash push` (tracked only). Offer `git stash push -u` as an explicit checkbox option: "Include untracked files." |
 
 ---
 
 ## Feature Dependencies
 
 ```
-T7: HEAD-chain column 0 pinning (DONE in Rust)
-  --> T4: Lane packing (DONE in Rust, needs verification)
-      --> T6: Pass-through lanes (Rust emits edges, SVG needs rendering)
-          --> T1: Vertical lane rails (SVG rendering of Straight edges)
-              --> T2: Smooth curved edges (SVG rendering of Fork/Merge edges)
-                  --> T3: Lane color consistency (verified via color_index on edges)
-                      --> T5: Merge commit visual distinction (DONE, minor polish)
-                          --> T8: WIP row lane connection (new SVG element)
+[Existing: commit creation]
+  └──enables──> [stash create] (need working tree changes to stash)
+  └──enables──> [cherry-pick] (need a branch to cherry-pick onto)
+  └──enables──> [revert] (need a branch to revert on)
 
-Independent features (can ship in any order after T1+T2):
-  D1: Crossing-lane detection (SVG rendering enhancement)
-  D2: Ref label connection (CSS/layout change)
-  D4: Graph width control (CSS variable change)
-  D5: Dim merge commits (CSS opacity toggle)
+[Existing: branch checkout]
+  └──enables──> [create branch from commit] (established dialog + Tauri menu pattern)
+  └──enables──> [checkout commit (detached HEAD)] (same invoke path)
 
-Require additional infrastructure:
-  D3: Collapsible merge trains (UI state + commit list filtering + lane recalculation)
-  D6: Author avatars (network + caching)
-  D7: Keyboard navigation (focus management + scroll control)
-  D9: Branch-specific colors (config store + Rust algorithm change)
+[Existing: DiffPanel]
+  └──enables──> [stash preview] (reuse diff display)
+
+[Existing: filesystem watcher + auto-refresh]
+  └──required by──> [all remote ops] (refresh graph after pull/fetch)
+  └──required by──> [stash pop/apply] (refresh working tree after)
+
+[Existing: branch sidebar]
+  └──required by──> [ahead/behind counts] (display location already exists)
+
+[Existing: Tauri native menu (from v0.2 header context menu)]
+  └──reuse pattern──> [commit context menu] (same API, apply to commit rows)
+
+[stash create]
+  └──prerequisite──> [stash pop]
+  └──prerequisite──> [stash apply]
+  └──prerequisite──> [stash drop]
+
+[fetch]
+  └──enables──> [pull] (pull = fetch + merge; fetch must work first)
+  └──updates──> [ahead/behind counts] (remote refs update after fetch)
+
+[push]
+  └──enables──> [force push with --force-with-lease] (same code path, different flag)
 ```
 
----
+### Dependency Notes
 
-## MVP Recommendation (v0.2 Commit Graph Milestone)
-
-**Must ship -- these define "GitKraken-quality" graph:**
-
-1. **T1: Vertical lane rails** -- The single biggest visual leap from "dots only" to "real graph." Everything else builds on this.
-2. **T2: Smooth bezier curves for merge/fork** -- Straight diagonals are acceptable as a stepping stone, but bezier curves are what make the graph feel professional. Ship together with T1 if possible.
-3. **T6: Pass-through lanes** -- Without these, long-running branches disappear between their commits. The Rust data is already there.
-4. **T5: Merge commit visual distinction** -- Already partially done. Polish the hollow-dot style.
-5. **T8: WIP row lane connection** -- Small effort, big visual coherence payoff.
-6. **T3: Lane color consistency** -- Already working via `color_index`. Verify it holds across complex topologies.
-7. **T4: Lane packing** -- Already implemented in Rust. Verify with real-world repos (linux kernel, etc.).
-8. **T7: HEAD pinning** -- Already implemented. Verify.
-
-**Ship soon after (high-value, low-effort):**
-
-9. **D5: Dim merge commits** -- CSS-only change, reduces noise in merge-heavy repos.
-10. **D2: Ref label color connection** -- Small visual polish that aids branch identification.
-11. **D4: Graph width control** -- Make `laneWidth` adjustable via the pane resize handle.
-
-**Defer to v0.3+:**
-
-- D1: Crossing-lane detection (complex, edge case)
-- D3: Collapsible merge trains (significant new feature)
-- D6: Author avatars (network dependency)
-- D7: Keyboard navigation (covered by separate milestone)
-- D8: Animated transitions (polish)
-- D9: Branch-specific colors (requires config UI)
+- **Stash pop/apply require stash create first:** You cannot pop/apply until the stash mechanism works end-to-end. Implement and verify stash create before wiring apply/drop.
+- **Remote ops are independent of stash and context menu:** All three feature groups can be developed in parallel by different phases.
+- **Commit context menu reuses existing patterns:** The Tauri native menu pattern is already established (`@tauri-apps/api/menu`, confirmed in PROJECT.md Key Decisions). The commit row needs a `contextmenu` event handler; the menu construction follows the same API.
+- **Cherry-pick and revert both need conflict detection:** They share the same post-operation check (non-zero exit code + `CHERRY_PICK_HEAD`/`REVERT_HEAD` file in `.git`). Build this once, reuse for both.
+- **Create branch and create tag from commit:** Both require an input dialog. Tower/Fork show a minimal inline dialog (just a name field). The existing checkout dirty-workdir dialog pattern (structured error + modal) serves as the template.
 
 ---
 
-## Edge Cases to Handle
+## MVP Definition
 
-These are the topologies that break naive graph implementations. The lane algorithm must handle them correctly or the graph will have visual artifacts.
+### Launch With (v0.3 milestone)
 
-### Octopus merges (3+ parents)
-**Frequency:** Rare (Linux kernel, some CI workflows).
-**Expected behavior:** Multiple merge edges fan out from the commit node to each parent lane. Each edge uses the parent lane's color. The commit node should be visually distinct (larger or different shape).
-**Current handling:** The Rust algorithm iterates all parents and creates a `GraphEdge` per parent. This should work out of the box. Test with a synthetic 4-parent merge.
+Minimum set to make remote ops, stash, and commit actions feel complete and usable.
 
-### Long-running branches (100+ commits without merge)
-**Frequency:** Common in monorepos, long-lived feature branches.
-**Expected behavior:** The lane stays in the same column for the entire run. Pass-through lines must be continuous. Color must not change.
-**Risk:** If the virtual scrolling buffer is too small, the lane might appear to "start from nowhere" when the branch tip scrolls off screen. Ensure the SVG always draws pass-through lines for all active lanes regardless of whether the branch tip is visible.
+- [ ] **Fetch all** — safest remote op, always expected, no conflict risk
+- [ ] **Pull current branch** — core daily workflow, needed alongside push
+- [ ] **Push current branch** — core daily workflow; handles "set upstream" automatically
+- [ ] **Progress feedback** — streaming stderr to status bar; required for all remote ops to not feel frozen
+- [ ] **Auth failure error message** — translate git stderr into human-readable error state
+- [ ] **Ahead/behind counts in branch sidebar** — required to make remote ops visible/meaningful
+- [ ] **Stash create (with optional name)** — core workflow; named stash is trivial marginal cost
+- [ ] **Stash pop** — the "complete" to stash create; without it stash is useless
+- [ ] **Stash apply** — distinct from pop; all major tools include both
+- [ ] **Stash drop** — necessary for stash list hygiene; simple operation
+- [ ] **Copy SHA / Copy message** — trivial to implement, high daily use
+- [ ] **Checkout commit (detached HEAD)** — follows existing checkout pattern
+- [ ] **Create branch from commit** — high-value, follows established dialog pattern
+- [ ] **Create tag from commit** — moderate value, same dialog pattern as create branch
+- [ ] **Cherry-pick** — core power-user action; present in every Git GUI
+- [ ] **Revert** — the "safe" counterpart to cherry-pick; always paired with it
 
-### Criss-crossing lanes
-**Frequency:** Common in repos with multiple parallel branches that merge in different orders.
-**Expected behavior:** When branch A merges into main, then branch B (which was to the right of A) merges into main, the remaining branches shift left to fill the gap. This can cause visual "crossing" where a lane appears to jump columns.
-**Current handling:** The Rust algorithm places each commit in its pre-assigned column. If a parent was already claimed at a different column, it emits a fork/merge edge. The visual crossing is implicit in the edge rendering. No explicit crossing detection exists yet.
+### Add After Validation (v0.3.x)
 
-### Diamond merges (feature branch merges, then another branch merges the same base)
-**Frequency:** Very common (standard PR workflow).
-**Expected behavior:** Two edges converge at the merge commit, creating a diamond shape. The merge edges should curve smoothly inward. The lane that terminates should free its column.
-**Current handling:** Covered by the existing merge edge logic. The column is freed via `active_lanes[col] = None`.
+- [ ] **Stash preview in sidebar** — triggers when users complain "I can't tell which stash to apply"
+- [ ] **Push --force-with-lease** — add when force-push is first requested
+- [ ] **Revert with edit message** — polish pass after basic revert ships
 
-### Pagination boundary continuity
-**Frequency:** Every time the user scrolls past a 200-commit page boundary.
-**Expected behavior:** Lanes must be visually continuous across page boundaries. There must be no "break" where one page ends and the next begins.
-**Current handling:** The Rust algorithm runs over ALL oids (not just the page), so lane assignments are globally consistent. The page is just a slice of the pre-computed data. This is correct. The SVG per-row approach handles this naturally since each row independently draws its edges based on pre-computed column assignments.
+### Future Consideration (v0.4+)
 
-### Root commits (no parents)
-**Frequency:** Once per repo (initial commit), or multiple times in repos with merged unrelated histories.
-**Expected behavior:** The lane terminates (no downward line from the dot). The column is freed for reuse.
-**Current handling:** The Rust algorithm emits no `Straight` edge for root commits (tested in `linear_topology` test: "root commit should not have self-straight edge"). Correct.
-
-### Detached HEAD
-**Frequency:** Occasional (during rebase, bisect, tag checkout).
-**Expected behavior:** The HEAD indicator should still pin to column 0. The WIP row should still connect to the checked-out commit.
-**Current handling:** The `head_chain` computation follows `repo.head()` which works for detached HEAD. Should still work correctly.
+- [ ] **Conflict resolution UI** — explicitly deferred in PROJECT.md; enormous scope
+- [ ] **Interactive rebase** — high complexity, not required for v0.3 goal
+- [ ] **Cherry-pick series (multi-select)** — requires multi-select graph feature first
+- [ ] **SSH key / credential manager** — platform-specific, high complexity
 
 ---
 
-## Visual Behavior Specifications
+## Feature Prioritization Matrix
 
-### Lane rail rendering (T1 + T6)
-- **Straight edges:** Vertical line from `(cx, 0)` to `(cx, rowHeight)` where `cx = column * laneWidth + laneWidth / 2`
-- **Line width:** 2px (standard across GitKraken, Fork, vscode-git-graph)
-- **Line color:** `var(--lane-{color_index % 8})`
-- **Line cap:** `round` for smooth visual joins between rows
+| Feature | User Value | Implementation Cost | Priority |
+|---------|------------|---------------------|----------|
+| Fetch all | HIGH | LOW | P1 |
+| Pull current branch | HIGH | MEDIUM | P1 |
+| Push current branch | HIGH | MEDIUM | P1 |
+| Progress feedback (streaming) | HIGH | MEDIUM | P1 |
+| Auth failure error message | HIGH | LOW | P1 |
+| Ahead/behind counts | MEDIUM | LOW | P1 |
+| Stash create (with name) | HIGH | LOW | P1 |
+| Stash pop | HIGH | LOW | P1 |
+| Stash apply | MEDIUM | LOW | P1 |
+| Stash drop | LOW | LOW | P1 |
+| Copy SHA / message | HIGH | LOW | P1 |
+| Checkout commit | MEDIUM | LOW | P1 |
+| Create branch from commit | HIGH | MEDIUM | P1 |
+| Create tag from commit | MEDIUM | MEDIUM | P1 |
+| Cherry-pick | HIGH | MEDIUM | P1 |
+| Revert | HIGH | MEDIUM | P1 |
+| Stash preview | MEDIUM | MEDIUM | P2 |
+| Push --force-with-lease | MEDIUM | LOW | P2 |
+| Revert with edit message | LOW | LOW | P2 |
+| Conflict resolution UI | HIGH | VERY HIGH | P3 |
+| Interactive rebase | MEDIUM | HIGH | P3 |
 
-### Bezier curve rendering (T2)
-- **ForkLeft/ForkRight (child diverges from parent's lane):**
-  Start at child's column, curve to parent's column.
-  `M childX 0 C childX controlY, parentX controlY, parentX rowHeight`
-  where `controlY = rowHeight * 0.4` (the curve begins straight, then bends)
-- **MergeLeft/MergeRight (merge commit connects to second parent's lane):**
-  Start at merge commit's column, curve to parent's column.
-  Same bezier formula but semantically the merge edge color should use the parent lane's color (the branch being merged in).
-- **Multi-row edges:** If a fork/merge spans more than one row (parent is not the immediately next row), the curve should span across multiple rows. With per-row SVGs, this means: first row gets a curve starting at the commit, intermediate rows get a diagonal segment, final row gets a curve ending at the parent. Alternatively, let each per-row SVG draw its segment of the overall curve using the `from_column` and `to_column` data.
+**Priority key:**
+- P1: Must have for v0.3 milestone
+- P2: Should have, add when possible
+- P3: Nice to have, future milestone
 
-### Commit node rendering (T5)
-- **Normal commit:** Filled circle, r=4, colored by lane
-- **Merge commit:** Hollow circle (filled with background), r=5-6, stroke=2px with lane color. This is the most common approach across tools (GitKraken, vscode-git-graph)
-- **HEAD commit:** Same as normal but consider adding a small ring or glow effect
-- **WIP node:** Hollow circle with dashed stroke, r=4, muted lane color
+---
 
-### Color palette
-- 8 cycling colors is standard (GitKraken uses 8, vscode-git-graph uses 8-10)
-- Current palette is well-chosen for dark backgrounds with good contrast
-- Color is assigned by column number, which means a lane's color is stable as long as it stays in the same column
-- When a lane merges and frees its column, a new branch reusing that column gets the same color -- this is expected behavior and matches GitKraken
+## Competitor Feature Analysis
+
+How the established Git GUIs handle these three feature groups.
+
+### Remote Operations
+
+| Feature | GitKraken | Fork | Tower | GitHub Desktop | Our Approach |
+|---------|-----------|------|-------|----------------|--------------|
+| Fetch | Toolbar button; one-click; shows progress bar | Toolbar button; streams progress | Toolbar; streaming progress with phase names | Toolbar; spinner only | Toolbar + status bar streaming |
+| Pull | Toolbar dropdown (merge vs rebase option) | Toolbar; detects divergence before pulling | Toolbar; merge vs rebase option | Single button; merge only | Merge only for v0.3; rebase deferred |
+| Push | Toolbar; detects "no upstream", offers to set | Toolbar; offers `-u origin` when no upstream | Toolbar; same | Toolbar; handles upstream automatically | Offer to set upstream automatically |
+| Auth failure | Modal with SSH troubleshooting link | Clear error dialog | Modal with credential manager link | Modal with auth help link | Structured error dialog with guidance |
+| Ahead/behind | Shown in branch list next to branch name | Shown as ↑↓ counters in branch list | Shown in branch list | Shown in status bar at bottom | Add to existing branch sidebar |
+| Force push | Confirmation dialog; uses `--force-with-lease` | Confirmation + warning; uses `--force-with-lease` | Confirmation; uses `--force-with-lease` | Confirmation dialog; plain `--force` | `--force-with-lease` with confirmation |
+
+### Stash
+
+| Feature | GitKraken | Fork | Tower | GitHub Desktop | Our Approach |
+|---------|-----------|------|-------|----------------|--------------|
+| Create | Toolbar "Stash" button; optional message dialog | Toolbar button; prompts for description | Sidebar "New Stash"; message field | "Stash changes" in Changes tab | Staging panel button + optional name dialog |
+| Pop vs Apply | Both available from stash context menu | Both available; default action in sidebar is Apply | Both available in stash list context menu | Only "Pop" available (simpler UX) | Provide both; Pop = apply + drop |
+| Drop | Context menu on stash entry | Context menu | Context menu | Not available | Context menu on sidebar stash entry |
+| Named stashes | Always prompted | Optional description in create dialog | Required (short name field) | Not available | Optional message field on create |
+| Preview | Click stash in sidebar shows diff in main panel | Click stash shows diff in right pane | Click stash shows diff | No preview | Reuse DiffPanel for stash click (v0.3.x) |
+| Include untracked | Checkbox in create dialog | Checkbox option | Option in dialog | Not configurable | Checkbox in create dialog; default off |
+
+### Commit Context Menu
+
+| Feature | GitKraken | Fork | Tower | VS Code Git Graph | Our Approach |
+|---------|-----------|------|-------|-------------------|--------------|
+| Copy SHA | Top of menu | Top of menu | Top of menu | Top of menu | Top of menu |
+| Copy message | Present | Present | Present | Not present | Present |
+| Checkout commit | "Checkout this commit" | "Checkout '<sha>'" | "Checkout Commit" | "Checkout" | "Checkout commit" with detached HEAD warning |
+| Create branch | "Create branch here" (dialog) | "Create New Branch" (dialog) | "New Branch from Commit" (dialog) | "Create Branch" | Dialog: name field + optional checkout |
+| Create tag | "Create tag here" (dialog: lightweight vs annotated) | "Tag '<sha>'" (dialog: name + message) | "New Tag from Commit" (dialog) | "Create Tag" | Dialog: name + optional message (annotated) |
+| Cherry-pick | "Cherry pick commit" (with confirmation) | "Cherry-Pick commit" | "Cherry-Pick Commit" | "Cherry pick" | Confirmation dialog showing commit message |
+| Revert | "Revert commit" (creates revert commit) | "Revert commit" | "Revert Commit" | "Revert" | Confirmation dialog; `--no-edit` for v0.3 |
+| Reset (soft/mixed/hard) | Present (dangerous; with warnings) | Present | Present | Present | **NOT in v0.3** — too dangerous without undo |
+| Merge into current | Present in some tools | Present | Present | Not present | **Defer** — requires conflict handling |
+| Interactive rebase from here | GitKraken Pro only | Present | Present | Not present | **Defer** — high complexity |
+
+---
+
+## UX Behavior Specifications
+
+### Remote Operation UX Flow
+
+**Push (happy path):**
+1. User clicks Push button (toolbar or keyboard shortcut)
+2. If no upstream: show modal "Push and set upstream to origin/<branch>?" with confirm/cancel
+3. Show status: "Pushing to origin/<branch>…" with streaming progress lines
+4. On success: update ahead/behind counts (↑0), show brief "Pushed" toast
+5. Graph refreshes (remote branch ref moves to HEAD)
+
+**Push (rejection — non-fast-forward):**
+1. Git exits non-zero with "rejected" in stderr
+2. Show error dialog: "Push rejected. The remote has commits you don't have locally. Pull first, then push." with Pull / Cancel buttons
+3. Do NOT offer force push automatically — require user to explicitly request it
+
+**Pull (conflict detected):**
+1. Git exits non-zero; `.git/MERGE_HEAD` exists
+2. Show error: "Pull completed with conflicts. Resolve conflicts in your editor, then commit." List conflicting files.
+3. Refresh working tree status (conflicted files show as "conflicted" in staging panel)
+4. **No conflict resolution UI** — explicitly out of scope for v0.3
+
+**Fetch (always safe):**
+1. No confirmation needed
+2. Stream progress
+3. On completion: refresh remote refs, update ahead/behind counts silently
+4. Show brief "Fetched" indicator
+
+### Stash Create UX Flow
+
+**Standard stash create:**
+1. User clicks "Stash" in staging panel toolbar (or context menu)
+2. Optional name dialog appears (single text field; OK with empty uses auto-name; Enter confirms)
+3. `git stash push [-m "name"]` runs
+4. Working tree status refreshes (all changes disappear)
+5. Stash list in sidebar updates
+
+**Pop/Apply UX:**
+- Pop: confirm if working tree has changes ("Pop will apply stash and drop it. You have unstaged changes — continue?")
+- Apply: no confirmation needed (non-destructive)
+- Conflict on pop/apply: show "Conflicts detected" error, list files, refresh status
+
+### Commit Context Menu UX Flow
+
+**Cherry-pick:**
+1. Right-click commit → "Cherry-pick"
+2. Confirmation: "Apply changes from '<first 50 chars of message>' to current branch?" with SHA shown
+3. On success: graph refreshes with new commit at HEAD
+4. On conflict: "Cherry-pick paused — conflicts detected. Resolve conflicts, then run `git cherry-pick --continue` in terminal." (terminal fallback for v0.3)
+
+**Create branch from commit:**
+1. Right-click commit → "Create Branch Here"
+2. Modal: text input for branch name, checkbox "Checkout new branch" (default: checked)
+3. Validate: branch name not empty, no spaces, no invalid chars (real-time validation)
+4. `git branch <name> <sha>` (+ `git checkout <name>` if checkbox checked)
+5. Graph and sidebar refresh
+
+**Create tag from commit:**
+1. Right-click commit → "Create Tag"
+2. Modal: tag name field (required), annotation message field (optional; if provided creates annotated tag)
+3. `git tag <name> <sha>` or `git tag -a <name> <sha> -m "<message>"`
+4. Sidebar tags section refreshes
+
+**Revert:**
+1. Right-click commit → "Revert Commit"
+2. Confirmation: "Create a new commit that undoes the changes from '<message>'?"
+3. `git revert <sha> --no-edit`
+4. Graph refreshes with new revert commit at HEAD
+5. On conflict: same terminal fallback message as cherry-pick
 
 ---
 
 ## Sources
 
-### HIGH confidence (official docs, source code, working implementations)
-- [pvigier's Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) -- comprehensive algorithm comparison with benchmarks
-- [DoltHub: Drawing a Commit Graph](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/) -- working SVG implementation with bezier curve control point formulas
-- [Git Extensions Revision Graph wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph) -- architecture of lane-based graph rendering
-- [vscode-git-graph issue #194: Color and position mapping](https://github.com/mhutchie/vscode-git-graph/issues/194) -- maintainer explanation of why globally consistent colors are technically hard
-- [vscode-git-graph issue #254: Branch colors on commits](https://github.com/mhutchie/vscode-git-graph/issues/254) -- user expectations for color visibility near commit messages
-- Trunk codebase: `src-tauri/src/git/graph.rs`, `src/components/LaneSvg.svelte`, `src/components/CommitRow.svelte` -- current implementation
+### HIGH confidence (direct product observation and established patterns)
+- GitKraken commit graph and toolbar UX — direct product use; feature page at gitkraken.com/features
+- Fork for macOS — direct product use; fork.dev
+- Tower for macOS — direct product use; git-tower.com
+- GitHub Desktop — open source; github.com/desktop/desktop — can verify exact behavior in source
+- VS Code git-graph extension — open source; github.com/mhutchie/vscode-git-graph — well-documented behavior
 
-### MEDIUM confidence (feature pages, cross-referenced claims)
-- [GitKraken Commit Graph features page](https://www.gitkraken.com/features/commit-graph) -- visual features and customization options
-- [SmartGit branch-line coloring discussion](https://smartgit.userecho.com/communities/1/topics/6-log-make-branch-line-coloring-easier-to-understand-sg-11160) -- color assignment strategies and user confusion patterns
-- [Sourcetree JIRA SRCTREEWIN-3477](https://jira.atlassian.com/browse/SRCTREEWIN-3477) -- stable branch color demand
-- [gitgraph.js octopus merge issue #204](https://github.com/nicoespeon/gitgraph.js/issues/204) -- challenges of multi-parent visualization
+### MEDIUM confidence (documentation and release notes)
+- git stash documentation — git-scm.com/docs/git-stash — command flags and behavior
+- git revert documentation — git-scm.com/docs/git-revert — `--no-edit` behavior
+- git cherry-pick documentation — git-scm.com/docs/git-cherry-pick — conflict state
 
-### LOW confidence (single source, unverified)
-- [Hacker News discussion on graph algorithms](https://news.ycombinator.com/item?id=21079643) -- anecdotal tool comparisons
-- [git-graph-drawing collection](https://github.com/indigane/git-graph-drawing) -- catalog of implementations without detailed analysis
+### Project context (HIGH confidence)
+- PROJECT.md — existing architecture, patterns, explicit feature list for v0.3, out-of-scope decisions
+
+---
+*Feature research for: Trunk v0.3 — Remote ops, stash, commit context menu*
+*Researched: 2026-03-10*

@@ -1,178 +1,211 @@
 # Project Research Summary
 
-**Project:** Trunk v0.2 -- GitKraken-quality Commit Graph
-**Domain:** DAG commit graph visualization in a desktop Git GUI (Tauri 2 + Svelte 5 + Rust)
-**Researched:** 2026-03-09
+**Project:** Trunk v0.3
+**Domain:** Tauri 2 desktop Git GUI — remote operations, stash management, commit context menu
+**Researched:** 2026-03-10
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Building GitKraken-quality commit graph lane rendering requires zero new dependencies. The existing Rust backend already computes all necessary lane data (column assignments, edge types, pass-through edges, color indices) via an O(n) single-pass algorithm. The frontend gap is purely rendering: `LaneSvg.svelte` currently draws only a commit dot and ignores the rich edge data the backend provides. The work is a single component rewrite (LaneSvg.svelte) plus minor Rust/TypeScript plumbing to expose two new fields (`max_columns` and `is_branch_tip`). The rendering technique is per-row inline SVG with `overflow: visible`, using cubic Bezier `C` commands with a 0.8 control-point factor for smooth curves -- the same approach used by vscode-git-graph, the most popular open-source git graph renderer.
+Trunk v0.3 adds three self-contained capability groups to an existing, well-structured Tauri 2 + Svelte 5 + Rust desktop Git GUI: remote operations (push/pull/fetch), stash management (create/pop/apply/drop), and a per-commit right-click context menu (copy, checkout, branch, tag, cherry-pick, revert). The codebase already has the foundational architecture in place — the inner-fn command pattern, CommitCache mutation/emit cycle, native Tauri menu API usage, and filesystem watcher. All three feature groups extend existing patterns rather than introducing new ones, and no new Cargo crates or Tauri plugins are required.
 
-The recommended approach is a strict bottom-up build order: harden the Rust lane algorithm first (fix potential ghost lanes and lane collisions, add octopus merge test fixtures), then add the two new data fields, then rewrite LaneSvg in three incremental steps (straight rails, then curves, then dot/polish). This order ensures rendering code always consumes correct data, and each step produces a visible improvement that can be verified before moving on. The 8 table-stakes features identified in research all have existing backend support; the work is almost entirely frontend SVG rendering.
+The single most critical implementation decision — already validated in PROJECT.md — is that remote operations must shell out to the system `git` CLI rather than use libgit2's remote callbacks. libgit2's SSH agent forwarding and HTTPS credential helper integration are unreliable in GUI app contexts (SSH_AUTH_SOCK is absent when launched from Finder; git2 does not invoke OS credential helpers). All major Tauri-based Git clients (GitButler, Aho) follow the same shell-out approach. Stash operations and commit object manipulation (checkout, tag, branch-from-commit) use git2 natively via existing APIs. Cherry-pick and revert also shell out to the git CLI to avoid reimplementing git's conflict state machine.
 
-The primary risks are sub-pixel gaps between adjacent row SVGs (the likely cause of v0.1's lane rendering failure), inconsistent SVG widths causing jagged commit message alignment, and Bezier curve misalignment at row boundaries. All three have well-documented prevention strategies: 0.5px line overlap with `overflow: visible`, fixed graph pane width from `max_columns`, and a single logical curve split across rows rather than two independent curves. These must be addressed in the first rendering phase -- they are the difference between "looks broken" and "looks professional."
+The primary risks are: subprocess stdin blocking indefinitely when credentials are unavailable (mitigated by `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND=ssh -o BatchMode=yes`); stale CommitCache after fetch (mitigated by always running `walk_commits` + `repo-changed` emit after any mutation); and stash index instability under concurrent modifications (mitigated by keeping v0.3 stash workflow simple and documented). All pitfalls have clear, low-cost preventions that fit within the existing architecture patterns.
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new dependencies are needed. The rendering is pure SVG path math -- at most 5-6 path types, each a single `<path>` element with a computed `d` attribute. Libraries like d3, snap.svg, and svg.js were evaluated and rejected (30-100KB for what amounts to string concatenation). Canvas rendering was also rejected -- it breaks text selection, accessibility, CSS styling, and Svelte's declarative model.
+No new dependencies are required. The entire v0.3 feature set is covered by the existing stack: `git2 0.19.0` (libgit2 1.8.1 vendored), `tokio::process::Command` (Tauri's async runtime is already Tokio), `@tauri-apps/api/menu` (already imported and used in CommitGraph.svelte), and `navigator.clipboard.writeText()` (works in Tauri 2 WebView without a plugin). The `tauri-plugin-shell` plugin was explicitly evaluated and rejected — remote ops run from Rust Tauri commands, not from JS, so exposing shell execution to the frontend would be the wrong abstraction.
 
-**Core technologies (all existing, unchanged):**
-- **Tauri 2 + Rust + git2:** Desktop shell and git operations -- provides the lane algorithm and commit data
-- **Svelte 5:** UI framework -- `$derived` reactivity for path string computation, fine-grained updates
-- **Pure inline SVG:** Per-row `<svg>` with `overflow: visible` -- no SVG library needed, ~50 lines of path math
-- **@humanspeak/svelte-virtual-list:** Virtual scrolling -- ~40 DOM nodes regardless of history size
-- **CSS custom properties:** Lane colors via `var(--lane-N)` -- enables theme customization without component changes
+**Core technologies:**
+- `std::process::Command` / `tokio::process::Command`: shell-out for remote ops — inherits SSH agent, OS credential helpers, SSH config for free; no new crate
+- `git2 0.19.0`: stash save/pop/drop, checkout commit (detached HEAD), create tag — all APIs available in this version
+- `@tauri-apps/api/menu` (`MenuItem`): commit row context menu — same import already used for column header menu; no new Tauri capability declaration needed
+- `navigator.clipboard.writeText()`: copy SHA / copy message — no plugin needed; works in Tauri 2 WebView
+
+**Key version notes:**
+- `git2::Repository::stash_pop` signature should be confirmed on docs.rs before writing implementation (MEDIUM confidence on exact API surface)
+- All other git2 APIs listed (`stash_save`, `stash_drop`, `set_head_detached`, `tag_lightweight`, `cherrypick`, `revert`) are confirmed present in libgit2 1.8.1
 
 ### Expected Features
 
-**Must have (table stakes -- defines "GitKraken-quality"):**
-- T1: Vertical lane rails -- continuous colored lines per active branch
-- T2: Smooth Bezier curves for merge/fork connections
-- T3: Lane color consistency per branch (already working via `color_index`)
-- T4: Lane packing / column reclamation (already implemented in Rust, needs verification)
-- T5: Merge commit visual distinction (partially done, needs polish)
-- T6: Pass-through lanes for all active branches through every row
-- T7: HEAD-chain pinned to column 0 (already implemented in Rust)
-- T8: WIP row connected to HEAD commit via lane line
+All surveyed Git GUIs (GitKraken, Fork, Tower, GitHub Desktop, VS Code git-graph) converge on the same feature set for these three groups. The table stakes list is unambiguous and well-established.
 
-**Should have (differentiators, ship soon after MVP):**
-- D5: Dim/ghost merge commits -- CSS opacity toggle, reduces noise
-- D2: Ref label color connection to lane -- small colored indicator matching branch lane
-- D4: Graph width control -- configurable `laneWidth` via drag handle
+**Must have for v0.3 (table stakes):**
+- Fetch all remotes — safest remote op; universally expected; read-only
+- Pull current branch — core daily workflow
+- Push current branch — core daily workflow; handle "no upstream" by offering `-u origin`
+- Progress feedback during remote ops — without it the app feels frozen
+- Auth failure shown clearly — translate raw git stderr into actionable guidance
+- Ahead/behind counts in branch sidebar — makes remote ops visible and meaningful
+- Stash create (with optional name) — daily context-switch action
+- Stash pop — the complement of create; without it stash is useless
+- Stash apply (without drop) — all major tools include both pop and apply
+- Stash drop — necessary for list hygiene
+- Copy SHA / copy message — trivial to implement, high daily use
+- Checkout commit (detached HEAD) — follows existing checkout pattern
+- Create branch from commit — high-value; established dialog pattern
+- Create tag from commit — same dialog pattern as create branch
+- Cherry-pick — core power-user action; universally present in context menus
+- Revert — the "safe" counterpart to cherry-pick; always paired with it
 
-**Defer to v0.3+:**
-- D1: Crossing-lane detection with visual offset (complex, edge case)
-- D3: Collapsible merge trains (significant new feature requiring UI state + lane recalculation)
-- D6: Author avatars (network dependency)
-- D7: Keyboard navigation (separate milestone)
-- D8: Animated edge transitions (polish, may conflict with virtual scrolling)
-- D9: Branch-specific color overrides (requires config store + Rust algorithm change)
+**Should have (add after v0.3 validation):**
+- Stash preview on sidebar click — reuses existing DiffPanel; no new backend needed
+- Push --force-with-lease — add when force-push is first requested; one-line change from `--force`
+- Revert with edit message — polish pass after basic revert ships; remove `--no-edit` flag
+
+**Defer to v0.4+:**
+- Conflict resolution UI — enormous scope; explicitly deferred in PROJECT.md
+- Interactive rebase — high complexity; Tower spent significant engineering on this
+- Cherry-pick series (multi-select) — requires multi-select graph first
+- SSH key / credential manager UI — platform-specific; multi-week scope per platform
+
+**Anti-features to avoid:**
+- In-app SSH key management — rely on system git auth; SourceTree-level scope and bugs
+- HTTPS credential manager — rely on git's configured credential helper
+- Force push without confirmation — always require an explicit acknowledgment dialog
+- Stash include-untracked silently — makes it an explicit checkbox; default off
 
 ### Architecture Approach
 
-The architecture change is minimal by design. The Rust algorithm already emits all edge data (pass-through straights, forks, merges) per commit row. Two small additions are needed: a `max_columns` field for consistent SVG width across all rows, and an `is_branch_tip` boolean for correct incoming-rail rendering. The frontend change is concentrated in a single component rewrite (`LaneSvg.svelte`) that classifies edges into three render categories (passthrough, continuation, curve) and draws them in z-order (rails, curves, dot). No changes to `CommitRow`, `CommitGraph`, `CommitCache`, or the IPC layer are required beyond threading the new fields through.
+The existing architecture is clean and extensible. New features slot into three established patterns: the inner-fn pattern (pure `_inner` function + `spawn_blocking` Tauri command wrapper), the cache-repopulate-before-emit pattern (rebuild `CommitCache` before emitting `repo-changed`), and the native Tauri menu pattern (`Menu.new({ items }) + menu.popup()`). Remote ops introduce one new pattern: `tokio::process::Command` (natively async, no `spawn_blocking` wrapper needed) with line-by-line stderr streaming via `app.emit("remote-progress", ...)`.
 
 **Major components:**
-1. **graph.rs (minor change)** -- Track `max_columns` and `is_branch_tip` during the existing walk
-2. **types.rs/types.ts (minor change)** -- New `GraphResponse` wrapper struct and `is_branch_tip` field
-3. **LaneSvg.svelte (full rewrite)** -- Edge classification, SVG path rendering (straights + Beziers + dot)
-4. **CommitGraph/CommitRow (prop threading)** -- Pass `maxColumns` down to LaneSvg
+1. `commands/remote.rs` (new) — `git_fetch`, `git_pull`, `git_push` using `tokio::process::Command`; emits `remote-progress` events per stderr line
+2. `commands/stash.rs` (new) — `stash_save`, `stash_pop`, `stash_drop` using git2; follows inner-fn + spawn_blocking pattern
+3. `commands/commit.rs` (extend) — add `checkout_commit`, `create_tag`, `cherry_pick` (shell-out), `revert_commit` (shell-out)
+4. `commands/branches.rs` (extend) — add `from_oid: Option<String>` to existing `create_branch` for branch-from-commit support
+5. `CommitGraph.svelte` (extend) — add `showCommitContextMenu` handler; pass `oncontextmenu` prop down to `CommitRow`
+6. `BranchSidebar.svelte` (extend) — fetch/pull/push buttons + inline `remote-progress` display
+7. `StagingPanel.svelte` (extend) — stash save button + stash list with pop/apply/drop per entry
+
+**No changes needed to:** `state.rs`, `watcher.rs`, `error.rs`, `invoke.ts`, `App.svelte` (minimal at most)
 
 ### Critical Pitfalls
 
-1. **Sub-pixel gaps between rows (#1, CRITICAL)** -- Draw lines from `y=-0.5` to `y=rowHeight+0.5` with `overflow: visible`. Use `stroke-width: 2` (even number) and `stroke-linecap: round`. Test at 100%, 110%, 125%, 150%, 200% zoom. This was likely the primary cause of v0.1's lane rendering failure.
+1. **SSH stdin blocking indefinitely** — git subprocess with no TTY blocks forever waiting for credentials that never arrive; a `spawn_blocking` thread hangs permanently. Prevention: always set `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND=ssh -o BatchMode=yes` on the child process. Use `tokio::process::Command` (natively async) rather than wrapping `std::process::Command` in `spawn_blocking`. Test before any user-facing remote op ships.
 
-2. **Inconsistent SVG width / jagged message alignment (#6, CRITICAL)** -- Use `max_columns * laneWidth` for ALL rows' SVG width instead of per-commit column width. The Rust algorithm returns this as page-level metadata. Consider setting width via CSS custom property `--graph-width` to avoid 40-component re-render storms (#8).
+2. **CommitCache not refreshed after fetch** — remote tracking branch pills in the commit graph stay at old positions because no git2 mutation was made. Prevention: always run `walk_commits` + `cache.insert` + emit `repo-changed` after every shell-out command exits with code 0, not just after git2 mutations.
 
-3. **Bezier curve misalignment at row boundaries (#2, CRITICAL)** -- Define each fork/merge curve as a single logical Bezier spanning the full row height. Source row draws from commit dot (y=MID) to row bottom (y=rowHeight). Destination row continues with a straight rail from its top. Do NOT attempt to split one curve across two independent SVGs with independent control points.
+3. **Non-fast-forward push rejection shown as raw git stderr** — git's rejection output contains ANSI codes, `remote:` prefixes, and noise that is unreadable in a UI. Prevention: parse stderr for `(non-fast-forward)` / `(fetch first)` patterns; return structured `TrunkError { code: "push_rejected_non_ff" }` so the frontend can show an actionable "Pull first, then push" dialog instead of raw text.
 
-4. **Ghost lanes after merge (#4, CRITICAL)** -- Verify the Rust algorithm properly clears `active_lanes` slots after merges. Add dedicated test: after a merge, the merged branch's column must have NO `Straight` edge in subsequent rows. Check `pending_parents` interaction at line 145 of graph.rs for potential lane collision (#9).
+4. **Cherry-pick/revert on merge commits produces cryptic errors** — git requires `-m mainline` for these operations on merge commits; without it the command fails with an opaque error. Prevention: disable cherry-pick and revert menu items when `commit.is_merge === true`. Use `MenuItem::new({ enabled: !commit.is_merge })`. Never silently hide — gray out so users know the action exists but is unavailable.
 
-5. **Pass-through edges not rendered (#10, CRITICAL)** -- The renderer must draw EVERY `Straight` edge from the Rust algorithm, including those where `from_column == to_column` and `from_column != commit.column`. These are active branch rails passing through the row. Missing these was likely a contributing factor to v0.1's visual bugs.
+5. **Stash index instability** — `stash@{0}` shifts when a new stash is created; popping by numeric index after the list shifts applies to the wrong stash. Prevention: for v0.3, document and encourage single-stash workflows. For pop operations, re-verify the OID at the index matches what the user selected before executing, or scan the stash list by OID on the Rust side.
 
 ## Implications for Roadmap
 
-Based on research, suggested phase structure:
+Based on the dependency graph in FEATURES.md and the build order in ARCHITECTURE.md, four phases are suggested. Each group is internally self-contained; the ordering reflects risk (lowest first) and logical UX progression.
 
-### Phase 1: Lane Algorithm Hardening
+### Phase 1: Stash Operations
 
-**Rationale:** All frontend rendering depends on correct data from Rust. Fixing algorithm bugs after rendering code exists means debugging two layers simultaneously. This was likely a pain point in v0.1.
-**Delivers:** Verified, tested lane algorithm with no ghost lanes, no lane collisions, correct octopus merge handling, and two new data fields (`max_columns`, `is_branch_tip`).
-**Addresses:** T4 (lane packing verification), T7 (HEAD pinning verification), foundation for all rendering.
-**Avoids:** Pitfalls #4 (ghost lanes), #5 (octopus explosion), #9 (lane collision).
-**Scope:** Add `GraphResponse` struct, `is_branch_tip` field, `max_columns` tracking. Add test fixtures for octopus merges, nested merges, long-running branches. Add collision detection assertions. Update `CommitCache` and IPC types.
+**Rationale:** Stash is purely local, uses git2 (no shell-out complexity), follows the established inner-fn pattern exactly, and can be tested without a remote. No new dependencies. Lowest risk. Completing stash first exercises the cache-repopulate-before-emit pattern that all subsequent phases also use.
 
-### Phase 2: SVG Rendering Foundation (Straight Rails)
+**Delivers:** Stash create (with optional name), stash pop, stash apply, stash drop; stash list in sidebar wired to all operations; conflict detection on pop.
 
-**Rationale:** Straight vertical rails are the single biggest visual leap from "dots only" to "real graph." They exercise 80%+ of the rendering pipeline (SVG width, pass-through edges, z-ordering, row continuity) without the complexity of Bezier curves. This phase proves the per-row SVG approach works and catches the sub-pixel gap issue early.
-**Delivers:** Continuous vertical lane rails through the entire graph, consistent SVG width, properly z-ordered commit dots. The graph immediately looks like a real git graph.
-**Addresses:** T1 (vertical rails), T6 (pass-through lanes), T3 (color consistency visual verification), T5 (merge dot polish).
-**Avoids:** Pitfalls #1 (sub-pixel gaps), #6 (SVG width inconsistency), #10 (missing pass-through edges), #13 (dot z-order).
+**Addresses:** All P1 stash features from FEATURES.md.
 
-### Phase 3: Bezier Curve Rendering
+**Avoids:** Pitfalls 5 (staged changes behavior — document clearly in UI), 6 (index instability — guard OID match before pop), 7 (apply vs pop distinction — always use `stash_pop` for the pop action). Also requires: guard against stashing on an unborn HEAD (git2 `stash_save` requires at least one commit).
 
-**Rationale:** Curves are the hardest per-row SVG rendering problem and should be isolated into their own phase so failures are easy to diagnose. With straight rails already working, adding curves is additive -- if curves break, you can revert without losing the rail progress.
-**Delivers:** Smooth cubic Bezier fork/merge edges. The graph goes from "functional" to "GitKraken-quality."
-**Addresses:** T2 (smooth curves).
-**Avoids:** Pitfalls #2 (curve row-boundary misalignment), #11 (jagged curves at low stroke width).
+**Needs research during planning:** No — git2 stash API is well-documented; inner-fn pattern is established. Confirm `stash_pop` signature on docs.rs before writing implementation.
 
-### Phase 4: WIP Row and Polish
+### Phase 2: Commit Context Menu
 
-**Rationale:** With all commit rows rendering correctly, the WIP row integration and visual polish are incremental additions that bring the graph to release quality.
-**Delivers:** WIP row connected to HEAD via dashed lane line, tuned lane width (12px to 16px), color palette accessibility fix for `--lane-7`, dimmed merge commits toggle.
-**Addresses:** T8 (WIP row connection), D5 (dim merge commits), lane color accessibility (#12).
-**Avoids:** Pitfall #16 (WIP not in lane graph), #12 (color palette contrast).
+**Rationale:** The Tauri native menu pattern is already working in CommitGraph.svelte (column header menu). The majority of commit menu actions (copy SHA/message, checkout commit, create branch, create tag) use git2 APIs already validated in the codebase. Cherry-pick and revert shell out to the git CLI, but they share infrastructure with remote ops and are simpler (no streaming needed). Building the menu framework in this phase keeps Phase 3 focused on async streaming.
 
-### Phase 5: Differentiator Features (optional for v0.2)
+**Delivers:** Right-click context menu on every commit row; copy SHA/message (clipboard, no backend); checkout commit (detached HEAD with warning); create branch from commit (dialog with optional checkout); create tag from commit (lightweight; optional annotation message); cherry-pick (confirmation dialog + conflict detection); revert commit (confirmation dialog + conflict detection).
 
-**Rationale:** These are polish features that elevate the graph from "functional" to "delightful." They are independent of each other and can ship in any order after the core rendering is solid.
-**Delivers:** Ref label color connection, graph width control, re-render optimization via CSS variable.
-**Addresses:** D2 (ref label connection), D4 (graph width control).
-**Avoids:** Pitfall #8 (re-render storms from reactive width recalculation).
+**Addresses:** All P1 commit context menu features from FEATURES.md.
+
+**Avoids:** Pitfall 8 (use `menu.popup()` with no position arguments — reads OS cursor directly); Pitfall 9 (capture commit OID in local variable before calling `popup()` — OID string is immutable); Pitfalls 10/11 (disable cherry-pick and revert when `commit.is_merge === true`); Pitfall 12 (track pending operation state to prevent double-trigger on rapid right-clicks).
+
+**Needs research during planning:** No — Tauri menu API is proven in the existing codebase. git2 APIs for checkout/tag/branch are established.
+
+### Phase 3: Remote Operations
+
+**Rationale:** Remote ops are the most complex feature group. They introduce a new async pattern (`tokio::process::Command` with event streaming), require careful environment configuration to prevent blocking, and cannot be unit-tested (require a real remote — integration tests with local bare repos are needed). Building last means all simpler infrastructure is in place and the shell-out pattern is already established from Phase 2.
+
+**Delivers:** Fetch all remotes (with progress streaming); pull current branch (merge only; rebase deferred to v0.4); push current branch (with upstream auto-set for new branches); `remote-progress` Tauri event for per-line stderr output; structured error taxonomy for auth failures and non-fast-forward rejections.
+
+**Addresses:** All P1 remote op features from FEATURES.md.
+
+**Avoids:** Pitfall 1 (set `GIT_TERMINAL_PROMPT=0`, `GIT_SSH_COMMAND=ssh -o BatchMode=yes`, `Stdio::piped()` on all streams); Pitfall 2 (structured non-FF error code, ANSI code stripping); Pitfall 3 (SSH_AUTH_SOCK inheritance — document Finder-launch limitation for v0.3; use `launchctl getenv SSH_AUTH_SOCK` workaround if desired); Pitfall 4 (always rebuild CommitCache after fetch exits with code 0).
+
+**Needs research during planning:** Yes — confirm `tokio::process::Command` stderr streaming pattern against the exact Tauri 2 runtime version. Plan for integration test setup (local bare repos). Verify `GIT_TERMINAL_PROMPT=0` behavior on macOS before writing tests.
+
+### Phase 4: Ahead/Behind Counts + Progress UX Polish
+
+**Rationale:** Ahead/behind counts in the branch sidebar complete the remote ops story — without them, fetch/pull/push have no visible effect on the sidebar. Progress UX polish (parsing git's `\r`-terminated progress lines into structured phase display) elevates the experience from functional to polished. Both are incremental additions on top of working remote ops.
+
+**Delivers:** Ahead/behind commit counts next to each branch in sidebar (updated after fetch/pull/push); improved progress display with phase-by-phase parsing ("Counting objects", "Compressing", "Writing") rather than raw stderr lines.
+
+**Addresses:** `ahead/behind counts` (P1 FEATURES.md), `streaming progress with parsed output` (P2 differentiator from FEATURES.md).
+
+**Avoids:** The UX pitfall of "fetch vs pull confusion" — ahead/behind counts make the distinction visible and meaningful after each operation.
+
+**Needs research during planning:** No — `git rev-list --count HEAD..@{u}` and `@{u}..HEAD` are standard git commands. Progress line format is stable across git versions.
 
 ### Phase Ordering Rationale
 
-- **Data before rendering:** Phases 1-2 ensure the Rust algorithm is battle-tested before the frontend consumes its output. This avoids the v0.1 failure mode of debugging algorithm bugs through rendering symptoms.
-- **Rails before curves:** Phase 2 (straight lines) exercises the entire rendering pipeline with minimal geometry complexity. Phase 3 (curves) adds only the Bezier path computation without changing any other rendering infrastructure.
-- **Core before polish:** Phases 1-3 deliver a fully functional graph. Phases 4-5 are refinement that can be cut from v0.2 scope if time is tight.
-- **Pitfall-driven ordering:** Each phase explicitly addresses the pitfalls relevant to its scope, preventing the accumulation of visual bugs that killed v0.1.
+- **Stash first** because it is purely local (no auth edge cases), uses the established inner-fn/git2 pattern, and is completable in isolation
+- **Context menu second** because the Tauri menu pattern is already proven; most actions use git2 (low risk); cherry-pick/revert shell-out bridges into the pattern needed for Phase 3
+- **Remote ops third** because they introduce the most complexity (async streaming, credential handling, environment setup) and benefit from the team having internalized all earlier patterns
+- **Polish fourth** because ahead/behind and progress parsing are incremental improvements on top of working remote ops, not prerequisites for any other phase
+
+This ordering matches the build order specified in ARCHITECTURE.md (Stash → Context Menu → Remote Ops) with Phase 4 as an explicit polish gate before v0.3 is considered shippable.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 1:** May need phase research for the `pending_parents` / `active_lanes` interaction that causes lane collisions (Pitfall #9). The current code analysis identified the risk but the fix needs careful validation against the actual algorithm logic.
-- **Phase 3:** May need phase research for the Bezier control point factor. Research found 0.8 (vscode-git-graph) and 0.4 (DoltHub interpretation) -- these may describe the same thing differently (0.8 of half-row-height = 0.4 of full-row-height). Empirical tuning will be needed.
+Phases needing deeper research during planning:
+- **Phase 3 (Remote Operations):** Confirm `tokio::process::Command` stderr streaming approach against Tauri 2's actual runtime. Validate environment variable behavior (`GIT_TERMINAL_PROMPT`, `GIT_SSH_COMMAND`, `BatchMode`) on macOS. Plan for integration tests with local bare repos — unit tests cannot cover shell-out commands.
 
 Phases with standard patterns (skip research-phase):
-- **Phase 2:** Straight SVG line rendering is fully specified. The formulas, z-ordering, and sub-pixel gap fix are all documented with high confidence.
-- **Phase 4:** WIP row integration and CSS polish are straightforward implementation tasks.
-- **Phase 5:** Ref label coloring and graph width control are CSS/prop changes with no algorithmic complexity.
+- **Phase 1 (Stash):** git2 stash API is well-documented; inner-fn pattern is established in codebase. Only action needed: confirm `stash_pop` exact signature on docs.rs before writing implementation.
+- **Phase 2 (Context Menu):** Tauri menu API is proven in production in this codebase. All git2 operations are standard. No research needed.
+- **Phase 4 (Polish):** `git rev-list` count commands and git progress line format are stable and well-documented.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | Zero new dependencies. SVG path commands are a web standard. Bezier formula verified from vscode-git-graph source code. |
-| Features | MEDIUM-HIGH | Table stakes cross-referenced across GitKraken, Fork, Sourcetree, vscode-git-graph. Feature prioritization is clear. Minor uncertainty on optimal lane width (12px vs 16px). |
-| Architecture | HIGH | Existing codebase deeply analyzed. Change surface is small (one component rewrite + minor Rust plumbing). Data flow verified against Git Extensions and react-commits-graph architectures. |
-| Pitfalls | HIGH | 16 pitfalls identified with specific codebase line references. v0.1 failure modes reconstructed from code analysis. Prevention strategies verified against browser documentation and working implementations. |
+| Stack | HIGH | All decisions grounded in direct codebase inspection (Cargo.lock, package.json, capabilities/default.json, source files). No new dependencies needed — highest confidence when there is nothing to choose. |
+| Features | HIGH | Based on direct analysis of mature, shipping products (GitKraken, Fork, Tower, GitHub Desktop, VS Code git-graph). Feature expectations are well-established and converge across all surveyed tools. |
+| Architecture | HIGH | Derived from reading actual source files — not speculation. Integration points (CommitGraph.svelte, CommitRow.svelte, BranchSidebar.svelte, StagingPanel.svelte, commands/*.rs) are specific and concrete. |
+| Pitfalls | HIGH | Pitfalls grounded in direct codebase inspection and git/Tauri API knowledge. Pitfall 3 (macOS SSH_AUTH_SOCK on Finder launch) is MEDIUM — well-known pattern but macOS-specific; needs verification at testing time. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Bezier control point factor ambiguity:** Research found 0.8 (vscode-git-graph's `grid.y * 0.8`) and 0.4 (architecture doc's `rowHeight * 0.4`). These likely describe the same curve from different reference frames. Resolve empirically during Phase 3.
-- **Lane width (12px vs 16px):** STACK.md uses 12px throughout; ARCHITECTURE.md recommends 16px. Start with 16px per architecture recommendation, adjust during Phase 2 based on visual appearance with real repo data.
-- **WIP row synthetic node approach:** Either a synthetic WIP node in Rust or a frontend column calculation. The Rust approach is cleaner but touches more code. Decide during Phase 4 planning.
-- **Lane collision fix specifics (Pitfall #9):** The secondary parent column assignment at graph.rs line 145 may collide with `pending_parents` reservations. Needs careful code analysis during Phase 1 to determine if the bug exists in practice or is only theoretical.
+- **`git2::stash_pop` exact signature:** Research marked MEDIUM confidence on this specific API. Before writing `stash_pop_inner`, confirm the `index: usize` parameter and `StashApplyOptions` type on docs.rs for git2 0.19.0. Cost: 15 minutes.
+
+- **SSH_AUTH_SOCK on Finder-launched Tauri app:** Research identifies `launchctl getenv SSH_AUTH_SOCK` as the mitigation, but this is MEDIUM confidence (macOS-specific, Electron/Tauri app pattern). For v0.3, document as a known limitation rather than implementing the workaround. Validate by testing with a freshly launched `.app` bundle (not `cargo tauri dev`).
+
+- **Ahead/behind bundling vs separate command:** The current `BranchInfo` struct has `ahead: u32, behind: u32` fields noted as always-0. Confirm during Phase 4 planning whether ahead/behind data should be bundled into the existing `list_refs` response (requires running `git rev-list` per branch) or added as a separate on-demand command to avoid slowing down the sidebar refresh.
+
+- **`tokio::process::Command` stderr streaming spike:** The pattern is architecturally sound but should be validated with a proof-of-concept during Phase 3 planning before writing all three remote commands. A spike that streams `git fetch` stderr to the frontend via Tauri events will confirm the pattern works end-to-end.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [vscode-git-graph source (graph.ts)](https://github.com/mhutchie/vscode-git-graph/blob/develop/web/graph.ts) -- Bezier formula (0.8 factor), rendering architecture
-- [SVG Paths MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths) -- Cubic Bezier `C` command specification
-- [SVG overflow MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/overflow) -- `overflow: visible` behavior
-- [SVG shape-rendering MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Reference/Attribute/shape-rendering) -- `crispEdges` behavior
-- [Mastering SVG Seams (junkangworld)](https://junkangworld.com/blog/mastering-svg-seams-5-pro-fixes-for-flawless-shapes-2025) -- Anti-aliasing gap prevention
-- [Fix for gap between inline SVG elements](https://codepen.io/elliz/pen/dOOrxO) -- `display: block` fix
-- Trunk codebase: `graph.rs`, `types.rs`, `LaneSvg.svelte`, `CommitRow.svelte`, `CommitGraph.svelte`, `state.rs`, `history.rs`
+- `/Users/joaofnds/code/trunk/src-tauri/Cargo.lock` — git2 0.19.0, libgit2-sys 0.17.0+1.8.1, tauri 2.10.2 confirmed
+- `/Users/joaofnds/code/trunk/src-tauri/Cargo.toml` — full dependency list; no tauri-plugin-shell
+- `/Users/joaofnds/code/trunk/src-tauri/capabilities/default.json` — `core:menu:default` already declared; no new capabilities needed
+- `/Users/joaofnds/code/trunk/src/components/CommitGraph.svelte` — `Menu`, `CheckMenuItem` from `@tauri-apps/api/menu` already in use with `menu.popup()` pattern (no position args)
+- `/Users/joaofnds/code/trunk/.planning/PROJECT.md` — shell-out decision validated; explicit v0.3 feature list; conflict resolution deferred to v0.4+
+- Existing codebase: `commands/commit.rs`, `commands/branches.rs`, `commands/repo.rs`, `state.rs`, `watcher.rs`, `CommitRow.svelte`, `App.svelte`, `lib.rs`, `types.ts`, `invoke.ts`
 
 ### Secondary (MEDIUM confidence)
-- [DoltHub: Drawing a Commit Graph](https://www.dolthub.com/blog/2024-08-07-drawing-a-commit-graph/) -- Bezier control point interpolation, column assignment
-- [pvigier: Commit Graph Drawing Algorithms](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html) -- Algorithm comparison, performance benchmarks
-- [Git Extensions Revision Graph wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph) -- Per-row segment rendering architecture
-- [GitKraken Commit Graph features page](https://www.gitkraken.com/features/commit-graph) -- Visual reference for target quality
-- [vscode-git-graph issues #194, #254](https://github.com/mhutchie/vscode-git-graph/issues/194) -- Color/position mapping, maintainer explanations
-- [SmartGit branch-line coloring discussion](https://smartgit.userecho.com/communities/1/topics/6-log-make-branch-line-coloring-easier-to-understand-sg-11160) -- Color assignment strategies
+- git2 stash API (`stash_save`, `stash_pop`, `stash_drop`) — training data consistent with libgit2-sys 1.8.1; recommend docs.rs confirmation before writing stash commands
+- macOS SSH_AUTH_SOCK via `launchctl getenv` — known pattern in Electron/Tauri apps; not directly verified in this codebase
+- GitKraken, Fork, Tower, GitHub Desktop, VS Code git-graph — direct product use; feature pages; UX behavior patterns
 
 ### Tertiary (LOW confidence)
-- [Hacker News: graph algorithms discussion](https://news.ycombinator.com/item?id=21079643) -- Anecdotal tool comparisons
-- [gitgraph.js paginated rendering issue #215](https://github.com/nicoespeon/gitgraph.js/issues/215) -- Bitbucket's block rendering approach
-- [Codebase HQ: Building Commit Graphs](https://www.codebasehq.com/blog/building-commit-graphs) -- Row-based rendering with yStep spacing
+- Cherry-pick series (multi-select) — deferred to v0.4+; no research done on multi-select graph implementation
+- Ahead/behind bundling approach — standard git commands confirmed, but architecture decision (bundle vs separate command) not resolved
 
 ---
-*Research completed: 2026-03-09*
+*Research completed: 2026-03-10*
 *Ready for roadmap: yes*
