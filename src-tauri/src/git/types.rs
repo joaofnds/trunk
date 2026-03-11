@@ -39,6 +39,14 @@ pub struct RefLabel {
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub struct StashEntry {
+    pub index: usize,
+    pub name: String,
+    pub short_name: String,
+    pub parent_oid: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct GraphCommit {
     pub oid: String,
     pub short_oid: String,
@@ -78,7 +86,7 @@ pub struct RefsResponse {
     pub local: Vec<BranchInfo>,
     pub remote: Vec<BranchInfo>,
     pub tags: Vec<RefLabel>,
-    pub stashes: Vec<RefLabel>,
+    pub stashes: Vec<StashEntry>,
 }
 
 #[derive(Debug, Serialize, Clone)]
