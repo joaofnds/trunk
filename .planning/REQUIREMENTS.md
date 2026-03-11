@@ -10,10 +10,12 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 ### Stash
 
 - [ ] **STASH-01**: User can create a stash with an optional name
-- [ ] **STASH-02**: User can view the stash list in the sidebar
-- [ ] **STASH-03**: User can pop a stash entry (apply and remove)
-- [ ] **STASH-04**: User can apply a stash entry without removing it
-- [ ] **STASH-05**: User can drop a stash entry without applying it
+- [ ] **STASH-02**: User can see stash entries in the commit graph as synthetic rows with square dots and dashed connectors, positioned at their parent commit (same sentinel pattern as WIP row)
+- [ ] **STASH-03**: User can view the stash list in the sidebar
+- [ ] **STASH-04**: User can pop a stash entry (apply and remove)
+- [ ] **STASH-05**: User can apply a stash entry without removing it
+- [ ] **STASH-06**: User can drop a stash entry without applying it
+- [ ] **STASH-07**: User can right-click a stash row in the commit graph to see a context menu with pop, apply, and drop actions
 
 ### Commit Menu
 
@@ -62,7 +64,7 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 ### Stash (advanced)
 
-- **STASH-06**: User can preview stash diff before applying
+- **STASH-08**: User can preview stash diff before applying
 
 ## Out of Scope
 
@@ -84,35 +86,37 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 Which phases cover which requirements. Updated during roadmap creation.
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| STASH-01 | — | Pending |
-| STASH-02 | — | Pending |
-| STASH-03 | — | Pending |
-| STASH-04 | — | Pending |
-| STASH-05 | — | Pending |
-| MENU-01 | — | Pending |
-| MENU-02 | — | Pending |
-| MENU-03 | — | Pending |
-| MENU-04 | — | Pending |
-| MENU-05 | — | Pending |
-| MENU-06 | — | Pending |
-| MENU-07 | — | Pending |
-| REMOTE-01 | — | Pending |
-| REMOTE-02 | — | Pending |
-| REMOTE-03 | — | Pending |
-| REMOTE-04 | — | Pending |
-| TRACK-01 | — | Pending |
-| TRACK-02 | — | Pending |
-| TOOLBAR-01 | — | Pending |
-| TOOLBAR-02 | — | Pending |
-| TOOLBAR-03 | — | Pending |
+| Requirement | Phase | Plan | Status |
+|-------------|-------|------|--------|
+| STASH-01 | Phase 11 | 11-03 | Pending |
+| STASH-02 | Phase 11 | 11-02 | Pending |
+| STASH-03 | Phase 11 | 11-03 | Pending |
+| STASH-04 | Phase 11 | 11-03 | Pending |
+| STASH-05 | Phase 11 | 11-03 | Pending |
+| STASH-06 | Phase 11 | 11-03 | Pending |
+| STASH-07 | Phase 11 | 11-02 | Pending |
+| MENU-01 | Phase 12 | 12-02 | Pending |
+| MENU-02 | Phase 12 | 12-02 | Pending |
+| MENU-03 | Phase 12 | 12-01 | Pending |
+| MENU-04 | Phase 12 | 12-01 | Pending |
+| MENU-05 | Phase 12 | 12-01 | Pending |
+| MENU-06 | Phase 12 | 12-01 | Pending |
+| MENU-07 | Phase 12 | 12-01 | Pending |
+| REMOTE-01 | Phase 13 | 13-01 | Pending |
+| REMOTE-02 | Phase 13 | 13-01 | Pending |
+| REMOTE-03 | Phase 13 | 13-01 | Pending |
+| REMOTE-04 | Phase 13 | 13-01 | Pending |
+| TRACK-01 | Phase 14 | 14-01 | Pending |
+| TRACK-02 | Phase 14 | 14-01 | Pending |
+| TOOLBAR-01 | Phase 14 | 14-02 | Pending |
+| TOOLBAR-02 | Phase 14 | 14-02 | Pending |
+| TOOLBAR-03 | Phase 14 | 14-02 | Pending |
 
 **Coverage:**
-- v0.3 requirements: 21 total
-- Mapped to phases: 0
-- Unmapped: 21 ⚠️ (populated after roadmap creation)
+- v0.3 requirements: 23 total
+- Mapped to phases: 23
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 — traceability complete; all 23 requirements mapped across phases 11-14; plan-level traceability added*
