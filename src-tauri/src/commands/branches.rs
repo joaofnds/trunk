@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tauri::State;
 use git2::{BranchType, Status, StatusOptions};
 use crate::error::TrunkError;
-use crate::git::{graph, types::{BranchInfo, RefLabel, RefType, RefsResponse}};
+use crate::git::{graph, types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry}};
 use crate::state::{CommitCache, RepoState};
 use crate::git::types::{GraphCommit, GraphResult};
 
@@ -116,17 +116,28 @@ pub fn list_refs_inner(
     })?;
 
     // Stashes — requires &mut repo
-    let mut stashes: Vec<RefLabel> = Vec::new();
-    repo.stash_foreach(|idx, name, _oid| {
-        stashes.push(RefLabel {
-            name: name.to_owned(),
-            short_name: format!("stash@{{{}}}", idx),
-            ref_type: RefType::Stash,
-            is_head: false,
-            color_index: 0,
-        });
+    // Collect raw OIDs first (foreach holds mutable borrow), then resolve parents in second pass
+    let mut raw_stashes: Vec<(usize, String, git2::Oid)> = Vec::new();
+    repo.stash_foreach(|idx, name, oid| {
+        raw_stashes.push((idx, name.to_owned(), *oid));
         true
     })?;
+    let stashes: Vec<StashEntry> = raw_stashes
+        .into_iter()
+        .map(|(idx, name, stash_oid)| {
+            let parent_oid = repo
+                .find_commit(stash_oid)
+                .ok()
+                .and_then(|c| c.parent_id(0).ok())
+                .map(|o| o.to_string());
+            StashEntry {
+                index: idx,
+                short_name: format!("stash@{{{}}}", idx),
+                name,
+                parent_oid,
+            }
+        })
+        .collect();
 
     Ok(RefsResponse {
         local,
