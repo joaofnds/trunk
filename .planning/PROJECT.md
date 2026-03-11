@@ -13,8 +13,9 @@ A developer can open any Git repository, browse its full commit history as a vis
 **Goal:** Enable push/pull/fetch with remote auth, stash operations, and a commit row context menu with branch/tag/cherry-pick/revert actions.
 
 **Target features:**
-- Push / Pull / Fetch with SSH/HTTPS auth
-- Stash create/pop
+- Quick actions toolbar (Pull, Push, Branch, Stash, Pop, Undo, Redo)
+- Push / Pull / Fetch with SSH/HTTPS auth + ahead/behind counts
+- Stash create/pop/apply/drop
 - Commit row right-click context menu (copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert)
 
 ## Requirements
@@ -40,9 +41,11 @@ A developer can open any Git repository, browse its full commit history as a vis
 
 ### Active
 
-- [ ] Push / Pull / Fetch with SSH/HTTPS auth
-- [ ] Stash create/pop
-- [ ] Commit row right-click context menu with copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert
+- [ ] Quick actions toolbar (Pull, Push, Branch, Stash, Pop, Undo, Redo)
+- [ ] Push / Pull / Fetch with SSH/HTTPS auth + ahead/behind counts in sidebar
+- [ ] Stash create/pop/apply/drop
+- [ ] Commit row right-click context menu (copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert)
+- [ ] Undo last commit (soft reset) and Redo (re-commit with original message)
 
 ### Deferred (v0.4+)
 
