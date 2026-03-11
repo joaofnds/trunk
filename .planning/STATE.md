@@ -5,7 +5,7 @@ milestone_name: Commit Graph
 status: completed
 stopped_at: Completed 10-05-PLAN.md
 last_updated: "2026-03-10T03:30:33.441Z"
-last_activity: 2026-03-10 - Completed quick task 7: Transform overflow pill into vertical stacked list overlay.
+last_activity: 2026-03-10 - Completed quick task 8: Overflow pill expand animation anchor top-left, expand right and down
 progress:
   total_phases: 4
   completed_phases: 4
@@ -82,6 +82,7 @@ Recent decisions affecting current work:
 | 5 | Fix graph pane flicker on commit | 2026-03-09 | 460cd83 | Verified | [5-the-ui-flickers-a-lot-when-i-commit-the-](.planning/quick/5-the-ui-flickers-a-lot-when-i-commit-the-/) |
 | 6 | Branch overflow pill hover-expand | 2026-03-10 | 154ad71 | | [6-let-s-make-the-branch-overflow-pill-expa](.planning/quick/6-let-s-make-the-branch-overflow-pill-expa/) |
 | 7 | Transform overflow pill into vertical list | 2026-03-10 | dfa6b4b | | [7-transform-the-overflow-pill-into-a-big-s](.planning/quick/7-transform-the-overflow-pill-into-a-big-s/) |
+| 8 | Overflow pill expand animation: anchor top-left, expand right and down | 2026-03-10 | c685e32 | | [8-overflow-pill-expand-animation-anchor-to](.planning/quick/8-overflow-pill-expand-animation-anchor-to/) |
 
 ### Pending Todos
 
