@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.2
-milestone_name: Commit Graph
-status: completed
-stopped_at: Completed 10-05-PLAN.md
-last_updated: "2026-03-10T03:30:33.441Z"
-last_activity: 2026-03-10 - Completed quick task 8: Overflow pill expand animation anchor top-left, expand right and down
+milestone: v0.3
+milestone_name: Actions
+status: defining_requirements
+stopped_at: —
+last_updated: "2026-03-10T00:00:00.000Z"
+last_activity: 2026-03-10 — Milestone v0.3 Actions started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,30 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Planning next milestone
+**Current focus:** Defining requirements for v0.3 Actions
 
 ## Current Position
 
-Milestone v0.2 Commit Graph shipped 2026-03-10.
-Next: `/gsd:new-milestone` to define v0.3.
-
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 10 (v0.2)
-- Average duration: 3min
-- Total execution time: 31min
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 07 - Lane Algorithm Hardening | 2/2 | 12min | 6min |
-| 08 - Straight Rail Rendering | 1/1 | 3min | 3min |
-| 09 - WIP Row + Visual Polish | 1/1 | 2min | 2min |
-| 10 - Differentiators | 5/5 | 12min | 2min |
-
-*Updated after each plan completion*
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-10 — Milestone v0.3 Actions started
 
 ## Accumulated Context
 
@@ -72,21 +56,11 @@ Recent decisions affecting current work:
 - [Phase 10-04]: Column dividers use inline border-right style rather than pseudo-elements for simplicity and consistency
 - [Phase 10-05]: ColumnVisibility follows same LazyStore pattern as ColumnWidths; Message column locked as always-visible
 - [Phase 10-05]: Connector line hidden with ref column since it spans from pills to graph dot
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Status | Directory |
-|---|-------------|------|--------|--------|-----------|
-| 1 | Add WIP entry to commit graph when worktree is dirty | 2026-03-08 | c5ae359 | | [1-add-wip-entry-to-commit-graph-when-workt](.planning/quick/1-add-wip-entry-to-commit-graph-when-workt/) |
-| 2 | Remove graph lanes, keep only dots | 2026-03-09 | cf816a8 | | [2-remove-graph-lanes-keep-only-dots](.planning/quick/2-remove-graph-lanes-keep-only-dots/) |
-| 5 | Fix graph pane flicker on commit | 2026-03-09 | 460cd83 | Verified | [5-the-ui-flickers-a-lot-when-i-commit-the-](.planning/quick/5-the-ui-flickers-a-lot-when-i-commit-the-/) |
-| 6 | Branch overflow pill hover-expand | 2026-03-10 | 154ad71 | | [6-let-s-make-the-branch-overflow-pill-expa](.planning/quick/6-let-s-make-the-branch-overflow-pill-expa/) |
-| 7 | Transform overflow pill into vertical list | 2026-03-10 | dfa6b4b | | [7-transform-the-overflow-pill-into-a-big-s](.planning/quick/7-transform-the-overflow-pill-into-a-big-s/) |
-| 8 | Overflow pill expand animation: anchor top-left, expand right and down | 2026-03-10 | c685e32 | | [8-overflow-pill-expand-animation-anchor-to](.planning/quick/8-overflow-pill-expand-animation-anchor-to/) |
+- [v0.3]: Remote ops will shell out to git CLI (not git2) per established decision for SSH/HTTPS reliability
 
 ### Pending Todos
 
-4 pending todos:
+4 pending todos carried from v0.2:
 1. **Make commit dot bigger and lanes thinner** (ui) -- 2026-03-10
 2. **WIP HEAD row background covers dotted line on hover** (ui) -- 2026-03-10
 3. **Second commit connector line disconnected from first commit** (ui) -- 2026-03-10
@@ -95,9 +69,3 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 None yet.
-
-## Session Continuity
-
-Last session: 2026-03-10T00:00:00Z
-Stopped at: Completed quick-6-PLAN.md
-Resume file: .planning/quick/6-let-s-make-the-branch-overflow-pill-expa/6-SUMMARY.md

@@ -8,6 +8,15 @@ Trunk is a fast, native, cross-platform desktop Git GUI built with Tauri 2 + Sve
 
 A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
 
+## Current Milestone: v0.3 Actions
+
+**Goal:** Enable push/pull/fetch with remote auth, stash operations, and a commit row context menu with branch/tag/cherry-pick/revert actions.
+
+**Target features:**
+- Push / Pull / Fetch with SSH/HTTPS auth
+- Stash create/pop
+- Commit row right-click context menu (copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert)
+
 ## Requirements
 
 ### Validated
@@ -32,18 +41,21 @@ A developer can open any Git repository, browse its full commit history as a vis
 ### Active
 
 - [ ] Push / Pull / Fetch with SSH/HTTPS auth
-- [ ] Hunk-level staging (stage individual hunks, not just whole files)
 - [ ] Stash create/pop
-- [ ] Resizable panels (splitters)
-- [ ] Keyboard shortcuts for common operations
-- [ ] Deterministic StagingPanel refresh after checkout/create-branch
+- [ ] Commit row right-click context menu with copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert
+
+### Deferred (v0.4+)
+
+- Hunk-level staging (stage individual hunks, not just whole files)
+- Resizable panels (left/right pane splitters)
+- Keyboard shortcuts for common operations
+- Deterministic StagingPanel refresh after checkout/create-branch
 
 ### Out of Scope
 
-- Merge / Rebase / Cherry-pick — high correctness bar, deferred to v0.3
-- Conflict resolution UI — requires merge support, deferred to v0.3+
+- Conflict resolution UI — requires merge support, deferred to v0.4+
 - Multi-repo functional tabs — tab bar visible but non-functional
-- Syntax highlighting in diffs — deferred to v0.3
+- Syntax highlighting in diffs — deferred to v0.4
 - Settings/preferences UI — deferred to v1.0
 - Commit signing — deferred to v1.0
 - Auto-updates — deferred to v1.0
@@ -97,4 +109,4 @@ A developer can open any Git repository, browse its full commit history as a vis
 | Native Tauri Menu API over custom Svelte component | Replaced HeaderContextMenu.svelte with @tauri-apps/api/menu | ✓ Good — native look and feel, simpler code |
 
 ---
-*Last updated: 2026-03-10 after v0.2 milestone*
+*Last updated: 2026-03-10 after v0.3 milestone start*
