@@ -121,6 +121,17 @@
       stroke-dasharray="1 4"
       stroke-linecap="round"
     />
+  {:else if commit.oid.startsWith('__stash_')}
+    <!-- Hollow square: same stroke weight as merge commit hollow circle -->
+    <rect
+      x={cx(commit.column) - DOT_RADIUS}
+      y={cy - DOT_RADIUS}
+      width={DOT_RADIUS * 2}
+      height={DOT_RADIUS * 2}
+      fill="var(--color-bg)"
+      stroke={laneColor(commit.color_index)}
+      stroke-width={MERGE_STROKE}
+    />
   {:else if commit.is_merge}
     <circle
       cx={cx(commit.column)}

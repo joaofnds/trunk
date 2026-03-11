@@ -5,7 +5,7 @@
   import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
-  import { Menu, CheckMenuItem } from '@tauri-apps/api/menu';
+  import { Menu, MenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
   import CommitRow from './CommitRow.svelte';
 
   interface Props {
@@ -80,6 +80,54 @@
     { key: 'date', label: 'Date' },
     { key: 'sha', label: 'SHA' },
   ];
+
+  async function showStashContextMenu(e: MouseEvent, stashIndex: number) {
+    e.preventDefault();
+    const menu = await Menu.new({
+      items: [
+        await MenuItem.new({ text: 'Pop', action: () => handleStashPop(stashIndex) }),
+        await MenuItem.new({ text: 'Apply', action: () => handleStashApply(stashIndex) }),
+        await MenuItem.new({ text: 'Drop', action: () => handleStashDrop(stashIndex) }),
+      ]
+    });
+    await menu.popup();
+  }
+
+  async function handleStashPop(index: number) {
+    try {
+      await safeInvoke('stash_pop', { path: repoPath, index });
+      await refresh();
+    } catch (e) {
+      const err = e as TrunkError;
+      stashError = err.message ?? 'Failed to pop stash';
+    }
+  }
+
+  async function handleStashApply(index: number) {
+    try {
+      await safeInvoke('stash_apply', { path: repoPath, index });
+      await refresh();
+    } catch (e) {
+      const err = e as TrunkError;
+      stashError = err.message ?? 'Failed to apply stash';
+    }
+  }
+
+  async function handleStashDrop(index: number) {
+    const { ask } = await import('@tauri-apps/plugin-dialog');
+    const confirmed = await ask(`Drop stash@{${index}}? This cannot be undone.`, {
+      title: 'Confirm Drop',
+      kind: 'warning',
+    });
+    if (!confirmed) return;
+    try {
+      await safeInvoke('stash_drop', { path: repoPath, index });
+      await refresh();
+    } catch (e) {
+      const err = e as TrunkError;
+      stashError = err.message ?? 'Failed to drop stash';
+    }
+  }
 
   async function showHeaderContextMenu(e: MouseEvent) {
     e.preventDefault();
@@ -339,7 +387,14 @@
         {hasMore}
       >
         {#snippet renderItem(commit)}
-          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} {columnVisibility} />
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            oncontextmenu={commit.oid.startsWith('__stash_')
+              ? (e) => showStashContextMenu(e, parseInt(commit.oid.replace('__stash_', '').replace('__', '')))
+              : undefined}
+          >
+            <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} {columnVisibility} />
+          </div>
         {/snippet}
       </SvelteVirtualList>
 
@@ -373,6 +428,20 @@
             style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
           >
             Retry
+          </button>
+        </div>
+      {/if}
+
+      <!-- Stash operation error (dismissable) -->
+      {#if stashError}
+        <div class="flex items-center gap-3 px-4 py-2">
+          <span class="text-sm" style="color: #f87171;">{stashError}</span>
+          <button
+            onclick={() => stashError = null}
+            class="rounded px-3 py-1 text-xs font-medium"
+            style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
+          >
+            Dismiss
           </button>
         </div>
       {/if}
