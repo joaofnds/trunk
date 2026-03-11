@@ -44,6 +44,13 @@ export interface GraphResponse {
   max_columns: number;
 }
 
+export interface StashEntry {
+  index: number;
+  name: string;
+  short_name: string;
+  parent_oid: string | null;
+}
+
 export interface BranchInfo {
   name: string;
   is_head: boolean;
