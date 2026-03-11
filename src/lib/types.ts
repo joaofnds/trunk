@@ -64,7 +64,7 @@ export interface RefsResponse {
   local: BranchInfo[];
   remote: BranchInfo[];
   tags: RefLabel[];
-  stashes: RefLabel[];
+  stashes: StashEntry[];
 }
 
 export interface FileStatus {

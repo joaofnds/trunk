@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { RefsResponse } from '../lib/types.js';
+  import type { RefsResponse, StashEntry } from '../lib/types.js';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import BranchSection from './BranchSection.svelte';
   import BranchRow from './BranchRow.svelte';
@@ -22,6 +22,11 @@
   let remoteExpanded = $state(false);
   let tagsExpanded = $state(false);
   let stashesExpanded = $state(false);
+  let showStashForm = $state(false);
+  let stashName = $state('');
+  let stashSaving = $state(false);
+  let stashCreateError = $state<string | null>(null);
+  let stashEntryErrors = $state<Record<number, string | null>>({});
   let showCreateInput = $state(false);
   let newBranchName = $state('');
   let createError = $state<string | null>(null);
@@ -44,7 +49,7 @@
       : (refs?.tags ?? [])
   );
 
-  let filteredStashes = $derived(
+  let filteredStashes = $derived<StashEntry[]>(
     search
       ? (refs?.stashes ?? []).filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
       : (refs?.stashes ?? [])
@@ -131,6 +136,78 @@
   function autoFocus(node: HTMLElement) {
     node.focus();
     return {};
+  }
+
+  async function handleStashSave() {
+    stashSaving = true;
+    stashCreateError = null;
+    try {
+      await safeInvoke('stash_save', { path: repoPath, message: stashName.trim() });
+      showStashForm = false;
+      stashName = '';
+      await loadRefs(repoPath);
+    } catch (e) {
+      const err = e as TrunkError;
+      if (err.code === 'nothing_to_stash') {
+        stashCreateError = 'Nothing to stash — working tree is clean';
+      } else {
+        stashCreateError = err.message ?? 'Failed to create stash';
+      }
+    } finally {
+      stashSaving = false;
+    }
+  }
+
+  async function showStashEntryMenu(e: MouseEvent, stashIndex: number) {
+    e.preventDefault();
+    const { Menu, MenuItem } = await import('@tauri-apps/api/menu');
+    const menu = await Menu.new({
+      items: [
+        await MenuItem.new({ text: 'Pop', action: () => handleStashPop(stashIndex) }),
+        await MenuItem.new({ text: 'Apply', action: () => handleStashApply(stashIndex) }),
+        await MenuItem.new({ text: 'Drop', action: () => handleStashDrop(stashIndex) }),
+      ]
+    });
+    await menu.popup();
+  }
+
+  async function handleStashPop(index: number) {
+    stashEntryErrors = { ...stashEntryErrors, [index]: null };
+    try {
+      await safeInvoke('stash_pop', { path: repoPath, index });
+      await loadRefs(repoPath);
+    } catch (e) {
+      const err = e as TrunkError;
+      stashEntryErrors = { ...stashEntryErrors, [index]: err.message ?? 'Failed to pop stash' };
+    }
+  }
+
+  async function handleStashApply(index: number) {
+    stashEntryErrors = { ...stashEntryErrors, [index]: null };
+    try {
+      await safeInvoke('stash_apply', { path: repoPath, index });
+      await loadRefs(repoPath);
+    } catch (e) {
+      const err = e as TrunkError;
+      stashEntryErrors = { ...stashEntryErrors, [index]: err.message ?? 'Failed to apply stash' };
+    }
+  }
+
+  async function handleStashDrop(index: number) {
+    const { ask } = await import('@tauri-apps/plugin-dialog');
+    const confirmed = await ask(`Drop stash@{${index}}? This cannot be undone.`, {
+      title: 'Confirm Drop',
+      kind: 'warning',
+    });
+    if (!confirmed) return;
+    stashEntryErrors = { ...stashEntryErrors, [index]: null };
+    try {
+      await safeInvoke('stash_drop', { path: repoPath, index });
+      await loadRefs(repoPath);
+    } catch (e) {
+      const err = e as TrunkError;
+      stashEntryErrors = { ...stashEntryErrors, [index]: err.message ?? 'Failed to drop stash' };
+    }
   }
 </script>
 
@@ -251,18 +328,114 @@
       </BranchSection>
     {/if}
 
-    <!-- Stashes (collapsed by default; hidden if empty) -->
-    {#if (refs?.stashes.length ?? 0) > 0}
-      <BranchSection
-        label="Stashes"
-        count={refs?.stashes.length ?? 0}
-        expanded={stashesExpanded}
-        ontoggle={() => (stashesExpanded = !stashesExpanded)}
-      >
-        {#each filteredStashes as stash (stash.short_name)}
-          <BranchRow name={stash.name} />
-        {/each}
-      </BranchSection>
-    {/if}
+    <!-- Stashes — always visible so '+' button is accessible -->
+    <BranchSection
+      label="Stashes"
+      count={filteredStashes.length}
+      expanded={stashesExpanded}
+      ontoggle={() => (stashesExpanded = !stashesExpanded)}
+      showCreateButton={true}
+      oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; }}
+    >
+      <!-- Inline create form -->
+      {#if showStashForm}
+        <div class="stash-form">
+          <input
+            type="text"
+            placeholder="Stash name (optional)"
+            bind:value={stashName}
+            onkeydown={(e) => e.key === 'Enter' && handleStashSave()}
+            disabled={stashSaving}
+            class="stash-name-input"
+          />
+          <button
+            onclick={handleStashSave}
+            disabled={stashSaving}
+            class="stash-save-btn"
+          >{stashSaving ? 'Stashing…' : 'Stash'}</button>
+        </div>
+        {#if stashCreateError}
+          <p class="stash-error">{stashCreateError}</p>
+        {/if}
+      {/if}
+
+      <!-- Stash list entries -->
+      {#each filteredStashes as stash (stash.index)}
+        <div
+          class="stash-row"
+          oncontextmenu={(e) => showStashEntryMenu(e, stash.index)}
+        >
+          <span class="stash-index">{stash.short_name}</span>
+          <span class="stash-message">{stash.name}</span>
+        </div>
+        {#if stashEntryErrors[stash.index]}
+          <p class="stash-error stash-entry-error">{stashEntryErrors[stash.index]}</p>
+        {/if}
+      {/each}
+    </BranchSection>
   </div>
 </aside>
+
+<style>
+  .stash-form {
+    display: flex;
+    gap: 4px;
+    padding: 4px 8px;
+  }
+
+  .stash-name-input {
+    flex: 1;
+    font-size: 12px;
+    padding: 2px 6px;
+    background: var(--color-input-bg, #1a1a1a);
+    border: 1px solid var(--color-border, #333);
+    color: var(--color-text);
+    border-radius: 3px;
+  }
+
+  .stash-save-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    background: var(--color-accent, #0d7a5f);
+    color: white;
+    border: none;
+    border-radius: 3px;
+  }
+
+  .stash-row {
+    display: flex;
+    gap: 8px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: context-menu;
+    user-select: none;
+  }
+
+  .stash-row:hover {
+    background: var(--color-hover, rgba(255, 255, 255, 0.05));
+  }
+
+  .stash-index {
+    color: var(--color-text-muted, #888);
+    flex-shrink: 0;
+  }
+
+  .stash-message {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text);
+  }
+
+  .stash-error {
+    font-size: 11px;
+    color: var(--color-error, #e05252);
+    padding: 2px 12px 4px;
+    margin: 0;
+  }
+
+  .stash-entry-error {
+    padding-left: 24px;
+  }
+</style>
