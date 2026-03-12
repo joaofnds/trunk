@@ -38,17 +38,17 @@
 
   async function handleStash() {
     try {
-      await safeInvoke('stash_save', { path: repoPath });
-    } catch {
-      // stash errors are non-fatal for UI
+      await safeInvoke('stash_save', { path: repoPath, message: '' });
+    } catch (e) {
+      console.error('stash_save failed:', e);
     }
   }
 
   async function handlePop() {
     try {
-      await safeInvoke('stash_pop', { path: repoPath });
-    } catch {
-      // pop errors are non-fatal for UI
+      await safeInvoke('stash_pop', { path: repoPath, index: 0 });
+    } catch (e) {
+      console.error('stash_pop failed:', e);
     }
   }
 
