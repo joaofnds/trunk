@@ -5,6 +5,7 @@ pub mod diff;
 pub mod history;
 pub mod repo;
 pub mod staging;
+pub mod remote;
 pub mod stash;
 
 pub use history::get_commit_graph;
