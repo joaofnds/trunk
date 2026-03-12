@@ -1,8 +1,8 @@
+/// <reference types="vitest/config" />
+
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
-
-/// <reference types="vitest/config" />
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
