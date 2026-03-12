@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: executing
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-12T02:47:36Z"
-last_activity: 2026-03-12 — Completed plan 12-01 backend commands for commit context menu
+stopped_at: Completed 12-02-PLAN.md
+last_updated: "2026-03-12T02:55:40Z"
+last_activity: 2026-03-12 — Completed plan 12-02 commit context menu UI
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 8
-  completed_plans: 7
-  percent: 87
+  completed_plans: 8
+  percent: 93
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 12 — Commit Context Menu
+**Current focus:** Phase 12 — Commit Context Menu (complete)
 
 ## Current Position
 
 Phase: 12 of 14 (Commit Context Menu)
-Plan: 1 of 2 in current phase
-Status: executing
-Last activity: 2026-03-12 — Completed plan 12-01 backend commands for commit context menu
+Plan: 2 of 2 in current phase
+Status: phase-complete
+Last activity: 2026-03-12 — Completed plan 12-02 commit context menu UI
 
-Progress: [████████░░] 87%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [████████░░] 87%
 | Phase 11-stash-operations P06 | 2min | 1 tasks | 1 files |
 | Phase 11-stash-operations P05 | 2min | 1 tasks | 2 files |
 | Phase 12-commit-context-menu P01 | 6min | 2 tasks | 8 files |
+| Phase 12-commit-context-menu P02 | 4min | 1 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Recent decisions affecting current work:
 - [Phase 12-01]: Duplicated open_repo/is_dirty helpers in commit_actions.rs to avoid cross-module dependencies
 - [Phase 12-01]: cherry_pick and revert use git CLI subprocess (not git2) with GIT_TERMINAL_PROMPT=0 for conflict detection
 - [Phase 12-01]: create_branch dirty workdir check runs after branch creation but before checkout -- branch exists even if checkout fails
+- [Phase 12-02]: InputDialog uses $state dialogConfig pattern -- set to show, null to hide
+- [Phase 12-02]: WIP and stash rows excluded from commit context menu via oid.startsWith('__') guard
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T02:47:36Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-03-12T02:55:40Z
+Stopped at: Completed 12-02-PLAN.md
 Resume file: None
