@@ -38,7 +38,7 @@ Full details: [milestones/v0.2-ROADMAP.md](milestones/v0.2-ROADMAP.md)
 
 **Milestone Goal:** Enable push/pull/fetch with remote auth, stash operations, and a commit row context menu with branch/tag/cherry-pick/revert actions, surfaced through a quick actions toolbar.
 
-- [x] **Phase 11: Stash Operations** - User can create, pop, apply, and drop stashes; stash entries appear in the commit graph as synthetic square-dot rows; right-click on stash rows exposes pop/apply/drop actions (completed 2026-03-11)
+- [ ] **Phase 11: Stash Operations** - User can create, pop, apply, and drop stashes; stash entries appear in the commit graph as synthetic square-dot rows; right-click on stash rows exposes pop/apply/drop actions
 - [ ] **Phase 12: Commit Context Menu** - User can right-click any commit row for copy, checkout, branch, tag, cherry-pick, and revert actions
 - [ ] **Phase 13: Remote Operations** - User can fetch, pull, and push with progress feedback and actionable error messages
 - [ ] **Phase 14: Toolbar + Tracking** - Quick actions bar visible at top; branch sidebar shows live ahead/behind counts; undo/redo last commit
@@ -56,12 +56,14 @@ Full details: [milestones/v0.2-ROADMAP.md](milestones/v0.2-ROADMAP.md)
   4. User can apply a stash entry and see their working tree restored while the stash entry remains in the list and graph
   5. User can drop a stash entry and see it removed from the list and graph without any working tree changes
   6. User can right-click a stash row in the commit graph to get a context menu with pop, apply, and drop actions
-**Plans**: 3 plans
+**Plans**: 5 plans
 
 Plans:
-- [ ] 11-01: Stash commands backend — `stash_save`, `stash_list` (with parent OID), `stash_pop`, `stash_apply`, `stash_drop` Tauri commands (inner-fn + git2); stash list response includes parent OID for graph positioning
-- [ ] 11-02: Stash graph rendering — extend commit graph to render stash entries as synthetic rows with square dots and dashed connectors positioned at their parent commit (extends WIP sentinel pattern); right-click context menu on stash rows with pop/apply/drop actions (STASH-02, STASH-07)
-- [ ] 11-03: Stash sidebar UI — stash list section in sidebar with create form (optional name) and pop/apply/drop actions per entry; wired to backend commands (STASH-01, STASH-03, STASH-04, STASH-05, STASH-06)
+- [x] 11-01: Stash commands backend — `stash_save`, `stash_list` (with parent OID), `stash_pop`, `stash_apply`, `stash_drop` Tauri commands (inner-fn + git2); stash list response includes parent OID for graph positioning
+- [x] 11-02: Stash graph rendering (FAILED — removed during UAT)
+- [x] 11-03: Stash sidebar UI — stash list section in sidebar with create form (optional name) and pop/apply/drop actions per entry; wired to backend commands (STASH-01, STASH-03, STASH-04, STASH-05, STASH-06)
+- [x] 11-04: UAT gap closure — cursor fix, click-to-diff, UI refresh, drop permission
+- [ ] 11-05: Stash graph rendering (gap closure) — re-implement stash rows in commit graph with hollow square dots and right-click context menu (STASH-02, STASH-07)
 
 ### Phase 12: Commit Context Menu
 **Goal**: Users can act on any commit directly from the graph without typing git commands
@@ -125,7 +127,7 @@ Plans:
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
-| 11. Stash Operations | 4/4 | Complete   | 2026-03-12 | - |
+| 11. Stash Operations | v0.3 | 4/5 | In progress | - |
 | 12. Commit Context Menu | v0.3 | 0/2 | Not started | - |
 | 13. Remote Operations | v0.3 | 0/2 | Not started | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
