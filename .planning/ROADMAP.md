@@ -130,5 +130,5 @@ Plans:
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
 | 11. Stash Operations | 6/6 | Complete    | 2026-03-12 | - |
 | 12. Commit Context Menu | 2/2 | Complete    | 2026-03-12 | - |
-| 13. Remote Operations | 2/2 | Complete   | 2026-03-12 | - |
+| 13. Remote Operations | 2/2 | Complete    | 2026-03-12 | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
