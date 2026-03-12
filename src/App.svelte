@@ -1,6 +1,8 @@
 <script lang="ts">
   import WelcomeScreen from './components/WelcomeScreen.svelte';
   import TabBar from './components/TabBar.svelte';
+  import Toolbar from './components/Toolbar.svelte';
+  import StatusBar from './components/StatusBar.svelte';
   import CommitGraph from './components/CommitGraph.svelte';
   import BranchSidebar from './components/BranchSidebar.svelte';
   import StagingPanel from './components/StagingPanel.svelte';
@@ -329,6 +331,7 @@
     <WelcomeScreen onopen={handleOpen} />
   {:else}
     <TabBar {repoName} onclose={handleClose} />
+    <Toolbar repoPath={repoPath!} />
     <main class="flex-1 overflow-hidden flex">
       <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
         <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} onstashselect={handleCommitSelect} {refreshSignal} />
@@ -358,5 +361,6 @@
         {/if}
       </div>
     </main>
+    <StatusBar repoPath={repoPath!} />
   {/if}
 </div>
