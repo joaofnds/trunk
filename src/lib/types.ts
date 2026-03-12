@@ -53,11 +53,19 @@ export interface BranchInfo {
   last_commit_timestamp: number;
 }
 
+export interface StashEntry {
+  index: number;
+  name: string;
+  short_name: string;
+  oid: string;
+  parent_oid: string | null;
+}
+
 export interface RefsResponse {
   local: BranchInfo[];
   remote: BranchInfo[];
   tags: RefLabel[];
-  stashes: RefLabel[];
+  stashes: StashEntry[];
 }
 
 export interface FileStatus {

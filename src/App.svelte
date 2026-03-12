@@ -331,7 +331,7 @@
     <TabBar {repoName} onclose={handleClose} />
     <main class="flex-1 overflow-hidden flex">
       <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-        <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} />
+        <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} onstashselect={handleCommitSelect} />
       </div>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>

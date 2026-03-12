@@ -8,9 +8,10 @@
   interface Props {
     repoPath: string;
     onrefreshed?: () => void;
+    onstashselect?: (oid: string) => void;
   }
 
-  let { repoPath, onrefreshed }: Props = $props();
+  let { repoPath, onrefreshed, onstashselect }: Props = $props();
 
   let refs = $state<RefsResponse | null>(null);
   let loading = $state(false);
@@ -146,6 +147,7 @@
       showStashForm = false;
       stashName = '';
       await loadRefs(repoPath);
+      onrefreshed?.();
     } catch (e) {
       const err = e as TrunkError;
       if (err.code === 'nothing_to_stash') {
@@ -163,9 +165,9 @@
     const { Menu, MenuItem } = await import('@tauri-apps/api/menu');
     const menu = await Menu.new({
       items: [
-        await MenuItem.new({ text: 'Pop', action: () => handleStashPop(stashIndex) }),
-        await MenuItem.new({ text: 'Apply', action: () => handleStashApply(stashIndex) }),
-        await MenuItem.new({ text: 'Drop', action: () => handleStashDrop(stashIndex) }),
+        await MenuItem.new({ text: 'Pop', action: () => { handleStashPop(stashIndex).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Apply', action: () => { handleStashApply(stashIndex).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Drop', action: () => { handleStashDrop(stashIndex).catch(() => {}); } }),
       ]
     });
     await menu.popup();
@@ -176,6 +178,7 @@
     try {
       await safeInvoke('stash_pop', { path: repoPath, index });
       await loadRefs(repoPath);
+      onrefreshed?.();
     } catch (e) {
       const err = e as TrunkError;
       stashEntryErrors = { ...stashEntryErrors, [index]: err.message ?? 'Failed to pop stash' };
@@ -187,6 +190,7 @@
     try {
       await safeInvoke('stash_apply', { path: repoPath, index });
       await loadRefs(repoPath);
+      onrefreshed?.();
     } catch (e) {
       const err = e as TrunkError;
       stashEntryErrors = { ...stashEntryErrors, [index]: err.message ?? 'Failed to apply stash' };
@@ -204,6 +208,7 @@
     try {
       await safeInvoke('stash_drop', { path: repoPath, index });
       await loadRefs(repoPath);
+      onrefreshed?.();
     } catch (e) {
       const err = e as TrunkError;
       stashEntryErrors = { ...stashEntryErrors, [index]: err.message ?? 'Failed to drop stash' };
@@ -363,6 +368,7 @@
       {#each filteredStashes as stash (stash.index)}
         <div
           class="stash-row"
+          onclick={() => onstashselect?.(stash.oid)}
           oncontextmenu={(e) => showStashEntryMenu(e, stash.index)}
         >
           <span class="stash-index">{stash.short_name}</span>
@@ -408,7 +414,7 @@
     gap: 8px;
     padding: 4px 12px;
     font-size: 12px;
-    cursor: context-menu;
+    cursor: default;
     user-select: none;
   }
 
