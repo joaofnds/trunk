@@ -91,11 +91,12 @@ Plans:
   2. User can pull the current branch and see the commit graph update when complete
   3. User can push the current branch (including new branches without an upstream) and see the commit graph update when complete
   4. Auth failures show a clear, actionable message (not raw git stderr); non-fast-forward push rejections show a "Pull first" prompt
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
-- [ ] 13-01: Remote commands backend — `git_fetch`, `git_pull`, `git_push` via `tokio::process::Command`; `remote-progress` Tauri event emitted per stderr line; `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND=ssh -o BatchMode=yes` set on all child processes; structured error taxonomy for auth failures and non-fast-forward rejections
-- [ ] 13-02: Remote UI — fetch/pull/push buttons wired to commands; inline `remote-progress` event listener with live output display; actionable error message surfaces for auth and rejection cases
+- [x] 13-01: Remote commands backend — `git_fetch`, `git_pull`, `git_push` via `tokio::process::Command`; `remote-progress` Tauri event emitted per stderr line; `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND=ssh -o BatchMode=yes` set on all child processes; structured error taxonomy for auth failures and non-fast-forward rejections
+- [x] 13-02: Remote UI — fetch/pull/push buttons wired to commands; inline `remote-progress` event listener with live output display; actionable error message surfaces for auth and rejection cases
+- [ ] 13-03: UAT gap closure — fix stash/pop button IPC params and reposition cancel button in StatusBar
 
 ### Phase 14: Toolbar + Tracking
 **Goal**: Quick actions are one click away from anywhere in the app and branch tracking state is always visible
@@ -130,5 +131,5 @@ Plans:
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
 | 11. Stash Operations | 6/6 | Complete    | 2026-03-12 | - |
 | 12. Commit Context Menu | 2/2 | Complete    | 2026-03-12 | - |
-| 13. Remote Operations | 2/2 | Complete    | 2026-03-12 | - |
+| 13. Remote Operations | v0.3 | 2/3 | In progress | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
