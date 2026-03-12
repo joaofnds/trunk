@@ -3,10 +3,12 @@
   import type { ColumnWidths, ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT, EDGE_STROKE } from '../lib/graph-constants.js';
   import LaneSvg from './LaneSvg.svelte';
+  import GraphCell from './GraphCell.svelte';
   import RefPill from './RefPill.svelte';
 
   interface Props {
     commit: GraphCommit;
+    rowIndex: number;
     onselect?: (oid: string) => void;
     oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
     maxColumns?: number;
@@ -14,7 +16,7 @@
     columnVisibility: ColumnVisibility;
   }
 
-  let { commit, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility }: Props = $props();
+  let { commit, rowIndex, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility }: Props = $props();
 
   function relativeDate(ts: number): string {
     if (ts === 0) return '';
@@ -100,7 +102,11 @@
   <!-- Column 2: Graph -->
   {#if columnVisibility.graph}
     <div class="relative z-[1] flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * LANE_WIDTH}px;">
-      <LaneSvg {commit} {maxColumns} />
+      {#if commit.oid.startsWith('__')}
+        <LaneSvg {commit} {maxColumns} />
+      {:else}
+        <GraphCell {commit} {rowIndex} {maxColumns} />
+      {/if}
     </div>
   {/if}
 

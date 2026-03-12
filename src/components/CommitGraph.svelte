@@ -1,6 +1,6 @@
 <script lang="ts">
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
-  import { tick, untrack } from 'svelte';
+  import { setContext, tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
@@ -260,6 +260,8 @@
     return computeGraphSvgData(displayItems, maxColumns);
   });
 
+  setContext('graphSvgData', { get data() { return graphSvgData; } });
+
   async function loadMore() {
     if (loading || !hasMore) return;
     loading = true;
@@ -414,8 +416,8 @@
         loadMoreThreshold={50}
         {hasMore}
       >
-        {#snippet renderItem(commit)}
-          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} />
+        {#snippet renderItem(commit, index)}
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} />
         {/snippet}
       </SvelteVirtualList>
 
