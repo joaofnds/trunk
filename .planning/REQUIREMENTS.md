@@ -1,122 +1,95 @@
 # Requirements: Trunk
 
-**Defined:** 2026-03-10
+**Defined:** 2026-03-12
 **Core Value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
 
-## v0.3 Requirements
+## v0.4 Requirements
 
-Requirements for the Actions milestone. Each maps to roadmap phases.
+Requirements for the Graph Rework milestone. Replace per-row SVG rendering with continuous SVG paths — one `<path>` per commit-to-commit edge, viewBox-clipped per row. Visuals stay identical; architecture eliminates row-boundary rendering bugs.
 
-### Stash
+### Graph Data
 
-- [x] **STASH-01**: User can create a stash with an optional name
-- [x] **STASH-02**: User can see stash entries in the commit graph as synthetic rows with square dots and dashed connectors, positioned at their parent commit (same sentinel pattern as WIP row)
-- [x] **STASH-03**: User can view the stash list in the sidebar
-- [x] **STASH-04**: User can pop a stash entry (apply and remove)
-- [x] **STASH-05**: User can apply a stash entry without removing it
-- [x] **STASH-06**: User can drop a stash entry without applying it
-- [x] **STASH-07**: User can right-click a stash row in the commit graph to see a context menu with pop, apply, and drop actions
+- [ ] **GRAPH-01**: GraphSvgData computes one SVG `<path>` per commit-to-commit edge (parent links and merge/fork edges), each rendered as a single unbroken path with Manhattan routing where needed
 
-### Commit Menu
+### Core Rendering
 
-- [x] **MENU-01**: User can copy a commit SHA to clipboard from the context menu
-- [x] **MENU-02**: User can copy a commit message to clipboard from the context menu
-- [x] **MENU-03**: User can checkout a commit in detached HEAD mode from the context menu
-- [x] **MENU-04**: User can create a branch from a commit with optional auto-checkout
-- [x] **MENU-05**: User can create a tag from a commit
-- [x] **MENU-06**: User can cherry-pick a commit (menu item disabled for merge commits)
-- [x] **MENU-07**: User can revert a commit (menu item disabled for merge commits)
+- [ ] **RENDER-01**: Each visible graph row renders a viewBox-clipped band of the full SVG paths (no per-row seams)
+- [ ] **RENDER-02**: Commit dots render as individual SVG elements (filled for regular, hollow for merges)
+- [ ] **RENDER-03**: Graph rendering produces identical visual output to v0.3
 
-### Remote
+### Synthetic Rows
 
-- [x] **REMOTE-01**: User can fetch all remotes with per-line progress feedback
-- [x] **REMOTE-02**: User can pull the current branch (merge strategy)
-- [x] **REMOTE-03**: User can push the current branch (auto-sets upstream for new branches)
-- [x] **REMOTE-04**: User sees actionable error messages for auth failures and non-fast-forward rejections
+- [ ] **SYNTH-01**: WIP row renders with dashed connector to HEAD in the new SVG model
+- [ ] **SYNTH-02**: Stash rows render with square dots and dashed connectors
 
-### Tracking
+### Ref Elements
 
-- [x] **TRACK-01**: Branch sidebar shows ahead/behind counts relative to upstream
-- [x] **TRACK-02**: Ahead/behind counts update after fetch, pull, and push
+- [ ] **REF-01**: Ref pills render as SVG elements (rect + text) with lane-colored backgrounds
+- [ ] **REF-02**: Ref connector lines render as single SVG paths from pill to commit dot
+- [ ] **REF-03**: Ref pills maintain existing behavior (remote dimming, overflow "+N" badge)
 
-### Toolbar
+### Interaction
 
-- [x] **TOOLBAR-01**: A quick actions bar is visible at the top of the window with Pull, Push, Branch, Stash, and Pop buttons
-- [x] **TOOLBAR-02**: Undo button performs a soft reset of the last commit (restores changes as staged)
-- [x] **TOOLBAR-03**: Redo button re-commits with the original message after an undo
+- [ ] **INTERACT-01**: Clicking a commit row selects it and shows commit detail
+- [ ] **INTERACT-02**: Right-clicking a commit row opens the context menu
+- [ ] **INTERACT-03**: Right-clicking a stash row opens the stash context menu
 
-## Future Requirements (v0.4+)
-
-### Staging
-
-- **STAGE-01**: User can stage individual diff hunks (not just whole files)
+## Future Requirements (v0.5+)
 
 ### UI Polish
 
-- **UI-01**: Left and right panels are resizable via drag splitter
-- **UI-02**: Keyboard shortcuts for common operations (stage, commit, fetch, checkout)
-- **UI-03**: StagingPanel refreshes deterministically after checkout/create-branch
+- **UI-01**: Add icon set and use throughout the application
+- **UI-02**: Discard changes action
+- **UI-03**: Stage/unstage individual hunks
+- **UI-04**: Branch delete action
+- **UI-05**: Tag delete action
+- **UI-06**: Dialog system for errors/warnings/updates
+- **UI-07**: Staging panel green/red buttons for stage all/unstage all
+- **UI-08**: Equal height for unstaged and staged file lists when not collapsed
+- **UI-09**: Three-way commit selector (commit / amend / stash)
+- **UI-10**: Search commits/branches with cmd+f
 
-### Remote (advanced)
+### Advanced Git
 
-- **REMOTE-05**: User can push with --force-with-lease after explicit confirmation
-- **REMOTE-06**: Pull supports rebase strategy (in addition to merge)
-
-### Stash (advanced)
-
-- **STASH-08**: User can preview stash diff before applying
+- **GIT-01**: Interactive rebase
+- **GIT-02**: Conflict diffs
+- **GIT-03**: Conflict resolution
+- **GIT-04**: Check out branch after creating
+- **GIT-05**: Multiple tabs
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Conflict resolution UI | Enormous scope; explicitly deferred to v0.4+ per PROJECT.md |
-| Interactive rebase | High correctness bar; high complexity (Tower-level scope) |
-| SSH key / credential manager UI | Platform-specific; multi-week scope per platform; rely on system git auth |
-| In-app HTTPS credential manager | Rely on git's configured credential helper |
-| Cherry-pick series (multi-select) | Requires multi-select graph first |
-| Force push (--force) | Force-with-lease deferred; plain --force never exposed in GUI without undo system |
-| Multi-repo functional tabs | Tab bar visible but non-functional (established v0.1 decision) |
-| Syntax highlighting in diffs | Deferred to v0.4 |
-| Settings/preferences UI | Deferred to v1.0 |
-| Commit signing | Deferred to v1.0 |
-| Auto-updates | Deferred to v1.0 |
+| Canvas rendering | SVG approach preserves accessibility and text selection; no need for Canvas |
+| Full-height single SVG (not clipped per row) | Research showed DOM explosion at scale; viewBox-clipped per row is the correct approach |
+| Hover-highlight on branch lines | Differentiator, not part of "zero visual change" goal |
+| Click-to-select branch lines | Differentiator, deferred |
 
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
 
-| Requirement | Phase | Plan | Status |
-|-------------|-------|------|--------|
-| STASH-01 | Phase 11 | 11-03 | Complete |
-| STASH-02 | Phase 11 | 11-02 | Complete |
-| STASH-03 | Phase 11 | 11-03, 11-04 | Complete |
-| STASH-04 | Phase 11 | 11-03 | Complete |
-| STASH-05 | Phase 11 | 11-03, 11-04 | Complete |
-| STASH-06 | Phase 11 | 11-03, 11-04 | Complete |
-| STASH-07 | Phase 11 | 11-02 | Complete |
-| MENU-01 | Phase 12 | 12-02 | Pending |
-| MENU-02 | Phase 12 | 12-02 | Pending |
-| MENU-03 | Phase 12 | 12-01 | Pending |
-| MENU-04 | Phase 12 | 12-01 | Pending |
-| MENU-05 | Phase 12 | 12-01 | Pending |
-| MENU-06 | Phase 12 | 12-01 | Pending |
-| MENU-07 | Phase 12 | 12-01 | Pending |
-| REMOTE-01 | Phase 13 | 13-01 | Pending |
-| REMOTE-02 | Phase 13 | 13-01 | Pending |
-| REMOTE-03 | Phase 13 | 13-01 | Pending |
-| REMOTE-04 | Phase 13 | 13-01 | Pending |
-| TRACK-01 | Phase 14 | 14-01 | Pending |
-| TRACK-02 | Phase 14 | 14-01 | Pending |
-| TOOLBAR-01 | Phase 14 | 14-02 | Pending |
-| TOOLBAR-02 | Phase 14 | 14-02 | Pending |
-| TOOLBAR-03 | Phase 14 | 14-02 | Pending |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| GRAPH-01 | — | Pending |
+| RENDER-01 | — | Pending |
+| RENDER-02 | — | Pending |
+| RENDER-03 | — | Pending |
+| SYNTH-01 | — | Pending |
+| SYNTH-02 | — | Pending |
+| REF-01 | — | Pending |
+| REF-02 | — | Pending |
+| REF-03 | — | Pending |
+| INTERACT-01 | — | Pending |
+| INTERACT-02 | — | Pending |
+| INTERACT-03 | — | Pending |
 
 **Coverage:**
-- v0.3 requirements: 23 total
-- Mapped to phases: 23
-- Unmapped: 0 ✓
+- v0.4 requirements: 12 total
+- Mapped to phases: 0
+- Unmapped: 12 ⚠️
 
 ---
-*Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 — traceability complete; all 23 requirements mapped across phases 11-14; plan-level traceability added*
+*Requirements defined: 2026-03-12*
+*Last updated: 2026-03-12 after initial definition*
