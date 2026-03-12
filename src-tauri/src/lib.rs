@@ -4,7 +4,7 @@ mod git;
 mod state;
 mod watcher;
 
-use state::{CommitCache, RepoState};
+use state::{CommitCache, RepoState, RunningOp};
 use watcher::WatcherState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -16,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(RepoState(Default::default()))
         .manage(CommitCache(Default::default()))
+        .manage(RunningOp(Default::default()))
         .manage(WatcherState(Default::default()))
         .invoke_handler(tauri::generate_handler![
             commands::repo::open_repo,
