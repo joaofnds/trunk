@@ -1,725 +1,619 @@
-# Architecture Research
+# Architecture Research: Full-Height SVG Graph Rework
 
-**Domain:** Tauri 2 + Svelte 5 + Rust desktop Git GUI — v0.3 remote ops, stash, commit context menu
-**Researched:** 2026-03-10
-**Confidence:** HIGH — existing codebase fully read; all integration points derived from code, not assumptions
-
----
-
-## Existing Architecture Summary
-
-Before describing what changes, here is what is already in place and MUST NOT be disrupted.
-
-**Rust managed state:**
-- `RepoState(Mutex<HashMap<String, PathBuf>>)` — path registry; `git2::Repository` is NOT stored (not Sync)
-- `CommitCache(Mutex<HashMap<String, GraphResult>>)` — cached lane graph per repo
-- `WatcherState(Mutex<WatcherMap>)` — filesystem watchers per repo
-
-**Command pattern (inner-fn):** Every Tauri command delegates immediately to a pure `_inner` function that takes `&HashMap<String, PathBuf>` and returns `Result<T, TrunkError>`. The Tauri command does: lock state → clone → `spawn_blocking` → update cache → emit `repo-changed`. The inner fn has no Tauri dependency and is directly unit-testable.
-
-**Mutation pattern (cache-repopulate-before-emit):** After any mutation, call `refresh_commit_cache()` inside the same `spawn_blocking` block, update `CommitCache` under the lock, then emit `repo-changed`. This prevents the frontend from seeing a stale empty cache when it re-renders.
-
-**IPC:** `safeInvoke<T>` on the frontend wraps all `invoke()` calls and parses `TrunkError` JSON from Rust error strings. All commands return `Result<T, String>` where the `String` is `serde_json::to_string(&TrunkError)`.
-
-**Event bus:** Rust emits `repo-changed` (payload: path string) after mutations. Frontend subscribes with `listen()` in `App.svelte` and increments `refreshSignal` to trigger `CommitGraph.svelte` refresh.
-
-**Native context menu (already used):** `CommitGraph.svelte` already uses `@tauri-apps/api/menu` — `Menu.new({ items })` + `menu.popup()` — for the column header right-click. This exact same pattern applies to per-commit context menus.
+**Domain:** Graph rendering rework for Tauri 2 + Svelte 5 desktop Git GUI
+**Researched:** 2026-03-12
+**Confidence:** HIGH -- all integration points derived from reading existing code; no external libraries needed
 
 ---
 
-## System Overview
+## Existing Architecture (What Must Not Break)
+
+### Virtual List DOM Structure
+
+`@humanspeak/svelte-virtual-list` creates this four-layer DOM:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Svelte 5 Frontend (WebView)                                     │
-│                                                                  │
-│  App.svelte                                                      │
-│    ├── CommitGraph.svelte  ← NEW: oncontextmenu per row          │
-│    │     └── CommitRow.svelte  ← NEW: contextmenu handler        │
-│    ├── BranchSidebar.svelte  ← NEW: remote op buttons            │
-│    └── StagingPanel.svelte  ← NEW: stash save/pop controls       │
-│                                                                  │
-│  invoke.ts (safeInvoke<T>) ← no changes needed                  │
-│  types.ts  ← NEW: RemoteOpProgress, StashEntry                   │
-├─────────────────────────────────────────────────────────────────┤
-│  Tauri IPC Layer                                                 │
-│    invoke  → Rust #[tauri::command]                              │
-│    emit    ← Rust app.emit(event, payload)                       │
-├─────────────────────────────────────────────────────────────────┤
-│  Rust Backend (src-tauri/src/)                                   │
-│                                                                  │
-│  commands/                                                       │
-│    remote.rs  ← NEW: push, pull, fetch                           │
-│    stash.rs   ← NEW: stash_save, stash_pop, stash_drop           │
-│    commit.rs  ← EXTEND: checkout_commit, cherry_pick, revert,   │
-│                          create_tag                               │
-│    branches.rs  (existing: checkout_branch, create_branch)       │
-│                                                                  │
-│  git/                                                            │
-│    remote.rs  ← NEW: shell-out wrappers (push/pull/fetch)        │
-│    stash.rs   ← NEW: git2 stash operations                       │
-│                                                                  │
-│  state.rs  ← no changes                                          │
-│  watcher.rs  ← no changes                                        │
-└─────────────────────────────────────────────────────────────────┘
+div.virtual-list-container     (position: relative; overflow: hidden)
+  div.virtual-list-viewport    (position: absolute; inset: 0; overflow-y: scroll)
+    div.virtual-list-content   (position: relative; height: {contentHeight}px)
+      div.virtual-list-items   (position: absolute; transform: translateY({transformY}px))
+        div[data-original-index=N]   (one per visible item)
+          <CommitRow />
+```
+
+Key properties:
+- **Viewport** is the scroll container (`overflow-y: scroll`)
+- **Content** div has explicit `height` set to total content height (creates scrollbar)
+- **Items** div is `position: absolute` and translated via `translateY` to show the correct window
+- Only visible items + buffer exist in the DOM (~40 nodes for any history size)
+- Item height: `ROW_HEIGHT = 26px` (fixed, passed as `defaultEstimatedItemHeight`)
+
+### Current Per-Row SVG (LaneSvg.svelte)
+
+Each `CommitRow` renders a `LaneSvg` inside the graph column. The SVG is `width={maxColumns * LANE_WIDTH}` and `height={ROW_HEIGHT}`. It draws:
+- Layer 1: Vertical rail lines (straight edges continuing through the row)
+- Layer 2: Manhattan-routed merge/fork connection paths
+- Layer 3: Commit dot (solid, hollow for merge, dashed for WIP)
+
+Each row's SVG is self-contained. Edges that span row boundaries are drawn as fragments: a line from `y=cy` to `y=rowHeight` in the current row, continuing from `y=0` to `y=cy` in the next row.
+
+### Current Ref Pills and Connectors
+
+Ref pills are HTML `<span>` elements in the ref column (column 1). A horizontal CSS `<div>` connector line stretches from the pill to the commit dot in the graph column. The connector is positioned with `position: absolute` and calculated width: `refContainerWidth + graphColumnOffset + dotCenterX`.
+
+### Graph Constants
+
+```
+LANE_WIDTH = 12px
+ROW_HEIGHT = 26px
+DOT_RADIUS = 6px
+EDGE_STROKE = 1px
+WIP_STROKE = 1.5px
+MERGE_STROKE = 2px
 ```
 
 ---
 
-## Feature 1: Remote Operations (Push / Pull / Fetch)
+## Recommended Architecture: Clipped SVG Inside the Graph Column
 
-### Why Shell-Out (Decision Already Made)
+### The Core Decision: Clipped Column, Not Overlay
 
-`git2` / libgit2 has incomplete and unreliable SSH agent forwarding and HTTPS credential helper integration. All major open-source Tauri git clients (GitButler, Aho) shell out to the `git` CLI for remote operations. The git CLI handles SSH agents, macOS Keychain, git-credential-helper, and SSH passphrase prompts natively. libgit2 requires reimplementing the entire credential callback chain — which is brittle and platform-specific. This decision is already recorded in `PROJECT.md`.
+**Use a single full-height SVG placed inside the graph column cell of each CommitRow, but backed by a shared SVG data model where each path is computed once across the entire commit list.**
 
-### Async Long-Running Commands in Tauri
+Rationale against a true overlay:
+1. **Z-index chaos.** An overlay SVG on top of the virtual list container would sit above ALL row content (text, pills, buttons). Making dots clickable while keeping text selectable requires `pointer-events: none` on the SVG with `pointer-events: auto` on individual dots -- fragile and platform-dependent.
+2. **Scroll synchronization.** The virtual list viewport is the scroll container. An overlay outside it would need manual scroll sync via `scrollTop` mirroring. The virtual list's `transformY` is internal state -- tracking it requires reaching into library internals.
+3. **Column resizing breaks.** The graph column width is user-adjustable. An overlay would need to track column position and width reactively, duplicating layout logic.
 
-The existing pattern uses `tauri::async_runtime::spawn_blocking` for blocking git2 calls. Remote ops cannot use `spawn_blocking` in the same way because:
-1. They can take 10-60+ seconds
-2. They produce stderr output (progress lines like `remote: Counting objects: 100%`)
-3. They may require interactive credential input
+**Instead:** Keep the graph column's DOM slot per row, but change what renders there. Each row's graph cell renders a `<svg>` that is a viewport into a single logical full-height SVG via `viewBox` clipping.
 
-**Correct approach: `tokio::process::Command` (async, non-blocking)**
+### How It Works
 
-Tauri 2's async runtime is Tokio. `tokio::process::Command` lets you spawn a subprocess, capture stdout/stderr line-by-line asynchronously, and emit each line as a Tauri event — without blocking the async executor and without `spawn_blocking`.
+**Pre-compute once, render per-row via viewBox:**
 
-```rust
-// Pattern for streaming remote ops
-#[tauri::command]
-pub async fn git_fetch(
-    path: String,
-    remote: String,
-    state: State<'_, RepoState>,
-    cache: State<'_, CommitCache>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let path_buf = {
-        let map = state.0.lock().unwrap();
-        map.get(&path)
-            .ok_or_else(|| /* TrunkError JSON */ )?
-            .clone()
-    };
+1. When `displayItems` changes (load/refresh), compute all SVG path data for the entire commit list -- one `<path d="...">` string per branch rail, one per merge/fork edge, one per ref connector, plus dot positions.
+2. Store these in a reactive `GraphSvgData` object (shared `$state`).
+3. Each `CommitRow`'s graph cell renders a `<svg>` with:
+   - `width={columnWidths.graph}` (matches column)
+   - `height={ROW_HEIGHT}` (matches row)
+   - `viewBox="0 {rowIndex * ROW_HEIGHT} {svgWidth} {ROW_HEIGHT}"` (clips to this row's vertical band)
+   - Contains ALL path elements (rails, edges, dots, ref connectors, ref pills)
 
-    let mut child = tokio::process::Command::new("git")
-        .args(["fetch", "--progress", &remote])
-        .current_dir(&path_buf)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(/* ... */)?;
+The viewBox clip means only the portion of each path that intersects this row's vertical band is visible. The browser efficiently clips the rest without layout cost.
 
-    // Stream stderr (git remote progress goes to stderr)
-    if let Some(stderr) = child.stderr.take() {
-        let app_clone = app.clone();
-        let path_clone = path.clone();
-        tokio::spawn(async move {
-            use tokio::io::{AsyncBufReadExt, BufReader};
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let _ = app_clone.emit("remote-progress", RemoteProgress {
-                    path: path_clone.clone(),
-                    line,
-                });
-            }
-        });
-    }
+### Why viewBox Clipping Is Efficient
 
-    let status = child.wait().await.map_err(/* ... */)?;
-    if !status.success() {
-        return Err(/* TrunkError JSON: exit code */);
-    }
+Each row's SVG contains references to the same path data, but the browser only rasterizes the visible portion defined by the viewBox. SVG path rendering with clip is O(visible-segments), not O(total-path-length). For a 26px-tall viewBox on a path spanning 260,000px, the browser clips early in the rendering pipeline.
 
-    // cache-repopulate-before-emit pattern
-    let path_clone = path.clone();
-    let state_map = state.0.lock().unwrap().clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = state_map.get(&path_clone).ok_or(/* ... */)?;
-        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX)
-    })
-    .await
-    .map_err(/* ... */)?
-    .map_err(/* ... */)?;
+With ~40 visible rows * ~20 paths average = ~800 SVG path elements in the DOM at any time. This is well within browser SVG performance limits (browsers handle thousands of path elements without issue).
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
-    let _ = app.emit("repo-changed", path);
-    Ok(())
-}
-```
+### Alternative Considered: Single Overlay SVG
 
-**Note on `spawn_blocking` vs `tokio::process::Command`:** The existing commands use `spawn_blocking` because git2 is synchronous. Remote shell-out uses `tokio::process::Command` which is natively async — no `spawn_blocking` wrapper needed.
+Place one `<svg>` element as a sibling to the virtual list viewport, positioned absolutely over the graph column area, with its own scroll tracking.
 
-### Progress Streaming to Frontend
-
-New event: `remote-progress` with payload `{ path: string; line: string }`.
-
-Git remote progress appears on stderr. Example lines:
-```
-remote: Counting objects: 100% (52/52), done.
-remote: Compressing objects: 100% (35/35), done.
-Receiving objects: 100% (52/52), 4.55 KiB | 1.52 MiB/s, done.
-```
-
-**Frontend pattern:**
-```typescript
-// In BranchSidebar.svelte or a dedicated RemoteOpsModal.svelte
-let progressLines = $state<string[]>([]);
-let remoteOpRunning = $state(false);
-
-async function handleFetch() {
-    remoteOpRunning = true;
-    progressLines = [];
-    const unlisten = await listen<{ path: string; line: string }>('remote-progress', (e) => {
-        if (e.payload.path === repoPath) {
-            progressLines = [...progressLines, e.payload.line];
-        }
-    });
-    try {
-        await safeInvoke('git_fetch', { path: repoPath, remote: 'origin' });
-    } finally {
-        unlisten();
-        remoteOpRunning = false;
-    }
-}
-```
-
-The `unlisten()` call in `finally` ensures the listener is removed after the command resolves.
-
-### SSH / HTTPS Credential Handling
-
-**SSH (agent-based):** When the git CLI runs, it calls the SSH agent normally via the running `ssh-agent` / macOS Keychain. No special handling needed for repos already set up with SSH keys.
-
-**SSH passphrase prompts:** If the key has a passphrase and is not in the agent, `git fetch` will block waiting for terminal input. Since the process has no controlling terminal, it will fail with "Permission denied (publickey)". The frontend should show the error from stderr and guide the user to add the key to ssh-agent.
-
-**HTTPS credentials:** The `git` CLI will use whatever credential helper is configured (macOS Keychain via `git-credential-osxkeychain`, Windows Credential Manager, etc.). If no helper is configured and credentials are needed, git will block waiting for stdin — which will fail the same way (no TTY).
-
-**Recommended approach for v0.3:** Do NOT implement a credential input UI. Instead:
-1. Capture the exit code and full stderr output
-2. On failure, surface the stderr in a modal/error display
-3. Document that repos must have credentials configured in the system (SSH key in agent, or HTTPS credentials in OS keychain)
-
-This is what GitButler and other Tauri git clients do for v1. A credential prompt UI is a later feature requiring `tauri-plugin-dialog` for secure text input or a dedicated Tauri window.
-
-**The `GIT_TERMINAL_PROMPT=0` env var:** Set this on the spawned process to prevent git from blocking forever waiting for credentials it will never receive:
-
-```rust
-tokio::process::Command::new("git")
-    .env("GIT_TERMINAL_PROMPT", "0")  // Fail fast instead of blocking
-    .env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")  // SSH: fail fast on passphrase prompt
-    .args(["fetch", "--progress", remote])
-    .current_dir(&path_buf)
-    // ...
-```
-
-### New Rust Commands (Remote)
-
-| Command | Rust fn | git CLI args | Emits |
-|---------|---------|-------------|-------|
-| `git_fetch` | `git_fetch` | `git fetch [remote] --progress` | `remote-progress`, `repo-changed` |
-| `git_pull` | `git_pull` | `git pull [remote] [branch] --progress` | `remote-progress`, `repo-changed` |
-| `git_push` | `git_push` | `git push [remote] [branch] --progress` | `remote-progress`, `repo-changed` |
-
-**No new git module file needed for remote ops** — these are thin wrappers around `tokio::process::Command`. Put them in `commands/remote.rs` directly. There is no "inner function" testable equivalent for shell-out commands (the test would require a real git remote), so unit tests are skipped for remote commands; integration tests with a bare repo can be added later.
-
-### New Rust Type
-
-```rust
-// In types.rs (or directly in commands/remote.rs)
-#[derive(Debug, Serialize, Clone)]
-pub struct RemoteProgress {
-    pub path: String,
-    pub line: String,
-}
-```
+**Why rejected:**
+- Requires reading `transformY` from the virtual list (not exposed in the public API)
+- Requires duplicating scroll event handling
+- Z-index management with interactive elements (dots, pills) is fragile
+- Column resize tracking requires DOM measurement on each resize frame
+- Breaks the established "each row is self-contained" pattern of the virtual list
 
 ---
 
-## Feature 2: Stash Operations
+## Component Architecture
 
-### git2 Stash API Coverage
+### New Component: `GraphSvg.svelte`
 
-The `git2` crate provides native stash operations. The existing codebase already uses `stash_foreach` (in `branches.rs` for listing stashes and in `repository.rs` for building the ref map). The full API available:
+Replaces `LaneSvg.svelte`. Renders a single `<svg>` element per row that shows a viewBox-clipped slice of the full graph.
 
-| git2 method | Signature | Notes |
-|-------------|-----------|-------|
-| `repo.stash_save` | `(&mut self, stasher: &Signature, message: &str, flags: Option<StashFlags>) -> Result<Oid>` | Requires `&mut repo`. `StashFlags::DEFAULT` stashes tracked changes. |
-| `repo.stash_apply` | `(&mut self, index: usize, opts: Option<&mut StashApplyOptions>) -> Result<()>` | Apply without removing. |
-| `repo.stash_pop` | `(&mut self, index: usize, opts: Option<&mut StashApplyOptions>) -> Result<()>` | Apply and remove. |
-| `repo.stash_drop` | `(&mut self, index: usize) -> Result<()>` | Remove without applying. |
-| `repo.stash_foreach` | `(&mut self, callback: F) -> Result<()>` | Iterate. Already used. |
-
-**Critical:** All stash methods require `&mut Repository`. This is already the pattern used in `branches.rs` (`list_refs_inner` calls `repo.stash_foreach` with `&mut repo`).
-
-`StashFlags` for `stash_save`:
-- `StashFlags::DEFAULT` — stash all tracked changes (staged + unstaged)
-- `StashFlags::INCLUDE_UNTRACKED` — also stash untracked files
-- `StashFlags::KEEP_INDEX` — keep staged changes in the index after stashing
-
-For v0.3, `StashFlags::DEFAULT` is the right choice. Include-untracked is a follow-on feature.
-
-### Stash and CommitCache
-
-Stash operations mutate the working tree and the stash ref list. After `stash_save` or `stash_pop`, both the commit graph (stash commits appear/disappear in the graph) and the refs list (stashes panel in sidebar) need to refresh.
-
-**Pattern: follow cache-repopulate-before-emit exactly as existing mutation commands.**
-
-After `stash_save` or `stash_pop` completes, call `walk_commits` to rebuild the graph, update `CommitCache`, then emit `repo-changed`. The frontend's existing `repo-changed` listener handles the refresh automatically.
-
-### Stash and WatcherState
-
-The filesystem watcher (`notify`) is watching the entire repo directory including `.git`. Any mutation (including stash) triggers a `repo-changed` event from the watcher. This means if the user stashes from the terminal while Trunk is open, the UI will auto-refresh. No changes needed to `WatcherState`.
-
-The watcher fires AFTER stash commands complete (it watches filesystem events). There is no double-refresh risk: the command itself emits `repo-changed` after updating the cache, and the watcher may fire a second event — but the frontend's `refreshSignal` increment is idempotent (it just refreshes the graph again).
-
-### New Rust Commands (Stash)
-
-| Command | Rust fn | git2 call | Args |
-|---------|---------|-----------|------|
-| `stash_save` | `stash_save` | `repo.stash_save(&sig, message, None)` | `path: String, message: String` |
-| `stash_pop` | `stash_pop` | `repo.stash_pop(index, None)` | `path: String, index: usize` |
-| `stash_drop` | `stash_drop` | `repo.stash_drop(index)` | `path: String, index: usize` |
-
-`stash_apply` (without removing) is less commonly needed for v0.3. Include `stash_drop` because the sidebar already shows stashes and users will want to delete them.
-
-### Inner-fn Pattern for Stash
-
-```rust
-// commands/stash.rs
-
-pub fn stash_save_inner(
-    path: &str,
-    message: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<(), TrunkError> {
-    let path_buf = state_map.get(path)
-        .ok_or_else(|| TrunkError::new("not_open", /* ... */))?;
-    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    let sig = repo.signature().map_err(TrunkError::from)?;
-    repo.stash_save(&sig, message, None).map_err(TrunkError::from)?;
-    Ok(())
-}
-
-pub fn stash_pop_inner(
-    path: &str,
-    index: usize,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<(), TrunkError> {
-    let path_buf = state_map.get(path)
-        .ok_or_else(|| TrunkError::new("not_open", /* ... */))?;
-    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    repo.stash_pop(index, None).map_err(TrunkError::from)?;
-    Ok(())
-}
-```
-
-The Tauri command wrappers follow the same `spawn_blocking` + cache-repopulate + `repo-changed` emit pattern as `create_commit`.
-
-### New git module file
-
-Create `src-tauri/src/git/stash.rs` (optional but recommended) if stash logic becomes complex. For simple save/pop/drop, the inner fns can live directly in `commands/stash.rs`.
-
----
-
-## Feature 3: Commit Row Context Menu
-
-### Existing Native Menu Pattern
-
-`CommitGraph.svelte` already has a working example:
-
-```typescript
-// Existing: column header right-click
-async function showHeaderContextMenu(e: MouseEvent) {
-    e.preventDefault();
-    const items = await Promise.all(columnLabels.map(col => CheckMenuItem.new({ ... })));
-    const menu = await Menu.new({ items });
-    await menu.popup();  // Pops at cursor position automatically
-}
-```
-
-`menu.popup()` with no arguments uses the current cursor position. This is already the correct API.
-
-### Per-Commit Dynamic Menu
-
-The commit context menu must:
-1. Be triggered on `contextmenu` event on a `CommitRow`
-2. Know which commit was right-clicked (the `oid`, `short_oid`, `summary`)
-3. Show relevant actions based on commit state (e.g., HEAD commit gets different options)
-4. Execute actions that require the `repoPath`
-
-**Component design:** Add `oncontextmenu` to `CommitRow.svelte`. Pass a callback up through `CommitGraph.svelte` to `App.svelte`, or handle it entirely within `CommitGraph.svelte`.
-
-Since `CommitGraph.svelte` already owns `repoPath` (it's a prop), it can implement the context menu handler directly without lifting state to `App.svelte`.
-
-```typescript
-// In CommitGraph.svelte
-
-async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
-    e.preventDefault();
-    e.stopPropagation();  // Prevent row click (commit select) from firing
-
-    const items = await buildCommitMenuItems(commit);
-    const menu = await Menu.new({ items });
-    await menu.popup();
-}
-
-async function buildCommitMenuItems(commit: GraphCommit): Promise<MenuItem[]> {
-    // Build items array based on commit state
-    const isWip = commit.oid === '__wip__';
-    if (isWip) return [];  // No context menu for WIP row
-
-    return [
-        await MenuItem.new({
-            text: 'Copy SHA',
-            action: () => navigator.clipboard.writeText(commit.oid),
-        }),
-        await MenuItem.new({
-            text: 'Copy Message',
-            action: () => navigator.clipboard.writeText(commit.summary),
-        }),
-        await PredefinedMenuItem.new({ item: 'Separator' }),
-        await MenuItem.new({
-            text: 'Checkout Commit',
-            action: () => handleCheckoutCommit(commit.oid),
-        }),
-        await MenuItem.new({
-            text: 'Create Branch Here',
-            action: () => handleCreateBranchAt(commit.oid),
-        }),
-        await MenuItem.new({
-            text: 'Create Tag Here',
-            action: () => handleCreateTagAt(commit.oid),
-        }),
-        await PredefinedMenuItem.new({ item: 'Separator' }),
-        await MenuItem.new({
-            text: 'Cherry-pick',
-            action: () => handleCherryPick(commit.oid),
-        }),
-        await MenuItem.new({
-            text: 'Revert',
-            action: () => handleRevert(commit.oid),
-        }),
-    ];
-}
-```
-
-### Passing the Handler into CommitRow
-
-`CommitRow.svelte` currently accepts:
-```typescript
-interface Props {
-    commit: GraphCommit;
-    onselect?: (oid: string) => void;
-    maxColumns?: number;
-    columnWidths: ColumnWidths;
-    columnVisibility: ColumnVisibility;
-}
-```
-
-Add `oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void` to Props.
-
-In CommitRow's root div:
 ```svelte
-<div
-  ...
-  oncontextmenu={(e) => oncontextmenu?.(e, commit)}
+<script lang="ts">
+  interface Props {
+    rowIndex: number;
+    graphData: GraphSvgData;
+    svgWidth: number;
+    maxColumns: number;
+  }
+</script>
+
+<svg
+  width={svgWidth}
+  height={ROW_HEIGHT}
+  viewBox="0 {rowIndex * ROW_HEIGHT} {svgWidth} {ROW_HEIGHT}"
 >
+  <!-- Layer 1: Rail paths (one <path> per active lane) -->
+  {#each graphData.rails as rail}
+    <path d={rail.d} stroke={rail.color} stroke-width={EDGE_STROKE} fill="none" />
+  {/each}
+
+  <!-- Layer 2: Connection paths (one <path> per merge/fork edge) -->
+  {#each graphData.connections as conn}
+    <path d={conn.d} stroke={conn.color} stroke-width={EDGE_STROKE} fill="none"
+          stroke-linecap="round" />
+  {/each}
+
+  <!-- Layer 3: Dots (one <circle> per commit) -->
+  {#each graphData.dots as dot}
+    <circle cx={dot.cx} cy={dot.cy} r={dot.r} fill={dot.fill}
+            stroke={dot.stroke} stroke-width={dot.strokeWidth} />
+  {/each}
+
+  <!-- Layer 4: Ref connectors (one <line> per ref pill) -->
+  {#each graphData.refConnectors as conn}
+    <line x1={conn.x1} y1={conn.y1} x2={conn.x2} y2={conn.y2}
+          stroke={conn.color} stroke-width={EDGE_STROKE} />
+  {/each}
+
+  <!-- Layer 5: Ref pills (one <g> per ref) -->
+  {#each graphData.refPills as pill}
+    <g transform="translate({pill.x}, {pill.y})">
+      <rect rx="8" ry="8" width={pill.width} height={pill.height}
+            fill={pill.bgColor} />
+      <text x={pill.textX} y={pill.textY} fill="white"
+            font-size="11" font-weight={pill.isBold ? 'bold' : 'normal'}>
+        {pill.label}
+      </text>
+    </g>
+  {/each}
+</svg>
 ```
 
-In CommitGraph's virtual list snippet:
-```svelte
-{#snippet renderItem(commit)}
-    <CommitRow
-        {commit}
-        onselect={...}
-        oncontextmenu={showCommitContextMenu}
-        {maxColumns}
-        {columnWidths}
-        {columnVisibility}
-    />
-{/snippet}
-```
+**Key insight:** Every row renders the SAME set of paths/dots/pills. The `viewBox` clips to only show the row's vertical slice. The browser skips rendering elements entirely outside the viewBox.
 
-### New Rust Commands (Commit Context Menu Actions)
+### New Module: `graph-svg-data.svelte.ts`
 
-| Action | Rust command | git2 / CLI | Notes |
-|--------|-------------|-----------|-------|
-| Checkout commit | `checkout_commit` | `repo.set_head_detached(oid)` + `repo.checkout_tree` | Detaches HEAD; git2 supported |
-| Create branch at commit | Extend existing `create_branch` | Add `from_oid: Option<String>` param | If provided, create from that commit instead of HEAD |
-| Create tag | `create_tag` | `repo.tag_lightweight(name, &obj, false)` | Lightweight tag; annotated tags are v0.4+ |
-| Cherry-pick | `cherry_pick` | Shell-out: `git cherry-pick <oid>` | git2 has `repo.cherrypick()` but conflict handling is complex; shell-out is safer for v0.3 |
-| Revert | `revert` | Shell-out: `git revert <oid> --no-edit` | Same reasoning as cherry-pick |
+A reactive `$state` module that computes all SVG geometry from the commit list. This is the core new logic.
 
-**Cherry-pick and revert via shell-out:** git2 has `Repository::cherrypick()` and `Repository::revert()`, but both require manual conflict resolution handling (setting merge state, writing CHERRY_PICK_HEAD / REVERT_HEAD). The git CLI handles this cleanly, produces a commit automatically (for revert), and reports conflicts clearly in stderr. Using shell-out for these two is consistent with using shell-out for remote ops and avoids reimplementing merge state management.
+```typescript
+// graph-svg-data.svelte.ts
 
-**Checkout commit (detached HEAD):** git2 supports this cleanly:
-```rust
-pub fn checkout_commit_inner(
-    path: &str,
-    oid_str: &str,
-    state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, GraphResult>,
-) -> Result<(), TrunkError> {
-    let path_buf = state_map.get(path).ok_or_else(|| /* ... */)?;
-    let repo = git2::Repository::open(path_buf)?;
-    let oid = git2::Oid::from_str(oid_str).map_err(TrunkError::from)?;
-    let commit = repo.find_commit(oid).map_err(TrunkError::from)?;
-    let obj = commit.as_object();
-    repo.checkout_tree(obj, Some(&mut git2::build::CheckoutBuilder::new().safe()))?;
-    repo.set_head_detached(oid)?;
-    drop(repo);
-    // Rebuild cache
-    let mut repo2 = git2::Repository::open(path_buf)?;
-    cache_map.insert(path.to_owned(), graph::walk_commits(&mut repo2, 0, usize::MAX)?);
-    Ok(())
+export interface RailPath {
+  d: string;        // SVG path data for the full vertical rail
+  color: string;    // CSS variable reference
+}
+
+export interface ConnectionPath {
+  d: string;        // SVG path data for the merge/fork edge
+  color: string;
+}
+
+export interface DotData {
+  cx: number;
+  cy: number;
+  r: number;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  oid: string;       // For click handling
+  rowIndex: number;   // For hit testing
+}
+
+export interface RefConnector {
+  x1: number; y1: number;
+  x2: number; y2: number;
+  color: string;
+}
+
+export interface RefPillData {
+  x: number; y: number;
+  width: number; height: number;
+  bgColor: string;
+  label: string;
+  textX: number; textY: number;
+  isBold: boolean;
+  rowIndex: number;
+}
+
+export interface GraphSvgData {
+  rails: RailPath[];
+  connections: ConnectionPath[];
+  dots: DotData[];
+  refConnectors: RefConnector[];
+  refPills: RefPillData[];
 }
 ```
 
-**Create tag:** git2 lightweight tag:
-```rust
-repo.tag_lightweight(name, &obj, false)  // false = no force
+### Path Computation: Rails
+
+A rail is a continuous vertical line for a lane. Currently, each row draws straight edges independently. The new approach:
+
+1. Walk through all commits in order.
+2. For each lane column, track contiguous vertical segments where a straight edge exists.
+3. Merge contiguous segments into a single SVG `M x y1 V y2` path.
+
 ```
+For commits [0..N], lane column C:
+  Start at commit i where edges include Straight with from_column=C
+  Continue while consecutive commits also have Straight edge in column C
+  Emit: M {cx(C)} {i * ROW_HEIGHT} V {(j+1) * ROW_HEIGHT}
+  where j is the last commit in the contiguous segment
+```
+
+Branch tips: a rail starts at `cy` of the branch tip row (not `y=0`), matching current behavior where `is_branch_tip && edge.from_column === commit.column` starts the line at `cy` instead of `0`.
+
+### Path Computation: Merge/Fork Edges
+
+Each merge/fork edge spans exactly one row in the current model (the edge data is on the commit that has the merge or fork). The path geometry stays the same as `buildEdgePath` in `LaneSvg.svelte`, just with `cy` computed from `rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2`.
+
+These are already single-row paths, so the "continuous path" benefit is less relevant here. However, moving them into the shared data model ensures consistent z-ordering and enables future multi-row edge routing if needed.
+
+### Path Computation: WIP Connector
+
+The WIP row (index 0 when `wipCount > 0`) draws a dashed line from the WIP dot to the HEAD dot in the next row. In the full-height model, this becomes a single dashed path: `M {cx(0)} {wipDotCy + DOT_RADIUS} V {headDotCy}`.
+
+### Ref Pills as SVG Elements
+
+Currently ref pills are HTML `<span>` elements in the ref column with an absolute-positioned `<div>` connector line. The rework moves both into the SVG:
+
+1. **Connector:** An SVG `<line>` from the pill's right edge to the commit dot center.
+2. **Pill:** An SVG `<g>` containing a `<rect>` (rounded corners) and `<text>`.
+
+**Positioning:** Ref pills sit to the LEFT of the graph, extending into negative x-coordinates. The SVG viewBox starts before x=0 to include the ref column space. The viewBox becomes: `viewBox="{-refColumnWidth} {rowIndex * ROW_HEIGHT} {refColumnWidth + graphColumnWidth} {ROW_HEIGHT}"`.
+
+**Text measurement:** SVG `<text>` width is not known until rendered. For pill sizing, pre-compute approximate widths using a character-width heuristic (monospace: ~6.6px per char at 11px font-size, proportional: ~5.5px). Alternatively, use a hidden `<canvas>` context's `measureText()` for accurate pre-computation.
+
+**Interaction:** Ref pills in SVG support `onclick`, `onmouseenter`, `onmouseleave` natively. The "+N" overflow badge and expanded overlay from `CommitRow.svelte` can be replicated with SVG groups and CSS transitions on `opacity`/`clip-path`.
+
+### Dot Interaction (Click / Right-Click)
+
+Dots need to support:
+- Left click: select commit (`oncommitselect`)
+- Right click: context menu (`showCommitContextMenu`)
+- Stash row right click: stash-specific menu
+
+**In the viewBox-clipped model**, each dot is a `<circle>` in the SVG. SVG elements support `onclick` and `oncontextmenu` natively. Since only ~40 rows are in the DOM at once, only ~40 dots exist at any time.
+
+The click handler on the dot receives the `oid` from the dot data:
+
+```svelte
+<circle
+  cx={dot.cx} cy={dot.cy} r={dot.r}
+  fill={dot.fill}
+  style="cursor: pointer;"
+  onclick={() => oncommitselect?.(dot.oid)}
+  oncontextmenu={(e) => showCommitContextMenu(e, dot.oid)}
+/>
+```
+
+**Row-level click vs dot click:** Currently the entire row is clickable. With the SVG rework, the non-graph columns (message, author, date, SHA) remain HTML divs and keep their row-level click. The graph column SVG handles its own clicks on dots. This is a natural separation.
 
 ---
 
 ## Data Flow Changes
 
-### New Events
+### Current Flow
 
-| Event | Payload Type | Direction | When |
-|-------|-------------|-----------|------|
-| `remote-progress` | `{ path: string; line: string }` | Rust → Frontend | During push/pull/fetch, one event per output line |
-| `repo-changed` | `string` (path) | Rust → Frontend | After ANY mutation (existing; unchanged) |
+```
+Rust (walk_commits) → GraphResponse { commits, max_columns }
+                           ↓
+CommitGraph.svelte:  displayItems = [wip?, ...commits]
+                           ↓
+VirtualList:  for each visible item → CommitRow
+                                        ↓
+                                    LaneSvg (per-row SVG path computation)
+```
 
-No new persistent event channels. `remote-progress` is fire-and-forget; the frontend subscribes during the operation and unsubscribes after the invoke resolves.
+### New Flow
 
-### New IPC Commands
+```
+Rust (walk_commits) → GraphResponse { commits, max_columns }
+                           ↓
+CommitGraph.svelte:  displayItems = [wip?, ...commits]
+                           ↓
+                     graphSvgData = computeGraphSvg(displayItems, maxColumns)
+                           ↓                        ↑
+                           ↓                  (recomputed on displayItems change)
+VirtualList:  for each visible item → CommitRow
+                                        ↓
+                                    GraphSvg (viewBox-clipped, reads graphSvgData)
+```
 
-**Remote:**
-- `git_fetch(path, remote)` → `Result<(), String>`
-- `git_pull(path, remote, branch)` → `Result<(), String>`
-- `git_push(path, remote, branch)` → `Result<(), String>`
+The key change: path computation moves from per-row (inside `LaneSvg`) to per-dataset (in `computeGraphSvg`). The per-row component becomes a thin viewBox renderer.
 
-**Stash:**
-- `stash_save(path, message)` → `Result<(), String>`
-- `stash_pop(path, index)` → `Result<(), String>`
-- `stash_drop(path, index)` → `Result<(), String>`
+### Computation Cost
 
-**Commit context menu actions:**
-- `checkout_commit(path, oid)` → `Result<(), String>`
-- `create_tag(path, name, oid)` → `Result<(), String>`
-- `cherry_pick(path, oid)` → `Result<(), String>`  (shell-out)
-- `revert_commit(path, oid)` → `Result<(), String>`  (shell-out)
-- `create_branch` — extend existing to accept `from_oid: Option<String>`
+`computeGraphSvg` runs on every `displayItems` change (initial load, load-more, refresh). With ~200 commits per batch and ~10 lanes:
+- Rail path computation: O(commits * lanes) = ~2000 iterations
+- Edge path computation: O(commits * avg_edges) = ~400 iterations
+- Dot computation: O(commits) = ~200 iterations
+- Total: <1ms on modern hardware
 
-### New TypeScript Types
+For repos with 10k+ commits (after multiple load-more batches), the computation grows linearly. At 10k commits with 20 lanes: ~200k iterations. Still <10ms. If it becomes a bottleneck, incremental computation (only recompute new batch paths, append to existing) is straightforward.
+
+### Rust Backend: No Changes Required
+
+The Rust `walk_commits` function and `GraphResult` type remain unchanged. The per-commit edge data (`edges: Vec<GraphEdge>`) already contains all the information needed to compute continuous paths on the frontend. No new IPC commands or type changes needed.
+
+---
+
+## Integration Points
+
+### Modified Components
+
+| File | Change | Why |
+|------|--------|-----|
+| `CommitRow.svelte` | Replace `LaneSvg` usage with `GraphSvg`; remove ref column connector div; remove `RefPill` usage in ref column cell | Graph+ref rendering moves into SVG |
+| `CommitGraph.svelte` | Add `computeGraphSvg` call on `displayItems` change; pass `graphSvgData` to `CommitRow`; remove ref column from the column layout | Data computation moves here |
+| `graph-constants.ts` | Possibly add new constants (ref pill sizing) | SVG pill dimensions |
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `src/components/GraphSvg.svelte` | ViewBox-clipped SVG renderer (replaces `LaneSvg.svelte`) |
+| `src/lib/graph-svg-data.svelte.ts` | Reactive computation of full-height SVG paths from commit data |
+
+### Removed Files
+
+| File | Why |
+|------|-----|
+| `src/components/LaneSvg.svelte` | Replaced by `GraphSvg.svelte` |
+| `src/components/RefPill.svelte` | Ref pills become SVG elements inside `GraphSvg` |
+
+### Unchanged
+
+| File | Why Unchanged |
+|------|---------------|
+| `src-tauri/src/git/graph.rs` | Lane algorithm output is sufficient |
+| `src-tauri/src/git/types.rs` | No new Rust types needed |
+| `src/lib/types.ts` | No new TypeScript types needed (frontend-only data model) |
+| `src/lib/invoke.ts` | No new IPC commands |
+| `src/components/App.svelte` | No changes to app shell |
+
+---
+
+## Column Layout Impact
+
+### Current 6-Column Layout
+
+```
+| Ref (120px) | Graph (120px) | Message (flex-1) | Author | Date | SHA |
+```
+
+The ref column and graph column are separate. The connector div bridges them.
+
+### New Layout: Merge Ref + Graph Into One SVG Column
+
+The ref pills and connectors move into the SVG. Two options:
+
+**Option A: Keep separate columns, SVG spans both.**
+The SVG viewBox extends leftward to cover the ref column area. The ref column cell renders nothing (empty); the graph column cell renders the SVG which visually extends into the ref area via `overflow: visible` or negative `viewBox` x-origin.
+
+**Problem:** The ref column still takes up layout space and has a resize handle. The SVG content in the graph column bleeds into the ref column visually but they are separate DOM elements. Column resizing either of them independently creates visual mismatches.
+
+**Option B (recommended): Merge ref+graph into a single "graph" column.**
+Remove the separate ref column. The graph column becomes wider and contains both the graph lines and the ref pills. The SVG viewBox covers the full width. The column width is `refWidth + graphWidth` combined, or just one adjustable width.
+
+**Why B is better:**
+- Single source of truth for the column width
+- No cross-column overflow tricks
+- Ref pills are positioned relative to dots in the same coordinate space
+- One resize handle controls the entire graph+ref area
+- Simpler DOM structure
+
+**Impact on column resize logic:** The `columnWidths` type drops the `ref` key. The `graph` key represents the combined column. The minimum width becomes `max(maxColumns * LANE_WIDTH + refPillMaxWidth, 120)`.
+
+**Impact on header:** The "Branch/Tag" and "Graph" header labels merge into one "Graph" label. The column visibility toggle for ref becomes part of the graph column toggle.
+
+---
+
+## Ref Pill Sizing Without DOM Measurement
+
+SVG text requires knowing width before rendering the background `<rect>`. Two approaches:
+
+**Approach 1 (recommended): Canvas measureText pre-computation.**
 
 ```typescript
-// types.ts additions
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d')!;
+ctx.font = '600 11px system-ui, sans-serif';
 
-export interface RemoteProgress {
-    path: string;
-    line: string;
-}
-
-export interface StashEntry {
-    index: number;
-    name: string;
-    short_name: string;  // "stash@{0}"
+function measurePillWidth(label: string): number {
+  return ctx.measureText(label).width + 12; // 12px horizontal padding
 }
 ```
 
----
+Call once per ref label during `computeGraphSvg`. The canvas is never inserted into the DOM. `measureText` is synchronous and fast (~0.01ms per call).
 
-## Component Boundaries
+**Approach 2: Character-width heuristic.**
 
-### Modified Components (Rust)
+```typescript
+const AVG_CHAR_WIDTH = 6.2; // for 11px system font, semibold
+function estimatePillWidth(label: string): number {
+  return label.length * AVG_CHAR_WIDTH + 12;
+}
+```
 
-| File | Change | Why |
-|------|--------|-----|
-| `commands/mod.rs` | pub mod remote; pub mod stash; new pub use exports | Registration |
-| `lib.rs` invoke_handler | Add all new commands | Registration |
-| `commands/branches.rs` | Extend `create_branch` with optional `from_oid` | Branch-at-commit support |
-| `commands/commit.rs` | Add `checkout_commit_inner`, `create_tag_inner` | Context menu actions |
+Less accurate but zero DOM dependency. Good enough for most cases.
 
-### New Files (Rust)
-
-| File | Contents |
-|------|----------|
-| `src-tauri/src/commands/remote.rs` | `git_fetch`, `git_pull`, `git_push` using `tokio::process::Command` |
-| `src-tauri/src/commands/stash.rs` | `stash_save`, `stash_pop`, `stash_drop` with inner-fn pattern |
-
-### Modified Components (Frontend)
-
-| File | Change | Why |
-|------|--------|-----|
-| `CommitRow.svelte` | Add `oncontextmenu` prop | Per-commit right-click |
-| `CommitGraph.svelte` | Add `showCommitContextMenu`, pass handler to CommitRow | Context menu logic lives here (has repoPath) |
-| `BranchSidebar.svelte` | Add fetch/pull/push buttons + progress display | Remote op triggers |
-| `StagingPanel.svelte` | Add stash save button + stash list with pop/drop | Stash controls |
-| `App.svelte` | Listen for `remote-progress` if global overlay needed; otherwise no changes | Optional |
-| `types.ts` | Add `RemoteProgress`, `StashEntry` | IPC type mirrors |
-
-### New Files (Frontend)
-
-No new Svelte components strictly required. Remote progress output can be displayed inline in `BranchSidebar.svelte` or in a small overlay. If the progress output grows complex, extract a `RemoteProgressToast.svelte`.
+**Recommendation:** Use canvas `measureText`. It is exact, fast, and avoids layout shifts from mismatched pill/text widths.
 
 ---
 
-## Architectural Patterns for New Features
+## Interaction Model
 
-### Pattern 1: Async Shell-Out with Event Streaming
+### Row Click (Commit Select)
 
-**What:** Use `tokio::process::Command` (not `spawn_blocking`) for remote ops. Stream stderr to frontend via `app.emit` in a spawned task. Await process exit before resolving the command.
+Currently: the entire `CommitRow` div has `onclick`. This remains unchanged for the non-graph columns. The graph column SVG does NOT need its own click handler for commit selection -- the row-level handler covers it.
 
-**When to use:** Any long-running CLI subprocess where progress feedback matters.
+Exception: if the graph column SVG has `pointer-events: none` on the root SVG, clicks pass through to the row div. But dots need to be interactive. Solution: the SVG root has `pointer-events: none`, individual dots have `pointer-events: auto`.
 
-**Trade-offs:** The invoke call blocks until the subprocess exits (which is correct — the frontend awaits it and can show a spinner). The streaming events provide incremental feedback. The `finally { unlisten() }` pattern on the frontend is essential to avoid listener leaks.
+```svelte
+<svg ... style="pointer-events: none;">
+  <!-- Paths: not interactive -->
+  <path ... />
 
-### Pattern 2: git2 Stash with &mut Repository
+  <!-- Dots: interactive -->
+  <circle ... style="pointer-events: auto; cursor: pointer;"
+    onclick={(e) => { e.stopPropagation(); oncommitselect?.(dot.oid); }}
+  />
+</svg>
+```
 
-**What:** All stash operations require `&mut repo`. Open a fresh `git2::Repository::open(path_buf)` bound as `mut` inside the `spawn_blocking` closure. This is already the established pattern for any operation needing `&mut repo` (e.g., `stash_foreach` in `branches.rs`).
+### Right-Click Context Menu
 
-**When to use:** Any git2 operation that takes `&mut self` on Repository.
+Currently handled at row level in `CommitRow.svelte` via `oncontextmenu`. The graph column SVG dots can have their own `oncontextmenu` handler, but since the row-level handler already provides the commit context menu, the simplest approach is to let right-clicks on dots bubble up to the row handler.
 
-**Trade-offs:** Opening a fresh repo handle per command is the documented design constraint (`git2::Repository is not Sync`). The overhead is negligible.
+For stash rows (oid starts with `__stash_`), the row handler already checks the oid pattern. No SVG-specific changes needed.
 
-### Pattern 3: Native Context Menu at Cursor Position
+### Ref Pill Hover Expansion
 
-**What:** On `contextmenu` event, call `e.preventDefault()` (suppress browser right-click), build a `Menu` from `@tauri-apps/api/menu`, and call `menu.popup()` with no arguments (uses current cursor position automatically).
+Currently: hovering the "+N" badge in the ref column reveals an expanded overlay with all ref names. This uses CSS `clip-path` animation.
 
-**When to use:** Any per-row or per-item right-click in the commit graph or sidebar.
+In SVG: the same effect is achieved by toggling visibility of an expanded `<g>` group on `mouseenter`/`mouseleave`. The expanded group renders additional pill rects and text below/above the "+N" badge.
 
-**Trade-offs:** `Menu.new({ items })` is async (each `MenuItem.new` is a Tauri IPC call). Building a 8-item menu takes ~10-20ms. This is acceptable for a right-click action. Do not cache the menu object — it captures action closures that reference mutable state.
+**Potential issue:** SVG elements are clipped by the viewBox. An expanded pill list that extends beyond `ROW_HEIGHT` would be clipped. Solution: the expanded overlay should be an HTML `<div>` positioned absolutely relative to the row, triggered by SVG mouse events. This matches the current pattern (the overlay is already HTML, not SVG).
 
-### Pattern 4: Shell-Out for Cherry-Pick / Revert
+---
 
-**What:** Use `tokio::process::Command` with `git cherry-pick <oid>` and `git revert <oid> --no-edit`. Check exit code; surface stderr on failure.
+## Patterns to Follow
 
-**When to use:** git2 operations that require complex merge state management (cherry-pick, revert, merge).
+### Pattern 1: Centralized Path Computation with Reactive Derivation
 
-**Trade-offs:** Loses the "inner-fn testable" property. Prefer this over re-implementing git conflict state handling. Integration tests with real repos are needed instead of unit tests.
+**What:** Compute all SVG path data in a single `$derived.by()` block inside `CommitGraph.svelte`, triggered by `displayItems` changes.
+
+**Why:** Ensures all paths are consistent. Avoids per-row path computation. Makes it easy to implement features that span rows (continuous rails, multi-row edge animations).
+
+```typescript
+const graphSvgData = $derived.by(() => {
+  return computeGraphSvg(displayItems, maxColumns, columnWidths.graph);
+});
+```
+
+### Pattern 2: ViewBox Clipping for Virtual Scroll Compatibility
+
+**What:** Each visible row renders the full SVG data set but clips to its vertical band via `viewBox="0 {rowIndex * ROW_HEIGHT} {width} {ROW_HEIGHT}"`.
+
+**Why:** The virtual list controls which rows exist in the DOM. By using viewBox clipping, each row is self-contained (no external scroll sync needed). The browser efficiently clips invisible geometry.
+
+### Pattern 3: SVG Pointer Events Layering
+
+**What:** Set `pointer-events: none` on the SVG root and `pointer-events: auto` on interactive elements (dots, pills). This lets row-level clicks pass through the SVG while keeping specific elements interactive.
+
+**Why:** Avoids blocking row-level click handlers with the SVG overlay. Enables precise hit testing on dots without interfering with message column text selection.
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: spawn_blocking for Remote Ops
+### Anti-Pattern 1: Scroll-Synced Overlay SVG
 
-**What:** Wrapping `std::process::Command` (blocking) in `spawn_blocking` for push/pull/fetch.
+**What:** Placing a single large SVG element outside the virtual list and syncing its scroll position to match.
 
-**Why bad:** Blocks a thread-pool thread for 10-60+ seconds. `tokio::process::Command` is natively async and does not consume a thread-pool thread while the subprocess runs.
+**Why bad:** The virtual list's internal `transformY` is not exposed. Mirroring `scrollTop` introduces frame-lag jank. The SVG would need to be the full height of the content (potentially millions of pixels), causing memory and rendering issues.
 
-**Instead:** Use `tokio::process::Command`.
+### Anti-Pattern 2: Per-Row Path Computation in the Render Loop
 
-### Anti-Pattern 2: Blocking on stdin for Credentials
+**What:** Computing path strings inside `GraphSvg.svelte` on every render.
 
-**What:** Spawning `git fetch` without `GIT_TERMINAL_PROMPT=0`, allowing git to block indefinitely waiting for a username/password on stdin that will never arrive.
+**Why bad:** During fast scrolling, the virtual list creates and destroys rows rapidly. Path computation in the render loop means recomputing the same paths for the same data every time a row enters the viewport.
 
-**Why bad:** The Tauri command will hang and never resolve. The frontend spinner will spin forever.
+**Instead:** Pre-compute all paths once when `displayItems` changes. Each row just reads from the pre-computed data.
 
-**Instead:** Always set `GIT_TERMINAL_PROMPT=0` and `ssh -o BatchMode=yes` on the SSH command. On credential failure, git exits with a non-zero code and useful error text in stderr. Surface the stderr to the user.
+### Anti-Pattern 3: SVG foreignObject for Ref Pills
 
-### Anti-Pattern 3: git2 for Cherry-Pick / Revert
+**What:** Using `<foreignObject>` to embed HTML ref pills inside the SVG.
 
-**What:** Using `repo.cherrypick()` / `repo.revert()` from git2.
+**Why bad:** `foreignObject` has inconsistent rendering across WebView engines (especially on Windows with WebView2). Text rendering, overflow, and interaction differ from native SVG text. It also defeats the purpose of moving to SVG.
 
-**Why bad:** Requires implementing the full conflict state machine: detect conflicts, update CHERRY_PICK_HEAD / REVERT_HEAD, prompt user for resolution, complete the operation. This is a multi-screen feature, not a single command.
+**Instead:** Use native SVG `<rect>` + `<text>` for pills.
 
-**Instead:** Shell out to `git cherry-pick` and `git revert --no-edit`. If conflicts occur, the command fails with a clear error message. Conflict resolution UI is deferred to v0.4+.
+### Anti-Pattern 4: One Giant SVG Element Spanning Full Content Height
 
-### Anti-Pattern 4: Lifting Context Menu to App.svelte
+**What:** Creating a single SVG with `height={totalCommits * ROW_HEIGHT}` and placing it in the virtual list content area.
 
-**What:** Passing commit context menu callbacks up to `App.svelte` to centralize all action handlers.
+**Why bad:** For 10k commits at 26px each, this is a 260,000px tall SVG. Browsers allocate raster buffers proportional to element dimensions. This causes excessive memory usage and potential rendering failures (browsers cap surface sizes).
 
-**Why bad:** The actions (cherry-pick, create-tag, etc.) need `repoPath` and `refreshSignal`, which are already in scope in `CommitGraph.svelte`. Lifting them adds unnecessary prop drilling.
-
-**Instead:** Handle commit context menu actions inside `CommitGraph.svelte`. Only bubble up to `App.svelte` if an action needs to trigger something in a sibling component (e.g., opening the staging panel for cherry-pick conflicts — but that is v0.4+).
-
-### Anti-Pattern 5: One Event Listener Per Row
-
-**What:** Adding a `remote-progress` listener inside each `CommitRow.svelte`.
-
-**Why bad:** Virtual scroll creates/destroys rows. If listener setup/teardown is tied to row lifecycle, listeners will be created/destroyed during scrolling.
-
-**Instead:** Attach `remote-progress` listeners at `App.svelte` or `BranchSidebar.svelte` level, scoped to the duration of a remote operation only.
+**Instead:** Each row has its own small SVG (26px tall) with viewBox clipping.
 
 ---
 
 ## Build Order
 
-Dependencies flow upward. Complete each phase fully before starting the next.
+### Phase 1: GraphSvgData Computation Engine
 
-### Phase 1: Stash Commands (Rust only)
+1. Create `src/lib/graph-svg-data.svelte.ts` with the `GraphSvgData` interface and `computeGraphSvg()` function
+2. Implement rail path computation (continuous vertical lines per lane)
+3. Implement connection path computation (merge/fork edges, same geometry as current `buildEdgePath`)
+4. Implement dot data computation (position, style based on commit type)
+5. Unit test: given a set of `GraphCommit[]`, verify correct path strings
 
-1. Create `src-tauri/src/commands/stash.rs` with `stash_save_inner`, `stash_pop_inner`, `stash_drop_inner` and their Tauri command wrappers
-2. Register in `commands/mod.rs` and `lib.rs` invoke_handler
-3. Add unit tests using `make_test_repo()` and `repo.stash_save()`
+**Rationale:** Pure data transformation with no DOM dependencies. Testable in isolation. All subsequent work depends on this.
 
-**Rationale:** Stash uses only git2 (already depended on). No new Cargo dependencies. Testable in isolation. Unlocks stash UI work immediately.
+### Phase 2: GraphSvg Component (Graph Lines + Dots Only)
 
-### Phase 2: Stash UI
+1. Create `src/components/GraphSvg.svelte` that renders rails, connections, and dots from `GraphSvgData`
+2. Wire into `CommitRow.svelte` replacing `LaneSvg` in the graph column
+3. Add `computeGraphSvg` call in `CommitGraph.svelte`
+4. Verify: lines are continuous across row boundaries, dots align with text, merge/fork edges render correctly
 
-1. Update `StagingPanel.svelte` with stash save button and stash list (pop/drop per entry)
-2. Stash list is already available from `list_refs` response (`stashes: RefLabel[]`)
-3. Wire `stash_save` invoke with the current WIP subject line as the message
-4. Wire `stash_pop(0)` for quick pop of latest stash
+**Rationale:** Get the core graph rendering working before adding ref pills. Visual regression testing is possible by comparing against current rendering.
 
-**Rationale:** No new backend work needed. Completes the stash feature.
+### Phase 3: WIP and Stash Row Adaptation
 
-### Phase 3: Commit Context Menu (Frontend + Rust for new actions)
+1. Handle WIP sentinel (`__wip__`) in `computeGraphSvg` -- dashed circle, dashed connector to HEAD
+2. Handle stash sentinels (`__stash_N__`) -- square dot markers
+3. Verify dashed line rendering matches current behavior
 
-1. Add `oncontextmenu` prop to `CommitRow.svelte`
-2. Implement `showCommitContextMenu` in `CommitGraph.svelte`
-3. Add Copy SHA and Copy Message (no backend needed — navigator.clipboard)
-4. Add `checkout_commit` command in Rust (extends `commands/commit.rs`)
-5. Add `create_tag` command in Rust (extends `commands/commit.rs`)
-6. Add `cherry_pick` and `revert_commit` shell-out commands in Rust
-7. Extend `create_branch` with `from_oid` parameter
+**Rationale:** Synthetic rows have special rendering rules. Handle them after the normal commit rendering is solid.
 
-**Rationale:** Copy SHA/message works immediately. Git2 actions (checkout, tag, branch) come next. Shell-out actions (cherry-pick, revert) come last since they share the shell-out infrastructure with remote ops.
+### Phase 4: Ref Pills and Connectors in SVG
 
-### Phase 4: Remote Operations (Rust + Frontend)
+1. Add ref pill computation to `computeGraphSvg` using canvas `measureText` for sizing
+2. Render pills as SVG `<rect>` + `<text>` in `GraphSvg.svelte`
+3. Render connector lines from pill to dot
+4. Merge ref column into graph column (remove separate ref column from layout)
+5. Update column resize logic (remove `ref` key from `ColumnWidths`)
+6. Implement "+N" overflow badge and hover expansion (HTML overlay triggered from SVG events)
 
-1. Add `tokio::process::Command` remote commands to `commands/remote.rs`
-2. Add `RemoteProgress` type and `remote-progress` event
-3. Register new commands in `lib.rs`
-4. Add progress listener + remote buttons to `BranchSidebar.svelte`
-5. Test with real repos (push requires a remote — test with local bare repos)
+**Rationale:** Ref pills are the most visually complex part. Merge columns after pills render correctly. The hover overlay may need iteration.
 
-**Rationale:** Remote ops are the most complex feature (async streaming, error handling, credential edge cases). Build last after all simpler features are working and patterns are established.
+### Phase 5: Dot Interaction and Context Menus
+
+1. Add `onclick` / `oncontextmenu` handlers to dot circles in `GraphSvg`
+2. Verify commit selection works via dot click
+3. Verify right-click context menu works on dots
+4. Verify stash row context menu works
+5. Ensure row-level click still works in non-graph columns
+
+**Rationale:** Interaction handlers are straightforward but need careful testing against the existing behavior.
+
+### Phase 6: Cleanup and Migration
+
+1. Delete `LaneSvg.svelte`
+2. Delete `RefPill.svelte`
+3. Remove ref column connector div from `CommitRow.svelte`
+4. Update `ColumnWidths` and `ColumnVisibility` types (remove `ref` key)
+5. Migrate persisted column width store (handle missing `ref` key gracefully)
+6. Update column header context menu (remove ref toggle, rename graph label)
+
+**Rationale:** Cleanup after everything works. Store migration must handle users upgrading from v0.3.
 
 ---
 
-## Integration Points Summary
+## Scalability Considerations
 
-| Existing Component | What Touches It | Change Type |
-|--------------------|-----------------|-------------|
-| `commands/commit.rs` | Add `checkout_commit_inner`, `create_tag_inner` | Extend |
-| `commands/branches.rs` | `create_branch` gains `from_oid: Option<String>` | Extend |
-| `commands/mod.rs` | Add `pub mod remote; pub mod stash;` | Extend |
-| `lib.rs` | Register new commands in invoke_handler | Extend |
-| `CommitRow.svelte` | Add `oncontextmenu` prop | Extend |
-| `CommitGraph.svelte` | Add context menu handler | Extend |
-| `BranchSidebar.svelte` | Remote op buttons + progress output | Extend |
-| `StagingPanel.svelte` | Stash save/pop/drop UI | Extend |
-| `types.ts` | Add `RemoteProgress`, `StashEntry` | Extend |
-| `state.rs` | No changes | Unchanged |
-| `watcher.rs` | No changes | Unchanged |
-| `error.rs` | No changes | Unchanged |
-| `invoke.ts` | No changes | Unchanged |
-| `App.svelte` | Minimal changes (optional remote-progress global listener) | Minimal |
+| Concern | 200 commits | 2000 commits | 10000+ commits |
+|---------|-------------|--------------|-----------------|
+| Path computation time | <0.5ms | <2ms | <10ms |
+| SVG path data memory | ~10KB | ~100KB | ~500KB |
+| DOM nodes (visible) | ~40 rows * ~20 paths = 800 | Same (virtual scroll) | Same (virtual scroll) |
+| viewBox clip cost | Negligible | Negligible | Negligible |
+| Incremental load-more | Recompute all | Recompute all | Consider incremental append |
+
+At 10k+ commits, if full recomputation on `displayItems` change becomes noticeable, implement incremental path computation: keep existing paths, only compute paths for newly loaded commits, and extend existing rail paths. This is an optimization to defer until profiling shows it is needed.
 
 ---
 
 ## Sources
 
-- **Existing codebase** — `commands/commit.rs`, `commands/branches.rs`, `commands/repo.rs`, `commands/history.rs`, `git/repository.rs`, `state.rs`, `watcher.rs`, `CommitGraph.svelte`, `CommitRow.svelte`, `App.svelte`, `lib.rs`, `Cargo.toml` — all read directly. Confidence: HIGH.
-- **git2 stash API** — `stash_save`, `stash_pop`, `stash_drop`, `stash_foreach` signatures verified against docs.rs knowledge. `stash_foreach` already used in production code in `branches.rs` and `repository.rs`. Confidence: HIGH.
-- **Tauri 2 tokio::process::Command pattern** — Tauri 2 runtime is Tokio; `tokio::process::Command` is the standard async subprocess API. Pattern consistent with how GitButler handles remote ops (confirmed via PROJECT.md note that major Tauri git clients shell out). Confidence: HIGH.
-- **menu.popup() cursor position** — Verified against existing `showHeaderContextMenu` in `CommitGraph.svelte` which uses `menu.popup()` with no args. Confidence: HIGH.
-- **GIT_TERMINAL_PROMPT=0** — Standard git environment variable for non-interactive credential suppression. Confidence: HIGH.
+- **Existing codebase** -- `CommitGraph.svelte`, `CommitRow.svelte`, `LaneSvg.svelte`, `RefPill.svelte`, `graph-constants.ts`, `types.ts`, `graph.rs`, `types.rs` -- all read directly. Confidence: HIGH.
+- **@humanspeak/svelte-virtual-list DOM structure** -- Read from `node_modules/@humanspeak/svelte-virtual-list/dist/SvelteVirtualList.svelte`. Four-layer DOM with `transform: translateY` for item positioning. Confidence: HIGH.
+- **SVG viewBox clipping behavior** -- Standard SVG spec. Browser clips geometry outside viewBox without rendering it. Well-established behavior across all modern WebView engines. Confidence: HIGH.
+- **Canvas measureText API** -- Standard DOM API. Synchronous, does not require DOM insertion. Used for pre-computing text widths. Confidence: HIGH.
+- **SVG pointer-events property** -- Standard SVG/CSS property. `pointer-events: none` on containers with `pointer-events: auto` on children is a well-documented pattern. Confidence: HIGH.
 
 ---
 
-*Architecture research for: Trunk v0.3 — remote ops, stash, commit context menu*
-*Researched: 2026-03-10*
+*Architecture research for: Trunk v0.4 -- full-height SVG graph rework*
+*Researched: 2026-03-12*
