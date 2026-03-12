@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: executing
-stopped_at: Completed 11-04-PLAN.md
-last_updated: "2026-03-12T00:10:38Z"
-last_activity: 2026-03-12 — Completed plan 11-04 UAT gap closure (4 stash fixes)
+stopped_at: Completed 11-06-PLAN.md
+last_updated: "2026-03-12T00:47:35Z"
+last_activity: 2026-03-12 — Completed plan 11-06 stash refresh flash and auto-expand gap closure
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 25
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 11 of 14 (Stash Operations)
-Plan: 4 of 4 in current phase
-Status: Phase 11 complete
-Last activity: 2026-03-12 — Completed plan 11-04 UAT gap closure (4 stash fixes)
+Plan: 6 of 6 in current phase
+Status: executing
+Last activity: 2026-03-12 — Completed plan 11-06 stash refresh flash and auto-expand gap closure
 
-Progress: [██░░░░░░░] 25%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [██░░░░░░░] 25%
 | Phase 11-stash-operations P02 | 3 | 2 tasks | 3 files |
 | Phase 11-stash-operations P03 | 2min | 1 tasks | 2 files |
 | Phase 11-stash-operations P04 | 3min | 2 tasks | 7 files |
+| Phase 11-stash-operations P06 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,7 @@ Recent decisions affecting current work:
 - [Phase 11-stash-operations]: Reuse BranchSection showCreateButton/oncreate props for stash '+' button — zero changes to BranchSection.svelte
 - [Phase 11-stash-operations]: RefsResponse.stashes corrected from RefLabel[] to StashEntry[] — was missed in plan 11-02
 - [Phase 11-04]: Reuse handleCommitSelect for stash diff viewing — stashes are commits, diff_commit/commit_detail accept any OID
+- [Phase 11-06]: Removed onrefreshed from stash handlers only -- branch handlers still need explicit callback since they don't emit repo-changed
 
 ### Pending Todos
 
@@ -90,6 +92,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T00:10:38Z
-Stopped at: Completed 11-04-PLAN.md
+Last session: 2026-03-12T00:47:35Z
+Stopped at: Completed 11-06-PLAN.md
 Resume file: .planning/phases/12-commit-context-menu/12-CONTEXT.md
