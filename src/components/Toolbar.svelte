@@ -2,7 +2,7 @@
   import { safeInvoke } from '../lib/invoke.js';
   import type { TrunkError } from '../lib/invoke.js';
   import { remoteState } from '../lib/remote-state.svelte.js';
-  import { undoRedoState, pushToRedoStack, popFromRedoStack, clearRedoStack } from '../lib/undo-redo.svelte.js';
+  import { undoRedoState, pushToRedoStack, popFromRedoStack } from '../lib/undo-redo.svelte.js';
   import { listen } from '@tauri-apps/api/event';
   import PullDropdown from './PullDropdown.svelte';
   import InputDialog from './InputDialog.svelte';
@@ -18,8 +18,6 @@
 
   // Undo/redo state
   let canUndo = $state(false);
-  let isUndoing = $state(false);
-  let isRedoing = $state(false);
 
   async function checkUndoAvailable() {
     try {
@@ -38,10 +36,6 @@
     const unlistenPromise = listen<string>('repo-changed', (event) => {
       if (event.payload === repoPath) {
         checkUndoAvailable();
-        // Clear redo stack on non-undo/redo repo changes
-        if (!isUndoing && !isRedoing) {
-          clearRedoStack();
-        }
       }
     });
 
@@ -51,21 +45,17 @@
   });
 
   async function handleUndo() {
-    isUndoing = true;
     try {
       const result = await safeInvoke<{ subject: string; body: string | null }>('undo_commit', { path: repoPath });
       pushToRedoStack({ subject: result.subject, body: result.body });
     } catch (e) {
       console.error('undo failed:', e);
-    } finally {
-      isUndoing = false;
     }
   }
 
   async function handleRedo() {
     const entry = popFromRedoStack();
     if (!entry) return;
-    isRedoing = true;
     try {
       await safeInvoke('redo_commit', {
         path: repoPath,
@@ -76,8 +66,6 @@
       console.error('redo failed:', e);
       // Push back on failure
       pushToRedoStack(entry);
-    } finally {
-      isRedoing = false;
     }
   }
 

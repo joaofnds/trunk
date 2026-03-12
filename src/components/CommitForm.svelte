@@ -1,6 +1,7 @@
 <script lang="ts">
   import { safeInvoke } from '../lib/invoke.js';
   import type { HeadCommitMessage } from '../lib/types.js';
+  import { clearRedoStack } from '../lib/undo-redo.svelte.js';
 
   interface Props {
     repoPath: string;
@@ -42,6 +43,7 @@
   }
 
   async function handleSubmit() {
+    clearRedoStack();
     subjectError = '';
     stagedError = '';
 

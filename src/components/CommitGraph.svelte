@@ -2,6 +2,7 @@
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
+  import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
@@ -146,6 +147,7 @@
   }
 
   async function handleCherryPick(commit: GraphCommit) {
+    clearRedoStack();
     try {
       await safeInvoke('cherry_pick', { path: repoPath, oid: commit.oid });
     } catch (e) {
@@ -155,6 +157,7 @@
   }
 
   async function handleRevert(commit: GraphCommit) {
+    clearRedoStack();
     try {
       await safeInvoke('revert_commit', { path: repoPath, oid: commit.oid });
     } catch (e) {
