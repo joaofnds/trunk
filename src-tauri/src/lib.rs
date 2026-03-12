@@ -13,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(RepoState(Default::default()))
         .manage(CommitCache(Default::default()))
         .manage(WatcherState(Default::default()))
@@ -42,6 +43,10 @@ pub fn run() {
             commands::stash::stash_pop,
             commands::stash::stash_apply,
             commands::stash::stash_drop,
+            commands::commit_actions::checkout_commit,
+            commands::commit_actions::create_tag,
+            commands::commit_actions::cherry_pick,
+            commands::commit_actions::revert_commit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

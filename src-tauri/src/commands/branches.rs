@@ -220,23 +220,45 @@ pub async fn checkout_branch(
 }
 
 /// Inner implementation of create_branch — separated for testability.
+/// When `from_oid` is Some, branches from that OID; when None, branches from HEAD.
+/// Creates the branch first (always safe), then checks out. If dirty workdir at checkout time,
+/// returns dirty_workdir error (branch exists but HEAD didn't move).
 pub fn create_branch_inner(
     path: &str,
     name: &str,
+    from_oid: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
     let repo = open_repo_from_state(path, state_map)?;
 
-    // Extract head OID first so head_commit doesn't borrow repo across the drop
-    let head_oid = repo.head()?.target().ok_or_else(|| {
-        TrunkError::new("git_error", "HEAD has no target (unborn branch?)")
-    })?;
-    let head_commit = repo.find_commit(head_oid)?;
+    let target_oid = match from_oid {
+        Some(oid_str) => repo.revparse_single(oid_str)?.id(),
+        None => repo.head()?.target().ok_or_else(|| {
+            TrunkError::new("git_error", "HEAD has no target (unborn branch?)")
+        })?,
+    };
+    let target_commit = repo.find_commit(target_oid)?;
     // false = no force; fails if name already exists
-    repo.branch(name, &head_commit, false)?;
-    // Drop head_commit (and its borrow on repo) before mutable operations
-    drop(head_commit);
+    repo.branch(name, &target_commit, false)?;
+    // Drop target_commit (and its borrow on repo) before mutable operations
+    drop(target_commit);
+
+    // Check dirty workdir before checkout (branch already created above)
+    if is_dirty(&repo)? {
+        drop(repo);
+        // Rebuild cache even though checkout didn't happen — branch was created
+        let path_buf = state_map
+            .get(path)
+            .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+        let mut repo2 = git2::Repository::open(path_buf)?;
+        let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+        cache_map.insert(path.to_owned(), graph_result);
+        return Err(TrunkError::new(
+            "dirty_workdir",
+            "Branch created but working tree has uncommitted changes — checkout skipped",
+        ));
+    }
 
     // Auto-checkout the new branch
     repo.set_head(&format!("refs/heads/{}", name))?;
@@ -258,6 +280,7 @@ pub fn create_branch_inner(
 pub async fn create_branch(
     path: String,
     name: String,
+    from_oid: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
 ) -> Result<(), String> {
@@ -265,7 +288,7 @@ pub async fn create_branch(
     let mut cache_map = cache.0.lock().unwrap().clone();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        create_branch_inner(&path, &name, &state_map, &mut cache_map)
+        create_branch_inner(&path, &name, from_oid.as_deref(), &state_map, &mut cache_map)
             .map(|_| cache_map)
     })
     .await
@@ -301,10 +324,11 @@ mod tests {
     fn create_branch_inner(
         path: &str,
         name: &str,
+        from_oid: Option<&str>,
         state_map: &std::collections::HashMap<String, std::path::PathBuf>,
         cache_map: &mut std::collections::HashMap<String, crate::git::types::GraphResult>,
     ) -> Result<(), crate::error::TrunkError> {
-        super::create_branch_inner(path, name, state_map, cache_map)
+        super::create_branch_inner(path, name, from_oid, state_map, cache_map)
     }
 
     fn make_state_map(
@@ -452,7 +476,7 @@ mod tests {
         let state_map = make_state_map(dir.path());
         let mut cache_map = std::collections::HashMap::new();
 
-        let result = create_branch_inner(&path, "new-feat", &state_map, &mut cache_map);
+        let result = create_branch_inner(&path, "new-feat", None, &state_map, &mut cache_map);
 
         assert!(result.is_ok(), "expected Ok when creating new-feat branch");
 
@@ -476,7 +500,7 @@ mod tests {
         let mut cache_map = std::collections::HashMap::new();
 
         // "main" already exists
-        let result = create_branch_inner(&path, "main", &state_map, &mut cache_map);
+        let result = create_branch_inner(&path, "main", None, &state_map, &mut cache_map);
 
         assert!(result.is_err(), "expected Err when creating duplicate branch");
         assert_eq!(
@@ -484,5 +508,72 @@ mod tests {
             "git_error",
             "expected git_error code for duplicate branch"
         );
+    }
+
+    #[test]
+    fn create_branch_from_oid() {
+        let dir = make_test_repo();
+        let path = dir.path().to_string_lossy().to_string();
+
+        // Make a second commit so we have a non-HEAD OID to branch from
+        let first_oid;
+        {
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            first_oid = repo.head().unwrap().target().unwrap().to_string();
+
+            let sig = repo.signature().unwrap();
+            std::fs::write(dir.path().join("extra.txt"), "content").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("extra.txt")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let parent = repo.find_commit(repo.head().unwrap().target().unwrap()).unwrap();
+            repo.commit(Some("refs/heads/main"), &sig, &sig, "Second", &tree, &[&parent]).unwrap();
+        }
+
+        let state_map = make_state_map(dir.path());
+        let mut cache_map = std::collections::HashMap::new();
+
+        let result = create_branch_inner(&path, "from-first", Some(&first_oid), &state_map, &mut cache_map);
+        assert!(result.is_ok(), "create_branch from OID should succeed: {:?}", result.err());
+
+        // Verify the branch points at the first commit, not HEAD
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let branch = repo.find_branch("from-first", git2::BranchType::Local).unwrap();
+        let branch_oid = branch.get().target().unwrap().to_string();
+        assert_eq!(branch_oid, first_oid, "branch should point at from_oid, not HEAD");
+    }
+
+    #[test]
+    fn create_branch_from_oid_dirty_workdir() {
+        let dir = make_test_repo();
+        let path = dir.path().to_string_lossy().to_string();
+        let state_map = make_state_map(dir.path());
+        let mut cache_map = std::collections::HashMap::new();
+
+        let head_oid;
+        {
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            head_oid = repo.head().unwrap().target().unwrap().to_string();
+        }
+
+        // Make workdir dirty
+        std::fs::write(dir.path().join("README.md"), "dirty content").unwrap();
+        {
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+        }
+
+        let result = create_branch_inner(&path, "dirty-branch", Some(&head_oid), &state_map, &mut cache_map);
+        assert!(result.is_err(), "should return error on dirty workdir");
+        assert_eq!(result.unwrap_err().code, "dirty_workdir");
+
+        // Branch should still have been created even though checkout failed
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let branch = repo.find_branch("dirty-branch", git2::BranchType::Local);
+        assert!(branch.is_ok(), "branch should exist even though checkout was skipped");
     }
 }

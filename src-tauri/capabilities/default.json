@@ -9,6 +9,7 @@
     "dialog:allow-ask",
     "store:default",
     "core:menu:default",
-    "window-state:default"
+    "window-state:default",
+    "clipboard-manager:allow-write-text"
   ]
 }
