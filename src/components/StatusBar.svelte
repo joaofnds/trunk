@@ -136,10 +136,10 @@
   }
 
   .status-text {
-    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
 </style>
 
