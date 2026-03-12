@@ -8,12 +8,13 @@
   interface Props {
     commit: GraphCommit;
     onselect?: (oid: string) => void;
+    oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
     maxColumns?: number;
     columnWidths: ColumnWidths;
     columnVisibility: ColumnVisibility;
   }
 
-  let { commit, onselect, maxColumns = 1, columnWidths, columnVisibility }: Props = $props();
+  let { commit, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility }: Props = $props();
 
   function relativeDate(ts: number): string {
     if (ts === 0) return '';
@@ -43,6 +44,7 @@
   style:height="{ROW_HEIGHT}px"
   style="color: var(--color-text); {refHovered ? 'z-index: 10;' : ''}"
   onclick={() => onselect?.(commit.oid)}
+  oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !commit.oid.startsWith('__')) { e.preventDefault(); oncontextmenu(e, commit); } }}
 >
   <!-- Connector line + Column 1: Branch/Tag refs (hidden together) -->
   {#if columnVisibility.ref}

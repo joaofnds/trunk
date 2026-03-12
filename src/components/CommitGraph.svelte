@@ -5,8 +5,11 @@
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
-  import { Menu, CheckMenuItem } from '@tauri-apps/api/menu';
+  import { Menu, MenuItem, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
+  import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+  import { ask, message } from '@tauri-apps/plugin-dialog';
   import CommitRow from './CommitRow.svelte';
+  import InputDialog from './InputDialog.svelte';
 
   interface Props {
     repoPath: string;
@@ -78,6 +81,105 @@
     { key: 'date', label: 'Date' },
     { key: 'sha', label: 'SHA' },
   ];
+
+  // InputDialog state
+  interface DialogConfig {
+    title: string;
+    fields: { key: string; label: string; placeholder?: string; multiline?: boolean; required?: boolean }[];
+    onsubmit: (values: Record<string, string>) => void;
+  }
+  let dialogConfig = $state<DialogConfig | null>(null);
+
+  function closeDialog() {
+    dialogConfig = null;
+  }
+
+  // Commit context menu actions
+
+  async function handleCheckoutCommit(commit: GraphCommit) {
+    const confirmed = await ask(
+      "Checkout this commit in detached HEAD mode? You won't be on any branch. Create a branch afterward to save your work.",
+      { title: 'Checkout Commit', kind: 'warning' }
+    );
+    if (!confirmed) return;
+    try {
+      await safeInvoke('checkout_commit', { path: repoPath, oid: commit.oid });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Failed to checkout commit', { title: 'Checkout Error', kind: 'error' });
+    }
+  }
+
+  function handleCreateBranch(commit: GraphCommit) {
+    dialogConfig = {
+      title: 'Create Branch',
+      fields: [{ key: 'name', label: 'Branch name', required: true }],
+      onsubmit: async (values) => {
+        closeDialog();
+        try {
+          await safeInvoke('create_branch', { path: repoPath, name: values.name, fromOid: commit.oid });
+        } catch (e) {
+          const err = e as TrunkError;
+          await message(err.message ?? 'Failed to create branch', { title: 'Create Branch Error', kind: 'error' });
+        }
+      },
+    };
+  }
+
+  function handleCreateTag(commit: GraphCommit) {
+    dialogConfig = {
+      title: 'Create Tag',
+      fields: [
+        { key: 'name', label: 'Tag name', required: true },
+        { key: 'message', label: 'Message (optional)', multiline: true },
+      ],
+      onsubmit: async (values) => {
+        closeDialog();
+        try {
+          await safeInvoke('create_tag', { path: repoPath, oid: commit.oid, tagName: values.name, message: values.message || '' });
+        } catch (e) {
+          const err = e as TrunkError;
+          await message(err.message ?? 'Failed to create tag', { title: 'Create Tag Error', kind: 'error' });
+        }
+      },
+    };
+  }
+
+  async function handleCherryPick(commit: GraphCommit) {
+    try {
+      await safeInvoke('cherry_pick', { path: repoPath, oid: commit.oid });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Cherry-pick failed. You may need to resolve conflicts manually.', { title: 'Cherry-pick Error', kind: 'error' });
+    }
+  }
+
+  async function handleRevert(commit: GraphCommit) {
+    try {
+      await safeInvoke('revert_commit', { path: repoPath, oid: commit.oid });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Revert failed. You may need to resolve conflicts manually.', { title: 'Revert Error', kind: 'error' });
+    }
+  }
+
+  async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
+    e.preventDefault();
+    const menu = await Menu.new({
+      items: [
+        await MenuItem.new({ text: 'Copy SHA', action: () => { writeText(commit.oid).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Copy Message', action: () => { writeText(commit.summary).catch(() => {}); } }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+        await MenuItem.new({ text: 'Checkout Commit...', action: () => { handleCheckoutCommit(commit).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Create Branch...', action: () => { handleCreateBranch(commit); } }),
+        await MenuItem.new({ text: 'Create Tag...', action: () => { handleCreateTag(commit); } }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+        await MenuItem.new({ text: 'Cherry-pick', enabled: !commit.is_merge, action: () => { handleCherryPick(commit).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Revert', enabled: !commit.is_merge, action: () => { handleRevert(commit).catch(() => {}); } }),
+      ]
+    });
+    await menu.popup();
+  }
 
   async function showHeaderContextMenu(e: MouseEvent) {
     e.preventDefault();
@@ -280,7 +382,7 @@
         {hasMore}
       >
         {#snippet renderItem(commit)}
-          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} {columnVisibility} />
+          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} />
         {/snippet}
       </SvelteVirtualList>
 
@@ -320,6 +422,15 @@
     {/if}
   </div>
 </div>
+
+{#if dialogConfig}
+  <InputDialog
+    title={dialogConfig.title}
+    fields={dialogConfig.fields}
+    onsubmit={dialogConfig.onsubmit}
+    oncancel={closeDialog}
+  />
+{/if}
 
 <style>
   .col-resize-handle {
