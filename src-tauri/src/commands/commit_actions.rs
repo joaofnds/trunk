@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 use crate::error::TrunkError;
-use crate::git::{graph, types::GraphResult};
+use crate::git::{graph, types::{GraphResult, UndoResult}};
 use crate::state::{CommitCache, RepoState};
 
 fn open_repo(path: &str, state_map: &HashMap<String, PathBuf>) -> Result<git2::Repository, TrunkError> {
@@ -283,6 +283,144 @@ pub async fn revert_commit(
     Ok(())
 }
 
+pub fn undo_commit_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<UndoResult, TrunkError> {
+    let repo = open_repo(path, state_map)?;
+    let head = repo.head()?.peel_to_commit()?;
+
+    if head.parent_count() == 0 {
+        return Err(TrunkError::new(
+            "nothing_to_undo",
+            "Cannot undo the initial commit",
+        ));
+    }
+    if head.parent_count() > 1 {
+        return Err(TrunkError::new(
+            "merge_commit",
+            "Cannot undo a merge commit",
+        ));
+    }
+
+    let subject = head.summary().unwrap_or("").to_owned();
+    let body = head.body().map(str::to_owned);
+    drop(head);
+    drop(repo);
+
+    let path_buf = state_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+
+    let output = std::process::Command::new("git")
+        .args(["reset", "--soft", "HEAD~1"])
+        .current_dir(path_buf)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| TrunkError::new("undo_error", e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TrunkError::new("undo_error", stderr.to_string()));
+    }
+
+    Ok(UndoResult { subject, body })
+}
+
+pub fn redo_commit_inner(
+    path: &str,
+    subject: &str,
+    body: Option<&str>,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<(), TrunkError> {
+    super::commit::create_commit_inner(path, subject, body, state_map)
+}
+
+pub fn check_undo_available_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<bool, TrunkError> {
+    let repo = open_repo(path, state_map)?;
+    let head = match repo.head() {
+        Ok(h) => match h.peel_to_commit() {
+            Ok(c) => c,
+            Err(_) => return Ok(false),
+        },
+        Err(_) => return Ok(false),
+    };
+    // Can undo if exactly one parent (not initial, not merge)
+    Ok(head.parent_count() == 1)
+}
+
+#[tauri::command]
+pub async fn undo_commit(
+    path: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    app: AppHandle,
+) -> Result<UndoResult, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+    let (undo_result, graph_result) = tauri::async_runtime::spawn_blocking(move || {
+        let undo = undo_commit_inner(&path_clone, &state_map)?;
+        let graph = {
+            let path_buf = state_map
+                .get(path_clone.as_str())
+                .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path_clone)))?;
+            let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+            graph::walk_commits(&mut repo, 0, usize::MAX)?
+        };
+        Ok::<(UndoResult, GraphResult), TrunkError>((undo, graph))
+    })
+    .await
+    .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+    .map_err(|e| serde_json::to_string(&e).unwrap())?;
+
+    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    let _ = app.emit("repo-changed", path);
+    Ok(undo_result)
+}
+
+#[tauri::command]
+pub async fn redo_commit(
+    path: String,
+    subject: String,
+    body: Option<String>,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        redo_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+        let path_buf = state_map
+            .get(path_clone.as_str())
+            .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path_clone)))?;
+        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+        graph::walk_commits(&mut repo, 0, usize::MAX).map_err(TrunkError::from)
+    })
+    .await
+    .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+    .map_err(|e| serde_json::to_string(&e).unwrap())?;
+
+    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    let _ = app.emit("repo-changed", path);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn check_undo_available(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<bool, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || check_undo_available_inner(&path, &state_map))
+        .await
+        .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+        .map_err(|e| serde_json::to_string(&e).unwrap())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -446,6 +584,139 @@ mod tests {
 
         let result = cherry_pick_inner(path, &_second_oid, &state_map);
         assert!(result.is_ok(), "cherry_pick should succeed: {:?}", result.err());
+    }
+
+    // --- undo_commit tests ---
+
+    #[test]
+    fn test_undo_commit_captures_message() {
+        let (dir, state_map) = make_test_repo();
+        let path = dir.path().to_str().unwrap();
+
+        // Add a second commit with known subject/body
+        {
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            let sig = repo.signature().unwrap();
+            fs::write(dir.path().join("second.txt"), "content").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("second.txt")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let parent = repo.head().unwrap().peel_to_commit().unwrap();
+            repo.commit(
+                Some("refs/heads/main"),
+                &sig,
+                &sig,
+                "Undo test subject\n\nUndo test body",
+                &tree,
+                &[&parent],
+            )
+            .unwrap();
+        }
+
+        let result = undo_commit_inner(path, &state_map);
+        assert!(result.is_ok(), "undo_commit should succeed: {:?}", result.err());
+        let undo = result.unwrap();
+        assert_eq!(undo.subject, "Undo test subject");
+        assert_eq!(undo.body, Some("Undo test body".to_owned()));
+
+        // Verify HEAD moved back to initial commit
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.summary().unwrap(), "Initial commit");
+    }
+
+    #[test]
+    fn test_undo_initial_commit_fails() {
+        let (dir, state_map) = make_test_repo();
+        let path = dir.path().to_str().unwrap();
+
+        let result = undo_commit_inner(path, &state_map);
+        assert!(result.is_err(), "undo on initial commit should fail");
+        assert_eq!(result.unwrap_err().code, "nothing_to_undo");
+    }
+
+    #[test]
+    fn test_undo_merge_commit_fails() {
+        let (dir, state_map) = make_test_repo();
+        let path = dir.path().to_str().unwrap();
+
+        // Create a branch, make commits on both, merge
+        {
+            let repo = git2::Repository::open(dir.path()).unwrap();
+            let sig = repo.signature().unwrap();
+            let initial = repo.head().unwrap().peel_to_commit().unwrap();
+
+            // Create feature branch from initial commit
+            repo.branch("feature", &initial, false).unwrap();
+
+            // Commit on main
+            fs::write(dir.path().join("main.txt"), "main change").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("main.txt")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let main_commit_oid = repo.commit(
+                Some("refs/heads/main"),
+                &sig,
+                &sig,
+                "Main commit",
+                &tree,
+                &[&initial],
+            )
+            .unwrap();
+
+            // Switch to feature and commit
+            repo.set_head("refs/heads/feature").unwrap();
+            repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force())).unwrap();
+            fs::write(dir.path().join("feature.txt"), "feature change").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("feature.txt")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let feature_commit_oid = repo.commit(
+                Some("refs/heads/feature"),
+                &sig,
+                &sig,
+                "Feature commit",
+                &tree,
+                &[&initial],
+            )
+            .unwrap();
+
+            // Switch back to main and merge
+            repo.set_head("refs/heads/main").unwrap();
+            repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force())).unwrap();
+
+            let main_commit = repo.find_commit(main_commit_oid).unwrap();
+            let feature_commit = repo.find_commit(feature_commit_oid).unwrap();
+
+            let mut merge_index = repo
+                .merge_commits(&main_commit, &feature_commit, None)
+                .unwrap();
+            let merge_tree_oid = merge_index.write_tree_to(&repo).unwrap();
+            let merge_tree = repo.find_tree(merge_tree_oid).unwrap();
+            repo.commit(
+                Some("refs/heads/main"),
+                &sig,
+                &sig,
+                "Merge feature",
+                &merge_tree,
+                &[&main_commit, &feature_commit],
+            )
+            .unwrap();
+
+            // Update HEAD to point to the merge
+            repo.set_head("refs/heads/main").unwrap();
+            repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force())).unwrap();
+        }
+
+        let result = undo_commit_inner(path, &state_map);
+        assert!(result.is_err(), "undo on merge commit should fail");
+        assert_eq!(result.unwrap_err().code, "merge_commit");
     }
 
     // --- revert_commit tests ---

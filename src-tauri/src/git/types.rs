@@ -165,6 +165,12 @@ pub struct HeadCommitMessage {
 }
 
 #[derive(Debug, Serialize, Clone)]
+pub struct UndoResult {
+    pub subject: String,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct CommitDetail {
     pub oid: String,
     pub short_oid: String,
