@@ -8,16 +8,6 @@ Trunk is a fast, native, cross-platform desktop Git GUI built with Tauri 2 + Sve
 
 A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
 
-## Current Milestone: v0.3 Actions
-
-**Goal:** Enable push/pull/fetch with remote auth, stash operations, and a commit row context menu with branch/tag/cherry-pick/revert actions.
-
-**Target features:**
-- Quick actions toolbar (Pull, Push, Branch, Stash, Pop, Undo, Redo)
-- Push / Pull / Fetch with SSH/HTTPS auth + ahead/behind counts
-- Stash create/pop/apply/drop
-- Commit row right-click context menu (copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert)
-
 ## Requirements
 
 ### Validated
@@ -38,42 +28,39 @@ A developer can open any Git repository, browse its full commit history as a vis
 - ✓ Manhattan-routed merge/fork edges with vivid 8-color palette — v0.2
 - ✓ Merge commit visual distinction (hollow dots) and WIP dashed connector — v0.2
 - ✓ Lane-colored ref pills and resizable 6-column layout — v0.2
+- ✓ Quick actions toolbar (Pull, Push, Branch, Stash, Pop, Undo, Redo) — v0.3
+- ✓ Push / Pull / Fetch with SSH/HTTPS auth + ahead/behind counts in sidebar — v0.3
+- ✓ Stash create/pop/apply/drop — v0.3
+- ✓ Commit row right-click context menu (copy SHA/message, checkout, branch, tag, cherry-pick, revert) — v0.3
+- ✓ Undo last commit (soft reset) and Redo (re-commit with original message) — v0.3
 
 ### Active
 
-- [ ] Quick actions toolbar (Pull, Push, Branch, Stash, Pop, Undo, Redo)
-- [ ] Push / Pull / Fetch with SSH/HTTPS auth + ahead/behind counts in sidebar
-- [ ] Stash create/pop/apply/drop
-- [ ] Commit row right-click context menu (copy SHA/message, checkout commit, create branch, create tag, cherry-pick, revert)
-- [ ] Undo last commit (soft reset) and Redo (re-commit with original message)
+(None — planning next milestone)
 
 ### Deferred (v0.4+)
 
 - Hunk-level staging (stage individual hunks, not just whole files)
-- Resizable panels (left/right pane splitters)
 - Keyboard shortcuts for common operations
 - Deterministic StagingPanel refresh after checkout/create-branch
 
 ### Out of Scope
 
-- Conflict resolution UI — requires merge support, deferred to v0.4+
 - Multi-repo functional tabs — tab bar visible but non-functional
-- Syntax highlighting in diffs — deferred to v0.4
 - Settings/preferences UI — deferred to v1.0
 - Commit signing — deferred to v1.0
 - Auto-updates — deferred to v1.0
 - Mobile / web versions — desktop only
-- Undo/Redo — deferred
 
 ## Context
 
 - **Stack**: Tauri 2 + Svelte 5 (Vite SPA, not SvelteKit) + Rust with `git2` crate (libgit2 bindings)
-- **Current state**: Shipped v0.2 with ~3,344 LOC Rust, ~2,458 LOC Svelte, ~290 LOC TypeScript. 10 phases complete across 2 milestones.
-- **Architecture**: Svelte UI communicates with Rust backend via Tauri `invoke` (commands) and `listen` (events). Rust holds `RepoState` (path-keyed PathBuf registry), `CommitCache` (cached GraphResult with max_columns), and `WatcherState` (filesystem watchers) in managed state.
-- **Remote ops**: `git2` used for all local read/write; shell-out to `git` CLI reserved for remote operations (future milestones) due to libgit2 unreliable SSH/HTTPS auth
+- **Current state**: Shipped v0.3 with ~5,009 LOC Rust, ~3,553 LOC Svelte, ~345 LOC TypeScript. 14 phases complete across 3 milestones.
+- **Architecture**: Svelte UI communicates with Rust backend via Tauri `invoke` (commands) and `listen` (events). Rust holds `RepoState` (path-keyed PathBuf registry), `CommitCache` (cached GraphResult with max_columns), `WatcherState` (filesystem watchers), and `RunningOp` (active remote process PID) in managed state.
+- **Remote ops**: `git2` for all local read/write; git CLI subprocess for remote operations (fetch/pull/push) and cherry-pick/revert with `GIT_TERMINAL_PROMPT=0` + `GIT_SSH_COMMAND=ssh -o BatchMode=yes`
 - **Graph rendering**: Three-layer inline SVG per row (rails -> edges -> dots) with virtual scrolling. Lane algorithm runs in Rust — O(n), ~5ms for 10k commits. Manhattan-routed merge/fork edges with 8-color vivid palette. GraphResult wraps commits + max_columns for consistent SVG widths.
 - **Graph UI**: 6-column resizable layout (ref, graph, message, author, date, SHA) with LazyStore-persisted widths, native Tauri context menu for column visibility, lane-colored ref pills
-- **Patterns established**: inner-fn pattern for testable Tauri commands, safeInvoke<T> for all IPC, sequence counter for stale async guard, cache-repopulate-before-emit for mutation commands, LazyStore for UI state persistence, sentinel oid ('__wip__') for synthetic virtual list items
+- **Patterns established**: inner-fn pattern for testable Tauri commands, safeInvoke<T> for all IPC, sequence counter for stale async guard, cache-repopulate-before-emit for mutation commands, LazyStore for UI state persistence, sentinel oid ('__wip__', '__stash_N__') for synthetic virtual list items, $derived.by() for imperative reactive computations, shared $state rune modules for cross-component communication, InputDialog $state dialogConfig pattern
 - **Motivation**: Personal learning project (Tauri/Rust/Svelte) + building a better tool for personal use + eventual open source release
 
 ## Constraints
@@ -110,6 +97,14 @@ A developer can open any Git repository, browse its full commit history as a vis
 | WIP sentinel oid ('__wip__') | Synthetic virtual list item rather than extending GraphCommit type | ✓ Good — keeps TypeScript type aligned with Rust backend struct |
 | LazyStore for UI state persistence | Column widths and visibility persisted via Tauri store with lazy load | ✓ Good — consistent pattern for all UI state |
 | Native Tauri Menu API over custom Svelte component | Replaced HeaderContextMenu.svelte with @tauri-apps/api/menu | ✓ Good — native look and feel, simpler code |
+| git CLI for cherry-pick/revert (not git2) | Avoids reimplementing conflict state machine; consistent with remote ops pattern | ✓ Good — conflict detection via exit code |
+| Two-pass stash OID resolution | stash_foreach collects into Vec, parent resolution after foreach releases mutable borrow | ✓ Good — clean borrow checker compliance |
+| Stash sentinel OID (__stash_N__) | Extends WIP sentinel pattern for synthetic graph rows; square dots differentiate from commits | ✓ Good — reuses established pattern |
+| Store child PID (u32) not tokio::process::Child | Child is !Sync; storing PID in RunningOp enables kill from any thread | ✓ Good — clean async cancellation |
+| Ahead/behind inside list_refs_inner | Compute in existing map closure to avoid extra IPC round-trip | ✓ Good — no performance impact on sidebar refresh |
+| isUndoing/isRedoing flags for redo stack | Prevents clearRedoStack during undo/redo-triggered repo-changed events | ✓ Good — eliminated race condition |
+| Shared $state rune module (remote-state.svelte.ts) | Cross-component state for StatusBar/Toolbar without props/bindings | ✓ Good — clean Svelte 5 pattern |
+| Unicode symbols for toolbar icons | Simple, no SVG assets needed, consistent with dark theme | ✓ Good — minimal complexity |
 
 ---
-*Last updated: 2026-03-10 after v0.3 milestone start*
+*Last updated: 2026-03-12 after v0.3 milestone*

@@ -87,6 +87,46 @@
 
 ---
 
+## Milestone: v0.3 — Actions
+
+**Shipped:** 2026-03-12
+**Phases:** 4 | **Plans:** 14 | **Commits:** 88 | **Timeline:** 3 days
+
+### What Was Built
+- Full stash management (create/pop/apply/drop) with graph-integrated stash rows and right-click context menu
+- Commit context menu with copy, checkout, branch, tag, cherry-pick, revert (merge commits disabled)
+- Remote fetch/pull/push via git CLI subprocess with per-line progress streaming
+- Quick actions toolbar merged with tab bar into single top row
+- Branch ahead/behind tracking computed inside list_refs
+- Undo/redo last commit with race-condition guards
+
+### What Worked
+- **git CLI for remote ops**: Shelling out to git avoided libgit2 SSH/HTTPS auth issues entirely — clean subprocess pattern reused for cherry-pick/revert
+- **Sentinel OID pattern extension**: `__stash_N__` reused the `__wip__` pattern for stash graph rows — zero new abstraction needed
+- **$derived.by() for complex reactivity**: Cleaner than IIFE pattern for imperative splice logic in displayItems
+- **Shared $state rune modules**: remote-state.svelte.ts provided clean cross-component communication without prop drilling
+- **Ahead/behind in list_refs**: Computing inside existing map closure avoided extra IPC round-trip
+
+### What Was Inefficient
+- **Stash graph rendering failed and was redone**: Plan 11-02 was entirely removed during UAT and reimplemented as 11-05 — the initial approach had too many rendering bugs
+- **ROADMAP plan checkboxes still getting stale**: Third milestone with this issue — plans 11-05, 11-06, 12-01, 12-02, 13-03, 14-03 all show `[ ]` despite being complete
+- **Redo race condition**: clearRedoStack in repo-changed listener fired during undo/redo operations — required targeted gap closure plan (14-03)
+
+### Patterns Established
+- **git CLI subprocess pattern**: GIT_TERMINAL_PROMPT=0 + GIT_SSH_COMMAND for batch mode; PID stored in RunningOp for cancellation
+- **$derived.by()**: Preferred over IIFE $derived for imperative reactive computations
+- **Shared $state rune modules**: For cross-component state (remote-state.svelte.ts)
+- **InputDialog $state dialogConfig**: Set config to show dialog, null to hide
+- **Two-pass borrow pattern**: Collect into Vec first, then process — for git2 mutable borrow conflicts
+
+### Key Lessons
+1. **Plan for graph rendering failures**: Visual features that integrate with the virtual list need careful testing before merging — 11-02 was a complete redo
+2. **Race conditions in event-driven architectures**: repo-changed events fire for both user actions and programmatic mutations — guards (isUndoing/isRedoing) are necessary
+3. **Duplicating small helpers is OK**: open_repo/is_dirty duplicated in commit_actions.rs to avoid cross-module dependencies — pragmatic over DRY
+4. **14 plans in 3 days**: Velocity increasing with established patterns — each plan averaged ~30 min
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -95,9 +135,11 @@
 |-----------|------|--------|-------|------------|
 | v0.1 | 7 | 6 | 27 | First milestone — established all patterns |
 | v0.2 | 2 | 4 | 9 | Focused visual milestone — gap closure plans for UAT findings |
+| v0.3 | 3 | 4 | 14 | Largest plan count — subprocess pattern for remote/cherry-pick/revert |
 
 ### Top Lessons (Verified Across Milestones)
 
-1. **Gap closure plans are a recurring pattern**: Both milestones needed additional plans to address UAT findings — budget for 1-2 gap closure plans per phase
-2. **ROADMAP checkboxes get stale**: Both milestones had plan checkboxes out of sync with reality — consider automating
-3. **Test suite protects against regressions**: 50+ Rust tests caught zero regressions across both milestones — investment in TDD pays off
+1. **Gap closure plans are a recurring pattern**: All 3 milestones needed additional plans for UAT findings — budget 1-2 per phase
+2. **ROADMAP checkboxes get stale**: All 3 milestones had this issue — should automate or remove
+3. **Test suite protects against regressions**: Rust tests caught zero regressions across all milestones
+4. **Visual rendering is the riskiest area**: v0.1 needed 3 graph iterations, v0.2 needed 3 gap closures for connectors, v0.3 had a full plan redo (11-02) — visual features need more upfront design or spike plans

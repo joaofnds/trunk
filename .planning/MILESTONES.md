@@ -1,5 +1,23 @@
 # Milestones
 
+## v0.3 Actions (Shipped: 2026-03-12)
+
+**Phases:** 4 | **Plans:** 14 | **Commits:** 88 | **Timeline:** 3 days
+**LOC:** ~5,009 Rust / ~3,553 Svelte / ~345 TypeScript
+**Git range:** c30394be (start milestone) → 100a1b90 (merge TabBar/Toolbar)
+
+**Delivered:** Full stash management, commit row context menu with cherry-pick/revert, remote push/pull/fetch with progress streaming, quick actions toolbar with undo/redo, and branch ahead/behind tracking.
+
+**Key accomplishments:**
+1. Stash create/pop/apply/drop via git2 with graph-integrated synthetic stash rows (square dots, dashed connectors) and right-click context menu
+2. Commit context menu with copy SHA/message, checkout, create branch/tag, cherry-pick, and revert (merge commits disabled)
+3. Remote fetch/pull/push via git CLI subprocess with per-line progress streaming and structured auth/rejection error taxonomy
+4. Quick actions toolbar (Pull, Push, Branch, Stash, Pop, Undo, Redo) merged into single top bar
+5. Branch ahead/behind counts computed inside list_refs to avoid extra IPC, auto-refreshed after remote ops
+6. Undo/redo commit with isUndoing/isRedoing race-condition guards and clearRedoStack moved to user-initiated sites
+
+---
+
 ## v0.2 Commit Graph (Shipped: 2026-03-10)
 
 **Phases:** 4 | **Plans:** 9 | **Commits:** 76 | **Timeline:** 2 days
