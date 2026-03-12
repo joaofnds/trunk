@@ -149,7 +149,7 @@ Note: Phases 17 and 18 both depend on 16 but not each other. Phase 19 depends on
 | 12. Commit Context Menu | v0.3 | 2/2 | Complete | 2026-03-12 |
 | 13. Remote Operations | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 14. Toolbar + Tracking | v0.3 | 3/3 | Complete | 2026-03-12 |
-| 15. Graph Data Engine | 2/2 | Complete   | 2026-03-12 | - |
+| 15. Graph Data Engine | 2/2 | Complete    | 2026-03-12 | - |
 | 16. Core Graph Rendering | v0.4 | 0/? | Not started | - |
 | 17. Synthetic Row Adaptation | v0.4 | 0/? | Not started | - |
 | 18. Ref Pill Migration | v0.4 | 0/? | Not started | - |
