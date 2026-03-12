@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: executing
-stopped_at: Completed 11-05-PLAN.md
-last_updated: "2026-03-12T02:10:37.637Z"
-last_activity: 2026-03-12 — Completed plan 11-06 stash refresh flash and auto-expand gap closure
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-12T02:47:36Z"
+last_activity: 2026-03-12 — Completed plan 12-01 backend commands for commit context menu
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
-  percent: 83
+  total_plans: 8
+  completed_plans: 7
+  percent: 87
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 11 — Stash Operations
+**Current focus:** Phase 12 — Commit Context Menu
 
 ## Current Position
 
-Phase: 11 of 14 (Stash Operations)
-Plan: 6 of 6 in current phase
+Phase: 12 of 14 (Commit Context Menu)
+Plan: 1 of 2 in current phase
 Status: executing
-Last activity: 2026-03-12 — Completed plan 11-06 stash refresh flash and auto-expand gap closure
+Last activity: 2026-03-12 — Completed plan 12-01 backend commands for commit context menu
 
-Progress: [████████░░] 83%
+Progress: [████████░░] 87%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [████████░░] 83%
 | Phase 11-stash-operations P04 | 3min | 2 tasks | 7 files |
 | Phase 11-stash-operations P06 | 2min | 1 tasks | 1 files |
 | Phase 11-stash-operations P05 | 2min | 1 tasks | 2 files |
+| Phase 12-commit-context-menu P01 | 6min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Recent decisions affecting current work:
 - [Phase 11-04]: Reuse handleCommitSelect for stash diff viewing — stashes are commits, diff_commit/commit_detail accept any OID
 - [Phase 11-06]: Removed onrefreshed from stash handlers only -- branch handlers still need explicit callback since they don't emit repo-changed
 - [Phase 11-stash-operations]: Use $derived.by() instead of IIFE pattern for displayItems stash injection -- cleaner Svelte 5 syntax
+- [Phase 12-01]: Duplicated open_repo/is_dirty helpers in commit_actions.rs to avoid cross-module dependencies
+- [Phase 12-01]: cherry_pick and revert use git CLI subprocess (not git2) with GIT_TERMINAL_PROMPT=0 for conflict detection
+- [Phase 12-01]: create_branch dirty workdir check runs after branch creation but before checkout -- branch exists even if checkout fails
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T00:48:35.871Z
-Stopped at: Completed 11-05-PLAN.md
+Last session: 2026-03-12T02:47:36Z
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None

@@ -21,11 +21,11 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 - [ ] **MENU-01**: User can copy a commit SHA to clipboard from the context menu
 - [ ] **MENU-02**: User can copy a commit message to clipboard from the context menu
-- [ ] **MENU-03**: User can checkout a commit in detached HEAD mode from the context menu
-- [ ] **MENU-04**: User can create a branch from a commit with optional auto-checkout
-- [ ] **MENU-05**: User can create a tag from a commit
-- [ ] **MENU-06**: User can cherry-pick a commit (menu item disabled for merge commits)
-- [ ] **MENU-07**: User can revert a commit (menu item disabled for merge commits)
+- [x] **MENU-03**: User can checkout a commit in detached HEAD mode from the context menu
+- [x] **MENU-04**: User can create a branch from a commit with optional auto-checkout
+- [x] **MENU-05**: User can create a tag from a commit
+- [x] **MENU-06**: User can cherry-pick a commit (menu item disabled for merge commits)
+- [x] **MENU-07**: User can revert a commit (menu item disabled for merge commits)
 
 ### Remote
 
