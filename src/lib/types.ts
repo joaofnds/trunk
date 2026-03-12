@@ -105,6 +105,11 @@ export interface FileDiff {
   hunks: DiffHunk[];
 }
 
+export interface SvgPathData {
+  d: string;
+  colorIndex: number;
+}
+
 export interface HeadCommitMessage {
   subject: string;
   body: string | null;
