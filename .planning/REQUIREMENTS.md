@@ -88,13 +88,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Plan | Status |
 |-------------|-------|------|--------|
-| STASH-01 | Phase 11 | 11-03 | Pending |
-| STASH-02 | Phase 11 | 11-02 | Pending |
-| STASH-03 | Phase 11 | 11-03 | Pending |
-| STASH-04 | Phase 11 | 11-03 | Pending |
-| STASH-05 | Phase 11 | 11-03 | Pending |
-| STASH-06 | Phase 11 | 11-03 | Pending |
-| STASH-07 | Phase 11 | 11-02 | Pending |
+| STASH-01 | Phase 11 | 11-03 | Complete |
+| STASH-02 | Phase 11 | 11-02 | Complete |
+| STASH-03 | Phase 11 | 11-03, 11-04 | Complete |
+| STASH-04 | Phase 11 | 11-03 | Complete |
+| STASH-05 | Phase 11 | 11-03, 11-04 | Complete |
+| STASH-06 | Phase 11 | 11-03, 11-04 | Complete |
+| STASH-07 | Phase 11 | 11-02 | Complete |
 | MENU-01 | Phase 12 | 12-02 | Pending |
 | MENU-02 | Phase 12 | 12-02 | Pending |
 | MENU-03 | Phase 12 | 12-01 | Pending |

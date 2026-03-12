@@ -125,7 +125,7 @@ Plans:
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
-| 11. Stash Operations | 3/3 | Complete   | 2026-03-11 | - |
+| 11. Stash Operations | 4/4 | Complete   | 2026-03-12 | - |
 | 12. Commit Context Menu | v0.3 | 0/2 | Not started | - |
 | 13. Remote Operations | v0.3 | 0/2 | Not started | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
