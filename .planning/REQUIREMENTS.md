@@ -41,9 +41,9 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 ### Toolbar
 
-- [ ] **TOOLBAR-01**: A quick actions bar is visible at the top of the window with Pull, Push, Branch, Stash, and Pop buttons
-- [ ] **TOOLBAR-02**: Undo button performs a soft reset of the last commit (restores changes as staged)
-- [ ] **TOOLBAR-03**: Redo button re-commits with the original message after an undo
+- [x] **TOOLBAR-01**: A quick actions bar is visible at the top of the window with Pull, Push, Branch, Stash, and Pop buttons
+- [x] **TOOLBAR-02**: Undo button performs a soft reset of the last commit (restores changes as staged)
+- [x] **TOOLBAR-03**: Redo button re-commits with the original message after an undo
 
 ## Future Requirements (v0.4+)
 

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: in-progress
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-03-12T15:34:53.903Z"
-last_activity: 2026-03-12 — Completed plan 14-01 ahead/behind tracking
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-03-12T15:34:29Z"
+last_activity: 2026-03-12 — Completed plan 14-02 undo/redo toolbar buttons
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
   percent: 92
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 14 of 14 (Toolbar Tracking)
-Plan: 1 of 1 in current phase (complete)
+Plan: 2 of 2 in current phase (complete)
 Status: in-progress
-Last activity: 2026-03-12 — Completed plan 14-01 ahead/behind tracking
+Last activity: 2026-03-12 — Completed plan 14-02 undo/redo toolbar buttons
 
 Progress: [█████████░] 92%
 
@@ -58,6 +58,7 @@ Progress: [█████████░] 92%
 | Phase 13-remote-operations P02 | 2min | 1 tasks | 5 files |
 | Phase 13-remote-operations P03 | 1min | 2 tasks | 2 files |
 | Phase 14-toolbar-tracking P01 | 3min | 2 tasks | 3 files |
+| Phase 14-toolbar-tracking P02 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 13-02]: Toolbar self-contains its own InputDialog for Branch -- keeps component independent
 - [Phase 13-02]: Unicode symbols for toolbar button icons instead of SVG icons
 - [Phase 14-toolbar-tracking]: Compute ahead/behind inside existing list_refs_inner map closure to avoid extra IPC round-trip
+- [Phase 14-02]: check_undo_available IPC for canUndo state instead of threading graph data to Toolbar
+- [Phase 14-02]: isUndoing/isRedoing flags to prevent redo stack clearing during undo/redo repo-changed events
 
 ### Pending Todos
 
@@ -112,6 +115,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T15:34:53.900Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-03-12T15:34:29Z
+Stopped at: Completed 14-02-PLAN.md
 Resume file: None
