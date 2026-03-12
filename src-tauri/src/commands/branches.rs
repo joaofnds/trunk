@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 use git2::{BranchType, Status, StatusOptions};
 use crate::error::TrunkError;
 use crate::git::{graph, types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry}};
@@ -201,12 +201,14 @@ pub async fn checkout_branch(
     branch_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let mut cache_map = cache.0.lock().unwrap().clone();
 
+    let path_clone = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        checkout_branch_inner(&path, &branch_name, &state_map, &mut cache_map)
+        checkout_branch_inner(&path_clone, &branch_name, &state_map, &mut cache_map)
             .map(|_| cache_map)
     })
     .await
@@ -215,6 +217,8 @@ pub async fn checkout_branch(
 
     // Update cache in main thread with rebuilt data
     *cache.0.lock().unwrap() = result;
+
+    let _ = app.emit("repo-changed", path);
 
     Ok(())
 }
@@ -283,12 +287,14 @@ pub async fn create_branch(
     from_oid: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let mut cache_map = cache.0.lock().unwrap().clone();
 
+    let path_clone = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        create_branch_inner(&path, &name, from_oid.as_deref(), &state_map, &mut cache_map)
+        create_branch_inner(&path_clone, &name, from_oid.as_deref(), &state_map, &mut cache_map)
             .map(|_| cache_map)
     })
     .await
@@ -297,6 +303,8 @@ pub async fn create_branch(
 
     // Update cache in main thread with rebuilt data
     *cache.0.lock().unwrap() = result;
+
+    let _ = app.emit("repo-changed", path);
 
     Ok(())
 }

@@ -9,9 +9,10 @@
     repoPath: string;
     onrefreshed?: () => void;
     onstashselect?: (oid: string) => void;
+    refreshSignal?: number;
   }
 
-  let { repoPath, onrefreshed, onstashselect }: Props = $props();
+  let { repoPath, onrefreshed, onstashselect, refreshSignal }: Props = $props();
 
   let refs = $state<RefsResponse | null>(null);
   let loading = $state(false);
@@ -71,6 +72,13 @@
   $effect(() => {
     const path = repoPath;
     loadRefs(path);
+  });
+
+  // Reload refs when parent signals a refresh (e.g. context menu actions)
+  $effect(() => {
+    if (refreshSignal !== undefined && refreshSignal > 0) {
+      loadRefs(repoPath);
+    }
   });
 
   // Dismiss error when search changes

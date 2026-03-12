@@ -14,15 +14,21 @@
     oncancel: () => void;
   }
 
+  import { untrack } from 'svelte';
+
   let { title, fields, onsubmit, oncancel }: Props = $props();
 
   let values = $state<Record<string, string>>({});
 
-  // Initialize values for all fields
+  // Initialize values when fields change (untrack values to avoid feedback loop)
   $effect(() => {
+    // Track fields as dependency
+    const currentFields = fields;
+    // Read values without creating dependency
+    const currentValues = untrack(() => values);
     const init: Record<string, string> = {};
-    for (const field of fields) {
-      init[field.key] = values[field.key] ?? '';
+    for (const field of currentFields) {
+      init[field.key] = currentValues[field.key] ?? '';
     }
     values = init;
   });

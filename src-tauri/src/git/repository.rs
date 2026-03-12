@@ -17,7 +17,7 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
 
     if let Ok(refs) = repo.references() {
         for reference in refs.flatten() {
-            let Some(oid) = reference.target() else {
+            let Some(raw_oid) = reference.target() else {
                 continue;
             };
 
@@ -29,6 +29,13 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
                 RefType::Tag
             } else {
                 continue;
+            };
+
+            // For annotated tags, peel to the underlying commit OID
+            let oid = if matches!(ref_type, RefType::Tag) {
+                reference.peel_to_commit().map(|c| c.id()).unwrap_or(raw_oid)
+            } else {
+                raw_oid
             };
 
             let name = reference.name().unwrap_or("").to_owned();
