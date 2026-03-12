@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: resolved
 phase: 14-toolbar-tracking
 source: 14-01-SUMMARY.md, 14-02-SUMMARY.md
 started: 2026-03-12T16:00:00Z
-updated: 2026-03-12T16:10:00Z
+updated: 2026-03-12T17:00:00Z
 ---
 
 ## Current Test
@@ -57,7 +57,7 @@ skipped: 0
 ## Gaps
 
 - truth: "WIP commit node in graph updates its label after undo resets the commit"
-  status: failed
+  status: resolved
   reason: "User reported: pass, but in the graph the WIP commit stayed with the commit message while the right sidebar commit form was empty. I had to write something to the right sidebar commit form box and then delete clear it for the WIP commit on the commit graph to go back to WIP (Which is shown when the commit box is empty)"
   severity: minor
   test: 3
@@ -72,7 +72,7 @@ skipped: 0
   debug_session: ".planning/debug/wip-node-label-after-undo.md"
 
 - truth: "Redo button becomes active after undoing a commit and re-commits with original message"
-  status: failed
+  status: resolved
   reason: "User reported: The redo button staying inactive."
   severity: major
   test: 4
@@ -91,7 +91,7 @@ skipped: 0
   debug_session: ".planning/debug/redo-button-stays-disabled.md"
 
 - truth: "Redo button disabled state correctly reflects redo stack state"
-  status: failed
+  status: resolved
   reason: "User reported: Like I said in the previous one, redo is not working."
   severity: major
   test: 6
