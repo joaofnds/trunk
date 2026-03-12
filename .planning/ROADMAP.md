@@ -56,7 +56,7 @@ Full details: [milestones/v0.2-ROADMAP.md](milestones/v0.2-ROADMAP.md)
   4. User can apply a stash entry and see their working tree restored while the stash entry remains in the list and graph
   5. User can drop a stash entry and see it removed from the list and graph without any working tree changes
   6. User can right-click a stash row in the commit graph to get a context menu with pop, apply, and drop actions
-**Plans**: 5 plans
+**Plans**: 6 plans
 
 Plans:
 - [x] 11-01: Stash commands backend — `stash_save`, `stash_list` (with parent OID), `stash_pop`, `stash_apply`, `stash_drop` Tauri commands (inner-fn + git2); stash list response includes parent OID for graph positioning
@@ -64,6 +64,7 @@ Plans:
 - [x] 11-03: Stash sidebar UI — stash list section in sidebar with create form (optional name) and pop/apply/drop actions per entry; wired to backend commands (STASH-01, STASH-03, STASH-04, STASH-05, STASH-06)
 - [x] 11-04: UAT gap closure — cursor fix, click-to-diff, UI refresh, drop permission
 - [ ] 11-05: Stash graph rendering (gap closure) — re-implement stash rows in commit graph with hollow square dots and right-click context menu (STASH-02, STASH-07)
+- [ ] 11-06: UAT gap closure — fix double-refresh white flash and auto-expand stash section on create
 
 ### Phase 12: Commit Context Menu
 **Goal**: Users can act on any commit directly from the graph without typing git commands
@@ -127,7 +128,7 @@ Plans:
 | 8. Straight Rail Rendering | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
-| 11. Stash Operations | v0.3 | 4/5 | In progress | - |
+| 11. Stash Operations | v0.3 | 4/6 | In progress | - |
 | 12. Commit Context Menu | v0.3 | 0/2 | Not started | - |
 | 13. Remote Operations | v0.3 | 0/2 | Not started | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
