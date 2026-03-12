@@ -1,5 +1,5 @@
 ---
-status: diagnosed
+status: testing
 phase: 11-stash-operations
 source: [11-01-SUMMARY.md, 11-02-SUMMARY.md, 11-03-SUMMARY.md, 11-04-SUMMARY.md]
 started: 2026-03-11T21:00:00Z
@@ -8,13 +8,17 @@ updated: 2026-03-11T21:15:00Z
 
 ## Current Test
 
-[testing complete]
+number: 1
+name: Stash Section Always Visible
+expected: |
+  The Stash section is always visible in the sidebar, even when no stashes exist. It shows a '+' button in the header.
+awaiting: user response
 
 ## Tests
 
 ### 1. Stash Section Always Visible
 expected: The Stash section is always visible in the sidebar, even when no stashes exist. It shows a '+' button in the header.
-result: pass
+result: [pending]
 
 ### 2. Create Stash via Sidebar
 expected: Clicking '+' in the stash section header shows an inline form with an optional name input and a Stash button. Submitting with dirty workdir creates a new stash.
@@ -34,7 +38,7 @@ severity: minor
 
 ### 5. Stash Entry Display
 expected: Each stash entry in the sidebar list shows the short name (stash@{N}) and a truncated stash name/message.
-result: pass
+result: [pending]
 
 ### 6. Stash Entry Hover Cursor
 expected: Hovering over a stash entry in the sidebar shows a normal/default cursor (not a context-menu icon).
@@ -46,7 +50,7 @@ result: pass
 
 ### 8. Stash Entry Context Menu
 expected: Right-clicking a stash entry in the sidebar shows a native context menu with Pop, Apply, and Drop actions.
-result: pass
+result: [pending]
 
 ### 9. Stash Pop
 expected: Clicking Pop from the context menu applies and removes the stash. The stash list refreshes immediately.
@@ -62,7 +66,7 @@ result: pass
 
 ### 12. Stash Operation Error Display
 expected: If a stash pop/apply fails (e.g., conflicts), an inline error message appears below the failing entry (not a modal/popup).
-result: pass
+result: [pending]
 
 ## Summary
 
