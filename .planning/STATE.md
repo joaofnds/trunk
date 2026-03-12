@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: in-progress
-stopped_at: Phase 14 context gathered
-last_updated: "2026-03-12T15:08:29.779Z"
-last_activity: 2026-03-12 — Completed plan 13-03 UAT gap closure
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-03-12T15:34:53.903Z"
+last_activity: 2026-03-12 — Completed plan 14-01 ahead/behind tracking
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
+  total_plans: 13
+  completed_plans: 12
+  percent: 92
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 13 — Remote Operations (complete)
+**Current focus:** Phase 14 — Toolbar Tracking
 
 ## Current Position
 
-Phase: 13 of 14 (Remote Operations)
-Plan: 3 of 3 in current phase (complete)
+Phase: 14 of 14 (Toolbar Tracking)
+Plan: 1 of 1 in current phase (complete)
 Status: in-progress
-Last activity: 2026-03-12 — Completed plan 13-03 UAT gap closure
+Last activity: 2026-03-12 — Completed plan 14-01 ahead/behind tracking
 
-Progress: [██████████] 100%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [██████████] 100%
 | Phase 13-remote-operations P01 | 4min | 2 tasks | 5 files |
 | Phase 13-remote-operations P02 | 2min | 1 tasks | 5 files |
 | Phase 13-remote-operations P03 | 1min | 2 tasks | 2 files |
+| Phase 14-toolbar-tracking P01 | 3min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,7 @@ Recent decisions affecting current work:
 - [Phase 13-02]: Shared $state rune in remote-state.svelte.ts for StatusBar/Toolbar communication instead of props/bindings
 - [Phase 13-02]: Toolbar self-contains its own InputDialog for Branch -- keeps component independent
 - [Phase 13-02]: Unicode symbols for toolbar button icons instead of SVG icons
+- [Phase 14-toolbar-tracking]: Compute ahead/behind inside existing list_refs_inner map closure to avoid extra IPC round-trip
 
 ### Pending Todos
 
@@ -110,6 +112,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T15:08:29.776Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-toolbar-tracking/14-CONTEXT.md
+Last session: 2026-03-12T15:34:53.900Z
+Stopped at: Completed 14-01-PLAN.md
+Resume file: None

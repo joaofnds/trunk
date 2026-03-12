@@ -36,8 +36,8 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 ### Tracking
 
-- [ ] **TRACK-01**: Branch sidebar shows ahead/behind counts relative to upstream
-- [ ] **TRACK-02**: Ahead/behind counts update after fetch, pull, and push
+- [x] **TRACK-01**: Branch sidebar shows ahead/behind counts relative to upstream
+- [x] **TRACK-02**: Ahead/behind counts update after fetch, pull, and push
 
 ### Toolbar
 
