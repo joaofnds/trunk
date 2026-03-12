@@ -133,4 +133,4 @@ Plans:
 | 11. Stash Operations | 6/6 | Complete    | 2026-03-12 | - |
 | 12. Commit Context Menu | 2/2 | Complete    | 2026-03-12 | - |
 | 13. Remote Operations | 3/3 | Complete    | 2026-03-12 | - |
-| 14. Toolbar + Tracking | 3/3 | Complete   | 2026-03-12 | - |
+| 14. Toolbar + Tracking | 3/3 | Complete    | 2026-03-12 | - |
