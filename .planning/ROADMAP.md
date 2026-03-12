@@ -51,7 +51,7 @@ Full details: [milestones/v0.3-ROADMAP.md](milestones/v0.3-ROADMAP.md)
 
 **Milestone Goal:** Replace per-row SVG rendering with continuous SVG paths -- one `<path>` per commit-to-commit edge, viewBox-clipped per row. Visuals stay identical; architecture eliminates row-boundary rendering bugs.
 
-- [ ] **Phase 15: Graph Data Engine** - Compute continuous SVG path data from commit graph
+- [x] **Phase 15: Graph Data Engine** - Compute continuous SVG path data from commit graph (completed 2026-03-12)
 - [ ] **Phase 16: Core Graph Rendering** - Render viewBox-clipped SVG paths with commit dots
 - [ ] **Phase 17: Synthetic Row Adaptation** - Adapt WIP and stash rows to new SVG model
 - [ ] **Phase 18: Ref Pill Migration** - Migrate ref pills and connectors to SVG elements
@@ -67,7 +67,7 @@ Full details: [milestones/v0.3-ROADMAP.md](milestones/v0.3-ROADMAP.md)
   1. `GraphSvgData` produces one SVG `<path>` d-string per commit-to-commit edge (parent links and merge/fork edges)
   2. Manhattan routing is preserved in generated path strings (horizontal + arc + vertical segments)
   3. Path data recomputes only on data change (not on scroll), verified by reactive `$derived.by()` pattern
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 15-01-PLAN.md — TDD: computeGraphSvgData pure function with vitest tests
@@ -149,7 +149,7 @@ Note: Phases 17 and 18 both depend on 16 but not each other. Phase 19 depends on
 | 12. Commit Context Menu | v0.3 | 2/2 | Complete | 2026-03-12 |
 | 13. Remote Operations | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 14. Toolbar + Tracking | v0.3 | 3/3 | Complete | 2026-03-12 |
-| 15. Graph Data Engine | 1/2 | In Progress|  | - |
+| 15. Graph Data Engine | 2/2 | Complete   | 2026-03-12 | - |
 | 16. Core Graph Rendering | v0.4 | 0/? | Not started | - |
 | 17. Synthetic Row Adaptation | v0.4 | 0/? | Not started | - |
 | 18. Ref Pill Migration | v0.4 | 0/? | Not started | - |

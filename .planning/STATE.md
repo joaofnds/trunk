@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Graph Rework
-status: executing
-stopped_at: Completed 15-01-PLAN.md
-last_updated: "2026-03-12T18:52:06.341Z"
-last_activity: 2026-03-12 — Completed 15-01 graph data engine
+status: completed
+stopped_at: Completed 15-02-PLAN.md (Phase 15 complete)
+last_updated: "2026-03-12T18:55:55.485Z"
+last_activity: 2026-03-12 — Completed 15-02 reactive graph data wiring
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 15 of 19 (Graph Data Engine) — first phase of v0.4
-Plan: 1 of 2 in current phase
-Status: Executing phase 15
-Last activity: 2026-03-12 — Completed 15-01 graph data engine
+Plan: 2 of 2 in current phase (COMPLETE)
+Status: Phase 15 complete
+Last activity: 2026-03-12 — Completed 15-02 reactive graph data wiring
 
-Progress: [█████░░░░░] 50% (v0.4: 0/5 phases, 1/2 plans in phase 15)
+Progress: [██████████] 100% (v0.4: 1/5 phases, 2/2 plans in phase 15)
 
 ## Accumulated Context
 
@@ -43,6 +43,8 @@ Progress: [█████░░░░░] 50% (v0.4: 0/5 phases, 1/2 plans in p
 - [15-01]: Absolute Y coordinates based on row index for viewBox clipping compatibility
 - [15-01]: Sentinel OID filtering via startsWith('__') prefix check
 - [15-01]: Added vitest as test infrastructure (zero new runtime dependencies)
+- [15-02]: graphSvgData placed after displayItems for clear dependency ordering
+- [15-02]: Svelte 5 lazy $derived.by() means zero performance cost until Phase 16
 
 ### Pending Todos
 
@@ -63,6 +65,6 @@ Progress: [█████░░░░░] 50% (v0.4: 0/5 phases, 1/2 plans in p
 
 ## Session Continuity
 
-Last session: 2026-03-12T18:51:17Z
-Stopped at: Completed 15-01-PLAN.md
-Resume file: .planning/phases/15-graph-data-engine/15-01-SUMMARY.md
+Last session: 2026-03-12T18:55:55.482Z
+Stopped at: Completed 15-02-PLAN.md (Phase 15 complete)
+Resume file: None
