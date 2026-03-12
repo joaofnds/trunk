@@ -2,10 +2,10 @@
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
   import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
-  import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
+  import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
-  import { Menu, MenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
+  import { Menu, CheckMenuItem } from '@tauri-apps/api/menu';
   import CommitRow from './CommitRow.svelte';
 
   interface Props {
@@ -28,8 +28,6 @@
   let loading = $state(false);
   let error = $state<string | null>(null);
   let offset = $state(0);
-  let stashes = $state<StashEntry[]>([]);
-  let stashError = $state<string | null>(null);
   let listRef = $state<{ scroll: (opts: { index: number; smoothScroll?: boolean; align?: string }) => Promise<void> } | null>(null);
   let scrolledToHead = false;
 
@@ -50,7 +48,7 @@
     const startWidth = columnWidths[column];
     const minWidths: Record<keyof ColumnWidths, number> = {
       ref: 60,
-      graph: Math.max(maxColumns + (stashes.length > 0 ? 1 : 0), 1) * LANE_WIDTH,
+      graph: Math.max(maxColumns, 1) * LANE_WIDTH,
       author: 60,
       date: 60,
       sha: 50,
@@ -101,55 +99,6 @@
     await menu.popup();
   }
 
-  async function showStashContextMenu(e: MouseEvent, stashIndex: number) {
-    e.preventDefault();
-    e.stopPropagation();
-    const menu = await Menu.new({
-      items: [
-        await MenuItem.new({
-          text: 'Pop',
-          action: async () => {
-            try {
-              await safeInvoke('stash_pop', { path: repoPath, index: stashIndex });
-              stashError = null;
-            } catch (err) {
-              stashError = (err as TrunkError).message ?? 'Failed to pop stash';
-            }
-          },
-        }),
-        await MenuItem.new({
-          text: 'Apply',
-          action: async () => {
-            try {
-              await safeInvoke('stash_apply', { path: repoPath, index: stashIndex });
-              stashError = null;
-            } catch (err) {
-              stashError = (err as TrunkError).message ?? 'Failed to apply stash';
-            }
-          },
-        }),
-        await MenuItem.new({
-          text: 'Drop',
-          action: async () => {
-            try {
-              const { ask } = await import('@tauri-apps/plugin-dialog');
-              const confirmed = await ask(
-                `Drop stash@{${stashIndex}}? This cannot be undone.`,
-                { title: 'Confirm Drop', kind: 'warning' }
-              );
-              if (!confirmed) return;
-              await safeInvoke('stash_drop', { path: repoPath, index: stashIndex });
-              stashError = null;
-            } catch (err) {
-              stashError = (err as TrunkError).message ?? 'Failed to drop stash';
-            }
-          },
-        }),
-      ],
-    });
-    await menu.popup();
-  }
-
   function makeWipItem(msg: string): GraphCommit {
     return {
       oid: '__wip__',
@@ -170,66 +119,10 @@
     };
   }
 
-  function makeStashItem(stash: StashEntry, stashCol: number, colorIdx: number): GraphCommit {
-    const parentCommit = commits.find(c => c.oid === stash.parent_oid);
-    const parentCol = parentCommit ? parentCommit.column : stashCol;
-
-    let edgeType: EdgeType;
-    if (stashCol === parentCol) {
-      edgeType = 'Straight';
-    } else if (stashCol > parentCol) {
-      edgeType = 'ForkLeft';
-    } else {
-      edgeType = 'ForkRight';
-    }
-
-    return {
-      oid: `__stash_${stash.index}__`,
-      short_oid: '',
-      summary: stash.name,
-      body: null,
-      author_name: '',
-      author_email: '',
-      author_timestamp: 0,
-      parent_oids: stash.parent_oid ? [stash.parent_oid] : [],
-      column: stashCol,
-      color_index: colorIdx,
-      edges: [{
-        from_column: stashCol,
-        to_column: parentCol,
-        edge_type: edgeType,
-        color_index: colorIdx,
-      }],
-      refs: [],
-      is_head: false,
-      is_merge: false,
-      is_branch_tip: true,
-    };
-  }
-
-  const stashColumn = $derived(maxColumns);
-
   const displayItems = $derived.by(() => {
-    const base: GraphCommit[] = wipCount > 0
+    return wipCount > 0
       ? [makeWipItem(wipMessage), ...commits]
       : [...commits];
-
-    if (stashes.length === 0) return base;
-
-    const result = [...base];
-    for (let i = stashes.length - 1; i >= 0; i--) {
-      const stash = stashes[i];
-      if (!stash.parent_oid) continue;
-
-      const parentIdx = result.findIndex(c => c.oid === stash.parent_oid);
-      if (parentIdx === -1) continue;
-
-      const colorIdx = (stashColumn + i) % 8;
-      const stashItem = makeStashItem(stash, stashColumn, colorIdx);
-      result.splice(parentIdx, 0, stashItem);
-    }
-
-    return result;
   });
 
   async function loadMore() {
@@ -253,16 +146,7 @@
     }
   }
 
-  async function loadStashes() {
-    try {
-      stashes = await safeInvoke<StashEntry[]>('list_stashes', { path: repoPath });
-    } catch (_) {
-      stashes = [];
-    }
-  }
-
   async function refresh() {
-    stashError = null;
     try {
       const response = await safeInvoke<GraphResponse>('refresh_commit_graph', {
         path: repoPath,
@@ -278,13 +162,11 @@
       error = err.message ?? 'Failed to load commits';
       // Keep old commits visible on error -- do NOT clear
     }
-    await loadStashes();
   }
 
   $effect(() => {
     untrack(async () => {
       await loadMore();
-      await loadStashes();
     });
   });
 
@@ -363,13 +245,6 @@
     {/if}
   </div>
 
-  {#if stashError}
-    <div class="flex items-center gap-2 px-3 py-1 text-xs" style="background: #3d1c1c; border-bottom: 1px solid #6b2a2a; color: #f87171;">
-      <span class="flex-1">{stashError}</span>
-      <button onclick={() => stashError = null} style="color: #f87171; background: none; border: none; cursor: pointer; font-size: 14px;">x</button>
-    </div>
-  {/if}
-
   <!-- Content area (grows to fill remaining space) -->
   <div class="flex-1 overflow-hidden">
     {#if commits.length === 0 && loading}
@@ -405,14 +280,7 @@
         {hasMore}
       >
         {#snippet renderItem(commit)}
-          {#if commit.oid.startsWith('__stash_')}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div oncontextmenu={(e) => showStashContextMenu(e, parseInt(commit.oid.replace('__stash_', '').replace('__', '')))}>
-              <CommitRow {commit} onselect={undefined} maxColumns={stashColumn + 1} {columnWidths} {columnVisibility} />
-            </div>
-          {:else}
-            <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} {columnVisibility} />
-          {/if}
+          <CommitRow {commit} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} {maxColumns} {columnWidths} {columnVisibility} />
         {/snippet}
       </SvelteVirtualList>
 
