@@ -5,6 +5,8 @@
     isLoading?: boolean;
     isError?: boolean;
     errorText?: string;
+    ahead?: number;
+    behind?: number;
     onclick?: () => void;
   }
 
@@ -14,6 +16,8 @@
     isLoading = false,
     isError = false,
     errorText,
+    ahead = 0,
+    behind = 0,
     onclick,
   }: Props = $props();
 
@@ -49,6 +53,12 @@
       min-width: 0;
       flex: 1;
     ">{name}{isLoading ? ' …' : ''}</span>
+    {#if behind > 0 || ahead > 0}
+      <span style="flex-shrink: 0; font-size: 11px; color: var(--color-text-muted); margin-left: 4px;">
+        {#if behind > 0}<span>{'\u2193'}{behind}</span>{/if}
+        {#if ahead > 0}<span style="margin-left: 2px;">{'\u2191'}{ahead}</span>{/if}
+      </span>
+    {/if}
   </div>
 
   {#if isError}

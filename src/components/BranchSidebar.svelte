@@ -296,6 +296,8 @@
             isLoading={checkingOutBranch === branch.name}
             isError={checkoutError?.branch === branch.name}
             errorText={checkoutError?.message}
+            ahead={branch.ahead}
+            behind={branch.behind}
             onclick={() => handleCheckout(branch.name)}
           />
         {/each}
