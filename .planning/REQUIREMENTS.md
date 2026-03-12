@@ -72,24 +72,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRAPH-01 | — | Pending |
-| RENDER-01 | — | Pending |
-| RENDER-02 | — | Pending |
-| RENDER-03 | — | Pending |
-| SYNTH-01 | — | Pending |
-| SYNTH-02 | — | Pending |
-| REF-01 | — | Pending |
-| REF-02 | — | Pending |
-| REF-03 | — | Pending |
-| INTERACT-01 | — | Pending |
-| INTERACT-02 | — | Pending |
-| INTERACT-03 | — | Pending |
+| GRAPH-01 | Phase 15 | Pending |
+| RENDER-01 | Phase 16 | Pending |
+| RENDER-02 | Phase 16 | Pending |
+| RENDER-03 | Phase 16 | Pending |
+| SYNTH-01 | Phase 17 | Pending |
+| SYNTH-02 | Phase 17 | Pending |
+| REF-01 | Phase 18 | Pending |
+| REF-02 | Phase 18 | Pending |
+| REF-03 | Phase 18 | Pending |
+| INTERACT-01 | Phase 19 | Pending |
+| INTERACT-02 | Phase 19 | Pending |
+| INTERACT-03 | Phase 19 | Pending |
 
 **Coverage:**
 - v0.4 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after initial definition*
+*Last updated: 2026-03-12 after roadmap creation*
