@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
+    "dialog:allow-ask",
     "store:default",
     "core:menu:default",
     "window-state:default"

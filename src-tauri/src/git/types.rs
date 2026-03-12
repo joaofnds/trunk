@@ -43,6 +43,7 @@ pub struct StashEntry {
     pub index: usize,
     pub name: String,
     pub short_name: String,
+    pub oid: String,
     pub parent_oid: Option<String>,
 }
 

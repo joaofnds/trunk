@@ -32,6 +32,7 @@ pub fn list_stashes_inner(
             index: idx,
             short_name: format!("stash@{{{}}}", idx),
             name,
+            oid: stash_oid.to_string(),
             parent_oid,
         }
     }).collect())
