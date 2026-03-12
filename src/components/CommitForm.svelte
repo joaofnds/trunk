@@ -73,6 +73,7 @@
         });
       }
       subject = '';
+      onsubjectchange?.('');
       body = '';
       amend = false;
     } catch (e) {
