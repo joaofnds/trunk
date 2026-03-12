@@ -6,6 +6,7 @@
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
+  import { computeGraphSvgData } from '../lib/graph-svg-data.js';
   import { Menu, MenuItem, Submenu, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
   import { ask, message } from '@tauri-apps/plugin-dialog';
@@ -253,6 +254,10 @@
     return wipCount > 0
       ? [makeWipItem(wipMessage), ...commits]
       : [...commits];
+  });
+
+  const graphSvgData = $derived.by(() => {
+    return computeGraphSvgData(displayItems, maxColumns);
   });
 
   async function loadMore() {
