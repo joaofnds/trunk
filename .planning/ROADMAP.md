@@ -82,10 +82,10 @@ Plans:
   2. Commit dots render as filled circles for regular commits and hollow circles for merge commits
   3. The graph is visually identical to v0.3 output (same colors, same routing, same dot styles, same lane positions)
   4. Virtual scrolling remains smooth at 60fps with large repos (5k+ commits)
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 16-01: TBD
+- [ ] 16-01-PLAN.md — Create GraphCell with viewBox-clipped SVG paths, wire context, visual verification
 
 ### Phase 17: Synthetic Row Adaptation
 **Goal**: WIP and stash synthetic rows render correctly in the new SVG model
@@ -150,7 +150,7 @@ Note: Phases 17 and 18 both depend on 16 but not each other. Phase 19 depends on
 | 13. Remote Operations | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 14. Toolbar + Tracking | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 15. Graph Data Engine | 2/2 | Complete    | 2026-03-12 | - |
-| 16. Core Graph Rendering | v0.4 | 0/? | Not started | - |
+| 16. Core Graph Rendering | v0.4 | 0/1 | Not started | - |
 | 17. Synthetic Row Adaptation | v0.4 | 0/? | Not started | - |
 | 18. Ref Pill Migration | v0.4 | 0/? | Not started | - |
 | 19. Interaction Preservation | v0.4 | 0/? | Not started | - |
