@@ -49,6 +49,10 @@ pub fn run() {
             commands::commit_actions::cherry_pick,
             commands::commit_actions::revert_commit,
             commands::commit_actions::reset_to_commit,
+            commands::remote::git_fetch,
+            commands::remote::git_pull,
+            commands::remote::git_push,
+            commands::remote::cancel_remote_op,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
