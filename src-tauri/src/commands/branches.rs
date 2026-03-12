@@ -66,12 +66,22 @@ pub fn list_refs_inner(
                 .peel_to_commit()
                 .map(|c| c.author().when().seconds())
                 .unwrap_or(0);
+            let (ahead, behind) = match (&upstream, branch.get().target()) {
+                (Some(_), Some(local_oid)) => {
+                    branch.upstream()
+                        .ok()
+                        .and_then(|ub| ub.get().target())
+                        .map(|remote_oid| repo.graph_ahead_behind(local_oid, remote_oid).unwrap_or((0, 0)))
+                        .unwrap_or((0, 0))
+                }
+                _ => (0, 0),
+            };
             BranchInfo {
                 name,
                 is_head,
                 upstream,
-                ahead: 0,
-                behind: 0,
+                ahead,
+                behind,
                 last_commit_timestamp,
             }
         })
@@ -583,5 +593,54 @@ mod tests {
         let repo = git2::Repository::open(dir.path()).unwrap();
         let branch = repo.find_branch("dirty-branch", git2::BranchType::Local);
         assert!(branch.is_ok(), "branch should exist even though checkout was skipped");
+    }
+
+    #[test]
+    fn list_refs_ahead_behind() {
+        // Create a repo with a local branch that is ahead of its tracking remote branch.
+        // We simulate this by:
+        // 1. Creating a bare "remote" repo
+        // 2. Cloning it into a working repo
+        // 3. Making a commit on the local branch (so local is ahead by 1)
+        let remote_dir = tempfile::tempdir().unwrap();
+        let bare = git2::Repository::init_bare(remote_dir.path()).unwrap();
+
+        // Create initial commit in bare repo
+        {
+            let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+            let tree_oid = bare.treebuilder(None).unwrap().write().unwrap();
+            let tree = bare.find_tree(tree_oid).unwrap();
+            bare.commit(Some("refs/heads/main"), &sig, &sig, "init", &tree, &[]).unwrap();
+        }
+
+        // Clone into working repo
+        let work_dir = tempfile::tempdir().unwrap();
+        let repo = git2::build::RepoBuilder::new()
+            .clone(remote_dir.path().to_str().unwrap(), work_dir.path())
+            .unwrap();
+
+        // Make a local commit so main is ahead by 1
+        {
+            let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+            std::fs::write(work_dir.path().join("file.txt"), "content").unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("file.txt")).unwrap();
+            index.write().unwrap();
+            let tree_oid = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_oid).unwrap();
+            let parent = repo.find_commit(repo.head().unwrap().target().unwrap()).unwrap();
+            repo.commit(Some("refs/heads/main"), &sig, &sig, "local", &tree, &[&parent]).unwrap();
+        }
+
+        let path = work_dir.path().to_string_lossy().to_string();
+        let mut state_map = std::collections::HashMap::new();
+        state_map.insert(path.clone(), work_dir.path().to_path_buf());
+
+        let refs = list_refs_inner(&path, &state_map).expect("list_refs_inner failed");
+        let main = refs.local.iter().find(|b| b.name == "main").expect("expected main branch");
+
+        assert!(main.upstream.is_some(), "main should have upstream tracking");
+        assert_eq!(main.ahead, 1, "main should be 1 ahead of remote");
+        assert_eq!(main.behind, 0, "main should be 0 behind remote");
     }
 }
