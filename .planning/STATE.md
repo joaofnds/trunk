@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
-status: completed
-stopped_at: Phase 13 context gathered
-last_updated: "2026-03-12T12:15:53.614Z"
-last_activity: 2026-03-12 — Completed plan 12-02 commit context menu UI
+status: in-progress
+stopped_at: Completed 13-01 remote operations backend
+last_updated: "2026-03-12T12:38:22.000Z"
+last_activity: 2026-03-12 — Completed plan 13-01 remote operations backend
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
-  percent: 93
+  total_plans: 10
+  completed_plans: 9
+  percent: 95
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 12 — Commit Context Menu (complete)
+**Current focus:** Phase 13 — Remote Operations (in progress)
 
 ## Current Position
 
-Phase: 12 of 14 (Commit Context Menu)
-Plan: 2 of 2 in current phase
-Status: phase-complete
-Last activity: 2026-03-12 — Completed plan 12-02 commit context menu UI
+Phase: 13 of 14 (Remote Operations)
+Plan: 1 of 2 in current phase
+Status: in-progress
+Last activity: 2026-03-12 — Completed plan 13-01 remote operations backend
 
-Progress: [█████████░] 93%
+Progress: [█████████░] 95%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [█████████░] 93%
 | Phase 11-stash-operations P05 | 2min | 1 tasks | 2 files |
 | Phase 12-commit-context-menu P01 | 6min | 2 tasks | 8 files |
 | Phase 12-commit-context-menu P02 | 4min | 1 tasks | 4 files |
+| Phase 13-remote-operations P01 | 4min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 12-01]: create_branch dirty workdir check runs after branch creation but before checkout -- branch exists even if checkout fails
 - [Phase 12-02]: InputDialog uses $state dialogConfig pattern -- set to show, null to hide
 - [Phase 12-02]: WIP and stash rows excluded from commit context menu via oid.startsWith('__') guard
+- [Phase 13-01]: Store child PID (u32) in RunningOp instead of tokio::process::Child because Child is !Sync
+- [Phase 13-01]: Pass RunningOp inner mutex by reference to run_git_remote helper instead of using Tauri State in non-command functions
+- [Phase 13-01]: Separate refresh_graph async helper for DRY graph rebuild across fetch/pull/push
 
 ### Pending Todos
 
@@ -101,6 +105,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T12:15:53.612Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-remote-operations/13-CONTEXT.md
+Last session: 2026-03-12T12:38:22.000Z
+Stopped at: Completed 13-01 remote operations backend
+Resume file: .planning/phases/13-remote-operations/13-01-SUMMARY.md

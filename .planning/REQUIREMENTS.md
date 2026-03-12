@@ -29,10 +29,10 @@ Requirements for the Actions milestone. Each maps to roadmap phases.
 
 ### Remote
 
-- [ ] **REMOTE-01**: User can fetch all remotes with per-line progress feedback
-- [ ] **REMOTE-02**: User can pull the current branch (merge strategy)
-- [ ] **REMOTE-03**: User can push the current branch (auto-sets upstream for new branches)
-- [ ] **REMOTE-04**: User sees actionable error messages for auth failures and non-fast-forward rejections
+- [x] **REMOTE-01**: User can fetch all remotes with per-line progress feedback
+- [x] **REMOTE-02**: User can pull the current branch (merge strategy)
+- [x] **REMOTE-03**: User can push the current branch (auto-sets upstream for new branches)
+- [x] **REMOTE-04**: User sees actionable error messages for auth failures and non-fast-forward rejections
 
 ### Tracking
 
