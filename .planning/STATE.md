@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.3
-milestone_name: Actions
-status: completed
-stopped_at: Milestone complete
-last_updated: "2026-03-12T18:00:00.000Z"
-last_activity: 2026-03-12 — Milestone v0.3 Actions completed and archived
+milestone: v0.4
+milestone_name: Graph Rework
+status: in-progress
+stopped_at: null
+last_updated: "2026-03-12T18:10:00.000Z"
+last_activity: 2026-03-12 — Milestone v0.4 started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Planning next milestone
+**Current focus:** Milestone v0.4 — Graph Rework
 
 ## Current Position
 
-Phase: Milestone v0.3 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: completed
-Last activity: 2026-03-12 — Milestone v0.3 Actions completed and archived
+Status: Defining requirements
+Last activity: 2026-03-12 — Milestone v0.4 started
 
 ## Accumulated Context
 
@@ -47,5 +47,5 @@ Last activity: 2026-03-12 — Milestone v0.3 Actions completed and archived
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Milestone v0.3 complete
+Stopped at: Milestone v0.4 started
 Resume file: None

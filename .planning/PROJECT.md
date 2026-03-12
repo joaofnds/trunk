@@ -34,9 +34,20 @@ A developer can open any Git repository, browse its full commit history as a vis
 - ✓ Commit row right-click context menu (copy SHA/message, checkout, branch, tag, cherry-pick, revert) — v0.3
 - ✓ Undo last commit (soft reset) and Redo (re-commit with original message) — v0.3
 
-### Active
+## Current Milestone: v0.4 Graph Rework
 
-(None — planning next milestone)
+**Goal:** Replace per-row SVG rendering with full-height SVG elements — branch lines, merge edges, and ref connectors become single continuous `<path>` elements instead of per-row fragments. Visuals stay identical; architecture changes to eliminate row-boundary rendering bugs.
+
+**Target changes:**
+- Branch lines: single continuous SVG path per lane spanning full graph height
+- Merge/fork edges: single SVG path per edge (not split across rows)
+- Ref pill connectors: single SVG path from pill to commit dot
+- Ref pills: SVG elements (not HTML)
+- Commit dots: individual SVG elements (unchanged conceptually)
+- WIP/stash synthetic rows: adapted to new SVG model
+- All existing functionality preserved — no visible changes
+
+### Active
 
 ### Deferred (v0.4+)
 
@@ -58,7 +69,7 @@ A developer can open any Git repository, browse its full commit history as a vis
 - **Current state**: Shipped v0.3 with ~5,009 LOC Rust, ~3,553 LOC Svelte, ~345 LOC TypeScript. 14 phases complete across 3 milestones.
 - **Architecture**: Svelte UI communicates with Rust backend via Tauri `invoke` (commands) and `listen` (events). Rust holds `RepoState` (path-keyed PathBuf registry), `CommitCache` (cached GraphResult with max_columns), `WatcherState` (filesystem watchers), and `RunningOp` (active remote process PID) in managed state.
 - **Remote ops**: `git2` for all local read/write; git CLI subprocess for remote operations (fetch/pull/push) and cherry-pick/revert with `GIT_TERMINAL_PROMPT=0` + `GIT_SSH_COMMAND=ssh -o BatchMode=yes`
-- **Graph rendering**: Three-layer inline SVG per row (rails -> edges -> dots) with virtual scrolling. Lane algorithm runs in Rust — O(n), ~5ms for 10k commits. Manhattan-routed merge/fork edges with 8-color vivid palette. GraphResult wraps commits + max_columns for consistent SVG widths.
+- **Graph rendering (v0.2-v0.3)**: Three-layer inline SVG per row (rails -> edges -> dots) with virtual scrolling. Lane algorithm runs in Rust — O(n), ~5ms for 10k commits. Manhattan-routed merge/fork edges with 8-color vivid palette. GraphResult wraps commits + max_columns for consistent SVG widths. **v0.4 rework**: replacing per-row SVG with full-height SVG where each branch line and merge edge is a single continuous path.
 - **Graph UI**: 6-column resizable layout (ref, graph, message, author, date, SHA) with LazyStore-persisted widths, native Tauri context menu for column visibility, lane-colored ref pills
 - **Patterns established**: inner-fn pattern for testable Tauri commands, safeInvoke<T> for all IPC, sequence counter for stale async guard, cache-repopulate-before-emit for mutation commands, LazyStore for UI state persistence, sentinel oid ('__wip__', '__stash_N__') for synthetic virtual list items, $derived.by() for imperative reactive computations, shared $state rune modules for cross-component communication, InputDialog $state dialogConfig pattern
 - **Motivation**: Personal learning project (Tauri/Rust/Svelte) + building a better tool for personal use + eventual open source release
@@ -107,4 +118,4 @@ A developer can open any Git repository, browse its full commit history as a vis
 | Unicode symbols for toolbar icons | Simple, no SVG assets needed, consistent with dark theme | ✓ Good — minimal complexity |
 
 ---
-*Last updated: 2026-03-12 after v0.3 milestone*
+*Last updated: 2026-03-12 after v0.4 milestone start*
