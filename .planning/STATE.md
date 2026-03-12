@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
 status: in-progress
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-03-12T15:40:29.847Z"
+stopped_at: Completed 14-03-PLAN.md
+last_updated: "2026-03-12T17:03:32.642Z"
 last_activity: 2026-03-12 — Completed plan 14-02 undo/redo toolbar buttons
 progress:
   total_phases: 4
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 14
+  completed_plans: 14
   percent: 92
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-10)
 ## Current Position
 
 Phase: 14 of 14 (Toolbar Tracking)
-Plan: 2 of 2 in current phase (complete)
+Plan: 3 of 3 in current phase (complete)
 Status: in-progress
-Last activity: 2026-03-12 — Completed plan 14-02 undo/redo toolbar buttons
+Last activity: 2026-03-12 — Completed plan 14-03 gap closure (redo race + WIP label)
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [█████████░] 92%
 | Phase 13-remote-operations P03 | 1min | 2 tasks | 2 files |
 | Phase 14-toolbar-tracking P01 | 3min | 2 tasks | 3 files |
 | Phase 14-toolbar-tracking P02 | 4min | 2 tasks | 5 files |
+| Phase 14-toolbar-tracking P03 | 2min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,7 @@ Recent decisions affecting current work:
 - [Phase 14-toolbar-tracking]: Compute ahead/behind inside existing list_refs_inner map closure to avoid extra IPC round-trip
 - [Phase 14-02]: check_undo_available IPC for canUndo state instead of threading graph data to Toolbar
 - [Phase 14-02]: isUndoing/isRedoing flags to prevent redo stack clearing during undo/redo repo-changed events
+- [Phase 14-toolbar-tracking]: Move clearRedoStack out of repo-changed listener into user-initiated call sites to eliminate race condition
 
 ### Pending Todos
 
@@ -115,6 +117,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-12T15:34:29Z
-Stopped at: Completed 14-02-PLAN.md
+Last session: 2026-03-12T17:03:32.638Z
+Stopped at: Completed 14-03-PLAN.md
 Resume file: None
