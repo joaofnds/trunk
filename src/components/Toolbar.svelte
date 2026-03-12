@@ -125,16 +125,19 @@
 
 <style>
   .toolbar {
-    height: 36px;
-    flex-shrink: 0;
+    flex: 1;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 2px;
-    background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    justify-content: flex-end;
+    gap: 12px;
     padding: 0 12px;
     user-select: none;
+  }
+
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
   }
 
   .toolbar-btn {
@@ -168,50 +171,41 @@
     border-radius: 4px 0 0 4px;
   }
 
-  .separator {
-    width: 1px;
-    height: 18px;
-    background: var(--color-border);
-    margin: 0 6px;
-    flex-shrink: 0;
-  }
 </style>
 
 <div class="toolbar">
-  <button class="toolbar-btn" disabled={!canUndo} onclick={handleUndo}>
-    &#8617; Undo
-  </button>
-
-  <button class="toolbar-btn" disabled={undoRedoState.redoStack.length === 0} onclick={handleRedo}>
-    &#8618; Redo
-  </button>
-
-  <span class="separator"></span>
-
-  <div class="btn-group">
-    <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePull}>
-      &#8595; Pull
+  <div class="toolbar-group">
+    <button class="toolbar-btn" disabled={!canUndo} onclick={handleUndo}>
+      &#8617; Undo
     </button>
-    <PullDropdown {repoPath} disabled={remoteState.isRunning} />
+    <button class="toolbar-btn" disabled={undoRedoState.redoStack.length === 0} onclick={handleRedo}>
+      &#8618; Redo
+    </button>
   </div>
 
-  <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePush}>
-    &#8593; Push
-  </button>
+  <div class="toolbar-group">
+    <div class="btn-group">
+      <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePull}>
+        &#8595; Pull
+      </button>
+      <PullDropdown {repoPath} disabled={remoteState.isRunning} />
+    </div>
+    <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePush}>
+      &#8593; Push
+    </button>
+  </div>
 
-  <span class="separator"></span>
-
-  <button class="toolbar-btn" onclick={handleBranch}>
-    &#9095; Branch
-  </button>
-
-  <button class="toolbar-btn" onclick={handleStash}>
-    &#128230; Stash
-  </button>
-
-  <button class="toolbar-btn" onclick={handlePop}>
-    &#128229; Pop
-  </button>
+  <div class="toolbar-group">
+    <button class="toolbar-btn" onclick={handleBranch}>
+      &#9095; Branch
+    </button>
+    <button class="toolbar-btn" onclick={handleStash}>
+      &#128230; Stash
+    </button>
+    <button class="toolbar-btn" onclick={handlePop}>
+      &#128229; Pop
+    </button>
+  </div>
 </div>
 
 {#if branchDialogOpen}

@@ -330,8 +330,10 @@
   {#if repoPath === null}
     <WelcomeScreen onopen={handleOpen} />
   {:else}
-    <TabBar {repoName} onclose={handleClose} />
-    <Toolbar repoPath={repoPath!} />
+    <div class="flex items-center flex-shrink-0" style="height: 36px; background: var(--color-surface); border-bottom: 1px solid var(--color-border);">
+      <TabBar {repoName} onclose={handleClose} />
+      <Toolbar repoPath={repoPath!} />
+    </div>
     <main class="flex-1 overflow-hidden flex">
       <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
         <BranchSidebar repoPath={repoPath!} onrefreshed={handleRefresh} onstashselect={handleCommitSelect} {refreshSignal} />
