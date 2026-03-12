@@ -9,7 +9,7 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 
 ### Graph Data
 
-- [ ] **GRAPH-01**: GraphSvgData computes one SVG `<path>` per commit-to-commit edge (parent links and merge/fork edges), each rendered as a single unbroken path with Manhattan routing where needed
+- [x] **GRAPH-01**: GraphSvgData computes one SVG `<path>` per commit-to-commit edge (parent links and merge/fork edges), each rendered as a single unbroken path with Manhattan routing where needed
 
 ### Core Rendering
 
@@ -72,7 +72,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GRAPH-01 | Phase 15 | Pending |
+| GRAPH-01 | Phase 15 | Complete |
 | RENDER-01 | Phase 16 | Pending |
 | RENDER-02 | Phase 16 | Pending |
 | RENDER-03 | Phase 16 | Pending |

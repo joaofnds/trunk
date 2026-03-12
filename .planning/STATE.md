@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Graph Rework
-status: planning
-stopped_at: Phase 15 context gathered
-last_updated: "2026-03-12T18:34:59.563Z"
-last_activity: 2026-03-12 — v0.4 roadmap created
+status: executing
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-03-12T18:52:06.341Z"
+last_activity: 2026-03-12 — Completed 15-01 graph data engine
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-12)
 ## Current Position
 
 Phase: 15 of 19 (Graph Data Engine) — first phase of v0.4
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-12 — v0.4 roadmap created
+Plan: 1 of 2 in current phase
+Status: Executing phase 15
+Last activity: 2026-03-12 — Completed 15-01 graph data engine
 
-Progress: [░░░░░░░░░░] 0% (v0.4: 0/5 phases)
+Progress: [█████░░░░░] 50% (v0.4: 0/5 phases, 1/2 plans in phase 15)
 
 ## Accumulated Context
 
@@ -40,6 +40,9 @@ Progress: [░░░░░░░░░░] 0% (v0.4: 0/5 phases)
 - [v0.4]: Path generation in TypeScript, not Rust (Rust already returns all needed data)
 - [v0.4]: Zero new dependencies -- architecture change only
 - [v0.4]: Ref pills as SVG is highest risk -- tackle last, HTML fallback ready
+- [15-01]: Absolute Y coordinates based on row index for viewBox clipping compatibility
+- [15-01]: Sentinel OID filtering via startsWith('__') prefix check
+- [15-01]: Added vitest as test infrastructure (zero new runtime dependencies)
 
 ### Pending Todos
 
@@ -60,6 +63,6 @@ Progress: [░░░░░░░░░░] 0% (v0.4: 0/5 phases)
 
 ## Session Continuity
 
-Last session: 2026-03-12T18:34:59.561Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-graph-data-engine/15-CONTEXT.md
+Last session: 2026-03-12T18:51:17Z
+Stopped at: Completed 15-01-PLAN.md
+Resume file: .planning/phases/15-graph-data-engine/15-01-SUMMARY.md
