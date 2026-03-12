@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Actions
-status: executing
+status: completed
 stopped_at: Completed 12-02-PLAN.md
-last_updated: "2026-03-12T02:55:40Z"
+last_updated: "2026-03-12T03:52:40.001Z"
 last_activity: 2026-03-12 — Completed plan 12-02 commit context menu UI
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
   completed_plans: 8
   percent: 93

@@ -129,6 +129,6 @@ Plans:
 | 9. WIP Row + Visual Polish | v0.2 | 1/1 | Complete | 2026-03-09 |
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
 | 11. Stash Operations | 6/6 | Complete    | 2026-03-12 | - |
-| 12. Commit Context Menu | 2/2 | Complete   | 2026-03-12 | - |
+| 12. Commit Context Menu | 2/2 | Complete    | 2026-03-12 | - |
 | 13. Remote Operations | v0.3 | 0/2 | Not started | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
