@@ -13,9 +13,9 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 
 ### Core Rendering
 
-- [ ] **RENDER-01**: Each visible graph row renders a viewBox-clipped band of the full SVG paths (no per-row seams)
-- [ ] **RENDER-02**: Commit dots render as individual SVG elements (filled for regular, hollow for merges)
-- [ ] **RENDER-03**: Graph rendering produces identical visual output to v0.3
+- [x] **RENDER-01**: Each visible graph row renders a viewBox-clipped band of the full SVG paths (no per-row seams)
+- [x] **RENDER-02**: Commit dots render as individual SVG elements (filled for regular, hollow for merges)
+- [x] **RENDER-03**: Graph rendering produces identical visual output to v0.3
 
 ### Synthetic Rows
 
@@ -73,9 +73,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | GRAPH-01 | Phase 15 | Complete |
-| RENDER-01 | Phase 16 | Pending |
-| RENDER-02 | Phase 16 | Pending |
-| RENDER-03 | Phase 16 | Pending |
+| RENDER-01 | Phase 16 | Complete |
+| RENDER-02 | Phase 16 | Complete |
+| RENDER-03 | Phase 16 | Complete |
 | SYNTH-01 | Phase 17 | Pending |
 | SYNTH-02 | Phase 17 | Pending |
 | REF-01 | Phase 18 | Pending |

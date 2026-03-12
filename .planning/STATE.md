@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Graph Rework
-status: completed
-stopped_at: Phase 16 context gathered
-last_updated: "2026-03-12T19:29:57.521Z"
-last_activity: 2026-03-12 — Completed 15-02 reactive graph data wiring
+status: in-progress
+stopped_at: Completed 16-01 core graph rendering
+last_updated: "2026-03-12T19:46:50.780Z"
+last_activity: 2026-03-12 — Completed 16-01 core graph rendering
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 15 - Graph Data Engine
+**Current focus:** Phase 16 - Core Graph Rendering
 
 ## Current Position
 
-Phase: 15 of 19 (Graph Data Engine) — first phase of v0.4
-Plan: 2 of 2 in current phase (COMPLETE)
-Status: Phase 15 complete
-Last activity: 2026-03-12 — Completed 15-02 reactive graph data wiring
+Phase: 16 of 19 (Core Graph Rendering) — second phase of v0.4
+Plan: 1 of 1 in current phase (COMPLETE)
+Status: Phase 16 plan 01 complete
+Last activity: 2026-03-12 — Completed 16-01 core graph rendering
 
-Progress: [██████████] 100% (v0.4: 1/5 phases, 2/2 plans in phase 15)
+Progress: [██████████] 100% (v0.4: 2/5 phases, 3/3 plans complete)
 
 ## Accumulated Context
 
@@ -45,6 +45,8 @@ Progress: [██████████] 100% (v0.4: 1/5 phases, 2/2 plans in 
 - [15-01]: Added vitest as test infrastructure (zero new runtime dependencies)
 - [15-02]: graphSvgData placed after displayItems for clear dependency ordering
 - [15-02]: Svelte 5 lazy $derived.by() means zero performance cost until Phase 16
+- [16-01]: Reactive context via getter object pattern for Svelte 5 (setContext wraps Map in getter)
+- [16-01]: Path categorization by key substring (:straight:/:rail: vs others) for linecap styling
 
 ### Pending Todos
 
@@ -65,6 +67,6 @@ Progress: [██████████] 100% (v0.4: 1/5 phases, 2/2 plans in 
 
 ## Session Continuity
 
-Last session: 2026-03-12T19:29:57.519Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-core-graph-rendering/16-CONTEXT.md
+Last session: 2026-03-12T19:46:12Z
+Stopped at: Completed 16-01 core graph rendering
+Resume file: .planning/phases/16-core-graph-rendering/16-01-SUMMARY.md

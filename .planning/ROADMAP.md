@@ -52,7 +52,7 @@ Full details: [milestones/v0.3-ROADMAP.md](milestones/v0.3-ROADMAP.md)
 **Milestone Goal:** Replace per-row SVG rendering with continuous SVG paths -- one `<path>` per commit-to-commit edge, viewBox-clipped per row. Visuals stay identical; architecture eliminates row-boundary rendering bugs.
 
 - [x] **Phase 15: Graph Data Engine** - Compute continuous SVG path data from commit graph (completed 2026-03-12)
-- [ ] **Phase 16: Core Graph Rendering** - Render viewBox-clipped SVG paths with commit dots
+- [x] **Phase 16: Core Graph Rendering** - Render viewBox-clipped SVG paths with commit dots (completed 2026-03-12)
 - [ ] **Phase 17: Synthetic Row Adaptation** - Adapt WIP and stash rows to new SVG model
 - [ ] **Phase 18: Ref Pill Migration** - Migrate ref pills and connectors to SVG elements
 - [ ] **Phase 19: Interaction Preservation** - Preserve all click and context menu interactions
@@ -82,7 +82,7 @@ Plans:
   2. Commit dots render as filled circles for regular commits and hollow circles for merge commits
   3. The graph is visually identical to v0.3 output (same colors, same routing, same dot styles, same lane positions)
   4. Virtual scrolling remains smooth at 60fps with large repos (5k+ commits)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 16-01-PLAN.md — Create GraphCell with viewBox-clipped SVG paths, wire context, visual verification
@@ -150,7 +150,7 @@ Note: Phases 17 and 18 both depend on 16 but not each other. Phase 19 depends on
 | 13. Remote Operations | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 14. Toolbar + Tracking | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 15. Graph Data Engine | 2/2 | Complete    | 2026-03-12 | - |
-| 16. Core Graph Rendering | v0.4 | 0/1 | Not started | - |
+| 16. Core Graph Rendering | 1/1 | Complete   | 2026-03-12 | - |
 | 17. Synthetic Row Adaptation | v0.4 | 0/? | Not started | - |
 | 18. Ref Pill Migration | v0.4 | 0/? | Not started | - |
 | 19. Interaction Preservation | v0.4 | 0/? | Not started | - |
