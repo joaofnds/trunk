@@ -47,6 +47,7 @@ pub fn run() {
             commands::commit_actions::create_tag,
             commands::commit_actions::cherry_pick,
             commands::commit_actions::revert_commit,
+            commands::commit_actions::reset_to_commit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

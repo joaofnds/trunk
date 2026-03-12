@@ -5,7 +5,7 @@
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
-  import { Menu, MenuItem, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
+  import { Menu, MenuItem, Submenu, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
   import { ask, message } from '@tauri-apps/plugin-dialog';
   import CommitRow from './CommitRow.svelte';
@@ -163,6 +163,25 @@
     }
   }
 
+  async function handleReset(commit: GraphCommit, mode: 'soft' | 'mixed' | 'hard') {
+    const labels: Record<string, string> = {
+      soft: 'Soft reset keeps all changes staged.',
+      mixed: 'Mixed reset keeps changes but unstages them.',
+      hard: 'Hard reset discards ALL changes. This cannot be undone!',
+    };
+    const confirmed = await ask(
+      `Reset current branch to this commit?\n\n${labels[mode]}`,
+      { title: `Reset (${mode})`, kind: mode === 'hard' ? 'warning' : 'info' }
+    );
+    if (!confirmed) return;
+    try {
+      await safeInvoke('reset_to_commit', { path: repoPath, oid: commit.oid, mode });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Reset failed.', { title: 'Reset Error', kind: 'error' });
+    }
+  }
+
   async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
     e.preventDefault();
     const menu = await Menu.new({
@@ -176,6 +195,12 @@
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await MenuItem.new({ text: 'Cherry-pick', enabled: !commit.is_merge, action: () => { handleCherryPick(commit).catch(() => {}); } }),
         await MenuItem.new({ text: 'Revert', enabled: !commit.is_merge, action: () => { handleRevert(commit).catch(() => {}); } }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+        await Submenu.new({ text: 'Reset...', items: [
+          await MenuItem.new({ text: 'Soft', action: () => { handleReset(commit, 'soft').catch(() => {}); } }),
+          await MenuItem.new({ text: 'Mixed', action: () => { handleReset(commit, 'mixed').catch(() => {}); } }),
+          await MenuItem.new({ text: 'Hard', action: () => { handleReset(commit, 'hard').catch(() => {}); } }),
+        ]}),
       ]
     });
     await menu.popup();

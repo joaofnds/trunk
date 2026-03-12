@@ -140,6 +140,59 @@ pub fn revert_commit_inner(
     graph::walk_commits(&mut repo, 0, usize::MAX).map_err(TrunkError::from)
 }
 
+pub fn reset_to_commit_inner(
+    path: &str,
+    oid: &str,
+    mode: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<GraphResult, TrunkError> {
+    let path_buf = state_map.get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+
+    let valid_modes = ["soft", "mixed", "hard"];
+    if !valid_modes.contains(&mode) {
+        return Err(TrunkError::new("invalid_mode", format!("Invalid reset mode: {}", mode)));
+    }
+
+    let output = std::process::Command::new("git")
+        .args(["reset", &format!("--{}", mode), oid])
+        .current_dir(path_buf)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .map_err(|e| TrunkError::new("reset_error", e.to_string()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TrunkError::new("reset_error", stderr.to_string()));
+    }
+
+    let mut repo = git2::Repository::open(path_buf)?;
+    graph::walk_commits(&mut repo, 0, usize::MAX).map_err(TrunkError::from)
+}
+
+#[tauri::command]
+pub async fn reset_to_commit(
+    path: String,
+    oid: String,
+    mode: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        reset_to_commit_inner(&path_clone, &oid, &mode, &state_map)
+    })
+    .await
+    .map_err(|e| serde_json::to_string(&TrunkError::new("spawn_error", e.to_string())).unwrap())?
+    .map_err(|e| serde_json::to_string(&e).unwrap())?;
+
+    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    let _ = app.emit("repo-changed", path);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn checkout_commit(
     path: String,
