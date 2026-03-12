@@ -2,6 +2,8 @@
   import { safeInvoke } from '../lib/invoke.js';
   import type { TrunkError } from '../lib/invoke.js';
   import { remoteState } from '../lib/remote-state.svelte.js';
+  import { undoRedoState, pushToRedoStack, popFromRedoStack, clearRedoStack } from '../lib/undo-redo.svelte.js';
+  import { listen } from '@tauri-apps/api/event';
   import PullDropdown from './PullDropdown.svelte';
   import InputDialog from './InputDialog.svelte';
 
@@ -13,6 +15,71 @@
 
   // Branch creation dialog state
   let branchDialogOpen = $state(false);
+
+  // Undo/redo state
+  let canUndo = $state(false);
+  let isUndoing = $state(false);
+  let isRedoing = $state(false);
+
+  async function checkUndoAvailable() {
+    try {
+      canUndo = await safeInvoke<boolean>('check_undo_available', { path: repoPath });
+    } catch {
+      canUndo = false;
+    }
+  }
+
+  // Check undo availability on mount and repo changes
+  $effect(() => {
+    // Re-run when repoPath changes
+    void repoPath;
+    checkUndoAvailable();
+
+    const unlistenPromise = listen<string>('repo-changed', (event) => {
+      if (event.payload === repoPath) {
+        checkUndoAvailable();
+        // Clear redo stack on non-undo/redo repo changes
+        if (!isUndoing && !isRedoing) {
+          clearRedoStack();
+        }
+      }
+    });
+
+    return () => {
+      unlistenPromise.then((fn) => fn());
+    };
+  });
+
+  async function handleUndo() {
+    isUndoing = true;
+    try {
+      const result = await safeInvoke<{ subject: string; body: string | null }>('undo_commit', { path: repoPath });
+      pushToRedoStack({ subject: result.subject, body: result.body });
+    } catch (e) {
+      console.error('undo failed:', e);
+    } finally {
+      isUndoing = false;
+    }
+  }
+
+  async function handleRedo() {
+    const entry = popFromRedoStack();
+    if (!entry) return;
+    isRedoing = true;
+    try {
+      await safeInvoke('redo_commit', {
+        path: repoPath,
+        subject: entry.subject,
+        body: entry.body,
+      });
+    } catch (e) {
+      console.error('redo failed:', e);
+      // Push back on failure
+      pushToRedoStack(entry);
+    } finally {
+      isRedoing = false;
+    }
+  }
 
   async function runRemote(cmd: string, extra: Record<string, unknown> = {}) {
     remoteState.isRunning = true;
@@ -123,6 +190,16 @@
 </style>
 
 <div class="toolbar">
+  <button class="toolbar-btn" disabled={!canUndo} onclick={handleUndo}>
+    &#8617; Undo
+  </button>
+
+  <button class="toolbar-btn" disabled={undoRedoState.redoStack.length === 0} onclick={handleRedo}>
+    &#8618; Redo
+  </button>
+
+  <span class="separator"></span>
+
   <div class="btn-group">
     <button class="toolbar-btn" disabled={remoteState.isRunning} onclick={handlePull}>
       &#8595; Pull
