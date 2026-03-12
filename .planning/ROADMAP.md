@@ -107,11 +107,12 @@ Plans:
   2. The branch sidebar displays ahead/behind counts next to each branch that has a remote tracking branch
   3. Ahead/behind counts update automatically after any fetch, pull, or push operation completes
   4. Undo soft-resets the last commit and restores its changes as staged; Redo re-commits with the original message
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
-- [ ] 14-01: Ahead/behind counts — extend `list_refs` response or add separate command to compute `ahead`/`behind` per branch via `git rev-list --count`; update triggered after remote ops emit `repo-changed`
-- [ ] 14-02: Toolbar UI + undo/redo — toolbar component with Pull, Push, Branch, Stash, Pop, Undo, Redo buttons wired to existing commands; `undo_commit` (soft reset HEAD~1) and `redo_commit` (re-commit with stashed message) Tauri commands
+- [x] 14-01: Ahead/behind counts — extend `list_refs` response or add separate command to compute `ahead`/`behind` per branch via `git rev-list --count`; update triggered after remote ops emit `repo-changed`
+- [x] 14-02: Toolbar UI + undo/redo — toolbar component with Pull, Push, Branch, Stash, Pop, Undo, Redo buttons wired to existing commands; `undo_commit` (soft reset HEAD~1) and `redo_commit` (re-commit with stashed message) Tauri commands
+- [ ] 14-03: UAT gap closure — fix redo button race condition (move clearRedoStack to user-initiated operations) and WIP node stale label after undo (notify parent on programmatic subject clear)
 
 ## Progress
 
@@ -132,4 +133,4 @@ Plans:
 | 11. Stash Operations | 6/6 | Complete    | 2026-03-12 | - |
 | 12. Commit Context Menu | 2/2 | Complete    | 2026-03-12 | - |
 | 13. Remote Operations | 3/3 | Complete    | 2026-03-12 | - |
-| 14. Toolbar + Tracking | 2/2 | Complete    | 2026-03-12 | - |
+| 14. Toolbar + Tracking | 3/3 | Complete    | 2026-03-12 | - |
