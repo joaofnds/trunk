@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 11-stash-operations
 source: [11-01-SUMMARY.md, 11-02-SUMMARY.md, 11-03-SUMMARY.md]
 started: 2026-03-11T20:40:00Z
@@ -83,37 +83,71 @@ skipped: 2
   reason: "User reported: We ended up removing this completely because you just couldn't get it right."
   severity: major
   test: 1
+  root_cause: "Feature was fully removed by user — stash graph rendering code no longer exists. No dead code remains."
   artifacts: []
-  missing: []
+  missing:
+    - "Stash graph rendering was intentionally removed — no fix needed"
+  debug_session: ""
 
 - truth: "Hovering over stash entry in sidebar shows appropriate icon"
   status: failed
   reason: "User reported: When I hover over the stash it is showing a weird icon. Remove that."
   severity: cosmetic
   test: 4
-  artifacts: []
-  missing: []
+  root_cause: "cursor: context-menu CSS on .stash-row (BranchSidebar.svelte line 411) renders macOS context-menu cursor icon on hover, inconsistent with other sidebar rows that use cursor: pointer or default"
+  artifacts:
+    - path: "src/components/BranchSidebar.svelte"
+      issue: "cursor: context-menu on .stash-row"
+  missing:
+    - "Change cursor: context-menu to cursor: default on .stash-row"
+  debug_session: ""
 
 - truth: "Clicking a stash in the sidebar shows the stash diff"
   status: failed
   reason: "User reported: Nothing happens when I click this stash on the sidebar. Which should show the stash diff when we click on the stash on the left sidebar."
   severity: major
   test: 4
-  artifacts: []
-  missing: []
+  root_cause: "Feature never implemented — no onclick handler on stash rows, no stash OID in StashEntry type (discarded during listing), no diff_stash command (though existing diff_commit can be reused since stashes are commits)"
+  artifacts:
+    - path: "src/components/BranchSidebar.svelte"
+      issue: "No onclick handler on stash rows (only oncontextmenu)"
+    - path: "src-tauri/src/commands/stash.rs"
+      issue: "list_stashes_inner discards stash OID at line 26"
+    - path: "src-tauri/src/git/types.rs"
+      issue: "StashEntry struct missing stash commit OID field"
+    - path: "src/lib/types.ts"
+      issue: "StashEntry interface missing stash commit OID field"
+  missing:
+    - "Add stash OID field to StashEntry (Rust struct and TS interface)"
+    - "Preserve stash OID in list_stashes_inner instead of discarding"
+    - "Add onclick handler on stash rows that calls handleCommitSelect with stash OID"
+  debug_session: ""
 
 - truth: "After creating a stash, the stash list and graph update immediately"
   status: failed
   reason: "User reported: after creating the stash the UI did not update immediately."
   severity: minor
   test: 5
-  artifacts: []
-  missing: []
+  root_cause: "All 4 stash handlers (save/pop/apply/drop) are missing onrefreshed?.() call after loadRefs — other handlers like handleCheckout and handleCreateBranch call it. Without it, graph refresh relies on repo-changed event with 200ms debounce."
+  artifacts:
+    - path: "src/components/BranchSidebar.svelte"
+      issue: "handleStashSave (line 148), handleStashPop (line 178), handleStashApply (line 189), handleStashDrop (line 206) all missing onrefreshed?.() after loadRefs"
+  missing:
+    - "Add onrefreshed?.() after await loadRefs(repoPath) in all 4 stash handlers"
+  debug_session: ""
 
 - truth: "Stash Drop from sidebar removes the stash after confirmation"
   status: failed
   reason: "User reported: did not work, and the stash stayed there"
   severity: major
   test: 11
-  artifacts: []
-  missing: []
+  root_cause: "Missing Tauri permission for ask() dialog — capabilities/default.json only grants dialog:allow-open, not dialog:allow-ask. The ask() call is denied silently (unhandled rejection in menu callback)."
+  artifacts:
+    - path: "src-tauri/capabilities/default.json"
+      issue: "Only dialog:allow-open granted, missing dialog:allow-ask"
+    - path: "src/components/BranchSidebar.svelte"
+      issue: "Menu callback doesn't await/catch handleStashDrop, silently swallows permission error"
+  missing:
+    - "Add dialog:allow-ask to capabilities/default.json (or use dialog:default for all dialog permissions)"
+    - "Handle promise rejections in menu action callbacks"
+  debug_session: ""
