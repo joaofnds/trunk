@@ -67,10 +67,11 @@ Full details: [milestones/v0.3-ROADMAP.md](milestones/v0.3-ROADMAP.md)
   1. `GraphSvgData` produces one SVG `<path>` d-string per commit-to-commit edge (parent links and merge/fork edges)
   2. Manhattan routing is preserved in generated path strings (horizontal + arc + vertical segments)
   3. Path data recomputes only on data change (not on scroll), verified by reactive `$derived.by()` pattern
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 15-01: TBD
+- [ ] 15-01-PLAN.md — TDD: computeGraphSvgData pure function with vitest tests
+- [ ] 15-02-PLAN.md — Wire reactive graphSvgData into CommitGraph.svelte
 
 ### Phase 16: Core Graph Rendering
 **Goal**: The commit graph renders using viewBox-clipped continuous SVG paths with zero visual difference from v0.3
@@ -148,7 +149,7 @@ Note: Phases 17 and 18 both depend on 16 but not each other. Phase 19 depends on
 | 12. Commit Context Menu | v0.3 | 2/2 | Complete | 2026-03-12 |
 | 13. Remote Operations | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 14. Toolbar + Tracking | v0.3 | 3/3 | Complete | 2026-03-12 |
-| 15. Graph Data Engine | v0.4 | 0/? | Not started | - |
+| 15. Graph Data Engine | v0.4 | 0/2 | Not started | - |
 | 16. Core Graph Rendering | v0.4 | 0/? | Not started | - |
 | 17. Synthetic Row Adaptation | v0.4 | 0/? | Not started | - |
 | 18. Ref Pill Migration | v0.4 | 0/? | Not started | - |
