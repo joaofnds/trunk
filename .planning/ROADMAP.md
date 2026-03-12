@@ -40,7 +40,7 @@ Full details: [milestones/v0.2-ROADMAP.md](milestones/v0.2-ROADMAP.md)
 
 - [x] **Phase 11: Stash Operations** - User can create, pop, apply, and drop stashes; stash entries appear in the commit graph as synthetic square-dot rows; right-click on stash rows exposes pop/apply/drop actions (completed 2026-03-12)
 - [x] **Phase 12: Commit Context Menu** - User can right-click any commit row for copy, checkout, branch, tag, cherry-pick, and revert actions (completed 2026-03-12)
-- [ ] **Phase 13: Remote Operations** - User can fetch, pull, and push with progress feedback and actionable error messages
+- [x] **Phase 13: Remote Operations** - User can fetch, pull, and push with progress feedback and actionable error messages (completed 2026-03-12)
 - [ ] **Phase 14: Toolbar + Tracking** - Quick actions bar visible at top; branch sidebar shows live ahead/behind counts; undo/redo last commit
 
 ## Phase Details
@@ -130,5 +130,5 @@ Plans:
 | 10. Differentiators | v0.2 | 5/5 | Complete | 2026-03-10 |
 | 11. Stash Operations | 6/6 | Complete    | 2026-03-12 | - |
 | 12. Commit Context Menu | 2/2 | Complete    | 2026-03-12 | - |
-| 13. Remote Operations | 1/2 | In Progress|  | - |
+| 13. Remote Operations | 2/2 | Complete   | 2026-03-12 | - |
 | 14. Toolbar + Tracking | v0.3 | 0/2 | Not started | - |
