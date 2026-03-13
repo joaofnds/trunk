@@ -208,13 +208,13 @@ describe('computeGraphSvgData', () => {
         edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
       });
       const result = computeGraphSvgData([commit], 1);
-      // Only the connector path, no straight/rail entries (no HEAD to connect to)
+      // Only the connector path (no next row to generate incoming segment for)
       expect(result.size).toBe(1);
       expect(result.has('__wip__:connector:0')).toBe(true);
       expect(result.has('__wip__:straight:0')).toBe(false);
     });
 
-    it('WIP generates dashed corridor segments to HEAD commit', () => {
+    it('WIP generates dashed incoming segment for the next row', () => {
       const commits = [
         makeCommit({
           oid: '__wip__',
@@ -236,15 +236,15 @@ describe('computeGraphSvgData', () => {
       expect(result.has('__wip__:connector:0')).toBe(true);
       expect(result.get('__wip__:connector:0')!.dashed).toBe(true);
 
-      // Dashed corridor segment in HEAD row (row 1): from rowTop to cy (dot center)
-      const headKey = 'head_commit:wip-through:0';
-      expect(result.has(headKey)).toBe(true);
-      expect(result.get(headKey)!.d).toBe(`M ${cx(0)} ${rowTop(1)} V ${cy(1)}`);
-      expect(result.get(headKey)!.dashed).toBe(true);
-      expect(result.get(headKey)!.colorIndex).toBe(0);
+      // Dashed incoming in next row (row 1): from rowTop to cy (dot center)
+      const incomingKey = 'head_commit:wip-incoming:0';
+      expect(result.has(incomingKey)).toBe(true);
+      expect(result.get(incomingKey)!.d).toBe(`M ${cx(0)} ${rowTop(1)} V ${cy(1)}`);
+      expect(result.get(incomingKey)!.dashed).toBe(true);
+      expect(result.get(incomingKey)!.colorIndex).toBe(0);
     });
 
-    it('WIP dashed corridor spans multiple intermediate rows to reach HEAD', () => {
+    it('WIP dashed incoming does not affect rows beyond the next one', () => {
       const commits = [
         makeCommit({
           oid: '__wip__',
@@ -261,14 +261,6 @@ describe('computeGraphSvgData', () => {
                   makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1 })],
         }),
         makeCommit({
-          oid: 'mid2',
-          column: 2,
-          color_index: 2,
-          is_branch_tip: true,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 }),
-                  makeEdge({ edge_type: 'Straight', from_column: 2, to_column: 2 })],
-        }),
-        makeCommit({
           oid: 'head_commit',
           column: 0,
           color_index: 0,
@@ -276,52 +268,19 @@ describe('computeGraphSvgData', () => {
           edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
         }),
       ];
-      const result = computeGraphSvgData(commits, 3);
+      const result = computeGraphSvgData(commits, 2);
 
-      // Intermediate rows: full row height, dashed
-      expect(result.get('mid1:wip-through:0')!.d).toBe(`M ${cx(0)} ${rowTop(1)} V ${rowBottom(1)}`);
-      expect(result.get('mid1:wip-through:0')!.dashed).toBe(true);
-      expect(result.get('mid2:wip-through:0')!.d).toBe(`M ${cx(0)} ${rowTop(2)} V ${rowBottom(2)}`);
-      expect(result.get('mid2:wip-through:0')!.dashed).toBe(true);
+      // Only the next row (mid1) gets the dashed incoming
+      expect(result.has('mid1:wip-incoming:0')).toBe(true);
+      expect(result.get('mid1:wip-incoming:0')!.dashed).toBe(true);
 
-      // HEAD row: top to dot center, dashed
-      expect(result.get('head_commit:wip-through:0')!.d).toBe(`M ${cx(0)} ${rowTop(3)} V ${cy(3)}`);
-      expect(result.get('head_commit:wip-through:0')!.dashed).toBe(true);
+      // Row 2 (head_commit) is NOT affected — no dashed incoming
+      expect(result.has('head_commit:wip-incoming:0')).toBe(false);
 
-      // Intermediate rows should NOT have solid straight edges in WIP column 0
-      expect(result.has('mid1:straight:0')).toBe(false);
-      expect(result.has('mid2:straight:0')).toBe(false);
-
-      // But intermediate rows keep their own-column solid edges
+      // mid1 still gets its normal solid straight edges
+      expect(result.has('mid1:straight:0')).toBe(true);
+      expect(result.get('mid1:straight:0')!.dashed).toBeUndefined();
       expect(result.has('mid1:straight:1')).toBe(true);
-      expect(result.get('mid1:straight:1')!.dashed).toBeUndefined();
-      expect(result.has('mid2:straight:2')).toBe(true);
-    });
-
-    it('WIP corridor suppresses solid incoming rail on HEAD row in WIP column', () => {
-      const commits = [
-        makeCommit({
-          oid: '__wip__',
-          column: 0,
-          color_index: 0,
-          edges: [],
-        }),
-        makeCommit({
-          oid: 'head_commit',
-          column: 0,
-          color_index: 0,
-          is_head: true,
-          is_branch_tip: false,
-          edges: [], // No straight edge → would normally get incoming rail
-        }),
-      ];
-      const result = computeGraphSvgData(commits, 1);
-
-      // HEAD should NOT get a solid incoming rail (dashed corridor covers it)
-      expect(result.has('head_commit:rail:0')).toBe(false);
-      // Instead it has the dashed wip-through segment
-      expect(result.has('head_commit:wip-through:0')).toBe(true);
-      expect(result.get('head_commit:wip-through:0')!.dashed).toBe(true);
     });
 
     it('generates a dashed connector path for __stash_0__ row', () => {

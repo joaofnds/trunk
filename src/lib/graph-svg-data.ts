@@ -68,7 +68,7 @@ function buildSentinelConnector(column: number, rowIndex: number, colorIndex: nu
  * - Connection edges: `{oid}:{edgeType}:{fromCol}:{toCol}`
  * - Incoming rails: `{oid}:rail:{column}`
  * - Sentinel connectors: `{oid}:connector:{column}`
- * - WIP dashed corridor: `{oid}:wip-through:{column}` (rows between WIP and HEAD)
+ * - WIP incoming dashed: `{oid}:wip-incoming:{column}` (row below WIP)
  *
  * Uses absolute Y coordinates based on row index for viewBox clipping.
  */
@@ -78,29 +78,6 @@ export function computeGraphSvgData(
 ): Map<string, SvgPathData> {
   const paths = new Map<string, SvgPathData>();
 
-  // Pre-scan: locate WIP and HEAD rows to build dashed corridor between them.
-  // Each row's SVG clips to its own viewBox, so we need per-row dashed segments.
-  let wipRow = -1;
-  let wipColumn = -1;
-  let wipColorIndex = 0;
-  let headRow = -1;
-
-  for (let i = 0; i < commits.length; i++) {
-    if (commits[i].oid === '__wip__') {
-      wipRow = i;
-      wipColumn = commits[i].column;
-      wipColorIndex = commits[i].color_index;
-    }
-    if (commits[i].is_head && wipRow >= 0) {
-      headRow = i;
-      break;
-    }
-  }
-  // If WIP exists but HEAD not found, connect to the next row as fallback
-  if (wipRow >= 0 && headRow < 0 && wipRow + 1 < commits.length) {
-    headRow = wipRow + 1;
-  }
-
   for (let rowIndex = 0; rowIndex < commits.length; rowIndex++) {
     const commit = commits[rowIndex];
 
@@ -109,15 +86,16 @@ export function computeGraphSvgData(
       // WIP connector: from dot to bottom of WIP row
       paths.set(`${commit.oid}:connector:${commit.column}`, buildSentinelConnector(commit.column, rowIndex, commit.color_index));
 
-      // Generate dashed segments for each row between WIP and HEAD.
-      // Intermediate rows: full row height. HEAD row: top to dot center.
-      for (let i = wipRow + 1; i <= headRow && i < commits.length; i++) {
-        const targetCommit = commits[i];
-        const startY = rowTop(i);
-        const endY = i === headRow ? cy(i) : rowBottom(i);
-        paths.set(`${targetCommit.oid}:wip-through:${wipColumn}`, {
-          d: `M ${cx(wipColumn)} ${startY} V ${endY}`,
-          colorIndex: wipColorIndex,
+      // Generate a dashed incoming segment for the next row (rowTop → cy),
+      // matching old LaneSvg behavior: dashed line from WIP dot to next row's dot center.
+      // Each row clips to its own viewBox, so we need this as a separate path keyed
+      // to the next row's commit OID.
+      const nextRow = rowIndex + 1;
+      if (nextRow < commits.length) {
+        const nextCommit = commits[nextRow];
+        paths.set(`${nextCommit.oid}:wip-incoming:${commit.column}`, {
+          d: `M ${cx(commit.column)} ${rowTop(nextRow)} V ${cy(nextRow)}`,
+          colorIndex: commit.color_index,
           dashed: true,
         });
       }
@@ -129,9 +107,6 @@ export function computeGraphSvgData(
       paths.set(`${commit.oid}:connector:${commit.column}`, buildSentinelConnector(commit.column, rowIndex, commit.color_index));
       // Fall through to process pass-through edges (other lanes)
     }
-
-    // Check if this row is in the WIP→HEAD dashed corridor
-    const isInWipCorridor = wipRow >= 0 && headRow >= 0 && rowIndex > wipRow && rowIndex <= headRow;
 
     const straightEdges: GraphEdge[] = [];
     const connectionEdges: GraphEdge[] = [];
@@ -151,8 +126,6 @@ export function computeGraphSvgData(
     for (const edge of straightEdges) {
       // Skip stash's own-column straight edge (already handled by connector)
       if (isSentinelStash && edge.from_column === commit.column) continue;
-      // Skip solid edges in WIP column within the corridor (dashed takes their place)
-      if (isInWipCorridor && edge.from_column === wipColumn) continue;
 
       const isBranchTipOwnColumn = commit.is_branch_tip && edge.from_column === commit.column;
       const startY = isBranchTipOwnColumn ? cy(rowIndex) : rowTop(rowIndex);
@@ -174,12 +147,10 @@ export function computeGraphSvgData(
 
     // Incoming rail: non-branch-tip commits without a straight edge in their own column
     // Stash rows don't need incoming rails (they have a connector instead)
-    // WIP corridor rows in the WIP column don't need incoming rails (dashed covers it)
     const needsIncomingRail =
       !isSentinelStash &&
       !commit.is_branch_tip &&
-      !straightEdges.some((e) => e.from_column === commit.column) &&
-      !(isInWipCorridor && commit.column === wipColumn);
+      !straightEdges.some((e) => e.from_column === commit.column);
 
     if (needsIncomingRail) {
       const key = `${commit.oid}:rail:${commit.column}`;
