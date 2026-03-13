@@ -283,23 +283,50 @@ describe('computeGraphSvgData', () => {
       expect(result.has('mid1:straight:1')).toBe(true);
     });
 
-    it('generates a dashed connector path for __stash_0__ row', () => {
+    it('stash generates dashed fork path from parent column to stash column', () => {
+      // Stash at column 1, parent lane at column 0
       const commit = makeCommit({
         oid: '__stash_0__',
-        column: 0,
+        column: 1,
         color_index: 0,
         edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
       });
-      const result = computeGraphSvgData([commit], 1);
-      const key = '__stash_0__:connector:0';
+      const result = computeGraphSvgData([commit], 2);
+      const key = '__stash_0__:stash-fork:0:1';
       expect(result.has(key)).toBe(true);
-      expect(result.get(key)!.d).toBe(`M ${cx(0)} ${cy(0) + DOT_RADIUS} V ${rowBottom(0)}`);
-      expect(result.get(key)!.colorIndex).toBe(0);
       expect(result.get(key)!.dashed).toBe(true);
+      expect(result.get(key)!.colorIndex).toBe(0);
+      // Fork: from parent column at rowTop → horizontal → arc down → vertical to dot cy
+      const x1 = cx(0);
+      const x2 = cx(1);
+      const hTarget = x2 - r;
+      expect(result.get(key)!.d).toBe(
+        `M ${x1} ${rowTop(0)} H ${hTarget} A ${r} ${r} 0 0 1 ${x2} ${rowTop(0) + r} V ${cy(0)}`,
+      );
     });
 
-    it('stash row at rowIndex=2 uses correct Y coordinates', () => {
-      // Place stash at row index 2 (with two preceding commits)
+    it('stash has solid pass-through edges and no downward connector', () => {
+      const commit = makeCommit({
+        oid: '__stash_0__',
+        column: 1,
+        color_index: 0,
+        edges: [
+          makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 }),
+          makeEdge({ edge_type: 'Straight', from_column: 2, to_column: 2, color_index: 3 }),
+        ],
+      });
+      const result = computeGraphSvgData([commit], 3);
+      // Solid pass-through in parent column 0
+      expect(result.has('__stash_0__:straight:0')).toBe(true);
+      expect(result.get('__stash_0__:straight:0')!.dashed).toBeUndefined();
+      // Solid pass-through in column 2
+      expect(result.has('__stash_0__:straight:2')).toBe(true);
+      expect(result.get('__stash_0__:straight:2')!.colorIndex).toBe(3);
+      // No downward connector (stash is a leaf)
+      expect(result.has('__stash_0__:connector:1')).toBe(false);
+    });
+
+    it('stash at rowIndex=2 uses correct Y coordinates for fork', () => {
       const commits = [
         makeCommit({
           oid: 'aaa',
@@ -313,35 +340,20 @@ describe('computeGraphSvgData', () => {
         }),
         makeCommit({
           oid: '__stash_0__',
-          column: 0,
+          column: 1,
           color_index: 0,
           edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
         }),
       ];
-      const result = computeGraphSvgData(commits, 1);
-      const key = '__stash_0__:connector:0';
+      const result = computeGraphSvgData(commits, 2);
+      const key = '__stash_0__:stash-fork:0:1';
       expect(result.has(key)).toBe(true);
-      expect(result.get(key)!.d).toBe(`M ${cx(0)} ${cy(2) + DOT_RADIUS} V ${rowBottom(2)}`);
-    });
-
-    it('stash with pass-through edges generates both dashed connector and normal straight edges', () => {
-      const commit = makeCommit({
-        oid: '__stash_0__',
-        column: 0,
-        color_index: 0,
-        edges: [
-          makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 }),
-          makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2 }),
-        ],
-      });
-      const result = computeGraphSvgData([commit], 2);
-      // Should have the dashed connector
-      expect(result.has('__stash_0__:connector:0')).toBe(true);
-      expect(result.get('__stash_0__:connector:0')!.dashed).toBe(true);
-      // Should also have the pass-through straight edge in column 1
-      expect(result.has('__stash_0__:straight:1')).toBe(true);
-      expect(result.get('__stash_0__:straight:1')!.dashed).toBeUndefined();
-      expect(result.get('__stash_0__:straight:1')!.colorIndex).toBe(2);
+      const x1 = cx(0);
+      const x2 = cx(1);
+      const hTarget = x2 - r;
+      expect(result.get(key)!.d).toBe(
+        `M ${x1} ${rowTop(2)} H ${hTarget} A ${r} ${r} 0 0 1 ${x2} ${rowTop(2) + r} V ${cy(2)}`,
+      );
     });
 
     it('non-sentinel paths do NOT have dashed property set', () => {

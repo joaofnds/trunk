@@ -251,7 +251,13 @@
     };
   }
 
-  function makeStashItem(stash: StashEntry, parentColumn: number, parentColorIndex: number): GraphCommit {
+  function makeStashItem(stash: StashEntry, parentItem: GraphCommit): GraphCommit {
+    // Stash branches one column to the right of the parent.
+    // Copy parent's pass-through (straight) edges so other lanes stay continuous.
+    const passThroughEdges = parentItem.edges
+      .filter(e => e.from_column === e.to_column)
+      .map(e => ({ ...e }));
+
     return {
       oid: `__stash_${stash.index}__`,
       short_oid: stash.short_name,
@@ -261,9 +267,9 @@
       author_email: '',
       author_timestamp: 0,
       parent_oids: stash.parent_oid ? [stash.parent_oid] : [],
-      column: parentColumn,
-      color_index: parentColorIndex,
-      edges: [{ from_column: parentColumn, to_column: parentColumn, edge_type: 'Straight' as EdgeType, color_index: parentColorIndex }],
+      column: parentItem.column + 1,
+      color_index: parentItem.color_index,
+      edges: passThroughEdges,
       refs: [],
       is_head: false,
       is_merge: false,
@@ -294,7 +300,7 @@
       const childStashes = stashByParent.get(item.oid);
       if (childStashes) {
         for (const stash of childStashes) {
-          result.push(makeStashItem(stash, item.column, item.color_index));
+          result.push(makeStashItem(stash, item));
         }
       }
     }
@@ -303,8 +309,11 @@
     for (const [parentOid, orphans] of stashByParent) {
       if (!items.some(i => i.oid === parentOid)) {
         const insertIdx = wipCount > 0 ? 1 : 0;
+        // Use the item at insertIdx as a surrogate parent for pass-through edges,
+        // or synthesize a minimal one at column 0
+        const surrogate = result[insertIdx] ?? makeWipItem('');
         for (let i = orphans.length - 1; i >= 0; i--) {
-          result.splice(insertIdx, 0, makeStashItem(orphans[i], 0, 0));
+          result.splice(insertIdx, 0, makeStashItem(orphans[i], surrogate));
         }
       }
     }

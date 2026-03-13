@@ -103,9 +103,43 @@ export function computeGraphSvgData(
       continue; // WIP has no real edges to process
     }
 
+    // Stash rows branch to the right with a dashed fork line.
+    // Pass-through edges (parent lane, other lanes) render solid.
+    // No downward connector (stash is a leaf node).
     if (commit.oid.startsWith('__stash_')) {
-      paths.set(`${commit.oid}:connector:${commit.column}`, buildSentinelConnector(commit.column, rowIndex, commit.color_index));
-      // Fall through to process pass-through edges (other lanes)
+      const stashCol = commit.column;
+
+      // Find the parent column from the pass-through straight edge closest
+      // to the stash column (the lane it forks from).
+      const parentStraight = commit.edges.find(
+        (e) => e.from_column === e.to_column && e.from_column === stashCol - 1,
+      ) ?? commit.edges.find((e) => e.from_column === e.to_column);
+
+      if (parentStraight) {
+        const parentCol = parentStraight.from_column;
+        const x1 = cx(parentCol);
+        const x2 = cx(stashCol);
+        const r = cornerRadius;
+        const hTarget = x2 - r;
+        // Dashed fork: from parent column at rowTop, horizontal right, arc down, to stash dot
+        paths.set(`${commit.oid}:stash-fork:${parentCol}:${stashCol}`, {
+          d: `M ${x1} ${rowTop(rowIndex)} H ${hTarget} A ${r} ${r} 0 0 1 ${x2} ${rowTop(rowIndex) + r} V ${cy(rowIndex)}`,
+          colorIndex: commit.color_index,
+          dashed: true,
+        });
+      }
+
+      // Solid pass-through for all straight edges (parent lane + other lanes)
+      for (const edge of commit.edges) {
+        if (edge.from_column === edge.to_column) {
+          paths.set(`${commit.oid}:straight:${edge.from_column}`, {
+            d: `M ${cx(edge.from_column)} ${rowTop(rowIndex)} V ${rowBottom(rowIndex)}`,
+            colorIndex: edge.color_index,
+          });
+        }
+      }
+
+      continue;
     }
 
     const straightEdges: GraphEdge[] = [];
@@ -119,14 +153,8 @@ export function computeGraphSvgData(
       }
     }
 
-    // For stash rows, only process pass-through edges (other lanes), skip own column
-    const isSentinelStash = commit.oid.startsWith('__stash_');
-
     // Straight edges: vertical line from row top (or dot center for branch tips) to row bottom
     for (const edge of straightEdges) {
-      // Skip stash's own-column straight edge (already handled by connector)
-      if (isSentinelStash && edge.from_column === commit.column) continue;
-
       const isBranchTipOwnColumn = commit.is_branch_tip && edge.from_column === commit.column;
       const startY = isBranchTipOwnColumn ? cy(rowIndex) : rowTop(rowIndex);
       const key = `${commit.oid}:straight:${edge.from_column}`;
@@ -146,9 +174,7 @@ export function computeGraphSvgData(
     }
 
     // Incoming rail: non-branch-tip commits without a straight edge in their own column
-    // Stash rows don't need incoming rails (they have a connector instead)
     const needsIncomingRail =
-      !isSentinelStash &&
       !commit.is_branch_tip &&
       !straightEdges.some((e) => e.from_column === commit.column);
 
