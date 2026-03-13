@@ -1,619 +1,526 @@
-# Architecture Research: Full-Height SVG Graph Rework
+# Architecture Research: Single SVG Overlay Graph Integration
 
-**Domain:** Graph rendering rework for Tauri 2 + Svelte 5 desktop Git GUI
-**Researched:** 2026-03-12
-**Confidence:** HIGH -- all integration points derived from reading existing code; no external libraries needed
+**Domain:** Git GUI — commit graph rendering with virtual scrolling
+**Researched:** 2026-03-13
+**Confidence:** HIGH (based on direct codebase analysis, SVG/CSS specs, virtual list internals)
 
----
+## System Overview: Current vs Target
 
-## Existing Architecture (What Must Not Break)
-
-### Virtual List DOM Structure
-
-`@humanspeak/svelte-virtual-list` creates this four-layer DOM:
+### Current Architecture (v0.3–v0.4)
 
 ```
-div.virtual-list-container     (position: relative; overflow: hidden)
-  div.virtual-list-viewport    (position: absolute; inset: 0; overflow-y: scroll)
-    div.virtual-list-content   (position: relative; height: {contentHeight}px)
-      div.virtual-list-items   (position: absolute; transform: translateY({transformY}px))
-        div[data-original-index=N]   (one per visible item)
-          <CommitRow />
+┌─────────────────────────────────────────────────────────────────┐
+│  CommitGraph.svelte (orchestrator)                               │
+│  ├── displayItems = $derived (WIP + commits)                     │
+│  ├── graphSvgData = $derived (computeGraphSvgData)               │
+│  └── setContext('graphSvgData', ...)                              │
+├─────────────────────────────────────────────────────────────────┤
+│  SvelteVirtualList                                               │
+│  ├── viewport (overflow-y: scroll)                               │
+│  │   └── content (height: totalHeight px)                        │
+│  │       └── items (transform: translateY)                       │
+│  │           ├── CommitRow[0]                                    │
+│  │           │   ├── RefPill (HTML) ← connector line             │
+│  │           │   ├── GraphCell (per-row SVG, viewBox clipped)    │
+│  │           │   ├── Message, Author, Date, SHA (HTML)           │
+│  │           ├── CommitRow[1] ...                                │
+│  │           └── ~40 visible DOM nodes                           │
+├─────────────────────────────────────────────────────────────────┤
+│  Rust Backend                                                    │
+│  ├── graph.rs → walk_commits → GraphResult { commits, max_cols } │
+│  └── GraphCommit { oid, column, color_index, edges[], refs[] }   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Key properties:
-- **Viewport** is the scroll container (`overflow-y: scroll`)
-- **Content** div has explicit `height` set to total content height (creates scrollbar)
-- **Items** div is `position: absolute` and translated via `translateY` to show the correct window
-- Only visible items + buffer exist in the DOM (~40 nodes for any history size)
-- Item height: `ROW_HEIGHT = 26px` (fixed, passed as `defaultEstimatedItemHeight`)
+**Key detail:** Each CommitRow has its own `<svg>` element in GraphCell. The SVG uses `viewBox="0 {rowIndex * ROW_HEIGHT} {svgWidth} {ROW_HEIGHT}"` to clip to just its row's band from a conceptually full-height coordinate space. Edges are per-row Manhattan routes that don't cross row boundaries.
 
-### Current Per-Row SVG (LaneSvg.svelte)
-
-Each `CommitRow` renders a `LaneSvg` inside the graph column. The SVG is `width={maxColumns * LANE_WIDTH}` and `height={ROW_HEIGHT}`. It draws:
-- Layer 1: Vertical rail lines (straight edges continuing through the row)
-- Layer 2: Manhattan-routed merge/fork connection paths
-- Layer 3: Commit dot (solid, hollow for merge, dashed for WIP)
-
-Each row's SVG is self-contained. Edges that span row boundaries are drawn as fragments: a line from `y=cy` to `y=rowHeight` in the current row, continuing from `y=0` to `y=cy` in the next row.
-
-### Current Ref Pills and Connectors
-
-Ref pills are HTML `<span>` elements in the ref column (column 1). A horizontal CSS `<div>` connector line stretches from the pill to the commit dot in the graph column. The connector is positioned with `position: absolute` and calculated width: `refContainerWidth + graphColumnOffset + dotCenterX`.
-
-### Graph Constants
+### Target Architecture (v0.5)
 
 ```
-LANE_WIDTH = 12px
-ROW_HEIGHT = 26px
-DOT_RADIUS = 6px
-EDGE_STROKE = 1px
-WIP_STROKE = 1.5px
-MERGE_STROKE = 2px
+┌─────────────────────────────────────────────────────────────────┐
+│  CommitGraph.svelte (orchestrator)                               │
+│  ├── displayItems = $derived (WIP + commits) [UNCHANGED]         │
+│  ├── graphData = $derived (buildGraphData) [NEW — replaces       │
+│  │     computeGraphSvgData with Active Lanes transformation]     │
+│  └── setContext('graphOverlay', ...)                              │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌── SvelteVirtualList ─────────────────────────────────────┐    │
+│  │  viewport (overflow-y: scroll) ← scroll source            │    │
+│  │  └── content (height: totalHeight px)                     │    │
+│  │      ├── GraphOverlay.svelte [NEW]                        │    │
+│  │      │   └── <svg> (position: absolute, pointer-          │    │
+│  │      │        events: none, full content height)           │    │
+│  │      │        ├── <g> edges (cubic bezier paths)           │    │
+│  │      │        ├── <g> dots (circles)                       │    │
+│  │      │        └── <g> ref pills (rect + text)              │    │
+│  │      └── items (transform: translateY)                     │    │
+│  │          ├── CommitRow[0] [MODIFIED — no GraphCell]        │    │
+│  │          │   ├── graph spacer div (width only)             │    │
+│  │          │   ├── Message, Author, Date, SHA                │    │
+│  │          └── ~40 visible DOM nodes                         │    │
+│  └──────────────────────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────────────────────┤
+│  TypeScript Transformation Layer [NEW]                           │
+│  └── active-lanes.ts: GraphCommit[] → GraphData                  │
+│      { nodes: GraphNode[], edges: GraphEdge[], refPills: ... }   │
+├─────────────────────────────────────────────────────────────────┤
+│  Rust Backend [UNCHANGED]                                        │
+│  └── graph.rs → walk_commits → GraphResult                       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Component Inventory: New, Modified, Deleted
 
-## Recommended Architecture: Clipped SVG Inside the Graph Column
+| Component | Status | Responsibility |
+|-----------|--------|----------------|
+| `active-lanes.ts` | **NEW** | TS transformation: `GraphCommit[]` → `GraphData` with integer grid coordinates |
+| `active-lanes.test.ts` | **NEW** | Unit tests for the transformation layer |
+| `graph-overlay-types.ts` | **NEW** | Type definitions: `GraphNode`, `GraphEdge`, `GraphRefPill`, `GraphData` |
+| `graph-overlay-paths.ts` | **NEW** | Cubic bezier path builder: grid coords → SVG `d` strings |
+| `graph-overlay-paths.test.ts` | **NEW** | Unit tests for bezier path generation |
+| `GraphOverlay.svelte` | **NEW** | Single SVG overlay component with all graph elements |
+| `SvgRefPill.svelte` | **NEW** | SVG `<rect>` + `<text>` ref pill (replaces HTML RefPill in graph context) |
+| `CommitGraph.svelte` | **MODIFIED** | Replace `computeGraphSvgData` with `buildGraphData`, inject overlay context, adjust column layout |
+| `CommitRow.svelte` | **MODIFIED** | Remove GraphCell, replace with spacer div; remove HTML ref pill column; remove connector line |
+| `graph-constants.ts` | **MODIFIED** | Add new constants: `OVERLAY_LANE_WIDTH`, `OVERLAY_ROW_HEIGHT`, `BEZIER_CURVATURE` |
+| `types.ts` | **MODIFIED** | Add new overlay type exports |
+| `GraphCell.svelte` | **DELETED** | Replaced by GraphOverlay |
+| `LaneSvg.svelte` | **DELETED** | Already superseded by GraphCell in v0.4; fully removed |
+| `graph-svg-data.ts` | **DELETED** | Replaced by active-lanes.ts + graph-overlay-paths.ts |
+| `graph-svg-data.test.ts` | **DELETED** | Replaced by active-lanes.test.ts |
+| `RefPill.svelte` | **KEPT** (for sidebar) | Still used in BranchSidebar; no longer used inside CommitRow |
 
-### The Core Decision: Clipped Column, Not Overlay
+## Architectural Patterns
 
-**Use a single full-height SVG placed inside the graph column cell of each CommitRow, but backed by a shared SVG data model where each path is computed once across the entire commit list.**
+### Pattern 1: SVG Overlay Inside Virtual List Content
 
-Rationale against a true overlay:
-1. **Z-index chaos.** An overlay SVG on top of the virtual list container would sit above ALL row content (text, pills, buttons). Making dots clickable while keeping text selectable requires `pointer-events: none` on the SVG with `pointer-events: auto` on individual dots -- fragile and platform-dependent.
-2. **Scroll synchronization.** The virtual list viewport is the scroll container. An overlay outside it would need manual scroll sync via `scrollTop` mirroring. The virtual list's `transformY` is internal state -- tracking it requires reaching into library internals.
-3. **Column resizing breaks.** The graph column width is user-adjustable. An overlay would need to track column position and width reactively, duplicating layout logic.
+**What:** Place the single `<svg>` element inside the virtual list's content div (the one sized to `totalHeight`), as a sibling of the items container. The SVG has `position: absolute; top: 0; left: 0; pointer-events: none` and its height matches the content's total height.
 
-**Instead:** Keep the graph column's DOM slot per row, but change what renders there. Each row's graph cell renders a `<svg>` that is a viewport into a single logical full-height SVG via `viewBox` clipping.
+**Why this approach:**
+- The SVG scrolls naturally with the virtual list's scroll container — no manual scroll synchronization needed
+- The browser's native scrolling handles pixel-perfect alignment
+- The content div already has `position: relative` and is sized to `totalHeight` pixels
+- SVG `pointer-events: none` lets clicks fall through to the HTML rows beneath
+- Browser only paints visible portion of offscreen SVG elements — no performance penalty for full-height SVG
 
-### How It Works
+**Why not other approaches:**
+- ❌ **SVG as sibling with scroll listener**: Requires manual `scrollTop` sync, introduces frame lag, complex event forwarding
+- ❌ **SVG with viewBox scroll**: viewBox changes on every scroll event cause SVG re-render, expensive for large graphs
+- ❌ **SVG outside virtual list with `transform: translateY`**: Must mirror virtual list's internal transform math, fragile coupling
 
-**Pre-compute once, render per-row via viewBox:**
+**Virtual list DOM structure (from source analysis of `@humanspeak/svelte-virtual-list` v0.4.2):**
 
-1. When `displayItems` changes (load/refresh), compute all SVG path data for the entire commit list -- one `<path d="...">` string per branch rail, one per merge/fork edge, one per ref connector, plus dot positions.
-2. Store these in a reactive `GraphSvgData` object (shared `$state`).
-3. Each `CommitRow`'s graph cell renders a `<svg>` with:
-   - `width={columnWidths.graph}` (matches column)
-   - `height={ROW_HEIGHT}` (matches row)
-   - `viewBox="0 {rowIndex * ROW_HEIGHT} {svgWidth} {ROW_HEIGHT}"` (clips to this row's vertical band)
-   - Contains ALL path elements (rails, edges, dots, ref connectors, ref pills)
+```html
+<!-- container: position relative, overflow hidden -->
+<div class="virtual-list-container">
+  <!-- viewport: position absolute, inset 0, overflow-y scroll -->
+  <div class="virtual-list-viewport">
+    <!-- content: position relative, height = totalHeight -->
+    <div id="virtual-list-content" class="virtual-list-content"
+         style="height: {contentHeight}px">
+      <!-- items: position absolute, transform translateY -->
+      <div id="virtual-list-items" class="virtual-list-items"
+           style="transform: translateY({transformY}px)">
+        <!-- rendered item wrappers -->
+      </div>
+    </div>
+  </div>
+</div>
+```
 
-The viewBox clip means only the portion of each path that intersects this row's vertical band is visible. The browser efficiently clips the rest without layout cost.
+**Injection approach:** The SVG must become a child of `.virtual-list-content`. Since the library doesn't expose a content slot, use a Svelte `$effect` + DOM manipulation after mount:
 
-### Why viewBox Clipping Is Efficient
+```typescript
+// In CommitGraph.svelte
+let overlayEl = $state<HTMLElement | null>(null);
+let wrapperEl = $state<HTMLElement | null>(null);
 
-Each row's SVG contains references to the same path data, but the browser only rasterizes the visible portion defined by the viewBox. SVG path rendering with clip is O(visible-segments), not O(total-path-length). For a 26px-tall viewBox on a path spanning 260,000px, the browser clips early in the rendering pipeline.
-
-With ~40 visible rows * ~20 paths average = ~800 SVG path elements in the DOM at any time. This is well within browser SVG performance limits (browsers handle thousands of path elements without issue).
-
-### Alternative Considered: Single Overlay SVG
-
-Place one `<svg>` element as a sibling to the virtual list viewport, positioned absolutely over the graph column area, with its own scroll tracking.
-
-**Why rejected:**
-- Requires reading `transformY` from the virtual list (not exposed in the public API)
-- Requires duplicating scroll event handling
-- Z-index management with interactive elements (dots, pills) is fragile
-- Column resize tracking requires DOM measurement on each resize frame
-- Breaks the established "each row is self-contained" pattern of the virtual list
-
----
-
-## Component Architecture
-
-### New Component: `GraphSvg.svelte`
-
-Replaces `LaneSvg.svelte`. Renders a single `<svg>` element per row that shows a viewBox-clipped slice of the full graph.
-
-```svelte
-<script lang="ts">
-  interface Props {
-    rowIndex: number;
-    graphData: GraphSvgData;
-    svgWidth: number;
-    maxColumns: number;
+$effect(() => {
+  if (!wrapperEl || !overlayEl) return;
+  const content = wrapperEl.querySelector('.virtual-list-content');
+  if (content && overlayEl.parentElement !== content) {
+    content.prepend(overlayEl); // Move SVG into content div
   }
-</script>
-
-<svg
-  width={svgWidth}
-  height={ROW_HEIGHT}
-  viewBox="0 {rowIndex * ROW_HEIGHT} {svgWidth} {ROW_HEIGHT}"
->
-  <!-- Layer 1: Rail paths (one <path> per active lane) -->
-  {#each graphData.rails as rail}
-    <path d={rail.d} stroke={rail.color} stroke-width={EDGE_STROKE} fill="none" />
-  {/each}
-
-  <!-- Layer 2: Connection paths (one <path> per merge/fork edge) -->
-  {#each graphData.connections as conn}
-    <path d={conn.d} stroke={conn.color} stroke-width={EDGE_STROKE} fill="none"
-          stroke-linecap="round" />
-  {/each}
-
-  <!-- Layer 3: Dots (one <circle> per commit) -->
-  {#each graphData.dots as dot}
-    <circle cx={dot.cx} cy={dot.cy} r={dot.r} fill={dot.fill}
-            stroke={dot.stroke} stroke-width={dot.strokeWidth} />
-  {/each}
-
-  <!-- Layer 4: Ref connectors (one <line> per ref pill) -->
-  {#each graphData.refConnectors as conn}
-    <line x1={conn.x1} y1={conn.y1} x2={conn.x2} y2={conn.y2}
-          stroke={conn.color} stroke-width={EDGE_STROKE} />
-  {/each}
-
-  <!-- Layer 5: Ref pills (one <g> per ref) -->
-  {#each graphData.refPills as pill}
-    <g transform="translate({pill.x}, {pill.y})">
-      <rect rx="8" ry="8" width={pill.width} height={pill.height}
-            fill={pill.bgColor} />
-      <text x={pill.textX} y={pill.textY} fill="white"
-            font-size="11" font-weight={pill.isBold ? 'bold' : 'normal'}>
-        {pill.label}
-      </text>
-    </g>
-  {/each}
-</svg>
-```
-
-**Key insight:** Every row renders the SAME set of paths/dots/pills. The `viewBox` clips to only show the row's vertical slice. The browser skips rendering elements entirely outside the viewBox.
-
-### New Module: `graph-svg-data.svelte.ts`
-
-A reactive `$state` module that computes all SVG geometry from the commit list. This is the core new logic.
-
-```typescript
-// graph-svg-data.svelte.ts
-
-export interface RailPath {
-  d: string;        // SVG path data for the full vertical rail
-  color: string;    // CSS variable reference
-}
-
-export interface ConnectionPath {
-  d: string;        // SVG path data for the merge/fork edge
-  color: string;
-}
-
-export interface DotData {
-  cx: number;
-  cy: number;
-  r: number;
-  fill: string;
-  stroke: string;
-  strokeWidth: number;
-  oid: string;       // For click handling
-  rowIndex: number;   // For hit testing
-}
-
-export interface RefConnector {
-  x1: number; y1: number;
-  x2: number; y2: number;
-  color: string;
-}
-
-export interface RefPillData {
-  x: number; y: number;
-  width: number; height: number;
-  bgColor: string;
-  label: string;
-  textX: number; textY: number;
-  isBold: boolean;
-  rowIndex: number;
-}
-
-export interface GraphSvgData {
-  rails: RailPath[];
-  connections: ConnectionPath[];
-  dots: DotData[];
-  refConnectors: RefConnector[];
-  refPills: RefPillData[];
-}
-```
-
-### Path Computation: Rails
-
-A rail is a continuous vertical line for a lane. Currently, each row draws straight edges independently. The new approach:
-
-1. Walk through all commits in order.
-2. For each lane column, track contiguous vertical segments where a straight edge exists.
-3. Merge contiguous segments into a single SVG `M x y1 V y2` path.
-
-```
-For commits [0..N], lane column C:
-  Start at commit i where edges include Straight with from_column=C
-  Continue while consecutive commits also have Straight edge in column C
-  Emit: M {cx(C)} {i * ROW_HEIGHT} V {(j+1) * ROW_HEIGHT}
-  where j is the last commit in the contiguous segment
-```
-
-Branch tips: a rail starts at `cy` of the branch tip row (not `y=0`), matching current behavior where `is_branch_tip && edge.from_column === commit.column` starts the line at `cy` instead of `0`.
-
-### Path Computation: Merge/Fork Edges
-
-Each merge/fork edge spans exactly one row in the current model (the edge data is on the commit that has the merge or fork). The path geometry stays the same as `buildEdgePath` in `LaneSvg.svelte`, just with `cy` computed from `rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2`.
-
-These are already single-row paths, so the "continuous path" benefit is less relevant here. However, moving them into the shared data model ensures consistent z-ordering and enables future multi-row edge routing if needed.
-
-### Path Computation: WIP Connector
-
-The WIP row (index 0 when `wipCount > 0`) draws a dashed line from the WIP dot to the HEAD dot in the next row. In the full-height model, this becomes a single dashed path: `M {cx(0)} {wipDotCy + DOT_RADIUS} V {headDotCy}`.
-
-### Ref Pills as SVG Elements
-
-Currently ref pills are HTML `<span>` elements in the ref column with an absolute-positioned `<div>` connector line. The rework moves both into the SVG:
-
-1. **Connector:** An SVG `<line>` from the pill's right edge to the commit dot center.
-2. **Pill:** An SVG `<g>` containing a `<rect>` (rounded corners) and `<text>`.
-
-**Positioning:** Ref pills sit to the LEFT of the graph, extending into negative x-coordinates. The SVG viewBox starts before x=0 to include the ref column space. The viewBox becomes: `viewBox="{-refColumnWidth} {rowIndex * ROW_HEIGHT} {refColumnWidth + graphColumnWidth} {ROW_HEIGHT}"`.
-
-**Text measurement:** SVG `<text>` width is not known until rendered. For pill sizing, pre-compute approximate widths using a character-width heuristic (monospace: ~6.6px per char at 11px font-size, proportional: ~5.5px). Alternatively, use a hidden `<canvas>` context's `measureText()` for accurate pre-computation.
-
-**Interaction:** Ref pills in SVG support `onclick`, `onmouseenter`, `onmouseleave` natively. The "+N" overflow badge and expanded overlay from `CommitRow.svelte` can be replicated with SVG groups and CSS transitions on `opacity`/`clip-path`.
-
-### Dot Interaction (Click / Right-Click)
-
-Dots need to support:
-- Left click: select commit (`oncommitselect`)
-- Right click: context menu (`showCommitContextMenu`)
-- Stash row right click: stash-specific menu
-
-**In the viewBox-clipped model**, each dot is a `<circle>` in the SVG. SVG elements support `onclick` and `oncontextmenu` natively. Since only ~40 rows are in the DOM at once, only ~40 dots exist at any time.
-
-The click handler on the dot receives the `oid` from the dot data:
-
-```svelte
-<circle
-  cx={dot.cx} cy={dot.cy} r={dot.r}
-  fill={dot.fill}
-  style="cursor: pointer;"
-  onclick={() => oncommitselect?.(dot.oid)}
-  oncontextmenu={(e) => showCommitContextMenu(e, dot.oid)}
-/>
-```
-
-**Row-level click vs dot click:** Currently the entire row is clickable. With the SVG rework, the non-graph columns (message, author, date, SHA) remain HTML divs and keep their row-level click. The graph column SVG handles its own clicks on dots. This is a natural separation.
-
----
-
-## Data Flow Changes
-
-### Current Flow
-
-```
-Rust (walk_commits) → GraphResponse { commits, max_columns }
-                           ↓
-CommitGraph.svelte:  displayItems = [wip?, ...commits]
-                           ↓
-VirtualList:  for each visible item → CommitRow
-                                        ↓
-                                    LaneSvg (per-row SVG path computation)
-```
-
-### New Flow
-
-```
-Rust (walk_commits) → GraphResponse { commits, max_columns }
-                           ↓
-CommitGraph.svelte:  displayItems = [wip?, ...commits]
-                           ↓
-                     graphSvgData = computeGraphSvg(displayItems, maxColumns)
-                           ↓                        ↑
-                           ↓                  (recomputed on displayItems change)
-VirtualList:  for each visible item → CommitRow
-                                        ↓
-                                    GraphSvg (viewBox-clipped, reads graphSvgData)
-```
-
-The key change: path computation moves from per-row (inside `LaneSvg`) to per-dataset (in `computeGraphSvg`). The per-row component becomes a thin viewBox renderer.
-
-### Computation Cost
-
-`computeGraphSvg` runs on every `displayItems` change (initial load, load-more, refresh). With ~200 commits per batch and ~10 lanes:
-- Rail path computation: O(commits * lanes) = ~2000 iterations
-- Edge path computation: O(commits * avg_edges) = ~400 iterations
-- Dot computation: O(commits) = ~200 iterations
-- Total: <1ms on modern hardware
-
-For repos with 10k+ commits (after multiple load-more batches), the computation grows linearly. At 10k commits with 20 lanes: ~200k iterations. Still <10ms. If it becomes a bottleneck, incremental computation (only recompute new batch paths, append to existing) is straightforward.
-
-### Rust Backend: No Changes Required
-
-The Rust `walk_commits` function and `GraphResult` type remain unchanged. The per-commit edge data (`edges: Vec<GraphEdge>`) already contains all the information needed to compute continuous paths on the frontend. No new IPC commands or type changes needed.
-
----
-
-## Integration Points
-
-### Modified Components
-
-| File | Change | Why |
-|------|--------|-----|
-| `CommitRow.svelte` | Replace `LaneSvg` usage with `GraphSvg`; remove ref column connector div; remove `RefPill` usage in ref column cell | Graph+ref rendering moves into SVG |
-| `CommitGraph.svelte` | Add `computeGraphSvg` call on `displayItems` change; pass `graphSvgData` to `CommitRow`; remove ref column from the column layout | Data computation moves here |
-| `graph-constants.ts` | Possibly add new constants (ref pill sizing) | SVG pill dimensions |
-
-### New Files
-
-| File | Purpose |
-|------|---------|
-| `src/components/GraphSvg.svelte` | ViewBox-clipped SVG renderer (replaces `LaneSvg.svelte`) |
-| `src/lib/graph-svg-data.svelte.ts` | Reactive computation of full-height SVG paths from commit data |
-
-### Removed Files
-
-| File | Why |
-|------|-----|
-| `src/components/LaneSvg.svelte` | Replaced by `GraphSvg.svelte` |
-| `src/components/RefPill.svelte` | Ref pills become SVG elements inside `GraphSvg` |
-
-### Unchanged
-
-| File | Why Unchanged |
-|------|---------------|
-| `src-tauri/src/git/graph.rs` | Lane algorithm output is sufficient |
-| `src-tauri/src/git/types.rs` | No new Rust types needed |
-| `src/lib/types.ts` | No new TypeScript types needed (frontend-only data model) |
-| `src/lib/invoke.ts` | No new IPC commands |
-| `src/components/App.svelte` | No changes to app shell |
-
----
-
-## Column Layout Impact
-
-### Current 6-Column Layout
-
-```
-| Ref (120px) | Graph (120px) | Message (flex-1) | Author | Date | SHA |
-```
-
-The ref column and graph column are separate. The connector div bridges them.
-
-### New Layout: Merge Ref + Graph Into One SVG Column
-
-The ref pills and connectors move into the SVG. Two options:
-
-**Option A: Keep separate columns, SVG spans both.**
-The SVG viewBox extends leftward to cover the ref column area. The ref column cell renders nothing (empty); the graph column cell renders the SVG which visually extends into the ref area via `overflow: visible` or negative `viewBox` x-origin.
-
-**Problem:** The ref column still takes up layout space and has a resize handle. The SVG content in the graph column bleeds into the ref column visually but they are separate DOM elements. Column resizing either of them independently creates visual mismatches.
-
-**Option B (recommended): Merge ref+graph into a single "graph" column.**
-Remove the separate ref column. The graph column becomes wider and contains both the graph lines and the ref pills. The SVG viewBox covers the full width. The column width is `refWidth + graphWidth` combined, or just one adjustable width.
-
-**Why B is better:**
-- Single source of truth for the column width
-- No cross-column overflow tricks
-- Ref pills are positioned relative to dots in the same coordinate space
-- One resize handle controls the entire graph+ref area
-- Simpler DOM structure
-
-**Impact on column resize logic:** The `columnWidths` type drops the `ref` key. The `graph` key represents the combined column. The minimum width becomes `max(maxColumns * LANE_WIDTH + refPillMaxWidth, 120)`.
-
-**Impact on header:** The "Branch/Tag" and "Graph" header labels merge into one "Graph" label. The column visibility toggle for ref becomes part of the graph column toggle.
-
----
-
-## Ref Pill Sizing Without DOM Measurement
-
-SVG text requires knowing width before rendering the background `<rect>`. Two approaches:
-
-**Approach 1 (recommended): Canvas measureText pre-computation.**
-
-```typescript
-const canvas = document.createElement('canvas');
-const ctx = canvas.getContext('2d')!;
-ctx.font = '600 11px system-ui, sans-serif';
-
-function measurePillWidth(label: string): number {
-  return ctx.measureText(label).width + 12; // 12px horizontal padding
-}
-```
-
-Call once per ref label during `computeGraphSvg`. The canvas is never inserted into the DOM. `measureText` is synchronous and fast (~0.01ms per call).
-
-**Approach 2: Character-width heuristic.**
-
-```typescript
-const AVG_CHAR_WIDTH = 6.2; // for 11px system font, semibold
-function estimatePillWidth(label: string): number {
-  return label.length * AVG_CHAR_WIDTH + 12;
-}
-```
-
-Less accurate but zero DOM dependency. Good enough for most cases.
-
-**Recommendation:** Use canvas `measureText`. It is exact, fast, and avoids layout shifts from mismatched pill/text widths.
-
----
-
-## Interaction Model
-
-### Row Click (Commit Select)
-
-Currently: the entire `CommitRow` div has `onclick`. This remains unchanged for the non-graph columns. The graph column SVG does NOT need its own click handler for commit selection -- the row-level handler covers it.
-
-Exception: if the graph column SVG has `pointer-events: none` on the root SVG, clicks pass through to the row div. But dots need to be interactive. Solution: the SVG root has `pointer-events: none`, individual dots have `pointer-events: auto`.
-
-```svelte
-<svg ... style="pointer-events: none;">
-  <!-- Paths: not interactive -->
-  <path ... />
-
-  <!-- Dots: interactive -->
-  <circle ... style="pointer-events: auto; cursor: pointer;"
-    onclick={(e) => { e.stopPropagation(); oncommitselect?.(dot.oid); }}
-  />
-</svg>
-```
-
-### Right-Click Context Menu
-
-Currently handled at row level in `CommitRow.svelte` via `oncontextmenu`. The graph column SVG dots can have their own `oncontextmenu` handler, but since the row-level handler already provides the commit context menu, the simplest approach is to let right-clicks on dots bubble up to the row handler.
-
-For stash rows (oid starts with `__stash_`), the row handler already checks the oid pattern. No SVG-specific changes needed.
-
-### Ref Pill Hover Expansion
-
-Currently: hovering the "+N" badge in the ref column reveals an expanded overlay with all ref names. This uses CSS `clip-path` animation.
-
-In SVG: the same effect is achieved by toggling visibility of an expanded `<g>` group on `mouseenter`/`mouseleave`. The expanded group renders additional pill rects and text below/above the "+N" badge.
-
-**Potential issue:** SVG elements are clipped by the viewBox. An expanded pill list that extends beyond `ROW_HEIGHT` would be clipped. Solution: the expanded overlay should be an HTML `<div>` positioned absolutely relative to the row, triggered by SVG mouse events. This matches the current pattern (the overlay is already HTML, not SVG).
-
----
-
-## Patterns to Follow
-
-### Pattern 1: Centralized Path Computation with Reactive Derivation
-
-**What:** Compute all SVG path data in a single `$derived.by()` block inside `CommitGraph.svelte`, triggered by `displayItems` changes.
-
-**Why:** Ensures all paths are consistent. Avoids per-row path computation. Makes it easy to implement features that span rows (continuous rails, multi-row edge animations).
-
-```typescript
-const graphSvgData = $derived.by(() => {
-  return computeGraphSvg(displayItems, maxColumns, columnWidths.graph);
 });
 ```
 
-### Pattern 2: ViewBox Clipping for Virtual Scroll Compatibility
+**Robustness concern:** This couples to the virtual list's internal DOM structure (class name `.virtual-list-content`). Mitigated by:
+- Pinning library version (`"@humanspeak/svelte-virtual-list": "^0.4.2"`)
+- The library also uses `id="virtual-list-content"` as a fallback selector
+- Adding a comment explaining the coupling
 
-**What:** Each visible row renders the full SVG data set but clips to its vertical band via `viewBox="0 {rowIndex * ROW_HEIGHT} {width} {ROW_HEIGHT}"`.
+**Trade-offs:**
+- ✅ Zero scroll sync code — SVG moves with content naturally
+- ✅ Browser only composites visible portion (GPU layer)
+- ⚠️ Full-height SVG DOM node exists (but browsers don't render offscreen paths)
+- ⚠️ Requires DOM injection into third-party component's internals
 
-**Why:** The virtual list controls which rows exist in the DOM. By using viewBox clipping, each row is self-contained (no external scroll sync needed). The browser efficiently clips invisible geometry.
+### Pattern 2: Active Lanes Transformation (TS Layer)
 
-### Pattern 3: SVG Pointer Events Layering
+**What:** A pure TypeScript function that takes Rust's `GraphCommit[]` output and produces `GraphData` — a flattened set of nodes, edges, and ref pills with integer grid coordinates `(x: lane, y: row)`.
 
-**What:** Set `pointer-events: none` on the SVG root and `pointer-events: auto` on interactive elements (dots, pills). This lets row-level clicks pass through the SVG while keeping specific elements interactive.
+**Why:** Rust's lane algorithm computes per-row edge descriptors (from_column, to_column, edge_type). The overlay needs multi-row continuous paths. Rather than modifying the Rust algorithm (proven, ~5ms/10k), a TS transformation layer bridges the gap by:
+1. Walking commits in order
+2. Tracking active lanes (which lane IDs are alive at each row)
+3. Building edge spans that connect parent→child across arbitrary row counts
+4. Outputting grid coordinates that the path builder converts to pixel SVG paths
 
-**Why:** Avoids blocking row-level click handlers with the SVG overlay. Enables precise hit testing on dots without interfering with message column text selection.
+**Grid coordinate system:**
+- `x` = integer lane index (0, 1, 2, ...)
+- `y` = integer row index (0, 1, 2, ...)
+- Pixel conversion deferred to path builder: `px_x = x * LANE_WIDTH + LANE_WIDTH/2`, `px_y = y * ROW_HEIGHT + ROW_HEIGHT/2`
 
----
+**Key types:**
 
-## Anti-Patterns to Avoid
+```typescript
+interface GraphNode {
+  id: string;           // commit oid
+  x: number;            // lane index
+  y: number;            // row index
+  colorIndex: number;
+  isMerge: boolean;
+  isBranchTip: boolean;
+  isWip: boolean;
+  isStash: boolean;
+}
 
-### Anti-Pattern 1: Scroll-Synced Overlay SVG
+interface GraphEdgeSpan {
+  id: string;           // unique edge ID
+  colorIndex: number;
+  dashed: boolean;
+  sourceX: number;      // lane at start (parent commit)
+  sourceY: number;      // row at start
+  targetX: number;      // lane at end (child commit)
+  targetY: number;      // row at end
+  type: 'straight' | 'merge' | 'fork';
+}
 
-**What:** Placing a single large SVG element outside the virtual list and syncing its scroll position to match.
+interface GraphRefPill {
+  commitId: string;
+  x: number;            // lane of the commit
+  y: number;            // row index
+  colorIndex: number;
+  refs: RefLabel[];
+}
 
-**Why bad:** The virtual list's internal `transformY` is not exposed. Mirroring `scrollTop` introduces frame-lag jank. The SVG would need to be the full height of the content (potentially millions of pixels), causing memory and rendering issues.
+interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdgeSpan[];
+  refPills: GraphRefPill[];
+  maxLanes: number;
+}
+```
 
-### Anti-Pattern 2: Per-Row Path Computation in the Render Loop
+**Edge coalescing — critical optimization:** Consecutive straight edges in the same lane (e.g., lane 0 rows 0-50) must be merged into a single `GraphEdgeSpan` producing one `<path>` instead of 50 separate segments. The transformation walks the commit array, tracking active lanes, and emits one edge span per continuous lane segment. This is the key optimization that reduces SVG DOM node count from O(commits × lanes) to O(lanes + merge_edges).
 
-**What:** Computing path strings inside `GraphSvg.svelte` on every render.
+**Trade-offs:**
+- ✅ Rust algorithm stays unchanged — proven O(n) with all edge cases handled
+- ✅ TS transformation is pure function → easily unit-testable
+- ✅ Grid coordinates decouple layout from rendering
+- ⚠️ Adds ~2-3ms processing for 10k commits (negligible vs Rust's 5ms)
+- ⚠️ Must handle the same edge cases (WIP, stash, sentinel OIDs)
 
-**Why bad:** During fast scrolling, the virtual list creates and destroys rows rapidly. Path computation in the render loop means recomputing the same paths for the same data every time a row enters the viewport.
+### Pattern 3: Cubic Bezier Path Generation
 
-**Instead:** Pre-compute all paths once when `displayItems` changes. Each row just reads from the pre-computed data.
+**What:** Convert `GraphEdgeSpan` grid coordinates into SVG `<path d="...">` strings using cubic bezier curves instead of Manhattan routing.
 
-### Anti-Pattern 3: SVG foreignObject for Ref Pills
+**Path types:**
 
-**What:** Using `<foreignObject>` to embed HTML ref pills inside the SVG.
+1. **Straight edge** (same lane, spanning rows):
+   `M {x} {y1} L {x} {y2}` — simple vertical line
 
-**Why bad:** `foreignObject` has inconsistent rendering across WebView engines (especially on Windows with WebView2). Text rendering, overflow, and interaction differ from native SVG text. It also defeats the purpose of moving to SVG.
+2. **Merge/Fork edge** (different lanes):
+   ```
+   M {sourceX} {sourceY}
+   C {sourceX} {sourceY + curvature},
+     {targetX} {targetY - curvature},
+     {targetX} {targetY}
+   ```
+   Where curvature = `|targetY - sourceY| * 0.4` (tunable)
 
-**Instead:** Use native SVG `<rect>` + `<text>` for pills.
+3. **WIP dashed connector**: Same as straight but with `stroke-dasharray`
 
-### Anti-Pattern 4: One Giant SVG Element Spanning Full Content Height
+**Example:**
 
-**What:** Creating a single SVG with `height={totalCommits * ROW_HEIGHT}` and placing it in the virtual list content area.
+```typescript
+function buildBezierPath(edge: GraphEdgeSpan, constants: GraphConstants): string {
+  const sx = edge.sourceX * constants.laneWidth + constants.laneWidth / 2;
+  const sy = edge.sourceY * constants.rowHeight + constants.rowHeight / 2;
+  const tx = edge.targetX * constants.laneWidth + constants.laneWidth / 2;
+  const ty = edge.targetY * constants.rowHeight + constants.rowHeight / 2;
 
-**Why bad:** For 10k commits at 26px each, this is a 260,000px tall SVG. Browsers allocate raster buffers proportional to element dimensions. This causes excessive memory usage and potential rendering failures (browsers cap surface sizes).
+  if (sx === tx) {
+    return `M ${sx} ${sy} L ${tx} ${ty}`;
+  }
 
-**Instead:** Each row has its own small SVG (26px tall) with viewBox clipping.
+  const dy = Math.abs(ty - sy);
+  const curve = dy * 0.4;
+  return `M ${sx} ${sy} C ${sx} ${sy + curve}, ${tx} ${ty - curve}, ${tx} ${ty}`;
+}
+```
 
----
+**Trade-offs:**
+- ✅ Smooth, professional GitKraken-style appearance
+- ✅ Each edge is one `<path>` element regardless of row span
+- ✅ No row-boundary seam artifacts
+- ⚠️ Need to tune curvature to avoid path overlap at narrow lane widths
 
-## Build Order
+## Data Flow
 
-### Phase 1: GraphSvgData Computation Engine
+### Complete Data Flow: Rust → Screen
 
-1. Create `src/lib/graph-svg-data.svelte.ts` with the `GraphSvgData` interface and `computeGraphSvg()` function
-2. Implement rail path computation (continuous vertical lines per lane)
-3. Implement connection path computation (merge/fork edges, same geometry as current `buildEdgePath`)
-4. Implement dot data computation (position, style based on commit type)
-5. Unit test: given a set of `GraphCommit[]`, verify correct path strings
+```
+Rust (graph.rs)
+    │
+    │  walk_commits(repo, offset, limit) → GraphResult
+    │  { commits: GraphCommit[], max_columns: usize }
+    │
+    ▼
+Tauri IPC (safeInvoke)
+    │
+    │  get_commit_graph / refresh_commit_graph → GraphResponse
+    │
+    ▼
+CommitGraph.svelte ($state)
+    │
+    │  commits: GraphCommit[]
+    │  maxColumns: number
+    │
+    ├──► displayItems = $derived  (prepend WIP if needed)
+    │
+    ├──► graphData = $derived.by(() =>
+    │      buildGraphData(displayItems, maxColumns)
+    │    )
+    │    ├── active-lanes.ts: GraphCommit[] → GraphData
+    │    │   { nodes[], edges[], refPills[], maxLanes }
+    │    │
+    │    └── graph-overlay-paths.ts: GraphData → renderable SVG data
+    │        { pathElements[], dotElements[], pillElements[] }
+    │
+    ├──► setContext('graphOverlay', { get data() { return graphData; } })
+    │
+    ▼
+GraphOverlay.svelte (reads context)
+    │
+    │  <svg pointer-events="none" width={graphWidth} height={totalHeight}>
+    │    <g class="edges">
+    │      {#each edges as edge}
+    │        <path d={edge.d} stroke={laneColor(edge.colorIndex)} ... />
+    │      {/each}
+    │    </g>
+    │    <g class="dots">
+    │      {#each nodes as node}
+    │        <circle cx={...} cy={...} r={DOT_RADIUS} ... />
+    │      {/each}
+    │    </g>
+    │    <g class="ref-pills" pointer-events="all">
+    │      {#each refPills as pill}
+    │        <SvgRefPill {pill} />
+    │      {/each}
+    │    </g>
+    │  </svg>
+    │
+    ▼
+CommitRow.svelte (simplified)
+    │
+    │  <div> (no GraphCell, no RefPill in graph column)
+    │    <div style="width: {graphColumnWidth}px" /> ← spacer
+    │    <div> message </div>
+    │    <div> author </div>
+    │    <div> date </div>
+    │    <div> sha </div>
+    │  </div>
+```
 
-**Rationale:** Pure data transformation with no DOM dependencies. Testable in isolation. All subsequent work depends on this.
+### Event Flow: Click/Context Menu
 
-### Phase 2: GraphSvg Component (Graph Lines + Dots Only)
+```
+User clicks on commit row area
+    │
+    ├── Case A: Click on HTML CommitRow (message, author, date, sha)
+    │   └── CommitRow onclick fires normally [UNCHANGED]
+    │       SVG overlay has pointer-events: none → click passes through
+    │
+    ├── Case B: Click on SVG ref pill
+    │   └── <g class="ref-pills" pointer-events="all">
+    │       └── SvgRefPill onclick → dispatch('pillclick', { commitId })
+    │           └── CommitGraph handles pill click
+    │
+    ├── Case C: Click on SVG dot
+    │   └── <circle pointer-events="all" data-oid={node.id}>
+    │       └── Circle onclick → dispatch('dotclick', { commitId })
+    │           └── CommitGraph routes to oncommitselect
+    │
+    └── Case D: Right-click anywhere on row
+        └── CommitRow oncontextmenu fires (SVG has pointer-events: none)
+            └── showCommitContextMenu [UNCHANGED]
+```
 
-1. Create `src/components/GraphSvg.svelte` that renders rails, connections, and dots from `GraphSvgData`
-2. Wire into `CommitRow.svelte` replacing `LaneSvg` in the graph column
-3. Add `computeGraphSvg` call in `CommitGraph.svelte`
-4. Verify: lines are continuous across row boundaries, dots align with text, merge/fork edges render correctly
+### Scroll Integration
 
-**Rationale:** Get the core graph rendering working before adding ref pills. Visual regression testing is possible by comparing against current rendering.
+```
+User scrolls
+    │
+    ▼
+SvelteVirtualList viewport onscroll
+    │
+    ├── Virtual list recalculates visible items
+    │   └── Mounts/unmounts CommitRow DOM nodes
+    │
+    └── SVG overlay (inside content div) scrolls naturally
+        └── Browser only paints visible SVG region
+        └── No JS scroll handler needed for overlay
+```
 
-### Phase 3: WIP and Stash Row Adaptation
+**No scroll synchronization code is needed.** The SVG is a child of the scrollable content div, so it scrolls identically to the HTML items.
 
-1. Handle WIP sentinel (`__wip__`) in `computeGraphSvg` -- dashed circle, dashed connector to HEAD
-2. Handle stash sentinels (`__stash_N__`) -- square dot markers
-3. Verify dashed line rendering matches current behavior
+## Scaling Considerations
 
-**Rationale:** Synthetic rows have special rendering rules. Handle them after the normal commit rendering is solid.
+| Concern | 100 commits | 10K commits | 100K commits |
+|---------|-------------|-------------|--------------|
+| SVG DOM nodes (with edge coalescing) | ~50 | ~1K edges + 10K dots | ~2K edges + 100K dots |
+| SVG DOM nodes (without coalescing) | ~300 | ~30K | ❌ 300K too many |
+| TS transformation | <1ms | ~3ms | ~30ms |
+| Full-height SVG pixel height | 2,600px | 260,000px | 2,600,000px (within limits) |
+| Pagination | N/A | 200-batch works | 200-batch limits loaded set |
 
-### Phase 4: Ref Pills and Connectors in SVG
+### Scaling Priorities
 
-1. Add ref pill computation to `computeGraphSvg` using canvas `measureText` for sizing
-2. Render pills as SVG `<rect>` + `<text>` in `GraphSvg.svelte`
-3. Render connector lines from pill to dot
-4. Merge ref column into graph column (remove separate ref column from layout)
-5. Update column resize logic (remove `ref` key from `ColumnWidths`)
-6. Implement "+N" overflow badge and hover expansion (HTML overlay triggered from SVG events)
+1. **First bottleneck (10K+): SVG DOM node count.** With edge coalescing, ~1K edge paths + 10K dot circles ≈ 11K nodes. Without: ~30K. Coalescing is critical.
 
-**Rationale:** Ref pills are the most visually complex part. Merge columns after pills render correctly. The hover overlay may need iteration.
+2. **Second bottleneck (100K+): SVG height limit.** 100K × 26px = 2.6M px. Chrome supports ~33M px, Firefox ~16M px. Safe for realistic repos.
 
-### Phase 5: Dot Interaction and Context Menus
+3. **Future optimization if needed:** Viewport-culled SVG rendering — only create elements for visible region + buffer. Defer unless perf testing shows issues.
 
-1. Add `onclick` / `oncontextmenu` handlers to dot circles in `GraphSvg`
-2. Verify commit selection works via dot click
-3. Verify right-click context menu works on dots
-4. Verify stash row context menu works
-5. Ensure row-level click still works in non-graph columns
+## Anti-Patterns
 
-**Rationale:** Interaction handlers are straightforward but need careful testing against the existing behavior.
+### Anti-Pattern 1: Scroll Event Mirroring
 
-### Phase 6: Cleanup and Migration
+**What people do:** Create a second scrollable container for SVG and sync scrollTop on every scroll event.
+**Why it's wrong:** Always 1 frame behind, visual tearing, breaks momentum scrolling.
+**Do this instead:** Put SVG inside the same scroll container.
 
-1. Delete `LaneSvg.svelte`
-2. Delete `RefPill.svelte`
-3. Remove ref column connector div from `CommitRow.svelte`
-4. Update `ColumnWidths` and `ColumnVisibility` types (remove `ref` key)
-5. Migrate persisted column width store (handle missing `ref` key gracefully)
-6. Update column header context menu (remove ref toggle, rename graph label)
+### Anti-Pattern 2: Re-rendering SVG on Scroll
 
-**Rationale:** Cleanup after everything works. Store migration must handle users upgrading from v0.3.
+**What people do:** Update SVG viewBox or re-render visible elements on every scroll event.
+**Why it's wrong:** Forces SVG re-layout per frame, kills scroll performance.
+**Do this instead:** Render full SVG once. Let browser handle viewport culling.
 
----
+### Anti-Pattern 3: Per-Row SVG Fragments with Bridge Logic
 
-## Scalability Considerations
+**What people do:** Keep per-row SVGs and bridge edges across row boundaries.
+**Why it's wrong:** This is v0.3-v0.4. Works for Manhattan routing but fails for bezier curves (seams, inconsistent curvature).
+**Do this instead:** Single SVG with continuous paths.
 
-| Concern | 200 commits | 2000 commits | 10000+ commits |
-|---------|-------------|--------------|-----------------|
-| Path computation time | <0.5ms | <2ms | <10ms |
-| SVG path data memory | ~10KB | ~100KB | ~500KB |
-| DOM nodes (visible) | ~40 rows * ~20 paths = 800 | Same (virtual scroll) | Same (virtual scroll) |
-| viewBox clip cost | Negligible | Negligible | Negligible |
-| Incremental load-more | Recompute all | Recompute all | Consider incremental append |
+### Anti-Pattern 4: Pixel Coordinates in Rust
 
-At 10k+ commits, if full recomputation on `displayItems` change becomes noticeable, implement incremental path computation: keep existing paths, only compute paths for newly loaded commits, and extend existing rail paths. This is an optimization to defer until profiling shows it is needed.
+**What people do:** Compute SVG pixel coordinates in Rust to skip TS transformation.
+**Why it's wrong:** Couples backend to frontend dimensions. Changes require Rust rebuild.
+**Do this instead:** Rust outputs integer lane indices. TS converts to pixels.
 
----
+## Integration Points
+
+### Integration Point 1: SVG Injection into Virtual List
+
+**Challenge:** `@humanspeak/svelte-virtual-list` v0.4.2 doesn't expose a content slot. SVG must become a child of `.virtual-list-content`.
+
+**Approach:** DOM manipulation in Svelte `$effect` after mount:
+
+```typescript
+$effect(() => {
+  if (!wrapperEl || !overlayHost) return;
+  const content = wrapperEl.querySelector('.virtual-list-content');
+  if (content && overlayHost.parentElement !== content) {
+    content.prepend(overlayHost);
+  }
+});
+```
+
+**Robustness:** Coupled to `.virtual-list-content` class name. Mitigated by pinning library version, `id="virtual-list-content"` as fallback, and documenting the coupling.
+
+### Integration Point 2: Total Height Synchronization
+
+All rows are fixed-height (`ROW_HEIGHT`), so `totalHeight = displayItems.length * ROW_HEIGHT`. This matches virtual list's `defaultEstimatedItemHeight={ROW_HEIGHT}`.
+
+### Integration Point 3: Graph Column Width Sync
+
+`graphWidth = graphData.maxLanes * LANE_WIDTH`. SVG positioned at graph column's x-offset. CommitRow spacer div at same width. Both derived from same `maxLanes`.
+
+### Integration Point 4: Ref Column Migration
+
+Ref pills become SVG `<rect>` + `<text>` elements positioned left of graph dots in the overlay. The HTML "ref" column and connector line in CommitRow are removed.
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| Rust ↔ CommitGraph | Tauri IPC (`safeInvoke`) | **Unchanged** |
+| CommitGraph ↔ Transformation | Direct function call | `buildGraphData()` in `$derived.by()` |
+| CommitGraph ↔ GraphOverlay | Svelte context | `setContext('graphOverlay', ...)` |
+| GraphOverlay ↔ CommitRow | None | Independent siblings |
+| GraphOverlay ↔ CommitGraph | Custom events | SVG pill/dot interactions dispatch to parent |
+
+## Suggested Build Order
+
+### Phase 1: Types & Constants (no dependencies)
+1. Define types in `graph-overlay-types.ts`
+2. Add constants to `graph-constants.ts`
+
+### Phase 2: Active Lanes Transformation (depends on Phase 1)
+3. Implement `buildGraphData()` in `active-lanes.ts`
+4. Write tests in `active-lanes.test.ts` — port scenarios from `graph-svg-data.test.ts`
+
+### Phase 3: Path Builder (depends on Phase 1, parallel with Phase 2)
+5. Implement bezier path builder in `graph-overlay-paths.ts`
+6. Write path builder tests
+
+### Phase 4: GraphOverlay Component (depends on Phases 2 & 3)
+7. Build `GraphOverlay.svelte` and `SvgRefPill.svelte`
+8. Test rendering in isolation
+
+### Phase 5: Integration (depends on Phase 4)
+9. Modify `CommitGraph.svelte` — new transformation, overlay injection
+10. Modify `CommitRow.svelte` — remove GraphCell, add spacer
+
+### Phase 6: Interaction Preservation (depends on Phase 5)
+11. Wire SVG click/context-menu to existing handlers
+12. Test: row selection, context menu, ref pill behavior
+
+### Phase 7: Cleanup & Tuning (depends on Phase 6)
+13. Delete `GraphCell.svelte`, `LaneSvg.svelte`, `graph-svg-data.ts`, `graph-svg-data.test.ts`
+14. Tune dimensions and bezier curvature
+
+### Dependency Graph
+
+```
+Phase 1 (types/constants)
+    │
+    ├──► Phase 2 (active-lanes.ts)  ─┐
+    │                                 │
+    ├──► Phase 3 (path builder)  ─────┤ parallel
+    │                                 │
+    └─────────────────────────────────┤
+                                      ▼
+                                Phase 4 (GraphOverlay.svelte)
+                                      │
+                                      ▼
+                                Phase 5 (integration)
+                                      │
+                                      ▼
+                                Phase 6 (interactions)
+                                      │
+                                      ▼
+                                Phase 7 (cleanup)
+```
 
 ## Sources
 
-- **Existing codebase** -- `CommitGraph.svelte`, `CommitRow.svelte`, `LaneSvg.svelte`, `RefPill.svelte`, `graph-constants.ts`, `types.ts`, `graph.rs`, `types.rs` -- all read directly. Confidence: HIGH.
-- **@humanspeak/svelte-virtual-list DOM structure** -- Read from `node_modules/@humanspeak/svelte-virtual-list/dist/SvelteVirtualList.svelte`. Four-layer DOM with `transform: translateY` for item positioning. Confidence: HIGH.
-- **SVG viewBox clipping behavior** -- Standard SVG spec. Browser clips geometry outside viewBox without rendering it. Well-established behavior across all modern WebView engines. Confidence: HIGH.
-- **Canvas measureText API** -- Standard DOM API. Synchronous, does not require DOM insertion. Used for pre-computing text widths. Confidence: HIGH.
-- **SVG pointer-events property** -- Standard SVG/CSS property. `pointer-events: none` on containers with `pointer-events: auto` on children is a well-documented pattern. Confidence: HIGH.
+- Direct codebase analysis: `CommitGraph.svelte` (493 lines), `CommitRow.svelte` (142 lines), `GraphCell.svelte` (86 lines), `graph-svg-data.ts` (178 lines), `graph.rs` (489+ lines), `types.rs` (188 lines), `graph-constants.ts` (6 lines)
+- `@humanspeak/svelte-virtual-list` v0.4.2 source: `SvelteVirtualList.svelte` (1731 lines — DOM structure, CSS, scroll behavior analyzed)
+- MDN SVG Reference: `pointer-events` attribute (HIGH confidence — official docs, 2025-03-18)
+- MDN SVG Reference: `<path>` element (HIGH confidence — official docs)
+- PROJECT.md v0.5 scope definition (authoritative — project docs, 2026-03-13)
 
 ---
-
-*Architecture research for: Trunk v0.4 -- full-height SVG graph rework*
-*Researched: 2026-03-12*
+*Architecture research for: Trunk v0.5 SVG Overlay Graph Integration*
+*Researched: 2026-03-13*

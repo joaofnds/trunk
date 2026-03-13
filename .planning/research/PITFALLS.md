@@ -1,306 +1,506 @@
-# Pitfalls Research
+# Domain Pitfalls
 
-**Domain:** Full-height SVG graph overlay in virtualized commit list (Tauri 2 + Svelte 5 desktop Git GUI)
-**Researched:** 2026-03-12
-**Confidence:** HIGH (based on codebase analysis of CommitGraph/CommitRow/LaneSvg + established SVG/DOM performance knowledge)
+**Domain:** Single SVG overlay graph rendering for virtualized commit list (Tauri 2 + Svelte 5 + Rust Git GUI)
+**Researched:** 2026-03-13
+**Confidence:** HIGH — based on codebase analysis (CommitGraph/CommitRow/GraphCell/graph-svg-data.ts), v0.4 architecture research, project retrospective patterns, and SVG/WebKit performance knowledge
+
+---
+
+## Context: What's Changing in v0.5
+
+v0.4 successfully replaced per-row path **fragments** with continuous **path data** (single `d`-string per edge spanning multiple rows), but kept the **per-row viewBox-clipped SVG rendering model** — each visible row renders its own `<svg>` with `viewBox` clipping into a shared coordinate space.
+
+v0.5 reverses the v0.4 decision to keep per-row SVGs. The milestone explicitly targets:
+- **Single SVG overlay** spanning the full graph height (not per-row fragments)
+- **TypeScript transformation layer** on top of Rust lane algorithm output
+- **Cubic bezier curves** replacing Manhattan routing
+- **Ref pills migrated from HTML to SVG**
+- **Preserving all click/context menu interactions** under the overlay
+
+This reversal of a deliberate v0.4 scoping decision ("Full-height single SVG — out of scope citing DOM explosion at scale") is the single highest-risk aspect of v0.5. The original concern was valid. v0.5 must prove it can be mitigated.
 
 ---
 
 ## Critical Pitfalls
 
+Mistakes that cause rewrites or major issues.
+
 ---
 
-### Pitfall 1: Full-Height SVG DOM Explodes With Large Repositories
+### Pitfall 1: Full-Height SVG DOM Explosion — The Unresolved v0.4 Concern
 
 **What goes wrong:**
-A single SVG element containing one `<path>` per branch lane and one `<path>` per merge/fork edge for all loaded commits creates a massive DOM subtree. With 8 active lanes and frequent merges across 10,000 commits (the current batch-loaded amount), the SVG could contain 50,000+ child elements. Browser layout/paint slows to single-digit FPS, memory usage spikes, and style recalculation blocks the main thread for >16ms per frame.
+A single SVG element spanning the entire graph height contains one `<path>` per edge, one `<path>` per rail, one `<circle>` per commit, and optionally ref pill elements — for ALL loaded commits, not just visible ones. With 10,000 loaded commits, 8 active lanes, and frequent merges, the SVG could contain 20,000-50,000 child elements. WebKit layout/paint degrades, memory grows without bound on `loadMore()`, and style recalculation blocks the main thread.
 
 **Why it happens:**
-The current per-row `LaneSvg.svelte` approach naturally virtualizes: `@humanspeak/svelte-virtual-list` keeps only ~40 rows in the DOM. Each row has a small SVG with 3-10 elements. Switching to a full-height SVG means the SVG itself is NOT virtualized. Developers assume "paths are lightweight" but each `<path>` is a full DOM node with style computation, bounding box calculation, and hit-testing surface. The current paginated loading (`BATCH = 200`, `loadMore()`) compounds this -- every batch appends more paths to the same SVG, and the DOM only grows.
+The per-row viewBox-clipped model naturally virtualizes because `@humanspeak/svelte-virtual-list` keeps only ~40 rows in the DOM. Moving to a single SVG OUTSIDE this virtualization breaks that guarantee. Developers assume "it's just paths" but each `<path>` is a full DOM node with style computation, bounding box calculation, and hit-testing surface. The v0.4 decision explicitly cited this risk.
 
-**How to avoid:**
-1. Do NOT render paths for the entire commit history. The SVG should only contain paths for the visible window plus a buffer (similar to how the virtual list works for HTML rows).
-2. Compute which lane segments and edges intersect the visible viewport (based on `scrollTop` and viewport height) and only emit `<path>` elements for those. This is "SVG virtualization."
-3. Size the SVG to match the virtual list's total content height (so it scrolls naturally), but populate it with only the visible subset of paths.
-4. When `loadMore()` appends commits, do NOT append paths -- recalculate the visible window and render only what's in view.
-5. Use a buffer of 2-3 viewport heights above and below to prevent path pop-in during fast scrolling.
+**Consequences:**
+- Jank increases linearly as `loadMore()` appends batches (200 commits × N batches)
+- Memory usage grows without bound (no commit data is ever freed)
+- DevTools shows SVG with 10,000+ children
+- "Recalculate Style" exceeds 16ms per frame in the SVG subtree
 
-**Warning signs:**
-- DevTools Elements panel shows an SVG with 10,000+ children
-- Jank increases linearly as the user scrolls down and triggers more `loadMore()` calls
-- Memory usage grows without bound as commits load (should plateau at buffer size)
-- Profiler shows "Recalculate Style" or "Layout" taking >16ms in the SVG subtree
+**Prevention:**
+1. **SVG virtualization is mandatory.** The overlay SVG must render only paths/dots for the visible window + a buffer (2-3 viewport heights). This is the "SVG virtualization" approach documented in the v0.4 PITFALLS.md.
+2. Use scroll position to compute visible row range: `startRow = floor(scrollTop / ROW_HEIGHT) - buffer`, `endRow = ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + buffer`.
+3. Cull all path elements outside this range. A bezier curve spanning rows 5-8 is only rendered when at least one of rows 5-8 is in the visible range.
+4. Re-render SVG content on scroll. Path computation is <1ms for ~100 visible elements. The browser does NOT need to traverse 50,000 elements.
+5. The pre-computed `rowEdgeIndex: Map<number, ContinuousEdge[]>` from v0.4 architecture enables O(1) lookup per visible row.
+6. **Hard limit:** SVG child count must stay under 500 regardless of total loaded commits. Profile with `document.querySelector('svg.graph-overlay').childElementCount`.
+
+**Detection:**
+- DevTools Elements panel shows SVG with >500 children
+- Performance profiler shows "Layout" or "Recalculate Style" >16ms in SVG subtree
+- Jank increases after each `loadMore()` call
 
 **Phase to address:**
-Phase 1 (foundation). The SVG container sizing and path virtualization strategy must be decided before any path rendering. Getting this wrong means rewriting the entire overlay approach.
+Phase 1 (foundation). The SVG container setup and virtualization strategy must be the FIRST thing built. Getting this wrong means the entire overlay approach fails — validating the original v0.4 out-of-scope decision.
 
 ---
 
-### Pitfall 2: Scroll Synchronization Drift Between SVG Overlay and HTML Rows
+### Pitfall 2: Scroll Synchronization Between SVG Overlay and Virtual List
 
 **What goes wrong:**
-The SVG overlay and the virtual list's scroll container fall out of sync. Lane lines do not align with their corresponding commit rows. Symptoms: (a) visual offset that grows as you scroll, (b) sub-pixel jitter during fast scroll, (c) snap-to-wrong-position after scroll momentum ends on trackpad.
+The SVG overlay and the virtual list's scroll container fall out of sync. Lane lines don't align with their commit rows. Symptoms: visual offset that grows as you scroll, sub-pixel jitter during fast trackpad flick, snap-to-wrong-position after scroll momentum ends.
 
 **Why it happens:**
-`@humanspeak/svelte-virtual-list` manages its own scroll container. If the SVG is positioned as a separate absolutely-positioned element outside this container, synchronization requires reading `scrollTop` from the list container and applying it to the SVG. Problems:
-- Scroll events fire asynchronously -- by the time the SVG transform updates, the list has already painted at the new position, causing a one-frame lag.
-- The virtual list may use CSS `transform: translateY()` internally to position visible items rather than true scroll offset, creating a mismatch.
-- Sub-pixel rounding differs between CSS transform values and SVG coordinate systems, causing 0.5-1px cumulative drift.
-- `requestAnimationFrame` throttling means the SVG update lags behind the native scroll repaint.
+`@humanspeak/svelte-virtual-list` manages its own scroll container (`.virtual-list-viewport` with `overflow-y: scroll`). The library does NOT expose `scrollTop` as a prop or binding (verified in v0.4 STACK.md research). If the SVG is positioned separately, synchronization requires reading `scrollTop` via DOM access and writing it to the SVG — introducing a one-frame lag because scroll events fire asynchronously.
 
-**How to avoid:**
-1. Place the SVG INSIDE the virtual list's scroll container as a positioned sibling of the row content. This way it scrolls with the same native scrollTop -- zero synchronization code needed.
-2. Set the SVG to `position: absolute; top: 0; left: 0` within the scrollable area, with height equal to total content height (`commits.length * ROW_HEIGHT`). The browser handles sync natively.
-3. If the virtual list library does not expose its scroll container for child injection, wrap both the list and the SVG in a shared scroll container and disable the list's own scrolling.
-4. AVOID any approach that reads `scrollTop` from one element and writes it to another. This always produces visible lag.
+The library's internal DOM structure:
+```
+div.virtual-list-container  (position: relative; overflow: hidden)
+  div.virtual-list-viewport  (overflow-y: scroll; onscroll internal)
+    div.virtual-list-content  (height: {contentHeight}px)
+      div.virtual-list-items  (transform: translateY({transformY}px))
+```
 
-**Warning signs:**
-- Any code that reads `scrollTop` from one element and applies it to another via JS
-- Graph lines misalign with commit dots by 1-2px after fast trackpad scroll
+`transformY` is internal state — not exposed. An overlay SVG cannot know the transform offset without reading DOM.
+
+**Consequences:**
+- Graph lines misalign with commit dots by 1-2px after fast scroll
 - Visible "snap" correction when scroll momentum ends
-- Lines align correctly after a brief delay (one-frame lag)
+- Lines align correctly only after a brief delay (one-frame lag)
+- Dual-scroll containers may produce mismatched inertial scrolling on trackpad
+
+**Prevention:**
+1. **Place the SVG INSIDE the virtual list's scroll container.** This requires either:
+   - Accessing `.virtual-list-viewport` via `querySelector` and injecting the SVG as a child (brittle but functional)
+   - Wrapping both the virtual list and SVG in a shared scroll container, disabling the virtual list's own scrolling (requires understanding library internals)
+   - Using the `debugFunction` callback (provides `startIndex`, `endIndex`) to derive scroll position indirectly
+2. If using an overlay outside the scroll container: use `position: sticky; top: 0` within the scroll container so the SVG scrolls naturally with the list.
+3. **AVOID any approach that reads `scrollTop` from one element and writes it to another via JS.** This always produces visible lag.
+4. If DOM injection is unavoidable, listen for `scroll` events on the viewport element and update `viewBox` in the same microtask (not `requestAnimationFrame`).
+
+**Detection:**
+- Any code that reads `scrollTop` from one element and applies to another
+- Graph lines misalign by 1-2px after fast trackpad scroll
+- Visible "snap" correction when scroll momentum ends
 
 **Phase to address:**
-Phase 1 (foundation). The overlay positioning strategy is the single most important architectural decision.
+Phase 1 (foundation). This is the make-or-break architectural decision. The v0.4 ARCHITECTURE.md rejected the overlay approach specifically because of this risk — v0.5 must prove a working solution before any path rendering begins.
 
 ---
 
-### Pitfall 3: Pointer Events Swallowed by SVG Overlay, Breaking Row Interactions
+### Pitfall 3: Pointer Events Swallowed by SVG Overlay
 
 **What goes wrong:**
-The full-height SVG sits on top of the HTML commit rows in the graph column. Click, hover, and context-menu events on rows stop working because the SVG intercepts them. The current right-click context menu (Copy SHA, Checkout, Cherry-pick, Revert, Reset, etc.) silently breaks. Row hover highlighting disappears. Commit selection on click stops working within the graph column area.
+The single SVG overlay sits on top of the HTML commit rows in the graph column. All click, hover, and context-menu events on rows within the graph area stop working. The existing right-click context menu (Copy SHA, Checkout, Cherry-pick, Revert, Reset) silently breaks. Row hover highlighting disappears. Commit selection on click stops working.
 
 **Why it happens:**
-A positioned SVG element creates its own stacking context. When it overlaps HTML elements, it captures all pointer events by default. The naive fix (`pointer-events: none` on the SVG root) disables ALL SVG interaction -- but the v0.4 spec says commit dots should remain clickable (they are currently clickable via the row's HTML `onclick` handler, but moving them to SVG changes the event target).
+A positioned SVG element creates its own stacking context. When it overlaps HTML elements, it captures all pointer events by default. The entire graph column area is covered by the SVG.
 
-**How to avoid:**
-1. Set `pointer-events: none` on the root `<svg>` element. This makes the entire SVG transparent to clicks by default.
-2. Set `pointer-events: auto` (or `visiblePainted`) ONLY on specific interactive SVG children (commit dots, ref pills if they become SVG elements).
-3. Scope the SVG overlay to cover ONLY the graph column width (`columnWidths.graph` pixels), not the full row width. This limits the conflict zone -- message, author, date, and SHA columns remain unaffected.
-4. Test all existing interactions after adding the overlay: row click (`oncommitselect`), row hover highlight, right-click context menu (`showCommitContextMenu`), WIP row click (`onWipClick`).
-5. Consider keeping the click target on the HTML row and making the SVG entirely non-interactive. The commit dot in SVG is visual-only; the HTML row is the interactive element. This is the simplest correct approach.
+The current interaction chain is:
+1. `CommitRow.svelte` line 48: `onclick={() => onselect?.(commit.oid)}`
+2. `CommitRow.svelte` line 49: `oncontextmenu={(e) => { ... oncontextmenu(e, commit); }}`
+3. `CommitRow.svelte` line 47: `hover:bg-[var(--color-surface)]`
 
-**Warning signs:**
+ALL of these fire on the HTML `<div>` row. The SVG overlay intercepts them before they reach the row.
+
+**Consequences:**
+- Commit rows stop responding to click within graph column area
+- Context menu stops appearing on right-click within graph column area
+- Row hover background disappears in the graph area
+- Selection works only when clicking on message/author/date/SHA columns
+
+**Prevention:**
+1. Set `pointer-events: none` on the SVG root element.
+2. Set `pointer-events: auto` ONLY on interactive SVG children (commit dots if they need direct click handling, ref pills if migrated to SVG).
+3. **Preferred approach:** Keep ALL interactive targets on HTML rows. The SVG is purely visual. The commit dot in SVG is visual-only; the HTML row `<div>` handles all clicks/hover/context-menu.
+4. Mark the SVG as `aria-hidden="true"` — it is a decorative visual representation.
+5. Scope the SVG overlay to cover ONLY the graph column width, not the full row width.
+6. Test every interaction after adding the overlay: row click, row hover, right-click context menu, WIP row click, stash context menu.
+
+**Detection:**
 - Commit rows stop responding to click/hover after SVG overlay is added
-- Context menu stops appearing on right-click within the graph column
-- Row hover background (`hover:bg-[var(--color-surface)]`) disappears in the graph area
-- Selection works only when clicking on message/author/date columns, not the graph area
+- Context menu stops appearing on right-click within graph column
+- Row hover background disappears in graph area
 
 **Phase to address:**
-Phase 1 (foundation), re-verified at every subsequent phase. Every new SVG element must be tested for pointer-event pass-through.
+Phase 1 (foundation), re-verified at every subsequent phase. Every new SVG interactive element must be tested for pointer-event pass-through.
 
 ---
 
-### Pitfall 4: SVG Re-Render Storm on Data Changes
+### Pitfall 4: Cubic Bezier Control Points Produce Ugly Curves at Adjacent Rows
 
 **What goes wrong:**
-When the commit list refreshes (new commit, branch switch, fetch, filesystem watcher fires), the entire SVG re-renders. The current `refresh()` method replaces the entire `commits` array atomically (`commits = response.commits`). For the HTML virtual list this is fine -- only visible rows re-render. But for a full-height SVG, Svelte's reactivity sees every path's `d` attribute as potentially changed. If the data shape changes (new commit inserted at top), EVERY path's Y coordinates shift, triggering a full SVG DOM teardown and rebuild.
+Cubic bezier curves (`C` command) from a child commit to a parent commit look fine when the commits are 5+ rows apart, but produce ugly, kinked, or overly flat curves when commits are adjacent (1-2 rows apart). This is the most common case — most merge/fork edges connect adjacent rows. The graph looks worse than the Manhattan routing it replaced.
 
 **Why it happens:**
-Svelte 5's fine-grained reactivity (`$derived`) will recompute path `d` strings when the underlying commit data changes. Path `d` strings are long (e.g., `M 6 13 V 0` for a simple segment, but `M 6 13 H 30 A 6 6 0 0 1 36 19 V 26` for merge edges). Svelte diffs these string-by-string. When a new commit is inserted at the top, every commit shifts down by `ROW_HEIGHT`, changing every Y coordinate in every path string. Result: 100% of paths are "changed" even though the visual structure is identical -- just shifted.
+The bezier control point offset is typically computed as a percentage of vertical distance:
+```typescript
+const cpOffset = vertDist * 0.4; // 40% tension
+```
+For adjacent rows with `ROW_HEIGHT = 34px` (v0.5 target), `vertDist = 34px` and `cpOffset = 13.6px`. With a cross-column horizontal distance of, say, 3 lanes × 16px = 48px, the control point offset is too small relative to the horizontal distance. The resulting curve is nearly a straight diagonal line with slight wobble — not the smooth waterfall that GitKraken produces.
 
-**How to avoid:**
-1. Use keyed `{#each}` blocks for SVG path elements. Key lane paths by lane identifier (column + color_index combination) so Svelte reuses DOM nodes for lanes that persist across refreshes.
-2. Separate the "what lane exists" data from "where it is positioned." Compute lane identity (which lanes, what colors, what merge connections) separately from lane position (Y coordinates). Only recompute positions when scroll changes; only recompute identity when commit data changes.
-3. For the "new commit at top" case: consider shifting the SVG `viewBox` by `ROW_HEIGHT` instead of recalculating all path coordinates. The paths stay identical; only the viewport moves.
-4. Debounce SVG path recalculation. The filesystem watcher already debounces at 300ms in Rust, but the frontend should also batch updates -- do not recalculate paths on every `refreshSignal` increment within the same rAF frame.
-5. Profile with DevTools Performance panel: if "Scripting" time during refresh exceeds 5ms, the path computation needs optimization (possibly move to Rust and send `d` strings via IPC).
+For same-row or 2-row edges with large horizontal distance (e.g., from column 0 to column 7), the bezier degenerates into a nearly flat line.
 
-**Warning signs:**
-- Visible flicker when creating a commit or switching branches
-- DevTools Performance panel shows long "Scripting" blocks during graph refresh
-- `$derived` computations for path `d` strings taking >5ms
-- Entire SVG disappears and reappears (full teardown/rebuild instead of DOM update)
-- Scroll position jumps after refresh because SVG height changed
+**Consequences:**
+- Merge/fork edges look like kinked diagonals, not smooth curves
+- Visual regression from Manhattan routing which had clean horizontal-then-vertical segments
+- Inconsistent curve aesthetics: smooth for distant commits, ugly for adjacent ones
+- Users perceive the new rendering as "worse" than v0.4
+
+**Prevention:**
+1. **Use different curve strategies for different vertical distances:**
+   - Adjacent rows (1-2 apart): Use a minimum control point offset (e.g., `Math.max(cpOffset, ROW_HEIGHT * 0.7)`) to guarantee curvature
+   - Nearby rows (3-5 apart): Standard 40% tension
+   - Distant rows (6+ apart): Consider clamping cpOffset so curves don't become too extreme
+2. Test with real repositories that have frequent merges at adjacent rows (e.g., repos using squash-merge workflow).
+3. **Tune BEZIER_TENSION per-edge, not globally.** A single tension constant produces good results only for one vertical distance.
+4. Study GitKraken's curve rendering closely — it uses a "waterfall" style where the curve starts vertical, transitions to horizontal at a fixed depth, then goes vertical again. This may be piecewise (vertical + bezier + vertical) not a single cubic bezier.
+5. Build a visual test page with curves at distances 1, 2, 3, 5, 10, 20 rows to verify aesthetics before shipping.
+
+**Detection:**
+- Merge edges between adjacent rows look like kinked diagonals
+- Curves look different quality at different vertical distances
+- Side-by-side comparison with GitKraken shows inferior curve aesthetics
 
 **Phase to address:**
-Phase 2 (branch line paths) for initial implementation. Re-validated when merge/fork edges are added (Phase 3) and when ref pills are added (Phase 4+).
+Phase 2 (bezier path computation). This is a pure TypeScript math problem. Build unit tests for edge cases and create a visual testbed.
 
 ---
 
 ### Pitfall 5: Ref Pills as SVG Elements Lose HTML Layout Capabilities
 
 **What goes wrong:**
-Moving ref pills from HTML to SVG breaks text rendering, overflow handling, and the current hover-expand behavior. The existing ref pill system in `CommitRow.svelte` is deeply HTML-dependent:
-- First pill + "+N" overflow badge with `overflow: hidden` on the container
-- Hover-to-expand overlay with `clip-path` CSS animation (`inset(0 100% 100% 0)` to `inset(0 0% 0% 0)`)
-- `bind:clientWidth={refContainerWidth}` for connector line positioning
+Moving ref pills from HTML to SVG breaks text rendering, overflow handling, and the current hover-expand behavior. The existing ref pill system is deeply HTML-dependent:
+
+From `CommitRow.svelte` lines 60-101:
+- `overflow: hidden` on container with `bind:clientWidth={refContainerWidth}` (line 67)
+- First pill + "+N" overflow badge (line 72-82)
+- Hover-to-expand overlay with `clip-path` CSS animation: `inset(0 100% 100% 0)` → `inset(0 0% 0% 0)` (line 89)
+- `pointer-events: none/auto` toggle on expand (line 92)
 - Tailwind classes for sizing, colors, and hover states
 
-SVG `<text>` has no `text-overflow: ellipsis`, no `overflow: hidden`, no CSS flexbox, no `clientWidth` binding.
+SVG `<text>` has NO:
+- `text-overflow: ellipsis`
+- `overflow: hidden`
+- CSS flexbox
+- `clientWidth` binding (must use `getBBox()` which triggers synchronous layout)
+- CSS `clip-path` animation on nested content
 
 **Why it happens:**
-SVG text rendering is fundamentally different from HTML. SVG has no box model -- `<text>` elements have no width, no padding, no overflow behavior. Developers discover this after attempting the migration, when all the edge cases surface: multi-ref rows, long branch names, hover-expand behavior, and per-pill color backgrounds.
+SVG text rendering is fundamentally different from HTML. SVG has no box model — `<text>` elements have no width, no padding, no overflow behavior. Developers discover this AFTER attempting the migration, when all edge cases surface.
 
-**How to avoid:**
-1. Keep ref pills as HTML elements. The ref column is already a separate column from the graph column in the current 6-column layout. Ref pills do not NEED to be inside the SVG.
-2. Only the connector line (from ref pill to commit dot) needs to cross the column boundary. This connector can be an SVG element within the graph SVG, or a simple CSS pseudo-element / absolutely-positioned `<div>`.
-3. If the project spec requires ref pills to be SVG (it does say "Ref pills: SVG elements"), use `<foreignObject>` to embed the existing HTML pill markup inside the SVG. But test thoroughly: `foreignObject` has quirks with `overflow: visible`, nested stacking contexts, and inconsistent behavior in WebKit (Tauri's macOS WebView).
-4. If going full SVG for pills, accept that the hover-expand behavior needs a completely different implementation -- likely a separate HTML tooltip/popover triggered by SVG mouse events rather than CSS-only animation.
-
-**Warning signs:**
+**Consequences:**
 - Ref pill text cut off without ellipsis indicator
 - "+N" hover expansion stops working
 - Ref pills render at wrong size at different DPI/zoom levels
-- `bind:clientWidth` equivalent does not exist for SVG elements (must use `getBBox()` which triggers synchronous layout)
+- `getBBox()` calls trigger synchronous layout thrashing
 - Lane-colored backgrounds look different between SVG `<rect>` fill and CSS `background`
+- `refHovered` hover state machinery breaks (no equivalent in SVG for `onmouseenter`/`onmouseleave` on complex nested structures)
+
+**Prevention:**
+1. **Keep ref pills as HTML elements.** The ref column is already a separate column from the graph column in the current 6-column layout. Ref pills do NOT need to be inside the SVG.
+2. Only the connector line (from ref pill to commit dot) needs to cross the column boundary. This can be a `<line>` in the SVG overlay or a CSS positioned `<div>` (as it currently is — `CommitRow.svelte` line 55-57).
+3. If the project spec REQUIRES SVG ref pills (PROJECT.md says "Ref pills as SVG elements"), use `<foreignObject>` to embed existing HTML markup inside SVG. But test thoroughly: `foreignObject` has quirks with `overflow: visible`, nested stacking contexts, and inconsistent behavior in WebKit (Tauri's macOS WebView via WKWebView).
+4. If going full SVG for pills, accept that hover-expand needs a completely different implementation — likely a separate HTML tooltip/popover triggered by SVG mouse events.
+5. Use Canvas `measureText()` for pill width measurement (synchronous, sub-ms, no DOM insertion) rather than `getBBox()`.
+
+**Detection:**
+- Ref pill text cut off without ellipsis
+- "+N" hover expansion stops working
+- `getBBox()` calls appear in hot paths
+- Hover behavior breaks on ref pills
 
 **Phase to address:**
-This should be one of the LAST phases. Get branch lines, merge edges, and commit dots working first. Ref pills are the highest-risk SVG element due to the HTML feature dependencies.
+This must be one of the LAST phases. Get bezier curves, overlay positioning, and interaction working first. Ref pills are the highest-risk SVG element due to HTML feature dependencies. Consider deferring to v0.6 if the migration proves too complex.
 
 ---
 
-### Pitfall 6: Pagination Boundary Seams -- Path Segments Disconnect at Batch Edges
+### Pitfall 6: TypeScript Transformation Layer Creates a Data Synchronization Bug Surface
 
 **What goes wrong:**
-When `loadMore()` fetches the next batch of 200 commits, new path segments must connect seamlessly to existing paths. If the path generation treats each batch independently, there is a visible gap or misalignment at the batch boundary (commit 200-201, 400-401, etc.). Lane lines appear to end abruptly and restart.
+The new TypeScript "Active Lanes" transformation layer sits between Rust output (`RawCommit[]`) and SVG rendering (`GraphData` with grid coordinates). When Rust data changes (commit, branch switch, fetch, loadMore), the TS layer must recompute in sync. If the TS layer's output gets stale, desynchronized, or partially updated, the SVG shows stale graph data overlaid on fresh commit rows.
 
 **Why it happens:**
-The current per-row `LaneSvg.svelte` avoids this because each row renders its own self-contained SVG -- edges connect to row boundaries (y=0 at top, y=ROW_HEIGHT at bottom). With full-height paths, a lane line that spans commits 150-250 must be a single continuous path, but commit 150 was in batch 1 and commit 250 is in batch 2. If paths are generated per-batch, the lane line becomes two separate `<path>` elements with a visible seam.
+The current architecture is simple: Rust → `GraphCommit[]` → `computeGraphSvgData()` → per-row SVG. The TS transformation is a single function called via `$derived.by()` (CommitGraph.svelte line 267-269). But v0.5 adds a new intermediate layer with potentially more state:
+- Grid coordinate mapping (x = swimlane, y = row index) 
+- Edge routing decisions (where bezier control points go)
+- Active lane tracking (which columns have continuous lines)
+- Row-edge index (precomputed visibility lookup)
 
-**How to avoid:**
-1. Generate paths from the full `commits` array (all loaded batches combined), not per-batch. The `commits` array in `CommitGraph.svelte` is already a single concatenated array (`commits.push(...response.commits)`).
-2. When a new batch loads, regenerate affected paths that span the batch boundary. This means the "last few" paths from the previous batch need to extend into the new batch's territory.
-3. Since the SVG is virtualized (Pitfall 1), only paths intersecting the visible window are rendered anyway. The batch boundary is irrelevant to what's in the DOM -- it only matters for path data computation, which should operate on the full commit list.
-4. For lanes that continue beyond the last loaded commit (the lane goes deeper into history but those commits haven't loaded yet), extend the lane path to the bottom edge of the SVG. When more commits load, the path will naturally extend further.
+If any of these get out of sync with `displayItems` or if `$derived.by()` doesn't trigger on the right dependency, the overlay renders stale data.
 
-**Warning signs:**
+**Consequences:**
+- Graph lines point to wrong commit rows after refresh
+- Stale paths visible for one frame during branch switch
+- `loadMore()` appends commits but graph lines don't extend
+- WIP row insertion shifts all rows down but graph lines don't shift
+
+**Prevention:**
+1. **Keep the transformation as a single pure function** — `computeGraphOverlay(displayItems, maxColumns) → GraphOverlayData`. No intermediate mutable state. Same pattern as current `computeGraphSvgData()`.
+2. Wire via `$derived.by()` dependent on `displayItems` (which already wraps WIP and stash sentinels). This is the established project pattern.
+3. Do NOT cache intermediate results across refreshes. The current approach recomputes from scratch on every data change — this is correct for consistency, and the computation is <10ms for 10k commits.
+4. Add a sequence counter (existing `loadSeq` pattern) to guard against stale async if any part of the transformation becomes async.
+5. Test: create commit → graph should update atomically. Branch switch → no stale lines visible. `loadMore()` → new paths appear seamlessly.
+
+**Detection:**
+- Graph lines point to wrong rows after `refresh()` 
+- One-frame flash of stale graph data during branch switch
+- `loadMore()` shows batch boundary gaps
+
+**Phase to address:**
+Phase 1 (data layer). Use the same reactive pattern as v0.4. The transformation layer should be stateless and deterministic.
+
+---
+
+## Moderate Pitfalls
+
+---
+
+### Pitfall 7: Per-Row SVG Path Duplication When Using ViewBox Clipping
+
+**What goes wrong:**
+If the implementation uses per-row `<svg>` with viewBox clipping (the v0.4 approach), each row renders ALL paths that intersect its Y band. A rail spanning 100 rows creates 100 identical `<path>` DOM nodes — one per visible row SVG. With 40 visible rows and 8 rails, that's 320 `<path>` elements that are identical copies. This is the OPPOSITE of the "single path" goal.
+
+**Why it happens:**
+The viewBox-clipped approach works visually but doesn't reduce DOM element count for continuous vertical rails. Each row's SVG must include every path passing through it. Rails pass through every row they span, so the path is duplicated in every row.
+
+**Prevention:**
+1. If staying with per-row viewBox clipping (hybrid approach from v0.4 ARCHITECTURE.md), accept the duplication as a tradeoff for simpler scroll sync.
+2. If moving to a true single SVG overlay (v0.5 target), this pitfall is eliminated — each rail is one `<path>` element.
+3. With the true overlay approach, use SVG virtualization (Pitfall 1) to keep element count bounded.
+4. **Decision needed early:** Is v0.5 a true single SVG overlay or an enhanced viewBox-clipped model? PROJECT.md says "single SVG overlay" — commit to that and address Pitfalls 1-3 directly.
+
+**Detection:**
+- DevTools shows identical `<path>` elements duplicated across rows
+- Total path count = (visible rows) × (active rails + passing edges)
+
+**Phase to address:**
+Phase 1 (architecture decision). Resolve this before building anything.
+
+---
+
+### Pitfall 8: Bezier Path `d` String Recomputation Causes GC Pressure
+
+**What goes wrong:**
+Every scroll event triggers SVG virtualization — culling paths outside the visible range and adding paths entering the visible range. If path `d` strings are recomputed on every scroll rather than cached, the constant string allocation and garbage collection causes GC pauses visible as micro-jank during smooth scrolling.
+
+**Why it happens:**
+SVG virtualization means the set of rendered paths changes on scroll. If the implementation regenerates `d` strings from grid coordinates on each scroll frame, it allocates new strings every frame. For 100 visible paths with 50-character `d` strings, that's 5KB of string allocation per frame × 60fps = 300KB/s of allocation → frequent minor GC pauses.
+
+**Prevention:**
+1. **Pre-compute all `d` strings once on data change, not on scroll.** Store them in the `GraphOverlayData` structure.
+2. On scroll, only change WHICH pre-computed paths are included in the SVG — don't recompute the paths themselves.
+3. Separate data-driven computation (path shapes) from scroll-driven computation (which paths to show):
+   - Data change → recompute `GraphOverlayData` (all edges, all dots, all `d` strings)
+   - Scroll change → filter `GraphOverlayData` by visible row range
+4. Use the `rowEdgeIndex: Map<number, ContinuousEdge[]>` for O(1) visibility lookup.
+5. Profile with DevTools → Performance → check for GC pauses during scroll.
+
+**Detection:**
+- Micro-jank during smooth scrolling that correlates with GC pauses in profiler
+- "Scripting" time per frame >5ms during scroll
+- High allocation rate visible in Memory timeline
+
+**Phase to address:**
+Phase 2 (path computation). Establish the compute-once-filter-on-scroll pattern from the start.
+
+---
+
+### Pitfall 9: Manhattan-to-Bezier Migration Breaks Edge Case Routing
+
+**What goes wrong:**
+The current Manhattan routing (`H + A + V` path segments) handles specific edge types differently: `MergeLeft`, `MergeRight`, `ForkLeft`, `ForkRight`. Each has different sweep directions for the arc. Replacing these with cubic beziers eliminates the edge-type-specific routing, but bezier curves don't inherently respect lane boundaries — a curve from column 2 to column 5 may visually pass through columns 3 and 4, potentially overlapping with other branch lines.
+
+**Why it happens:**
+Manhattan routing stays in its own column horizontally, then turns. Bezier curves interpolate smoothly and may bulge into neighboring columns. With 12-16px lane widths, a bezier from column 0 to column 4 may cross through columns 1, 2, and 3, visually overlapping with rail lines in those columns.
+
+**Prevention:**
+1. **Accept controlled overlap** — GitKraken's bezier curves also cross columns, and it looks fine because the curves use distinct colors per branch.
+2. Ensure z-ordering is correct: rails (background) → edges (foreground) → dots (topmost). Use `<g>` groups.
+3. Consider a "waterfall" approach where the curve goes vertical for a portion, then transitions. This is `M → V (small) → C → V (small)` rather than a single `C` command.
+4. Test with repos that have many parallel branches (>5 columns) and frequent cross-column merges. The visual density may reveal overlap issues not visible with 2-3 branches.
+5. If overlap is visually problematic, add a slightly larger `stroke-width` or a `stroke` background (e.g., a slightly wider background-colored stroke behind the colored one) to create visual separation.
+
+**Detection:**
+- Bezier curves visually cross through unrelated branch rail lines
+- Graph becomes hard to read with 5+ parallel branches
+- Colors blend where curves overlap rails
+
+**Phase to address:**
+Phase 2 (bezier computation). Requires visual testing with complex repos.
+
+---
+
+### Pitfall 10: WebKit SVG Performance Differs From Development Testing
+
+**What goes wrong:**
+The graph scrolls smoothly during development in `cargo tauri dev` but jank appears in the production Tauri app. On macOS, Tauri 2 uses WKWebView (WebKit), not Chromium. WebKit has different SVG rendering characteristics — particularly for large numbers of path elements and complex `d` strings with bezier commands.
+
+**Why it happens:**
+Developers test in `cargo tauri dev` which uses the system WebView but under dev-mode conditions. Production builds may behave differently. WebKit's SVG rendering pipeline has historically been less optimized than Blink's for programmatically-generated SVGs with many small elements.
+
+Additionally, cubic bezier paths (`C` command) are more computationally expensive to rasterize than Manhattan paths (`H`, `V`, `A` with simple geometry). Each bezier requires curve subdivision and anti-aliasing per frame.
+
+**Prevention:**
+1. Test in production build (`cargo tauri build`) at every phase milestone.
+2. Profile with Safari's Web Inspector: Develop → Device → Trunk → Timelines.
+3. Avoid SVG features known to perform poorly in WebKit: filters, masks, clip-paths on many elements, complex gradients.
+4. Prefer simple stroked `<path>` and `<circle>` — these are fast in all engines.
+5. Set performance budget: graph rendering must complete in <8ms per frame.
+6. If WebKit bezier performance is problematic, consider reducing path precision (round coordinates to integers, avoid sub-pixel values).
+
+**Detection:**
+- Smooth in development, janky in production build
+- Frame drops only visible in production
+- "Paint" >8ms for SVG layer in Safari Web Inspector
+
+**Phase to address:**
+All phases. Test in production build at each milestone.
+
+---
+
+### Pitfall 11: Pagination Boundary Seams Persist With Bezier Curves
+
+**What goes wrong:**
+When `loadMore()` fetches the next batch of 200 commits, bezier curves spanning the batch boundary must connect seamlessly. If the transformation layer treats each batch independently, curves disconnect at commit 200/201, 400/401, etc.
+
+**Why it happens:**
+The current `computeGraphSvgData()` operates on the full `displayItems` array (all loaded batches concatenated). The same approach should work for v0.5. But with bezier curves, a subtle issue arises: when `loadMore()` appends new commits, every existing edge's bezier may need new control point calculations if the curve math depends on the total number of rows. Additionally, `maxColumns` may change when new commits reveal previously unseen branches.
+
+**Prevention:**
+1. Always generate paths from the full `commits` array (all loaded batches combined), not per-batch. The current pattern already does this (`CommitGraph.svelte` line 283: `commits.push(...response.commits)`).
+2. When `loadMore()` fires, recompute ALL paths. Don't try incremental append until profiling shows full recomputation exceeds 16ms.
+3. For active rails that continue beyond the last loaded commit, extend them to `displayItems.length * ROW_HEIGHT` (the current SVG coordinate space bottom). They'll naturally extend when more commits load.
+4. Test by slowly scrolling past batch boundaries (commit 200, 400, 600). Check for visible gaps, color changes, or curve discontinuities.
+
+**Detection:**
 - Visible horizontal gap in lane lines at every 200th commit
-- Lane colors change at batch boundaries (path element gets wrong `color_index`)
-- Merge edges that cross batch boundaries render as two disconnected segments
-- Scrolling slowly past a batch boundary shows paths "popping in" instead of being already connected
+- Lane colors change at batch boundaries
+- Bezier curves appear as two disconnected segments at batch boundary
 
 **Phase to address:**
-Phase 2 (branch line paths). Must be verified when merge/fork edges span batch boundaries (Phase 3).
+Phase 2 (path computation). Verify with pagination in Phase 3 (integration).
 
 ---
 
-### Pitfall 7: Accessibility Regression From Moving Interactive Elements Into SVG
+## Minor Pitfalls
+
+---
+
+### Pitfall 12: Svelte 5 `{#each}` Keying Causes Full SVG DOM Rebuild
 
 **What goes wrong:**
-The current HTML commit rows are naturally part of the document flow -- screen readers can traverse them, keyboard focus works on the `<div>` elements, and the existing `onclick` and `oncontextmenu` handlers are standard DOM events. Moving commit dots and potentially ref pills into SVG breaks keyboard navigation, focus management, and screen reader announcements. SVG elements are not in the tab order by default and have limited ARIA support across browsers.
+Using array index as key in `{#each}` for SVG path elements causes Svelte to destroy and recreate all SVG DOM nodes when commits shift (new commit at top, `loadMore()` changes indices). Full rebuild causes visible flicker.
 
-**Why it happens:**
-SVG accessibility is an afterthought. Developers verify visual correctness and click behavior but forget that SVG elements need explicit `role`, `aria-label`, and `tabindex` attributes. Focus indicators (outlines) do not render correctly on SVG circles. Screen readers may skip SVG content entirely.
+**Prevention:**
+- Key SVG elements by stable identity: edges by `${childOid}->${parentOid}`, dots by commit OID, rails by column+color index.
+- Use `{#each edges as edge (edge.id)}` pattern.
+- Never key by array index for data that can shift.
 
-**How to avoid:**
-1. Keep all interactive targets on HTML elements. The commit row click handler (`onclick={() => onselect?.(commit.oid)}`) should remain on the HTML `<div>`, not move to the SVG commit dot.
-2. Mark the SVG graph as decorative: `<svg role="img" aria-hidden="true">`. Screen reader users get commit info from the HTML row text, not the visual graph.
-3. Do NOT add `tabindex` to SVG elements. Keyboard navigation should operate on the HTML rows (the existing `<div>` structure).
-4. The SVG graph is a visual representation of data that is already accessible via the commit message, author, date, and SHA columns. It does not need independent accessibility.
-
-**Warning signs:**
-- Tab key stops moving through commit list after SVG changes
-- Screen reader announces "image" or nothing for the graph area instead of commit data
-- Focus outline appears on SVG circles instead of HTML rows
-
-**Phase to address:**
-Phase 1 (foundation). Decide the accessibility model upfront: SVG is decorative, HTML rows are interactive. Verify with keyboard-only navigation at each subsequent phase.
+**Phase to address:** Phase 3 (SVG rendering).
 
 ---
 
-### Pitfall 8: WebKit SVG Performance Differs From Chrome/Blink
+### Pitfall 13: Column Resize Desynchronizes SVG Width
 
 **What goes wrong:**
-Development happens in `cargo tauri dev` which may use a different rendering engine than the production Tauri app. On macOS, Tauri 2 uses WKWebView (WebKit), not Chromium. WebKit has historically had different (often worse) SVG rendering performance characteristics -- particularly for large numbers of path elements, complex path `d` strings, and SVG filter effects. A graph that scrolls smoothly in Chrome DevTools may jank in the actual Tauri app.
+When the user drags the graph column resize handle (`startColumnResize('graph', e)` — CommitGraph.svelte line 56), the SVG overlay width must update reactively. If the SVG width is calculated once and not bound to `columnWidths.graph`, the SVG extends beyond or falls short of the column boundary after resize.
+
+**Prevention:**
+- Bind SVG width reactively to `columnWidths.graph` or `maxColumns * LANE_WIDTH`.
+- The current pattern already handles this (GraphCell.svelte line 17: `const svgWidth = $derived(...)`). The overlay approach must replicate this reactivity.
+- Throttle path x-coordinate recalculation during resize drag — recalculate on mouseUp, not every mouseMove.
+
+**Phase to address:** Phase 1 (foundation). Verify during integration.
+
+---
+
+### Pitfall 14: Connector Line Coordinate Mismatch Between HTML Ref Column and SVG Graph Column
+
+**What goes wrong:**
+The ref pill connector line (CommitRow.svelte line 55-57) currently uses HTML absolute positioning: it spans from `refContainerWidth` in the ref column to `commit.column * LANE_WIDTH + LANE_WIDTH / 2` in the graph column. If ref pills stay as HTML but the graph rendering moves to a single SVG overlay, the connector line endpoint coordinates are in different coordinate spaces — HTML pixels for the start, SVG user units for the end.
+
+**Prevention:**
+- If ref pills stay HTML: the connector line should ALSO stay HTML (current approach works fine).
+- If ref pills move to SVG: the connector becomes an SVG `<line>` or `<path>` element within the overlay, with both endpoints in SVG coordinates.
+- Do NOT try to draw an SVG line that terminates at an HTML element's position — coordinate translation between HTML and SVG is fragile, especially with column resizing.
+
+**Phase to address:** Ref pill migration phase (one of the last phases).
+
+---
+
+### Pitfall 15: `$derived.by()` Recomputation Scope Too Broad
+
+**What goes wrong:**
+The `graphOverlayData = $derived.by(() => computeGraphOverlay(displayItems, maxColumns))` recomputation triggers on ANY change to `displayItems` — including hover state changes, selection changes, or ref pill expansion. If any reactive state touched by `displayItems` changes frequently, path recomputation fires unnecessarily.
 
 **Why it happens:**
-Developers test in the browser (often Chrome) during development, or in `cargo tauri dev` which uses the system WebView but under dev-mode conditions (V8 JIT not fully optimized, dev tools attached). Production performance on macOS WebKit can differ substantially, especially for SVG-heavy content.
+`displayItems` is currently a `$derived.by()` that depends on `commits`, `wipCount`, and `wipMessage` (CommitGraph.svelte line 254-265). If future phases add reactive state (e.g., selected commit, hovered branch) that feeds into `displayItems` or is accessed in the same derivation scope, the path computation triggers on interaction events.
 
-**How to avoid:**
-1. Test frequently in a production build (`cargo tauri build`), not just `cargo tauri dev`.
-2. Profile in WebKit specifically. On macOS, use Safari's Web Inspector to profile the Tauri WebView (Develop > Device > Trunk).
-3. Avoid SVG features known to perform poorly in WebKit: filters (`feGaussianBlur`, `feDropShadow`), masks, clip-paths on many elements, complex gradients.
-4. Prefer simple stroked `<path>` and `<circle>` elements -- these are fast in all engines.
-5. Set a performance budget: graph rendering (paths in viewport) must complete in <8ms (half a frame at 60fps) to leave room for HTML row rendering.
+**Prevention:**
+- Keep `displayItems` derivation minimal: only `commits`, `wipCount`, `wipMessage`.
+- DO NOT add selection/hover state to the same derivation chain.
+- Selection highlighting and hover effects should be handled via CSS classes on HTML rows or SVG element attributes, not by recomputing path data.
+- If partial recomputation is needed (e.g., highlighting one edge), use a separate reactive variable for highlight state, not a full path recompute.
 
-**Warning signs:**
-- Smooth in browser, janky in Tauri app
-- "Slow Script" warnings in WebKit Web Inspector
-- Frame drops only on production builds, not dev builds
-- Profiler shows "Paint" taking >8ms for the SVG layer alone
-
-**Phase to address:**
-All phases. Test in production build at each milestone, not just at the end.
+**Phase to address:** Phase 1 (data layer). Establish the reactivity boundaries early.
 
 ---
 
-## Technical Debt Patterns
+## Phase-Specific Warnings
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| Rendering all paths without SVG virtualization | Simpler code, no windowing logic | Unusable on repos >5k commits; DOM grows without bound | Never for production. OK for proof-of-concept with <500 commits only |
-| Syncing scroll via JS scroll event listener | Works without modifying virtual list internals | One-frame lag jitter, additional code to maintain | Only if SVG cannot be placed inside the scroll container |
-| Using `foreignObject` for ref pills | Reuses existing HTML pill markup entirely | Cross-engine quirks, stacking context issues, extra complexity | Acceptable as v0.4 approach if full SVG pills are deferred |
-| One giant `<path>` per lane for entire loaded history | Simple path generation, single DOM node per lane | Cannot virtualize; path `d` string grows unbounded; recomputation cost grows linearly | Acceptable for repos <2k commits if path recomputation is memoized |
-| Hardcoding SVG dimensions instead of deriving from data | Quick to implement | Breaks on column resize, different DPI, and when `maxColumns` changes | Never -- derive from `maxColumns * LANE_WIDTH` and total content height |
-| Computing path `d` strings in Svelte `$derived` | Reactive, auto-updates on data change | String allocation churn on every scroll position change; GC pressure | Acceptable if paths are memoized and only recomputed on data change (not scroll) |
-
----
-
-## Integration Gotchas
-
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| `@humanspeak/svelte-virtual-list` + SVG overlay | Placing SVG as a sibling outside the virtual list component | Place SVG inside the virtual list's scroll container (may require forking/wrapping the library), or wrap both in a shared scroll parent |
-| Svelte 5 `$derived` + SVG path `d` attributes | Using `$derived` for long path strings on scroll change triggers excessive string diffing | Compute path strings only on data change (commit array mutation), not on scroll. Use memoization keyed by commit data identity |
-| Svelte 5 `{#each}` keying + SVG elements | Using array index as key causes full DOM rebuild when commits shift | Key SVG lane elements by lane identity (column + color_index), not array position |
-| Tauri WKWebView + large SVG | Assuming WebView SVG perf matches Chrome | Test on production build; profile with Safari Web Inspector; WebKit is stricter about layout thrashing |
-| Paginated `loadMore()` + continuous paths | Path generation treats batches independently, creating seams | Generate paths from full `commits[]` array; virtualize rendering separately from data |
-| Column resize (`startColumnResize`) + SVG width | SVG width not updating when user drags the graph column resize handle | Bind SVG width reactively to `columnWidths.graph`; recalculate path X coordinates on resize |
-| WIP sentinel (`__wip__`) + SVG paths | WIP row gets standard straight-edge path instead of dashed connector | Handle `__wip__` explicitly in path generation: dashed stroke, start from WIP circle to HEAD position |
-| Stash sentinel (`__stash_N__`) + SVG dots | Stash rows get round dots instead of square dots | Handle stash sentinels in the dot rendering layer: use `<rect>` instead of `<circle>` |
-| `displayItems` reactive array + SVG | SVG path computation based on `displayItems` (includes WIP) but data refresh only replaces `commits` | Either recompute paths from `displayItems` (includes WIP row) or handle WIP position separately from main path data |
-
----
-
-## Performance Traps
-
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Unvirtualized SVG with all loaded paths | Jank increases linearly as more commits load via `loadMore()` | Render only paths intersecting visible viewport + 2-screen buffer | >2,000 loaded commits (~500 visible DOM paths is the safe limit) |
-| SVG style recalculation cascade | "Recalculate Style" >16ms in profiler on scroll | Use CSS classes on SVG elements (not inline `style`); minimize total SVG child count | >500 SVG elements with inline styles |
-| Reactive path recomputation on every scroll frame | `$derived` path data fires on scroll position change | Separate scroll-driven rendering (which paths to show) from data-driven computation (path shapes). Only recompute "which paths" on scroll; only recompute "path shapes" on data change | Continuous scrolling on any repo |
-| `getBBox()` calls for interactive hit-testing | Synchronous layout thrashing (forced reflow) on every mouse move | Cache bounding boxes; recompute only on data change, never during event handlers | >100 interactive SVG elements |
-| SVG filter effects on lanes | GPU memory spike, paint time explosion per frame | Do not use SVG filters. Simple stroke colors are sufficient (existing palette works well) | Any scale -- filters are expensive even with 10 elements |
-| Path `d` string GC churn | High GC pause frequency in profiler | Pre-allocate path string builders; cache computed `d` strings keyed by lane identity; reuse when unchanged | >50 paths recomputed per frame |
-| Full `commits[]` array scan for path generation | O(n) per frame where n = total loaded commits | Only scan commits in the visible window for rendering; precompute lane index per commit for O(1) lookup | >5,000 loaded commits |
-
----
-
-## UX Pitfalls
-
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Lane lines disappear during very fast scroll | User loses branch context during navigation | Keep path buffer large enough (3x viewport) to prevent pop-in; accept that extreme scroll speeds may show brief gaps |
-| Connector lines (ref pill to dot) misalign during column resize | Visual glitch breaks trust in the tool | Recalculate connector endpoints reactively when `columnWidths` changes; the current connector line in `CommitRow.svelte` (line 54) already does this for HTML |
-| Hover state on SVG commit dot conflicts with HTML row hover | Confusing double-highlight: row background changes AND dot brightens | Keep hover behavior on the HTML row only; SVG dots do not respond to hover |
-| Graph column resize causes all paths to redraw with visible flash | Jarring visual during interactive resize | Throttle path recalculation during resize drag (recompute on mouseUp, not every mouseMove) |
-| Merge edge paths cross behind unrelated lane lines | Visual clutter makes graph unreadable | Maintain the existing three-layer z-order (rails -> edges -> dots) using SVG `<g>` groups within the SVG, preserving the `LaneSvg.svelte` rendering order |
-| Visual regression: graph looks different after rework | Users notice any change; spec says "visuals stay identical" | Pixel-compare screenshots of the current graph vs. the new graph on the same repo at the same scroll position |
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| Overlay container setup | Scroll sync drift (P2), pointer events (P3) | Prove scroll alignment + click pass-through before rendering any paths |
+| TS transformation layer | Data sync bugs (P6), stale derivation (P15) | Single pure function via `$derived.by()`, no intermediate mutable state |
+| Bezier path computation | Ugly adjacent-row curves (P4), lane overlap (P9) | Per-distance tension tuning, visual testbed with real repos |
+| SVG virtualization | DOM explosion (P1), GC pressure (P8) | Compute-once + filter-on-scroll, hard 500-element limit |
+| Ref pill migration | HTML capability loss (P5) | Defer to last phase, HTML fallback ready, `foreignObject` escape hatch |
+| Interaction preservation | Pointer events swallowed (P3) | `pointer-events: none` on SVG root, all interactive targets on HTML rows |
+| Dimension tuning | Bezier aesthetics (P4), WebKit perf (P10) | Test in production build, visual comparison with GitKraken |
+| Pagination integration | Batch boundary seams (P11), path recomputation scope (P15) | Full-array recomputation, slow-scroll test past batch boundaries |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Scroll sync:** Verify alignment at extreme scroll speeds (trackpad flick), not just gentle mouse wheel scrolling
-- [ ] **Sub-pixel alignment:** On Retina displays (2x DPI), verify SVG paths render crisply -- no fuzzy 0.5px misalignment between SVG coordinates and pixel grid
-- [ ] **Bottom boundary:** When scrolled to the very last commit, lane lines end at the last commit's dot, not past it into empty space
-- [ ] **Top boundary:** When WIP row is present, the dashed connector from WIP circle to HEAD dot renders correctly across the SVG/row boundary
-- [ ] **Column resize:** Graph SVG width updates when user drags the graph column resize handle (`startColumnResize('graph', e)`)
-- [ ] **Column hide/show:** Hiding the graph column (`columnVisibility.graph = false`) properly hides the SVG overlay; showing it restores without path flash
-- [ ] **Pagination boundary:** When `loadMore()` appends 200 commits, paths connect seamlessly -- no visible seam at commit 200/201
-- [ ] **Branch switch:** After `refresh()` replaces `commits` array, SVG reflects the new graph without stale paths from previous branch
-- [ ] **Empty state:** Repo with 0 commits does not render a broken/orphaned SVG overlay
-- [ ] **Single commit:** Repo with 1 commit renders a single dot, no dangling lane lines
-- [ ] **Stash rows:** `__stash_N__` sentinel items render with square dots (current behavior: square dots in `LaneSvg`) in the new SVG model
-- [ ] **Context menu:** Right-click on a commit row within the graph column still triggers `showCommitContextMenu` (Copy SHA, Checkout, Cherry-pick, etc.)
-- [ ] **Row click in graph column:** Clicking on the graph area of a commit row still fires `oncommitselect`
-- [ ] **WIP row click:** Clicking the WIP row in the graph area still fires `onWipClick`
-- [ ] **Row hover:** Hover background (`hover:bg-[var(--color-surface)]`) still visible when hovering over the graph column area
-- [ ] **Ref pill connector:** The connector line from ref pill to commit dot (currently `CommitRow.svelte` line 52-55) still renders correctly with the new SVG model
-- [ ] **maxColumns change:** When `maxColumns` changes after `refresh()` or `loadMore()`, the SVG width adjusts and all paths reflow
-- [ ] **Visual parity:** Side-by-side screenshot comparison with pre-rework graph shows identical visual output
+- [ ] **SVG element count:** Profile with 10k loaded commits — SVG child count stays under 500 regardless of total
+- [ ] **Scroll sync at speed:** Verify alignment at extreme trackpad flick speeds, not just gentle mouse wheel
+- [ ] **Sub-pixel alignment:** On Retina displays (2x DPI), verify SVG paths render crisply — no fuzzy 0.5px misalignment
+- [ ] **Adjacent-row bezier:** Merge edge between row N and row N+1 looks smooth, not kinked
+- [ ] **Distant-row bezier:** Merge edge spanning 10+ rows doesn't look wildly different from adjacent-row curves
+- [ ] **Bottom boundary:** When scrolled to last commit, lane lines end at dot, not past it into empty space
+- [ ] **Top boundary:** When WIP row present, dashed connector from WIP to HEAD renders correctly
+- [ ] **Column resize:** Graph SVG width updates when user drags graph column resize handle
+- [ ] **Column hide/show:** Hiding graph column hides SVG; showing restores without flash
+- [ ] **Pagination boundary:** `loadMore()` at commit 200/201 — no visible seam, no color change
+- [ ] **Branch switch:** After `refresh()`, SVG reflects new graph without stale paths from previous branch
+- [ ] **Empty state:** Repo with 0 commits renders no broken SVG overlay
+- [ ] **Single commit:** Repo with 1 commit renders single dot, no dangling lines
+- [ ] **Stash rows:** `__stash_N__` sentinels render with dashed lines and correct dots
+- [ ] **Context menu:** Right-click on commit row within graph column triggers `showCommitContextMenu`
+- [ ] **Row click in graph area:** Clicking graph area of commit row fires `oncommitselect`
+- [ ] **WIP row click:** Clicking WIP row in graph area fires `onWipClick`
+- [ ] **Row hover:** `hover:bg-[var(--color-surface)]` visible when hovering over graph column area
+- [ ] **Ref pill connector:** Connector line from ref pill to commit dot renders correctly
+- [ ] **maxColumns change:** When `maxColumns` changes after `refresh()` or `loadMore()`, SVG adjusts
+- [ ] **Production build:** Test in `cargo tauri build` on macOS — smooth 60fps scroll with 5k commits
+- [ ] **Ref pill hover expand:** "+N" badge with hover-to-expand animation works (if migrated to SVG)
+- [ ] **Visual parity → improvement:** Graph looks BETTER than v0.4 (bezier curves), not just different
 
 ---
 
@@ -308,45 +508,61 @@ All phases. Test in production build at each milestone, not just at the end.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Full SVG without virtualization (P1) | MEDIUM | Add viewport-based path culling post-hoc; path generation logic stays the same, add visibility filter before rendering |
-| Scroll sync via JS listener (P2) | LOW | Move SVG inside scroll container; delete listener code; no path logic changes needed |
-| Pointer events blocking rows (P3) | LOW | Add `pointer-events: none` to SVG root + `pointer-events: auto` on interactive children; 5-minute fix |
-| SVG re-render storm (P4) | MEDIUM | Add keying to `{#each}`, memoize path `d` strings, separate data-change from scroll-change reactivity |
-| Ref pills as full SVG (P5) | HIGH | Must rewrite back to HTML or `foreignObject`; the text layout differences cascade through hover behavior, overflow, and connector positioning |
-| Pagination boundary seams (P6) | LOW | Switch from per-batch to full-array path generation; seams disappear immediately |
-| Accessibility regression (P7) | LOW | Mark SVG `aria-hidden="true"`, ensure HTML rows retain all interactive behavior; minimal code change |
-| WebKit perf differences (P8) | MEDIUM | Requires profiling and potentially simplifying SVG output; may need to reduce path complexity or add canvas fallback |
+| DOM explosion (P1) | MEDIUM | Add viewport-based path culling; path generation logic stays the same, add visibility filter before rendering |
+| Scroll sync (P2) | HIGH | If overlay approach fails entirely, fall back to v0.4's per-row viewBox clipping with bezier paths — this always works but loses the "single SVG" benefit |
+| Pointer events (P3) | LOW | Add `pointer-events: none` to SVG root — 5-minute fix |
+| Bezier aesthetics (P4) | MEDIUM | Tune control point formula; worst case, fall back to Manhattan routing for adjacent rows only |
+| Ref pills as SVG (P5) | HIGH | Must rewrite back to HTML or `foreignObject`; the text layout differences cascade through hover, overflow, connector positioning. **Have the HTML fallback ready from the start.** |
+| Data sync bugs (P6) | LOW | Ensure single pure function pattern; add defensive `console.assert` checks for data consistency |
+| Path duplication (P7) | N/A | Only applies if using per-row viewBox clipping (v0.4 approach); eliminated by true overlay |
+| GC pressure (P8) | LOW | Pre-compute `d` strings; filter on scroll not recompute on scroll |
+| Lane overlap (P9) | LOW | Visual issue only; adjust stroke-width or add background stroke for separation |
+| WebKit perf (P10) | MEDIUM-HIGH | Requires profiling and potentially simplifying SVG output; may need path precision reduction or partial canvas fallback for extreme cases |
+| Pagination seams (P11) | LOW | Switch to full-array path generation; seams disappear immediately |
 
 ---
 
-## Pitfall-to-Phase Mapping
+## The v0.4 Reversal Risk
 
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| SVG DOM explosion (P1) | Phase 1: Foundation/Container | Profile with 10k commits loaded; SVG child count stays under 500 regardless of total |
-| Scroll sync drift (P2) | Phase 1: Foundation/Container | Pixel-compare lane-to-dot alignment at scroll positions 0, middle, and bottom on fast trackpad flick |
-| Pointer events (P3) | Phase 1: Foundation/Container | Click, hover, context-menu all work on rows within graph column; test every interaction from current CommitRow |
-| Re-render storm (P4) | Phase 2: Branch line paths | Measure `refresh()` time with DevTools; SVG update <16ms for branch switch on 5k-commit repo |
-| Ref pills as SVG (P5) | Phase 4+ (last) | Hover-expand works, text truncates with ellipsis, pill colors match HTML version exactly |
-| Pagination seams (P6) | Phase 2: Branch line paths | Load 3 batches (600 commits); scroll slowly past batch boundaries; no visible seams |
-| Accessibility (P7) | Phase 1: Foundation (ongoing) | Tab through commit list; screen reader announces commit message/author for every row |
-| WebKit perf (P8) | All phases | Run `cargo tauri build` and test in production app at each phase; profile with Safari Web Inspector |
+The most important meta-pitfall: **v0.5 is reversing a deliberate v0.4 decision.** The v0.4 REQUIREMENTS.md (line 77) explicitly lists "Full-height single SVG (not clipped per row)" as **out of scope**, citing "Research showed DOM explosion at scale."
+
+The v0.4 per-row viewBox approach works and ships. v0.5 is betting that SVG virtualization solves the DOM explosion concern. If that bet fails:
+
+**Graceful fallback:** Keep bezier curves and dimension tuning (these work regardless of overlay approach). Revert to per-row viewBox clipping. The `computeGraphOverlay()` function and its bezier path computation are reusable — only the rendering layer changes. Loss: ~1-2 phases of overlay/scroll-sync work. Gain: proven architecture.
+
+**Decision gate:** After Phase 1 (overlay container + scroll sync), measure:
+1. Does SVG virtualization keep element count under 500?
+2. Does scroll alignment stay pixel-perfect at trackpad-flick speeds?
+3. Do all pointer events pass through correctly?
+
+If any answer is NO, stop and evaluate whether to continue with the overlay or revert to enhanced per-row viewBox.
 
 ---
 
 ## Sources
 
-- Codebase analysis: `CommitGraph.svelte` (virtual list integration, pagination, refresh), `CommitRow.svelte` (6-column layout, ref pill HTML, connector line, pointer events), `LaneSvg.svelte` (three-layer SVG rendering, edge paths, dot rendering), `graph-constants.ts` (dimensions)
-- [Planning for Performance -- Using SVG (O'Reilly)](https://oreillymedia.github.io/Using_SVG/extras/ch19-performance.html) -- SVG layout cost, viewBox performance implications
-- [Improving SVG Runtime Performance (CodePen)](https://codepen.io/tigt/post/improving-svg-rendering-performance) -- DOM node count thresholds, style recalculation costs
-- [Managing SVG Interaction With Pointer Events (Smashing Magazine)](https://www.smashingmagazine.com/2018/05/svg-interaction-pointer-events-property/) -- pointer-events: none/auto pattern for overlays
-- [SVG pointer-events attribute (MDN)](https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/pointer-events) -- per-element pointer-event control
-- [Stacking context (MDN)](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_positioned_layout/Understanding_z-index/Stacking_context) -- SVG/HTML stacking context isolation
-- [Updating a DOM tree with 110k nodes (Medium)](https://mmomtchev.medium.com/updating-a-dom-tree-with-110k-nodes-while-scrolling-with-animated-svgs-88d962661405) -- large SVG DOM handling strategies
-- [SVG Optimization for Web Performance (2026 Guide)](https://vectosolve.com/blog/svg-optimization-web-performance-2025) -- current best practices for SVG performance
-- [Git Extensions Revision Graph Wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph) -- per-row grid rendering approach in established Git GUI
+### HIGH confidence (direct codebase analysis)
+- `CommitGraph.svelte` — virtual list integration, pagination, refresh, reactive derivation pattern
+- `CommitRow.svelte` — 6-column layout, ref pill HTML markup, connector line positioning, pointer events
+- `GraphCell.svelte` — per-row viewBox-clipped SVG rendering, path filtering, dot rendering
+- `graph-svg-data.ts` — current path computation (Manhattan routing, sentinel handling)
+- `graph-constants.ts` — LANE_WIDTH=12, ROW_HEIGHT=26, DOT_RADIUS=6
+- `types.ts` — GraphCommit, GraphEdge, EdgeType, SvgPathData data model
+- `.planning/research/ARCHITECTURE.md` — v0.4 overlay vs viewBox decision, virtual list DOM structure
+- `.planning/research/STACK.md` — virtual list API surface, SVG performance analysis
+- `.planning/RETROSPECTIVE.md` — "visual rendering is the riskiest area" across all milestones
+
+### MEDIUM confidence (web standards, established knowledge)
+- [MDN SVG Paths](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths) — cubic bezier `C` command specification, control point semantics
+- [MDN SVG pointer-events](https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/pointer-events) — `none`/`auto`/`visiblePainted` values for SVG elements
+- [SVG Performance — O'Reilly Using SVG](https://oreillymedia.github.io/Using_SVG/extras/ch19-performance.html) — layout cost, viewBox implications, DOM node count thresholds
+- [Git Extensions Revision Graph Wiki](https://github.com/gitextensions/gitextensions/wiki/Revision-Graph) — per-row grid rendering approach in established Git GUI
+
+### LOW confidence (training data, unverified claims)
+- WebKit SVG bezier rasterization cost relative to Blink — training data only, no verified benchmark. Flagged as requiring empirical profiling (see Pitfall 10).
+- GitKraken curve rendering specifics — closed source, observed externally only. Piecewise "waterfall" routing is an inference, not confirmed.
 
 ---
 
-*Pitfalls research for: v0.4 Graph Rework -- full-height SVG overlay in virtualized commit list*
-*Researched: 2026-03-12*
+*Pitfalls research for: Trunk v0.5 — Single SVG overlay with cubic bezier curves*
+*Researched: 2026-03-13*
