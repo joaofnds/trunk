@@ -51,6 +51,15 @@ function buildConnectionPath(edge: GraphEdge, rowIndex: number): string {
   }
 }
 
+/** Build a dashed connector path from just below the dot to the bottom of the row. */
+function buildSentinelConnector(column: number, rowIndex: number, colorIndex: number): SvgPathData {
+  return {
+    d: `M ${cx(column)} ${cy(rowIndex) + DOT_RADIUS} V ${rowBottom(rowIndex)}`,
+    colorIndex,
+    dashed: true,
+  };
+}
+
 /**
  * Transforms GraphCommit[] into a Map of SVG path data keyed by edge identifiers.
  *
@@ -58,6 +67,7 @@ function buildConnectionPath(edge: GraphEdge, rowIndex: number): string {
  * - Straight edges: `{oid}:straight:{column}`
  * - Connection edges: `{oid}:{edgeType}:{fromCol}:{toCol}`
  * - Incoming rails: `{oid}:rail:{column}`
+ * - Sentinel connectors: `{oid}:connector:{column}`
  *
  * Uses absolute Y coordinates based on row index for viewBox clipping.
  */
@@ -72,22 +82,12 @@ export function computeGraphSvgData(
 
     // Sentinel OIDs: generate dashed connector path instead of skipping
     if (commit.oid === '__wip__') {
-      const key = `${commit.oid}:connector:${commit.column}`;
-      paths.set(key, {
-        d: `M ${cx(commit.column)} ${cy(rowIndex) + DOT_RADIUS} V ${rowBottom(rowIndex)}`,
-        colorIndex: commit.color_index,
-        dashed: true,
-      });
+      paths.set(`${commit.oid}:connector:${commit.column}`, buildSentinelConnector(commit.column, rowIndex, commit.color_index));
       continue; // WIP has no real edges to process
     }
 
     if (commit.oid.startsWith('__stash_')) {
-      const connectorKey = `${commit.oid}:connector:${commit.column}`;
-      paths.set(connectorKey, {
-        d: `M ${cx(commit.column)} ${cy(rowIndex) + DOT_RADIUS} V ${rowBottom(rowIndex)}`,
-        colorIndex: commit.color_index,
-        dashed: true,
-      });
+      paths.set(`${commit.oid}:connector:${commit.column}`, buildSentinelConnector(commit.column, rowIndex, commit.color_index));
       // Fall through to process pass-through edges (other lanes)
     }
 
