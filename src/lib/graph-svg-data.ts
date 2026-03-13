@@ -1,5 +1,5 @@
 import type { GraphCommit, GraphEdge, SvgPathData } from './types.js';
-import { LANE_WIDTH, ROW_HEIGHT } from './graph-constants.js';
+import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS } from './graph-constants.js';
 
 const cornerRadius = LANE_WIDTH / 2;
 
@@ -70,9 +70,25 @@ export function computeGraphSvgData(
   for (let rowIndex = 0; rowIndex < commits.length; rowIndex++) {
     const commit = commits[rowIndex];
 
-    // Skip sentinel OIDs (WIP row, stash entries)
-    if (commit.oid.startsWith('__')) {
-      continue;
+    // Sentinel OIDs: generate dashed connector path instead of skipping
+    if (commit.oid === '__wip__') {
+      const key = `${commit.oid}:connector:${commit.column}`;
+      paths.set(key, {
+        d: `M ${cx(commit.column)} ${cy(rowIndex) + DOT_RADIUS} V ${rowBottom(rowIndex)}`,
+        colorIndex: commit.color_index,
+        dashed: true,
+      });
+      continue; // WIP has no real edges to process
+    }
+
+    if (commit.oid.startsWith('__stash_')) {
+      const connectorKey = `${commit.oid}:connector:${commit.column}`;
+      paths.set(connectorKey, {
+        d: `M ${cx(commit.column)} ${cy(rowIndex) + DOT_RADIUS} V ${rowBottom(rowIndex)}`,
+        colorIndex: commit.color_index,
+        dashed: true,
+      });
+      // Fall through to process pass-through edges (other lanes)
     }
 
     const straightEdges: GraphEdge[] = [];
@@ -86,8 +102,14 @@ export function computeGraphSvgData(
       }
     }
 
+    // For stash rows, only process pass-through edges (other lanes), skip own column
+    const isSentinelStash = commit.oid.startsWith('__stash_');
+
     // Straight edges: vertical line from row top (or dot center for branch tips) to row bottom
     for (const edge of straightEdges) {
+      // Skip stash's own-column straight edge (already handled by connector)
+      if (isSentinelStash && edge.from_column === commit.column) continue;
+
       const isBranchTipOwnColumn = commit.is_branch_tip && edge.from_column === commit.column;
       const startY = isBranchTipOwnColumn ? cy(rowIndex) : rowTop(rowIndex);
       const key = `${commit.oid}:straight:${edge.from_column}`;
@@ -107,7 +129,9 @@ export function computeGraphSvgData(
     }
 
     // Incoming rail: non-branch-tip commits without a straight edge in their own column
+    // Stash rows don't need incoming rails (they have a connector instead)
     const needsIncomingRail =
+      !isSentinelStash &&
       !commit.is_branch_tip &&
       !straightEdges.some((e) => e.from_column === commit.column);
 

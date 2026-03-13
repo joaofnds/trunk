@@ -108,6 +108,7 @@ export interface FileDiff {
 export interface SvgPathData {
   d: string;
   colorIndex: number;
+  dashed?: boolean;
 }
 
 export interface HeadCommitMessage {
