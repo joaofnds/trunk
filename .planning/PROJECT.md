@@ -36,15 +36,17 @@ A developer can open any Git repository, browse its full commit history as a vis
 
 ## Current Milestone: v0.5 Graph Overlay
 
-**Goal:** Replace per-row viewBox-clipped SVGs with a single SVG overlay architecture. Lane computation stays in Rust; rendering moves to continuous SVG `<path>` elements with cubic bezier curves spanning the entire virtualized list. Includes ref pill migration and interaction preservation carried from v0.4.
+**Goal:** Replace per-row viewBox-clipped SVGs with a single SVG overlay architecture. Rust keeps the lane algorithm; a new TypeScript transformation layer computes global grid coordinates (`GraphNode[]`, `GraphEdge[]`) from Rust output. Rendering moves to continuous SVG `<path>` elements with cubic bezier curves spanning the entire virtualized list. Includes ref pill migration and interaction preservation carried from v0.4.
 
 **Target changes:**
 - Single SVG overlay spanning entire graph height (not per-row fragments)
+- TypeScript "Active Lanes" transformation: ingests Rust `RawCommit[]`, outputs `GraphData` with integer grid coordinates (`x` = swimlane, `y` = row index)
 - Continuous `<path>` elements per edge from parent commit to child commit
 - Cubic bezier curves for GitKraken-style waterfall routing (replacing Manhattan routing)
 - Tuned dimensions: taller rows, wider lanes
 - Ref pills as SVG elements with lane-colored backgrounds
 - All click and context menu interactions preserved
+- Carried from v0.4: ref pill migration (Phase 18) and interaction preservation (Phase 19)
 
 ### Active
 
@@ -115,6 +117,8 @@ A developer can open any Git repository, browse its full commit history as a vis
 | isUndoing/isRedoing flags for redo stack | Prevents clearRedoStack during undo/redo-triggered repo-changed events | ✓ Good — eliminated race condition |
 | Shared $state rune module (remote-state.svelte.ts) | Cross-component state for StatusBar/Toolbar without props/bindings | ✓ Good — clean Svelte 5 pattern |
 | Unicode symbols for toolbar icons | Simple, no SVG assets needed, consistent with dark theme | ✓ Good — minimal complexity |
+| Reverse "no full-height SVG" (v0.4 out-of-scope) | v0.4 per-row viewBox clipping worked but limited; single overlay enables continuous bezier paths, eliminates row-boundary seams | — Pending |
+| Rust lane algorithm stays, TS transformation added | Rust O(n) algorithm is proven (~5ms/10k commits); TS layer transforms output into global grid coords for SVG rendering | — Pending |
 
 ---
-*Last updated: 2026-03-13 after v0.5 milestone start*
+*Last updated: 2026-03-13 after v0.5 scope clarification*
