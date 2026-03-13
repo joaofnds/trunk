@@ -19,8 +19,8 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 
 ### Synthetic Rows
 
-- [ ] **SYNTH-01**: WIP row renders with dashed connector to HEAD in the new SVG model
-- [ ] **SYNTH-02**: Stash rows render with square dots and dashed connectors
+- [x] **SYNTH-01**: WIP row renders with dashed connector to HEAD in the new SVG model
+- [x] **SYNTH-02**: Stash rows render with square dots and dashed connectors
 
 ### Ref Elements
 
@@ -88,8 +88,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RENDER-01 | Phase 16 | Complete |
 | RENDER-02 | Phase 16 | Complete |
 | RENDER-03 | Phase 16 | Complete |
-| SYNTH-01 | Phase 17 | Pending |
-| SYNTH-02 | Phase 17 | Pending |
+| SYNTH-01 | Phase 17 | Complete |
+| SYNTH-02 | Phase 17 | Complete |
 | REF-01 | Phase 18 | Pending |
 | REF-02 | Phase 18 | Pending |
 | REF-03 | Phase 18 | Pending |
