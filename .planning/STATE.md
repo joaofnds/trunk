@@ -1,36 +1,34 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.4
-milestone_name: Graph Rework
-status: completed
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-03-13T17:41:16.563Z"
-last_activity: 2026-03-13 — Completed 17-02 sentinel row UI rendering
+milestone: v0.5
+milestone_name: Graph Overlay
+status: not_started
+stopped_at: null
+last_updated: "2026-03-13"
+last_activity: 2026-03-13 — Milestone v0.5 started
 progress:
-  total_phases: 5
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-12)
+See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 17 complete - Synthetic Row Adaptation
+**Current focus:** Defining requirements for v0.5 Graph Overlay
 
 ## Current Position
 
-Phase: 17 of 19 (Synthetic Row Adaptation) — third phase of v0.4
-Plan: 2 of 2 in current phase (Phase 17 complete)
-Status: Phase 17 complete
-Last activity: 2026-03-13 — Completed 17-02 sentinel row UI rendering
-
-Progress: [██████████] 100% (v0.4: 3/5 phases, 5/5 plans complete)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-13 — Milestone v0.5 started
 
 ## Accumulated Context
 
@@ -49,11 +47,9 @@ Progress: [██████████] 100% (v0.4: 3/5 phases, 5/5 plans com
 - [16-01]: Path categorization by key substring (:straight:/:rail: vs others) for linecap styling
 - [17-01]: Extracted buildSentinelConnector helper to DRY connector path creation between WIP and stash
 - [17-01]: WIP uses continue (no edge fall-through), stash falls through for pass-through edge processing
-- [Phase 17]: Extracted buildSentinelConnector helper to DRY connector path creation between WIP and stash
 - [17-02]: Three-layer dot rendering: WIP (hollow dashed circle) → stash (filled square) → merge (hollow circle) → normal (filled circle)
 - [17-02]: Stash entries interleaved after parent commit in displayItems, orphan stashes placed near top
 - [17-02]: LaneSvg import removed from CommitRow but file preserved for reference
-- [Phase 17-02]: Three-layer dot rendering: WIP (hollow dashed circle) → stash (filled square) → merge → normal
 
 ### Pending Todos
 
@@ -69,11 +65,11 @@ Progress: [██████████] 100% (v0.4: 3/5 phases, 5/5 plans com
 
 ### Blockers/Concerns
 
-- [Research]: WebKit SVG performance at scale unverified -- must profile Phase 16 in production build
-- [Research]: Ref pill "+N" hover-expand in SVG is unproven -- Phase 18 may need HTML fallback
+- [Research]: WebKit SVG performance at scale unverified -- must profile in production build
+- [Research]: Ref pill "+N" hover-expand in SVG is unproven -- may need HTML fallback
 
 ## Session Continuity
 
-Last session: 2026-03-13T17:40:37.369Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: —
+Stopped at: —
 Resume file: None

@@ -34,27 +34,26 @@ A developer can open any Git repository, browse its full commit history as a vis
 - ✓ Commit row right-click context menu (copy SHA/message, checkout, branch, tag, cherry-pick, revert) — v0.3
 - ✓ Undo last commit (soft reset) and Redo (re-commit with original message) — v0.3
 
-## Current Milestone: v0.4 Graph Rework
+## Current Milestone: v0.5 Graph Overlay
 
-**Goal:** Replace per-row SVG rendering with full-height SVG elements — branch lines, merge edges, and ref connectors become single continuous `<path>` elements instead of per-row fragments. Visuals stay identical; architecture changes to eliminate row-boundary rendering bugs.
+**Goal:** Replace per-row viewBox-clipped SVGs with a single SVG overlay architecture. Lane computation stays in Rust; rendering moves to continuous SVG `<path>` elements with cubic bezier curves spanning the entire virtualized list. Includes ref pill migration and interaction preservation carried from v0.4.
 
 **Target changes:**
-- Branch lines: single continuous SVG path per lane spanning full graph height
-- Merge/fork edges: single SVG path per edge (not split across rows)
-- Ref pill connectors: single SVG path from pill to commit dot
-- Ref pills: SVG elements (not HTML)
-- Commit dots: individual SVG elements (unchanged conceptually)
-- WIP/stash synthetic rows: adapted to new SVG model
-- All existing functionality preserved — no visible changes
+- Single SVG overlay spanning entire graph height (not per-row fragments)
+- Continuous `<path>` elements per edge from parent commit to child commit
+- Cubic bezier curves for GitKraken-style waterfall routing (replacing Manhattan routing)
+- Tuned dimensions: taller rows, wider lanes
+- Ref pills as SVG elements with lane-colored backgrounds
+- All click and context menu interactions preserved
 
 ### Active
 
 ### Planned
 
-- **v0.5**: UI Polish — icons, discard, branch/tag delete, dialog system, staging panel improvements, graph overflow, bug fixes
-- **v0.6**: Hunk Staging & Search — stage/unstage individual hunks, cmd+f search
-- **v0.7**: Conflict & Rebase — conflict diffs, conflict resolution, interactive rebase
-- **v0.8**: Multi-tab — functional multi-repo tabs
+- **v0.6**: UI Polish — icons, discard, branch/tag delete, dialog system, staging panel improvements, graph overflow, bug fixes
+- **v0.7**: Hunk Staging & Search — stage/unstage individual hunks, cmd+f search
+- **v0.8**: Conflict & Rebase — conflict diffs, conflict resolution, interactive rebase
+- **v0.9**: Multi-tab — functional multi-repo tabs
 
 ### Out of Scope
 
@@ -118,4 +117,4 @@ A developer can open any Git repository, browse its full commit history as a vis
 | Unicode symbols for toolbar icons | Simple, no SVG assets needed, consistent with dark theme | ✓ Good — minimal complexity |
 
 ---
-*Last updated: 2026-03-12 after v0.4 milestone start*
+*Last updated: 2026-03-13 after v0.5 milestone start*
