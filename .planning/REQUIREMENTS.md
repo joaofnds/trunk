@@ -34,28 +34,40 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 - [ ] **INTERACT-02**: Right-clicking a commit row opens the context menu
 - [ ] **INTERACT-03**: Right-clicking a stash row opens the stash context menu
 
-## Future Requirements (v0.5+)
+## Future Requirements
 
-### UI Polish
+### v0.5 — UI Polish & Quick Wins
 
 - **UI-01**: Add icon set and use throughout the application
-- **UI-02**: Discard changes action
-- **UI-03**: Stage/unstage individual hunks
+- **UI-02**: Find a better icon for the tag pill
+- **UI-03**: Discard changes action
 - **UI-04**: Branch delete action
 - **UI-05**: Tag delete action
-- **UI-06**: Dialog system for errors/warnings/updates
-- **UI-07**: Staging panel green/red buttons for stage all/unstage all
-- **UI-08**: Equal height for unstaged and staged file lists when not collapsed
-- **UI-09**: Three-way commit selector (commit / amend / stash)
-- **UI-10**: Search commits/branches with cmd+f
+- **UI-06**: Check out branch after creating
+- **UI-07**: Dialog system for errors/warnings/updates (replace all current error/warning handling)
+- **UI-08**: Staging panel green/red buttons for stage all/unstage all
+- **UI-09**: Equal height for unstaged and staged file lists when not collapsed
+- **UI-10**: Three-way commit selector (commit / amend / stash)
+- **UI-11**: Add small padding to top and bottom of commit graph
+- **UI-12**: Graph overflow — shrinkable graph column with sticky right-side commits, single-line dot mode like GitKraken
+- **UI-13**: File list view toggle (list vs preview, everywhere file lists are shown)
+- **BUG-01**: Branch overflow pill is behind the commit graph (z-index)
+- **BUG-02**: Graph column header has trailing divider when no columns follow
 
-### Advanced Git
+### v0.6 — Hunk Staging & Search
 
-- **GIT-01**: Interactive rebase
-- **GIT-02**: Conflict diffs
-- **GIT-03**: Conflict resolution
-- **GIT-04**: Check out branch after creating
-- **GIT-05**: Multiple tabs
+- **HUNK-01**: Stage/unstage individual hunks
+- **SEARCH-01**: Search for commit hashes, commit messages, and branches on the commit graph with cmd+f
+
+### v0.7 — Conflict & Rebase
+
+- **CONFLICT-01**: Conflict diffs
+- **CONFLICT-02**: Conflict resolution
+- **REBASE-01**: Interactive rebase
+
+### v0.8 — Multi-tab
+
+- **TAB-01**: Multiple functional tabs
 
 ## Out of Scope
 

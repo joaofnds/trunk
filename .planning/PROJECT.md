@@ -49,15 +49,15 @@ A developer can open any Git repository, browse its full commit history as a vis
 
 ### Active
 
-### Deferred (v0.4+)
+### Planned
 
-- Hunk-level staging (stage individual hunks, not just whole files)
-- Keyboard shortcuts for common operations
-- Deterministic StagingPanel refresh after checkout/create-branch
+- **v0.5**: UI Polish — icons, discard, branch/tag delete, dialog system, staging panel improvements, graph overflow, bug fixes
+- **v0.6**: Hunk Staging & Search — stage/unstage individual hunks, cmd+f search
+- **v0.7**: Conflict & Rebase — conflict diffs, conflict resolution, interactive rebase
+- **v0.8**: Multi-tab — functional multi-repo tabs
 
 ### Out of Scope
 
-- Multi-repo functional tabs — tab bar visible but non-functional
 - Settings/preferences UI — deferred to v1.0
 - Commit signing — deferred to v1.0
 - Auto-updates — deferred to v1.0
