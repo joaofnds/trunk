@@ -2,7 +2,6 @@
   import type { GraphCommit } from '../lib/types.js';
   import type { ColumnWidths, ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT, EDGE_STROKE } from '../lib/graph-constants.js';
-  import LaneSvg from './LaneSvg.svelte';
   import GraphCell from './GraphCell.svelte';
   import RefPill from './RefPill.svelte';
 
@@ -58,14 +57,14 @@
     {/if}
 
     <div
-      class="relative z-[1] flex items-center flex-shrink-0 pl-1 pr-1 {refHovered ? 'overflow-visible' : 'overflow-hidden'}"
-      style="width: {columnWidths.ref}px;"
+      class="relative flex items-center flex-shrink-0 pl-1 pr-1 {refHovered ? 'overflow-visible' : 'overflow-hidden'}"
+      style="width: {columnWidths.ref}px; z-index: {refHovered ? 20 : 1};"
       onmouseenter={() => refHovered = true}
       onmouseleave={() => refHovered = false}
     >
       <!-- Default: first pill + overflow count -->
-      <div class="flex items-center" bind:clientWidth={refContainerWidth}>
-        <RefPill refs={commit.refs} />
+      <div class="flex items-center min-w-0 {refHovered ? 'overflow-visible' : 'overflow-hidden'}" bind:clientWidth={refContainerWidth}>
+        <RefPill refs={commit.refs} expanded={refHovered} maxWidth={columnWidths.ref} />
       </div>
       {#if commit.refs.length > 1}
         <!-- +N badge; hidden while overlay is visible so there's no double-badge -->
@@ -102,11 +101,7 @@
   <!-- Column 2: Graph -->
   {#if columnVisibility.graph}
     <div class="relative z-[1] flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * LANE_WIDTH}px;">
-      {#if commit.oid.startsWith('__')}
-        <LaneSvg {commit} {maxColumns} />
-      {:else}
-        <GraphCell {commit} {rowIndex} {maxColumns} />
-      {/if}
+      <GraphCell {commit} {rowIndex} {maxColumns} />
     </div>
   {/if}
 

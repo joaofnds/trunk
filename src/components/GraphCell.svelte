@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getContext } from 'svelte';
   import type { GraphCommit, SvgPathData } from '../lib/types.js';
-  import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, MERGE_STROKE } from '../lib/graph-constants.js';
+  import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, WIP_STROKE, MERGE_STROKE } from '../lib/graph-constants.js';
 
   interface Props {
     commit: GraphCommit;
@@ -21,7 +21,7 @@
   const railPaths = $derived.by(() => {
     const result: SvgPathData[] = [];
     for (const [key, path] of graphCtx.data) {
-      if (key.startsWith(prefix) && (key.includes(':straight:') || key.includes(':rail:'))) {
+      if (key.startsWith(prefix) && !path.dashed && (key.includes(':straight:') || key.includes(':rail:'))) {
         result.push(path);
       }
     }
@@ -31,7 +31,17 @@
   const connectionPaths = $derived.by(() => {
     const result: SvgPathData[] = [];
     for (const [key, path] of graphCtx.data) {
-      if (key.startsWith(prefix) && !key.includes(':straight:') && !key.includes(':rail:')) {
+      if (key.startsWith(prefix) && !path.dashed && !key.includes(':straight:') && !key.includes(':rail:')) {
+        result.push(path);
+      }
+    }
+    return result;
+  });
+
+  const dashedPaths = $derived.by(() => {
+    const result: SvgPathData[] = [];
+    for (const [key, path] of graphCtx.data) {
+      if (key.startsWith(prefix) && path.dashed) {
         result.push(path);
       }
     }
@@ -53,8 +63,22 @@
     <path d={path.d} fill="none" stroke={laneColor(path.colorIndex)} stroke-width={EDGE_STROKE} stroke-linecap="round" />
   {/each}
 
+  <!-- Layer 2.5: Dashed connector paths (WIP/stash) -->
+  {#each dashedPaths as path}
+    <path d={path.d} fill="none" stroke={laneColor(path.colorIndex)}
+      stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-dashoffset="-3" stroke-linecap="round" />
+  {/each}
+
   <!-- Layer 3: Commit dot -->
-  {#if commit.is_merge}
+  {#if commit.oid === '__wip__'}
+    <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS}
+      fill="none" stroke={laneColor(commit.color_index)}
+      stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-linecap="round" />
+  {:else if commit.oid.startsWith('__stash_')}
+    <rect x={dotCx - DOT_RADIUS} y={dotCy - DOT_RADIUS}
+      width={DOT_RADIUS * 2} height={DOT_RADIUS * 2}
+      fill={laneColor(commit.color_index)} />
+  {:else if commit.is_merge}
     <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS} fill="var(--color-bg)" stroke={laneColor(commit.color_index)} stroke-width={MERGE_STROKE} />
   {:else}
     <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS} fill={laneColor(commit.color_index)} />
