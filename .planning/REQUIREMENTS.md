@@ -1,11 +1,58 @@
 # Requirements: Trunk
 
-**Defined:** 2026-03-12
+**Defined:** 2026-03-13
 **Core Value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits — all without touching the terminal.
 
-## v0.4 Requirements
+## v0.5 Requirements
 
-Requirements for the Graph Rework milestone. Replace per-row SVG rendering with continuous SVG paths — one `<path>` per commit-to-commit edge, viewBox-clipped per row. Visuals stay identical; architecture eliminates row-boundary rendering bugs.
+Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SVGs with a single SVG overlay architecture. Rust lane algorithm stays; TypeScript Active Lanes transformation bridges Rust output to global grid coordinates. Cubic bezier curves replace Manhattan routing. Ref pills migrate from HTML to SVG. All interactions preserved.
+
+### Overlay Architecture
+
+- [ ] **OVRL-01**: Single SVG element spans entire graph height, positioned inside virtual list scroll container
+- [ ] **OVRL-02**: SVG overlay scrolls natively with virtual list content (zero JS scroll sync)
+- [ ] **OVRL-03**: SVG root has `pointer-events: none`, HTML commit rows handle all click/right-click interactions beneath
+- [ ] **OVRL-04**: SVG renders only visible-range elements plus buffer (virtualization), hard cap on DOM node count
+
+### Data Transformation
+
+- [ ] **DATA-01**: TypeScript Active Lanes algorithm transforms `GraphCommit[]` into `GraphData` with `GraphNode[]` and `GraphEdge[]` containing integer grid coordinates (x=swimlane, y=row index)
+- [ ] **DATA-02**: Edge coalescing merges consecutive same-lane straight segments into single SVG path spans
+
+### Curve Rendering
+
+- [ ] **CURV-01**: Cross-lane edges render as cubic bezier curves (SVG `C` command) with vertical tangent control points
+- [ ] **CURV-02**: Same-lane connections render as continuous vertical rail lines (one `<path>` per lane run)
+- [ ] **CURV-03**: SVG uses three-layer `<g>` group z-ordering: rails behind edges behind dots
+- [ ] **CURV-04**: Bezier control points use per-distance tension tuning (adaptive for adjacent vs distant row connections)
+
+### Commit Dots & Synthetic Rows
+
+- [ ] **DOTS-01**: Normal commits render as filled circles, merge commits as hollow circles
+- [ ] **DOTS-02**: WIP row renders with hollow dashed circle and dashed connector to HEAD
+- [ ] **DOTS-03**: Stash rows render with filled squares and dashed connectors
+
+### Ref Pills
+
+- [ ] **PILL-01**: Ref pills render as SVG `<rect>` + `<text>` elements with lane-colored backgrounds
+- [ ] **PILL-02**: SVG connector lines render from ref pill to commit dot
+- [ ] **PILL-03**: Remote branch pills appear visually dimmed compared to local branch pills
+- [ ] **PILL-04**: Overflow "+N" badge appears when refs exceed available space
+
+### Interactions
+
+- [ ] **INTR-01**: Clicking a commit row selects it and shows commit detail in diff panel
+- [ ] **INTR-02**: Right-clicking a commit row opens context menu (copy SHA, checkout, branch, tag, cherry-pick, revert)
+- [ ] **INTR-03**: Right-clicking a stash row opens stash context menu (pop/apply/drop)
+
+### Visual Tuning
+
+- [ ] **TUNE-01**: Updated graph dimensions: ROW_HEIGHT increased from 26px to ~36px, LANE_WIDTH from 12px to ~16px
+- [ ] **TUNE-02**: 8-color lane palette applied via CSS custom properties on SVG elements
+
+## v0.4 Requirements (Completed/Superseded)
+
+v0.4 introduced per-row viewBox-clipped SVG rendering. Phases 15-17 completed; phases 18-19 (ref pills, interactions) carried into v0.5 as PILL-01–04 and INTR-01–03.
 
 ### Graph Data
 
@@ -22,21 +69,21 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 - [x] **SYNTH-01**: WIP row renders with dashed connector to HEAD in the new SVG model
 - [x] **SYNTH-02**: Stash rows render with square dots and dashed connectors
 
-### Ref Elements
+### Ref Elements (Superseded by PILL-01–04)
 
-- [ ] **REF-01**: Ref pills render as SVG elements (rect + text) with lane-colored backgrounds
-- [ ] **REF-02**: Ref connector lines render as single SVG paths from pill to commit dot
-- [ ] **REF-03**: Ref pills maintain existing behavior (remote dimming, overflow "+N" badge)
+- [ ] ~~**REF-01**: Ref pills render as SVG elements (rect + text) with lane-colored backgrounds~~ → PILL-01
+- [ ] ~~**REF-02**: Ref connector lines render as single SVG paths from pill to commit dot~~ → PILL-02
+- [ ] ~~**REF-03**: Ref pills maintain existing behavior (remote dimming, overflow "+N" badge)~~ → PILL-03, PILL-04
 
-### Interaction
+### Interaction (Superseded by INTR-01–03)
 
-- [ ] **INTERACT-01**: Clicking a commit row selects it and shows commit detail
-- [ ] **INTERACT-02**: Right-clicking a commit row opens the context menu
-- [ ] **INTERACT-03**: Right-clicking a stash row opens the stash context menu
+- [ ] ~~**INTERACT-01**: Clicking a commit row selects it and shows commit detail~~ → INTR-01
+- [ ] ~~**INTERACT-02**: Right-clicking a commit row opens the context menu~~ → INTR-02
+- [ ] ~~**INTERACT-03**: Right-clicking a stash row opens the stash context menu~~ → INTR-03
 
 ## Future Requirements
 
-### v0.5 — UI Polish & Quick Wins
+### v0.6 — UI Polish & Quick Wins
 
 - **UI-01**: Add icon set and use throughout the application
 - **UI-02**: Find a better icon for the tag pill
@@ -54,18 +101,18 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 - **BUG-01**: Branch overflow pill is behind the commit graph (z-index)
 - **BUG-02**: Graph column header has trailing divider when no columns follow
 
-### v0.6 — Hunk Staging & Search
+### v0.7 — Hunk Staging & Search
 
 - **HUNK-01**: Stage/unstage individual hunks
 - **SEARCH-01**: Search for commit hashes, commit messages, and branches on the commit graph with cmd+f
 
-### v0.7 — Conflict & Rebase
+### v0.8 — Conflict & Rebase
 
 - **CONFLICT-01**: Conflict diffs
 - **CONFLICT-02**: Conflict resolution
 - **REBASE-01**: Interactive rebase
 
-### v0.8 — Multi-tab
+### v0.9 — Multi-tab
 
 - **TAB-01**: Multiple functional tabs
 
@@ -74,9 +121,11 @@ Requirements for the Graph Rework milestone. Replace per-row SVG rendering with 
 | Feature | Reason |
 |---------|--------|
 | Canvas rendering | SVG approach preserves accessibility and text selection; no need for Canvas |
-| Full-height single SVG (not clipped per row) | Research showed DOM explosion at scale; viewBox-clipped per row is the correct approach |
-| Hover-highlight on branch lines | Differentiator, not part of "zero visual change" goal |
+| Hover-highlight on branch lines | Differentiator, deferred — overlay architecture enables it but not v0.5 scope |
 | Click-to-select branch lines | Differentiator, deferred |
+| D3.js / SVG.js / Snap.svg | Zero new dependencies needed — all capabilities are browser primitives |
+| Ref pill hover-expand animation | Complex SVG text layout limitation — defer or simplify for v0.5 |
+| Path draw-on animations | Differentiator, not essential for v0.5 |
 
 ## Traceability
 
@@ -90,18 +139,34 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RENDER-03 | Phase 16 | Complete |
 | SYNTH-01 | Phase 17 | Complete |
 | SYNTH-02 | Phase 17 | Complete |
-| REF-01 | Phase 18 | Pending |
-| REF-02 | Phase 18 | Pending |
-| REF-03 | Phase 18 | Pending |
-| INTERACT-01 | Phase 19 | Pending |
-| INTERACT-02 | Phase 19 | Pending |
-| INTERACT-03 | Phase 19 | Pending |
+| OVRL-01 | TBD | Pending |
+| OVRL-02 | TBD | Pending |
+| OVRL-03 | TBD | Pending |
+| OVRL-04 | TBD | Pending |
+| DATA-01 | TBD | Pending |
+| DATA-02 | TBD | Pending |
+| CURV-01 | TBD | Pending |
+| CURV-02 | TBD | Pending |
+| CURV-03 | TBD | Pending |
+| CURV-04 | TBD | Pending |
+| DOTS-01 | TBD | Pending |
+| DOTS-02 | TBD | Pending |
+| DOTS-03 | TBD | Pending |
+| PILL-01 | TBD | Pending |
+| PILL-02 | TBD | Pending |
+| PILL-03 | TBD | Pending |
+| PILL-04 | TBD | Pending |
+| INTR-01 | TBD | Pending |
+| INTR-02 | TBD | Pending |
+| INTR-03 | TBD | Pending |
+| TUNE-01 | TBD | Pending |
+| TUNE-02 | TBD | Pending |
 
 **Coverage:**
-- v0.4 requirements: 12 total
-- Mapped to phases: 12
-- Unmapped: 0
+- v0.5 requirements: 20 total
+- Mapped to phases: 0 (pending roadmap creation)
+- Unmapped: 20
 
 ---
-*Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after roadmap creation*
+*Requirements defined: 2026-03-13*
+*Last updated: 2026-03-13 after milestone v0.5 definition*
