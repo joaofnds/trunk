@@ -3,7 +3,7 @@
   import { setContext, tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
-  import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
+  import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
   import { computeGraphSvgData } from '../lib/graph-svg-data.js';
@@ -28,6 +28,7 @@
   const SKELETON_COUNT = 10;
 
   let commits = $state<GraphCommit[]>([]);
+  let stashes = $state<StashEntry[]>([]);
   let maxColumns = $state(1);
   let hasMore = $state(true);
   let loading = $state(false);
@@ -250,10 +251,65 @@
     };
   }
 
+  function makeStashItem(stash: StashEntry, parentColumn: number, parentColorIndex: number): GraphCommit {
+    return {
+      oid: `__stash_${stash.index}__`,
+      short_oid: stash.short_name,
+      summary: stash.name,
+      body: null,
+      author_name: '',
+      author_email: '',
+      author_timestamp: 0,
+      parent_oids: stash.parent_oid ? [stash.parent_oid] : [],
+      column: parentColumn,
+      color_index: parentColorIndex,
+      edges: [{ from_column: parentColumn, to_column: parentColumn, edge_type: 'Straight' as EdgeType, color_index: parentColorIndex }],
+      refs: [],
+      is_head: false,
+      is_merge: false,
+      is_branch_tip: true,
+    };
+  }
+
   const displayItems = $derived.by(() => {
-    return wipCount > 0
+    const items: GraphCommit[] = wipCount > 0
       ? [makeWipItem(wipMessage), ...commits]
       : [...commits];
+
+    if (stashes.length === 0) return items;
+
+    // Build parent_oid → stash entries map
+    const stashByParent = new Map<string, StashEntry[]>();
+    for (const stash of stashes) {
+      if (!stash.parent_oid) continue;
+      const existing = stashByParent.get(stash.parent_oid) ?? [];
+      existing.push(stash);
+      stashByParent.set(stash.parent_oid, existing);
+    }
+
+    // Interleave stash items after their parent commit
+    const result: GraphCommit[] = [];
+    for (const item of items) {
+      result.push(item);
+      const childStashes = stashByParent.get(item.oid);
+      if (childStashes) {
+        for (const stash of childStashes) {
+          result.push(makeStashItem(stash, item.column, item.color_index));
+        }
+      }
+    }
+
+    // Orphan stashes (parent not in loaded commits) — place after WIP or at top
+    for (const [parentOid, orphans] of stashByParent) {
+      if (!items.some(i => i.oid === parentOid)) {
+        const insertIdx = wipCount > 0 ? 1 : 0;
+        for (let i = orphans.length - 1; i >= 0; i--) {
+          result.splice(insertIdx, 0, makeStashItem(orphans[i], 0, 0));
+        }
+      }
+    }
+
+    return result;
   });
 
   const graphSvgData = $derived.by(() => {
@@ -275,6 +331,8 @@
       maxColumns = response.max_columns;
       offset += response.commits.length;
       if (response.commits.length < BATCH) hasMore = false;
+      const stashResponse = await safeInvoke<StashEntry[]>('list_stashes', { path: repoPath });
+      stashes = stashResponse;
     } catch (e) {
       const err = e as TrunkError;
       error = err.message ?? 'Failed to load commits';
@@ -293,6 +351,8 @@
       maxColumns = response.max_columns;
       offset = response.commits.length;
       hasMore = response.commits.length >= BATCH;
+      const stashResponse = await safeInvoke<StashEntry[]>('list_stashes', { path: repoPath });
+      stashes = stashResponse;
       error = null;
     } catch (e) {
       const err = e as TrunkError;

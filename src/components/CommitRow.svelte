@@ -30,6 +30,7 @@
   }
 
   const isWip = $derived(commit.oid === '__wip__');
+  const isStash = $derived(commit.oid.startsWith('__stash_'));
 
   const allRemoteOnly = $derived(
     commit.refs.length > 0 &&
@@ -106,7 +107,7 @@
   {/if}
 
   <!-- Column 3: Message (flex-1, always visible) -->
-  {#if isWip}
+  {#if isWip || isStash}
     <div class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic px-1" style="color: var(--color-text-muted);">
       {commit.summary}
     </div>
@@ -119,21 +120,21 @@
   <!-- Column 4: Author -->
   {#if columnVisibility.author}
     <div class="flex-shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12px] px-1" style="width: {columnWidths.author}px; color: var(--color-text-muted);">
-      {#if !isWip}{commit.author_name}{/if}
+      {#if !isWip && !isStash}{commit.author_name}{/if}
     </div>
   {/if}
 
   <!-- Column 5: Date -->
   {#if columnVisibility.date}
     <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px] px-1" style="width: {columnWidths.date}px; color: var(--color-text-muted);">
-      {#if !isWip}{relativeDate(commit.author_timestamp)}{/if}
+      {#if !isWip && !isStash}{relativeDate(commit.author_timestamp)}{/if}
     </div>
   {/if}
 
   <!-- Column 6: SHA -->
   {#if columnVisibility.sha}
     <div class="flex-shrink-0 font-mono text-[11px] px-1" style="width: {columnWidths.sha}px; color: var(--color-text-muted);">
-      {#if !isWip}{commit.short_oid}{/if}
+      {#if !isWip && !isStash}{commit.short_oid}{/if}
     </div>
   {/if}
 </div>
