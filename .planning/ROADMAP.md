@@ -95,10 +95,11 @@ Plans:
   1. WIP row displays with a dashed connector line to the HEAD commit dot
   2. Stash rows display with square dots and dashed connector lines
   3. Synthetic rows integrate with virtual scrolling without visual artifacts
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 17-01: TBD
+- [ ] 17-01-PLAN.md — TDD: Extend computeGraphSvgData for sentinel path generation (dashed flag)
+- [ ] 17-02-PLAN.md — GraphCell sentinel rendering + stash data wiring + visual verification
 
 ### Phase 18: Ref Pill Migration
 **Goal**: Ref pills and their connectors render as SVG elements with all existing behaviors preserved
