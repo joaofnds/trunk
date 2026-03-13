@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.4
 milestone_name: Graph Rework
 status: completed
-stopped_at: Completed 17-01-PLAN.md
-last_updated: "2026-03-13T17:34:13.253Z"
-last_activity: 2026-03-13 — Completed 17-01 sentinel path generation
+stopped_at: Completed 17-02-PLAN.md
+last_updated: "2026-03-13T17:41:16.563Z"
+last_activity: 2026-03-13 — Completed 17-02 sentinel row UI rendering
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 5
-  completed_plans: 4
-  percent: 95
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-12)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Phase 17 - Synthetic Row Adaptation
+**Current focus:** Phase 17 complete - Synthetic Row Adaptation
 
 ## Current Position
 
 Phase: 17 of 19 (Synthetic Row Adaptation) — third phase of v0.4
-Plan: 2 of 2 in current phase (Plan 01 complete)
-Status: Phase 17 plan 01 complete
-Last activity: 2026-03-13 — Completed 17-01 sentinel path generation
+Plan: 2 of 2 in current phase (Phase 17 complete)
+Status: Phase 17 complete
+Last activity: 2026-03-13 — Completed 17-02 sentinel row UI rendering
 
-Progress: [█████████░] 95% (v0.4: 3/5 phases, 4/5 plans complete)
+Progress: [██████████] 100% (v0.4: 3/5 phases, 5/5 plans complete)
 
 ## Accumulated Context
 
@@ -50,6 +50,10 @@ Progress: [█████████░] 95% (v0.4: 3/5 phases, 4/5 plans comp
 - [17-01]: Extracted buildSentinelConnector helper to DRY connector path creation between WIP and stash
 - [17-01]: WIP uses continue (no edge fall-through), stash falls through for pass-through edge processing
 - [Phase 17]: Extracted buildSentinelConnector helper to DRY connector path creation between WIP and stash
+- [17-02]: Three-layer dot rendering: WIP (hollow dashed circle) → stash (filled square) → merge (hollow circle) → normal (filled circle)
+- [17-02]: Stash entries interleaved after parent commit in displayItems, orphan stashes placed near top
+- [17-02]: LaneSvg import removed from CommitRow but file preserved for reference
+- [Phase 17-02]: Three-layer dot rendering: WIP (hollow dashed circle) → stash (filled square) → merge → normal
 
 ### Pending Todos
 
@@ -70,6 +74,6 @@ Progress: [█████████░] 95% (v0.4: 3/5 phases, 4/5 plans comp
 
 ## Session Continuity
 
-Last session: 2026-03-13T17:34:05.045Z
-Stopped at: Completed 17-01-PLAN.md
+Last session: 2026-03-13T17:40:37.369Z
+Stopped at: Completed 17-02-PLAN.md
 Resume file: None

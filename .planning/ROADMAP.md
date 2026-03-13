@@ -53,7 +53,7 @@ Full details: [milestones/v0.3-ROADMAP.md](milestones/v0.3-ROADMAP.md)
 
 - [x] **Phase 15: Graph Data Engine** - Compute continuous SVG path data from commit graph (completed 2026-03-12)
 - [x] **Phase 16: Core Graph Rendering** - Render viewBox-clipped SVG paths with commit dots (completed 2026-03-12)
-- [ ] **Phase 17: Synthetic Row Adaptation** - Adapt WIP and stash rows to new SVG model
+- [x] **Phase 17: Synthetic Row Adaptation** - Adapt WIP and stash rows to new SVG model (completed 2026-03-13)
 - [ ] **Phase 18: Ref Pill Migration** - Migrate ref pills and connectors to SVG elements
 - [ ] **Phase 19: Interaction Preservation** - Preserve all click and context menu interactions
 
@@ -95,7 +95,7 @@ Plans:
   1. WIP row displays with a dashed connector line to the HEAD commit dot
   2. Stash rows display with square dots and dashed connector lines
   3. Synthetic rows integrate with virtual scrolling without visual artifacts
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 17-01-PLAN.md — TDD: Extend computeGraphSvgData for sentinel path generation (dashed flag)
@@ -152,6 +152,6 @@ Note: Phases 17 and 18 both depend on 16 but not each other. Phase 19 depends on
 | 14. Toolbar + Tracking | v0.3 | 3/3 | Complete | 2026-03-12 |
 | 15. Graph Data Engine | 2/2 | Complete    | 2026-03-12 | - |
 | 16. Core Graph Rendering | 1/1 | Complete   | 2026-03-12 | - |
-| 17. Synthetic Row Adaptation | 1/2 | In Progress|  | - |
+| 17. Synthetic Row Adaptation | 2/2 | Complete   | 2026-03-13 | - |
 | 18. Ref Pill Migration | v0.4 | 0/? | Not started | - |
 | 19. Interaction Preservation | v0.4 | 0/? | Not started | - |
