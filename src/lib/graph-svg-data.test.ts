@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeGraphSvgData } from './graph-svg-data.js';
 import type { GraphCommit, GraphEdge } from './types.js';
-import { LANE_WIDTH, ROW_HEIGHT } from './graph-constants.js';
+import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS } from './graph-constants.js';
 
 // Constants derived from graph-constants (matching LaneSvg.svelte)
 const r = LANE_WIDTH / 2; // cornerRadius = 6
@@ -185,24 +185,105 @@ describe('computeGraphSvgData', () => {
     expect(result.has('iii:rail:0')).toBe(false);
   });
 
-  it('skips sentinel OID __wip__', () => {
-    const commit = makeCommit({
-      oid: '__wip__',
-      column: 0,
-      edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+  describe('sentinel path generation', () => {
+    it('generates a dashed connector path for __wip__ row', () => {
+      const commit = makeCommit({
+        oid: '__wip__',
+        column: 0,
+        color_index: 0,
+        edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+      });
+      const result = computeGraphSvgData([commit], 1);
+      const key = '__wip__:connector:0';
+      expect(result.has(key)).toBe(true);
+      expect(result.get(key)!.d).toBe(`M ${cx(0)} ${cy(0) + DOT_RADIUS} V ${rowBottom(0)}`);
+      expect(result.get(key)!.colorIndex).toBe(0);
+      expect(result.get(key)!.dashed).toBe(true);
     });
-    const result = computeGraphSvgData([commit], 1);
-    expect(result.size).toBe(0);
-  });
 
-  it('skips sentinel OID __stash_0__', () => {
-    const commit = makeCommit({
-      oid: '__stash_0__',
-      column: 0,
-      edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+    it('WIP generates only connector path, no straight edges or rails', () => {
+      const commit = makeCommit({
+        oid: '__wip__',
+        column: 0,
+        edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+      });
+      const result = computeGraphSvgData([commit], 1);
+      // Only the connector path, no straight/rail entries
+      expect(result.size).toBe(1);
+      expect(result.has('__wip__:connector:0')).toBe(true);
+      expect(result.has('__wip__:straight:0')).toBe(false);
     });
-    const result = computeGraphSvgData([commit], 1);
-    expect(result.size).toBe(0);
+
+    it('generates a dashed connector path for __stash_0__ row', () => {
+      const commit = makeCommit({
+        oid: '__stash_0__',
+        column: 0,
+        color_index: 0,
+        edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+      });
+      const result = computeGraphSvgData([commit], 1);
+      const key = '__stash_0__:connector:0';
+      expect(result.has(key)).toBe(true);
+      expect(result.get(key)!.d).toBe(`M ${cx(0)} ${cy(0) + DOT_RADIUS} V ${rowBottom(0)}`);
+      expect(result.get(key)!.colorIndex).toBe(0);
+      expect(result.get(key)!.dashed).toBe(true);
+    });
+
+    it('stash row at rowIndex=2 uses correct Y coordinates', () => {
+      // Place stash at row index 2 (with two preceding commits)
+      const commits = [
+        makeCommit({
+          oid: 'aaa',
+          column: 0,
+          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+        }),
+        makeCommit({
+          oid: 'bbb',
+          column: 0,
+          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+        }),
+        makeCommit({
+          oid: '__stash_0__',
+          column: 0,
+          color_index: 0,
+          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+        }),
+      ];
+      const result = computeGraphSvgData(commits, 1);
+      const key = '__stash_0__:connector:0';
+      expect(result.has(key)).toBe(true);
+      expect(result.get(key)!.d).toBe(`M ${cx(0)} ${cy(2) + DOT_RADIUS} V ${rowBottom(2)}`);
+    });
+
+    it('stash with pass-through edges generates both dashed connector and normal straight edges', () => {
+      const commit = makeCommit({
+        oid: '__stash_0__',
+        column: 0,
+        color_index: 0,
+        edges: [
+          makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 }),
+          makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2 }),
+        ],
+      });
+      const result = computeGraphSvgData([commit], 2);
+      // Should have the dashed connector
+      expect(result.has('__stash_0__:connector:0')).toBe(true);
+      expect(result.get('__stash_0__:connector:0')!.dashed).toBe(true);
+      // Should also have the pass-through straight edge in column 1
+      expect(result.has('__stash_0__:straight:1')).toBe(true);
+      expect(result.get('__stash_0__:straight:1')!.dashed).toBeUndefined();
+      expect(result.get('__stash_0__:straight:1')!.colorIndex).toBe(2);
+    });
+
+    it('non-sentinel paths do NOT have dashed property set', () => {
+      const commit = makeCommit({
+        oid: 'regular',
+        column: 0,
+        edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+      });
+      const result = computeGraphSvgData([commit], 1);
+      expect(result.get('regular:straight:0')!.dashed).toBeUndefined();
+    });
   });
 
   it('does not throw when parent_oid references missing commit', () => {
