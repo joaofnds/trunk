@@ -75,9 +75,9 @@
       fill="none" stroke={laneColor(commit.color_index)}
       stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-linecap="round" />
   {:else if commit.oid.startsWith('__stash_')}
-    <rect x={dotCx - DOT_RADIUS} y={dotCy - DOT_RADIUS}
-      width={DOT_RADIUS * 2} height={DOT_RADIUS * 2}
-      fill={laneColor(commit.color_index)} />
+    <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS}
+      fill="none" stroke={laneColor(commit.color_index)}
+      stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-linecap="round" />
   {:else if commit.is_merge}
     <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS} fill="var(--color-bg)" stroke={laneColor(commit.color_index)} stroke-width={MERGE_STROKE} />
   {:else}
