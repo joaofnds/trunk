@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
-status: completed
-stopped_at: Phase 24 context gathered
-last_updated: "2026-03-14T05:26:00.312Z"
-last_activity: 2026-03-14 — Phase 23 Plan 04 complete (test regression fix for OVERLAY_ROW_HEIGHT)
+status: in-progress
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-03-14T05:44:05Z"
+last_activity: 2026-03-14 — Phase 24 Plan 01 complete (integration — unified constants, removed old pipeline)
 progress:
   total_phases: 7
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  completed_phases: 5
+  total_plans: 9
+  completed_plans: 9
 ---
 
 # Project State
@@ -20,18 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** v0.5 Graph Overlay — Phase 22 (Bezier Path Builder)
+**Current focus:** v0.5 Graph Overlay — Phase 24 (Integration)
 
 ## Current Position
 
-Phase: 23 — SVG Rendering
-Plan: 04 complete
-Status: Phase 23 Plan 04 complete — test regression fix
-Last activity: 2026-03-14 — Phase 23 Plan 04 complete (test regression fix for OVERLAY_ROW_HEIGHT)
+Phase: 24 — Integration
+Plan: 01 complete
+Status: Phase 24 Plan 01 complete — unified constants, removed old pipeline
+Last activity: 2026-03-14 — Phase 24 Plan 01 complete (integration — unified constants, removed old pipeline)
 
 ```
 v0.5 Graph Overlay
-[████████░░░░░░░░░░] 57% complete - 4/7 phases (Phase 23 ready to start)
+[██████████░░░░░░░░] 71% complete - 5/7 phases (Phase 24 complete)
 ```
 
 ## Performance Metrics
@@ -48,6 +48,7 @@ v0.5 Graph Overlay
 | Phase 23-svg-rendering P02 | 1min | 2 tasks | 2 files |
 | Phase 23 P03 | 1min | 2 tasks | 2 files |
 | Phase 23 P04 | 1min | 1 tasks | 2 files |
+| Phase 24-integration P01 | 4min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,8 @@ v0.5 Graph Overlay
 - [Phase 23-svg-rendering]: Rail range intersection (not point containment) — rails spanning through viewport are included — Determined by coordinate semantics: rails cross multiple rows, connections occupy one row
 - [Phase 23-svg-rendering]: overlaySnippet extended to Snippet<[contentHeight, visibleStart, visibleEnd]> for scroll-efficient overlay filtering — Passes existing visibleItems.start/end through VirtualList to overlay snippet without extra computation
 - [Phase 23-svg-rendering]: Three <g> groups (overlay-rails, overlay-connections, overlay-dots) enforce z-ordering in single overlay SVG — SVG painters model: later elements render on top, group names document intent and enable CSS/inspector targeting
+- [Phase 24-integration]: Renamed overlayGraphData/overlayPaths to graphData/paths — overlay is now sole pipeline, no "overlay" prefix needed
+- [Phase 24-integration]: Removed setContext entirely — no components consume graphSvgData context after GraphCell deletion
 
 ### Pending Todos
 
@@ -105,6 +108,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T05:26:00.309Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-integration/24-CONTEXT.md
+Last session: 2026-03-14T05:44:05Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: None

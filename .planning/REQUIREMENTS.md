@@ -47,8 +47,8 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 
 ### Visual Tuning
 
-- [ ] **TUNE-01**: Updated graph dimensions: ROW_HEIGHT increased from 26px to ~36px, LANE_WIDTH from 12px to ~16px
-- [ ] **TUNE-02**: 8-color lane palette applied via CSS custom properties on SVG elements
+- [x] **TUNE-01**: Updated graph dimensions: ROW_HEIGHT increased from 26px to ~36px, LANE_WIDTH from 12px to ~16px
+- [x] **TUNE-02**: 8-color lane palette applied via CSS custom properties on SVG elements
 
 ## v0.4 Requirements (Completed/Superseded)
 
@@ -159,8 +159,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INTR-01 | Phase 25 | Pending |
 | INTR-02 | Phase 25 | Pending |
 | INTR-03 | Phase 25 | Pending |
-| TUNE-01 | Phase 24 | Pending |
-| TUNE-02 | Phase 24 | Pending |
+| TUNE-01 | Phase 24 | Complete |
+| TUNE-02 | Phase 24 | Complete |
 
 **Coverage:**
 - v0.5 requirements: 22 total
