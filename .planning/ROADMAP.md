@@ -65,7 +65,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 
 **Milestone Goal:** Replace per-row viewBox-clipped SVGs with a single SVG overlay architecture. Rust lane algorithm stays; TypeScript Active Lanes transformation bridges Rust output to global grid coordinates. Cubic bezier curves replace Manhattan routing. Ref pills migrate from HTML to SVG. All interactions preserved.
 
-- [x] **Phase 20: Foundation — Types, Constants & Overlay Container** - Types, constants, vendored virtual list complete (1/2 plans)
+- [x] **Phase 20: Foundation — Types, Constants & Overlay Container** - Types, constants, vendored virtual list, SVG overlay POC complete (2/2 plans)
 - [ ] **Phase 21: Active Lanes Transformation** - Pure TS function transforming GraphCommit[] into GraphData with grid coordinates
 - [ ] **Phase 22: Bezier Path Builder** - Cubic bezier curve generation and vertical rail path math
 - [ ] **Phase 23: SVG Rendering** - Three-layer GraphOverlay component with virtualized element rendering
@@ -79,7 +79,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 **Goal**: The SVG overlay container is proven: a single SVG element sits inside the virtual list scroll container, scrolls natively with content, and passes all pointer events through to HTML rows beneath
 **Depends on**: Nothing (first phase of v0.5)
 **Requirements**: OVRL-01, OVRL-02, OVRL-03
-**Status**: In Progress (1/2 plans complete)
+**Status**: Complete (2/2 plans complete)
 **Success Criteria** (what must be TRUE):
   1. A single `<svg>` element spans the full graph height inside the virtual list's scroll container
   2. The SVG scrolls in lockstep with commit rows — zero JS scroll sync code, purely native DOM scrolling
@@ -89,9 +89,9 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 
 Plans:
 - [x] 20-01-PLAN.md — Types, constants & vendored virtual list with overlay slot
-- [ ] 20-02-PLAN.md — SVG overlay proof-of-concept & decision gate
+- [x] 20-02-PLAN.md — SVG overlay proof-of-concept & decision gate
 
-**⚠️ Decision Gate:** If scroll sync or pointer passthrough fails, evaluate fallback to enhanced per-row viewBox before proceeding to Phase 21.
+**Decision Gate:** ✓ PASSED - Scroll sync and pointer passthrough verified
 
 ### Phase 21: Active Lanes Transformation
 **Goal**: A pure TypeScript function transforms Rust's GraphCommit[] output into GraphData with integer grid coordinates, ready for SVG path generation
