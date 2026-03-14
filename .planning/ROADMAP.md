@@ -61,11 +61,11 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 
 </details>
 
-### v0.5 Graph Overlay (In Progress)
+### v0.5 Graph Overlay (In Progress - 14%)
 
 **Milestone Goal:** Replace per-row viewBox-clipped SVGs with a single SVG overlay architecture. Rust lane algorithm stays; TypeScript Active Lanes transformation bridges Rust output to global grid coordinates. Cubic bezier curves replace Manhattan routing. Ref pills migrate from HTML to SVG. All interactions preserved.
 
-- [ ] **Phase 20: Foundation — Types, Constants & Overlay Container** - Prove SVG-inside-virtual-list overlay with native scroll sync and pointer passthrough
+- [x] **Phase 20: Foundation — Types, Constants & Overlay Container** - Types, constants, vendored virtual list complete (1/2 plans)
 - [ ] **Phase 21: Active Lanes Transformation** - Pure TS function transforming GraphCommit[] into GraphData with grid coordinates
 - [ ] **Phase 22: Bezier Path Builder** - Cubic bezier curve generation and vertical rail path math
 - [ ] **Phase 23: SVG Rendering** - Three-layer GraphOverlay component with virtualized element rendering
@@ -79,6 +79,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 **Goal**: The SVG overlay container is proven: a single SVG element sits inside the virtual list scroll container, scrolls natively with content, and passes all pointer events through to HTML rows beneath
 **Depends on**: Nothing (first phase of v0.5)
 **Requirements**: OVRL-01, OVRL-02, OVRL-03
+**Status**: In Progress (1/2 plans complete)
 **Success Criteria** (what must be TRUE):
   1. A single `<svg>` element spans the full graph height inside the virtual list's scroll container
   2. The SVG scrolls in lockstep with commit rows — zero JS scroll sync code, purely native DOM scrolling
@@ -87,7 +88,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 **Plans:** 2 plans
 
 Plans:
-- [ ] 20-01-PLAN.md — Types, constants & vendored virtual list with overlay slot
+- [x] 20-01-PLAN.md — Types, constants & vendored virtual list with overlay slot
 - [ ] 20-02-PLAN.md — SVG overlay proof-of-concept & decision gate
 
 **⚠️ Decision Gate:** If scroll sync or pointer passthrough fails, evaluate fallback to enhanced per-row viewBox before proceeding to Phase 21.
@@ -188,7 +189,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 15. Graph Data Engine | v0.4 | 2/2 | Complete | 2026-03-12 |
 | 16. Core Graph Rendering | v0.4 | 1/1 | Complete | 2026-03-12 |
 | 17. Synthetic Row Adaptation | v0.4 | 2/2 | Complete | 2026-03-13 |
-| 20. Foundation — Types, Constants & Overlay Container | v0.5 | 0/? | Not started | - |
+| 20. Foundation — Types, Constants & Overlay Container | v0.5 | 1/2 | In Progress | 2026-03-14 |
 | 21. Active Lanes Transformation | v0.5 | 0/? | Not started | - |
 | 22. Bezier Path Builder | v0.5 | 0/? | Not started | - |
 | 23. SVG Rendering | v0.5 | 0/? | Not started | - |
@@ -198,4 +199,4 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 
 ---
 *Roadmap created: 2026-03-13*
-*Last updated: 2026-03-13 — v0.5 phases 20-26 added*
+*Last updated: 2026-03-14 — Phase 20-01 complete*

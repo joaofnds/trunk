@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
-status: Roadmap created, ready for plan-phase
-stopped_at: Phase 20 context gathered
-last_updated: "2026-03-14T00:27:54.165Z"
-last_activity: 2026-03-13 — Roadmap created for v0.5 (phases 20-26)
+status: In Progress
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-14T02:05:35Z"
+last_activity: 2026-03-14 — Phase 20 plan 1 complete (types, constants, vendored virtual list)
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # Project State
@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-03-13)
 
 ## Current Position
 
-Phase: 20 — Foundation — Types, Constants & Overlay Container (not started)
-Plan: —
-Status: Roadmap created, ready for plan-phase
-Last activity: 2026-03-13 — Roadmap created for v0.5 (phases 20-26)
+Phase: 20 — Foundation — Types, Constants & Overlay Container (in progress)
+Plan: 01 (complete)
+Status: In Progress
+Last activity: 2026-03-14 — Phase 20 plan 1 complete (types, constants, vendored virtual list)
 
 ```
 v0.5 Graph Overlay
-[░░░░░░░░░░░░░░░░░░░░] 0/7 phases (0%)
+[░░░░░░░░░░░░░░░░░░░░] 0/7 phases (14% complete - 1/1 plans in phase 20)
 ```
 
 ## Performance Metrics
@@ -55,6 +55,8 @@ v0.5 Graph Overlay
 - [v0.5]: Phase 20 is decision gate — if overlay fails, fallback to enhanced per-row viewBox
 - [v0.5]: Phases 21 (Active Lanes) and 22 (Bezier Builder) can execute in parallel
 - [v0.5]: SVG Ref Pills last (Phase 26) — highest risk, HTML fallback ready
+- [20-01]: OVERLAY_DOT_RADIUS = 4 (25% of 16px lane) per user preference for smaller relative dots
+- [20-01]: overlaySnippet placed before items div in DOM, receives contentHeight for SVG sizing
 - [15-01]: Absolute Y coordinates based on row index for viewBox clipping compatibility
 - [15-01]: Sentinel OID filtering via startsWith('__') prefix check
 - [15-01]: Added vitest as test infrastructure (zero new runtime dependencies)
@@ -88,6 +90,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T00:27:54.161Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-foundation-types-constants-overlay-container/20-CONTEXT.md
+Last session: 2026-03-14T02:05:35Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None
