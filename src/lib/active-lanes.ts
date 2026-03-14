@@ -62,28 +62,31 @@ export function buildGraphData(
 
       // Dashed edges from WIP to HEAD, split around stash rows
       // so the dashed line doesn't pass through hollow stash squares.
-      const wipCol = commit.column;
-      const stashRows: number[] = [];
-      for (let r = y + 1; r < headRow; r++) {
-        if (commits[r].is_stash && commits[r].column === wipCol) {
-          stashRows.push(r);
+      // Skip if headRow === y (degenerate: no commits after WIP).
+      if (headRow > y) {
+        const wipCol = commit.column;
+        const stashRows: number[] = [];
+        for (let r = y + 1; r < headRow; r++) {
+          if (commits[r].is_stash && commits[r].column === wipCol) {
+            stashRows.push(r);
+          }
         }
-      }
 
-      if (stashRows.length === 0) {
-        // No stashes in the way — single edge
-        edges.push({
-          fromX: wipCol, fromY: y, toX: wipCol, toY: headRow,
-          colorIndex: commit.color_index, dashed: true,
-        });
-      } else {
-        // Split around each stash: WIP→stash1, stash1→stash2, ..., stashN→HEAD
-        const breakpoints = [y, ...stashRows, headRow];
-        for (let i = 0; i < breakpoints.length - 1; i++) {
+        if (stashRows.length === 0) {
+          // No stashes in the way — single edge
           edges.push({
-            fromX: wipCol, fromY: breakpoints[i], toX: wipCol, toY: breakpoints[i + 1],
+            fromX: wipCol, fromY: y, toX: wipCol, toY: headRow,
             colorIndex: commit.color_index, dashed: true,
           });
+        } else {
+          // Split around each stash: WIP→stash1, stash1→stash2, ..., stashN→HEAD
+          const breakpoints = [y, ...stashRows, headRow];
+          for (let i = 0; i < breakpoints.length - 1; i++) {
+            edges.push({
+              fromX: wipCol, fromY: breakpoints[i], toX: wipCol, toY: breakpoints[i + 1],
+              colorIndex: commit.color_index, dashed: true,
+            });
+          }
         }
       }
 

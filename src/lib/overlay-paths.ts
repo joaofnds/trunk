@@ -88,6 +88,18 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
     endY = rowBottom(edge.toY);
   }
 
+  // Safety: if hollow-dot adjustments make startY >= endY, the rail has no visible length
+  if (startY >= endY) {
+    return {
+      d: '',
+      colorIndex: edge.colorIndex,
+      dashed: edge.dashed,
+      kind: 'rail',
+      minRow: edge.fromY,
+      maxRow: edge.toY,
+    };
+  }
+
   return {
     d: `M ${cx(col)} ${startY} V ${endY}`,
     colorIndex: edge.colorIndex,
