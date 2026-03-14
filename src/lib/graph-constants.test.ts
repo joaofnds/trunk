@@ -16,7 +16,7 @@ describe('graph-constants', () => {
 
   describe('overlay constants', () => {
     it('OVERLAY_LANE_WIDTH is 16', () => expect(OVERLAY_LANE_WIDTH).toBe(16));
-    it('OVERLAY_ROW_HEIGHT is 36', () => expect(OVERLAY_ROW_HEIGHT).toBe(36));
+    it('OVERLAY_ROW_HEIGHT is 26', () => expect(OVERLAY_ROW_HEIGHT).toBe(26));
     it('OVERLAY_DOT_RADIUS is 4', () => expect(OVERLAY_DOT_RADIUS).toBe(4));
     it('OVERLAY_EDGE_STROKE is 1.5', () => expect(OVERLAY_EDGE_STROKE).toBe(1.5));
     it('OVERLAY_MERGE_STROKE is 2', () => expect(OVERLAY_MERGE_STROKE).toBe(2));

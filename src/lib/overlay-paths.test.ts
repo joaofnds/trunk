@@ -4,7 +4,7 @@ import type { OverlayEdge, OverlayNode, OverlayGraphData, OverlayPath } from './
 
 // Constants mirrored from graph-constants.ts for assertion computation
 const LANE = 16;
-const ROW = 36;
+const ROW = 26;
 const R = LANE / 2; // 8px corner radius
 function cx(col: number): number { return col * LANE + LANE / 2; }
 function cy(row: number): number { return row * ROW + ROW / 2; }
@@ -223,7 +223,7 @@ describe('buildOverlayPaths', () => {
     it('left-going connection starts at cx(fromX), cy(fromY)', () => {
       const edge = makeOverlayEdge({ fromX: 2, toX: 0, fromY: 1, toY: 1 });
       const result = buildOverlayPaths(makeGraphData([edge]));
-      // cx(2)=40, cy(1)=54
+      // cx(2)=40, cy(1)=39
       expect(result[0].d).toMatch(new RegExp(`^M ${cx(2)} ${cy(1)}`));
     });
 
