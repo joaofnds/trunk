@@ -139,9 +139,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RENDER-03 | Phase 16 | Complete |
 | SYNTH-01 | Phase 17 | Complete |
 | SYNTH-02 | Phase 17 | Complete |
-| OVRL-01 | Phase 20 | In Progress |
-| OVRL-02 | Phase 20 | In Progress |
-| OVRL-03 | Phase 20 | In Progress |
+| OVRL-01 | Phase 20 | Complete |
+| OVRL-02 | Phase 20 | Complete |
+| OVRL-03 | Phase 20 | Complete |
 | OVRL-04 | Phase 23 | Pending |
 | DATA-01 | Phase 21 | Complete |
 | DATA-02 | Phase 21 | Complete |
@@ -169,4 +169,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-03-13*
-*Last updated: 2026-03-14 — Phase 20-01 foundation complete*
+*Last updated: 2026-03-14 — Phase 21 active lanes transformation complete*

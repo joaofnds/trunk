@@ -121,4 +121,4 @@ A developer can open any Git repository, browse its full commit history as a vis
 | Rust lane algorithm stays, TS transformation added | Rust O(n) algorithm is proven (~5ms/10k commits); TS layer transforms output into global grid coords for SVG rendering | — Pending |
 
 ---
-*Last updated: 2026-03-13 after v0.5 scope clarification*
+*Last updated: 2026-03-14 after Phase 21*

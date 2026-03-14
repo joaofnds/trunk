@@ -105,7 +105,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 21-01-PLAN.md — TDD: buildGraphData() with edge coalescing and sentinel handling
+- [x] 21-01-PLAN.md — TDD: buildGraphData() with edge coalescing and sentinel handling
 
 ### Phase 22: Bezier Path Builder
 **Goal**: SVG path `d` strings are generated for all edge types — cubic bezier for cross-lane connections and straight vertical lines for same-lane rails
@@ -193,7 +193,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 16. Core Graph Rendering | v0.4 | 1/1 | Complete | 2026-03-12 |
 | 17. Synthetic Row Adaptation | v0.4 | 2/2 | Complete | 2026-03-13 |
 | 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete    | 2026-03-14 | 2026-03-14 |
-| 21. Active Lanes Transformation | 1/1 | Complete    | 2026-03-14 | - |
+| 21. Active Lanes Transformation | v0.5 | 1/1 | Complete | 2026-03-14 |
 | 22. Bezier Path Builder | v0.5 | 0/? | Not started | - |
 | 23. SVG Rendering | v0.5 | 0/? | Not started | - |
 | 24. Integration | v0.5 | 0/? | Not started | - |
@@ -202,4 +202,4 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 
 ---
 *Roadmap created: 2026-03-13*
-*Last updated: 2026-03-14 — Phase 20-01 complete*
+*Last updated: 2026-03-14 — Phase 21 complete*

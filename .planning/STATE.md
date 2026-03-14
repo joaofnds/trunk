@@ -17,21 +17,21 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-13)
+See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** v0.5 Graph Overlay — Phase 21 (Active Lanes Transformation)
+**Current focus:** v0.5 Graph Overlay — Phase 22 (Bezier Path Builder)
 
 ## Current Position
 
-Phase: 21 — Active Lanes Transformation (in progress)
-Plan: 01 (complete — 1/1 plans for phase 21)
-Status: In Progress
-Last activity: 2026-03-14 — Phase 21 plan 01 complete (buildGraphData with edge coalescing)
+Phase: 22 — Bezier Path Builder
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-03-14 — Phase 21 complete, transitioning to Phase 22
 
 ```
 v0.5 Graph Overlay
-[████░░░░░░░░░░░░░░] 28% complete - 2/7 phases (Phase 21 in progress)
+[██████░░░░░░░░░░░░] 42% complete - 3/7 phases (Phase 22 ready to plan)
 ```
 
 ## Performance Metrics
@@ -91,10 +91,10 @@ v0.5 Graph Overlay
 
 - [Research]: WebKit SVG performance at scale unverified -- must profile in production build
 - [Research]: Ref pill "+N" hover-expand in SVG is unproven -- may need HTML fallback
-- [Phase 20]: Decision gate — SVG-inside-virtual-list must be validated before investing in data/rendering
+- ~~[Phase 20]: Decision gate — SVG-inside-virtual-list must be validated before investing in data/rendering~~ ✓ Passed
 
 ## Session Continuity
 
-Last session: 2026-03-14T03:07:22Z
-Stopped at: Completed 21-01-PLAN.md
+Last session: 2026-03-14
+Stopped at: Phase 21 complete, ready to plan Phase 22
 Resume file: None
