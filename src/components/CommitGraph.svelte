@@ -5,7 +5,7 @@
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
-  import { LANE_WIDTH, ROW_HEIGHT, OVERLAY_LANE_WIDTH, OVERLAY_ROW_HEIGHT, OVERLAY_DOT_RADIUS, OVERLAY_EDGE_STROKE, OVERLAY_MERGE_STROKE } from '../lib/graph-constants.js';
+  import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, MERGE_STROKE } from '../lib/graph-constants.js';
   import { buildGraphData } from '../lib/active-lanes.js';
   import { buildOverlayPaths } from '../lib/overlay-paths.js';
   import { getVisibleOverlayElements } from '../lib/overlay-visible.js';
@@ -268,8 +268,8 @@
   });
 
   const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
-  const overlayCx = (col: number) => col * OVERLAY_LANE_WIDTH + OVERLAY_LANE_WIDTH / 2;
-  const overlayCy = (row: number) => row * OVERLAY_ROW_HEIGHT + OVERLAY_ROW_HEIGHT / 2;
+  const cx = (col: number) => col * LANE_WIDTH + LANE_WIDTH / 2;
+  const cy = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
   const overlayGraphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
   const overlayPaths = $derived.by(() => buildOverlayPaths(overlayGraphData));
@@ -431,7 +431,7 @@
         {@const visible = getVisibleOverlayElements(overlayPaths, overlayGraphData.nodes, visibleStart, visibleEnd)}
         <svg
           class="absolute top-0"
-          width={Math.max(maxColumns, 1) * OVERLAY_LANE_WIDTH}
+          width={Math.max(maxColumns, 1) * LANE_WIDTH}
           height={contentHeight}
           style="left: {columnWidths.ref}px; pointer-events: none; z-index: 1;"
         >
@@ -439,7 +439,7 @@
             {#each visible.rails as path}
               <path d={path.d} fill="none"
                 stroke={laneColor(path.colorIndex)}
-                stroke-width={OVERLAY_EDGE_STROKE}
+                stroke-width={EDGE_STROKE}
                 stroke-linecap="butt"
                 stroke-dasharray={path.dashed ? '3 3' : 'none'} />
             {/each}
@@ -448,7 +448,7 @@
             {#each visible.connections as path}
               <path d={path.d} fill="none"
                 stroke={laneColor(path.colorIndex)}
-                stroke-width={OVERLAY_EDGE_STROKE}
+                stroke-width={EDGE_STROKE}
                 stroke-linecap="round"
                 stroke-dasharray={path.dashed ? '3 3' : 'none'} />
             {/each}
@@ -456,22 +456,25 @@
           <g class="overlay-dots">
             {#each visible.dots as node}
               {#if node.isWip}
-                <circle cx={overlayCx(node.x)} cy={overlayCy(node.y)} r={OVERLAY_DOT_RADIUS}
+                <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
                   fill="none" stroke={laneColor(node.colorIndex)}
-                  stroke-width={OVERLAY_EDGE_STROKE} stroke-dasharray="3 3" />
+                  stroke-width={EDGE_STROKE} stroke-dasharray="3 3" />
               {:else if node.isStash}
                 <rect
-                  x={overlayCx(node.x) - OVERLAY_DOT_RADIUS}
-                  y={overlayCy(node.y) - OVERLAY_DOT_RADIUS}
-                  width={OVERLAY_DOT_RADIUS * 2}
-                  height={OVERLAY_DOT_RADIUS * 2}
-                  fill={laneColor(node.colorIndex)} />
+                  x={cx(node.x) - DOT_RADIUS}
+                  y={cy(node.y) - DOT_RADIUS}
+                  width={DOT_RADIUS * 2}
+                  height={DOT_RADIUS * 2}
+                  fill="none"
+                  stroke={laneColor(node.colorIndex)}
+                  stroke-width={EDGE_STROKE}
+                  stroke-dasharray="3 3" />
               {:else if node.isMerge}
-                <circle cx={overlayCx(node.x)} cy={overlayCy(node.y)} r={OVERLAY_DOT_RADIUS}
+                <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
                   fill="var(--color-bg)" stroke={laneColor(node.colorIndex)}
-                  stroke-width={OVERLAY_MERGE_STROKE} />
+                  stroke-width={MERGE_STROKE} />
               {:else}
-                <circle cx={overlayCx(node.x)} cy={overlayCy(node.y)} r={OVERLAY_DOT_RADIUS}
+                <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
                   fill={laneColor(node.colorIndex)} />
               {/if}
             {/each}

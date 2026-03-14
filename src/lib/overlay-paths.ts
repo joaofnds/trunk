@@ -1,32 +1,32 @@
 import type { OverlayEdge, OverlayGraphData, OverlayNode, OverlayPath } from './types.js';
-import { OVERLAY_LANE_WIDTH, OVERLAY_ROW_HEIGHT } from './graph-constants.js';
+import { LANE_WIDTH, ROW_HEIGHT } from './graph-constants.js';
 
 // ─── Coordinate helpers ───────────────────────────────────────────────────────
 
 /** Center X of a swimlane column */
 function cx(col: number): number {
-  return col * OVERLAY_LANE_WIDTH + OVERLAY_LANE_WIDTH / 2;
+  return col * LANE_WIDTH + LANE_WIDTH / 2;
 }
 
 /** Center Y (dot position) for a given row index */
 function cy(row: number): number {
-  return row * OVERLAY_ROW_HEIGHT + OVERLAY_ROW_HEIGHT / 2;
+  return row * ROW_HEIGHT + ROW_HEIGHT / 2;
 }
 
 /** Top Y of a row */
 function rowTop(row: number): number {
-  return row * OVERLAY_ROW_HEIGHT;
+  return row * ROW_HEIGHT;
 }
 
 /** Bottom Y of a row */
 function rowBottom(row: number): number {
-  return (row + 1) * OVERLAY_ROW_HEIGHT;
+  return (row + 1) * ROW_HEIGHT;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Fixed corner radius for all connections (CURV-04) */
-const R = OVERLAY_LANE_WIDTH / 2;
+const R = LANE_WIDTH / 2;
 
 /**
  * Kappa constant for cubic bezier quarter-circle approximation.

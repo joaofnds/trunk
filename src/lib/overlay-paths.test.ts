@@ -4,7 +4,7 @@ import type { OverlayEdge, OverlayNode, OverlayGraphData, OverlayPath } from './
 
 // Constants mirrored from graph-constants.ts for assertion computation
 const LANE = 16;
-const ROW = 26;
+const ROW = 36;
 const R = LANE / 2; // 8px corner radius
 function cx(col: number): number { return col * LANE + LANE / 2; }
 function cy(row: number): number { return row * ROW + ROW / 2; }
