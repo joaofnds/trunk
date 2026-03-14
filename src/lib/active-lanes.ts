@@ -162,5 +162,61 @@ export function buildGraphData(
     flushLane(col, lane, lastRow, edges);
   }
 
+  // --- Post-process: inline stash nodes at parent column ---
+  // Stashes are placed to the right of their parent by the Rust backend.
+  // Move them visually inline: rewrite the stash node's x to the parent's
+  // column, convert the stash rail to the parent column, and remove the
+  // fork connection from parent to stash.
+  inlineStashNodes(nodes, edges, commits);
+
   return { nodes, edges, maxColumns };
+}
+
+/**
+ * Moves stash nodes from their own column to their parent's column so the
+ * connector is a straight vertical dashed line instead of a branch curve.
+ *
+ * Detects the pattern: a fork-out connection from parent column P to stash
+ * column C at the parent's row. Rewrites:
+ * - Stash node x: C → P
+ * - Rail edges in column C that belong to the stash: fromX/toX → P
+ * - Removes the fork connection edge from P to C
+ */
+function inlineStashNodes(
+  nodes: OverlayNode[],
+  edges: OverlayEdge[],
+  commits: GraphCommit[],
+): void {
+  // Build a set of stash columns and their row ranges
+  const stashNodes = nodes.filter(n => n.isStash);
+  if (stashNodes.length === 0) return;
+
+  // For each stash, find the fork connection at the parent row that points to it
+  for (const stash of stashNodes) {
+    const stashCol = stash.x;
+
+    // Find the fork connection: a cross-lane edge where toX === stashCol
+    // and the edge is dashed. This is emitted at the parent's row.
+    const forkIdx = edges.findIndex(
+      e => e.toX === stashCol && e.fromX !== stashCol && e.dashed,
+    );
+    if (forkIdx === -1) continue; // orphan stash or no fork found
+
+    const fork = edges[forkIdx];
+    const parentCol = fork.fromX;
+
+    // Move stash node to parent column
+    stash.x = parentCol;
+
+    // Rewrite rail edges in stash column to parent column
+    for (const e of edges) {
+      if (e.fromX === stashCol && e.toX === stashCol && e.dashed) {
+        e.fromX = parentCol;
+        e.toX = parentCol;
+      }
+    }
+
+    // Remove the fork connection edge
+    edges.splice(forkIdx, 1);
+  }
 }
