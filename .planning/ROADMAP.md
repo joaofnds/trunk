@@ -85,7 +85,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
   2. The SVG scrolls in lockstep with commit rows — zero JS scroll sync code, purely native DOM scrolling
   3. Clicking and right-clicking commit rows beneath the SVG overlay fires all existing event handlers (pointer-events passthrough works)
   4. All new TypeScript types (`GraphNode`, `GraphEdge`, `GraphData`) and updated constants (`ROW_HEIGHT`, `LANE_WIDTH`, `DOT_RADIUS`) are defined and exported
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 20-01-PLAN.md — Types, constants & vendored virtual list with overlay slot
@@ -189,7 +189,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 15. Graph Data Engine | v0.4 | 2/2 | Complete | 2026-03-12 |
 | 16. Core Graph Rendering | v0.4 | 1/1 | Complete | 2026-03-12 |
 | 17. Synthetic Row Adaptation | v0.4 | 2/2 | Complete | 2026-03-13 |
-| 20. Foundation — Types, Constants & Overlay Container | v0.5 | 1/2 | In Progress | 2026-03-14 |
+| 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete   | 2026-03-14 | 2026-03-14 |
 | 21. Active Lanes Transformation | v0.5 | 0/? | Not started | - |
 | 22. Bezier Path Builder | v0.5 | 0/? | Not started | - |
 | 23. SVG Rendering | v0.5 | 0/? | Not started | - |
