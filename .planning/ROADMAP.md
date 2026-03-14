@@ -150,7 +150,10 @@ Plans:
   2. All 8 lane colors from the vivid palette render via CSS custom properties on SVG elements
   3. Old rendering files deleted (`GraphCell.svelte`, `LaneSvg.svelte`, `graph-svg-data.ts`) — no dead code remains
   4. Virtual scrolling remains smooth with the overlay on repos with 5k+ commits
-**Plans**: TBD
+**Plans:** 1/1 plans
+
+Plans:
+- [ ] 24-01-PLAN.md — Unify constants, remove old pipeline, delete dead code, stash dot update
 
 ### Phase 25: Interaction Preservation
 **Goal**: All click and context menu interactions from v0.3/v0.4 work identically through the overlay architecture
