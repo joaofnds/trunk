@@ -6,7 +6,7 @@ import type { OverlayEdge, OverlayNode, OverlayGraphData, OverlayPath } from './
 const LANE = 16;
 const ROW = 26;
 const R = LANE / 2; // 8px corner radius
-const DOT_R = 8; // DOT_RADIUS from graph-constants
+const DOT_R = 6; // DOT_RADIUS from graph-constants
 const DASH_GAP = 3; // matches stroke-dasharray gap
 function cx(col: number): number { return col * LANE + LANE / 2; }
 function cy(row: number): number { return row * ROW + ROW / 2; }
