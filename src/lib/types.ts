@@ -158,3 +158,10 @@ export interface OverlayGraphData {
   edges: OverlayEdge[];
   maxColumns: number;
 }
+
+export interface OverlayPath {
+  d: string;
+  colorIndex: number;
+  dashed: boolean;
+  kind: 'rail' | 'connection';
+}
