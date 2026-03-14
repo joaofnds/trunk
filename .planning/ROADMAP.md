@@ -70,7 +70,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 - [x] **Phase 22: Bezier Path Builder** - Cubic bezier curve generation and vertical rail path math (completed 2026-03-14)
 - [x] **Phase 23: SVG Rendering** - Three-layer GraphOverlay component with virtualized element rendering (completed 2026-03-14)
 - [x] **Phase 24: Integration** - Wire overlay into CommitGraph, replace old pipeline, apply tuned dimensions (completed 2026-03-14)
-- [ ] **Phase 25: Interaction Preservation** - Preserve all click and context menu interactions through overlay
+- [x] **Phase 25: Interaction Preservation** - Preserve all click and context menu interactions through overlay (completed 2026-03-14)
 - [ ] **Phase 26: SVG Ref Pills** - Ref pills as SVG elements with connectors, dimming, and overflow
 
 ## Phase Details
@@ -163,7 +163,7 @@ Plans:
   1. Clicking a commit row selects it and shows commit detail in the diff panel
   2. Right-clicking a commit row opens the context menu with all actions (copy SHA/message, checkout, branch, tag, cherry-pick, revert)
   3. Right-clicking a stash row opens the stash context menu with pop/apply/drop actions
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 25-01-PLAN.md — Selected row highlight, stash context menu routing, interaction preservation
@@ -212,7 +212,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 22. Bezier Path Builder | 1/1 | Complete    | 2026-03-14 | - |
 | 23. SVG Rendering | 4/4 | Complete    | 2026-03-14 | - |
 | 24. Integration | v0.5 | Complete    | 2026-03-14 | 2026-03-14 |
-| 25. Interaction Preservation | v0.5 | 0/? | Not started | - |
+| 25. Interaction Preservation | 1/1 | Complete   | 2026-03-14 | - |
 | 26. SVG Ref Pills | v0.5 | 0/? | Not started | - |
 
 ---

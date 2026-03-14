@@ -4,13 +4,13 @@ milestone: v0.5
 milestone_name: Graph Overlay
 status: completed
 stopped_at: Phase 25 context gathered
-last_updated: "2026-03-14T12:24:07.507Z"
+last_updated: "2026-03-14T12:41:33.997Z"
 last_activity: 2026-03-14 — Phase 24 Plan 01 complete (integration — unified constants, removed old pipeline)
 progress:
   total_phases: 7
-  completed_phases: 5
-  total_plans: 9
-  completed_plans: 9
+  completed_phases: 6
+  total_plans: 10
+  completed_plans: 10
 ---
 
 # Project State
@@ -20,18 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-14)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** v0.5 Graph Overlay — Phase 24 (Integration)
+**Current focus:** v0.5 Graph Overlay — Phase 25 (Interaction Preservation)
 
 ## Current Position
 
-Phase: 24 — Integration
+Phase: 25 — Interaction Preservation
 Plan: 01 complete
-Status: Phase 24 Plan 01 complete — unified constants, removed old pipeline
-Last activity: 2026-03-14 — Phase 24 Plan 01 complete (integration — unified constants, removed old pipeline)
+Status: Phase 25 Plan 01 complete — selected row highlight, stash context menu routing
+Last activity: 2026-03-14 — Phase 25 Plan 01 complete (interaction preservation — selected highlight, stash context menu)
 
 ```
 v0.5 Graph Overlay
-[██████████░░░░░░░░] 71% complete - 5/7 phases (Phase 24 complete)
+[████████████████░░] 86% complete - 6/7 phases (Phase 25 complete)
 ```
 
 ## Performance Metrics
@@ -49,6 +49,7 @@ v0.5 Graph Overlay
 | Phase 23 P03 | 1min | 2 tasks | 2 files |
 | Phase 23 P04 | 1min | 1 tasks | 2 files |
 | Phase 24-integration P01 | 4min | 2 tasks | 11 files |
+| Phase 25-interaction-preservation P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ v0.5 Graph Overlay
 - [Phase 23-svg-rendering]: Three <g> groups (overlay-rails, overlay-connections, overlay-dots) enforce z-ordering in single overlay SVG — SVG painters model: later elements render on top, group names document intent and enable CSS/inspector targeting
 - [Phase 24-integration]: Renamed overlayGraphData/overlayPaths to graphData/paths — overlay is now sole pipeline, no "overlay" prefix needed
 - [Phase 24-integration]: Removed setContext entirely — no components consume graphSvgData context after GraphCell deletion
+- [Phase 25-interaction-preservation]: Selected row uses --color-selected-row CSS custom property (10% opacity accent) for persistent highlight
+- [Phase 25-interaction-preservation]: Stash OID→index lookup loaded from list_stashes API, refreshed alongside graph data
+- [Phase 25-interaction-preservation]: Context menu routing via handleRowContextMenu dispatcher — stash rows get stash menu, commits get full menu
 
 ### Pending Todos
 
@@ -108,6 +112,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T12:24:07.503Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-interaction-preservation/25-CONTEXT.md
+Last session: 2026-03-14T12:40:34Z
+Stopped at: Completed 25-01-PLAN.md
+Resume file: None

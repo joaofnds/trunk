@@ -41,9 +41,9 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 
 ### Interactions
 
-- [ ] **INTR-01**: Clicking a commit row selects it and shows commit detail in diff panel
-- [ ] **INTR-02**: Right-clicking a commit row opens context menu (copy SHA, checkout, branch, tag, cherry-pick, revert)
-- [ ] **INTR-03**: Right-clicking a stash row opens stash context menu (pop/apply/drop)
+- [x] **INTR-01**: Clicking a commit row selects it and shows commit detail in diff panel
+- [x] **INTR-02**: Right-clicking a commit row opens context menu (copy SHA, checkout, branch, tag, cherry-pick, revert)
+- [x] **INTR-03**: Right-clicking a stash row opens stash context menu (pop/apply/drop)
 
 ### Visual Tuning
 
@@ -156,9 +156,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PILL-02 | Phase 26 | Pending |
 | PILL-03 | Phase 26 | Pending |
 | PILL-04 | Phase 26 | Pending |
-| INTR-01 | Phase 25 | Pending |
-| INTR-02 | Phase 25 | Pending |
-| INTR-03 | Phase 25 | Pending |
+| INTR-01 | Phase 25 | Complete |
+| INTR-02 | Phase 25 | Complete |
+| INTR-03 | Phase 25 | Complete |
 | TUNE-01 | Phase 24 | Complete |
 | TUNE-02 | Phase 24 | Complete |
 
