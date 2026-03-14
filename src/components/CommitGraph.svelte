@@ -5,7 +5,10 @@
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
-  import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
+  import { LANE_WIDTH, ROW_HEIGHT, OVERLAY_LANE_WIDTH, OVERLAY_ROW_HEIGHT, OVERLAY_DOT_RADIUS, OVERLAY_EDGE_STROKE, OVERLAY_MERGE_STROKE } from '../lib/graph-constants.js';
+  import { buildGraphData } from '../lib/active-lanes.js';
+  import { buildOverlayPaths } from '../lib/overlay-paths.js';
+  import { getVisibleOverlayElements } from '../lib/overlay-visible.js';
   import { computeGraphSvgData } from '../lib/graph-svg-data.js';
   import { Menu, MenuItem, Submenu, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -264,6 +267,13 @@
     return [...commits];
   });
 
+  const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
+  const overlayCx = (col: number) => col * OVERLAY_LANE_WIDTH + OVERLAY_LANE_WIDTH / 2;
+  const overlayCy = (row: number) => row * OVERLAY_ROW_HEIGHT + OVERLAY_ROW_HEIGHT / 2;
+
+  const overlayGraphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
+  const overlayPaths = $derived.by(() => buildOverlayPaths(overlayGraphData));
+
   const graphSvgData = $derived.by(() => {
     return computeGraphSvgData(displayItems, maxColumns);
   });
@@ -416,15 +426,56 @@
         {error}
       </div>
     {:else}
-      <!-- SVG overlay snippet for proof-of-concept - renders inside virtual list scroll container -->
-      {#snippet graphOverlay(contentHeight: number)}
+      <!-- SVG overlay snippet - renders inside virtual list scroll container -->
+      {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
+        {@const visible = getVisibleOverlayElements(overlayPaths, overlayGraphData.nodes, visibleStart, visibleEnd)}
         <svg
           class="absolute top-0 left-0"
-          width={Math.max(maxColumns, 1) * LANE_WIDTH}
+          width={Math.max(maxColumns, 1) * OVERLAY_LANE_WIDTH}
           height={contentHeight}
           style="pointer-events: none; z-index: 1;"
         >
-          <!-- Overlay content will be rendered by future phases (21+) -->
+          <g class="overlay-rails">
+            {#each visible.rails as path}
+              <path d={path.d} fill="none"
+                stroke={laneColor(path.colorIndex)}
+                stroke-width={OVERLAY_EDGE_STROKE}
+                stroke-linecap="butt"
+                stroke-dasharray={path.dashed ? '3 3' : 'none'} />
+            {/each}
+          </g>
+          <g class="overlay-connections">
+            {#each visible.connections as path}
+              <path d={path.d} fill="none"
+                stroke={laneColor(path.colorIndex)}
+                stroke-width={OVERLAY_EDGE_STROKE}
+                stroke-linecap="round"
+                stroke-dasharray={path.dashed ? '3 3' : 'none'} />
+            {/each}
+          </g>
+          <g class="overlay-dots">
+            {#each visible.dots as node}
+              {#if node.isWip}
+                <circle cx={overlayCx(node.x)} cy={overlayCy(node.y)} r={OVERLAY_DOT_RADIUS}
+                  fill="none" stroke={laneColor(node.colorIndex)}
+                  stroke-width={OVERLAY_EDGE_STROKE} stroke-dasharray="3 3" />
+              {:else if node.isStash}
+                <rect
+                  x={overlayCx(node.x) - OVERLAY_DOT_RADIUS}
+                  y={overlayCy(node.y) - OVERLAY_DOT_RADIUS}
+                  width={OVERLAY_DOT_RADIUS * 2}
+                  height={OVERLAY_DOT_RADIUS * 2}
+                  fill={laneColor(node.colorIndex)} />
+              {:else if node.isMerge}
+                <circle cx={overlayCx(node.x)} cy={overlayCy(node.y)} r={OVERLAY_DOT_RADIUS}
+                  fill="var(--color-bg)" stroke={laneColor(node.colorIndex)}
+                  stroke-width={OVERLAY_MERGE_STROKE} />
+              {:else}
+                <circle cx={overlayCx(node.x)} cy={overlayCy(node.y)} r={OVERLAY_DOT_RADIUS}
+                  fill={laneColor(node.colorIndex)} />
+              {/if}
+            {/each}
+          </g>
         </svg>
       {/snippet}
 
