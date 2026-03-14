@@ -42,6 +42,9 @@ function isHollow(node: OverlayNode): boolean {
   return node.isStash || node.isWip || node.isMerge;
 }
 
+/** Gap between rail end and hollow dot edge — matches dash gap (stroke-dasharray 3 3) */
+const DASH_GAP = 3;
+
 /**
  * Builds a vertical rail path (M...V) for a same-lane edge.
  *
@@ -63,20 +66,20 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   const toHasNode = toNode !== undefined;
   const toIsBranchTip = toNode?.isBranchTip ?? false;
 
-  // Start: branch tip stops at dot edge for hollow shapes, dot center for filled
+  // Start: branch tip stops at dot edge + dash gap for hollow shapes, dot center for filled
   let startY: number;
   if (fromIsBranchTip) {
-    startY = fromNode && isHollow(fromNode) ? cy(edge.fromY) + DOT_RADIUS : cy(edge.fromY);
+    startY = fromNode && isHollow(fromNode) ? cy(edge.fromY) + DOT_RADIUS + DASH_GAP : cy(edge.fromY);
   } else {
     startY = rowTop(edge.fromY);
   }
 
-  // End: branch tip stops at dot edge for hollow, dot center for filled.
+  // End: branch tip stops at dot edge - dash gap for hollow, dot center for filled.
   // No node: lane terminates at connection curve corner (cy - R).
   // Non-tip node: extends to rowBottom for seamless continuation.
   let endY: number;
   if (toIsBranchTip) {
-    endY = toNode && isHollow(toNode) ? cy(edge.toY) - DOT_RADIUS : cy(edge.toY);
+    endY = toNode && isHollow(toNode) ? cy(edge.toY) - DOT_RADIUS - DASH_GAP : cy(edge.toY);
   } else if (!toHasNode) {
     endY = cy(edge.toY) - R;
   } else {

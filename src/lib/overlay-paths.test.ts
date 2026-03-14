@@ -7,6 +7,7 @@ const LANE = 16;
 const ROW = 36;
 const R = LANE / 2; // 8px corner radius
 const DOT_R = 6; // DOT_RADIUS from graph-constants
+const DASH_GAP = 3; // matches stroke-dasharray gap
 function cx(col: number): number { return col * LANE + LANE / 2; }
 function cy(row: number): number { return row * ROW + ROW / 2; }
 function rowTop(row: number): number { return row * ROW; }
@@ -145,31 +146,31 @@ describe('buildOverlayPaths', () => {
       expect(result[0].d).toBe(`M ${cx(0)} ${cy(1)} V ${cy(3)}`);
     });
 
-    it('hollow stash tip: rail starts at dot bottom edge (cy + DOT_RADIUS)', () => {
+    it('hollow stash tip: rail starts at dot edge + dash gap', () => {
       const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 1, toY: 3, dashed: true });
       const nodes = [
         makeOverlayNode({ oid: 'stash', x: 0, y: 1, isBranchTip: true, isStash: true }),
       ];
       const result = buildOverlayPaths(makeGraphData([edge], nodes));
-      expect(result[0].d).toBe(`M ${cx(0)} ${cy(1) + DOT_R} V ${cy(3) - R}`);
+      expect(result[0].d).toBe(`M ${cx(0)} ${cy(1) + DOT_R + DASH_GAP} V ${cy(3) - R}`);
     });
 
-    it('hollow merge node: rail ends at dot top edge (cy - DOT_RADIUS)', () => {
+    it('hollow merge node: rail ends at dot edge - dash gap', () => {
       const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 2 });
       const nodes = [
         makeOverlayNode({ oid: 'merge', x: 0, y: 2, isBranchTip: true, isMerge: true }),
       ];
       const result = buildOverlayPaths(makeGraphData([edge], nodes));
-      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(0)} V ${cy(2) - DOT_R}`);
+      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(0)} V ${cy(2) - DOT_R - DASH_GAP}`);
     });
 
-    it('hollow WIP node: rail starts at dot bottom edge', () => {
+    it('hollow WIP node: rail starts at dot edge + dash gap', () => {
       const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 2, dashed: true });
       const nodes = [
         makeOverlayNode({ oid: 'wip', x: 0, y: 0, isBranchTip: true, isWip: true }),
       ];
       const result = buildOverlayPaths(makeGraphData([edge], nodes));
-      expect(result[0].d).toBe(`M ${cx(0)} ${cy(0) + DOT_R} V ${cy(2) - R}`);
+      expect(result[0].d).toBe(`M ${cx(0)} ${cy(0) + DOT_R + DASH_GAP} V ${cy(2) - R}`);
     });
 
     it('filled normal tip: rail starts at dot center (cy)', () => {
