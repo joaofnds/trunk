@@ -124,45 +124,50 @@ describe('buildGraphData', () => {
     });
 
     it('breaks coalescing at color change', () => {
-      // 3 commits in column 0: first two color 0, third color 1
+      // 4 commits in column 0: first two color 0, last two color 1
+      // Need 4 to ensure the new lane has enough rows to produce a second edge
       const commits = [
         makeCommit({ oid: 'a', column: 0, edges: [makeEdge({ edge_type: 'Straight', color_index: 0 })] }),
         makeCommit({ oid: 'b', column: 0, edges: [makeEdge({ edge_type: 'Straight', color_index: 0 })] }),
         makeCommit({ oid: 'c', column: 0, edges: [makeEdge({ edge_type: 'Straight', color_index: 1 })] }),
+        makeCommit({ oid: 'd', column: 0, edges: [makeEdge({ edge_type: 'Straight', color_index: 1 })] }),
       ];
       const result = buildGraphData(commits, 1);
 
       const straightEdges = result.edges.filter(e => e.fromX === e.toX);
       expect(straightEdges).toHaveLength(2);
-      // First span: rows 0-1, color 0
+      // First span: rows 0-2, color 0 (edges at rows 0,1 reach to row 2)
       expect(straightEdges).toContainEqual({
-        fromX: 0, fromY: 0, toX: 0, toY: 1,
+        fromX: 0, fromY: 0, toX: 0, toY: 2,
         colorIndex: 0, dashed: false,
       });
-      // Second span: rows 1-2, color 1
+      // Second span: rows 2-3, color 1 (edges at rows 2,3 reach to row 3)
       expect(straightEdges).toContainEqual({
-        fromX: 0, fromY: 1, toX: 0, toY: 2,
+        fromX: 0, fromY: 2, toX: 0, toY: 3,
         colorIndex: 1, dashed: false,
       });
     });
 
     it('breaks coalescing at dashed change', () => {
-      // 3 commits in column 0: first two solid, third dashed
+      // 4 commits in column 0: first two solid, last two dashed
       const commits = [
         makeCommit({ oid: 'a', column: 0, edges: [makeEdge({ edge_type: 'Straight', dashed: false })] }),
         makeCommit({ oid: 'b', column: 0, edges: [makeEdge({ edge_type: 'Straight', dashed: false })] }),
         makeCommit({ oid: 'c', column: 0, edges: [makeEdge({ edge_type: 'Straight', dashed: true })] }),
+        makeCommit({ oid: 'd', column: 0, edges: [makeEdge({ edge_type: 'Straight', dashed: true })] }),
       ];
       const result = buildGraphData(commits, 1);
 
       const straightEdges = result.edges.filter(e => e.fromX === e.toX);
       expect(straightEdges).toHaveLength(2);
+      // First span: rows 0-2, solid (edges at rows 0,1 reach to row 2)
       expect(straightEdges).toContainEqual({
-        fromX: 0, fromY: 0, toX: 0, toY: 1,
+        fromX: 0, fromY: 0, toX: 0, toY: 2,
         colorIndex: 0, dashed: false,
       });
+      // Second span: rows 2-3, dashed (edges at rows 2,3 reach to row 3)
       expect(straightEdges).toContainEqual({
-        fromX: 0, fromY: 1, toX: 0, toY: 2,
+        fromX: 0, fromY: 2, toX: 0, toY: 3,
         colorIndex: 0, dashed: true,
       });
     });
