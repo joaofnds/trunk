@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 23-svg-rendering
 source: 23-01-SUMMARY.md, 23-02-SUMMARY.md
 started: 2026-03-14T04:50:00Z
-updated: 2026-03-14T05:00:00Z
+updated: 2026-03-14T05:10:00Z
 ---
 
 ## Current Test
@@ -55,17 +55,27 @@ skipped: 0
   reason: "User reported: it's to the side, not on top"
   severity: major
   test: 1
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "SVG uses class='absolute top-0 left-0' but the Graph column starts after the Ref column (~120px). The SVG left edge must be offset by columnWidths.ref to align with the graph column."
+  artifacts:
+    - path: "src/components/CommitGraph.svelte"
+      issue: "line 432: class='absolute top-0 left-0' — left-0 anchors SVG at x=0, but graph content is at x=columnWidths.ref (~120px)"
+  missing:
+    - "Set SVG left style to columnWidths.ref (or 0 when ref column hidden) instead of hardcoded left-0"
+  debug_session: ".planning/debug/overlay-positioned-to-side.md"
 
 - truth: "Commit dots and branch lines remain visible while scrolling through the graph"
   status: failed
   reason: "User reported: for some reason commit dots are disappearing when I scroll (branch lines as well)"
   severity: major
   test: 6
-  root_cause: ""
-  artifacts: []
-  missing: []
-  debug_session: ""
+  root_cause: "OVERLAY_ROW_HEIGHT=36 in graph-constants.ts does not match actual rendered ROW_HEIGHT=26. Dot Y coordinates (row × 36) exceed the SVG height (numItems × 26), causing browser clipping. Bottom 28% of commits have invisible overlay elements."
+  artifacts:
+    - path: "src/lib/graph-constants.ts"
+      issue: "OVERLAY_ROW_HEIGHT=36 should equal ROW_HEIGHT=26 — two constants for the same conceptual row height"
+    - path: "src/lib/overlay-paths.ts"
+      issue: "Uses OVERLAY_ROW_HEIGHT for all Y coordinate computation — auto-corrects if constant is fixed"
+    - path: "src/components/CommitGraph.svelte"
+      issue: "overlayCy/overlayCx helpers use OVERLAY_ROW_HEIGHT — auto-corrects if constant is fixed"
+  missing:
+    - "Change OVERLAY_ROW_HEIGHT from 36 to 26 in graph-constants.ts so overlay Y coordinates match SVG height"
+  debug_session: ".planning/debug/overlay-elements-disappear-on-scroll.md"
