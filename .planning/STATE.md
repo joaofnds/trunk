@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
-status: planning
-stopped_at: Completed 26-01-PLAN.md
-last_updated: "2026-03-14T13:45:34.000Z"
-last_activity: 2026-03-14 — Completed 26-01 ref pill data pipeline
+status: executing
+stopped_at: Completed 26-02-PLAN.md
+last_updated: "2026-03-14T13:53:41.447Z"
+last_activity: 2026-03-14 — Completed 26-01 (ref pill data pipeline)
 progress:
   total_phases: 7
-  completed_phases: 6
-  total_plans: 10
-  completed_plans: 10
+  completed_phases: 7
+  total_plans: 12
+  completed_plans: 12
 ---
 
 # Project State
@@ -51,6 +51,7 @@ v0.5 Graph Overlay
 | Phase 24-integration P01 | 4min | 2 tasks | 11 files |
 | Phase 25-interaction-preservation P01 | 2min | 2 tasks | 4 files |
 | Phase 26-svg-ref-pills P01 | 5min | 2 tasks | 8 files |
+| Phase 26 P02 | 3min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,9 @@ v0.5 Graph Overlay
 - [Phase 25-interaction-preservation]: Context menu routing via handleRowContextMenu dispatcher — stash rows get stash menu, commits get full menu
 - [26-01]: Injectable measureFn for deterministic testing; OffscreenCanvas for DOM-free text measurement
 - [26-01]: Backward-compatible overlay-visible extension via optional pills parameter with empty default
+- [Phase 26-02]: SVG expanded to cover ref+graph columns with translate offset for existing graph groups
+- [Phase 26-02]: HTML hover overlay sibling to SVG for multi-ref expansion with clip-path 180ms animation
+- [Phase 26-02]: Connector line uses commitColorIndex (lane color) not ref colorIndex for visual consistency
 
 ### Pending Todos
 
@@ -115,6 +119,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T13:45:34Z
-Stopped at: Completed 26-01-PLAN.md
+Last session: 2026-03-14T13:53:34.453Z
+Stopped at: Completed 26-02-PLAN.md
 Resume file: None
