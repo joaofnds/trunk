@@ -41,7 +41,7 @@
         onLoadMore?: () => void | Promise<void>
         loadMoreThreshold?: number
         hasMore?: boolean
-        overlaySnippet?: Snippet<[contentHeight: number]>
+        overlaySnippet?: Snippet<[contentHeight: number, visibleStart: number, visibleEnd: number]>
     }
 
     const {
@@ -641,7 +641,7 @@
             style:height="{contentHeight}px"
         >
             {#if overlaySnippet}
-                {@render overlaySnippet(contentHeight)}
+                {@render overlaySnippet(contentHeight, visibleItems.start, visibleItems.end)}
             {/if}
             <div
                 class="virtual-list-items"
