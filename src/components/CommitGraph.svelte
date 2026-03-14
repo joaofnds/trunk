@@ -1,9 +1,9 @@
 <script lang="ts">
-  import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
+  import VirtualList from './VirtualList.svelte';
   import { setContext, tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
-  import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
+  import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
   import { computeGraphSvgData } from '../lib/graph-svg-data.js';
@@ -28,7 +28,6 @@
   const SKELETON_COUNT = 10;
 
   let commits = $state<GraphCommit[]>([]);
-  let stashes = $state<StashEntry[]>([]);
   let maxColumns = $state(1);
   let hasMore = $state(true);
   let loading = $state(false);
@@ -231,7 +230,7 @@
     await menu.popup();
   }
 
-  function makeWipItem(msg: string): GraphCommit {
+  function makeWipItem(msg: string, col: number, colorIdx: number): GraphCommit {
     return {
       oid: '__wip__',
       short_oid: '',
@@ -241,84 +240,28 @@
       author_email: '',
       author_timestamp: 0,
       parent_oids: [],
-      column: 0,
-      color_index: 0,
-      edges: [{ from_column: 0, to_column: 0, edge_type: 'Straight' as EdgeType, color_index: 0 }],
+      column: col,
+      color_index: colorIdx,
+      edges: [{ from_column: col, to_column: col, edge_type: 'Straight' as EdgeType, color_index: colorIdx, dashed: false }],
       refs: [],
       is_head: false,
       is_merge: false,
       is_branch_tip: false,
-    };
-  }
-
-  function makeStashItem(stash: StashEntry, parentItem: GraphCommit): GraphCommit {
-    // Stash branches one column to the right of the parent.
-    // Copy parent's pass-through (straight) edges so other lanes stay continuous.
-    const passThroughEdges = parentItem.edges
-      .filter(e => e.from_column === e.to_column)
-      .map(e => ({ ...e }));
-
-    return {
-      oid: `__stash_${stash.index}__`,
-      short_oid: stash.short_name,
-      summary: stash.name,
-      body: null,
-      author_name: '',
-      author_email: '',
-      author_timestamp: 0,
-      parent_oids: stash.parent_oid ? [stash.parent_oid] : [],
-      column: parentItem.column + 1,
-      color_index: parentItem.color_index,
-      edges: passThroughEdges,
-      refs: [],
-      is_head: false,
-      is_merge: false,
-      is_branch_tip: true,
+      is_stash: false,
     };
   }
 
   const displayItems = $derived.by(() => {
-    const items: GraphCommit[] = wipCount > 0
-      ? [makeWipItem(wipMessage), ...commits]
-      : [...commits];
-
-    if (stashes.length === 0) return items;
-
-    // Build parent_oid → stash entries map
-    const stashByParent = new Map<string, StashEntry[]>();
-    for (const stash of stashes) {
-      if (!stash.parent_oid) continue;
-      const existing = stashByParent.get(stash.parent_oid) ?? [];
-      existing.push(stash);
-      stashByParent.set(stash.parent_oid, existing);
+    // Stash commits are now included in the backend graph result with proper lane data.
+    // We only need to prepend the WIP row if there are uncommitted changes.
+    if (wipCount > 0) {
+      // Find the actual HEAD commit (the one with is_head flag) to match WIP's column and color.
+      const headCommit = commits.find(c => c.is_head);
+      const col = headCommit?.column ?? 0;
+      const colorIdx = headCommit?.color_index ?? 0;
+      return [makeWipItem(wipMessage, col, colorIdx), ...commits];
     }
-
-    // Interleave stash items after their parent commit
-    const result: GraphCommit[] = [];
-    for (const item of items) {
-      result.push(item);
-      const childStashes = stashByParent.get(item.oid);
-      if (childStashes) {
-        for (const stash of childStashes) {
-          result.push(makeStashItem(stash, item));
-        }
-      }
-    }
-
-    // Orphan stashes (parent not in loaded commits) — place after WIP or at top
-    for (const [parentOid, orphans] of stashByParent) {
-      if (!items.some(i => i.oid === parentOid)) {
-        const insertIdx = wipCount > 0 ? 1 : 0;
-        // Use the item at insertIdx as a surrogate parent for pass-through edges,
-        // or synthesize a minimal one at column 0
-        const surrogate = result[insertIdx] ?? makeWipItem('');
-        for (let i = orphans.length - 1; i >= 0; i--) {
-          result.splice(insertIdx, 0, makeStashItem(orphans[i], surrogate));
-        }
-      }
-    }
-
-    return result;
+    return [...commits];
   });
 
   const graphSvgData = $derived.by(() => {
@@ -340,8 +283,6 @@
       maxColumns = response.max_columns;
       offset += response.commits.length;
       if (response.commits.length < BATCH) hasMore = false;
-      const stashResponse = await safeInvoke<StashEntry[]>('list_stashes', { path: repoPath });
-      stashes = stashResponse;
     } catch (e) {
       const err = e as TrunkError;
       error = err.message ?? 'Failed to load commits';
@@ -360,8 +301,6 @@
       maxColumns = response.max_columns;
       offset = response.commits.length;
       hasMore = response.commits.length >= BATCH;
-      const stashResponse = await safeInvoke<StashEntry[]>('list_stashes', { path: repoPath });
-      stashes = stashResponse;
       error = null;
     } catch (e) {
       const err = e as TrunkError;
@@ -477,7 +416,7 @@
         {error}
       </div>
     {:else}
-      <SvelteVirtualList
+      <VirtualList
         bind:this={listRef}
         items={displayItems}
         defaultEstimatedItemHeight={ROW_HEIGHT}
@@ -488,7 +427,7 @@
         {#snippet renderItem(commit, index)}
           <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} />
         {/snippet}
-      </SvelteVirtualList>
+      </VirtualList>
 
       <!-- Mid-scroll skeleton (more commits loading) -->
       {#if loading && commits.length > 0}
