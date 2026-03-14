@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-14 after Phase 25)
 Phase: 26 — SVG Ref Pills
 Plan: 1 of N complete
 Status: In Progress
-Last activity: 2026-03-14 — Completed 26-01 (ref pill data pipeline)
+Last activity: 2026-03-14 - Completed quick task 9: Revert commit graph row height to more packed style, keep lane width, increase commit dot radius by 2px
 
 ```
 v0.5 Graph Overlay
@@ -116,6 +116,12 @@ v0.5 Graph Overlay
 - [Research]: WebKit SVG performance at scale unverified -- must profile in production build
 - [Research]: Ref pill "+N" hover-expand in SVG is unproven -- may need HTML fallback
 - ~~[Phase 20]: Decision gate — SVG-inside-virtual-list must be validated before investing in data/rendering~~ ✓ Passed
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 9 | Revert commit graph row height to more packed style, keep lane width, increase commit dot radius by 2px | 2026-03-14 | 901f73a | [9-revert-commit-graph-row-height-to-more-p](./quick/9-revert-commit-graph-row-height-to-more-p/) |
 
 ## Session Continuity
 
