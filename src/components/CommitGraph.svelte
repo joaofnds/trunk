@@ -430,10 +430,10 @@
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
         {@const visible = getVisibleOverlayElements(overlayPaths, overlayGraphData.nodes, visibleStart, visibleEnd)}
         <svg
-          class="absolute top-0 left-0"
+          class="absolute top-0"
           width={Math.max(maxColumns, 1) * OVERLAY_LANE_WIDTH}
           height={contentHeight}
-          style="pointer-events: none; z-index: 1;"
+          style="left: {columnWidths.ref}px; pointer-events: none; z-index: 1;"
         >
           <g class="overlay-rails">
             {#each visible.rails as path}
