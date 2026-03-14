@@ -177,7 +177,7 @@ Plans:
   2. SVG connector lines render from each ref pill to its commit dot
   3. Remote branch pills appear visually dimmed compared to local branch pills
   4. An overflow "+N" badge appears when refs on a commit exceed available horizontal space
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 26-01-PLAN.md — TDD: Types, constants, text measurement, buildRefPillData(), visibility filtering
@@ -217,7 +217,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 23. SVG Rendering | 4/4 | Complete    | 2026-03-14 | - |
 | 24. Integration | v0.5 | Complete    | 2026-03-14 | 2026-03-14 |
 | 25. Interaction Preservation | 1/1 | Complete    | 2026-03-14 | - |
-| 26. SVG Ref Pills | v0.5 | 0/? | Not started | - |
+| 26. SVG Ref Pills | 1/2 | In Progress|  | - |
 
 ---
 *Roadmap created: 2026-03-13*

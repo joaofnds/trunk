@@ -34,10 +34,10 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 
 ### Ref Pills
 
-- [ ] **PILL-01**: Ref pills render as SVG `<rect>` + `<text>` elements with lane-colored backgrounds
-- [ ] **PILL-02**: SVG connector lines render from ref pill to commit dot
-- [ ] **PILL-03**: Remote branch pills appear visually dimmed compared to local branch pills
-- [ ] **PILL-04**: Overflow "+N" badge appears when refs exceed available space
+- [x] **PILL-01**: Ref pills render as SVG `<rect>` + `<text>` elements with lane-colored backgrounds
+- [x] **PILL-02**: SVG connector lines render from ref pill to commit dot
+- [x] **PILL-03**: Remote branch pills appear visually dimmed compared to local branch pills
+- [x] **PILL-04**: Overflow "+N" badge appears when refs exceed available space
 
 ### Interactions
 
@@ -152,10 +152,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOTS-01 | Phase 23 | Complete |
 | DOTS-02 | Phase 23 | Complete |
 | DOTS-03 | Phase 23 | Complete |
-| PILL-01 | Phase 26 | Pending |
-| PILL-02 | Phase 26 | Pending |
-| PILL-03 | Phase 26 | Pending |
-| PILL-04 | Phase 26 | Pending |
+| PILL-01 | Phase 26 | Complete |
+| PILL-02 | Phase 26 | Complete |
+| PILL-03 | Phase 26 | Complete |
+| PILL-04 | Phase 26 | Complete |
 | INTR-01 | Phase 25 | Complete |
 | INTR-02 | Phase 25 | Complete |
 | INTR-03 | Phase 25 | Complete |

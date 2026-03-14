@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
 status: planning
-stopped_at: Phase 26 context gathered
-last_updated: "2026-03-14T13:17:42.222Z"
-last_activity: 2026-03-14 — Phase 25 complete, transitioning to Phase 26
+stopped_at: Completed 26-01-PLAN.md
+last_updated: "2026-03-14T13:45:34.000Z"
+last_activity: 2026-03-14 — Completed 26-01 ref pill data pipeline
 progress:
   total_phases: 7
   completed_phases: 6
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-03-14 after Phase 25)
 ## Current Position
 
 Phase: 26 — SVG Ref Pills
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-14 — Phase 25 complete, transitioning to Phase 26
+Plan: 1 of N complete
+Status: In Progress
+Last activity: 2026-03-14 — Completed 26-01 (ref pill data pipeline)
 
 ```
 v0.5 Graph Overlay
-[████████████████████] 29/29 plans (100%)
+[████████████████████] 30/30+ plans
 ```
 
 ## Performance Metrics
@@ -50,6 +50,7 @@ v0.5 Graph Overlay
 | Phase 23 P04 | 1min | 1 tasks | 2 files |
 | Phase 24-integration P01 | 4min | 2 tasks | 11 files |
 | Phase 25-interaction-preservation P01 | 2min | 2 tasks | 4 files |
+| Phase 26-svg-ref-pills P01 | 5min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -91,6 +92,8 @@ v0.5 Graph Overlay
 - [Phase 25-interaction-preservation]: Selected row uses --color-selected-row CSS custom property (10% opacity accent) for persistent highlight
 - [Phase 25-interaction-preservation]: Stash OID→index lookup loaded from list_stashes API, refreshed alongside graph data
 - [Phase 25-interaction-preservation]: Context menu routing via handleRowContextMenu dispatcher — stash rows get stash menu, commits get full menu
+- [26-01]: Injectable measureFn for deterministic testing; OffscreenCanvas for DOM-free text measurement
+- [26-01]: Backward-compatible overlay-visible extension via optional pills parameter with empty default
 
 ### Pending Todos
 
@@ -112,6 +115,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T13:17:42.216Z
-Stopped at: Phase 26 context gathered
-Resume file: .planning/phases/26-svg-ref-pills/26-CONTEXT.md
+Last session: 2026-03-14T13:45:34Z
+Stopped at: Completed 26-01-PLAN.md
+Resume file: None
