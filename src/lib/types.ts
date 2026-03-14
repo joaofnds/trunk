@@ -127,6 +127,18 @@ export interface CommitDetail {
   parent_oids: string[];
 }
 
+// Graph display settings — user-configurable layout constants for the commit graph.
+// Defaults live in graph-constants.ts. A future settings page will persist and
+// expose these values; the pure functions that produce SVG paths accept them as
+// a parameter so they re-derive correctly when settings change.
+export interface GraphDisplaySettings {
+  rowHeight: number;   // px per commit row
+  laneWidth: number;   // px per swimlane column
+  dotRadius: number;   // px radius of commit dots
+  edgeStroke: number;  // px stroke width for rails / connections
+  mergeStroke: number; // px stroke width for merge-commit circles
+}
+
 // Overlay types — global grid coordinate system for SVG overlay (Phase 20+)
 export interface OverlayNode {
   oid: string;

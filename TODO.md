@@ -18,8 +18,10 @@
 - Ability to search for commit hashes, commit messages, and branches on the commit graph with cmd+f
 - Add a small padding to the top (and bottom) of the commit graph
 - Merge window top bar with the application tab+actions bar, saving vertical space and achieving a slicker look
-- Add a overflow to the commit graph. We currently cannot shrink the width of the graph column smaller than the width of the graph. We should be able to do that. And when we shrink smaller than the width of the graph, the commits the far right should stick (position sticky) to the right. So if we keep shrinking, we can eventually make it a single line of committ dots. One on top of on the top of the other. Just like GitKraken.
-- When I click on the references on the left pane, it should navigate to where that is on the graph.
+- Add a overflow to the commit graph. We currently cannot shrink the width of the graph column smaller than the width of the graph. We should be able to do that. And when we shrink smaller than the width of the graph, the commits the far right should stick (position sticky) to the right. So if we keep shrinking, we can eventually make it a single line of committ dots. One on top of on the top of the other. Just like GitKraken
+- When I click on the references on the left pane, it should navigate to where that is on the graph
+- When the right pane is closed and they click on a commit or a branch or whatever that would change the right pane content, the right pane should toggle back open
+- When I create a new file, the whip is not showing on the commit graph. And the new file is not showing any diff when I click on it on the right pane.
 
 # Bugs
 - Branch overflow pill is behind the commit graph. We should adjust the Z index

@@ -1,32 +1,32 @@
-import type { OverlayEdge, OverlayGraphData, OverlayNode, OverlayPath } from './types.js';
-import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS } from './graph-constants.js';
+import type { GraphDisplaySettings, OverlayEdge, OverlayGraphData, OverlayNode, OverlayPath } from './types.js';
+import { DEFAULT_GRAPH_SETTINGS } from './graph-constants.js';
 
-// ─── Coordinate helpers ───────────────────────────────────────────────────────
+// ─── Coordinate context ───────────────────────────────────────────────────────
 
-/** Center X of a swimlane column */
-function cx(col: number): number {
-  return col * LANE_WIDTH + LANE_WIDTH / 2;
+/** Pre-computed coordinate helpers derived from display settings. */
+interface PathContext {
+  cx: (col: number) => number;
+  cy: (row: number) => number;
+  rowTop: (row: number) => number;
+  rowBottom: (row: number) => number;
+  /** Fixed corner radius for cubic bezier connections (= laneWidth / 2) */
+  R: number;
+  dotRadius: number;
 }
 
-/** Center Y (dot position) for a given row index */
-function cy(row: number): number {
-  return row * ROW_HEIGHT + ROW_HEIGHT / 2;
-}
-
-/** Top Y of a row */
-function rowTop(row: number): number {
-  return row * ROW_HEIGHT;
-}
-
-/** Bottom Y of a row */
-function rowBottom(row: number): number {
-  return (row + 1) * ROW_HEIGHT;
+function makePathContext(s: GraphDisplaySettings): PathContext {
+  const { rowHeight, laneWidth, dotRadius } = s;
+  return {
+    cx: col => col * laneWidth + laneWidth / 2,
+    cy: row => row * rowHeight + rowHeight / 2,
+    rowTop: row => row * rowHeight,
+    rowBottom: row => (row + 1) * rowHeight,
+    R: laneWidth / 2,
+    dotRadius,
+  };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-/** Fixed corner radius for all connections (CURV-04) */
-const R = LANE_WIDTH / 2;
 
 /**
  * Kappa constant for cubic bezier quarter-circle approximation.
@@ -35,15 +35,15 @@ const R = LANE_WIDTH / 2;
  */
 const KAPPA = 4 * (Math.SQRT2 - 1) / 3;
 
+/** Gap between rail end and hollow dot edge — matches stroke-dasharray gap (3 3) */
+const DASH_GAP = 3;
+
 // ─── Rail path builder ────────────────────────────────────────────────────────
 
 /** Whether a node renders as hollow (stroke-only, no fill) */
 function isHollow(node: OverlayNode): boolean {
   return node.isStash || node.isWip || node.isMerge;
 }
-
-/** Gap between rail end and hollow dot edge — matches dash gap (stroke-dasharray 3 3) */
-const DASH_GAP = 3;
 
 /**
  * Builds a vertical rail path (M...V) for a same-lane edge.
@@ -55,7 +55,8 @@ const DASH_GAP = 3;
  *          no node → cy - R (lane terminates at curve corner)
  *          non-tip node → rowBottom (continues to next row)
  */
-function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
+function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[], ctx: PathContext): OverlayPath {
+  const { cx, cy, rowTop, rowBottom, R, dotRadius } = ctx;
   const col = edge.fromX;
 
   // Look up nodes at start and end of rail
@@ -71,7 +72,7 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   // Start: tip stops at dot edge + dash gap for hollow shapes, dot center for filled
   let startY: number;
   if (fromIsTip) {
-    startY = fromNode && isHollow(fromNode) ? cy(edge.fromY) + DOT_RADIUS + DASH_GAP : cy(edge.fromY);
+    startY = fromNode && isHollow(fromNode) ? cy(edge.fromY) + dotRadius + DASH_GAP : cy(edge.fromY);
   } else {
     startY = rowTop(edge.fromY);
   }
@@ -81,7 +82,7 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   // Non-tip node: extends to rowBottom for seamless continuation.
   let endY: number;
   if (toIsTip) {
-    endY = toNode && isHollow(toNode) ? cy(edge.toY) - DOT_RADIUS - DASH_GAP : cy(edge.toY);
+    endY = toNode && isHollow(toNode) ? cy(edge.toY) - dotRadius - DASH_GAP : cy(edge.toY);
   } else if (!toHasNode) {
     endY = cy(edge.toY) - R;
   } else {
@@ -162,7 +163,8 @@ function isMergePattern(edge: OverlayEdge, allEdges: OverlayEdge[]): boolean {
  *   - merge (curves down): corner bends toward higher Y
  *   - fork  (curves up):   corner bends toward lower Y
  */
-function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): OverlayPath {
+function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[], ctx: PathContext): OverlayPath {
+  const { cx, cy, R } = ctx;
   const x1 = cx(edge.fromX);
   const x2 = cx(edge.toX);
   const midY = cy(edge.fromY);
@@ -208,18 +210,26 @@ function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): Overla
  *   rounded 90° corners at the target column
  *
  * Pure function, no side effects — same pattern as buildGraphData().
+ *
+ * @param settings Display settings controlling row/lane dimensions. Defaults to
+ *   DEFAULT_GRAPH_SETTINGS. Pass reactive settings from a future user preferences
+ *   store to make paths update without code changes.
  */
-export function buildOverlayPaths(data: OverlayGraphData): OverlayPath[] {
+export function buildOverlayPaths(
+  data: OverlayGraphData,
+  settings: GraphDisplaySettings = DEFAULT_GRAPH_SETTINGS,
+): OverlayPath[] {
+  const ctx = makePathContext(settings);
   const { edges, nodes } = data;
   const result: OverlayPath[] = [];
 
   for (const edge of edges) {
     if (edge.fromX === edge.toX) {
       // Same-lane: rail path
-      result.push(buildRailPath(edge, nodes));
+      result.push(buildRailPath(edge, nodes, ctx));
     } else {
       // Cross-lane: connection path with bezier corners
-      result.push(buildConnectionPath(edge, edges));
+      result.push(buildConnectionPath(edge, edges, ctx));
     }
   }
 

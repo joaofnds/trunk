@@ -1,5 +1,6 @@
-import type { GraphCommit, OverlayNode, OverlayRefPill, RefLabel } from './types.js';
+import type { GraphCommit, GraphDisplaySettings, OverlayNode, OverlayRefPill, RefLabel } from './types.js';
 import {
+  DEFAULT_GRAPH_SETTINGS,
   PILL_HEIGHT,
   PILL_PADDING_X,
   PILL_FONT,
@@ -7,14 +8,9 @@ import {
   PILL_GAP,
   PILL_MARGIN_LEFT,
   ICON_WIDTH,
-  LANE_WIDTH,
-  ROW_HEIGHT,
   BADGE_FONT_SIZE,
 } from './graph-constants.js';
 import { truncateWithEllipsis } from './text-measure.js';
-
-const cx = (col: number): number => col * LANE_WIDTH + LANE_WIDTH / 2;
-const cy = (row: number): number => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
 /** Type priority for sorting: lower = higher priority */
 const TYPE_ORDER: Record<string, number> = {
@@ -72,13 +68,19 @@ function estimateBadgeWidth(count: number): number {
  * @param commits - GraphCommit[] from API (same indexing as displayItems)
  * @param refColumnWidth - Available width for the ref pill column
  * @param measureFn - Text measurement function (injectable for testing)
+ * @param settings - Display settings controlling row/lane dimensions. Defaults to
+ *   DEFAULT_GRAPH_SETTINGS. Pass reactive settings from a future user preferences
+ *   store to make pill positions update without code changes.
  */
 export function buildRefPillData(
   nodes: OverlayNode[],
   commits: GraphCommit[],
   refColumnWidth: number,
   measureFn: (text: string, font: string) => number,
+  settings: GraphDisplaySettings = DEFAULT_GRAPH_SETTINGS,
 ): OverlayRefPill[] {
+  const cx = (col: number): number => col * settings.laneWidth + settings.laneWidth / 2;
+  const cy = (row: number): number => row * settings.rowHeight + settings.rowHeight / 2;
   const pills: OverlayRefPill[] = [];
 
   for (const node of nodes) {

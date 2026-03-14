@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { buildOverlayPaths } from './overlay-paths.js';
+import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS } from './graph-constants.js';
 import type { OverlayEdge, OverlayNode, OverlayGraphData, OverlayPath } from './types.js';
 
-// Constants mirrored from graph-constants.ts for assertion computation
-const LANE = 16;
-const ROW = 26;
-const R = LANE / 2; // 8px corner radius
-const DOT_R = 6; // DOT_RADIUS from graph-constants
+// Coordinate helpers — derived from graph-constants so they stay in sync automatically
+const LANE = LANE_WIDTH;
+const ROW = ROW_HEIGHT;
+const R = LANE / 2; // corner radius = laneWidth / 2
+const DOT_R = DOT_RADIUS;
 const DASH_GAP = 3; // matches stroke-dasharray gap
 function cx(col: number): number { return col * LANE + LANE / 2; }
 function cy(row: number): number { return row * ROW + ROW / 2; }

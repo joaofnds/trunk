@@ -12,9 +12,12 @@
     columnWidths: ColumnWidths;
     columnVisibility: ColumnVisibility;
     selected?: boolean;
+    /** Row height in px. Defaults to ROW_HEIGHT constant.
+     *  Accepts displaySettings.rowHeight from CommitGraph for future settings-page wiring. */
+    rowHeight?: number;
   }
 
-  let { commit, rowIndex, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility, selected = false }: Props = $props();
+  let { commit, rowIndex, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility, selected = false, rowHeight = ROW_HEIGHT }: Props = $props();
 
   function relativeDate(ts: number): string {
     if (ts === 0) return '';
@@ -35,7 +38,7 @@
 <div
   class="relative flex items-center px-2 cursor-pointer text-[13px]"
   class:hover:bg-[var(--color-surface)]={!selected}
-  style:height="{ROW_HEIGHT}px"
+  style:height="{rowHeight}px"
   style="color: var(--color-text); {selected ? 'background: var(--color-selected-row);' : ''}"
   onclick={() => onselect?.(commit.oid)}
   oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}

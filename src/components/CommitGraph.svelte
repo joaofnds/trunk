@@ -5,7 +5,7 @@
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
-  import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, MERGE_STROKE, PILL_HEIGHT, PILL_PADDING_X, PILL_FONT_SIZE, PILL_GAP, BADGE_HEIGHT, BADGE_FONT_SIZE, ICON_WIDTH } from '../lib/graph-constants.js';
+  import { DEFAULT_GRAPH_SETTINGS, PILL_HEIGHT, PILL_PADDING_X, PILL_FONT_SIZE, PILL_GAP, BADGE_HEIGHT, BADGE_FONT_SIZE, ICON_WIDTH } from '../lib/graph-constants.js';
   import { buildGraphData } from '../lib/active-lanes.js';
   import { buildOverlayPaths } from '../lib/overlay-paths.js';
   import { getVisibleOverlayElements } from '../lib/overlay-visible.js';
@@ -33,6 +33,10 @@
 
   const BATCH = 200;
   const SKELETON_COUNT = 10;
+
+  // Graph display settings — will be wired to user preferences in a future settings page.
+  // Change values here (or load from store) to adjust layout without touching any other file.
+  let displaySettings = $state({ ...DEFAULT_GRAPH_SETTINGS });
 
   let commits = $state<GraphCommit[]>([]);
   let maxColumns = $state(1);
@@ -75,7 +79,7 @@
     const startWidth = columnWidths[column];
     const minWidths: Record<keyof ColumnWidths, number> = {
       ref: 60,
-      graph: Math.max(maxColumns, 1) * LANE_WIDTH,
+      graph: Math.max(maxColumns, 1) * displaySettings.laneWidth,
       author: 60,
       date: 60,
       sha: 50,
@@ -343,12 +347,12 @@
   });
 
   const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
-  const cx = (col: number) => col * LANE_WIDTH + LANE_WIDTH / 2;
-  const cy = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
+  const cx = (col: number) => col * displaySettings.laneWidth + displaySettings.laneWidth / 2;
+  const cy = (row: number) => row * displaySettings.rowHeight + displaySettings.rowHeight / 2;
 
   const graphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
-  const paths = $derived.by(() => buildOverlayPaths(graphData));
-  const pillData = $derived.by(() => buildRefPillData(graphData.nodes, displayItems, columnWidths.ref, measureTextWidth));
+  const paths = $derived.by(() => buildOverlayPaths(graphData, displaySettings));
+  const pillData = $derived.by(() => buildRefPillData(graphData.nodes, displayItems, columnWidths.ref, measureTextWidth, displaySettings));
 
   let hoveredPill = $state<OverlayRefPill | null>(null);
   let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -499,7 +503,7 @@
     {#if commits.length === 0 && loading}
       <!-- Initial skeleton loading -->
       {#each { length: SKELETON_COUNT } as _}
-        <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {ROW_HEIGHT}px">
+        <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {displaySettings.rowHeight}px">
           <div
             class="rounded-full flex-shrink-0"
             style="background: var(--color-border); width: 64px; height: 12px;"
@@ -526,7 +530,7 @@
         {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
         <svg
           class="absolute top-0"
-          width={refOffset + Math.max(maxColumns, 1) * LANE_WIDTH}
+          width={refOffset + Math.max(maxColumns, 1) * displaySettings.laneWidth}
           height={contentHeight}
           style="left: 0; pointer-events: none; z-index: 1;"
         >
@@ -534,7 +538,7 @@
             {#each visible.rails as path}
               <path d={path.d} fill="none"
                 stroke={laneColor(path.colorIndex)}
-                stroke-width={EDGE_STROKE}
+                stroke-width={displaySettings.edgeStroke}
                 stroke-linecap="butt"
                 stroke-dasharray={path.dashed ? '3 3' : 'none'} />
             {/each}
@@ -543,7 +547,7 @@
             {#each visible.connections as path}
               <path d={path.d} fill="none"
                 stroke={laneColor(path.colorIndex)}
-                stroke-width={EDGE_STROKE}
+                stroke-width={displaySettings.edgeStroke}
                 stroke-linecap="round"
                 stroke-dasharray={path.dashed ? '3 3' : 'none'} />
             {/each}
@@ -551,25 +555,25 @@
           <g class="overlay-dots" transform="translate({refOffset}, 0)">
             {#each visible.dots as node}
               {#if node.isWip}
-                <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
+                <circle cx={cx(node.x)} cy={cy(node.y)} r={displaySettings.dotRadius}
                   fill="none" stroke={laneColor(node.colorIndex)}
-                  stroke-width={EDGE_STROKE} stroke-dasharray="3 3" />
+                  stroke-width={displaySettings.edgeStroke} stroke-dasharray="3 3" />
               {:else if node.isStash}
                 <rect
-                  x={cx(node.x) - DOT_RADIUS}
-                  y={cy(node.y) - DOT_RADIUS}
-                  width={DOT_RADIUS * 2}
-                  height={DOT_RADIUS * 2}
+                  x={cx(node.x) - displaySettings.dotRadius}
+                  y={cy(node.y) - displaySettings.dotRadius}
+                  width={displaySettings.dotRadius * 2}
+                  height={displaySettings.dotRadius * 2}
                   fill="none"
                   stroke={laneColor(node.colorIndex)}
-                  stroke-width={EDGE_STROKE}
+                  stroke-width={displaySettings.edgeStroke}
                   stroke-dasharray="3 3" />
               {:else if node.isMerge}
-                <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
+                <circle cx={cx(node.x)} cy={cy(node.y)} r={displaySettings.dotRadius}
                   fill="var(--color-bg)" stroke={laneColor(node.colorIndex)}
-                  stroke-width={MERGE_STROKE} />
+                  stroke-width={displaySettings.mergeStroke} />
               {:else}
-                <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
+                <circle cx={cx(node.x)} cy={cy(node.y)} r={displaySettings.dotRadius}
                   fill={laneColor(node.colorIndex)} />
               {/if}
             {/each}
@@ -585,7 +589,7 @@
                     x2={refOffset + pill.dotCx}
                     y2={pill.dotCy}
                     stroke={laneColor(pill.commitColorIndex)}
-                    stroke-width={EDGE_STROKE}
+                    stroke-width={displaySettings.edgeStroke}
                     opacity={pill.isRemoteOnly ? 0.67 : 1}
                     style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                   />
@@ -741,24 +745,26 @@
         {/if}
       {/snippet}
 
+      {#key displaySettings.rowHeight}
       <VirtualList
         bind:this={listRef}
         items={displayItems}
-        defaultEstimatedItemHeight={ROW_HEIGHT}
+        defaultEstimatedItemHeight={displaySettings.rowHeight}
         onLoadMore={loadMore}
         loadMoreThreshold={50}
         {hasMore}
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} />
         {/snippet}
       </VirtualList>
+      {/key}
 
       <!-- Mid-scroll skeleton (more commits loading) -->
       {#if loading && commits.length > 0}
         {#each { length: 3 } as _}
-          <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {ROW_HEIGHT}px">
+          <div class="flex items-center gap-2 px-2 animate-pulse" style="height: {displaySettings.rowHeight}px">
             <div
               class="rounded-full flex-shrink-0"
               style="background: var(--color-border); width: 64px; height: 12px;"
