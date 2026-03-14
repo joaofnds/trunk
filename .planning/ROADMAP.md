@@ -133,7 +133,7 @@ Plans:
   3. Normal commits render as filled circles, merge commits as hollow circles at correct lane positions
   4. WIP row renders with hollow dashed circle and dashed connector to HEAD
   5. Stash rows render with filled squares and dashed connectors
-**Plans:** 3/4 plans complete
+**Plans:** 4/4 plans complete
 
 Plans:
 - [x] 23-01-PLAN.md — TDD: OverlayPath minRow/maxRow extension and getVisibleOverlayElements() filtering
@@ -204,7 +204,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete    | 2026-03-14 | 2026-03-14 |
 | 21. Active Lanes Transformation | v0.5 | 1/1 | Complete | 2026-03-14 |
 | 22. Bezier Path Builder | 1/1 | Complete    | 2026-03-14 | - |
-| 23. SVG Rendering | 3/3 | Complete   | 2026-03-14 | - |
+| 23. SVG Rendering | 4/4 | Complete   | 2026-03-14 | - |
 | 24. Integration | v0.5 | 0/? | Not started | - |
 | 25. Interaction Preservation | v0.5 | 0/? | Not started | - |
 | 26. SVG Ref Pills | v0.5 | 0/? | Not started | - |
