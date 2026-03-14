@@ -163,7 +163,10 @@ Plans:
   1. Clicking a commit row selects it and shows commit detail in the diff panel
   2. Right-clicking a commit row opens the context menu with all actions (copy SHA/message, checkout, branch, tag, cherry-pick, revert)
   3. Right-clicking a stash row opens the stash context menu with pop/apply/drop actions
-**Plans**: TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 25-01-PLAN.md — Selected row highlight, stash context menu routing, interaction preservation
 
 ### Phase 26: SVG Ref Pills
 **Goal**: Ref pills render as SVG elements with lane-colored backgrounds, connector lines, remote dimming, and overflow badges — replacing HTML ref pills in the graph column
