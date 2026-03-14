@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
 status: completed
-stopped_at: Completed 24-01-PLAN.md
-last_updated: "2026-03-14T05:50:00.138Z"
+stopped_at: Phase 25 context gathered
+last_updated: "2026-03-14T12:24:07.507Z"
 last_activity: 2026-03-14 — Phase 24 Plan 01 complete (integration — unified constants, removed old pipeline)
 progress:
   total_phases: 7
@@ -108,6 +108,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T05:44:05Z
-Stopped at: Completed 24-01-PLAN.md
-Resume file: None
+Last session: 2026-03-14T12:24:07.503Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-interaction-preservation/25-CONTEXT.md
