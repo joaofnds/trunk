@@ -189,7 +189,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 15. Graph Data Engine | v0.4 | 2/2 | Complete | 2026-03-12 |
 | 16. Core Graph Rendering | v0.4 | 1/1 | Complete | 2026-03-12 |
 | 17. Synthetic Row Adaptation | v0.4 | 2/2 | Complete | 2026-03-13 |
-| 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete   | 2026-03-14 | 2026-03-14 |
+| 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete    | 2026-03-14 | 2026-03-14 |
 | 21. Active Lanes Transformation | v0.5 | 0/? | Not started | - |
 | 22. Bezier Path Builder | v0.5 | 0/? | Not started | - |
 | 23. SVG Rendering | v0.5 | 0/? | Not started | - |
