@@ -1,5 +1,5 @@
 import type { OverlayEdge, OverlayGraphData, OverlayNode, OverlayPath } from './types.js';
-import { LANE_WIDTH, ROW_HEIGHT } from './graph-constants.js';
+import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS } from './graph-constants.js';
 
 // ─── Coordinate helpers ───────────────────────────────────────────────────────
 
@@ -37,32 +37,51 @@ const KAPPA = 4 * (Math.SQRT2 - 1) / 3;
 
 // ─── Rail path builder ────────────────────────────────────────────────────────
 
+/** Whether a node renders as hollow (stroke-only, no fill) */
+function isHollow(node: OverlayNode): boolean {
+  return node.isStash || node.isWip || node.isMerge;
+}
+
 /**
  * Builds a vertical rail path (M...V) for a same-lane edge.
  *
  * Endpoint awareness:
- * - Start: branch tip node at (col, fromY) → start at cy(fromY) (dot center)
- *          no node at (col, fromY) → start at rowTop(fromY) (continues from above)
- * - End:   branch tip node at (col, toY) → end at cy(toY) (dot center)
- *          no node at (col, toY) → end at cy(toY) (lane terminates; avoids stub below connection curve)
- *          non-tip node at (col, toY) → end at rowBottom(toY) (continues to next row)
+ * - Start: branch tip → dot center (filled) or dot edge (hollow: stash/WIP/merge)
+ *          no node → rowTop (continues from above)
+ * - End:   branch tip → dot center (filled) or dot edge (hollow)
+ *          no node → cy - R (lane terminates at curve corner)
+ *          non-tip node → rowBottom (continues to next row)
  */
 function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   const col = edge.fromX;
 
-  // Check if the node at (col, fromY) is a branch tip
-  const fromIsBranchTip = nodes.some(n => n.x === col && n.y === edge.fromY && n.isBranchTip);
+  // Look up nodes at start and end of rail
+  const fromNode = nodes.find(n => n.x === col && n.y === edge.fromY);
+  const fromIsBranchTip = fromNode?.isBranchTip ?? false;
 
-  // Check endpoint: is there a node at (col, toY)?
   const toNode = nodes.find(n => n.x === col && n.y === edge.toY);
   const toHasNode = toNode !== undefined;
   const toIsBranchTip = toNode?.isBranchTip ?? false;
 
-  const startY = fromIsBranchTip ? cy(edge.fromY) : rowTop(edge.fromY);
-  // If branch tip: dot center. If no node in this column: lane terminates at the
-  // connection curve's corner point (cy - R), so the rail doesn't overshoot the
-  // 90° bezier turn. If non-tip node present: extend to rowBottom for seamless continuation.
-  const endY = toIsBranchTip ? cy(edge.toY) : !toHasNode ? cy(edge.toY) - R : rowBottom(edge.toY);
+  // Start: branch tip stops at dot edge for hollow shapes, dot center for filled
+  let startY: number;
+  if (fromIsBranchTip) {
+    startY = fromNode && isHollow(fromNode) ? cy(edge.fromY) + DOT_RADIUS : cy(edge.fromY);
+  } else {
+    startY = rowTop(edge.fromY);
+  }
+
+  // End: branch tip stops at dot edge for hollow, dot center for filled.
+  // No node: lane terminates at connection curve corner (cy - R).
+  // Non-tip node: extends to rowBottom for seamless continuation.
+  let endY: number;
+  if (toIsBranchTip) {
+    endY = toNode && isHollow(toNode) ? cy(edge.toY) - DOT_RADIUS : cy(edge.toY);
+  } else if (!toHasNode) {
+    endY = cy(edge.toY) - R;
+  } else {
+    endY = rowBottom(edge.toY);
+  }
 
   return {
     d: `M ${cx(col)} ${startY} V ${endY}`,
