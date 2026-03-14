@@ -11,6 +11,7 @@ export interface GraphEdge {
   to_column: number;
   edge_type: EdgeType;
   color_index: number;
+  dashed: boolean;
 }
 
 export interface RefLabel {
@@ -37,6 +38,7 @@ export interface GraphCommit {
   is_head: boolean;
   is_merge: boolean;
   is_branch_tip: boolean;
+  is_stash: boolean;
 }
 
 export interface GraphResponse {
@@ -128,4 +130,31 @@ export interface CommitDetail {
   committer_email: string;
   committer_timestamp: number;
   parent_oids: string[];
+}
+
+// Overlay types — global grid coordinate system for SVG overlay (Phase 20+)
+export interface OverlayNode {
+  oid: string;
+  x: number;           // swimlane index (column)
+  y: number;           // row index
+  colorIndex: number;
+  isMerge: boolean;
+  isBranchTip: boolean;
+  isStash: boolean;
+  isWip: boolean;
+}
+
+export interface OverlayEdge {
+  fromX: number;        // source swimlane
+  fromY: number;        // source row
+  toX: number;          // target swimlane
+  toY: number;          // target row
+  colorIndex: number;
+  dashed: boolean;
+}
+
+export interface OverlayGraphData {
+  nodes: OverlayNode[];
+  edges: OverlayEdge[];
+  maxColumns: number;
 }
