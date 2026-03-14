@@ -40,20 +40,28 @@ const KAPPA = 4 * (Math.SQRT2 - 1) / 3;
 /**
  * Builds a vertical rail path (M...V) for a same-lane edge.
  *
- * Branch tip awareness:
- * - If fromY node is a branch tip in this column → start at cy(fromY) instead of rowTop(fromY)
- * - If toY node is a branch tip in this column → end at cy(toY) instead of rowBottom(toY)
+ * Endpoint awareness:
+ * - Start: branch tip node at (col, fromY) → start at cy(fromY) (dot center)
+ *          no node at (col, fromY) → start at rowTop(fromY) (continues from above)
+ * - End:   branch tip node at (col, toY) → end at cy(toY) (dot center)
+ *          no node at (col, toY) → end at cy(toY) (lane terminates; avoids stub below connection curve)
+ *          non-tip node at (col, toY) → end at rowBottom(toY) (continues to next row)
  */
 function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   const col = edge.fromX;
 
   // Check if the node at (col, fromY) is a branch tip
   const fromIsBranchTip = nodes.some(n => n.x === col && n.y === edge.fromY && n.isBranchTip);
-  // Check if the node at (col, toY) is a branch tip
-  const toIsBranchTip = nodes.some(n => n.x === col && n.y === edge.toY && n.isBranchTip);
+
+  // Check endpoint: is there a node at (col, toY)?
+  const toNode = nodes.find(n => n.x === col && n.y === edge.toY);
+  const toHasNode = toNode !== undefined;
+  const toIsBranchTip = toNode?.isBranchTip ?? false;
 
   const startY = fromIsBranchTip ? cy(edge.fromY) : rowTop(edge.fromY);
-  const endY = toIsBranchTip ? cy(edge.toY) : rowBottom(edge.toY);
+  // If branch tip: dot center. If no node in this column: lane terminates, end at dot-center level.
+  // If non-tip node present: extend to rowBottom for seamless continuation.
+  const endY = toIsBranchTip ? cy(edge.toY) : !toHasNode ? cy(edge.toY) : rowBottom(edge.toY);
 
   return {
     d: `M ${cx(col)} ${startY} V ${endY}`,

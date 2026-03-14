@@ -61,13 +61,13 @@ describe('buildOverlayPaths', () => {
   });
 
   describe('rail paths (same-lane edges)', () => {
-    it('produces M...V path for basic rail edge', () => {
-      // Rail from row 0 to row 3, col 0 → M 8 0 V 144
+    it('produces M...V path for basic rail edge (no nodes → ends at cy)', () => {
+      // Rail from row 0 to row 3, col 0, no nodes → M 8 0 V cy(3)
       const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 3 });
       const result = buildOverlayPaths(makeGraphData([edge]));
 
       expect(result).toHaveLength(1);
-      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(0)} V ${rowBottom(3)}`);
+      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(0)} V ${cy(3)}`);
     });
 
     it('rail has kind=rail', () => {
@@ -95,18 +95,19 @@ describe('buildOverlayPaths', () => {
     });
 
     it('rail uses rowTop(fromY) as start when no branch tip at fromY', () => {
-      // Row 1 to row 3, col 0 — no branch tip nodes → starts at rowTop(1)
+      // Row 1 to row 3, col 0 — no nodes → starts at rowTop(1), ends at cy(3)
       const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 1, toY: 3 });
       const result = buildOverlayPaths(makeGraphData([edge]));
-      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(1)} V ${rowBottom(3)}`);
+      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(1)} V ${cy(3)}`);
     });
 
     it('rail starts at cy(fromY) when fromY node is a branch tip', () => {
       // Branch tip at (x=0, y=0) — rail starting at row 0 should begin at cy(0)
+      // No node at (0, 2) → ends at cy(2)
       const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 2 });
       const nodes = [makeOverlayNode({ oid: 'tip', x: 0, y: 0, isBranchTip: true })];
       const result = buildOverlayPaths(makeGraphData([edge], nodes));
-      expect(result[0].d).toBe(`M ${cx(0)} ${cy(0)} V ${rowBottom(2)}`);
+      expect(result[0].d).toBe(`M ${cx(0)} ${cy(0)} V ${cy(2)}`);
     });
 
     it('rail ends at cy(toY) when toY node is a branch tip', () => {
@@ -115,6 +116,22 @@ describe('buildOverlayPaths', () => {
       const nodes = [makeOverlayNode({ oid: 'tip', x: 0, y: 2, isBranchTip: true })];
       const result = buildOverlayPaths(makeGraphData([edge], nodes));
       expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(0)} V ${cy(2)}`);
+    });
+
+    it('rail ends at rowBottom(toY) when non-tip node exists at (col, toY)', () => {
+      // Non-tip node at (0, 3) → rail extends to rowBottom(3) for seamless continuation
+      const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 3 });
+      const nodes = [makeOverlayNode({ oid: 'mid', x: 0, y: 3, isBranchTip: false })];
+      const result = buildOverlayPaths(makeGraphData([edge], nodes));
+      expect(result[0].d).toBe(`M ${cx(0)} ${rowTop(0)} V ${rowBottom(3)}`);
+    });
+
+    it('rail ends at cy(toY) when no node at (col, toY) — lane terminates', () => {
+      // No node at col 1, row 4 → lane terminates, end at cy(4)
+      const edge = makeOverlayEdge({ fromX: 1, toX: 1, fromY: 0, toY: 4 });
+      const nodes = [makeOverlayNode({ oid: 'other', x: 0, y: 4 })]; // node in different column
+      const result = buildOverlayPaths(makeGraphData([edge], nodes));
+      expect(result[0].d).toBe(`M ${cx(1)} ${rowTop(0)} V ${cy(4)}`);
     });
 
     it('rail starts at cy(fromY) and ends at cy(toY) when both ends are branch tips', () => {
@@ -140,8 +157,8 @@ describe('buildOverlayPaths', () => {
     it('rail in column 2 uses cx(2) for x coordinate', () => {
       const edge = makeOverlayEdge({ fromX: 2, toX: 2, fromY: 0, toY: 1 });
       const result = buildOverlayPaths(makeGraphData([edge]));
-      // cx(2) = 2*16 + 8 = 40
-      expect(result[0].d).toBe(`M ${cx(2)} ${rowTop(0)} V ${rowBottom(1)}`);
+      // cx(2) = 2*16 + 8 = 40, no node at (2, 1) → ends at cy(1)
+      expect(result[0].d).toBe(`M ${cx(2)} ${rowTop(0)} V ${cy(1)}`);
     });
   });
 
