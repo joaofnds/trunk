@@ -30,7 +30,7 @@
   }
 
   const isWip = $derived(commit.oid === '__wip__');
-  const isStash = $derived(commit.oid.startsWith('__stash_'));
+  const isStash = $derived(commit.is_stash);
 
   const allRemoteOnly = $derived(
     commit.refs.length > 0 &&
@@ -46,11 +46,11 @@
   style:height="{ROW_HEIGHT}px"
   style="color: var(--color-text); {refHovered ? 'z-index: 10;' : ''}"
   onclick={() => onselect?.(commit.oid)}
-  oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !commit.oid.startsWith('__')) { e.preventDefault(); oncontextmenu(e, commit); } }}
+  oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
 >
   <!-- Connector line + Column 1: Branch/Tag refs (hidden together) -->
   {#if columnVisibility.ref}
-    {#if commit.refs.length > 0 && commit.oid !== '__wip__' && columnVisibility.graph}
+    {#if commit.refs.length > 0 && !isWip && !isStash && columnVisibility.graph}
       <div
         class="absolute pointer-events-none"
         style="left: {12 + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth - 4 + commit.column * LANE_WIDTH + LANE_WIDTH / 2}px; top: 50%; height: {EDGE_STROKE}px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;{commit.is_head ? '' : ' filter: brightness(0.75);'}"
@@ -65,9 +65,11 @@
     >
       <!-- Default: first pill + overflow count -->
       <div class="flex items-center min-w-0 {refHovered ? 'overflow-visible' : 'overflow-hidden'}" bind:clientWidth={refContainerWidth}>
-        <RefPill refs={commit.refs} expanded={refHovered} maxWidth={columnWidths.ref} />
+        {#if !isStash}
+          <RefPill refs={commit.refs} expanded={refHovered} maxWidth={columnWidths.ref} />
+        {/if}
       </div>
-      {#if commit.refs.length > 1}
+      {#if commit.refs.length > 1 && !isStash}
         <!-- +N badge; hidden while overlay is visible so there's no double-badge -->
         <div class="relative ml-1 flex-shrink-0">
           <span

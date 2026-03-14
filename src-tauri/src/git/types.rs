@@ -19,6 +19,7 @@ pub struct GraphEdge {
     pub to_column: usize,
     pub edge_type: EdgeType,
     pub color_index: usize,
+    pub dashed: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -64,6 +65,7 @@ pub struct GraphCommit {
     pub is_head: bool,
     pub is_merge: bool,
     pub is_branch_tip: bool,
+    pub is_stash: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]

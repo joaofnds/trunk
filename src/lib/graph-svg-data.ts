@@ -69,7 +69,10 @@ function buildSentinelConnector(column: number, rowIndex: number, colorIndex: nu
  * - Incoming rails: `{oid}:rail:{column}`
  * - Sentinel connectors: `{oid}:connector:{column}`
  * - WIP incoming dashed: `{oid}:wip-incoming:{column}` (row below WIP)
- * - Stash fork: `{parentOid}:stash-fork:{parentCol}:{stashCol}` (on parent row)
+ *
+ * Stash commits get their lane data from the backend, which marks stash-lane
+ * edges with dashed=true. The frontend just reads this flag — same algorithm
+ * as normal branches, but rendered with dashed lines.
  *
  * Uses absolute Y coordinates based on row index for viewBox clipping.
  */
@@ -87,13 +90,27 @@ export function computeGraphSvgData(
       // WIP connector: from dot to bottom of WIP row
       paths.set(`${commit.oid}:connector:${commit.column}`, buildSentinelConnector(commit.column, rowIndex, commit.color_index));
 
-      // Dashed incoming segment for the next row (rowTop → cy),
-      // matching old LaneSvg behavior: dashed line from WIP dot to next row's dot center.
-      const nextRow = rowIndex + 1;
-      if (nextRow < commits.length) {
-        const nextCommit = commits[nextRow];
-        paths.set(`${nextCommit.oid}:wip-incoming:${commit.column}`, {
-          d: `M ${cx(commit.column)} ${rowTop(nextRow)} V ${cy(nextRow)}`,
+      // Find the HEAD commit row (the commit with is_head flag).
+      // The WIP dashed line extends from the WIP dot through all intermediate
+      // rows (stash rows, branch tips) down to the HEAD commit.
+      let headRow = -1;
+      for (let r = rowIndex + 1; r < commits.length; r++) {
+        if (commits[r].is_head) {
+          headRow = r;
+          break;
+        }
+      }
+      if (headRow === -1) {
+        // Fallback: just connect to the next row
+        headRow = Math.min(rowIndex + 1, commits.length - 1);
+      }
+
+      // Draw dashed segments for every row from WIP down to (and including) HEAD row
+      for (let r = rowIndex + 1; r <= headRow && r < commits.length; r++) {
+        const targetCommit = commits[r];
+        const endY = r === headRow ? cy(r) : rowBottom(r);
+        paths.set(`${targetCommit.oid}:wip-incoming:${commit.column}`, {
+          d: `M ${cx(commit.column)} ${rowTop(r)} V ${endY}`,
           colorIndex: commit.color_index,
           dashed: true,
         });
@@ -102,47 +119,9 @@ export function computeGraphSvgData(
       continue;
     }
 
-    // --- Stash sentinel ---
-    // Stash rows branch right like real branches. The fork (MergeRight-style)
-    // is generated on the parent row (see pass 2 below). Here we only generate:
-    // - Dashed incoming rail (rowTop → cy) connecting the parent fork to the dot
-    // - Dashed connector (cy+r → rowBottom) if next row is also a stash (chain)
-    // - Solid pass-through for all straight edges (other lanes)
-    if (commit.oid.startsWith('__stash_')) {
-      const stashCol = commit.column;
-
-      // Dashed incoming rail to stash dot
-      paths.set(`${commit.oid}:rail:${stashCol}`, {
-        d: `M ${cx(stashCol)} ${rowTop(rowIndex)} V ${cy(rowIndex)}`,
-        colorIndex: commit.color_index,
-        dashed: true,
-      });
-
-      // Chain consecutive stashes: if next row is also a stash in same column,
-      // add dashed connector from this dot to rowBottom
-      const nextIdx = rowIndex + 1;
-      if (
-        nextIdx < commits.length &&
-        commits[nextIdx].oid.startsWith('__stash_') &&
-        commits[nextIdx].column === stashCol
-      ) {
-        paths.set(`${commit.oid}:connector:${stashCol}`, buildSentinelConnector(stashCol, rowIndex, commit.color_index));
-      }
-
-      // Solid pass-through for all straight edges (parent lane + other lanes)
-      for (const edge of commit.edges) {
-        if (edge.from_column === edge.to_column) {
-          paths.set(`${commit.oid}:straight:${edge.from_column}`, {
-            d: `M ${cx(edge.from_column)} ${rowTop(rowIndex)} V ${rowBottom(rowIndex)}`,
-            colorIndex: edge.color_index,
-          });
-        }
-      }
-
-      continue;
-    }
-
-    // --- Normal commits ---
+    // --- All commits (normal + stash) ---
+    // Edges come from the backend with dashed=true for stash lanes.
+    // Same rendering algorithm for all commits — dashed flag flows through.
     const straightEdges: GraphEdge[] = [];
     const connectionEdges: GraphEdge[] = [];
 
@@ -159,18 +138,22 @@ export function computeGraphSvgData(
       const isBranchTipOwnColumn = commit.is_branch_tip && edge.from_column === commit.column;
       const startY = isBranchTipOwnColumn ? cy(rowIndex) : rowTop(rowIndex);
       const key = `${commit.oid}:straight:${edge.from_column}`;
+
       paths.set(key, {
         d: `M ${cx(edge.from_column)} ${startY} V ${rowBottom(rowIndex)}`,
         colorIndex: edge.color_index,
+        dashed: edge.dashed,
       });
     }
 
     // Connection edges: merge/fork with Manhattan routing
     for (const edge of connectionEdges) {
       const key = `${commit.oid}:${edge.edge_type}:${edge.from_column}:${edge.to_column}`;
+
       paths.set(key, {
         d: buildConnectionPath(edge, rowIndex),
         colorIndex: edge.color_index,
+        dashed: edge.dashed,
       });
     }
 
@@ -181,45 +164,14 @@ export function computeGraphSvgData(
 
     if (needsIncomingRail) {
       const key = `${commit.oid}:rail:${commit.column}`;
+      // Incoming rail is dashed if the commit itself is a stash
+      // (its own-column rail comes from the stash lane)
       paths.set(key, {
         d: `M ${cx(commit.column)} ${rowTop(rowIndex)} V ${cy(rowIndex)}`,
         colorIndex: commit.color_index,
+        dashed: commit.is_stash,
       });
     }
-  }
-
-  // --- Pass 2: Generate dashed fork paths for stash groups ---
-  // The fork (MergeRight-style) is drawn on the parent row, exactly like
-  // real branch forks. Only generated for the first stash in a consecutive group.
-  for (let rowIndex = 0; rowIndex < commits.length; rowIndex++) {
-    const commit = commits[rowIndex];
-    if (!commit.oid.startsWith('__stash_')) continue;
-
-    // Only process the first stash in a consecutive group
-    if (rowIndex > 0 && commits[rowIndex - 1].oid.startsWith('__stash_')) continue;
-
-    const parentRow = rowIndex - 1;
-    if (parentRow < 0) continue;
-
-    const parentCommit = commits[parentRow];
-    const parentCol = parentCommit.column;
-    const stashCol = commit.column;
-    if (parentCol === stashCol) continue; // same column, no fork needed
-
-    // Dashed MergeRight on the parent row: from parent dot → horizontal → arc down → rowBottom
-    const x1 = cx(parentCol);
-    const x2 = cx(stashCol);
-    const r = cornerRadius;
-    const goingRight = stashCol > parentCol;
-    const hTarget = goingRight ? x2 - r : x2 + r;
-    const sweep = goingRight ? 1 : 0;
-    const mid = cy(parentRow);
-
-    paths.set(`${parentCommit.oid}:stash-fork:${parentCol}:${stashCol}`, {
-      d: `M ${x1} ${mid} H ${hTarget} A ${r} ${r} 0 0 ${sweep} ${x2} ${mid + r} V ${rowBottom(parentRow)}`,
-      colorIndex: commit.color_index,
-      dashed: true,
-    });
   }
 
   return paths;

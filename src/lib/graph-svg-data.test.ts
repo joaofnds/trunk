@@ -40,6 +40,7 @@ function makeCommit(overrides: Partial<GraphCommit> & { oid: string }): GraphCom
     is_head: overrides.is_head ?? false,
     is_merge: overrides.is_merge ?? false,
     is_branch_tip: overrides.is_branch_tip ?? false,
+    is_stash: overrides.is_stash ?? false,
   };
 }
 
@@ -49,6 +50,7 @@ function makeEdge(overrides: Partial<GraphEdge> & { edge_type: GraphEdge['edge_t
     to_column: overrides.to_column ?? 0,
     edge_type: overrides.edge_type,
     color_index: overrides.color_index ?? 0,
+    dashed: overrides.dashed ?? false,
   };
 }
 
@@ -244,7 +246,7 @@ describe('computeGraphSvgData', () => {
       expect(result.get(incomingKey)!.colorIndex).toBe(0);
     });
 
-    it('WIP dashed incoming does not affect rows beyond the next one', () => {
+    it('WIP dashed line extends through intermediate rows to HEAD commit', () => {
       const commits = [
         makeCommit({
           oid: '__wip__',
@@ -270,123 +272,236 @@ describe('computeGraphSvgData', () => {
       ];
       const result = computeGraphSvgData(commits, 2);
 
-      // Only the next row (mid1) gets the dashed incoming
+      // mid1 (row 1) gets dashed pass-through from WIP to bottom of row
       expect(result.has('mid1:wip-incoming:0')).toBe(true);
       expect(result.get('mid1:wip-incoming:0')!.dashed).toBe(true);
+      expect(result.get('mid1:wip-incoming:0')!.d).toBe(`M ${cx(0)} ${rowTop(1)} V ${rowBottom(1)}`);
 
-      // Row 2 (head_commit) is NOT affected — no dashed incoming
-      expect(result.has('head_commit:wip-incoming:0')).toBe(false);
+      // head_commit (row 2) gets dashed incoming from WIP ending at dot center
+      expect(result.has('head_commit:wip-incoming:0')).toBe(true);
+      expect(result.get('head_commit:wip-incoming:0')!.dashed).toBe(true);
+      expect(result.get('head_commit:wip-incoming:0')!.d).toBe(`M ${cx(0)} ${rowTop(2)} V ${cy(2)}`);
 
       // mid1 still gets its normal solid straight edges
       expect(result.has('mid1:straight:0')).toBe(true);
-      expect(result.get('mid1:straight:0')!.dashed).toBeUndefined();
+      expect(result.get('mid1:straight:0')!.dashed).toBe(false);
       expect(result.has('mid1:straight:1')).toBe(true);
     });
 
-    it('stash fork is generated on the parent row (like real branches)', () => {
-      // Parent at row 0 column 0, stash at row 1 column 1
+    it('stash branch tip has dashed own-column straight edge (from backend dashed flag)', () => {
+      // Stash at row 0 col 1, parent at row 1 col 0.
+      // Backend marks stash lane edges with dashed=true.
       const commits = [
+        makeCommit({
+          oid: 'stash_abc',
+          column: 1,
+          color_index: 2,
+          is_branch_tip: true,
+          is_stash: true,
+          parent_oids: ['parent'],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2, dashed: true }),
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+          ],
+        }),
         makeCommit({
           oid: 'parent',
           column: 0,
           color_index: 0,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
-        }),
-        makeCommit({
-          oid: '__stash_0__',
-          column: 1,
-          color_index: 0,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'ForkRight', from_column: 0, to_column: 1, color_index: 2, dashed: true }),
+          ],
         }),
       ];
       const result = computeGraphSvgData(commits, 2);
 
-      // Fork is keyed on the PARENT commit (drawn on parent's row)
-      const forkKey = 'parent:stash-fork:0:1';
-      expect(result.has(forkKey)).toBe(true);
-      expect(result.get(forkKey)!.dashed).toBe(true);
-      // MergeRight pattern: from parent dot → horizontal → arc down → rowBottom
-      const x1 = cx(0);
-      const x2 = cx(1);
-      const hTarget = x2 - r;
-      const mid = cy(0);
-      expect(result.get(forkKey)!.d).toBe(
-        `M ${x1} ${mid} H ${hTarget} A ${r} ${r} 0 0 1 ${x2} ${mid + r} V ${rowBottom(0)}`,
-      );
+      // Stash's own-column straight edge should be dashed (backend marks it)
+      expect(result.has('stash_abc:straight:1')).toBe(true);
+      expect(result.get('stash_abc:straight:1')!.dashed).toBe(true);
+      // Branch tip: starts from cy (dot center)
+      expect(result.get('stash_abc:straight:1')!.d).toBe(`M ${cx(1)} ${cy(0)} V ${rowBottom(0)}`);
+
+      // Pass-through in col 0 is NOT dashed (backend marks it false)
+      expect(result.has('stash_abc:straight:0')).toBe(true);
+      expect(result.get('stash_abc:straight:0')!.dashed).toBe(false);
     });
 
-    it('stash has dashed incoming rail and solid pass-through edges', () => {
+    it('ForkRight edge targeting stash column is dashed (from backend)', () => {
+      // Stash at row 0 col 1, parent at row 1 col 0.
       const commits = [
+        makeCommit({
+          oid: 'stash_def',
+          column: 1,
+          color_index: 2,
+          is_branch_tip: true,
+          is_stash: true,
+          parent_oids: ['parent'],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2, dashed: true }),
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+          ],
+        }),
         makeCommit({
           oid: 'parent',
           column: 0,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
-        }),
-        makeCommit({
-          oid: '__stash_0__',
-          column: 1,
           color_index: 0,
           edges: [
-            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 }),
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'ForkRight', from_column: 0, to_column: 1, color_index: 2, dashed: true }),
+          ],
+        }),
+      ];
+      const result = computeGraphSvgData(commits, 2);
+
+      // ForkRight targeting stash col 1 should be dashed
+      const forkKey = 'parent:ForkRight:0:1';
+      expect(result.has(forkKey)).toBe(true);
+      expect(result.get(forkKey)!.dashed).toBe(true);
+
+      // Parent's own Straight should NOT be dashed
+      expect(result.get('parent:straight:0')!.dashed).toBe(false);
+    });
+
+    it('stash pass-through edges in other columns remain solid', () => {
+      const commits = [
+        makeCommit({
+          oid: 'stash_ghi',
+          column: 1,
+          color_index: 2,
+          is_branch_tip: true,
+          is_stash: true,
+          parent_oids: ['parent'],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2, dashed: true }),
             makeEdge({ edge_type: 'Straight', from_column: 2, to_column: 2, color_index: 3 }),
+          ],
+        }),
+        makeCommit({
+          oid: 'parent',
+          column: 0,
+          color_index: 0,
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
           ],
         }),
       ];
       const result = computeGraphSvgData(commits, 3);
-      // Dashed incoming rail to stash dot
-      expect(result.has('__stash_0__:rail:1')).toBe(true);
-      expect(result.get('__stash_0__:rail:1')!.dashed).toBe(true);
-      expect(result.get('__stash_0__:rail:1')!.d).toBe(`M ${cx(1)} ${rowTop(1)} V ${cy(1)}`);
-      // Solid pass-through in column 0
-      expect(result.has('__stash_0__:straight:0')).toBe(true);
-      expect(result.get('__stash_0__:straight:0')!.dashed).toBeUndefined();
-      // Solid pass-through in column 2
-      expect(result.has('__stash_0__:straight:2')).toBe(true);
-      expect(result.get('__stash_0__:straight:2')!.colorIndex).toBe(3);
-      // No downward connector (single stash is a leaf)
-      expect(result.has('__stash_0__:connector:1')).toBe(false);
+
+      // Column 0 and column 2 are NOT dashed (backend marks them false)
+      expect(result.get('stash_ghi:straight:0')!.dashed).toBe(false);
+      expect(result.get('stash_ghi:straight:2')!.dashed).toBe(false);
+      // Column 1 is dashed (backend marks stash lane)
+      expect(result.get('stash_ghi:straight:1')!.dashed).toBe(true);
     });
 
-    it('consecutive stashes chain with dashed connectors', () => {
+    it('pass-through rail for a stash lane on an intermediate row is dashed', () => {
+      // Two stashes on same parent: stash_A at col 1 (row 0), stash_B at col 2 (row 1).
+      // Parent at row 2. Backend marks all stash-lane edges dashed.
       const commits = [
+        makeCommit({
+          oid: 'stash_A',
+          column: 1,
+          color_index: 5,
+          is_branch_tip: true,
+          is_stash: true,
+          parent_oids: ['parent'],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 5, dashed: true }),
+          ],
+        }),
+        makeCommit({
+          oid: 'stash_B',
+          column: 2,
+          color_index: 6,
+          is_branch_tip: true,
+          is_stash: true,
+          parent_oids: ['parent'],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 5, dashed: true }),
+            makeEdge({ edge_type: 'Straight', from_column: 2, to_column: 2, color_index: 6, dashed: true }),
+          ],
+        }),
         makeCommit({
           oid: 'parent',
           column: 0,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+          color_index: 0,
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'ForkRight', from_column: 0, to_column: 1, color_index: 5, dashed: true }),
+            makeEdge({ edge_type: 'ForkRight', from_column: 0, to_column: 2, color_index: 6, dashed: true }),
+          ],
+        }),
+      ];
+      const result = computeGraphSvgData(commits, 3);
+
+      // stash_B's pass-through at col 1 (stash_A lane) should be dashed
+      expect(result.get('stash_B:straight:1')!.dashed).toBe(true);
+      // stash_B's own col 2 should be dashed
+      expect(result.get('stash_B:straight:2')!.dashed).toBe(true);
+      // col 0 pass-through should NOT be dashed
+      expect(result.get('stash_B:straight:0')!.dashed).toBe(false);
+
+      // Both ForkRight edges on parent should be dashed
+      expect(result.get('parent:ForkRight:0:1')!.dashed).toBe(true);
+      expect(result.get('parent:ForkRight:0:2')!.dashed).toBe(true);
+      // Parent's own Straight should NOT be dashed
+      expect(result.get('parent:straight:0')!.dashed).toBe(false);
+    });
+
+    it('real branch sharing same color as stash is NOT dashed', () => {
+      // Backend marks stash edges dashed, but real branch edges remain solid
+      // even if they reuse the same column after the stash lane was cleaned up.
+      const commits = [
+        makeCommit({
+          oid: 'stash_x',
+          column: 1,
+          color_index: 2,
+          is_branch_tip: true,
+          is_stash: true,
+          parent_oids: ['parent'],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2, dashed: true }),
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+          ],
         }),
         makeCommit({
-          oid: '__stash_0__',
-          column: 1,
+          oid: 'parent',
+          column: 0,
           color_index: 0,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+            makeEdge({ edge_type: 'ForkRight', from_column: 0, to_column: 1, color_index: 2, dashed: true }),
+          ],
         }),
         makeCommit({
-          oid: '__stash_1__',
+          oid: 'branch_tip',
           column: 1,
-          color_index: 0,
-          edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
+          color_index: 2,
+          is_branch_tip: true,
+          edges: [
+            makeEdge({ edge_type: 'Straight', from_column: 1, to_column: 1, color_index: 2 }),
+            makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0, color_index: 0 }),
+          ],
         }),
       ];
       const result = computeGraphSvgData(commits, 2);
 
-      // Fork only on the parent row (first stash in group)
-      expect(result.has('parent:stash-fork:0:1')).toBe(true);
-      // First stash has dashed connector to next stash
-      expect(result.has('__stash_0__:connector:1')).toBe(true);
-      expect(result.get('__stash_0__:connector:1')!.dashed).toBe(true);
-      // Second stash has dashed incoming rail but no connector (last in group)
-      expect(result.has('__stash_1__:rail:1')).toBe(true);
-      expect(result.has('__stash_1__:connector:1')).toBe(false);
+      // Real branch at col 1, row 2 should NOT be dashed (backend doesn't mark it)
+      expect(result.get('branch_tip:straight:1')!.dashed).toBe(false);
     });
 
-    it('non-sentinel paths do NOT have dashed property set', () => {
+    it('non-sentinel paths have dashed=false', () => {
       const commit = makeCommit({
         oid: 'regular',
         column: 0,
         edges: [makeEdge({ edge_type: 'Straight', from_column: 0, to_column: 0 })],
       });
       const result = computeGraphSvgData([commit], 1);
-      expect(result.get('regular:straight:0')!.dashed).toBeUndefined();
+      expect(result.get('regular:straight:0')!.dashed).toBe(false);
     });
   });
 

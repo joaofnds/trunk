@@ -53,31 +53,31 @@
 </script>
 
 <svg width={svgWidth} height={ROW_HEIGHT} viewBox="0 {rowIndex * ROW_HEIGHT} {svgWidth} {ROW_HEIGHT}" style="overflow: hidden; flex-shrink: 0;">
-  <!-- Layer 1: Rails (straight/rail paths) -->
+  <!-- Layer 1: Dashed connector paths (WIP/stash) — behind solid lines -->
+  {#each dashedPaths as path}
+    <path d={path.d} fill="none" stroke={laneColor(path.colorIndex)}
+      stroke-width={EDGE_STROKE} stroke-dasharray="3 3" stroke-linecap="round" />
+  {/each}
+
+  <!-- Layer 2: Rails (straight/rail paths) -->
   {#each railPaths as path}
     <path d={path.d} fill="none" stroke={laneColor(path.colorIndex)} stroke-width={EDGE_STROKE} stroke-linecap="butt" />
   {/each}
 
-  <!-- Layer 2: Connection edges -->
+  <!-- Layer 3: Connection edges -->
   {#each connectionPaths as path}
     <path d={path.d} fill="none" stroke={laneColor(path.colorIndex)} stroke-width={EDGE_STROKE} stroke-linecap="round" />
-  {/each}
-
-  <!-- Layer 2.5: Dashed connector paths (WIP/stash) -->
-  {#each dashedPaths as path}
-    <path d={path.d} fill="none" stroke={laneColor(path.colorIndex)}
-      stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-dashoffset="-3" stroke-linecap="round" />
   {/each}
 
   <!-- Layer 3: Commit dot -->
   {#if commit.oid === '__wip__'}
     <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS}
       fill="none" stroke={laneColor(commit.color_index)}
-      stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-linecap="round" />
-  {:else if commit.oid.startsWith('__stash_')}
+      stroke-width={EDGE_STROKE} stroke-dasharray="3 3" stroke-linecap="round" />
+  {:else if commit.is_stash}
     <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS}
       fill="none" stroke={laneColor(commit.color_index)}
-      stroke-width={WIP_STROKE} stroke-dasharray="1 4" stroke-linecap="round" />
+      stroke-width={EDGE_STROKE} stroke-dasharray="3 3" stroke-linecap="round" />
   {:else if commit.is_merge}
     <circle cx={dotCx} cy={dotCy} r={DOT_RADIUS} fill="var(--color-bg)" stroke={laneColor(commit.color_index)} stroke-width={MERGE_STROKE} />
   {:else}
