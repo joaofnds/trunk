@@ -23,9 +23,10 @@
     wipMessage?: string;
     onWipClick?: () => void;
     refreshSignal?: number;
+    selectedCommitOid?: string | null;
   }
 
-  let { repoPath, oncommitselect, wipCount = 0, wipMessage = 'WIP', onWipClick, refreshSignal }: Props = $props();
+  let { repoPath, oncommitselect, wipCount = 0, wipMessage = 'WIP', onWipClick, refreshSignal, selectedCommitOid }: Props = $props();
 
   const BATCH = 200;
   const SKELETON_COUNT = 10;
@@ -486,7 +487,7 @@
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} />
         {/snippet}
       </VirtualList>
 

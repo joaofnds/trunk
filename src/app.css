@@ -8,6 +8,7 @@
   --color-text: #c9d1d9;
   --color-text-muted: #8b949e;
   --color-accent: #388bfd;
+  --color-selected-row: rgba(56, 139, 253, 0.1);
 
   /* Graph lane colors — vivid 8-color dark-theme palette, high contrast on #0d1117 */
   --lane-0: #58a6ff;

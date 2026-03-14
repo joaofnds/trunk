@@ -13,9 +13,10 @@
     maxColumns?: number;
     columnWidths: ColumnWidths;
     columnVisibility: ColumnVisibility;
+    selected?: boolean;
   }
 
-  let { commit, rowIndex, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility }: Props = $props();
+  let { commit, rowIndex, onselect, oncontextmenu, maxColumns = 1, columnWidths, columnVisibility, selected = false }: Props = $props();
 
   function relativeDate(ts: number): string {
     if (ts === 0) return '';
@@ -42,9 +43,10 @@
 </script>
 
 <div
-  class="relative flex items-center px-2 hover:bg-[var(--color-surface)] cursor-pointer text-[13px]"
+  class="relative flex items-center px-2 cursor-pointer text-[13px]"
+  class:hover:bg-[var(--color-surface)]={!selected}
   style:height="{ROW_HEIGHT}px"
-  style="color: var(--color-text); {refHovered ? 'z-index: 10;' : ''}"
+  style="color: var(--color-text); {selected ? 'background: var(--color-selected-row);' : ''}{refHovered ? ' z-index: 10;' : ''}"
   onclick={() => onselect?.(commit.oid)}
   oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
 >
