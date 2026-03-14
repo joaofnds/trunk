@@ -60,15 +60,17 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
 
   // Look up nodes at start and end of rail
   const fromNode = nodes.find(n => n.x === col && n.y === edge.fromY);
-  const fromIsBranchTip = fromNode?.isBranchTip ?? false;
+  // WIP nodes are visual tips (topmost row) even though isBranchTip is false
+  const fromIsTip = (fromNode?.isBranchTip || fromNode?.isWip) ?? false;
 
   const toNode = nodes.find(n => n.x === col && n.y === edge.toY);
   const toHasNode = toNode !== undefined;
-  const toIsBranchTip = toNode?.isBranchTip ?? false;
+  // WIP nodes are visual tips even though isBranchTip is false
+  const toIsTip = (toNode?.isBranchTip || toNode?.isWip) ?? false;
 
-  // Start: branch tip stops at dot edge + dash gap for hollow shapes, dot center for filled
+  // Start: tip stops at dot edge + dash gap for hollow shapes, dot center for filled
   let startY: number;
-  if (fromIsBranchTip) {
+  if (fromIsTip) {
     startY = fromNode && isHollow(fromNode) ? cy(edge.fromY) + DOT_RADIUS + DASH_GAP : cy(edge.fromY);
   } else {
     startY = rowTop(edge.fromY);
@@ -78,7 +80,7 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   // No node: lane terminates at connection curve corner (cy - R).
   // Non-tip node: extends to rowBottom for seamless continuation.
   let endY: number;
-  if (toIsBranchTip) {
+  if (toIsTip) {
     endY = toNode && isHollow(toNode) ? cy(edge.toY) - DOT_RADIUS - DASH_GAP : cy(edge.toY);
   } else if (!toHasNode) {
     endY = cy(edge.toY) - R;
