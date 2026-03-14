@@ -100,17 +100,15 @@ function isMergePattern(edge: OverlayEdge, allEdges: OverlayEdge[]): boolean {
  * Builds a connection path (cross-lane edge) using Manhattan routing with
  * cubic bezier rounded 90° corners.
  *
- * Path structure (going right, merge):
+ * Path structure:
  *   M cx(fromX) cy(fromY)
- *   H cx(toX)-R
- *   C cx(toX)-R+κR cy(fromY), cx(toX) cy(fromY)+(1-κ)R, cx(toX) cy(fromY)+R
- *   V rowBottom(fromY)
+ *   H hTarget               ← stop R before the corner
+ *   C cp1x cp1y, cp2x cp2y, cornerX cornerY
+ *   V vTarget               ← rowBottom (merge) or rowTop (fork)
  *
- * Path structure (going right, fork):
- *   M cx(fromX) cy(fromY)
- *   H cx(toX)-R
- *   C cx(toX)-R+κR cy(fromY), cx(toX) cy(fromY)-(1-κ)R, cx(toX) cy(fromY)-R
- *   V rowTop(fromY)
+ * Corner direction:
+ *   - merge (curves down): vTarget = rowBottom, corner bends toward higher Y
+ *   - fork  (curves up):   vTarget = rowTop,    corner bends toward lower Y
  */
 function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): OverlayPath {
   const x1 = cx(edge.fromX);
@@ -119,55 +117,26 @@ function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): Overla
   const goingRight = edge.toX > edge.fromX;
   const merge = isMergePattern(edge, allEdges);
 
-  // Horizontal target: stop R before the corner
+  // Horizontal stop point: R before corner in direction of travel
   const hTarget = goingRight ? x2 - R : x2 + R;
 
-  // Bezier control point offset
-  const kR = KAPPA * R;
+  // Horizontal approach sign: +1 for right, -1 for left
+  const hSign = goingRight ? 1 : -1;
 
-  let d: string;
+  // Vertical exit direction: +1 for down (merge), -1 for up (fork)
+  const vSign = merge ? 1 : -1;
 
-  if (goingRight) {
-    if (merge) {
-      // Right turn → then down
-      const cp1x = x2 - R + kR;
-      const cp1y = midY;
-      const cp2x = x2;
-      const cp2y = midY + (1 - KAPPA) * R;
-      const endX = x2;
-      const endY = midY + R;
-      d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${endX} ${endY} V ${rowBottom(edge.fromY)}`;
-    } else {
-      // Right turn → then up (fork)
-      const cp1x = x2 - R + kR;
-      const cp1y = midY;
-      const cp2x = x2;
-      const cp2y = midY - (1 - KAPPA) * R;
-      const endX = x2;
-      const endY = midY - R;
-      d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${endX} ${endY} V ${rowTop(edge.fromY)}`;
-    }
-  } else {
-    if (merge) {
-      // Left turn → then down
-      const cp1x = x2 + R - kR;
-      const cp1y = midY;
-      const cp2x = x2;
-      const cp2y = midY + (1 - KAPPA) * R;
-      const endX = x2;
-      const endY = midY + R;
-      d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${endX} ${endY} V ${rowBottom(edge.fromY)}`;
-    } else {
-      // Left turn → then up (fork)
-      const cp1x = x2 + R - kR;
-      const cp1y = midY;
-      const cp2x = x2;
-      const cp2y = midY - (1 - KAPPA) * R;
-      const endX = x2;
-      const endY = midY - R;
-      d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${endX} ${endY} V ${rowTop(edge.fromY)}`;
-    }
-  }
+  // Bezier control points for 90° quarter-circle
+  const cp1x = x2 - hSign * R + hSign * KAPPA * R; // approaches corner from horizontal
+  const cp1y = midY;
+  const cp2x = x2;
+  const cp2y = midY + vSign * (1 - KAPPA) * R;     // leaves corner vertically
+  const cornerX = x2;
+  const cornerY = midY + vSign * R;
+
+  const vTarget = merge ? rowBottom(edge.fromY) : rowTop(edge.fromY);
+
+  const d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${cornerX} ${cornerY} V ${vTarget}`;
 
   return {
     d,
