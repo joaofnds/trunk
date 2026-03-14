@@ -164,4 +164,6 @@ export interface OverlayPath {
   colorIndex: number;
   dashed: boolean;
   kind: 'rail' | 'connection';
+  minRow: number;
+  maxRow: number;
 }

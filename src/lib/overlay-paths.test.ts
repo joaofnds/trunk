@@ -307,6 +307,44 @@ describe('buildOverlayPaths', () => {
     });
   });
 
+  describe('minRow/maxRow metadata', () => {
+    it('rail edge: minRow equals edge.fromY', () => {
+      const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 2, toY: 5 });
+      const result = buildOverlayPaths(makeGraphData([edge]));
+      expect(result[0].minRow).toBe(2);
+    });
+
+    it('rail edge: maxRow equals edge.toY', () => {
+      const edge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 2, toY: 5 });
+      const result = buildOverlayPaths(makeGraphData([edge]));
+      expect(result[0].maxRow).toBe(5);
+    });
+
+    it('connection edge: minRow equals edge.fromY (single-row)', () => {
+      const edge = makeOverlayEdge({ fromX: 0, toX: 1, fromY: 3, toY: 3 });
+      const result = buildOverlayPaths(makeGraphData([edge]));
+      expect(result[0].minRow).toBe(3);
+    });
+
+    it('connection edge: maxRow equals edge.fromY (single-row)', () => {
+      const edge = makeOverlayEdge({ fromX: 0, toX: 1, fromY: 3, toY: 3 });
+      const result = buildOverlayPaths(makeGraphData([edge]));
+      expect(result[0].maxRow).toBe(3);
+    });
+
+    it('mixed edges: all paths have minRow and maxRow', () => {
+      const edges = [
+        makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 10 }), // rail
+        makeOverlayEdge({ fromX: 0, toX: 1, fromY: 5, toY: 5 }),   // connection
+      ];
+      const result = buildOverlayPaths(makeGraphData(edges));
+      for (const path of result) {
+        expect(typeof path.minRow).toBe('number');
+        expect(typeof path.maxRow).toBe('number');
+      }
+    });
+  });
+
   describe('WIP edges (dashed=true)', () => {
     it('WIP rail produces identical geometry with dashed=true', () => {
       const solidEdge = makeOverlayEdge({ fromX: 0, toX: 0, fromY: 0, toY: 2, dashed: false });
