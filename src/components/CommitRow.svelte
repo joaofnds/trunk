@@ -2,7 +2,7 @@
   import type { GraphCommit } from '../lib/types.js';
   import type { ColumnWidths, ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT, EDGE_STROKE } from '../lib/graph-constants.js';
-  import GraphCell from './GraphCell.svelte';
+
   import RefPill from './RefPill.svelte';
 
   interface Props {
@@ -104,7 +104,6 @@
   <!-- Column 2: Graph -->
   {#if columnVisibility.graph}
     <div class="relative z-[1] flex items-center flex-shrink-0" style="width: {columnWidths.graph}px; min-width: {Math.max(maxColumns, commit.column + 1) * LANE_WIDTH}px;">
-      <GraphCell {commit} {rowIndex} {maxColumns} />
     </div>
   {/if}
 

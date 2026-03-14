@@ -1,6 +1,6 @@
 <script lang="ts">
   import VirtualList from './VirtualList.svelte';
-  import { setContext, tick, untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
@@ -9,7 +9,7 @@
   import { buildGraphData } from '../lib/active-lanes.js';
   import { buildOverlayPaths } from '../lib/overlay-paths.js';
   import { getVisibleOverlayElements } from '../lib/overlay-visible.js';
-  import { computeGraphSvgData } from '../lib/graph-svg-data.js';
+
   import { Menu, MenuItem, Submenu, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
   import { ask, message } from '@tauri-apps/plugin-dialog';
@@ -271,14 +271,8 @@
   const cx = (col: number) => col * LANE_WIDTH + LANE_WIDTH / 2;
   const cy = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-  const overlayGraphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
-  const overlayPaths = $derived.by(() => buildOverlayPaths(overlayGraphData));
-
-  const graphSvgData = $derived.by(() => {
-    return computeGraphSvgData(displayItems, maxColumns);
-  });
-
-  setContext('graphSvgData', { get data() { return graphSvgData; } });
+  const graphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
+  const paths = $derived.by(() => buildOverlayPaths(graphData));
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -428,7 +422,7 @@
     {:else}
       <!-- SVG overlay snippet - renders inside virtual list scroll container -->
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
-        {@const visible = getVisibleOverlayElements(overlayPaths, overlayGraphData.nodes, visibleStart, visibleEnd)}
+        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd)}
         <svg
           class="absolute top-0"
           width={Math.max(maxColumns, 1) * LANE_WIDTH}
