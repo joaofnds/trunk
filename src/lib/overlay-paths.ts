@@ -60,6 +60,8 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
     colorIndex: edge.colorIndex,
     dashed: edge.dashed,
     kind: 'rail',
+    minRow: edge.fromY,
+    maxRow: edge.toY,
   };
 }
 
@@ -143,6 +145,8 @@ function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): Overla
     colorIndex: edge.colorIndex,
     dashed: edge.dashed,
     kind: 'connection',
+    minRow: edge.fromY,
+    maxRow: edge.fromY,
   };
 }
 
