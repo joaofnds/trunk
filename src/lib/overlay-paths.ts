@@ -108,17 +108,22 @@ function isMergePattern(edge: OverlayEdge, allEdges: OverlayEdge[]): boolean {
 
 /**
  * Builds a connection path (cross-lane edge) using Manhattan routing with
- * cubic bezier rounded 90° corners.
+ * a cubic bezier rounded 90° corner.
  *
  * Path structure:
  *   M cx(fromX) cy(fromY)
  *   H hTarget               ← stop R before the corner
  *   C cp1x cp1y, cp2x cp2y, cornerX cornerY
- *   V vTarget               ← rowBottom (merge) or rowTop (fork)
+ *
+ * No vertical tail after the corner — the rail in the target column already
+ * covers the vertical area. The bezier arc transitions smoothly from horizontal
+ * to vertical, and the rail (drawn separately) provides the vertical continuity.
+ * Previously, a `V vTarget` tail extended to rowTop/rowBottom, creating visible
+ * stubs past the curve endpoint.
  *
  * Corner direction:
- *   - merge (curves down): vTarget = rowBottom, corner bends toward higher Y
- *   - fork  (curves up):   vTarget = rowTop,    corner bends toward lower Y
+ *   - merge (curves down): corner bends toward higher Y
+ *   - fork  (curves up):   corner bends toward lower Y
  */
 function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): OverlayPath {
   const x1 = cx(edge.fromX);
@@ -144,9 +149,7 @@ function buildConnectionPath(edge: OverlayEdge, allEdges: OverlayEdge[]): Overla
   const cornerX = x2;
   const cornerY = midY + vSign * R;
 
-  const vTarget = merge ? rowBottom(edge.fromY) : rowTop(edge.fromY);
-
-  const d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${cornerX} ${cornerY} V ${vTarget}`;
+  const d = `M ${x1} ${midY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${cornerX} ${cornerY}`;
 
   return {
     d,

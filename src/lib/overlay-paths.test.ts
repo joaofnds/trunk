@@ -199,36 +199,41 @@ describe('buildOverlayPaths', () => {
       expect(result[0].d).toContain('H');
     });
 
-    it('connection path contains a vertical V segment', () => {
+    it('connection path ends at bezier corner (no vertical tail)', () => {
       const edge = makeOverlayEdge({ fromX: 0, toX: 2, fromY: 1, toY: 1 });
       const result = buildOverlayPaths(makeGraphData([edge]));
-      expect(result[0].d).toContain('V');
+      // Path ends at the bezier corner point — no V segment after the C command
+      expect(result[0].d).not.toContain('V');
     });
 
-    it('merge-pattern: rail in toX starts at fromY row → corner curves down to rowBottom', () => {
+    it('merge-pattern: rail in toX starts at fromY row → corner curves down', () => {
       // Connection from col 0 to col 1, row 2
-      // Rail in col 1 starts at row 2 (merge pattern) → corner should end at rowBottom(2)
+      // Rail in col 1 starts at row 2 (merge pattern) → corner should curve down
       const edges = [
         makeOverlayEdge({ fromX: 0, toX: 1, fromY: 2, toY: 2 }), // connection
         makeOverlayEdge({ fromX: 1, toX: 1, fromY: 2, toY: 4 }), // rail starts at row 2 = merge
       ];
       const result = buildOverlayPaths(makeGraphData(edges));
-      const conn = result.find(p => p.kind === 'connection')!;
-      // Should end with V rowBottom(2) = V 108
-      expect(conn.d).toContain(`V ${rowBottom(2)}`);
+      const conn = result.find((p: OverlayPath) => p.kind === 'connection')!;
+      // Corner Y should be cy(2) + R (curves down) — no V tail
+      const cornerY = cy(2) + R;
+      expect(conn.d).toContain(`${cx(1)} ${cornerY}`);
+      expect(conn.d).not.toContain('V');
     });
 
-    it('fork-pattern: rail in toX ends at fromY row → corner curves up to rowTop', () => {
+    it('fork-pattern: rail in toX ends at fromY row → corner curves up', () => {
       // Connection from col 0 to col 1, row 2
-      // Rail in col 1 ends at row 2 (fork pattern) → corner should end at rowTop(2)
+      // Rail in col 1 ends at row 2 (fork pattern) → corner should curve up
       const edges = [
         makeOverlayEdge({ fromX: 0, toX: 1, fromY: 2, toY: 2 }), // connection
         makeOverlayEdge({ fromX: 1, toX: 1, fromY: 0, toY: 2 }), // rail ends at row 2 = fork
       ];
       const result = buildOverlayPaths(makeGraphData(edges));
-      const conn = result.find(p => p.kind === 'connection')!;
-      // Should end with V rowTop(2) = V 72
-      expect(conn.d).toContain(`V ${rowTop(2)}`);
+      const conn = result.find((p: OverlayPath) => p.kind === 'connection')!;
+      // Corner Y should be cy(2) - R (curves up) — no V tail
+      const cornerY = cy(2) - R;
+      expect(conn.d).toContain(`${cx(1)} ${cornerY}`);
+      expect(conn.d).not.toContain('V');
     });
 
     it('left-going connection also produces a path with C command', () => {

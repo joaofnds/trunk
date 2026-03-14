@@ -351,6 +351,26 @@
   const pillData = $derived.by(() => buildRefPillData(graphData.nodes, displayItems, columnWidths.ref, measureTextWidth));
 
   let hoveredPill = $state<OverlayRefPill | null>(null);
+  let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function pillMouseEnter(pill: OverlayRefPill) {
+    if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
+    if (pill.overflowCount > 0 || pill.truncatedLabel !== pill.label) {
+      hoveredPill = pill;
+    }
+  }
+
+  function pillMouseLeave() {
+    hoverTimeout = setTimeout(() => { hoveredPill = null; }, 50);
+  }
+
+  function overlayMouseEnter() {
+    if (hoverTimeout) { clearTimeout(hoverTimeout); hoverTimeout = null; }
+  }
+
+  function overlayMouseLeave() {
+    hoveredPill = null;
+  }
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -583,8 +603,8 @@
                   opacity={pill.isRemoteOnly ? 0.67 : 1}
                   style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                   pointer-events="auto"
-                  onmouseenter={() => { if (pill.overflowCount > 0 || pill.truncatedLabel !== pill.label) hoveredPill = pill; }}
-                  onmouseleave={() => hoveredPill = null}
+                  onmouseenter={() => pillMouseEnter(pill)}
+                  onmouseleave={pillMouseLeave}
                 />
 
                 <!-- SVG icon for Tag -->
@@ -632,8 +652,8 @@
                     fill={laneColor(pill.colorIndex)}
                     style="filter: brightness(0.65)"
                     pointer-events="auto"
-                    onmouseenter={() => hoveredPill = pill}
-                    onmouseleave={() => hoveredPill = null}
+                    onmouseenter={() => pillMouseEnter(pill)}
+                    onmouseleave={pillMouseLeave}
                   />
                   <text
                     x={pill.x + pill.width + PILL_GAP + badgeWidth / 2}
@@ -665,8 +685,8 @@
                 opacity: 1;
                 transition: opacity 180ms ease;
               "
-              onmouseenter={() => {/* keep hoveredPill */}}
-              onmouseleave={() => hoveredPill = null}
+              onmouseenter={overlayMouseEnter}
+              onmouseleave={overlayMouseLeave}
             >
               {#each hoveredPill.allRefs as ref}
                 <div class="text-[11px] leading-5 font-medium text-white whitespace-nowrap">
@@ -691,8 +711,8 @@
                 opacity: 1;
                 transition: opacity 180ms ease;
               "
-              onmouseenter={() => {/* keep hoveredPill */}}
-              onmouseleave={() => hoveredPill = null}
+              onmouseenter={overlayMouseEnter}
+              onmouseleave={overlayMouseLeave}
             >
               <span class="text-[11px] font-medium text-white whitespace-nowrap" style="font-weight: {hoveredPill.isHead ? 700 : 500};">
                 {hoveredPill.label}
