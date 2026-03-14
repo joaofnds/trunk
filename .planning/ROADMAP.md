@@ -67,7 +67,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 
 - [x] **Phase 20: Foundation — Types, Constants & Overlay Container** - Types, constants, vendored virtual list, SVG overlay POC complete (2/2 plans)
 - [x] **Phase 21: Active Lanes Transformation** - Pure TS function transforming GraphCommit[] into GraphData with grid coordinates (completed 2026-03-14)
-- [ ] **Phase 22: Bezier Path Builder** - Cubic bezier curve generation and vertical rail path math
+- [x] **Phase 22: Bezier Path Builder** - Cubic bezier curve generation and vertical rail path math (completed 2026-03-14)
 - [ ] **Phase 23: SVG Rendering** - Three-layer GraphOverlay component with virtualized element rendering
 - [ ] **Phase 24: Integration** - Wire overlay into CommitGraph, replace old pipeline, apply tuned dimensions
 - [ ] **Phase 25: Interaction Preservation** - Preserve all click and context menu interactions through overlay
@@ -116,7 +116,7 @@ Plans:
   2. Same-lane connections produce continuous vertical `<path>` elements (one per lane run, not per row)
   3. Per-distance tension tuning produces smooth curves for adjacent rows (1-2 gap), nearby rows (3-5 gap), and distant rows (6+ gap) — no kinked diagonals
   4. Unit tests verify path `d` output for each distance tier and edge direction
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 22-01-PLAN.md — TDD: buildOverlayPaths() with cubic bezier corners and rail generation
@@ -197,7 +197,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 17. Synthetic Row Adaptation | v0.4 | 2/2 | Complete | 2026-03-13 |
 | 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete    | 2026-03-14 | 2026-03-14 |
 | 21. Active Lanes Transformation | v0.5 | 1/1 | Complete | 2026-03-14 |
-| 22. Bezier Path Builder | v0.5 | 0/1 | Planned | - |
+| 22. Bezier Path Builder | 1/1 | Complete   | 2026-03-14 | - |
 | 23. SVG Rendering | v0.5 | 0/? | Not started | - |
 | 24. Integration | v0.5 | 0/? | Not started | - |
 | 25. Interaction Preservation | v0.5 | 0/? | Not started | - |

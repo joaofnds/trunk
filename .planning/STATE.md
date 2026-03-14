@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
 status: planning
-stopped_at: Phase 22 context gathered
-last_updated: "2026-03-14T03:40:53.828Z"
+stopped_at: Completed 22-bezier-path-builder-01-PLAN.md
+last_updated: "2026-03-14T04:17:30.125Z"
 last_activity: 2026-03-14 — Phase 21 complete, transitioning to Phase 22
 progress:
   total_phases: 7
-  completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-03-14)
 ## Current Position
 
 Phase: 22 — Bezier Path Builder
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-03-14 — Phase 21 complete, transitioning to Phase 22
+Plan: 01 complete
+Status: Phase 22 complete — ready for Phase 23
+Last activity: 2026-03-14 — Phase 22 Plan 01 complete (buildOverlayPaths TDD)
 
 ```
 v0.5 Graph Overlay
-[██████░░░░░░░░░░░░] 42% complete - 3/7 phases (Phase 22 ready to plan)
+[████████░░░░░░░░░░] 57% complete - 4/7 phases (Phase 23 ready to start)
 ```
 
 ## Performance Metrics
@@ -43,6 +43,7 @@ v0.5 Graph Overlay
 | Commits | 155 | 76 | 88 | ~30 | — |
 | Phase 20-foundation-types-constants-overlay-container P02 | 2min | 2 tasks | 1 files |
 | Phase 21-active-lanes-transformation P01 | 4min | 2 tasks | 2 files |
+| Phase 22-bezier-path-builder P01 | 3min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ v0.5 Graph Overlay
 - [21-01]: Connection edges use fromY === toY === rowIndex — path builder determines curve from coordinate delta
 - [21-01]: Edge coalescing flushes old lane at property change row, new lane starts from that point
 - [21-01]: Active lane tracking via Map<column, {startY, colorIndex, dashed}> for vertical edge coalescing
+- [Phase 22-bezier-path-builder]: Used OverlayGraphData (not OverlayEdge[]) as input for branch tip node lookups — Needed nodes from graph data to detect isBranchTip for rail termination
+- [Phase 22-bezier-path-builder]: hSign/vSign directional multipliers unify 4 corner bezier variants into 1 formula — Reduces ~40 lines of directional branching to ~15 lines with identical behavior
 
 ### Pending Todos
 
@@ -95,6 +98,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T03:40:53.824Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-bezier-path-builder/22-CONTEXT.md
+Last session: 2026-03-14T04:17:30.116Z
+Stopped at: Completed 22-bezier-path-builder-01-PLAN.md
+Resume file: None

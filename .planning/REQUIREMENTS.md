@@ -21,10 +21,10 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 
 ### Curve Rendering
 
-- [ ] **CURV-01**: Cross-lane edges render as cubic bezier curves (SVG `C` command) with vertical tangent control points
-- [ ] **CURV-02**: Same-lane connections render as continuous vertical rail lines (one `<path>` per lane run)
+- [x] **CURV-01**: Cross-lane edges render as cubic bezier curves (SVG `C` command) with vertical tangent control points
+- [x] **CURV-02**: Same-lane connections render as continuous vertical rail lines (one `<path>` per lane run)
 - [ ] **CURV-03**: SVG uses three-layer `<g>` group z-ordering: rails behind edges behind dots
-- [ ] **CURV-04**: Bezier control points use per-distance tension tuning (adaptive for adjacent vs distant row connections)
+- [x] **CURV-04**: Bezier control points use per-distance tension tuning (adaptive for adjacent vs distant row connections)
 
 ### Commit Dots & Synthetic Rows
 
@@ -145,10 +145,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OVRL-04 | Phase 23 | Pending |
 | DATA-01 | Phase 21 | Complete |
 | DATA-02 | Phase 21 | Complete |
-| CURV-01 | Phase 22 | Pending |
-| CURV-02 | Phase 22 | Pending |
+| CURV-01 | Phase 22 | Complete |
+| CURV-02 | Phase 22 | Complete |
 | CURV-03 | Phase 23 | Pending |
-| CURV-04 | Phase 22 | Pending |
+| CURV-04 | Phase 22 | Complete |
 | DOTS-01 | Phase 23 | Pending |
 | DOTS-02 | Phase 23 | Pending |
 | DOTS-03 | Phase 23 | Pending |
