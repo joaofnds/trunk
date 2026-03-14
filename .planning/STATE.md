@@ -17,21 +17,21 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-14)
+See: .planning/PROJECT.md (updated 2026-03-14 after Phase 25)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** v0.5 Graph Overlay — Phase 25 (Interaction Preservation)
+**Current focus:** v0.5 Graph Overlay — Phase 26 (SVG Ref Pills)
 
 ## Current Position
 
-Phase: 25 — Interaction Preservation
-Plan: 01 complete
-Status: Phase 25 Plan 01 complete — selected row highlight, stash context menu routing
-Last activity: 2026-03-14 — Phase 25 Plan 01 complete (interaction preservation — selected highlight, stash context menu)
+Phase: 26 — SVG Ref Pills
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-03-14 — Phase 25 complete, transitioning to Phase 26
 
 ```
 v0.5 Graph Overlay
-[████████████████░░] 86% complete - 6/7 phases (Phase 25 complete)
+[████████████████████] 29/29 plans (100%)
 ```
 
 ## Performance Metrics
@@ -112,6 +112,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T12:40:34Z
-Stopped at: Completed 25-01-PLAN.md
+Last session: 2026-03-14
+Stopped at: Phase 25 complete, ready to plan Phase 26
 Resume file: None

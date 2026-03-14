@@ -33,6 +33,9 @@ A developer can open any Git repository, browse its full commit history as a vis
 - ✓ Stash create/pop/apply/drop — v0.3
 - ✓ Commit row right-click context menu (copy SHA/message, checkout, branch, tag, cherry-pick, revert) — v0.3
 - ✓ Undo last commit (soft reset) and Redo (re-commit with original message) — v0.3
+- ✓ Click and context menu interactions preserved through SVG overlay architecture — v0.5
+- ✓ Selected commit row persistent visual highlight — v0.5
+- ✓ Stash-specific context menu routing (Pop/Apply/Drop) in graph — v0.5
 
 ## Current Milestone: v0.5 Graph Overlay
 
@@ -121,4 +124,4 @@ A developer can open any Git repository, browse its full commit history as a vis
 | Rust lane algorithm stays, TS transformation added | Rust O(n) algorithm is proven (~5ms/10k commits); TS layer transforms output into global grid coords for SVG rendering | — Pending |
 
 ---
-*Last updated: 2026-03-14 after Phase 21*
+*Last updated: 2026-03-14 after Phase 25*
