@@ -627,16 +627,26 @@
                   />
                 {/if}
 
-                <!-- Pill text -->
-                <text
+                <!-- Pill text (foreignObject for crisp HTML text rendering) -->
+                <foreignObject
                   x={pill.x + PILL_PADDING_X + (pill.refType === 'Tag' || pill.refType === 'Stash' ? ICON_WIDTH : 0)}
-                  y={pill.y}
-                  fill="white"
-                  font-size={PILL_FONT_SIZE}
-                  font-family="var(--font-sans)"
-                  font-weight={pill.isHead ? 700 : 500}
-                  dominant-baseline="central"
-                >{pill.truncatedLabel}</text>
+                  y={pill.y - PILL_HEIGHT / 2}
+                  width={pill.width - PILL_PADDING_X * 2 - (pill.refType === 'Tag' || pill.refType === 'Stash' ? ICON_WIDTH : 0)}
+                  height={PILL_HEIGHT}
+                >
+                  <span
+                    style="
+                      color: white;
+                      font-size: {PILL_FONT_SIZE}px;
+                      font-family: var(--font-sans);
+                      font-weight: {pill.isHead ? 700 : 500};
+                      line-height: {PILL_HEIGHT}px;
+                      display: block;
+                      overflow: hidden;
+                      white-space: nowrap;
+                    "
+                  >{pill.truncatedLabel}</span>
+                </foreignObject>
 
                 <!-- Overflow +N badge -->
                 {#if pill.overflowCount > 0}
@@ -655,16 +665,25 @@
                     onmouseenter={() => pillMouseEnter(pill)}
                     onmouseleave={pillMouseLeave}
                   />
-                  <text
-                    x={pill.x + pill.width + PILL_GAP + badgeWidth / 2}
-                    y={pill.y}
-                    fill="white"
-                    font-size={BADGE_FONT_SIZE}
-                    font-family="var(--font-sans)"
-                    font-weight="500"
-                    text-anchor="middle"
-                    dominant-baseline="central"
-                  >{badgeText}</text>
+                  <foreignObject
+                    x={pill.x + pill.width + PILL_GAP}
+                    y={pill.y - BADGE_HEIGHT / 2}
+                    width={badgeWidth}
+                    height={BADGE_HEIGHT}
+                  >
+                    <span
+                      style="
+                        color: white;
+                        font-size: {BADGE_FONT_SIZE}px;
+                        font-family: var(--font-sans);
+                        font-weight: 500;
+                        line-height: {BADGE_HEIGHT}px;
+                        display: block;
+                        text-align: center;
+                        white-space: nowrap;
+                      "
+                    >{badgeText}</span>
+                  </foreignObject>
                 {/if}
               {/each}
             </g>

@@ -59,9 +59,10 @@ function buildRailPath(edge: OverlayEdge, nodes: OverlayNode[]): OverlayPath {
   const toIsBranchTip = toNode?.isBranchTip ?? false;
 
   const startY = fromIsBranchTip ? cy(edge.fromY) : rowTop(edge.fromY);
-  // If branch tip: dot center. If no node in this column: lane terminates, end at dot-center level.
-  // If non-tip node present: extend to rowBottom for seamless continuation.
-  const endY = toIsBranchTip ? cy(edge.toY) : !toHasNode ? cy(edge.toY) : rowBottom(edge.toY);
+  // If branch tip: dot center. If no node in this column: lane terminates at the
+  // connection curve's corner point (cy - R), so the rail doesn't overshoot the
+  // 90° bezier turn. If non-tip node present: extend to rowBottom for seamless continuation.
+  const endY = toIsBranchTip ? cy(edge.toY) : !toHasNode ? cy(edge.toY) - R : rowBottom(edge.toY);
 
   return {
     d: `M ${cx(col)} ${startY} V ${endY}`,
