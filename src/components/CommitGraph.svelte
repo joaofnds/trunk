@@ -583,7 +583,7 @@
                   opacity={pill.isRemoteOnly ? 0.67 : 1}
                   style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                   pointer-events="auto"
-                  onmouseenter={() => hoveredPill = pill}
+                  onmouseenter={() => { if (pill.overflowCount > 0 || pill.truncatedLabel !== pill.label) hoveredPill = pill; }}
                   onmouseleave={() => hoveredPill = null}
                 />
 
@@ -651,28 +651,54 @@
           {/if}
         </svg>
         {#if hoveredPill && columnVisibility.ref}
-          <div
-            class="absolute rounded-lg shadow-lg"
-            style="
-              left: {hoveredPill.x}px;
-              top: {hoveredPill.y - PILL_HEIGHT / 2}px;
-              background: var(--lane-{hoveredPill.colorIndex % 8});
-              padding: 4px 8px;
-              z-index: 50;
-              pointer-events: auto;
-              clip-path: inset(0 0 0 0 round 8px);
-              opacity: 1;
-              transition: clip-path 180ms ease, opacity 120ms ease;
-            "
-            onmouseenter={() => {/* keep hoveredPill */}}
-            onmouseleave={() => hoveredPill = null}
-          >
-            {#each hoveredPill.allRefs as ref}
-              <div class="text-[11px] leading-5 font-medium text-white whitespace-nowrap">
-                {ref.short_name}
-              </div>
-            {/each}
-          </div>
+          {#if hoveredPill.overflowCount > 0}
+            <!-- Multi-ref expansion: shows all refs vertically -->
+            <div
+              class="absolute rounded-lg shadow-lg"
+              style="
+                left: {hoveredPill.x}px;
+                top: {hoveredPill.y - PILL_HEIGHT / 2}px;
+                background: var(--lane-{hoveredPill.colorIndex % 8});
+                padding: 4px 8px;
+                z-index: 50;
+                pointer-events: auto;
+                opacity: 1;
+                transition: opacity 180ms ease;
+              "
+              onmouseenter={() => {/* keep hoveredPill */}}
+              onmouseleave={() => hoveredPill = null}
+            >
+              {#each hoveredPill.allRefs as ref}
+                <div class="text-[11px] leading-5 font-medium text-white whitespace-nowrap">
+                  {ref.short_name}
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <!-- Truncated single-ref: width-only expansion showing full label -->
+            <div
+              class="absolute rounded-full shadow-lg"
+              style="
+                left: {hoveredPill.x}px;
+                top: {hoveredPill.y - PILL_HEIGHT / 2}px;
+                height: {PILL_HEIGHT}px;
+                background: var(--lane-{hoveredPill.colorIndex % 8});
+                padding: 0 {PILL_PADDING_X}px;
+                z-index: 50;
+                pointer-events: auto;
+                display: flex;
+                align-items: center;
+                opacity: 1;
+                transition: opacity 180ms ease;
+              "
+              onmouseenter={() => {/* keep hoveredPill */}}
+              onmouseleave={() => hoveredPill = null}
+            >
+              <span class="text-[11px] font-medium text-white whitespace-nowrap" style="font-weight: {hoveredPill.isHead ? 700 : 500};">
+                {hoveredPill.label}
+              </span>
+            </div>
+          {/if}
         {/if}
       {/snippet}
 
