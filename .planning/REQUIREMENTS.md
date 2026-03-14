@@ -12,7 +12,7 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 - [x] **OVRL-01**: Single SVG element spans entire graph height, positioned inside virtual list scroll container
 - [x] **OVRL-02**: SVG overlay scrolls natively with virtual list content (zero JS scroll sync)
 - [x] **OVRL-03**: SVG root has `pointer-events: none`, HTML commit rows handle all click/right-click interactions beneath
-- [ ] **OVRL-04**: SVG renders only visible-range elements plus buffer (virtualization), hard cap on DOM node count
+- [x] **OVRL-04**: SVG renders only visible-range elements plus buffer (virtualization), hard cap on DOM node count
 
 ### Data Transformation
 
@@ -142,7 +142,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OVRL-01 | Phase 20 | Complete |
 | OVRL-02 | Phase 20 | Complete |
 | OVRL-03 | Phase 20 | Complete |
-| OVRL-04 | Phase 23 | Pending |
+| OVRL-04 | Phase 23 | Complete |
 | DATA-01 | Phase 21 | Complete |
 | DATA-02 | Phase 21 | Complete |
 | CURV-01 | Phase 22 | Complete |
