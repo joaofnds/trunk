@@ -162,3 +162,23 @@ export interface OverlayPath {
   minRow: number;
   maxRow: number;
 }
+
+export interface OverlayRefPill {
+  x: number;              // left edge of pill in SVG space
+  y: number;              // vertical center (cy(rowIndex))
+  width: number;          // computed from text measurement + padding
+  height: number;         // PILL_HEIGHT constant
+  label: string;          // original ref short_name
+  truncatedLabel: string; // possibly truncated with "…"
+  refType: RefType;       // for icon rendering
+  colorIndex: number;     // for laneColor() fill
+  isHead: boolean;        // full brightness, bold text
+  isRemoteOnly: boolean;  // 65-70% opacity dimming
+  isNonHead: boolean;     // brightness(0.75)
+  overflowCount: number;  // 0 = no badge, >0 = "+N" badge
+  allRefs: RefLabel[];    // all refs on this commit (for hover expansion)
+  dotCx: number;          // target commit dot X coordinate
+  dotCy: number;          // target commit dot Y coordinate
+  commitColorIndex: number; // commit's lane color for connector line
+  rowIndex: number;       // for virtualization filtering
+}
