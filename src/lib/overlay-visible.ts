@@ -1,9 +1,10 @@
-import type { OverlayNode, OverlayPath } from './types.js';
+import type { OverlayNode, OverlayPath, OverlayRefPill } from './types.js';
 
 export interface VisibleOverlayElements {
   rails: OverlayPath[];
   connections: OverlayPath[];
   dots: OverlayNode[];
+  pills: OverlayRefPill[];
 }
 
 /**
@@ -20,6 +21,7 @@ export function getVisibleOverlayElements(
   nodes: OverlayNode[],
   startRow: number,
   endRow: number,
+  pills: OverlayRefPill[] = [],
 ): VisibleOverlayElements {
   const rails: OverlayPath[] = [];
   const connections: OverlayPath[] = [];
@@ -36,6 +38,7 @@ export function getVisibleOverlayElements(
   }
 
   const dots = nodes.filter(n => n.y >= startRow && n.y <= endRow);
+  const visiblePills = pills.filter(p => p.rowIndex >= startRow && p.rowIndex <= endRow);
 
-  return { rails, connections, dots };
+  return { rails, connections, dots, pills: visiblePills };
 }

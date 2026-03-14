@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getVisibleOverlayElements } from './overlay-visible.js';
-import type { OverlayNode, OverlayPath } from './types.js';
+import type { OverlayNode, OverlayPath, OverlayRefPill, RefLabel } from './types.js';
 
 /** Factory: minimal OverlayPath with minRow/maxRow */
 function makePath(overrides: {
@@ -36,9 +36,9 @@ function makeNode(overrides: { oid?: string; x?: number; y: number }): OverlayNo
 
 describe('getVisibleOverlayElements', () => {
   describe('empty input', () => {
-    it('returns empty rails, connections, dots for empty paths and nodes', () => {
+    it('returns empty rails, connections, dots, pills for empty paths and nodes', () => {
       const result = getVisibleOverlayElements([], [], 0, 10);
-      expect(result).toEqual({ rails: [], connections: [], dots: [] });
+      expect(result).toEqual({ rails: [], connections: [], dots: [], pills: [] });
     });
 
     it('returns empty arrays when only nodes are empty', () => {
@@ -176,6 +176,49 @@ describe('getVisibleOverlayElements', () => {
       const result = getVisibleOverlayElements(paths, [], 10, 15);
       expect(result.rails).toHaveLength(1);
       expect(result.connections).toHaveLength(1);
+    });
+  });
+
+  describe('pill visibility', () => {
+    /** Factory: minimal OverlayRefPill for visibility testing */
+    function makePill(rowIndex: number): OverlayRefPill {
+      return {
+        x: 4,
+        y: rowIndex * 36 + 18,
+        width: 60,
+        height: 20,
+        label: 'main',
+        truncatedLabel: 'main',
+        refType: 'LocalBranch',
+        colorIndex: 0,
+        isHead: true,
+        isRemoteOnly: false,
+        isNonHead: false,
+        overflowCount: 0,
+        allRefs: [] as RefLabel[],
+        dotCx: 8,
+        dotCy: rowIndex * 36 + 18,
+        commitColorIndex: 0,
+        rowIndex,
+      };
+    }
+
+    it('pills filtered correctly by rowIndex range', () => {
+      const pills = [makePill(2), makePill(5), makePill(8), makePill(12)];
+      const result = getVisibleOverlayElements([], [], 4, 9, pills);
+      expect(result.pills).toHaveLength(2);
+      expect(result.pills.map(p => p.rowIndex)).toEqual([5, 8]);
+    });
+
+    it('pills at boundary rows are included', () => {
+      const pills = [makePill(5), makePill(10)];
+      const result = getVisibleOverlayElements([], [], 5, 10, pills);
+      expect(result.pills).toHaveLength(2);
+    });
+
+    it('pills parameter defaults to empty array (backward compatible)', () => {
+      const result = getVisibleOverlayElements([], [], 0, 10);
+      expect(result.pills).toEqual([]);
     });
   });
 });
