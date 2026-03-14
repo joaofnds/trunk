@@ -139,33 +139,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RENDER-03 | Phase 16 | Complete |
 | SYNTH-01 | Phase 17 | Complete |
 | SYNTH-02 | Phase 17 | Complete |
-| OVRL-01 | TBD | Pending |
-| OVRL-02 | TBD | Pending |
-| OVRL-03 | TBD | Pending |
-| OVRL-04 | TBD | Pending |
-| DATA-01 | TBD | Pending |
-| DATA-02 | TBD | Pending |
-| CURV-01 | TBD | Pending |
-| CURV-02 | TBD | Pending |
-| CURV-03 | TBD | Pending |
-| CURV-04 | TBD | Pending |
-| DOTS-01 | TBD | Pending |
-| DOTS-02 | TBD | Pending |
-| DOTS-03 | TBD | Pending |
-| PILL-01 | TBD | Pending |
-| PILL-02 | TBD | Pending |
-| PILL-03 | TBD | Pending |
-| PILL-04 | TBD | Pending |
-| INTR-01 | TBD | Pending |
-| INTR-02 | TBD | Pending |
-| INTR-03 | TBD | Pending |
-| TUNE-01 | TBD | Pending |
-| TUNE-02 | TBD | Pending |
+| OVRL-01 | Phase 20 | Pending |
+| OVRL-02 | Phase 20 | Pending |
+| OVRL-03 | Phase 20 | Pending |
+| OVRL-04 | Phase 23 | Pending |
+| DATA-01 | Phase 21 | Pending |
+| DATA-02 | Phase 21 | Pending |
+| CURV-01 | Phase 22 | Pending |
+| CURV-02 | Phase 22 | Pending |
+| CURV-03 | Phase 23 | Pending |
+| CURV-04 | Phase 22 | Pending |
+| DOTS-01 | Phase 23 | Pending |
+| DOTS-02 | Phase 23 | Pending |
+| DOTS-03 | Phase 23 | Pending |
+| PILL-01 | Phase 26 | Pending |
+| PILL-02 | Phase 26 | Pending |
+| PILL-03 | Phase 26 | Pending |
+| PILL-04 | Phase 26 | Pending |
+| INTR-01 | Phase 25 | Pending |
+| INTR-02 | Phase 25 | Pending |
+| INTR-03 | Phase 25 | Pending |
+| TUNE-01 | Phase 24 | Pending |
+| TUNE-02 | Phase 24 | Pending |
 
 **Coverage:**
-- v0.5 requirements: 20 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 20
+- v0.5 requirements: 22 total
+- Mapped to phases: 22/22 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-13*

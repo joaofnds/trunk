@@ -5,9 +5,9 @@ milestone_name: Graph Overlay
 status: not_started
 stopped_at: null
 last_updated: "2026-03-13"
-last_activity: 2026-03-13 — Milestone v0.5 started
+last_activity: 2026-03-13 — Roadmap created for v0.5 (phases 20-26)
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** Defining requirements for v0.5 Graph Overlay
+**Current focus:** v0.5 Graph Overlay — Phase 20 (Foundation — Types, Constants & Overlay Container)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 20 — Foundation — Types, Constants & Overlay Container (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-13 — Milestone v0.5 started
+Status: Roadmap created, ready for plan-phase
+Last activity: 2026-03-13 — Roadmap created for v0.5 (phases 20-26)
+
+```
+v0.5 Graph Overlay
+[░░░░░░░░░░░░░░░░░░░░] 0/7 phases (0%)
+```
+
+## Performance Metrics
+
+| Metric | v0.1 | v0.2 | v0.3 | v0.4 | v0.5 |
+|--------|------|------|------|------|------|
+| Phases | 6 | 4 | 4 | 3 | 7 |
+| Plans | 27 | 9 | 14 | 5 | TBD |
+| Commits | 155 | 76 | 88 | ~30 | — |
 
 ## Accumulated Context
 
@@ -38,6 +51,11 @@ Last activity: 2026-03-13 — Milestone v0.5 started
 - [v0.4]: Path generation in TypeScript, not Rust (Rust already returns all needed data)
 - [v0.4]: Zero new dependencies -- architecture change only
 - [v0.4]: Ref pills as SVG is highest risk -- tackle last, HTML fallback ready
+- [v0.5]: Reverse "no full-height SVG" decision — single overlay enables continuous bezier paths
+- [v0.5]: Rust lane algorithm stays, TS Active Lanes transformation bridges to global grid coords
+- [v0.5]: Phase 20 is decision gate — if overlay fails, fallback to enhanced per-row viewBox
+- [v0.5]: Phases 21 (Active Lanes) and 22 (Bezier Builder) can execute in parallel
+- [v0.5]: SVG Ref Pills last (Phase 26) — highest risk, HTML fallback ready
 - [15-01]: Absolute Y coordinates based on row index for viewBox clipping compatibility
 - [15-01]: Sentinel OID filtering via startsWith('__') prefix check
 - [15-01]: Added vitest as test infrastructure (zero new runtime dependencies)
@@ -67,6 +85,7 @@ Last activity: 2026-03-13 — Milestone v0.5 started
 
 - [Research]: WebKit SVG performance at scale unverified -- must profile in production build
 - [Research]: Ref pill "+N" hover-expand in SVG is unproven -- may need HTML fallback
+- [Phase 20]: Decision gate — SVG-inside-virtual-list must be validated before investing in data/rendering
 
 ## Session Continuity
 
