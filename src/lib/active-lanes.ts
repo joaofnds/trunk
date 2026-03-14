@@ -194,6 +194,7 @@ function inlineStashNodes(
   // For each stash, find the fork connection at the parent row that points to it
   for (const stash of stashNodes) {
     const stashCol = stash.x;
+    const stashRow = stash.y;
 
     // Find the fork connection: a cross-lane edge where toX === stashCol
     // and the edge is dashed. This is emitted at the parent's row.
@@ -204,8 +205,28 @@ function inlineStashNodes(
 
     const fork = edges[forkIdx];
     const parentCol = fork.fromX;
+    const parentRow = fork.fromY;
 
-    // Move stash node to parent column
+    // Only inline if the parent column is FREE between the stash and parent.
+    // Check for any node occupying that column in the row range.
+    const hasBlockingNode = nodes.some(
+      n => n.x === parentCol && n.y > stashRow && n.y < parentRow,
+    );
+    if (hasBlockingNode) continue;
+
+    // Check for any rail passing through the parent column in the row range.
+    // A rail at column P spanning fromY..toY blocks if it overlaps (stashRow, parentRow).
+    const hasBlockingRail = edges.some(
+      e =>
+        e.fromX === parentCol &&
+        e.toX === parentCol &&
+        e !== fork &&
+        e.fromY < parentRow &&
+        e.toY > stashRow,
+    );
+    if (hasBlockingRail) continue;
+
+    // Safe to inline — move stash node to parent column
     stash.x = parentCol;
 
     // Rewrite rail edges in stash column to parent column
