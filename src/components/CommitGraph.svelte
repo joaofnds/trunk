@@ -424,8 +424,7 @@
           height={contentHeight}
           style="pointer-events: none; z-index: 1;"
         >
-          <!-- Proof-of-concept: semi-transparent overlay to verify scroll sync -->
-          <rect x="0" y="0" width="100%" height="100%" fill="rgba(255,0,0,0.03)" />
+          <!-- Overlay content will be rendered by future phases (21+) -->
         </svg>
       {/snippet}
 
