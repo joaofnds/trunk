@@ -1,9 +1,7 @@
 <script lang="ts">
   import type { GraphCommit } from '../lib/types.js';
   import type { ColumnWidths, ColumnVisibility } from '../lib/store.js';
-  import { LANE_WIDTH, ROW_HEIGHT, EDGE_STROKE } from '../lib/graph-constants.js';
-
-  import RefPill from './RefPill.svelte';
+  import { LANE_WIDTH, ROW_HEIGHT } from '../lib/graph-constants.js';
 
   interface Props {
     commit: GraphCommit;
@@ -32,75 +30,19 @@
 
   const isWip = $derived(commit.oid === '__wip__');
   const isStash = $derived(commit.is_stash);
-
-  const allRemoteOnly = $derived(
-    commit.refs.length > 0 &&
-    commit.refs.every(r => r.ref_type === 'RemoteBranch')
-  );
-
-  let refContainerWidth = $state(0);
-  let refHovered = $state(false);
 </script>
 
 <div
   class="relative flex items-center px-2 cursor-pointer text-[13px]"
   class:hover:bg-[var(--color-surface)]={!selected}
   style:height="{ROW_HEIGHT}px"
-  style="color: var(--color-text); {selected ? 'background: var(--color-selected-row);' : ''}{refHovered ? ' z-index: 10;' : ''}"
+  style="color: var(--color-text); {selected ? 'background: var(--color-selected-row);' : ''}"
   onclick={() => onselect?.(commit.oid)}
   oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
 >
-  <!-- Connector line + Column 1: Branch/Tag refs (hidden together) -->
+  <!-- Column 1: Branch/Tag refs spacer (SVG overlay handles rendering) -->
   {#if columnVisibility.ref}
-    {#if commit.refs.length > 0 && !isWip && !isStash && columnVisibility.graph}
-      <div
-        class="absolute pointer-events-none"
-        style="left: {LANE_WIDTH + refContainerWidth}px; width: {columnWidths.ref - refContainerWidth - 4 + commit.column * LANE_WIDTH + LANE_WIDTH / 2}px; top: 50%; height: {EDGE_STROKE}px; transform: translateY(-50%); background: var(--lane-{commit.color_index % 8}); opacity: {allRemoteOnly ? 0.5 : 1}; z-index: 0;{commit.is_head ? '' : ' filter: brightness(0.75);'}"
-      ></div>
-    {/if}
-
-    <div
-      class="relative flex items-center flex-shrink-0 pl-1 pr-1 {refHovered ? 'overflow-visible' : 'overflow-hidden'}"
-      style="width: {columnWidths.ref}px; z-index: {refHovered ? 20 : 1};"
-      onmouseenter={() => refHovered = true}
-      onmouseleave={() => refHovered = false}
-    >
-      <!-- Default: first pill + overflow count -->
-      <div class="flex items-center min-w-0 {refHovered ? 'overflow-visible' : 'overflow-hidden'}" bind:clientWidth={refContainerWidth}>
-        {#if !isStash}
-          <RefPill refs={commit.refs} expanded={refHovered} maxWidth={columnWidths.ref} />
-        {/if}
-      </div>
-      {#if commit.refs.length > 1 && !isStash}
-        <!-- +N badge; hidden while overlay is visible so there's no double-badge -->
-        <div class="relative ml-1 flex-shrink-0">
-          <span
-            class="inline-flex items-center rounded-full px-1 text-[10px] leading-4 whitespace-nowrap font-medium cursor-default"
-            style="background: var(--lane-{commit.refs[0].color_index % 8}); color: white; filter: brightness(0.75);"
-            title={commit.refs.slice(1).map((r) => r.short_name).join(', ')}
-          >
-            +{commit.refs.length - 1}
-          </span>
-          <!-- Expanded overlay: single pill listing all branches, clip-path reveals from top-left -->
-          <div
-            class="absolute left-0 top-0 z-50 rounded-lg shadow-lg"
-            style="
-              background: var(--lane-{commit.refs[0].color_index % 8});
-              padding: 4px 8px;
-              white-space: nowrap;
-              clip-path: {refHovered ? 'inset(0 0% 0% 0 round 8px)' : 'inset(0 100% 100% 0 round 8px)'};
-              opacity: {refHovered ? '1' : '0'};
-              transition: clip-path 180ms ease, opacity 120ms ease;
-              pointer-events: {refHovered ? 'auto' : 'none'};
-            "
-          >
-            {#each commit.refs.slice(1) as ref}
-              <div class="text-[11px] leading-5 font-medium text-white whitespace-nowrap">{ref.short_name}</div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-    </div>
+    <div class="flex-shrink-0" style="width: {columnWidths.ref}px;"></div>
   {/if}
 
   <!-- Column 2: Graph -->
