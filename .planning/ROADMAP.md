@@ -133,11 +133,13 @@ Plans:
   3. Normal commits render as filled circles, merge commits as hollow circles at correct lane positions
   4. WIP row renders with hollow dashed circle and dashed connector to HEAD
   5. Stash rows render with filled squares and dashed connectors
-**Plans:** 3/3 plans complete
+**Plans:** 3/4 plans complete
 
 Plans:
-- [ ] 23-01-PLAN.md — TDD: OverlayPath minRow/maxRow extension and getVisibleOverlayElements() filtering
-- [ ] 23-02-PLAN.md — Wire overlay pipeline and render three-layer SVG with dot differentiation
+- [x] 23-01-PLAN.md — TDD: OverlayPath minRow/maxRow extension and getVisibleOverlayElements() filtering
+- [x] 23-02-PLAN.md — Wire overlay pipeline and render three-layer SVG with dot differentiation
+- [x] 23-03-PLAN.md — SVG overlay positioning fixes (gap closure)
+- [ ] 23-04-PLAN.md — Fix stale OVERLAY_ROW_HEIGHT=36 in test files (gap closure)
 
 ### Phase 24: Integration
 **Goal**: The overlay replaces the old per-row SVG pipeline end-to-end — CommitGraph uses buildGraphData, CommitRow drops GraphCell, old files deleted, tuned dimensions visible
