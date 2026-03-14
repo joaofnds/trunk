@@ -217,7 +217,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 23. SVG Rendering | 4/4 | Complete    | 2026-03-14 | - |
 | 24. Integration | v0.5 | Complete    | 2026-03-14 | 2026-03-14 |
 | 25. Interaction Preservation | 1/1 | Complete    | 2026-03-14 | - |
-| 26. SVG Ref Pills | 2/2 | Complete   | 2026-03-14 | - |
+| 26. SVG Ref Pills | 2/2 | Complete    | 2026-03-14 | - |
 
 ---
 *Roadmap created: 2026-03-13*
