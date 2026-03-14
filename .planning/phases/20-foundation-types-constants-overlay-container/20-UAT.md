@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 20-foundation-types-constants-overlay-container
 source: 20-01-SUMMARY.md, 20-02-SUMMARY.md
 started: 2026-03-13T22:00:00Z
@@ -57,7 +57,11 @@ skipped: 0
   reason: "User reported: sorry I can't see it, maybe make it more visible."
   severity: minor
   test: 5
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "Opacity 0.03 is below human perception threshold on dark backgrounds (~ΔE 1.5 vs ~2.3 JND). SVG is also narrow (maxColumns * 12px). Plumbing is correct — snippet IS rendered, SVG IS in DOM."
+  artifacts:
+    - path: "src/components/CommitGraph.svelte"
+      issue: "graphOverlay snippet uses rgba(255,0,0,0.03) — functionally invisible"
+      lines: "420-430"
+  missing:
+    - "Increase opacity to 0.10-0.15 for verifiable visibility on dark backgrounds"
   debug_session: ""
