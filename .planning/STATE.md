@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
-status: Ready to plan
-stopped_at: Completed 20-02-PLAN.md
-last_updated: "2026-03-14T02:15:35.164Z"
-last_activity: 2026-03-14 — Phase 20 plan 1 complete (types, constants, vendored virtual list)
+status: In Progress
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-14T03:07:22Z"
+last_activity: 2026-03-14 — Phase 21 plan 01 complete (buildGraphData with edge coalescing)
 progress:
   total_phases: 7
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 2
+  total_plans: 3
+  completed_plans: 3
 ---
 
 # Project State
@@ -20,18 +20,18 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-13)
 
 **Core value:** A developer can open any Git repository, browse its full commit history as a visual graph, stage files, and create commits -- all without touching the terminal.
-**Current focus:** v0.5 Graph Overlay — Phase 20 (Foundation — Types, Constants & Overlay Container)
+**Current focus:** v0.5 Graph Overlay — Phase 21 (Active Lanes Transformation)
 
 ## Current Position
 
-Phase: 21 — Active Lanes Transformation (not started)
-Plan: 01 (complete)
-Status: Ready to plan
-Last activity: 2026-03-14 — Phase 20 complete (2/2 plans)
+Phase: 21 — Active Lanes Transformation (in progress)
+Plan: 01 (complete — 1/1 plans for phase 21)
+Status: In Progress
+Last activity: 2026-03-14 — Phase 21 plan 01 complete (buildGraphData with edge coalescing)
 
 ```
 v0.5 Graph Overlay
-[███░░░░░░░░░░░░░░░] 14% complete - 1/7 phases (Phase 20 complete)
+[████░░░░░░░░░░░░░░] 28% complete - 2/7 phases (Phase 21 in progress)
 ```
 
 ## Performance Metrics
@@ -42,6 +42,7 @@ v0.5 Graph Overlay
 | Plans | 27 | 9 | 14 | 5 | TBD |
 | Commits | 155 | 76 | 88 | ~30 | — |
 | Phase 20-foundation-types-constants-overlay-container P02 | 2min | 2 tasks | 1 files |
+| Phase 21-active-lanes-transformation P01 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ v0.5 Graph Overlay
 - [17-02]: Three-layer dot rendering: WIP (hollow dashed circle) → stash (filled square) → merge (hollow circle) → normal (filled circle)
 - [17-02]: Stash entries interleaved after parent commit in displayItems, orphan stashes placed near top
 - [17-02]: LaneSvg import removed from CommitRow but file preserved for reference
+- [21-01]: Connection edges use fromY === toY === rowIndex — path builder determines curve from coordinate delta
+- [21-01]: Edge coalescing flushes old lane at property change row, new lane starts from that point
+- [21-01]: Active lane tracking via Map<column, {startY, colorIndex, dashed}> for vertical edge coalescing
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T02:11:58.495Z
-Stopped at: Completed 20-02-PLAN.md
+Last session: 2026-03-14T03:07:22Z
+Stopped at: Completed 21-01-PLAN.md
 Resume file: None

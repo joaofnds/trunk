@@ -16,8 +16,8 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 
 ### Data Transformation
 
-- [ ] **DATA-01**: TypeScript Active Lanes algorithm transforms `GraphCommit[]` into `GraphData` with `GraphNode[]` and `GraphEdge[]` containing integer grid coordinates (x=swimlane, y=row index)
-- [ ] **DATA-02**: Edge coalescing merges consecutive same-lane straight segments into single SVG path spans
+- [x] **DATA-01**: TypeScript Active Lanes algorithm transforms `GraphCommit[]` into `GraphData` with `GraphNode[]` and `GraphEdge[]` containing integer grid coordinates (x=swimlane, y=row index)
+- [x] **DATA-02**: Edge coalescing merges consecutive same-lane straight segments into single SVG path spans
 
 ### Curve Rendering
 
@@ -143,8 +143,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OVRL-02 | Phase 20 | In Progress |
 | OVRL-03 | Phase 20 | In Progress |
 | OVRL-04 | Phase 23 | Pending |
-| DATA-01 | Phase 21 | Pending |
-| DATA-02 | Phase 21 | Pending |
+| DATA-01 | Phase 21 | Complete |
+| DATA-02 | Phase 21 | Complete |
 | CURV-01 | Phase 22 | Pending |
 | CURV-02 | Phase 22 | Pending |
 | CURV-03 | Phase 23 | Pending |
