@@ -5,10 +5,13 @@
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
   import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
-  import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, MERGE_STROKE } from '../lib/graph-constants.js';
+  import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, MERGE_STROKE, PILL_HEIGHT, PILL_PADDING_X, PILL_FONT_SIZE, PILL_GAP, BADGE_HEIGHT, BADGE_FONT_SIZE, ICON_WIDTH } from '../lib/graph-constants.js';
   import { buildGraphData } from '../lib/active-lanes.js';
   import { buildOverlayPaths } from '../lib/overlay-paths.js';
   import { getVisibleOverlayElements } from '../lib/overlay-visible.js';
+  import { buildRefPillData } from '../lib/ref-pill-data.js';
+  import { measureTextWidth } from '../lib/text-measure.js';
+  import type { OverlayRefPill } from '../lib/types.js';
 
   import { Menu, MenuItem, Submenu, PredefinedMenuItem, CheckMenuItem } from '@tauri-apps/api/menu';
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
@@ -345,6 +348,9 @@
 
   const graphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
   const paths = $derived.by(() => buildOverlayPaths(graphData));
+  const pillData = $derived.by(() => buildRefPillData(graphData.nodes, displayItems, columnWidths.ref, measureTextWidth));
+
+  let hoveredPill = $state<OverlayRefPill | null>(null);
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -496,14 +502,15 @@
     {:else}
       <!-- SVG overlay snippet - renders inside virtual list scroll container -->
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
-        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd)}
+        {@const refOffset = columnVisibility.ref ? columnWidths.ref : 0}
+        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
         <svg
           class="absolute top-0"
-          width={Math.max(maxColumns, 1) * LANE_WIDTH}
+          width={refOffset + Math.max(maxColumns, 1) * LANE_WIDTH}
           height={contentHeight}
-          style="left: {columnWidths.ref}px; pointer-events: none; z-index: 1;"
+          style="left: 0; pointer-events: none; z-index: 1;"
         >
-          <g class="overlay-rails">
+          <g class="overlay-rails" transform="translate({refOffset}, 0)">
             {#each visible.rails as path}
               <path d={path.d} fill="none"
                 stroke={laneColor(path.colorIndex)}
@@ -512,7 +519,7 @@
                 stroke-dasharray={path.dashed ? '3 3' : 'none'} />
             {/each}
           </g>
-          <g class="overlay-connections">
+          <g class="overlay-connections" transform="translate({refOffset}, 0)">
             {#each visible.connections as path}
               <path d={path.d} fill="none"
                 stroke={laneColor(path.colorIndex)}
@@ -521,7 +528,7 @@
                 stroke-dasharray={path.dashed ? '3 3' : 'none'} />
             {/each}
           </g>
-          <g class="overlay-dots">
+          <g class="overlay-dots" transform="translate({refOffset}, 0)">
             {#each visible.dots as node}
               {#if node.isWip}
                 <circle cx={cx(node.x)} cy={cy(node.y)} r={DOT_RADIUS}
@@ -547,7 +554,126 @@
               {/if}
             {/each}
           </g>
+          {#if columnVisibility.ref}
+            <g class="overlay-pills">
+              {#each visible.pills as pill}
+                <!-- Connector line from pill to commit dot -->
+                {#if columnVisibility.graph}
+                  <line
+                    x1={pill.x + pill.width}
+                    y1={pill.y}
+                    x2={refOffset + pill.dotCx}
+                    y2={pill.dotCy}
+                    stroke={laneColor(pill.commitColorIndex)}
+                    stroke-width={EDGE_STROKE}
+                    opacity={pill.isRemoteOnly ? 0.67 : 1}
+                    style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
+                  />
+                {/if}
+
+                <!-- Capsule rect -->
+                <rect
+                  x={pill.x}
+                  y={pill.y - PILL_HEIGHT / 2}
+                  width={pill.width}
+                  height={PILL_HEIGHT}
+                  rx={PILL_HEIGHT / 2}
+                  ry={PILL_HEIGHT / 2}
+                  fill={laneColor(pill.colorIndex)}
+                  opacity={pill.isRemoteOnly ? 0.67 : 1}
+                  style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
+                  pointer-events="auto"
+                  onmouseenter={() => hoveredPill = pill}
+                  onmouseleave={() => hoveredPill = null}
+                />
+
+                <!-- SVG icon for Tag -->
+                {#if pill.refType === 'Tag'}
+                  <path
+                    d="M {pill.x + PILL_PADDING_X} {pill.y} l 4 -4 l 4 4 l -4 4 z"
+                    fill="white"
+                    opacity="0.9"
+                  />
+                {/if}
+
+                <!-- SVG icon for Stash -->
+                {#if pill.refType === 'Stash'}
+                  <path
+                    d="M {pill.x + PILL_PADDING_X} {pill.y + 4} v -8 h 5 v 4 h -5"
+                    fill="none"
+                    stroke="white"
+                    stroke-width="1.2"
+                    opacity="0.9"
+                  />
+                {/if}
+
+                <!-- Pill text -->
+                <text
+                  x={pill.x + PILL_PADDING_X + (pill.refType === 'Tag' || pill.refType === 'Stash' ? ICON_WIDTH : 0)}
+                  y={pill.y}
+                  fill="white"
+                  font-size={PILL_FONT_SIZE}
+                  font-family="var(--font-sans)"
+                  font-weight={pill.isHead ? 700 : 500}
+                  dominant-baseline="central"
+                >{pill.truncatedLabel}</text>
+
+                <!-- Overflow +N badge -->
+                {#if pill.overflowCount > 0}
+                  {@const badgeText = `+${pill.overflowCount}`}
+                  {@const badgeWidth = badgeText.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2}
+                  <rect
+                    x={pill.x + pill.width + PILL_GAP}
+                    y={pill.y - BADGE_HEIGHT / 2}
+                    width={badgeWidth}
+                    height={BADGE_HEIGHT}
+                    rx={BADGE_HEIGHT / 2}
+                    ry={BADGE_HEIGHT / 2}
+                    fill={laneColor(pill.colorIndex)}
+                    style="filter: brightness(0.65)"
+                    pointer-events="auto"
+                    onmouseenter={() => hoveredPill = pill}
+                    onmouseleave={() => hoveredPill = null}
+                  />
+                  <text
+                    x={pill.x + pill.width + PILL_GAP + badgeWidth / 2}
+                    y={pill.y}
+                    fill="white"
+                    font-size={BADGE_FONT_SIZE}
+                    font-family="var(--font-sans)"
+                    font-weight="500"
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                  >{badgeText}</text>
+                {/if}
+              {/each}
+            </g>
+          {/if}
         </svg>
+        {#if hoveredPill && columnVisibility.ref}
+          <div
+            class="absolute rounded-lg shadow-lg"
+            style="
+              left: {hoveredPill.x}px;
+              top: {hoveredPill.y - PILL_HEIGHT / 2}px;
+              background: var(--lane-{hoveredPill.colorIndex % 8});
+              padding: 4px 8px;
+              z-index: 50;
+              pointer-events: auto;
+              clip-path: inset(0 0 0 0 round 8px);
+              opacity: 1;
+              transition: clip-path 180ms ease, opacity 120ms ease;
+            "
+            onmouseenter={() => {/* keep hoveredPill */}}
+            onmouseleave={() => hoveredPill = null}
+          >
+            {#each hoveredPill.allRefs as ref}
+              <div class="text-[11px] leading-5 font-medium text-white whitespace-nowrap">
+                {ref.short_name}
+              </div>
+            {/each}
+          </div>
+        {/if}
       {/snippet}
 
       <VirtualList
