@@ -23,14 +23,14 @@ Requirements for the Graph Overlay milestone. Replace per-row viewBox-clipped SV
 
 - [x] **CURV-01**: Cross-lane edges render as cubic bezier curves (SVG `C` command) with vertical tangent control points
 - [x] **CURV-02**: Same-lane connections render as continuous vertical rail lines (one `<path>` per lane run)
-- [ ] **CURV-03**: SVG uses three-layer `<g>` group z-ordering: rails behind edges behind dots
+- [x] **CURV-03**: SVG uses three-layer `<g>` group z-ordering: rails behind edges behind dots
 - [x] **CURV-04**: Bezier control points use per-distance tension tuning (adaptive for adjacent vs distant row connections)
 
 ### Commit Dots & Synthetic Rows
 
-- [ ] **DOTS-01**: Normal commits render as filled circles, merge commits as hollow circles
-- [ ] **DOTS-02**: WIP row renders with hollow dashed circle and dashed connector to HEAD
-- [ ] **DOTS-03**: Stash rows render with filled squares and dashed connectors
+- [x] **DOTS-01**: Normal commits render as filled circles, merge commits as hollow circles
+- [x] **DOTS-02**: WIP row renders with hollow dashed circle and dashed connector to HEAD
+- [x] **DOTS-03**: Stash rows render with filled squares and dashed connectors
 
 ### Ref Pills
 
@@ -147,11 +147,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 21 | Complete |
 | CURV-01 | Phase 22 | Complete |
 | CURV-02 | Phase 22 | Complete |
-| CURV-03 | Phase 23 | Pending |
+| CURV-03 | Phase 23 | Complete |
 | CURV-04 | Phase 22 | Complete |
-| DOTS-01 | Phase 23 | Pending |
-| DOTS-02 | Phase 23 | Pending |
-| DOTS-03 | Phase 23 | Pending |
+| DOTS-01 | Phase 23 | Complete |
+| DOTS-02 | Phase 23 | Complete |
+| DOTS-03 | Phase 23 | Complete |
 | PILL-01 | Phase 26 | Pending |
 | PILL-02 | Phase 26 | Pending |
 | PILL-03 | Phase 26 | Pending |

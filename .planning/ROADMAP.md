@@ -68,7 +68,7 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
 - [x] **Phase 20: Foundation — Types, Constants & Overlay Container** - Types, constants, vendored virtual list, SVG overlay POC complete (2/2 plans)
 - [x] **Phase 21: Active Lanes Transformation** - Pure TS function transforming GraphCommit[] into GraphData with grid coordinates (completed 2026-03-14)
 - [x] **Phase 22: Bezier Path Builder** - Cubic bezier curve generation and vertical rail path math (completed 2026-03-14)
-- [ ] **Phase 23: SVG Rendering** - Three-layer GraphOverlay component with virtualized element rendering
+- [x] **Phase 23: SVG Rendering** - Three-layer GraphOverlay component with virtualized element rendering (completed 2026-03-14)
 - [ ] **Phase 24: Integration** - Wire overlay into CommitGraph, replace old pipeline, apply tuned dimensions
 - [ ] **Phase 25: Interaction Preservation** - Preserve all click and context menu interactions through overlay
 - [ ] **Phase 26: SVG Ref Pills** - Ref pills as SVG elements with connectors, dimming, and overflow
@@ -133,7 +133,7 @@ Plans:
   3. Normal commits render as filled circles, merge commits as hollow circles at correct lane positions
   4. WIP row renders with hollow dashed circle and dashed connector to HEAD
   5. Stash rows render with filled squares and dashed connectors
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 23-01-PLAN.md — TDD: OverlayPath minRow/maxRow extension and getVisibleOverlayElements() filtering
@@ -202,7 +202,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 20. Foundation — Types, Constants & Overlay Container | 2/2 | Complete    | 2026-03-14 | 2026-03-14 |
 | 21. Active Lanes Transformation | v0.5 | 1/1 | Complete | 2026-03-14 |
 | 22. Bezier Path Builder | 1/1 | Complete    | 2026-03-14 | - |
-| 23. SVG Rendering | 1/2 | In Progress|  | - |
+| 23. SVG Rendering | 2/2 | Complete   | 2026-03-14 | - |
 | 24. Integration | v0.5 | 0/? | Not started | - |
 | 25. Interaction Preservation | v0.5 | 0/? | Not started | - |
 | 26. SVG Ref Pills | v0.5 | 0/? | Not started | - |

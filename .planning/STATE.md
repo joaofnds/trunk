@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.5
 milestone_name: Graph Overlay
 status: completed
-stopped_at: Completed 23-svg-rendering-01-PLAN.md
-last_updated: "2026-03-14T04:38:28.620Z"
+stopped_at: Completed 23-svg-rendering-02-PLAN.md
+last_updated: "2026-03-14T04:42:17.983Z"
 last_activity: 2026-03-14 — Phase 22 Plan 01 complete (buildOverlayPaths TDD)
 progress:
   total_phases: 7
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -45,6 +45,7 @@ v0.5 Graph Overlay
 | Phase 21-active-lanes-transformation P01 | 4min | 2 tasks | 2 files |
 | Phase 22-bezier-path-builder P01 | 3min | 3 tasks | 3 files |
 | Phase 23-svg-rendering P01 | 2min | 2 tasks | 5 files |
+| Phase 23-svg-rendering P02 | 1min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,8 @@ v0.5 Graph Overlay
 - [Phase 22-bezier-path-builder]: Used OverlayGraphData (not OverlayEdge[]) as input for branch tip node lookups — Needed nodes from graph data to detect isBranchTip for rail termination
 - [Phase 22-bezier-path-builder]: hSign/vSign directional multipliers unify 4 corner bezier variants into 1 formula — Reduces ~40 lines of directional branching to ~15 lines with identical behavior
 - [Phase 23-svg-rendering]: Rail range intersection (not point containment) — rails spanning through viewport are included — Determined by coordinate semantics: rails cross multiple rows, connections occupy one row
+- [Phase 23-svg-rendering]: overlaySnippet extended to Snippet<[contentHeight, visibleStart, visibleEnd]> for scroll-efficient overlay filtering — Passes existing visibleItems.start/end through VirtualList to overlay snippet without extra computation
+- [Phase 23-svg-rendering]: Three <g> groups (overlay-rails, overlay-connections, overlay-dots) enforce z-ordering in single overlay SVG — SVG painters model: later elements render on top, group names document intent and enable CSS/inspector targeting
 
 ### Pending Todos
 
@@ -100,6 +103,6 @@ v0.5 Graph Overlay
 
 ## Session Continuity
 
-Last session: 2026-03-14T04:38:28.616Z
-Stopped at: Completed 23-svg-rendering-01-PLAN.md
+Last session: 2026-03-14T04:42:17.979Z
+Stopped at: Completed 23-svg-rendering-02-PLAN.md
 Resume file: None
