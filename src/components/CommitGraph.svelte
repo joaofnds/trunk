@@ -416,6 +416,19 @@
         {error}
       </div>
     {:else}
+      <!-- SVG overlay snippet for proof-of-concept - renders inside virtual list scroll container -->
+      {#snippet graphOverlay(contentHeight: number)}
+        <svg
+          class="absolute top-0 left-0"
+          width={Math.max(maxColumns, 1) * LANE_WIDTH}
+          height={contentHeight}
+          style="pointer-events: none; z-index: 1;"
+        >
+          <!-- Proof-of-concept: semi-transparent overlay to verify scroll sync -->
+          <rect x="0" y="0" width="100%" height="100%" fill="rgba(255,0,0,0.03)" />
+        </svg>
+      {/snippet}
+
       <VirtualList
         bind:this={listRef}
         items={displayItems}
@@ -423,6 +436,7 @@
         onLoadMore={loadMore}
         loadMoreThreshold={50}
         {hasMore}
+        overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
           <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} />
