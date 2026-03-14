@@ -3,7 +3,7 @@
   import { tick, untrack } from 'svelte';
   import { safeInvoke, type TrunkError } from '../lib/invoke.js';
   import { clearRedoStack } from '../lib/undo-redo.svelte.js';
-  import type { GraphCommit, GraphResponse, EdgeType } from '../lib/types.js';
+  import type { GraphCommit, GraphResponse, EdgeType, StashEntry } from '../lib/types.js';
   import { getColumnWidths, setColumnWidths, type ColumnWidths, getColumnVisibility, setColumnVisibility, type ColumnVisibility } from '../lib/store.js';
   import { LANE_WIDTH, ROW_HEIGHT, DOT_RADIUS, EDGE_STROKE, MERGE_STROKE } from '../lib/graph-constants.js';
   import { buildGraphData } from '../lib/active-lanes.js';
@@ -50,6 +50,21 @@
   $effect(() => {
     getColumnVisibility().then((v) => { columnVisibility = v; });
   });
+
+  let stashOidToIndex = $state<Map<string, number>>(new Map());
+
+  async function loadStashMap() {
+    try {
+      const stashes = await safeInvoke<StashEntry[]>('list_stashes', { path: repoPath });
+      const map = new Map<string, number>();
+      for (const stash of stashes) {
+        map.set(stash.oid, stash.index);
+      }
+      stashOidToIndex = map;
+    } catch {
+      stashOidToIndex = new Map();
+    }
+  }
 
   function startColumnResize(column: keyof ColumnWidths, e: MouseEvent, invert = false) {
     e.preventDefault();
@@ -214,6 +229,62 @@
     await menu.popup();
   }
 
+  // Stash context menu actions
+
+  async function handleStashPop(index: number) {
+    try {
+      await safeInvoke('stash_pop', { path: repoPath, index });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Failed to pop stash', { title: 'Stash Error', kind: 'error' });
+    }
+  }
+
+  async function handleStashApply(index: number) {
+    try {
+      await safeInvoke('stash_apply', { path: repoPath, index });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Failed to apply stash', { title: 'Stash Error', kind: 'error' });
+    }
+  }
+
+  async function handleStashDrop(index: number) {
+    const confirmed = await ask(`Drop stash@{${index}}? This cannot be undone.`, {
+      title: 'Confirm Drop',
+      kind: 'warning',
+    });
+    if (!confirmed) return;
+    try {
+      await safeInvoke('stash_drop', { path: repoPath, index });
+    } catch (e) {
+      const err = e as TrunkError;
+      await message(err.message ?? 'Failed to drop stash', { title: 'Stash Error', kind: 'error' });
+    }
+  }
+
+  async function showStashContextMenu(e: MouseEvent, commit: GraphCommit) {
+    e.preventDefault();
+    const stashIndex = stashOidToIndex.get(commit.oid);
+    if (stashIndex === undefined) return;
+    const menu = await Menu.new({
+      items: [
+        await MenuItem.new({ text: 'Pop', action: () => { handleStashPop(stashIndex).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Apply', action: () => { handleStashApply(stashIndex).catch(() => {}); } }),
+        await MenuItem.new({ text: 'Drop', action: () => { handleStashDrop(stashIndex).catch(() => {}); } }),
+      ]
+    });
+    await menu.popup();
+  }
+
+  function handleRowContextMenu(e: MouseEvent, commit: GraphCommit) {
+    if (commit.is_stash) {
+      showStashContextMenu(e, commit);
+    } else {
+      showCommitContextMenu(e, commit);
+    }
+  }
+
   async function showHeaderContextMenu(e: MouseEvent) {
     e.preventDefault();
     const items = await Promise.all(
@@ -307,6 +378,7 @@
       offset = response.commits.length;
       hasMore = response.commits.length >= BATCH;
       error = null;
+      await loadStashMap();
     } catch (e) {
       const err = e as TrunkError;
       error = err.message ?? 'Failed to load commits';
@@ -317,6 +389,7 @@
   $effect(() => {
     untrack(async () => {
       await loadMore();
+      await loadStashMap();
     });
   });
 
@@ -487,7 +560,7 @@
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={showCommitContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} />
         {/snippet}
       </VirtualList>
 
