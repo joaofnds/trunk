@@ -84,7 +84,11 @@ Full details: [milestones/v0.4-ROADMAP.md](milestones/v0.4-ROADMAP.md)
   2. The SVG scrolls in lockstep with commit rows — zero JS scroll sync code, purely native DOM scrolling
   3. Clicking and right-clicking commit rows beneath the SVG overlay fires all existing event handlers (pointer-events passthrough works)
   4. All new TypeScript types (`GraphNode`, `GraphEdge`, `GraphData`) and updated constants (`ROW_HEIGHT`, `LANE_WIDTH`, `DOT_RADIUS`) are defined and exported
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 20-01-PLAN.md — Types, constants & vendored virtual list with overlay slot
+- [ ] 20-02-PLAN.md — SVG overlay proof-of-concept & decision gate
 
 **⚠️ Decision Gate:** If scroll sync or pointer passthrough fails, evaluate fallback to enhanced per-row viewBox before proceeding to Phase 21.
 
