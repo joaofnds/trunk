@@ -208,7 +208,7 @@ Phases 25 and 26 both depend on Phase 24 and can execute in parallel (but ref pi
 | 21. Active Lanes Transformation | v0.5 | 1/1 | Complete | 2026-03-14 |
 | 22. Bezier Path Builder | 1/1 | Complete    | 2026-03-14 | - |
 | 23. SVG Rendering | 4/4 | Complete    | 2026-03-14 | - |
-| 24. Integration | v0.5 | 1/1 | Complete | 2026-03-14 |
+| 24. Integration | v0.5 | Complete    | 2026-03-14 | 2026-03-14 |
 | 25. Interaction Preservation | v0.5 | 0/? | Not started | - |
 | 26. SVG Ref Pills | v0.5 | 0/? | Not started | - |
 
