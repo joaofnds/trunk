@@ -6,6 +6,7 @@ import {
 	LANE_WIDTH,
 	ROW_HEIGHT,
 } from "../lib/graph-constants.js";
+import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
 import type { GraphCommit, WipStats } from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
@@ -75,21 +76,16 @@ const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
 const parsed = $derived(parseSummary(commit.summary));
 
-// WIP row file-status badges, using the same letters/colors as FileRow.
+// WIP row file-status badges. Letters/colors/titles come from the shared
+// STATUS_BADGES map so they stay in lockstep with FileRow.
 const wipFileBadges = $derived.by(() => {
-	if (!isWip || !wipStats) return [];
-	const out: { letter: string; count: number; color: string; title: string }[] =
-		[];
-	const add = (count: number, letter: string, color: string, title: string) => {
-		if (count > 0) out.push({ count, letter, color, title });
-	};
-	add(wipStats.modified, "M", "var(--color-status-modified)", "Modified");
-	add(wipStats.new, "A", "var(--color-status-new)", "Added");
-	add(wipStats.deleted, "D", "var(--color-status-deleted)", "Deleted");
-	add(wipStats.renamed, "R", "var(--color-status-renamed)", "Renamed");
-	add(wipStats.typechange, "T", "var(--color-status-typechange)", "Typechange");
-	add(wipStats.conflicted, "C", "var(--color-status-conflicted)", "Conflicted");
-	return out;
+	const stats = wipStats;
+	if (!isWip || !stats) return [];
+	return WIP_BADGE_ORDER.flatMap(({ key, status }) => {
+		const count = stats[key];
+		if (count <= 0) return [];
+		return [{ ...STATUS_BADGES[status], count }];
+	});
 });
 
 // D-04 in-session + D-01 pending-base markers: theme-variable inset accents on

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Minus, Plus } from "@lucide/svelte";
-import type { FileStatus, FileStatusType } from "../lib/types.js";
+import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
+import type { FileStatus } from "../lib/types.js";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
@@ -31,23 +32,7 @@ let {
 
 let hovered = $state(false);
 
-type StatusBadge = { letter: string; color: string };
-
-const STATUS_BADGES: Record<FileStatusType, StatusBadge> = {
-	New: { letter: "A", color: "var(--color-status-new)" },
-	Modified: { letter: "M", color: "var(--color-status-modified)" },
-	Deleted: { letter: "D", color: "var(--color-status-deleted)" },
-	Renamed: { letter: "R", color: "var(--color-status-renamed)" },
-	Typechange: { letter: "T", color: "var(--color-status-typechange)" },
-	Conflicted: { letter: "C", color: "var(--color-status-conflicted)" },
-};
-
-let badge = $derived(
-	STATUS_BADGES[file.status] ?? {
-		letter: "?",
-		color: "var(--color-text)",
-	},
-);
+let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 
 let badgeBg = $derived(
 	isLoading

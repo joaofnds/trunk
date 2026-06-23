@@ -1080,3 +1080,74 @@ fn discard_lines_removes_selected_add_lines_from_file() {
         );
     }
 }
+
+// -- get_dirty_counts per-status bucketing --
+
+#[test]
+fn dirty_counts_buckets_each_path_once() {
+    use trunk_lib::commands::staging::get_dirty_counts_inner;
+
+    let ctx = TestContext::builder()
+        .with_file("mod.txt", "original")
+        .with_file("del.txt", "to delete")
+        .with_commit("Initial commit")
+        .build();
+
+    // new.txt: untracked → new bucket
+    std::fs::write(ctx.repo_path().join("new.txt"), "fresh").unwrap();
+    // del.txt: removed from working tree → deleted bucket
+    std::fs::remove_file(ctx.repo_path().join("del.txt")).unwrap();
+    // mod.txt: staged AND modified again. It is both INDEX_MODIFIED and
+    // WT_MODIFIED, so union counting (staged + unstaged) double-counts it, but
+    // the priority buckets must count it exactly once (modified).
+    std::fs::write(ctx.repo_path().join("mod.txt"), "staged change").unwrap();
+    ctx.stage_file("mod.txt").expect("stage_file failed");
+    std::fs::write(ctx.repo_path().join("mod.txt"), "second change").unwrap();
+
+    let c = get_dirty_counts_inner(ctx.path(), ctx.state_map()).expect("get_dirty_counts failed");
+
+    assert_eq!(c.modified, 1, "mod.txt counted once in modified");
+    assert_eq!(c.new, 1, "new.txt in new bucket");
+    assert_eq!(c.deleted, 1, "del.txt in deleted bucket");
+    assert_eq!(c.renamed, 0);
+    assert_eq!(c.typechange, 0);
+    assert_eq!(c.conflicted, 0);
+
+    // Three distinct dirty paths; buckets sum to the distinct count even though
+    // union counting (staged + unstaged) would over-count mod.txt.
+    let bucket_sum = c.modified + c.new + c.deleted + c.renamed + c.typechange + c.conflicted;
+    assert_eq!(bucket_sum, 3, "buckets sum to distinct dirty paths");
+    assert_eq!(
+        c.staged + c.unstaged,
+        4,
+        "union counting double-counts the staged+remodified path"
+    );
+}
+
+#[test]
+fn dirty_counts_conflicted_path_goes_to_conflicted_bucket() {
+    use trunk_lib::commands::staging::get_dirty_counts_inner;
+
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "original")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature version")
+        .with_commit("Feature change")
+        .checkout("main")
+        .with_file("file.txt", "main version")
+        .with_commit("Main change")
+        .with_conflict("feature")
+        .build();
+
+    let c = get_dirty_counts_inner(ctx.path(), ctx.state_map()).expect("get_dirty_counts failed");
+
+    assert!(c.conflicted >= 1, "conflicted file counted as conflicted");
+    // Conflicted sits at the top of the priority chain, so the conflicted path
+    // must not also land in the modified bucket.
+    assert_eq!(
+        c.modified, 0,
+        "conflicted path excluded from modified bucket"
+    );
+}
