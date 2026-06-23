@@ -33,6 +33,7 @@ import type {
 	RebaseTodoItem,
 	RefsResponse,
 	Side,
+	WipStats,
 	WorkingTreeStatus,
 } from "../lib/types.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
@@ -50,6 +51,11 @@ interface DirtyCounts {
 	staged: number;
 	unstaged: number;
 	conflicted: number;
+	modified: number;
+	new: number;
+	deleted: number;
+	renamed: number;
+	typechange: number;
 }
 
 interface Props {
@@ -203,6 +209,11 @@ let dirtyCounts = $state<DirtyCounts>({
 	staged: 0,
 	unstaged: 0,
 	conflicted: 0,
+	modified: 0,
+	new: 0,
+	deleted: 0,
+	renamed: 0,
+	typechange: 0,
 });
 let headBranch = $state<string | undefined>(undefined);
 let wipSubject = $state("");
@@ -245,6 +256,15 @@ let rebaseDiffFile = $state<string | null>(null);
 const wipCount = $derived(
 	dirtyCounts.staged + dirtyCounts.unstaged + dirtyCounts.conflicted,
 );
+
+const wipStats = $derived<WipStats>({
+	modified: dirtyCounts.modified,
+	new: dirtyCounts.new,
+	deleted: dirtyCounts.deleted,
+	renamed: dirtyCounts.renamed,
+	typechange: dirtyCounts.typechange,
+	conflicted: dirtyCounts.conflicted,
+});
 
 // Center pane: show DiffPanel when a file is selected (from either source)
 let showDiff = $derived(selectedFile !== null || selectedCommitFile !== null);
@@ -1047,7 +1067,7 @@ function startRightResize(e: MouseEvent) {
           : handleDiffClose}
       />
     {:else}
-      <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
+      <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
     {/if}
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -227,6 +227,16 @@ export interface GraphDisplaySettings {
 	pillStroke: number; // px stroke width for ref-pill connector lines
 }
 
+// Per-status breakdown shown on the synthetic WIP row in the graph.
+export interface WipStats {
+	modified: number;
+	new: number;
+	deleted: number;
+	renamed: number;
+	typechange: number;
+	conflicted: number;
+}
+
 // Overlay types — global grid coordinate system for SVG overlay (Phase 20+)
 export interface OverlayNode {
 	oid: string;

@@ -7,7 +7,7 @@ import {
 	ROW_HEIGHT,
 } from "../lib/graph-constants.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
-import type { GraphCommit } from "../lib/types.js";
+import type { GraphCommit, WipStats } from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
@@ -36,6 +36,8 @@ interface Props {
 	/** Review-comment count anchored to this commit (line comments + notes).
 	 *  Parent zeroes it to enforce the toggle/active gate; badge self-hides at 0. */
 	commentCount?: number;
+	/** File-status breakdown for the synthetic WIP row (only set when isWip). */
+	wipStats?: WipStats;
 }
 
 let {
@@ -54,6 +56,7 @@ let {
 	inSession = false,
 	isPendingBase = false,
 	commentCount = 0,
+	wipStats,
 }: Props = $props();
 
 function relativeDate(ts: number): string {
@@ -71,6 +74,23 @@ function relativeDate(ts: number): string {
 const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
 const parsed = $derived(parseSummary(commit.summary));
+
+// WIP row file-status badges, using the same letters/colors as FileRow.
+const wipFileBadges = $derived.by(() => {
+	if (!isWip || !wipStats) return [];
+	const out: { letter: string; count: number; color: string; title: string }[] =
+		[];
+	const add = (count: number, letter: string, color: string, title: string) => {
+		if (count > 0) out.push({ count, letter, color, title });
+	};
+	add(wipStats.modified, "M", "var(--color-status-modified)", "Modified");
+	add(wipStats.new, "A", "var(--color-status-new)", "Added");
+	add(wipStats.deleted, "D", "var(--color-status-deleted)", "Deleted");
+	add(wipStats.renamed, "R", "var(--color-status-renamed)", "Renamed");
+	add(wipStats.typechange, "T", "var(--color-status-typechange)", "Typechange");
+	add(wipStats.conflicted, "C", "var(--color-status-conflicted)", "Conflicted");
+	return out;
+});
 
 // D-04 in-session + D-01 pending-base markers: theme-variable inset accents on
 // distinct edges so they compose with the background ternaries (and each other)
@@ -116,9 +136,20 @@ const rowShadow = $derived(
     </div>
   {/if}
 
-  <!-- Column 3: Message (flex-1, always visible) + trailing comment badge -->
+  <!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
   <div class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px;">
-    {#if isWip || isStash}
+    {#if isWip}
+      <div data-testid="commit-row-summary" class="flex-1 min-w-0 flex items-center gap-2 overflow-hidden whitespace-nowrap">
+        <span class="flex-1 min-w-0 overflow-hidden text-ellipsis italic" style="color: var(--color-text-muted);">{commit.summary}</span>
+        {#if wipFileBadges.length}
+          <span class="flex items-center gap-2 flex-shrink-0 font-mono text-[11px]">
+            {#each wipFileBadges as b}
+              <span title={b.title} style="color: {b.color};">{b.letter} {b.count}</span>
+            {/each}
+          </span>
+        {/if}
+      </div>
+    {:else if isStash}
       <span data-testid="commit-row-summary" class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);">{commit.summary}</span>
     {:else}
       <span data-testid="commit-row-summary" class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"

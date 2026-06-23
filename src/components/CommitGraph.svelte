@@ -53,6 +53,7 @@ import type {
 	SessionCommit,
 	SessionStatus,
 	StashEntry,
+	WipStats,
 } from "../lib/types.js";
 import CommitRow from "./CommitRow.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -65,6 +66,7 @@ interface Props {
 	oncommitnavchange?: (nav: CommitNav | null) => void;
 	wipCount?: number;
 	wipMessage?: string;
+	wipStats?: WipStats;
 	onWipClick?: () => void;
 	refreshSignal?: number;
 	selectedCommitOid?: string | null;
@@ -86,6 +88,7 @@ let {
 	oncommitnavchange,
 	wipCount = 0,
 	wipMessage = "WIP",
+	wipStats,
 	onWipClick,
 	refreshSignal,
 	selectedCommitOid,
@@ -2043,7 +2046,7 @@ $effect(() => {
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={sessionOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={sessionOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} />
         {/snippet}
       </VirtualList>
       {/key}

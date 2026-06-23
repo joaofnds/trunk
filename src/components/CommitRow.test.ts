@@ -107,6 +107,48 @@ describe("CommitRow", () => {
 		expect(italicEl?.textContent).toContain("Working changes");
 	});
 
+	it("renders WIP file-status badges from wipStats", () => {
+		const commit = makeCommit({ oid: "__wip__", summary: "WIP" });
+		render(CommitRow, {
+			props: {
+				commit,
+				rowIndex: 0,
+				columnWidths: defaultWidths,
+				columnVisibility: allVisible,
+				wipStats: {
+					modified: 5,
+					new: 1,
+					deleted: 2,
+					renamed: 0,
+					typechange: 0,
+					conflicted: 0,
+				},
+			},
+		});
+		const text = screen.getByTestId("commit-row-summary").textContent ?? "";
+		expect(text).toContain("M 5");
+		expect(text).toContain("A 1");
+		expect(text).toContain("D 2");
+		expect(text).not.toContain("R 0");
+		expect(text).not.toContain("T 0");
+	});
+
+	it("renders no WIP badges when wipStats is absent", () => {
+		const commit = makeCommit({ oid: "__wip__", summary: "WIP" });
+		render(CommitRow, {
+			props: {
+				commit,
+				rowIndex: 0,
+				columnWidths: defaultWidths,
+				columnVisibility: allVisible,
+			},
+		});
+		expect(screen.getByTestId("commit-row-summary")).toHaveTextContent("WIP");
+		expect(
+			screen.getByTestId("commit-row-summary").querySelector(".font-mono"),
+		).toBeNull();
+	});
+
 	it("calls onselect with oid when clicked", async () => {
 		const onselect = vi.fn();
 		const commit = makeCommit({ oid: "abc1234567" });

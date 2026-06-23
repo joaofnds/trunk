@@ -532,6 +532,13 @@ pub struct DirtyCounts {
     pub staged: usize,
     pub unstaged: usize,
     pub conflicted: usize,
+    // Per-status file counts, combined across staged + unstaged with each path
+    // counted once (priority: conflicted > new > deleted > renamed > typechange > modified).
+    pub modified: usize,
+    pub new: usize,
+    pub deleted: usize,
+    pub renamed: usize,
+    pub typechange: usize,
 }
 
 pub fn get_dirty_counts_inner(
@@ -547,6 +554,11 @@ pub fn get_dirty_counts_inner(
     let mut staged = 0usize;
     let mut unstaged = 0usize;
     let mut conflicted = 0usize;
+    let mut modified = 0usize;
+    let mut new = 0usize;
+    let mut deleted = 0usize;
+    let mut renamed = 0usize;
+    let mut typechange = 0usize;
     for entry in statuses.iter() {
         let s = entry.status();
         if s.intersects(
@@ -567,14 +579,32 @@ pub fn get_dirty_counts_inner(
         ) {
             unstaged += 1;
         }
+        // Classify each changed path into a single bucket by priority so the
+        // per-status counts sum to the number of distinct dirty files.
         if s.intersects(Status::CONFLICTED) {
             conflicted += 1;
+        } else if s.intersects(Status::INDEX_NEW | Status::WT_NEW) {
+            new += 1;
+        } else if s.intersects(Status::INDEX_DELETED | Status::WT_DELETED) {
+            deleted += 1;
+        } else if s.intersects(Status::INDEX_RENAMED | Status::WT_RENAMED) {
+            renamed += 1;
+        } else if s.intersects(Status::INDEX_TYPECHANGE | Status::WT_TYPECHANGE) {
+            typechange += 1;
+        } else if s.intersects(Status::INDEX_MODIFIED | Status::WT_MODIFIED) {
+            modified += 1;
         }
     }
+
     Ok(DirtyCounts {
         staged,
         unstaged,
         conflicted,
+        modified,
+        new,
+        deleted,
+        renamed,
+        typechange,
     })
 }
 
