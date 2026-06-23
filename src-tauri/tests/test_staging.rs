@@ -268,16 +268,20 @@ fn discard_file_deletes_untracked_file_in_subdirectory() {
         .with_commit("Initial commit")
         .build();
 
-    let sub = ctx.repo_path().join(".claude");
+    // Use a neutral nested path: a developer's global gitignore (e.g.
+    // ~/.config/git/ignore) may ignore well-known names like
+    // .claude/settings.local.json, which would hide the fixture from git
+    // status and make this test environment-dependent.
+    let sub = ctx.repo_path().join("nested/dir");
     std::fs::create_dir_all(&sub).unwrap();
-    std::fs::write(sub.join("settings.local.json"), "{}").unwrap();
+    std::fs::write(sub.join("untracked.txt"), "{}").unwrap();
 
-    ctx.discard_file(".claude/settings.local.json")
+    ctx.discard_file("nested/dir/untracked.txt")
         .expect("discard_file failed for nested untracked file");
 
     assert!(
-        !sub.join("settings.local.json").exists(),
-        "expected .claude/settings.local.json to be deleted after discard"
+        !sub.join("untracked.txt").exists(),
+        "expected nested/dir/untracked.txt to be deleted after discard"
     );
 }
 
@@ -288,15 +292,17 @@ fn discard_all_deletes_nested_untracked_file() {
         .with_commit("Initial commit")
         .build();
 
-    let sub = ctx.repo_path().join(".claude");
+    // Neutral nested path — see discard_file_deletes_untracked_file_in_subdirectory
+    // for why .claude/settings.local.json is unsafe as a fixture name.
+    let sub = ctx.repo_path().join("nested/dir");
     std::fs::create_dir_all(&sub).unwrap();
-    std::fs::write(sub.join("settings.local.json"), "{}").unwrap();
+    std::fs::write(sub.join("untracked.txt"), "{}").unwrap();
 
     ctx.discard_all().expect("discard_all failed");
 
     assert!(
-        !sub.join("settings.local.json").exists(),
-        "expected .claude/settings.local.json to be deleted after discard_all"
+        !sub.join("untracked.txt").exists(),
+        "expected nested/dir/untracked.txt to be deleted after discard_all"
     );
 }
 
