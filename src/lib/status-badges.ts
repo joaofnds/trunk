@@ -45,7 +45,9 @@ export const UNKNOWN_STATUS_BADGE: StatusBadge = {
 };
 
 // Display order for the WIP-row badges, pairing each WipStats count with its
-// status type. Mirrors the bucket priority used by the Rust get_dirty_counts.
+// status type. Ordered most-common-first for readability — note this is the
+// reverse of the bucket priority in the Rust get_dirty_counts (which ranks
+// Conflicted highest and Modified lowest).
 export const WIP_BADGE_ORDER: {
 	key: keyof WipStats;
 	status: FileStatusType;
