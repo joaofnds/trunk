@@ -1067,7 +1067,7 @@ function startRightResize(e: MouseEvent) {
           : handleDiffClose}
       />
     {:else}
-      <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || 'WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
+      <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
     {/if}
   </div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->

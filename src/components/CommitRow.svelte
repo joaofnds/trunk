@@ -135,8 +135,8 @@ const rowShadow = $derived(
   <!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
   <div class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px;">
     {#if isWip}
-      <div data-testid="commit-row-summary" class="flex-1 min-w-0 flex items-center gap-2 overflow-hidden whitespace-nowrap">
-        <span class="flex-1 min-w-0 overflow-hidden text-ellipsis italic" style="color: var(--color-text-muted);">{commit.summary}</span>
+      <div data-testid="commit-row-summary" class="flex items-center gap-2 overflow-hidden whitespace-nowrap">
+        <span class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5" style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);">{commit.summary}</span>
         {#if wipFileBadges.length}
           <span class="flex items-center gap-2 flex-shrink-0 font-mono text-[11px]">
             {#each wipFileBadges as b}
