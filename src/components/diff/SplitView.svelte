@@ -447,7 +447,7 @@ function buildSegments(
                       color: {lineColor()};
                       white-space: {wordWrap ? 'pre-wrap' : 'pre'};
                     "
-                  ><span class="gutter" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="diff-line-content">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}">{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}">{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
+                  ><span class="gutter" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
                 {:else}
                   <div class="split-phantom"></div>
                 {/if}
@@ -464,21 +464,25 @@ function buildSegments(
                   {@const isSelected = selectedHunkKey === `${fd.path}-${section.hunkIdx}` && selectedLineIndices.has(row.right.lineIdx)}
                   {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
                   {@const commented = showInlineComments && spannedByComment(viewComments, 'New', line.new_lineno)}
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <!-- mouseenter only continues an in-progress gutter drag
+                       (guarded by `dragging` in the host); the row is not a control. -->
                   <div
                     class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{commented ? ' diff-line-commented' : ''}"
-                    role={isSelectable ? 'button' : undefined}
                     style="
                       background: {lineBackground(line.origin, isSelected)};
                       color: {lineColor()};
-                      cursor: {isSelectable ? 'pointer' : 'default'};
-                      -webkit-user-select: {isSelectable ? 'none' : 'text'};
-                      user-select: {isSelectable ? 'none' : 'text'};
                       white-space: {wordWrap ? 'pre-wrap' : 'pre'};
                     "
-                    onmousedown={(e) => { if (isSelectable && section.hunkLines) onlinemousedown(fd.path, section.hunkIdx, row.right!.lineIdx, line.origin, section.hunkLines, e); }}
                     onmouseenter={(e) => onlineenter(fd.path, section.hunkIdx, row.right!.lineIdx, e)}
-                    onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ') && section.hunkLines) { e.preventDefault(); onlineclick(fd.path, section.hunkIdx, row.right!.lineIdx, line.origin, section.hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
-                  ><span class="gutter" style="min-width: {gutterW};">{line.new_lineno ?? ''}</span><span class="diff-line-content">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}">{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}">{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
+                  ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
+                      class="gutter{isSelectable ? ' gutter-selectable' : ''}"
+                      style="min-width: {gutterW};"
+                      role={isSelectable ? 'button' : undefined}
+                      tabindex={isSelectable ? 0 : undefined}
+                      onmousedown={(e) => { if (isSelectable && section.hunkLines) onlinemousedown(fd.path, section.hunkIdx, row.right!.lineIdx, line.origin, section.hunkLines, e); }}
+                      onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ') && section.hunkLines) { e.preventDefault(); onlineclick(fd.path, section.hunkIdx, row.right!.lineIdx, line.origin, section.hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+                    >{line.new_lineno ?? ''}</span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
                 {:else}
                   <div class="split-phantom"></div>
                 {/if}
@@ -534,6 +538,11 @@ function buildSegments(
   }
 
   .diff-line {
+    position: relative;
+    /* Own stacking context so the z-index:-1 hover overlay below resolves
+       against this row (painting over its inline background) instead of slipping
+       behind it. */
+    isolation: isolate;
     font-family: monospace;
     font-size: 12px;
     line-height: 1.5;
@@ -542,12 +551,36 @@ function buildSegments(
     align-items: flex-start;
   }
 
+  /* Faint full-row tint while hovering the selectable (right) gutter — signals
+     that the line number, not the code, arms staging. z-index:-1 overlay so it
+     tints over the inline diff background without hiding it. */
+  .diff-line:has(.gutter-selectable:hover)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in oklch, var(--color-hover) 60%, transparent);
+    pointer-events: none;
+  }
+
   .gutter {
     text-align: right;
     color: var(--color-text-muted);
     padding-right: 8px;
     user-select: none;
+    -webkit-user-select: none;
     flex-shrink: 0;
+  }
+
+  /* Right-column gutter is the staging/selection trigger; the left gutter stays
+     inert. Kept out of the text selection so multi-line copies skip line numbers. */
+  .gutter-selectable {
+    cursor: pointer;
+  }
+  .gutter-selectable:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+    border-radius: 2px;
   }
 
   .split-phantom {
@@ -662,14 +695,24 @@ function buildSegments(
     box-sizing: border-box;
   }
 
-  /* Invisible character styling */
+  /* Invisible character styling. Real whitespace stays in the text node (so it
+     copies faithfully) at zero width via font-size:0; the ·/→ glyph is painted by
+     a pseudo-element, never part of the selection/clipboard. font-size:0 also keeps
+     a real tab at one visual cell instead of advancing to a tab stop. */
   .invisible-char {
+    font-size: 0;
+  }
+  .invisible-char::before {
+    content: attr(data-glyph);
+    font-size: 12px;
     color: var(--color-invisible);
   }
 
   /* Trailing whitespace warning */
   .trailing-ws {
     background-color: var(--color-trailing-ws-bg);
+  }
+  .trailing-ws::before {
     color: var(--color-trailing-ws-fg);
   }
 </style>

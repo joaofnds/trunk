@@ -63,10 +63,14 @@ export function pairLines(lines: DiffLine[]): PairedRow[] {
 /**
  * Represents a segment of text for invisible character rendering.
  * When showInvisibles is active, space/tab characters are split into
- * separate segments with substitution characters.
+ * separate segments. `text` is always the real characters (so it stays
+ * selectable and copies faithfully); `glyph` is the presentation-only
+ * substitution (·/→) the view paints via a pseudo-element. `glyph` is the
+ * empty string for visible segments.
  */
 export interface InvisibleSegment {
 	text: string;
+	glyph: string;
 	isInvisible: boolean;
 	isTrailing: boolean;
 }
@@ -85,8 +89,9 @@ export function trailingWhitespaceStart(text: string): number {
 
 /**
  * Splits a text segment into invisible/visible sub-segments.
- * Spaces are replaced with middle dot (U+00B7), tabs with rightwards arrow (U+2192).
- * Only spaces and tabs are handled -- no line ending markers.
+ * Invisible segments keep their real characters in `text` and carry the
+ * presentation glyph (space -> middle dot U+00B7, tab -> rightwards arrow
+ * U+2192) in `glyph`. Only spaces and tabs are handled -- no line ending markers.
  *
  * CRITICAL: This function must be called AFTER slicing line.content by span offsets.
  * Never call it before slicing -- that would break byte offset alignment.
@@ -104,31 +109,26 @@ export function splitInvisibles(
 	let current = "";
 	let currentIsInvisible = false;
 
-	for (const ch of text) {
-		const invisible = ch === " " || ch === "\t";
-		if (invisible !== currentIsInvisible && current) {
-			segments.push({
-				text: currentIsInvisible
-					? current.replace(/ /g, "\u00B7").replace(/\t/g, "\u2192")
-					: current,
-				isInvisible: currentIsInvisible,
-				isTrailing: currentIsInvisible && isTrailingRegion,
-			});
-			current = "";
-		}
-		current += ch;
-		currentIsInvisible = invisible;
-	}
-
-	if (current) {
+	function flush() {
+		if (!current) return;
 		segments.push({
-			text: currentIsInvisible
+			text: current,
+			glyph: currentIsInvisible
 				? current.replace(/ /g, "\u00B7").replace(/\t/g, "\u2192")
-				: current,
+				: "",
 			isInvisible: currentIsInvisible,
 			isTrailing: currentIsInvisible && isTrailingRegion,
 		});
+		current = "";
 	}
+
+	for (const ch of text) {
+		const invisible = ch === " " || ch === "\t";
+		if (invisible !== currentIsInvisible) flush();
+		current += ch;
+		currentIsInvisible = invisible;
+	}
+	flush();
 
 	return segments;
 }

@@ -480,9 +480,11 @@ function gutterWidth(maxNum: number): string {
           {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
           {@const lineComments = showInlineComments ? [...commentsForLine(viewComments, 'New', line.new_lineno), ...commentsForLine(viewComments, 'Old', line.old_lineno)] : []}
           {@const isSpanned = showInlineComments && (spannedByComment(viewComments, 'New', line.new_lineno) || spannedByComment(viewComments, 'Old', line.old_lineno))}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <!-- mouseenter only continues an in-progress gutter drag (guarded by
+               `dragging` in the host); the row itself is not a control. -->
           <div
             class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{isSpanned ? ' diff-line-commented' : ''}"
-            role={isSelectable ? 'button' : undefined}
             style="
               font-family: monospace;
               font-size: 12px;
@@ -491,16 +493,18 @@ function gutterWidth(maxNum: number): string {
               white-space: {wordWrap ? 'pre-wrap' : 'pre'};
               background: {lineBackground(line.origin, isSelected)};
               color: {lineColor()};
-              cursor: {isSelectable ? 'pointer' : 'default'};
-              -webkit-user-select: {isSelectable ? 'none' : 'text'};
-              user-select: {isSelectable ? 'none' : 'text'};
               display: flex;
               align-items: flex-start;
             "
-            onmousedown={(e) => isSelectable && onlinemousedown(fd.path, hunkIdx, lineIdx, line.origin, hunk.lines, e)}
             onmouseenter={(e) => onlineenter(fd.path, hunkIdx, lineIdx, e)}
-            onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(fd.path, hunkIdx, lineIdx, line.origin, hunk.lines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
-          ><span style="min-width: {gutterW}; text-align: right; color: var(--color-text-muted); padding-right: 8px; user-select: none; flex-shrink: 0;">{line.old_lineno ?? ''}</span><span style="min-width: {gutterW}; text-align: right; color: var(--color-text-muted); padding-right: 8px; user-select: none; flex-shrink: 0;">{line.new_lineno ?? ''}</span><span class="diff-line-content">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}">{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}">{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
+          ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
+              class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
+              style="user-select: none; -webkit-user-select: none;"
+              role={isSelectable ? 'button' : undefined}
+              tabindex={isSelectable ? 0 : undefined}
+              onmousedown={(e) => isSelectable && onlinemousedown(fd.path, hunkIdx, lineIdx, line.origin, hunk.lines, e)}
+              onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(fd.path, hunkIdx, lineIdx, line.origin, hunk.lines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+            ><span class="gutter-num" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
           {#if lineComments.length > 0}
             <div class="inline-comment-row">
               {#each lineComments as c (c.id)}
@@ -558,10 +562,47 @@ function gutterWidth(maxNum: number): string {
   /* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
      Every line carries the 3px border so columns stay aligned regardless of origin. */
   .diff-line {
+    position: relative;
+    /* Own stacking context so the z-index:-1 hover overlay below resolves
+       against this row (painting over its inline background) instead of slipping
+       behind it. */
+    isolation: isolate;
     border-left: 3px solid var(--color-border);
   }
   .diff-line-add {
     border-left-color: var(--color-diff-add);
+  }
+
+  /* Gutter grip: the line-number column is the staging/selection trigger. Kept
+     out of the text selection so multi-line copies never pick up line numbers. */
+  .gutter-grip {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .gutter-num {
+    text-align: right;
+    color: var(--color-text-muted);
+    padding-right: 8px;
+  }
+  .gutter-selectable {
+    cursor: pointer;
+  }
+  .gutter-selectable:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+    border-radius: 2px;
+  }
+
+  /* Faint full-row tint while hovering a selectable gutter — the affordance that
+     the line number, not the code, arms staging. Painted as a z-index:-1 overlay
+     so it tints over the inline diff background without hiding it. */
+  .diff-line:has(.gutter-selectable:hover)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in oklch, var(--color-hover) 60%, transparent);
+    pointer-events: none;
   }
   .diff-line-delete {
     border-left-color: var(--color-diff-delete);
@@ -584,14 +625,25 @@ function gutterWidth(maxNum: number): string {
     box-sizing: border-box;
   }
 
-  /* Invisible character styling (Phase 63 -- WHSP-03, D-11) */
+  /* Invisible character styling (Phase 63 -- WHSP-03, D-11). The real whitespace
+     stays in the text node (so it copies faithfully) but is given zero width via
+     font-size:0; the ·/→ glyph is painted by a pseudo-element, which is never part
+     of the selection/clipboard. font-size:0 also keeps a real tab at a single
+     visual cell instead of advancing to a tab stop. */
   .invisible-char {
+    font-size: 0;
+  }
+  .invisible-char::before {
+    content: attr(data-glyph);
+    font-size: 12px;
     color: var(--color-invisible);
   }
 
   /* Trailing whitespace warning (Phase 63 -- D-12) */
   .trailing-ws {
     background-color: var(--color-trailing-ws-bg);
+  }
+  .trailing-ws::before {
     color: var(--color-trailing-ws-fg);
   }
 </style>

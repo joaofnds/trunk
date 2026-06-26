@@ -21,6 +21,17 @@ async function flushPrefs() {
 	await tick();
 }
 
+// Selection now arms from the line-number gutter grip, not the code content, so
+// press events must target the grip.
+function gutterOf(text: string): HTMLElement {
+	const grip = screen
+		.getByText(text)
+		.closest(".diff-line")
+		?.querySelector(".gutter-grip") as HTMLElement | null;
+	if (!grip) throw new Error(`no gutter grip for "${text}"`);
+	return grip;
+}
+
 // Mock invoke and toast for hunk staging operations. The default implementation
 // returns an "active" review session for get_review_session_status so that
 // opening the comment composer works without an explicit per-test override;
@@ -627,7 +638,7 @@ describe("DiffPanel", () => {
 		expect(contextLines.length).toBeGreaterThanOrEqual(1);
 		// First context line: old=1, new=1
 		const firstContext = contextLines[0];
-		const gutterSpans = firstContext.querySelectorAll("span");
+		const gutterSpans = firstContext.querySelectorAll(".gutter-num");
 		// At least 2 gutter spans (old + new) per line
 		expect(gutterSpans.length).toBeGreaterThanOrEqual(2);
 		// Both gutter spans should contain "1"
@@ -654,7 +665,7 @@ describe("DiffPanel", () => {
 		const addLines = container.querySelectorAll(".diff-line-add");
 		expect(addLines.length).toBeGreaterThanOrEqual(1);
 		for (const addLine of addLines) {
-			const spans = addLine.querySelectorAll("span");
+			const spans = addLine.querySelectorAll(".gutter-num");
 			// First span is old gutter (should be empty), second is new gutter (should have number)
 			expect(spans[0].textContent).toBe("");
 			expect(spans[1].textContent?.trim()).not.toBe("");
@@ -680,7 +691,7 @@ describe("DiffPanel", () => {
 		const deleteLines = container.querySelectorAll(".diff-line-delete");
 		expect(deleteLines.length).toBeGreaterThanOrEqual(1);
 		for (const deleteLine of deleteLines) {
-			const spans = deleteLine.querySelectorAll("span");
+			const spans = deleteLine.querySelectorAll(".gutter-num");
 			// First span is old gutter (should have number), second is new gutter (should be empty)
 			expect(spans[0].textContent?.trim()).not.toBe("");
 			expect(spans[1].textContent).toBe("");
@@ -692,28 +703,33 @@ describe("DiffPanel", () => {
 
 describe("diff-utils", () => {
 	describe("splitInvisibles", () => {
-		it("replaces spaces with middle dot (WHSP-03)", () => {
+		it("keeps the real space and exposes a middle-dot glyph (WHSP-03)", () => {
 			const result = splitInvisibles("a b", false);
 			expect(result).toEqual([
-				{ text: "a", isInvisible: false, isTrailing: false },
-				{ text: "\u00B7", isInvisible: true, isTrailing: false },
-				{ text: "b", isInvisible: false, isTrailing: false },
+				{ text: "a", glyph: "", isInvisible: false, isTrailing: false },
+				{ text: " ", glyph: "\u00B7", isInvisible: true, isTrailing: false },
+				{ text: "b", glyph: "", isInvisible: false, isTrailing: false },
 			]);
 		});
 
-		it("replaces tabs with rightwards arrow (WHSP-03)", () => {
+		it("keeps the real tab and exposes a rightwards-arrow glyph (WHSP-03)", () => {
 			const result = splitInvisibles("a\tb", false);
 			expect(result).toEqual([
-				{ text: "a", isInvisible: false, isTrailing: false },
-				{ text: "\u2192", isInvisible: true, isTrailing: false },
-				{ text: "b", isInvisible: false, isTrailing: false },
+				{ text: "a", glyph: "", isInvisible: false, isTrailing: false },
+				{ text: "\t", glyph: "\u2192", isInvisible: true, isTrailing: false },
+				{ text: "b", glyph: "", isInvisible: false, isTrailing: false },
 			]);
 		});
 
 		it("marks trailing whitespace segments", () => {
 			const result = splitInvisibles("  ", true);
 			expect(result).toEqual([
-				{ text: "\u00B7\u00B7", isInvisible: true, isTrailing: true },
+				{
+					text: "  ",
+					glyph: "\u00B7\u00B7",
+					isInvisible: true,
+					isTrailing: true,
+				},
 			]);
 		});
 
@@ -724,7 +740,12 @@ describe("diff-utils", () => {
 		it("handles mixed spaces and tabs", () => {
 			const result = splitInvisibles(" \t", false);
 			expect(result).toEqual([
-				{ text: "\u00B7\u2192", isInvisible: true, isTrailing: false },
+				{
+					text: " \t",
+					glyph: "\u00B7\u2192",
+					isInvisible: true,
+					isTrailing: false,
+				},
 			]);
 		});
 	});
@@ -796,7 +817,7 @@ describe("VIEW-04: Full file view", () => {
 		// Context lines should have gutter numbers
 		const contextLines = container.querySelectorAll(".diff-line-context");
 		expect(contextLines.length).toBeGreaterThanOrEqual(1);
-		const gutterSpans = contextLines[0].querySelectorAll("span");
+		const gutterSpans = contextLines[0].querySelectorAll(".gutter-num");
 		expect(gutterSpans.length).toBeGreaterThanOrEqual(2);
 		// First context line: old=1, new=1
 		expect(gutterSpans[0].textContent).toBe("1");
@@ -1598,7 +1619,7 @@ describe("DiffPanel drag-to-select", () => {
 	it("paints the whole range when dragging across lines", async () => {
 		await renderCommit();
 
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
@@ -1609,7 +1630,7 @@ describe("DiffPanel drag-to-select", () => {
 	it("does not extend the selection on a hover with no button held", async () => {
 		await renderCommit();
 
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 0 });
 		await tick();
@@ -1620,18 +1641,35 @@ describe("DiffPanel drag-to-select", () => {
 	it("deselects the range when the drag starts on an already-selected line", async () => {
 		await renderCommit();
 
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
 		expect(selectedCount()).toBe(2);
 
 		// A fresh drag from a selected line deselects as it paints across the range.
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
 		await tick();
 		expect(selectedCount()).toBe(0);
+	});
+
+	it("does not arm a selection when the press lands on code content", async () => {
+		await renderCommit();
+
+		// Mousedown on the code text (now freely selectable) must not stage a line.
+		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await tick();
+
+		expect(selectedCount()).toBe(0);
+	});
+
+	it("keeps the gutter unselectable and the code content selectable", async () => {
+		await renderCommit();
+
+		expect(gutterOf("const x = 2;").style.userSelect).toBe("none");
+		expect(screen.getByText("const x = 2;").style.userSelect).toBe("text");
 	});
 });
 
@@ -1649,7 +1687,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await flushPrefs();
 
 		// Select an Add line to surface the on-selection action row.
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 
 		const commentBtn = screen.getByRole("button", {
@@ -1671,7 +1709,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		});
 		await flushPrefs();
 
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 
 		const commentBtn = screen.getByRole("button", {
@@ -1695,7 +1733,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		});
 		await flushPrefs();
 
-		await fireEvent.mouseDown(screen.getByText("export const a = 1;"));
+		await fireEvent.mouseDown(gutterOf("export const a = 1;"));
 		await tick();
 
 		const commentBtn = screen.getByRole("button", {
@@ -1722,7 +1760,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await flushPrefs();
 
 		// Select a line, open the composer.
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
 		await tick();
@@ -1735,7 +1773,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		// Attempt to switch to a different range -> ask must fire; false blocks it.
 		// handleLineMouseDown is async (awaits a dynamic plugin-dialog import), so flush
 		// microtasks before asserting.
-		await fireEvent.mouseDown(screen.getByText("const y = 3;"));
+		await fireEvent.mouseDown(gutterOf("const y = 3;"));
 		await new Promise((r) => setTimeout(r, 0));
 		await tick();
 
@@ -1763,7 +1801,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 	}
 
 	async function openComposerOnAddLine() {
-		await fireEvent.mouseDown(screen.getByText("const x = 2;"));
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
 		// Opening ensures the session (ensureActiveSession) before showing the composer

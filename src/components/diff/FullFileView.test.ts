@@ -83,13 +83,15 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-// Selectable line rows expose role="button"; the gutters/affordance do not. The
-// affordance is a real <button>, so query lines by their content text instead.
-function lineRow(text: string): HTMLElement {
-	const content = screen.getByText(text);
-	const row = content.closest('[role="button"]') as HTMLElement | null;
-	if (!row) throw new Error(`no selectable row for "${text}"`);
-	return row;
+// Selection now arms from the line-number gutter grip (which carries
+// role="button"), not the code content. Query the grip via the line's content.
+function gutterGrip(text: string): HTMLElement {
+	const grip = screen
+		.getByText(text)
+		.closest(".diff-line")
+		?.querySelector(".gutter-grip") as HTMLElement | null;
+	if (!grip) throw new Error(`no gutter grip for "${text}"`);
+	return grip;
 }
 
 describe("FullFileView", () => {
@@ -109,7 +111,7 @@ describe("FullFileView", () => {
 		// No selection yet -> no affordance.
 		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
 
-		await fireEvent.click(lineRow("added one"));
+		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
 		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
@@ -119,10 +121,10 @@ describe("FullFileView", () => {
 		const oncommentfullfile = vi.fn();
 		render(FullFileView, { props: defaultProps({ oncommentfullfile }) });
 
-		await fireEvent.click(lineRow("added one")); // flat index 1
+		await fireEvent.click(gutterGrip("added one")); // flat index 1
 		await tick();
 		// Shift-click "added three" (flat index 4); the contiguous span is 1..4.
-		await fireEvent.click(lineRow("added three"), { shiftKey: true });
+		await fireEvent.click(gutterGrip("added three"), { shiftKey: true });
 		await tick();
 
 		const affordance = screen.getByRole("button", { name: /comment/i });
@@ -154,7 +156,7 @@ describe("FullFileView", () => {
 	it("V10/L-05: with isMerge=true the Comment affordance is present and NOT disabled", async () => {
 		render(FullFileView, { props: defaultProps({ isMerge: true }) });
 
-		await fireEvent.click(lineRow("added one"));
+		await fireEvent.click(gutterGrip("added one"));
 		await tick();
 
 		const affordance = screen.getByRole("button", {
@@ -162,5 +164,40 @@ describe("FullFileView", () => {
 		}) as HTMLButtonElement;
 		expect(affordance).toBeTruthy();
 		expect(affordance.disabled).toBe(false);
+	});
+
+	it("WHSP: with invisibles on, the selectable text is the real whitespace and the glyph is presentational", () => {
+		const wsFile: FileDiff = {
+			path: "src/ws.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,0 +1,1 @@",
+					old_start: 1,
+					old_lines: 0,
+					new_start: 1,
+					new_lines: 1,
+					lines: [
+						{
+							origin: "Add",
+							content: "\t x",
+							old_lineno: null,
+							new_lineno: 1,
+							spans: [],
+						},
+					],
+				},
+			],
+		};
+		const { container } = render(FullFileView, {
+			props: defaultProps({ fileDiffs: [wsFile], showInvisibles: true }),
+		});
+
+		const invisible = container.querySelector(".invisible-char") as HTMLElement;
+		// Copy fidelity: the text node holds the real tab+space, never the glyph.
+		expect(invisible.textContent).toBe("\t ");
+		// The ·/→ substitution is exposed only as a presentation glyph.
+		expect(invisible.getAttribute("data-glyph")).toBe("→·");
 	});
 });
