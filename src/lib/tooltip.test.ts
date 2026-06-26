@@ -104,4 +104,26 @@ describe("tooltip", () => {
 
 		expect(popup()).toBeNull();
 	});
+
+	it("does not show a popup for a blank label", () => {
+		const blankNode = document.createElement("button");
+		document.body.appendChild(blankNode);
+		const blank = tooltip(blankNode, "   ");
+
+		blankNode.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(120);
+		expect(popup()).toBeNull();
+
+		blank.destroy();
+		blankNode.remove();
+	});
+
+	it("hides a shown popup when updated to a blank label", () => {
+		node.dispatchEvent(new MouseEvent("mouseenter"));
+		vi.advanceTimersByTime(120);
+		expect(popup()).not.toBeNull();
+
+		handle.update("");
+		expect(popup()).toBeNull();
+	});
 });

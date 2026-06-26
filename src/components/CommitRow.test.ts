@@ -14,6 +14,7 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 const defaultWidths: ColumnWidths = {
 	ref: 120,
 	graph: 24,
+	diff: 96,
 	author: 60,
 	date: 40,
 	sha: 50,
@@ -23,6 +24,7 @@ const allVisible: ColumnVisibility = {
 	ref: true,
 	graph: true,
 	message: true,
+	diff: true,
 	author: true,
 	date: true,
 	sha: true,
@@ -219,6 +221,173 @@ describe("CommitRow", () => {
 			},
 		});
 		expect(screen.queryByText("xyz9876")).toBeNull();
+	});
+
+	describe("diff column", () => {
+		const stat = { insertions: 12, deletions: 3, files_changed: 4 };
+
+		it("renders a two-segment bar and no on-screen numbers (counts live in the tooltip)", () => {
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+					diffStat: stat,
+				},
+			});
+			const col = screen.getByTestId("diff-stat");
+			const segments = col.querySelectorAll("[data-diff-seg]");
+			expect(segments.length).toBe(2);
+			// jsdom only reads inline styles — the min-sliver guarantee lives inline.
+			for (const seg of segments) {
+				expect((seg as HTMLElement).style.minWidth).toBe("1px");
+			}
+			// Numbers are tooltip-only now — nothing visible in the column.
+			expect(screen.queryByTestId("diff-stat-count")).toBeNull();
+			expect(col.textContent?.replace(/\s/g, "")).toBe("");
+		});
+
+		it("rounds the bar's outer ends on the end segments and uses no background track", () => {
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+					diffStat: stat, // both add + delete
+				},
+			});
+			const col = screen.getByTestId("diff-stat");
+			const bar = screen.getByTestId("diff-stat-bar");
+			const add = col.querySelector('[data-diff-seg="add"]');
+			const del = col.querySelector('[data-diff-seg="delete"]');
+			// Left edge = column's left edge on every row → lengths compare.
+			expect(col.firstElementChild).toBe(bar);
+			// Rounding lives on the painted end segments (robust vs WebKit's flaky
+			// overflow-clip+border-radius): first rounds its left, last its right.
+			expect(add).toHaveClass("rounded-l-full");
+			expect(del).toHaveClass("rounded-r-full");
+			// No dark track behind it — the bar itself is sized to the magnitude (a %).
+			expect(bar.getAttribute("style") ?? "").not.toContain("--bg-2");
+			expect((bar as HTMLElement).style.width).toMatch(/%$/);
+		});
+
+		it("rounds both ends of a single-sided bar", () => {
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+					diffStat: { insertions: 50, deletions: 0, files_changed: 1 },
+				},
+			});
+			const col = screen.getByTestId("diff-stat");
+			const add = col.querySelector('[data-diff-seg="add"]');
+			// Only one segment → it carries the full pill (both ends rounded).
+			expect(add).toHaveClass("rounded-full");
+			expect(col.querySelector('[data-diff-seg="delete"]')).toBeNull();
+		});
+
+		it("renders a neutral marker (not a blank gap) when files changed but no lines did", () => {
+			// Binary / pure-rename / mode-only change: files_changed > 0 with 0 line
+			// deltas. Without a marker this is an empty box, visually identical to
+			// "no change" — the column would silently fail its one job.
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+					diffStat: { insertions: 0, deletions: 0, files_changed: 3 },
+				},
+			});
+			const col = screen.getByTestId("diff-stat");
+			expect(screen.getByTestId("diff-stat-neutral")).toBeInTheDocument();
+			expect(col.querySelectorAll("[data-diff-seg]").length).toBe(0);
+			expect(screen.queryByTestId("diff-stat-placeholder")).toBeNull();
+		});
+
+		it("renders nothing in the column for a truly empty 0-files commit", () => {
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+					diffStat: { insertions: 0, deletions: 0, files_changed: 0 },
+				},
+			});
+			const col = screen.getByTestId("diff-stat");
+			expect(screen.queryByTestId("diff-stat-bar")).toBeNull();
+			expect(screen.queryByTestId("diff-stat-neutral")).toBeNull();
+			expect(screen.queryByTestId("diff-stat-placeholder")).toBeNull();
+			expect(col.querySelectorAll("[data-diff-seg]").length).toBe(0);
+		});
+
+		it("renders a placeholder (not a bar) when diffStat is undefined", () => {
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+				},
+			});
+			expect(screen.getByTestId("diff-stat-placeholder")).toBeInTheDocument();
+			expect(screen.queryByTestId("diff-stat-bar")).toBeNull();
+		});
+
+		it("shows the shared tooltip with the files-changed detail on hover", () => {
+			vi.useFakeTimers();
+			try {
+				const commit = makeCommit({ oid: "abc1234567" });
+				render(CommitRow, {
+					props: {
+						commit,
+						rowIndex: 0,
+						columnWidths: defaultWidths,
+						columnVisibility: allVisible,
+						diffStat: stat,
+					},
+				});
+				const col = screen.getByTestId("diff-stat");
+				// The shared `tooltip` action (same as the toolbar git buttons),
+				// not a native title.
+				expect(col.getAttribute("title")).toBeNull();
+
+				col.dispatchEvent(new MouseEvent("mouseenter"));
+				vi.advanceTimersByTime(120);
+
+				expect(document.querySelector(".tooltip-pop")?.textContent).toContain(
+					"4 files changed",
+				);
+			} finally {
+				document.querySelector(".tooltip-pop")?.remove();
+				vi.useRealTimers();
+			}
+		});
+
+		it("hides the diff column when columnVisibility.diff is false", () => {
+			const commit = makeCommit({ oid: "abc1234567" });
+			render(CommitRow, {
+				props: {
+					commit,
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: { ...allVisible, diff: false },
+					diffStat: stat,
+				},
+			});
+			expect(screen.queryByTestId("diff-stat")).toBeNull();
+		});
 	});
 
 	it("applies a theme-variable marker when inSession is true", () => {

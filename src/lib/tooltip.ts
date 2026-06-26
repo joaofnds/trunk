@@ -37,7 +37,9 @@ export function tooltip(
 	}
 
 	function show() {
-		if (el) return;
+		// Skip blank labels so a trigger with no text (e.g. a not-yet-computed
+		// value) never flashes an empty popup.
+		if (el || !label.trim()) return;
 		el = document.createElement("div");
 		el.className = "tooltip-pop";
 		el.textContent = label;
@@ -66,7 +68,9 @@ export function tooltip(
 	return {
 		update(next: string) {
 			label = next;
-			if (el) el.textContent = next;
+			if (!el) return;
+			if (next.trim()) el.textContent = next;
+			else hide();
 		},
 		destroy() {
 			hide();

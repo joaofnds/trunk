@@ -43,6 +43,7 @@ import { measureTextWidth } from "../lib/text-measure.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitNav,
+	DiffStat,
 	EdgeType,
 	GraphCommit,
 	GraphResponse,
@@ -145,9 +146,27 @@ let listRef = $state<{
 let scrolledToHead = false;
 let containerRef = $state<HTMLDivElement | null>(null);
 
+// Diff column: per-oid stats for loaded history commits + the WIP row's stat.
+// Reassigned (never mutated) so the deeply-reactive Map drives re-render. All
+// fetches are gated on columnVisibility.diff so a hidden column does zero work.
+let commitStats = $state<Map<string, DiffStat>>(new Map());
+let wipDiffStat = $state<DiffStat | undefined>(undefined);
+// Gate: columnVisibility starts at the optimistic default (diff: true) and is
+// overwritten asynchronously from the persisted store. Until that resolves we
+// don't know the real visibility, so no stat fetch fires — otherwise a user who
+// persisted diff:false pays a full page + WIP diff computation on every load for
+// a column they turned off.
+let visibilityResolved = $state(false);
+// Plain (non-reactive) latch for the hidden→visible backfill trigger.
+let diffColumnWasVisible = false;
+// Monotonic token so out-of-order WIP-stat responses can't clobber a newer one
+// (the working tree changes constantly; only the latest fetch's result is valid).
+let wipStatsSeq = 0;
+
 let columnWidths = $state<ColumnWidths>({
 	ref: 120,
 	graph: 24,
+	diff: 96,
 	author: 60,
 	date: 40,
 	sha: 50,
@@ -156,6 +175,7 @@ let columnVisibility = $state<ColumnVisibility>({
 	ref: true,
 	graph: true,
 	message: true,
+	diff: true,
 	author: true,
 	date: true,
 	sha: true,
@@ -165,6 +185,7 @@ const ORDERED_COLUMNS = [
 	"ref",
 	"graph",
 	"message",
+	"diff",
 	"author",
 	"date",
 	"sha",
@@ -187,6 +208,7 @@ $effect(() => {
 $effect(() => {
 	getColumnVisibility().then((v) => {
 		columnVisibility = v;
+		visibilityResolved = true;
 	});
 });
 
@@ -224,6 +246,7 @@ const AUTHOR_AVATAR_WIDTH = 18 + 8;
 const HEADER_PAD = 4 * COLUMN_PADDING_X; // 2× for CSS padding + 2× for breathing room
 const headerMinRef = measureTextWidth("Branch/Tag", HEADER_FONT) + HEADER_PAD;
 const headerMinGraph = measureTextWidth("Graph", HEADER_FONT) + HEADER_PAD;
+const headerMinDiff = measureTextWidth("Diff", HEADER_FONT) + HEADER_PAD;
 const headerMinAuthor = measureTextWidth("Author", HEADER_FONT) + HEADER_PAD;
 const headerMinDate = measureTextWidth("Date", HEADER_FONT) + HEADER_PAD;
 const headerMinSha = measureTextWidth("SHA", HEADER_FONT) + HEADER_PAD;
@@ -417,6 +440,7 @@ function startColumnResize(
 	const minWidths: Record<keyof ColumnWidths, number> = {
 		ref: headerMinRef,
 		graph: headerMinGraph,
+		diff: headerMinDiff,
 		author: headerMinAuthor,
 		date: headerMinDate,
 		sha: headerMinSha,
@@ -427,6 +451,7 @@ function startColumnResize(
 			naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
 			headerMinGraph,
 		),
+		diff: 400,
 		author: 400,
 		date: 400,
 		sha: 400,
@@ -455,6 +480,7 @@ const columnLabels: { key: keyof ColumnVisibility; label: string }[] = [
 	{ key: "ref", label: "Branch/Tag" },
 	{ key: "graph", label: "Graph" },
 	{ key: "message", label: "Message" },
+	{ key: "diff", label: "Diff" },
 	{ key: "author", label: "Author" },
 	{ key: "date", label: "Date" },
 	{ key: "sha", label: "SHA" },
@@ -1369,11 +1395,69 @@ function overlayMouseLeave() {
 	hoveredPill = null;
 }
 
+// Lazy diff-stats for the page starting at `pageOffset`. Fire-and-forget so the
+// graph never waits on stats; merges into the latest commitStats map AFTER the
+// await (synchronous read-modify-write) so concurrent page fetches can't drop
+// each other's entries. Gated on the column being visible.
+async function fetchPageStats(pageOffset: number) {
+	if (!visibilityResolved || !columnVisibility.diff) return;
+	try {
+		const stats = await safeInvoke<Record<string, DiffStat>>(
+			"get_commit_stats",
+			{ path: repoPath, offset: pageOffset },
+		);
+		// Re-check after the await: the column may have been toggled off while the
+		// request was in flight — honor "hidden column does zero work".
+		if (!columnVisibility.diff) return;
+		const next = new Map(commitStats);
+		for (const [oid, stat] of Object.entries(stats)) next.set(oid, stat);
+		commitStats = next;
+	} catch {
+		// Stats are an enhancement; a failure must never disrupt the graph.
+	}
+}
+
+// Backfill every loaded page's stats — used when the column is toggled on after
+// pages were loaded with it hidden (so no per-page fetch fired at load time).
+async function backfillAllPageStats() {
+	if (!visibilityResolved || !columnVisibility.diff) return;
+	for (let o = 0; o < commits.length; o += BATCH) {
+		await fetchPageStats(o);
+	}
+}
+
+// WIP row stat (uncached, recomputed each refresh). Gated only on column
+// visibility — NOT on wipCount: repo-changed bumps refreshSignal synchronously
+// but refreshes wipCount via an async get_dirty_counts, so wipCount still reads
+// 0 during a clean→dirty refresh. The working tree is already in its new state,
+// so get_wip_diff_stats returns the correct value; when wipCount catches up and
+// the WIP row appears, its stat is already loaded.
+async function fetchWipStats() {
+	if (!visibilityResolved || !columnVisibility.diff) {
+		wipDiffStat = undefined;
+		return;
+	}
+	const seq = ++wipStatsSeq;
+	try {
+		const stat = await safeInvoke<DiffStat>("get_wip_diff_stats", {
+			path: repoPath,
+		});
+		// Drop the response if a newer fetch won (rapid working-tree edits) or the
+		// column was toggled off in flight — honor "hidden column does zero work",
+		// matching fetchPageStats' post-await re-check.
+		if (seq !== wipStatsSeq || !columnVisibility.diff) return;
+		wipDiffStat = stat;
+	} catch {
+		if (seq === wipStatsSeq) wipDiffStat = undefined;
+	}
+}
+
 async function loadMore() {
 	if (loading || !hasMore) return;
 	loading = true;
 	error = null;
 	try {
+		const requestedOffset = offset;
 		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
 			path: repoPath,
 			offset,
@@ -1383,6 +1467,7 @@ async function loadMore() {
 		updateContentWidths(response.commits);
 		offset += response.commits.length;
 		if (response.commits.length < BATCH) hasMore = false;
+		void fetchPageStats(requestedOffset);
 	} catch (e) {
 		const err = e as TrunkError;
 		error = err.message ?? "Failed to load commits";
@@ -1438,6 +1523,11 @@ async function refresh() {
 		offset = response.commits.length;
 		hasMore = response.commits.length >= BATCH;
 		error = null;
+		// Drop stale per-oid stats (amend/rebase may have rewritten oids) and
+		// refetch the now-current first page + the WIP row.
+		commitStats = new Map();
+		void fetchPageStats(0);
+		void fetchWipStats();
 		await loadStashMap();
 	} catch (e) {
 		const err = e as TrunkError;
@@ -1450,7 +1540,30 @@ $effect(() => {
 	untrack(async () => {
 		await loadMore();
 		await loadStashMap();
+		// Diff stats (page + WIP) are driven by the visibility-resolution effect
+		// below, so the column does zero stat work until the persisted visibility
+		// is known.
 	});
+});
+
+// Loads the diff stats once the persisted visibility resolves, and re-fires when
+// the column is toggled on after pages loaded while hidden: backfill every loaded
+// page + the WIP row. Writes a plain latch and calls untracked async work, so it
+// cannot form a reactive loop.
+$effect(() => {
+	// Wait for the persisted visibility before latching — at mount columnVisibility
+	// still holds the optimistic default, and latching against it would suppress
+	// the real backfill once the store resolves. This is also the single trigger
+	// that loads the initial page's stats once visibility is known.
+	if (!visibilityResolved) return;
+	const visible = columnVisibility.diff;
+	if (visible && !diffColumnWasVisible) {
+		untrack(() => {
+			void backfillAllPageStats();
+			void fetchWipStats();
+		});
+	}
+	diffColumnWasVisible = visible;
 });
 
 // Review session: initial load on mount / repo change.
@@ -1692,6 +1805,15 @@ $effect(() => {
         Message
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         {#if 'message' !== lastVisibleColumn}
+          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('diff', e, true)}></div>
+        {/if}
+      </div>
+    {/if}
+    {#if columnVisibility.diff}
+      <div class="flex-shrink-0 relative" style="width: {columnWidths.diff}px; padding: 0 {COLUMN_PADDING_X}px;">
+        Diff
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        {#if 'diff' !== lastVisibleColumn}
           <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e, true)}></div>
         {/if}
       </div>
@@ -2046,7 +2168,7 @@ $effect(() => {
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={sessionOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={sessionOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
         {/snippet}
       </VirtualList>
       {/key}

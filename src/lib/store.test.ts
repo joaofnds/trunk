@@ -41,6 +41,10 @@ const {
 	getCommitDraft,
 	setCommitDraft,
 	clearCommitDraft,
+	getColumnWidths,
+	getColumnVisibility,
+	setColumnWidths,
+	setColumnVisibility,
 } = await import("./store.js");
 
 describe("tab types and helpers", () => {
@@ -277,6 +281,71 @@ describe("store", () => {
 		it("clearCommitDraft is a no-op for an unknown path", async () => {
 			await clearCommitDraft("/nope");
 			expect(await getCommitDraft("/nope")).toBeNull();
+		});
+	});
+
+	describe("column widths and visibility migration", () => {
+		it("getColumnWidths fills a default for a key missing from a legacy persisted object", async () => {
+			// A user who persisted widths before the Diff column existed.
+			backingStore.set("column_widths", {
+				ref: 200,
+				graph: 24,
+				author: 60,
+				date: 40,
+				sha: 50,
+			});
+
+			const widths = await getColumnWidths();
+
+			expect(widths.diff).toBe(96); // new key gets its default…
+			expect(widths.ref).toBe(200); // …without clobbering persisted values
+		});
+
+		it("getColumnVisibility fills a default for a key missing from a legacy persisted object", async () => {
+			backingStore.set("column_visibility", {
+				ref: true,
+				graph: true,
+				message: true,
+				author: false,
+				date: true,
+				sha: true,
+			});
+
+			const visibility = await getColumnVisibility();
+
+			expect(visibility.diff).toBe(true); // new key defaults visible…
+			expect(visibility.author).toBe(false); // …without clobbering persisted values
+		});
+
+		it("getColumnWidths returns all defaults when nothing is persisted", async () => {
+			const widths = await getColumnWidths();
+			expect(widths.diff).toBe(96);
+			expect(widths.ref).toBe(120);
+		});
+
+		it("round-trips persisted widths including the diff key", async () => {
+			await setColumnWidths({
+				ref: 120,
+				graph: 24,
+				diff: 150,
+				author: 60,
+				date: 40,
+				sha: 50,
+			});
+			expect((await getColumnWidths()).diff).toBe(150);
+		});
+
+		it("round-trips persisted visibility including the diff key", async () => {
+			await setColumnVisibility({
+				ref: true,
+				graph: true,
+				message: true,
+				diff: false,
+				author: true,
+				date: true,
+				sha: true,
+			});
+			expect((await getColumnVisibility()).diff).toBe(false);
 		});
 	});
 });

@@ -237,6 +237,14 @@ export interface WipStats {
 	conflicted: number;
 }
 
+// Diff size for one commit (or the WIP row) — feeds the graph's Diff column
+// bar + number. Mirrors the Rust DiffStat DTO (snake_case).
+export interface DiffStat {
+	insertions: number;
+	deletions: number;
+	files_changed: number;
+}
+
 // Overlay types — global grid coordinate system for SVG overlay (Phase 20+)
 export interface OverlayNode {
 	oid: string;

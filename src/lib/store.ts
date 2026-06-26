@@ -97,6 +97,7 @@ export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
 export interface ColumnWidths {
 	ref: number;
 	graph: number;
+	diff: number;
 	author: number;
 	date: number;
 	sha: number;
@@ -108,13 +109,19 @@ const COLUMN_WIDTHS_KEY = "column_widths";
 const DEFAULT_WIDTHS: ColumnWidths = {
 	ref: 120,
 	graph: 24,
+	diff: 96,
 	author: 60,
 	date: 40,
 	sha: 50,
 };
 
 export async function getColumnWidths(): Promise<ColumnWidths> {
-	return (await store.get<ColumnWidths>(COLUMN_WIDTHS_KEY)) ?? DEFAULT_WIDTHS;
+	// Spread-merge so a key added after a user first persisted their widths
+	// (e.g. `diff`) picks up its default instead of arriving as undefined → NaN.
+	return {
+		...DEFAULT_WIDTHS,
+		...(await store.get<ColumnWidths>(COLUMN_WIDTHS_KEY)),
+	};
 }
 
 export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
@@ -126,6 +133,7 @@ export interface ColumnVisibility {
 	ref: boolean;
 	graph: boolean;
 	message: boolean;
+	diff: boolean;
 	author: boolean;
 	date: boolean;
 	sha: boolean;
@@ -137,16 +145,19 @@ const DEFAULT_VISIBILITY: ColumnVisibility = {
 	ref: true,
 	graph: true,
 	message: true,
+	diff: true,
 	author: true,
 	date: true,
 	sha: true,
 };
 
 export async function getColumnVisibility(): Promise<ColumnVisibility> {
-	return (
-		(await store.get<ColumnVisibility>(COLUMN_VISIBILITY_KEY)) ??
-		DEFAULT_VISIBILITY
-	);
+	// Spread-merge so a key added after a user first persisted their visibility
+	// (e.g. `diff`) defaults to visible instead of arriving as undefined → falsy.
+	return {
+		...DEFAULT_VISIBILITY,
+		...(await store.get<ColumnVisibility>(COLUMN_VISIBILITY_KEY)),
+	};
 }
 
 export async function setColumnVisibility(

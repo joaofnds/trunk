@@ -1,6 +1,7 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
+import { diffBarFractions } from "../lib/diff-stat.js";
 import {
 	COLUMN_PADDING_X,
 	LANE_WIDTH,
@@ -8,7 +9,8 @@ import {
 } from "../lib/graph-constants.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
-import type { GraphCommit, WipStats } from "../lib/types.js";
+import { tooltip } from "../lib/tooltip.js";
+import type { DiffStat, GraphCommit, WipStats } from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
@@ -39,6 +41,9 @@ interface Props {
 	commentCount?: number;
 	/** File-status breakdown for the synthetic WIP row (only set when isWip). */
 	wipStats?: WipStats;
+	/** Diff size for the Diff column. `undefined` = not yet computed (placeholder);
+	 *  a present value with zeros = a real empty/binary commit. */
+	diffStat?: DiffStat;
 }
 
 let {
@@ -58,6 +63,7 @@ let {
 	isPendingBase = false,
 	commentCount = 0,
 	wipStats,
+	diffStat,
 }: Props = $props();
 
 function relativeDate(ts: number): string {
@@ -75,6 +81,19 @@ function relativeDate(ts: number): string {
 const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
 const parsed = $derived(parseSummary(commit.summary));
+
+// Diff column: log-scaled green/red bar fractions + a files-changed tooltip.
+// `diffStat === undefined` renders a placeholder, distinct from a real +0 −0.
+const diffBar = $derived(
+	diffStat
+		? diffBarFractions(diffStat.insertions, diffStat.deletions)
+		: { addFrac: 0, delFrac: 0 },
+);
+const diffTitle = $derived(
+	diffStat
+		? `+${diffStat.insertions} −${diffStat.deletions}, ${diffStat.files_changed} ${diffStat.files_changed === 1 ? "file" : "files"} changed`
+		: "",
+);
 
 // WIP row file-status badges. Letters/colors/titles come from the shared
 // STATUS_BADGES map so they stay in lockstep with FileRow.
@@ -154,21 +173,62 @@ const rowShadow = $derived(
     <CommentBadge count={commentCount} />
   </div>
 
-  <!-- Column 4: Author -->
+  <!-- Column 4: Diff size — log-scaled add/delete bar + counts. Renders for
+       commits, stashes, and the WIP row alike; placeholder while uncomputed. -->
+  {#if columnVisibility.diff}
+    <div
+      data-testid="diff-stat"
+      class="flex-shrink-0 flex items-center overflow-hidden"
+      style="width: {columnWidths.diff}px; padding: 0 {COLUMN_PADDING_X}px;"
+      use:tooltip={diffTitle}
+    >
+      {#if diffStat && (diffBar.addFrac > 0 || diffBar.delFrac > 0)}
+        <!-- The bar is the only mark — no background track. It's sized to the diff
+             magnitude (a fraction of the column), left-aligned, and rounded on
+             BOTH outer ends. Rounding is applied to the painted end segments
+             directly (the first rounds its left, the last its right; a one-sided
+             bar rounds both) rather than via overflow-clip on the container —
+             WebKit/WKWebView doesn't reliably clip a child background to a
+             border-radius, which left the right end square. Green/red split =
+             add/delete; exact +X −Y and files-changed are in the tooltip.
+             Segments split the bar via flex-grow so their ratio matches exactly. -->
+        <div data-testid="diff-stat-bar" class="flex h-1.5 flex-shrink-0" style="width: {(diffBar.addFrac + diffBar.delFrac) * 100}%; min-width: 6px;">
+          {#if diffBar.addFrac > 0}
+            <span data-diff-seg="add" class="h-full {diffBar.delFrac > 0 ? 'rounded-l-full' : 'rounded-full'}" style="flex: {diffBar.addFrac}; min-width: 1px; background: var(--color-diff-add);"></span>
+          {/if}
+          {#if diffBar.delFrac > 0}
+            <span data-diff-seg="delete" class="h-full {diffBar.addFrac > 0 ? 'rounded-r-full' : 'rounded-full'}" style="flex: {diffBar.delFrac}; min-width: 1px; background: var(--color-diff-delete);"></span>
+          {/if}
+        </div>
+      {:else if diffStat && diffStat.files_changed > 0}
+        <!-- Files changed but zero line deltas: binary, pure rename, or mode-only.
+             A neutral marker keeps "something changed" visible instead of a blank
+             gap that reads as "no change". Details are in the tooltip. -->
+        <span data-testid="diff-stat-neutral" class="h-1.5 flex-shrink-0 rounded-full" style="width: 6px; background: var(--color-text-muted);"></span>
+      {:else if diffStat}
+        <!-- Genuinely empty commit (0 files): render nothing — there is no change
+             to convey. Distinct from the uncomputed placeholder below. -->
+      {:else}
+        <span data-testid="diff-stat-placeholder" class="flex-1 text-center text-[11px]" style="color: var(--color-text-muted); opacity: 0.5;">—</span>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Column 5: Author -->
   {#if columnVisibility.author}
     <div class="flex-shrink-0 flex items-center gap-2 text-[12px]" style="width: {columnWidths.author}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}<Avatar name={commit.author_name} /><span class="overflow-hidden text-ellipsis whitespace-nowrap">{commit.author_name}</span>{/if}
     </div>
   {/if}
 
-  <!-- Column 5: Date -->
+  <!-- Column 6: Date -->
   {#if columnVisibility.date}
     <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: {columnWidths.date}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}{relativeDate(commit.author_timestamp)}{/if}
     </div>
   {/if}
 
-  <!-- Column 6: SHA — click to copy the full oid (stops row select on click + keydown) -->
+  <!-- Column 7: SHA — click to copy the full oid (stops row select on click + keydown) -->
   {#if columnVisibility.sha}
     <div class="flex-shrink-0" style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}
