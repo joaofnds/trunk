@@ -1,4 +1,5 @@
 <script lang="ts">
+import { untrack } from "svelte";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { HeadCommitMessage } from "../lib/types.js";
@@ -6,15 +7,25 @@ import type { HeadCommitMessage } from "../lib/types.js";
 interface Props {
 	repoPath: string;
 	stagedCount: number;
+	initialSubject?: string;
+	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
+	onbodychange?: (value: string) => void;
 	clearRedoStack: () => void;
 }
 
-let { repoPath, stagedCount, onsubjectchange, clearRedoStack }: Props =
-	$props();
+let {
+	repoPath,
+	stagedCount,
+	initialSubject,
+	initialBody,
+	onsubjectchange,
+	onbodychange,
+	clearRedoStack,
+}: Props = $props();
 
-let subject = $state("");
-let body = $state("");
+let subject = $state(untrack(() => initialSubject) ?? "");
+let body = $state(untrack(() => initialBody) ?? "");
 let userEdited = $state(false);
 let mode = $state<"commit" | "amend" | "stash">("commit");
 let committing = $state(false);
@@ -134,6 +145,7 @@ async function handleSubmit() {
 		subject = "";
 		onsubjectchange?.("");
 		body = "";
+		onbodychange?.("");
 		userEdited = false;
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
@@ -225,7 +237,7 @@ async function handleSubmit() {
     bind:value={body}
     rows={3}
     placeholder="Description (optional)"
-    oninput={() => { userEdited = true; }}
+    oninput={(e) => { userEdited = true; if (mode !== 'amend') onbodychange?.((e.target as HTMLTextAreaElement).value); }}
     style="
       width: 100%;
       box-sizing: border-box;

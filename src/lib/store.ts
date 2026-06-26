@@ -349,6 +349,42 @@ export async function setDiffWordWrap(wrap: boolean): Promise<void> {
 	await store.save();
 }
 
+// Per-repo WIP commit draft (summary + description). Keyed by absolute repo
+// path; empty drafts are deleted so the map stays bounded.
+export interface CommitDraft {
+	subject: string;
+	body: string;
+}
+
+const COMMIT_DRAFTS_KEY = "commit_drafts";
+
+export async function getCommitDraft(
+	path: string,
+): Promise<CommitDraft | null> {
+	const drafts =
+		(await store.get<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+	return drafts[path] ?? null;
+}
+
+export async function setCommitDraft(
+	path: string,
+	draft: CommitDraft,
+): Promise<void> {
+	const drafts =
+		(await store.get<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+	await store.set(COMMIT_DRAFTS_KEY, { ...drafts, [path]: draft });
+	await store.save();
+}
+
+export async function clearCommitDraft(path: string): Promise<void> {
+	const drafts =
+		(await store.get<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+	if (!(path in drafts)) return;
+	const { [path]: _removed, ...rest } = drafts;
+	await store.set(COMMIT_DRAFTS_KEY, rest);
+	await store.save();
+}
+
 // Periodic background fetch interval. 0 disables. Default 5 min.
 const FETCH_INTERVAL_KEY = "fetch_interval_ms";
 const DEFAULT_FETCH_INTERVAL_MS = 60 * 1000;

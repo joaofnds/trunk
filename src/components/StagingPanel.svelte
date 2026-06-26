@@ -34,7 +34,10 @@ interface Props {
 		path: string,
 		kind: "unstaged" | "staged" | "conflicted",
 	) => void;
+	initialSubject?: string;
+	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
+	onbodychange?: (value: string) => void;
 	onfileresolved?: () => void;
 	onfileadvance?: (
 		path: string,
@@ -62,8 +65,11 @@ interface Props {
 let {
 	repoPath,
 	currentBranch,
+	initialSubject,
+	initialBody,
 	onfileselect,
 	onsubjectchange,
+	onbodychange,
 	onfileresolved,
 	onfileadvance,
 	selectedPath = null,
@@ -1383,6 +1389,6 @@ $effect(() => {
     </div>
   {:else}
     <!-- CommitForm — normal mode -->
-    <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} {onsubjectchange} {clearRedoStack} />
+    <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} {initialSubject} {initialBody} {onsubjectchange} {onbodychange} {clearRedoStack} />
   {/if}
 </div>

@@ -54,6 +54,62 @@ describe("CommitForm", () => {
 		).toBeInTheDocument();
 	});
 
+	describe("draft seeding and lifting", () => {
+		it("seeds inputs from initialSubject and initialBody at mount", () => {
+			render(CommitForm, {
+				props: {
+					...defaultProps,
+					initialSubject: "seeded summary",
+					initialBody: "seeded body",
+				},
+			});
+			expect(
+				(screen.getByTestId("commit-form-subject") as HTMLInputElement).value,
+			).toBe("seeded summary");
+			expect(
+				(
+					screen.getByPlaceholderText(
+						"Description (optional)",
+					) as HTMLTextAreaElement
+				).value,
+			).toBe("seeded body");
+		});
+
+		it("fires onbodychange when the body is typed", async () => {
+			const onbodychange = vi.fn();
+			render(CommitForm, { props: { ...defaultProps, onbodychange } });
+
+			await fireEvent.input(
+				screen.getByPlaceholderText("Description (optional)"),
+				{ target: { value: "new body" } },
+			);
+
+			expect(onbodychange).toHaveBeenCalledWith("new body");
+		});
+
+		it("emits empty subject and body on successful commit", async () => {
+			vi.mocked(safeInvoke).mockReset();
+			vi.mocked(safeInvoke).mockResolvedValue(undefined);
+			const onsubjectchange = vi.fn();
+			const onbodychange = vi.fn();
+			render(CommitForm, {
+				props: { ...defaultProps, onsubjectchange, onbodychange },
+			});
+
+			await fireEvent.input(screen.getByTestId("commit-form-subject"), {
+				target: { value: "real commit" },
+			});
+			await fireEvent.input(
+				screen.getByPlaceholderText("Description (optional)"),
+				{ target: { value: "real body" } },
+			);
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() => expect(onsubjectchange).toHaveBeenLastCalledWith(""));
+			expect(onbodychange).toHaveBeenLastCalledWith("");
+		});
+	});
+
 	describe("summary char counter", () => {
 		function typeSubject(length: number): Promise<boolean> {
 			return fireEvent.input(screen.getByTestId("commit-form-subject"), {

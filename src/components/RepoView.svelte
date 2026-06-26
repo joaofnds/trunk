@@ -12,11 +12,14 @@ import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import {
+	clearCommitDraft,
+	getCommitDraft,
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
 	getDiffShowFullFile,
 	getFetchIntervalMs,
 	getTreeViewEnabled,
+	setCommitDraft,
 	setLeftPaneCollapsed,
 	setLeftPaneWidth,
 	setRightPaneCollapsed,
@@ -217,6 +220,8 @@ let dirtyCounts = $state<DirtyCounts>({
 });
 let headBranch = $state<string | undefined>(undefined);
 let wipSubject = $state("");
+let wipBody = $state("");
+let draftLoaded = $state(false);
 let treeViewEnabled = $state(false);
 
 // Staging file selection (from StagingPanel)
@@ -670,6 +675,38 @@ $effect(() => {
 	});
 });
 
+// Rehydrate the persisted WIP commit draft once, before the first StagingPanel
+// mount. CommitForm seeds its fields from props at init, so the StagingPanel
+// render is gated on `draftLoaded` (below) — mounting before this resolves would
+// seed from "" and never pick up the draft.
+getCommitDraft(untrack(() => repoPath)).then((d) => {
+	if (d) {
+		wipSubject = d.subject;
+		wipBody = d.body;
+	}
+	draftLoaded = true;
+});
+
+// Debounce-persist the draft to disk. Empty drafts clear the entry immediately
+// (no debounce window) so a hard kill right after committing or clearing can't
+// resurface stale text. Guarded on `draftLoaded` so the initial rehydration
+// doesn't trigger a write before the load resolves.
+$effect(() => {
+	const subject = wipSubject;
+	const body = wipBody;
+	if (!draftLoaded) return;
+
+	if (subject.trim() === "" && body.trim() === "") {
+		clearCommitDraft(repoPath);
+		return;
+	}
+
+	const timer = setTimeout(() => {
+		setCommitDraft(repoPath, { subject, body });
+	}, 400);
+	return () => clearTimeout(timer);
+});
+
 // Silent periodic background fetch. Pauses while the window is unfocused;
 // backend swallows auth/rebase/busy cases so errors never surface.
 $effect(() => {
@@ -1088,13 +1125,16 @@ function startRightResize(e: MouseEvent) {
         nav={commitNav}
         onnavigate={navigateToCommit}
       />
-    {:else}
+    {:else if draftLoaded}
       <StagingPanel
         bind:this={stagingPanelRef}
         {repoPath}
         currentBranch={headBranch}
+        initialSubject={wipSubject}
+        initialBody={wipBody}
         onfileselect={handleFileSelect}
         onsubjectchange={(v) => (wipSubject = v)}
+        onbodychange={(v) => (wipBody = v)}
         onfileresolved={handleFileResolved}
         onfileadvance={(path, kind) => {
           if (selectedFile?.path === path && selectedFile?.kind === kind) {

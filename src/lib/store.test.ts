@@ -38,6 +38,9 @@ const {
 	setDiffContentMode,
 	getDiffLayoutMode,
 	setDiffLayoutMode,
+	getCommitDraft,
+	setCommitDraft,
+	clearCommitDraft,
 } = await import("./store.js");
 
 describe("tab types and helpers", () => {
@@ -226,6 +229,54 @@ describe("store", () => {
 			backingStore.set("diff_layout_mode", "inline");
 			expect(await getDiffContentMode()).toBe("full");
 			expect(await getDiffLayoutMode()).toBe("inline");
+		});
+	});
+
+	describe("commit drafts", () => {
+		it("getCommitDraft returns null for an unknown path", async () => {
+			const draft = await getCommitDraft("/unknown");
+			expect(draft).toBeNull();
+		});
+
+		it("setCommitDraft persists and getCommitDraft round-trips it", async () => {
+			await setCommitDraft("/repo", { subject: "summary", body: "details" });
+			const draft = await getCommitDraft("/repo");
+			expect(draft).toEqual({ subject: "summary", body: "details" });
+		});
+
+		it("setCommitDraft keeps drafts for other paths", async () => {
+			await setCommitDraft("/a", { subject: "a-sub", body: "a-body" });
+			await setCommitDraft("/b", { subject: "b-sub", body: "b-body" });
+			expect(await getCommitDraft("/a")).toEqual({
+				subject: "a-sub",
+				body: "a-body",
+			});
+			expect(await getCommitDraft("/b")).toEqual({
+				subject: "b-sub",
+				body: "b-body",
+			});
+		});
+
+		it("clearCommitDraft removes the entry", async () => {
+			await setCommitDraft("/repo", { subject: "summary", body: "details" });
+			await clearCommitDraft("/repo");
+			expect(await getCommitDraft("/repo")).toBeNull();
+		});
+
+		it("clearCommitDraft leaves other entries intact", async () => {
+			await setCommitDraft("/a", { subject: "a-sub", body: "a-body" });
+			await setCommitDraft("/b", { subject: "b-sub", body: "b-body" });
+			await clearCommitDraft("/a");
+			expect(await getCommitDraft("/a")).toBeNull();
+			expect(await getCommitDraft("/b")).toEqual({
+				subject: "b-sub",
+				body: "b-body",
+			});
+		});
+
+		it("clearCommitDraft is a no-op for an unknown path", async () => {
+			await clearCommitDraft("/nope");
+			expect(await getCommitDraft("/nope")).toBeNull();
 		});
 	});
 });
