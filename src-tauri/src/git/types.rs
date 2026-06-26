@@ -74,6 +74,17 @@ pub struct GraphResult {
     pub max_columns: usize,
 }
 
+// Per-commit (or WIP) diff size: insertions/deletions/files for the green-red bar
+// in the graph's Diff column. Write-only DTO (Serialize, no Deserialize) like
+// GraphCommit. Snake_case field names serialize as-is (no rename_all) to match the
+// frontend DiffStat interface.
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct DiffStat {
+    pub insertions: usize,
+    pub deletions: usize,
+    pub files_changed: usize,
+}
+
 #[derive(Debug, Serialize, Clone, PartialEq)]
 pub enum MatchType {
     Sha,

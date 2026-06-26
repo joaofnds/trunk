@@ -7,7 +7,7 @@ pub mod shell_env;
 pub mod state;
 pub mod watcher;
 
-use state::{CommitCache, RepoState, ReviewSessionsState, RunningOp};
+use state::{CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
@@ -123,6 +123,7 @@ pub fn run() {
         })
         .manage(RepoState(Default::default()))
         .manage(CommitCache(Default::default()))
+        .manage(CommitStatsCache(Default::default()))
         .manage(RunningOp(Default::default()))
         .manage(WatcherState(Default::default()))
         .manage(ReviewSessionsState(Default::default()))
@@ -134,6 +135,8 @@ pub fn run() {
             commands::fs::validate_recent_path,
             commands::history::get_commit_graph,
             commands::history::refresh_commit_graph,
+            commands::history::get_commit_stats,
+            commands::history::get_wip_diff_stats,
             commands::history::search_commits,
             commands::branches::list_refs,
             commands::branches::resolve_ref,

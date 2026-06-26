@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
 
-fn is_head_unborn(repo: &git2::Repository) -> bool {
+pub(crate) fn is_head_unborn(repo: &git2::Repository) -> bool {
     match repo.head() {
         Err(e) => e.code() == git2::ErrorCode::UnbornBranch,
         Ok(_) => false,

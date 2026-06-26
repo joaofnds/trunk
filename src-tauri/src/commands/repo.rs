@@ -2,7 +2,9 @@ use crate::error::TrunkError;
 use crate::git::review_store;
 use crate::git::types::ReviewSession;
 use crate::git::{graph, repository};
-use crate::state::{kill_process, CommitCache, RepoState, ReviewSessionsState, RunningOp};
+use crate::state::{
+    kill_process, CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp,
+};
 use crate::watcher::{self, WatcherState};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -93,11 +95,13 @@ pub async fn close_repo(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    stats: State<'_, CommitStatsCache>,
     watcher_state: State<'_, WatcherState>,
     sessions: State<'_, ReviewSessionsState>,
 ) -> Result<(), String> {
     state.0.lock().unwrap().remove(&path);
     cache.0.lock().unwrap().remove(&path);
+    stats.0.lock().unwrap().remove(&path);
     watcher::stop_watcher(&path, &watcher_state);
     drop_in_memory_session(&path, &sessions);
     Ok(())
@@ -108,6 +112,7 @@ pub async fn force_close_repo(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    stats: State<'_, CommitStatsCache>,
     watcher_state: State<'_, WatcherState>,
     running: State<'_, RunningOp>,
     sessions: State<'_, ReviewSessionsState>,
@@ -122,6 +127,7 @@ pub async fn force_close_repo(
     // Then clean up all other state (same as close_repo)
     state.0.lock().unwrap().remove(&path);
     cache.0.lock().unwrap().remove(&path);
+    stats.0.lock().unwrap().remove(&path);
     watcher::stop_watcher(&path, &watcher_state);
     drop_in_memory_session(&path, &sessions);
     Ok(())

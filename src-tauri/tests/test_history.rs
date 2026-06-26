@@ -169,6 +169,238 @@ fn no_match_returns_empty() {
     );
 }
 
+// ── Diff-stat pipeline (Diff column) ──────────────────────────────────────────
+
+#[test]
+fn commit_stat_counts_insertions_and_deletions() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "alpha\nbeta\ngamma\n")
+        .with_commit("init")
+        .with_file("a.txt", "alpha\nBETA\ngamma\ndelta\n")
+        .with_commit("edit")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let stat = ctx.commit_stat(&head_oid).expect("commit_stat failed");
+    assert_eq!(
+        stat.insertions, 2,
+        "BETA replaces beta (+1) and delta added (+1)"
+    );
+    assert_eq!(stat.deletions, 1, "beta removed");
+    assert_eq!(stat.files_changed, 1);
+}
+
+#[test]
+fn commit_stat_root_commit_is_all_insertions() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\n")
+        .with_commit("init")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let stat = ctx.commit_stat(&head_oid).expect("commit_stat failed");
+    assert_eq!(stat.insertions, 3, "root diffs against the empty tree");
+    assert_eq!(stat.deletions, 0);
+    assert_eq!(stat.files_changed, 1);
+}
+
+#[test]
+fn commit_stat_merge_uses_first_parent() {
+    // main advances after the branch point, so a first-parent diff (the only
+    // correct one) differs from a combined or second-parent diff.
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "main1\n")
+        .with_commit("init main")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("b.txt", "feature1\n")
+        .with_commit("feature work")
+        .checkout("main")
+        .with_file("a.txt", "main1\nmain2\n")
+        .with_commit("advance main")
+        .merge("feature")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    // First parent is the main tip; merge tree only adds b.txt relative to it.
+    let stat = ctx.commit_stat(&head_oid).expect("commit_stat failed");
+    assert_eq!(stat.insertions, 1, "only b.txt added vs first parent");
+    assert_eq!(stat.deletions, 0);
+    assert_eq!(stat.files_changed, 1, "a.txt unchanged vs first parent");
+}
+
+#[test]
+fn commit_stat_detects_rename_as_zero_lines() {
+    let ctx = TestContext::builder()
+        .with_file("old.txt", "l1\nl2\nl3\nl4\nl5\n")
+        .with_commit("add old")
+        .build();
+
+    // A pure rename: same content, new path. find_similar must collapse it to 0/0.
+    let rename_oid = {
+        let repo = ctx.repo();
+        let sig = repo.signature().unwrap();
+        std::fs::rename(
+            ctx.repo_path().join("old.txt"),
+            ctx.repo_path().join("new.txt"),
+        )
+        .unwrap();
+        let mut index = repo.index().unwrap();
+        index.remove_path(std::path::Path::new("old.txt")).unwrap();
+        index.add_path(std::path::Path::new("new.txt")).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "rename old to new",
+            &tree,
+            &[&parent],
+        )
+        .unwrap()
+        .to_string()
+    };
+
+    let stat = ctx.commit_stat(&rename_oid).expect("commit_stat failed");
+    assert_eq!(stat.insertions, 0, "pure rename has no line changes");
+    assert_eq!(stat.deletions, 0, "pure rename has no line changes");
+    assert_eq!(stat.files_changed, 1, "the renamed file still counts");
+}
+
+#[test]
+fn commit_stat_binary_file_has_zero_lines_but_counts_file() {
+    let binary: Vec<u8> = (0u8..=255).collect();
+    let ctx = TestContext::builder()
+        .with_file("readme.txt", "hello\n")
+        .with_commit("init")
+        .with_binary_file("blob.bin", &binary)
+        .with_commit("add binary")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let stat = ctx.commit_stat(&head_oid).expect("commit_stat failed");
+    assert_eq!(stat.insertions, 0, "binary contributes no line count");
+    assert_eq!(stat.deletions, 0, "binary contributes no line count");
+    assert!(
+        stat.files_changed >= 1,
+        "binary file still counts as changed"
+    );
+}
+
+#[test]
+fn commit_stats_batch_skips_bad_oids() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\n")
+        .with_commit("init")
+        .build();
+
+    let repo = ctx.repo();
+    let good_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    // A well-formed but nonexistent oid must not poison the batch.
+    let bad_oid = "0".repeat(40);
+    let oids = vec![good_oid.clone(), bad_oid.clone()];
+
+    let stats = ctx.commit_stats_batch(&oids);
+    assert!(stats.contains_key(&good_oid), "good oid computed");
+    assert!(
+        !stats.contains_key(&bad_oid),
+        "bad oid skipped, batch survives"
+    );
+    assert_eq!(stats.len(), 1);
+}
+
+#[test]
+fn wip_diff_stats_combines_staged_unstaged_and_untracked() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a1\na2\na3\n")
+        .with_commit("init a")
+        .with_file("b.txt", "b1\nb2\nb3\n")
+        .with_commit("init b")
+        .build();
+
+    // Staged: +1 line on a.txt (HEAD→index).
+    std::fs::write(ctx.repo_path().join("a.txt"), "a1\na2\na3\na4\n").unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("a.txt")).unwrap();
+        index.write().unwrap();
+    }
+    // Unstaged: 1 del + 1 add on b.txt (index→workdir).
+    std::fs::write(ctx.repo_path().join("b.txt"), "b1\nCHANGED\nb3\n").unwrap();
+    // Untracked: +2 insertions.
+    std::fs::write(ctx.repo_path().join("new.txt"), "n1\nn2\n").unwrap();
+
+    let stat = ctx.wip_diff_stats().expect("wip_diff_stats failed");
+    assert_eq!(stat.insertions, 4, "a4 (+1) + b CHANGED (+1) + 2 untracked");
+    assert_eq!(stat.deletions, 1, "b2 removed");
+    assert_eq!(stat.files_changed, 3, "a.txt staged + b.txt + new.txt");
+}
+
+#[test]
+fn wip_diff_stats_dedups_a_file_changed_both_staged_and_unstaged() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "l1\nl2\nl3\n")
+        .with_commit("init")
+        .build();
+
+    // Stage a change to a.txt (HEAD→index).
+    std::fs::write(ctx.repo_path().join("a.txt"), "l1\nl2\nl3\nSTAGED\n").unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("a.txt")).unwrap();
+        index.write().unwrap();
+    }
+    // Modify the SAME file again in the workdir (index→workdir). It now appears in
+    // both the staged and unstaged diffs.
+    std::fs::write(
+        ctx.repo_path().join("a.txt"),
+        "l1\nl2\nl3\nSTAGED\nUNSTAGED\n",
+    )
+    .unwrap();
+
+    let stat = ctx.wip_diff_stats().expect("wip_diff_stats failed");
+    assert_eq!(
+        stat.files_changed, 1,
+        "one dirty file, even though it is both staged and unstaged"
+    );
+}
+
+#[test]
+fn wip_diff_stats_counts_untracked_as_insertions() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a\n")
+        .with_commit("init")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("fresh.txt"), "x\ny\nz\n").unwrap();
+
+    let stat = ctx.wip_diff_stats().expect("wip_diff_stats failed");
+    assert_eq!(
+        stat.insertions, 3,
+        "untracked file lines count as insertions"
+    );
+    assert_eq!(stat.deletions, 0);
+    assert_eq!(stat.files_changed, 1);
+}
+
 #[test]
 fn results_in_graph_order() {
     let ctx = build_search_ctx();

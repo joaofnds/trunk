@@ -1,11 +1,12 @@
 use crate::error::TrunkError;
 use crate::git::{
     graph,
-    types::{GraphCommit, GraphResult, MatchType, SearchResult},
+    types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
 };
-use crate::state::{CommitCache, RepoState};
+use crate::state::{CommitCache, CommitStatsCache, RepoState};
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tauri::State;
 
 #[derive(Debug, Serialize, Clone)]
@@ -64,6 +65,191 @@ pub async fn refresh_commit_graph(
     cache.0.lock().unwrap().insert(path, graph_result);
 
     Ok(response)
+}
+
+/// Diff-stat (insertions/deletions/files_changed) for one commit against its
+/// first parent — or the empty tree for the root commit. Renames are collapsed
+/// via `find_similar` so a pure move reports 0/0. Uses the cheap `Diff::stats()`
+/// path, never the line-walking enrichment in `walk_diff`.
+fn commit_stat_from_repo(repo: &git2::Repository, oid: git2::Oid) -> Result<DiffStat, TrunkError> {
+    let commit = repo.find_commit(oid)?;
+    let commit_tree = commit.tree()?;
+    let mut diff = if commit.parent_count() == 0 {
+        repo.diff_tree_to_tree(None, Some(&commit_tree), None)?
+    } else {
+        let parent_tree = commit.parent(0)?.tree()?;
+        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), None)?
+    };
+    diff.find_similar(None)?;
+    let stats = diff.stats()?;
+    Ok(DiffStat {
+        insertions: stats.insertions(),
+        deletions: stats.deletions(),
+        files_changed: stats.files_changed(),
+    })
+}
+
+/// Single-commit diff-stat by oid string. Opens the repo once.
+pub fn commit_stat_inner(
+    path: &str,
+    oid: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<DiffStat, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let oid =
+        git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
+    commit_stat_from_repo(&repo, oid)
+}
+
+/// Compute diff-stats for a batch of oids against a single repo handle. A per-oid
+/// failure (malformed/missing oid, unreadable tree) inserts no entry and is
+/// skipped — one bad commit must never fail the whole page.
+pub fn compute_commit_stats_batch(
+    path: &str,
+    oids: &[String],
+    state_map: &HashMap<String, PathBuf>,
+) -> HashMap<String, DiffStat> {
+    let Ok(repo) = crate::commands::open_repo_from_state(path, state_map) else {
+        return HashMap::new();
+    };
+    let mut out = HashMap::with_capacity(oids.len());
+    for oid_str in oids {
+        let Ok(oid) = git2::Oid::from_str(oid_str) else {
+            continue;
+        };
+        if let Ok(stat) = commit_stat_from_repo(&repo, oid) {
+            out.insert(oid_str.clone(), stat);
+        }
+    }
+    out
+}
+
+/// Combined working-state diff-stat: staged (HEAD→index) plus unstaged
+/// (index→workdir, untracked files counted as insertions). Renames collapsed on
+/// each side. Never cached — the working tree changes constantly.
+///
+/// `files_changed` counts *distinct* paths across both diffs — a file that is
+/// both staged and unstaged-modified (`MM` in `git status`) is one changed file,
+/// not two — so the count matches the WIP row's `repo.statuses()` badges.
+pub fn wip_diff_stats_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<DiffStat, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+
+    let mut staged = if crate::commands::diff::is_head_unborn(&repo) {
+        repo.diff_tree_to_index(None, None, None)?
+    } else {
+        let head_tree = repo.head()?.peel_to_tree()?;
+        repo.diff_tree_to_index(Some(&head_tree), None, None)?
+    };
+    staged.find_similar(None)?;
+
+    let mut unstaged_opts = git2::DiffOptions::new();
+    unstaged_opts.include_untracked(true);
+    unstaged_opts.recurse_untracked_dirs(true);
+    unstaged_opts.show_untracked_content(true);
+    let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut unstaged_opts))?;
+    unstaged.find_similar(None)?;
+
+    let mut changed_paths = std::collections::HashSet::new();
+    for delta in staged.deltas().chain(unstaged.deltas()) {
+        if let Some(p) = delta.new_file().path().or_else(|| delta.old_file().path()) {
+            changed_paths.insert(p.to_path_buf());
+        }
+    }
+
+    let staged_stats = staged.stats()?;
+    let unstaged_stats = unstaged.stats()?;
+
+    Ok(DiffStat {
+        insertions: staged_stats.insertions() + unstaged_stats.insertions(),
+        deletions: staged_stats.deletions() + unstaged_stats.deletions(),
+        files_changed: changed_paths.len(),
+    })
+}
+
+/// Lazy per-page diff-stats for the graph's Diff column. Reads the cached graph
+/// to resolve the page's oids, returns already-cached stats immediately, and
+/// computes only the uncached ones on a blocking thread — caching them
+/// immutably (a commit's diff never changes). Gated on the column being visible
+/// by the caller, so a hidden column does zero work.
+#[tauri::command]
+pub async fn get_commit_stats(
+    path: String,
+    offset: usize,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    stats: State<'_, CommitStatsCache>,
+) -> Result<HashMap<String, DiffStat>, String> {
+    // Resolve the page's oids from the topology cache (lock dropped immediately).
+    let page_oids: Vec<String> = {
+        let lock = cache.0.lock().unwrap();
+        let graph_result = lock
+            .get(&path)
+            .ok_or_else(|| TrunkError::new("repo_not_open", "Repository not open").to_json())?;
+        let len = graph_result.commits.len();
+        let start = offset.min(len);
+        let end = (offset + 200).min(len);
+        graph_result.commits[start..end]
+            .iter()
+            .map(|c| c.oid.clone())
+            .collect()
+    };
+
+    // Partition into already-cached (return verbatim) and uncached (compute).
+    let (uncached, mut result): (Vec<String>, HashMap<String, DiffStat>) = {
+        let lock = stats.0.lock().unwrap();
+        let existing = lock.get(&path);
+        let mut uncached = Vec::new();
+        let mut result = HashMap::new();
+        for oid in page_oids {
+            match existing.and_then(|m| m.get(&oid)) {
+                Some(stat) => {
+                    result.insert(oid, stat.clone());
+                }
+                None => uncached.push(oid),
+            }
+        }
+        (uncached, result)
+    };
+
+    if uncached.is_empty() {
+        return Ok(result);
+    }
+
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+    let computed = tauri::async_runtime::spawn_blocking(move || {
+        compute_commit_stats_batch(&path_clone, &uncached, &state_map)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
+
+    // Merge the newly computed stats into the immutable per-oid cache.
+    {
+        let mut lock = stats.0.lock().unwrap();
+        let entry = lock.entry(path).or_default();
+        for (oid, stat) in &computed {
+            entry.insert(oid.clone(), stat.clone());
+        }
+    }
+    result.extend(computed);
+    Ok(result)
+}
+
+/// Uncached diff-stat for the synthetic WIP row. Recomputed on every refresh,
+/// gated on column visibility by the caller.
+#[tauri::command]
+pub async fn get_wip_diff_stats(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<DiffStat, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || wip_diff_stats_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
 }
 
 pub fn search_commits_inner(

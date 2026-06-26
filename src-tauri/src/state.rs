@@ -31,6 +31,15 @@ pub fn kill_process(pid: u32) {
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
 pub struct CommitCache(pub Mutex<HashMap<String, crate::git::types::GraphResult>>);
 
+// Lazy per-commit diff-stats for the graph's Diff column.
+// Outer key: repo path · inner key: commit oid · value: immutable per-oid stat.
+// A commit's diff never changes, so entries are never invalidated — only cleared
+// wholesale on close_repo. Populated lazily by get_commit_stats, gated on the
+// column being visible.
+pub struct CommitStatsCache(
+    pub Mutex<HashMap<String, HashMap<String, crate::git::types::DiffStat>>>,
+);
+
 // In-memory cache of the active review session per open repo.
 // Keyed by CANONICAL PathBuf (D-11) — the ONE place keying diverges from the
 // raw-String maps above, so a repo opened via a symlink or alias resumes the
