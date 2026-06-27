@@ -27,6 +27,7 @@ let {
 let subject = $state(untrack(() => initialSubject) ?? "");
 let body = $state(untrack(() => initialBody) ?? "");
 let userEdited = $state(false);
+let prefilledFromHead = $state(false);
 let mode = $state<"commit" | "amend" | "stash">("commit");
 let committing = $state(false);
 let subjectError = $state("");
@@ -77,6 +78,7 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 			);
 			subject = msg.subject;
 			body = msg.body ?? "";
+			prefilledFromHead = true;
 		} catch (e) {
 			console.error("Failed to get HEAD commit message:", e);
 		}
@@ -84,16 +86,19 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 	}
 
 	if (leavingAmend) {
-		if (userEdited) {
-			// Edited amend text is kept; resync the WIP label, which was gated
-			// off while in amend mode.
-			onsubjectchange?.(subject);
-		} else {
-			// Discard the injected prev-commit message we prefilled.
+		if (prefilledFromHead && !userEdited) {
+			// Discard the prev-commit message we injected and never edited.
 			subject = "";
 			body = "";
 			onsubjectchange?.("");
+			onbodychange?.("");
+		} else {
+			// Keep the current text (a real draft, or edited amend text) and
+			// resync both WIP labels, which were gated off while in amend mode.
+			onsubjectchange?.(subject);
+			onbodychange?.(body);
 		}
+		prefilledFromHead = false;
 		return;
 	}
 
@@ -147,6 +152,7 @@ async function handleSubmit() {
 		body = "";
 		onbodychange?.("");
 		userEdited = false;
+		prefilledFromHead = false;
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
 		const err = e as { message?: string };

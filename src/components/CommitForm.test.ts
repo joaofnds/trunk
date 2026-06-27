@@ -275,5 +275,27 @@ describe("CommitForm", () => {
 				"Commit",
 			);
 		});
+
+		it("keeps a seeded draft when leaving amend untouched", async () => {
+			render(CommitForm, {
+				props: {
+					...defaultProps,
+					initialSubject: "seeded summary",
+					initialBody: "seeded body",
+				},
+			});
+
+			await fireEvent.click(tab("Amend"));
+			expect(subjectInput().value).toBe("seeded summary");
+			expect(bodyTextarea().value).toBe("seeded body");
+			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
+				"get_head_commit_message",
+				expect.anything(),
+			);
+
+			await fireEvent.click(tab("Commit"));
+			expect(subjectInput().value).toBe("seeded summary");
+			expect(bodyTextarea().value).toBe("seeded body");
+		});
 	});
 });
