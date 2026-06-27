@@ -92,6 +92,7 @@ $effect(() => {
 async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 	if (newMode === mode) return;
 	mode = newMode;
+	subjectError = "";
 
 	// Entering amend with an empty amend buffer: seed it from HEAD. A non-empty
 	// buffer holds kept amend edits — leave them alone. The draft is never read

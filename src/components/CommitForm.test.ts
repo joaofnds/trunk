@@ -415,5 +415,129 @@ describe("CommitForm", () => {
 				.mock.calls.filter((c) => c[0] === "get_head_commit_message");
 			expect(headCalls).toHaveLength(1);
 		});
+
+		it("clears a stale subject-required error when switching mode", async () => {
+			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+			expect(screen.getByText("Subject is required")).toBeInTheDocument();
+
+			await fireEvent.click(tab("Amend"));
+			expect(screen.queryByText("Subject is required")).not.toBeInTheDocument();
+		});
+
+		it("drives the subject counter off the amend message while amending", async () => {
+			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.click(tab("Amend"));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+
+			await fireEvent.input(subjectInput(), {
+				target: { value: "a".repeat(60) },
+			});
+			let counter = screen.getByTestId("subject-counter");
+			expect(counter).toHaveTextContent("60/72");
+			expect(counter).toHaveAttribute("data-over", "false");
+
+			await fireEvent.input(subjectInput(), {
+				target: { value: "a".repeat(73) },
+			});
+			counter = screen.getByTestId("subject-counter");
+			expect(counter).toHaveTextContent("73/72");
+			expect(counter).toHaveAttribute("data-over", "true");
+		});
+
+		it("keeps the shared draft when switching between commit and stash", async () => {
+			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
+
+			await fireEvent.click(tab("Stash"));
+			expect(subjectInput().value).toBe("wip draft");
+			expect(bodyTextarea().value).toBe("wip body");
+
+			await fireEvent.click(tab("Commit"));
+			expect(subjectInput().value).toBe("wip draft");
+			expect(bodyTextarea().value).toBe("wip body");
+		});
+
+		it("clears the draft on a successful stash", async () => {
+			const onsubjectchange = vi.fn();
+			const onbodychange = vi.fn();
+			render(CommitForm, {
+				props: { ...defaultProps, onsubjectchange, onbodychange },
+			});
+
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
+
+			await fireEvent.click(tab("Stash"));
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
+					"stash_save",
+					expect.anything(),
+				),
+			);
+			expect(onsubjectchange).toHaveBeenLastCalledWith("");
+			expect(onbodychange).toHaveBeenLastCalledWith("");
+			expect(subjectInput().value).toBe("");
+			expect(bodyTextarea().value).toBe("");
+		});
+
+		it("keeps body text typed during an in-flight HEAD fetch over the stale prefill", async () => {
+			let resolveHead: (msg: { subject: string; body: string }) => void =
+				() => {};
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd === "get_head_commit_message") {
+					return new Promise((resolve) => {
+						resolveHead = resolve;
+					});
+				}
+				return Promise.resolve(undefined);
+			});
+			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.click(tab("Amend"));
+			await fireEvent.input(bodyTextarea(), {
+				target: { value: "typed body" },
+			});
+
+			resolveHead({ subject: "Prev subject", body: "Prev body" });
+			await waitFor(() => expect(bodyTextarea().value).toBe("typed body"));
+			expect(subjectInput().value).toBe("");
+		});
+
+		it("preserves the draft when a commit submit fails", async () => {
+			const onsubjectchange = vi.fn();
+			const onbodychange = vi.fn();
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd === "create_commit") {
+					return Promise.reject(new Error("commit failed"));
+				}
+				return Promise.resolve(undefined);
+			});
+			render(CommitForm, {
+				props: { ...defaultProps, onsubjectchange, onbodychange },
+			});
+
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
+
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
+					"create_commit",
+					expect.anything(),
+				),
+			);
+			expect(onsubjectchange).not.toHaveBeenCalledWith("");
+			expect(onbodychange).not.toHaveBeenCalledWith("");
+			expect(subjectInput().value).toBe("wip draft");
+			expect(bodyTextarea().value).toBe("wip body");
+		});
 	});
 });
