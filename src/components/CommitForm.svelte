@@ -24,17 +24,51 @@ let {
 	clearRedoStack,
 }: Props = $props();
 
-let subject = $state(untrack(() => initialSubject) ?? "");
-let body = $state(untrack(() => initialBody) ?? "");
-let userEdited = $state(false);
-let prefilledFromHead = $state(false);
+let draftSubject = $state(untrack(() => initialSubject) ?? "");
+let draftBody = $state(untrack(() => initialBody) ?? "");
+let amendSubject = $state("");
+let amendBody = $state("");
 let mode = $state<"commit" | "amend" | "stash">("commit");
 let committing = $state(false);
 let subjectError = $state("");
 let stagedError = $state("");
 
-let counterVisible = $derived(subject.length >= 60);
-let subjectOverLimit = $derived(subject.length > 72);
+function getSubject() {
+	return mode === "amend" ? amendSubject : draftSubject;
+}
+
+function setSubject(value: string) {
+	if (subjectError) subjectError = "";
+	if (mode === "amend") {
+		amendSubject = value;
+	} else {
+		draftSubject = value;
+		onsubjectchange?.(value);
+	}
+}
+
+function getBody() {
+	return mode === "amend" ? amendBody : draftBody;
+}
+
+function setBody(value: string) {
+	if (mode === "amend") {
+		amendBody = value;
+	} else {
+		draftBody = value;
+		onbodychange?.(value);
+	}
+}
+
+function clearDraft() {
+	draftSubject = "";
+	onsubjectchange?.("");
+	draftBody = "";
+	onbodychange?.("");
+}
+
+let counterVisible = $derived(getSubject().length >= 60);
+let subjectOverLimit = $derived(getSubject().length > 72);
 
 let buttonLabel = $derived.by(() => {
 	if (committing) {
@@ -57,18 +91,12 @@ $effect(() => {
 
 async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 	if (newMode === mode) return;
-	const leavingAmend = mode === "amend";
 	mode = newMode;
 
-	if (newMode === "amend") {
-		// A non-empty draft must survive a misclick onto Amend — never overwrite
-		// typed text with the previous commit message. An empty field has no
-		// draft to protect, so prefill even if it was typed-then-cleared.
-		const hasDraft = subject.trim() !== "" || body.trim() !== "";
-		if (hasDraft) return;
-		// The prefill we inject is not user-authored, so leaving amend later
-		// clears it (programmatic assignment doesn't fire input).
-		userEdited = false;
+	// Entering amend with an empty amend buffer: seed it from HEAD. A non-empty
+	// buffer holds kept amend edits — leave them alone. The draft is never read
+	// or written here, so it survives untouched.
+	if (newMode === "amend" && amendSubject === "" && amendBody === "") {
 		try {
 			const msg = await safeInvoke<HeadCommitMessage>(
 				"get_head_commit_message",
@@ -76,38 +104,24 @@ async function handleModeSwitch(newMode: "commit" | "amend" | "stash") {
 					path: repoPath,
 				},
 			);
-			subject = msg.subject;
-			body = msg.body ?? "";
-			prefilledFromHead = true;
+			// Guard the stale prefill: only apply if we're still in amend with an
+			// untouched buffer. Leaving amend or typing during the fetch invalidates it.
+			if (mode === "amend" && amendSubject === "" && amendBody === "") {
+				amendSubject = msg.subject;
+				amendBody = msg.body ?? "";
+			}
 		} catch (e) {
 			console.error("Failed to get HEAD commit message:", e);
 		}
-		return;
 	}
-
-	if (leavingAmend) {
-		if (prefilledFromHead && !userEdited) {
-			// Discard the prev-commit message we injected and never edited.
-			subject = "";
-			body = "";
-			onsubjectchange?.("");
-			onbodychange?.("");
-		} else {
-			// Keep the current text (a real draft, or edited amend text) and
-			// resync both WIP labels, which were gated off while in amend mode.
-			onsubjectchange?.(subject);
-			onbodychange?.(body);
-		}
-		prefilledFromHead = false;
-		return;
-	}
-
-	// commit <-> stash: shared draft, keep current values.
 }
 
 async function handleSubmit() {
 	subjectError = "";
 	stagedError = "";
+
+	const subject = mode === "amend" ? amendSubject : draftSubject;
+	const body = mode === "amend" ? amendBody : draftBody;
 
 	// Stash mode: subject is optional (stash name). Commit/amend: subject required.
 	if (mode !== "stash" && !subject.trim()) {
@@ -134,25 +148,26 @@ async function handleSubmit() {
 				subject: subject.trim(),
 				body: body.trim() || null,
 			});
+			// Amend never touches the WIP draft: clear only the amend buffer so the
+			// next amend re-fetches fresh HEAD, and leave the draft (and its parent
+			// callbacks) alone.
+			amendSubject = "";
+			amendBody = "";
 		} else if (mode === "stash") {
 			await safeInvoke("stash_save", {
 				path: repoPath,
 				message: subject.trim(),
 			});
 			showToast("Stash created", "success");
+			clearDraft();
 		} else {
 			await safeInvoke("create_commit", {
 				path: repoPath,
 				subject: subject.trim(),
 				body: body.trim() || null,
 			});
+			clearDraft();
 		}
-		subject = "";
-		onsubjectchange?.("");
-		body = "";
-		onbodychange?.("");
-		userEdited = false;
-		prefilledFromHead = false;
 		mode = "commit"; // Always reset to commit mode after any successful operation
 	} catch (e) {
 		const err = e as { message?: string };
@@ -203,9 +218,8 @@ async function handleSubmit() {
     <input
       data-testid="commit-form-subject"
       type="text"
-      bind:value={subject}
+      bind:value={getSubject, setSubject}
       placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
-      oninput={(e) => { userEdited = true; if (subjectError) subjectError = ''; if (mode !== 'amend') onsubjectchange?.((e.target as HTMLInputElement).value); }}
       style="
         width: 100%;
         box-sizing: border-box;
@@ -231,7 +245,7 @@ async function handleSubmit() {
           font-size: 10.5px;
           color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--fg-3)'};
         "
-      >{subject.length}/72</span>
+      >{getSubject().length}/72</span>
     {/if}
   </div>
   {#if subjectError}
@@ -240,10 +254,9 @@ async function handleSubmit() {
 
   <!-- Body field -->
   <textarea
-    bind:value={body}
+    bind:value={getBody, setBody}
     rows={3}
     placeholder="Description (optional)"
-    oninput={(e) => { userEdited = true; if (mode !== 'amend') onbodychange?.((e.target as HTMLTextAreaElement).value); }}
     style="
       width: 100%;
       box-sizing: border-box;

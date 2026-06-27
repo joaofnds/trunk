@@ -205,7 +205,7 @@ describe("CommitForm", () => {
 			expect(bodyTextarea().value).toBe("");
 		});
 
-		it("keeps a typed draft and does not fetch HEAD when switching to amend", async () => {
+		it("fetches HEAD into the amend field with a draft present, and restores the draft on return", async () => {
 			render(CommitForm, { props: defaultProps });
 
 			await fireEvent.input(subjectInput(), {
@@ -213,11 +213,14 @@ describe("CommitForm", () => {
 			});
 			await fireEvent.click(tab("Amend"));
 
-			expect(subjectInput().value).toBe("wip draft");
-			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
 				"get_head_commit_message",
 				expect.anything(),
 			);
+
+			await fireEvent.click(tab("Commit"));
+			expect(subjectInput().value).toBe("wip draft");
 		});
 
 		it("prefills from HEAD when a draft was typed then cleared back to empty", async () => {
@@ -247,8 +250,12 @@ describe("CommitForm", () => {
 			expect(bodyTextarea().value).toBe("");
 		});
 
-		it("keeps edited values when leaving amend after editing", async () => {
+		it("shows the WIP draft when leaving amend after editing", async () => {
 			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.input(subjectInput(), {
+				target: { value: "wip draft" },
+			});
 
 			await fireEvent.click(tab("Amend"));
 			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
@@ -258,7 +265,7 @@ describe("CommitForm", () => {
 			});
 			await fireEvent.click(tab("Commit"));
 
-			expect(subjectInput().value).toBe("edited subject");
+			expect(subjectInput().value).toBe("wip draft");
 		});
 
 		it("resets fields and mode after a successful commit", async () => {
@@ -276,7 +283,7 @@ describe("CommitForm", () => {
 			);
 		});
 
-		it("keeps a seeded draft when leaving amend untouched", async () => {
+		it("shows HEAD in the amend field, then the seeded draft on returning to commit", async () => {
 			render(CommitForm, {
 				props: {
 					...defaultProps,
@@ -286,16 +293,127 @@ describe("CommitForm", () => {
 			});
 
 			await fireEvent.click(tab("Amend"));
-			expect(subjectInput().value).toBe("seeded summary");
-			expect(bodyTextarea().value).toBe("seeded body");
-			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
-				"get_head_commit_message",
-				expect.anything(),
-			);
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+			expect(bodyTextarea().value).toBe("Prev body");
 
 			await fireEvent.click(tab("Commit"));
 			expect(subjectInput().value).toBe("seeded summary");
 			expect(bodyTextarea().value).toBe("seeded body");
+		});
+
+		it("never lifts amend edits to the parent draft callbacks", async () => {
+			const onsubjectchange = vi.fn();
+			const onbodychange = vi.fn();
+			render(CommitForm, {
+				props: { ...defaultProps, onsubjectchange, onbodychange },
+			});
+
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
+
+			await fireEvent.click(tab("Amend"));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+
+			await fireEvent.input(subjectInput(), {
+				target: { value: "amend subject" },
+			});
+			await fireEvent.input(bodyTextarea(), {
+				target: { value: "amend body" },
+			});
+			await fireEvent.click(tab("Commit"));
+
+			expect(onsubjectchange).not.toHaveBeenCalledWith("amend subject");
+			expect(onbodychange).not.toHaveBeenCalledWith("amend body");
+			expect(onsubjectchange).toHaveBeenLastCalledWith("wip draft");
+			expect(onbodychange).toHaveBeenLastCalledWith("wip body");
+		});
+
+		it("does not lift an edited HEAD prefill when leaving amend with an empty draft", async () => {
+			const onsubjectchange = vi.fn();
+			const onbodychange = vi.fn();
+			render(CommitForm, {
+				props: { ...defaultProps, onsubjectchange, onbodychange },
+			});
+
+			await fireEvent.click(tab("Amend"));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+
+			await fireEvent.input(bodyTextarea(), {
+				target: { value: "stray edit" },
+			});
+			await fireEvent.click(tab("Commit"));
+
+			expect(onsubjectchange).not.toHaveBeenCalledWith("Prev subject");
+			expect(onbodychange).not.toHaveBeenCalledWith("stray edit");
+			expect(subjectInput().value).toBe("");
+			expect(bodyTextarea().value).toBe("");
+		});
+
+		it("preserves the WIP draft through a successful amend", async () => {
+			const onsubjectchange = vi.fn();
+			const onbodychange = vi.fn();
+			render(CommitForm, {
+				props: { ...defaultProps, onsubjectchange, onbodychange },
+			});
+
+			await fireEvent.input(subjectInput(), { target: { value: "wip draft" } });
+			await fireEvent.input(bodyTextarea(), { target: { value: "wip body" } });
+
+			await fireEvent.click(tab("Amend"));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+			await fireEvent.click(screen.getByTestId("commit-form-submit"));
+
+			await waitFor(() =>
+				expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith(
+					"amend_commit",
+					expect.anything(),
+				),
+			);
+			expect(onsubjectchange).not.toHaveBeenCalledWith("");
+			expect(onbodychange).not.toHaveBeenCalledWith("");
+			expect(subjectInput().value).toBe("wip draft");
+			expect(bodyTextarea().value).toBe("wip body");
+		});
+
+		it("keeps text typed during an in-flight HEAD fetch over the stale prefill", async () => {
+			let resolveHead: (msg: { subject: string; body: string }) => void =
+				() => {};
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+				if (cmd === "get_head_commit_message") {
+					return new Promise((resolve) => {
+						resolveHead = resolve;
+					});
+				}
+				return Promise.resolve(undefined);
+			});
+			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.click(tab("Amend"));
+			await fireEvent.input(subjectInput(), {
+				target: { value: "typed fast" },
+			});
+
+			resolveHead({ subject: "Prev subject", body: "Prev body" });
+			await waitFor(() => expect(subjectInput().value).toBe("typed fast"));
+		});
+
+		it("keeps amend edits in memory and does not re-fetch HEAD on re-entry", async () => {
+			render(CommitForm, { props: defaultProps });
+
+			await fireEvent.click(tab("Amend"));
+			await waitFor(() => expect(subjectInput().value).toBe("Prev subject"));
+
+			await fireEvent.input(subjectInput(), {
+				target: { value: "edited subject" },
+			});
+			await fireEvent.click(tab("Commit"));
+			await fireEvent.click(tab("Amend"));
+
+			expect(subjectInput().value).toBe("edited subject");
+			const headCalls = vi
+				.mocked(safeInvoke)
+				.mock.calls.filter((c) => c[0] === "get_head_commit_message");
+			expect(headCalls).toHaveLength(1);
 		});
 	});
 });
