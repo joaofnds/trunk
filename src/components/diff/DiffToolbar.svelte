@@ -27,6 +27,7 @@ interface Props {
 	onwordwrapchange: (value: boolean) => void;
 	onstagefile: () => void;
 	onunstagefile: () => void;
+	ondiscardfile: () => void;
 	oncommentfile: () => void;
 	onclose: () => void;
 }
@@ -48,6 +49,7 @@ let {
 	onwordwrapchange,
 	onstagefile,
 	onunstagefile,
+	ondiscardfile,
 	oncommentfile,
 	onclose,
 }: Props = $props();
@@ -124,6 +126,17 @@ let {
 
   {#if diffKind === 'unstaged'}
     <button
+      class="action-btn discard-btn"
+      disabled={hunkOperationInFlight}
+      style="
+        cursor: {hunkOperationInFlight ? 'not-allowed' : 'pointer'};
+        opacity: {hunkOperationInFlight ? 0.4 : 1};
+      "
+      onclick={ondiscardfile}
+    >
+      Discard File
+    </button>
+    <button
       class="action-btn stage-btn"
       disabled={hunkOperationInFlight || ignoreWhitespace}
       title={ignoreWhitespace ? "Staging is disabled while whitespace changes are ignored" : undefined}
@@ -191,6 +204,12 @@ let {
     background: var(--color-success-bg);
     border: 1px solid var(--color-success-border);
     color: var(--color-success);
+  }
+
+  .discard-btn {
+    background: var(--color-danger-bg);
+    border: 1px solid var(--color-danger-border);
+    color: var(--color-danger);
   }
 
   .comment-btn {

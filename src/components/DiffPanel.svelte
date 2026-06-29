@@ -517,6 +517,37 @@ async function handleUnstageFile() {
 	onfileemptied?.(path, "unstage");
 }
 
+async function handleDiscardFile() {
+	if (!selectedPath || hunkOperationInFlight) return;
+	const path = selectedPath;
+	const isUntracked =
+		fileDiffs.find((f) => f.path === path)?.status === "Untracked";
+	const { ask } = await import("@tauri-apps/plugin-dialog");
+	const confirmed = await ask(
+		isUntracked
+			? `Delete ${path}? This file is untracked and will be permanently removed. This cannot be undone.`
+			: `Discard changes to ${path}? This cannot be undone.`,
+		{
+			title: isUntracked ? "Delete File" : "Discard Changes",
+			kind: "warning",
+		},
+	);
+	if (!confirmed) return;
+
+	hunkOperationInFlight = true;
+	try {
+		await safeInvoke("discard_file", { path: repoPath, filePath: path });
+	} catch (e) {
+		const err = e as TrunkError;
+		showToast(err.message ?? "Discard file failed", "error");
+		return;
+	} finally {
+		hunkOperationInFlight = false;
+	}
+	showToast(`Discarded ${path}`, "success");
+	onfileemptied?.(path, "discard");
+}
+
 async function handleStageHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
 	hunkOperationInFlight = true;
@@ -823,6 +854,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		onwordwrapchange={handleWordWrapChange}
 		onstagefile={handleStageFile}
 		onunstagefile={handleUnstageFile}
+		ondiscardfile={handleDiscardFile}
 		oncommentfile={handleCommentFile}
 		onclose={onclose}
 	/>

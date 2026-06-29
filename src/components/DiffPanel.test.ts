@@ -154,6 +154,30 @@ const binaryDiff: FileDiff = {
 	hunks: [],
 };
 
+const untrackedDiff: FileDiff = {
+	path: "src/new.ts",
+	status: "Untracked",
+	is_binary: false,
+	hunks: [
+		{
+			header: "@@ -0,0 +1,1 @@",
+			old_start: 0,
+			old_lines: 0,
+			new_start: 1,
+			new_lines: 1,
+			lines: [
+				{
+					origin: "Add",
+					content: "const fresh = true;",
+					old_lineno: null,
+					new_lineno: 1,
+					spans: [],
+				},
+			],
+		},
+	],
+};
+
 const testDiffWithMergedSpans: FileDiff = {
 	path: "src/main.rs",
 	status: "Modified",
@@ -1895,5 +1919,217 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		expect(calledCommands()).not.toContain("start_review_session");
 		expect(calledCommands()).not.toContain("resume_review_session");
 		expect(calledCommands()).toContain("add_comment");
+	});
+});
+
+describe("Discard File button", () => {
+	it("shows the Discard File button for unstaged diffs", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		expect(screen.getByText("Discard File")).toBeInTheDocument();
+	});
+
+	it("hides the Discard File button for staged diffs", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "staged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		expect(screen.queryByText("Discard File")).toBeNull();
+	});
+
+	it("hides the Discard File button for commit diffs", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		expect(screen.queryByText("Discard File")).toBeNull();
+	});
+
+	it("discards the file after the user confirms", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockResolvedValueOnce(true);
+		vi.mocked(safeInvoke).mockClear();
+		const onfileemptied = vi.fn();
+
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				onfileemptied,
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Discard File"));
+		await flushPrefs();
+
+		expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("discard_file", {
+			path: "/test/repo",
+			filePath: "src/main.ts",
+		});
+		expect(onfileemptied).toHaveBeenCalledWith("src/main.ts", "discard");
+	});
+
+	it("keeps the file when the user cancels the confirmation", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockResolvedValueOnce(false);
+		vi.mocked(safeInvoke).mockClear();
+		const onfileemptied = vi.fn();
+
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				onfileemptied,
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Discard File"));
+		await flushPrefs();
+
+		expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
+			"discard_file",
+			expect.anything(),
+		);
+		expect(onfileemptied).not.toHaveBeenCalled();
+	});
+
+	it("renders Discard File before Stage File", async () => {
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		const discard = screen.getByText("Discard File");
+		const stage = screen.getByText("Stage File");
+
+		expect(
+			discard.compareDocumentPosition(stage) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
+
+	it("warns the file will be permanently removed when it is untracked", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockClear();
+
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [untrackedDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: untrackedDiff.path,
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Discard File"));
+		await flushPrefs();
+
+		expect(vi.mocked(ask)).toHaveBeenCalledWith(
+			expect.stringContaining("untracked and will be permanently removed"),
+			{ title: "Delete File", kind: "warning" },
+		);
+	});
+
+	it("warns changes will be discarded when the file is tracked", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockClear();
+
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Discard File"));
+		await flushPrefs();
+
+		expect(vi.mocked(ask)).toHaveBeenCalledWith(
+			expect.stringContaining("Discard changes to src/main.ts"),
+			{ title: "Discard Changes", kind: "warning" },
+		);
+	});
+
+	it("reports an error and keeps the file when the discard fails", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		const { showToast } = await import("../lib/toast.svelte.js");
+		vi.mocked(ask).mockResolvedValueOnce(true);
+		vi.mocked(showToast).mockClear();
+		vi.mocked(safeInvoke).mockImplementationOnce(() =>
+			Promise.reject({ message: "discard exploded" }),
+		);
+		const onfileemptied = vi.fn();
+
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				onfileemptied,
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Discard File"));
+		await flushPrefs();
+
+		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+			"discard exploded",
+			"error",
+		);
+		expect(onfileemptied).not.toHaveBeenCalled();
 	});
 });
