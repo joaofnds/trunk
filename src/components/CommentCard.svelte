@@ -152,8 +152,8 @@ async function requestDelete() {
     <div class="comment-card-diff">
       {#each parseExcerpt(comment.cached_excerpt, comment.anchor.source) as line, i (i)}
         <div class="diff-line diff-line-{line.kind}">
-          <span class="diff-gutter">{line.gutter}</span>
-          <span class="diff-content">{line.content}</span>
+          <span class="diff-gutter select-none">{line.gutter}</span>
+          <span class="diff-content select-text">{line.content}</span>
         </div>
       {/each}
     </div>
@@ -180,7 +180,7 @@ async function requestDelete() {
         >Cancel</button>
       </div>
     {:else}
-      <span class="comment-card-text">{comment.text}</span>
+      <span class="comment-card-text select-text">{comment.text}</span>
     {/if}
   </div>
 </div>
@@ -258,7 +258,6 @@ async function requestDelete() {
     width: 18px;
     padding: 0 4px;
     text-align: center;
-    user-select: none;
     color: var(--color-text-muted);
   }
   .diff-content {
