@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	pairLines,
 	splitInvisibles,
@@ -1923,6 +1923,18 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 });
 
 describe("Discard File button", () => {
+	// Without this reset, a discard flow that outlives its test steals the next
+	// test's safeInvoke override and flakes it under load.
+	afterEach(() => {
+		vi.mocked(safeInvoke).mockReset();
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+			if (cmd === "get_review_session_status") {
+				return Promise.resolve({ state: "active", canonical_path: "/repo" });
+			}
+			return Promise.resolve(undefined);
+		});
+	});
+
 	it("shows the Discard File button for unstaged diffs", async () => {
 		render(DiffPanel, {
 			props: {
@@ -2105,8 +2117,11 @@ describe("Discard File button", () => {
 		const { showToast } = await import("../lib/toast.svelte.js");
 		vi.mocked(ask).mockResolvedValueOnce(true);
 		vi.mocked(showToast).mockClear();
-		vi.mocked(safeInvoke).mockImplementationOnce(() =>
-			Promise.reject({ message: "discard exploded" }),
+		// Command-scoped, not mockImplementationOnce: a leaked flow must not consume it.
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "discard_file"
+				? Promise.reject({ message: "discard exploded" })
+				: Promise.resolve(undefined),
 		);
 		const onfileemptied = vi.fn();
 
