@@ -167,9 +167,14 @@ Transforms `GraphCommit[]` into the overlay coordinate system.
 
 **WIP sentinel** (`commit.oid === '__wip__'`): handled specially.
 - Emits a node at `(commit.column, y)`.
-- Finds HEAD commit row by scanning downward for `is_head`.
-- Emits dashed straight edges from WIP down to HEAD, **split around inline stash rows**
-  so the dashed line doesn't visually pass through hollow stash squares.
+- Finds the anchor row by scanning downward for the first `in_head_chain` commit —
+  the topmost displayed commit of HEAD's first-parent chain. Unlike `is_head`
+  (only set when HEAD resolves to a local branch), this exists during detached
+  HEAD too (e.g. mid-rebase, where it anchors on the `onto` target).
+- If no head-chain row is loaded (unborn HEAD, or pagination hasn't reached the
+  chain yet), no WIP connection is emitted — no anchor, no line.
+- Emits dashed straight edges from WIP down to the anchor, **split around inline
+  stash rows** so the dashed line doesn't visually pass through hollow stash squares.
 
 **Edge coalescing** (the core of this layer):
 - Maintains `activeLanes: Map<column, { startY, colorIndex, dashed }>`.
