@@ -69,6 +69,7 @@ export interface GraphCommit {
 	is_merge: boolean;
 	is_branch_tip: boolean;
 	is_stash: boolean;
+	in_head_chain: boolean;
 }
 
 export interface GraphResponse {

@@ -39,16 +39,14 @@ export function buildGraphData(
 
 		// --- WIP sentinel ---
 		if (commit.oid === "__wip__") {
-			// Find HEAD commit row
+			// Anchor on the topmost head-chain row — exists even when HEAD is
+			// detached (mid-rebase), unlike is_head. No anchor → no line.
 			let headRow = -1;
 			for (let r = y + 1; r < commits.length; r++) {
-				if (commits[r].is_head) {
+				if (commits[r].in_head_chain) {
 					headRow = r;
 					break;
 				}
-			}
-			if (headRow === -1) {
-				headRow = Math.min(y + 1, commits.length - 1);
 			}
 
 			// Dashed connections from WIP to HEAD, split around stash rows

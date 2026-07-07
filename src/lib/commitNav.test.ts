@@ -20,6 +20,7 @@ function commit(oid: string, parentOids: string[] = []): GraphCommit {
 		is_merge: false,
 		is_branch_tip: false,
 		is_stash: false,
+		in_head_chain: false,
 	};
 }
 

@@ -1317,6 +1317,7 @@ function makeWipItem(msg: string, col: number, colorIdx: number): GraphCommit {
 		is_merge: false,
 		is_branch_tip: false,
 		is_stash: false,
+		in_head_chain: false,
 	};
 }
 
@@ -1324,8 +1325,9 @@ const displayItems = $derived.by(() => {
 	// Stash commits are now included in the backend graph result with proper lane data.
 	// We only need to prepend the WIP row if there are uncommitted changes.
 	if (wipCount > 0) {
-		// Find the actual HEAD commit (the one with is_head flag) to match WIP's column and color.
-		const headCommit = commits.find((c) => c.is_head);
+		// Match WIP's column and color to the topmost head-chain commit —
+		// present even when HEAD is detached (mid-rebase), unlike is_head.
+		const headCommit = commits.find((c) => c.in_head_chain);
 		const col = headCommit?.column ?? 0;
 		const colorIdx = headCommit?.color_index ?? 0;
 		return [makeWipItem(wipMessage, col, colorIdx), ...commits];

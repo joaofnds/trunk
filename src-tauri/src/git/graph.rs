@@ -452,6 +452,7 @@ pub fn walk_commits(
             is_merge,
             is_branch_tip,
             is_stash,
+            in_head_chain: head_chain.contains(&oid),
         });
     }
 

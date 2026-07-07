@@ -228,7 +228,12 @@ describe("buildGraphData", () => {
 		it("creates WIP node with isWip=true", () => {
 			const commits = [
 				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),
-				makeCommit({ oid: "head", column: 0, is_head: true }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
 			];
 			const result = buildGraphData(commits, 1);
 
@@ -246,7 +251,13 @@ describe("buildGraphData", () => {
 		it("produces single dashed connection from WIP to HEAD row", () => {
 			const commits = [
 				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),
-				makeCommit({ oid: "head", column: 0, color_index: 0, is_head: true }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					color_index: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
 			];
 			const result = buildGraphData(commits, 1);
 
@@ -273,7 +284,13 @@ describe("buildGraphData", () => {
 					color_index: 1,
 					is_branch_tip: true,
 				}),
-				makeCommit({ oid: "head", column: 0, color_index: 0, is_head: true }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					color_index: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
 			];
 			const result = buildGraphData(commits, 2);
 
@@ -284,7 +301,36 @@ describe("buildGraphData", () => {
 			expect(wipConns[0].parentY).toBe(2);
 		});
 
-		it("WIP falls back to next row when no HEAD found", () => {
+		it("anchors WIP on the first head-chain row when HEAD is detached", () => {
+			// Mid-rebase: no row has is_head; local-branch rows sort above the
+			// head chain (rebase onto a remote tip).
+			const commits = [
+				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),
+				makeCommit({ oid: "m2", column: 1, color_index: 1 }),
+				makeCommit({ oid: "m1", column: 1, color_index: 1 }),
+				makeCommit({
+					oid: "r2",
+					column: 0,
+					color_index: 0,
+					in_head_chain: true,
+				}),
+				makeCommit({
+					oid: "r1",
+					column: 0,
+					color_index: 0,
+					in_head_chain: true,
+				}),
+			];
+			const result = buildGraphData(commits, 2);
+
+			const wipConns = result.connections.filter(
+				(c) => c.dashed && c.childY === 0,
+			);
+			expect(wipConns).toHaveLength(1);
+			expect(wipConns[0].parentY).toBe(3);
+		});
+
+		it("emits no WIP connection when no head-chain row is loaded", () => {
 			const commits = [
 				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),
 				makeCommit({ oid: "some_commit", column: 0, color_index: 0 }),
@@ -294,8 +340,7 @@ describe("buildGraphData", () => {
 			const wipConns = result.connections.filter(
 				(c) => c.dashed && c.childY === 0,
 			);
-			expect(wipConns).toHaveLength(1);
-			expect(wipConns[0].parentY).toBe(1);
+			expect(wipConns).toHaveLength(0);
 		});
 
 		it("WIP skips normal connection processing", () => {
@@ -309,7 +354,12 @@ describe("buildGraphData", () => {
 						makeEdge({ edge_type: "Straight", from_column: 0, to_column: 0 }),
 					],
 				}),
-				makeCommit({ oid: "head", column: 0, is_head: true }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
 			];
 			const result = buildGraphData(commits, 1);
 
@@ -329,13 +379,43 @@ describe("buildGraphData", () => {
 					color_index: 0,
 					is_stash: true,
 				}),
-				makeCommit({ oid: "head", column: 0, color_index: 0, is_head: true }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					color_index: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
 			];
 			const result = buildGraphData(commits, 1);
 
 			const wipConns = result.connections.filter((c) => c.dashed);
 			expect(wipConns).toHaveLength(2);
 			// WIP→stash, stash→HEAD
+			expect(wipConns[0]).toMatchObject({ childY: 0, parentY: 1 });
+			expect(wipConns[1]).toMatchObject({ childY: 1, parentY: 2 });
+		});
+
+		it("splits WIP connection around stash when anchored on a detached head-chain row", () => {
+			const commits = [
+				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),
+				makeCommit({
+					oid: "stash1",
+					column: 0,
+					color_index: 0,
+					is_stash: true,
+				}),
+				makeCommit({
+					oid: "r2",
+					column: 0,
+					color_index: 0,
+					in_head_chain: true,
+				}),
+			];
+			const result = buildGraphData(commits, 1);
+
+			const wipConns = result.connections.filter((c) => c.dashed);
+			expect(wipConns).toHaveLength(2);
 			expect(wipConns[0]).toMatchObject({ childY: 0, parentY: 1 });
 			expect(wipConns[1]).toMatchObject({ childY: 1, parentY: 2 });
 		});
@@ -349,7 +429,13 @@ describe("buildGraphData", () => {
 					color_index: 1,
 					is_stash: true,
 				}),
-				makeCommit({ oid: "head", column: 0, color_index: 0, is_head: true }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					color_index: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
 			];
 			const result = buildGraphData(commits, 2);
 

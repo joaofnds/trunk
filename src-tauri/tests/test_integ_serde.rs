@@ -78,6 +78,10 @@ fn graph_result_serializes_with_expected_fields() {
         commit["is_stash"].is_boolean(),
         "is_stash should be a boolean"
     );
+    assert!(
+        commit["in_head_chain"].is_boolean(),
+        "in_head_chain should be a boolean"
+    );
     // body is Option<String> -- may be null or string
     let body = &commit["body"];
     assert!(

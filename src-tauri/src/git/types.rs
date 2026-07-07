@@ -66,6 +66,7 @@ pub struct GraphCommit {
     pub is_merge: bool,
     pub is_branch_tip: bool,
     pub is_stash: bool,
+    pub in_head_chain: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
