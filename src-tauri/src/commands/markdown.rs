@@ -258,9 +258,8 @@ pub async fn render_markdown(
     }
 
     let state_map = state.0.lock().unwrap().clone();
-    let (rp, fp, rev) = (repo_path.clone(), file_path.clone(), rev.clone());
     let html = tauri::async_runtime::spawn_blocking(move || {
-        render_markdown_from_state(&rp, &fp, &rev, &state_map)
+        render_markdown_from_state(&repo_path, &file_path, &rev, &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
