@@ -58,9 +58,25 @@ pub fn extension_from_path(path: &str) -> &str {
         .unwrap_or("")
 }
 
+/// syntect's Markdown grammar catastrophically backtracks on lines mixing
+/// `**bold**` and `` `inline code` `` (up to ~250 ms per line on the diff hot
+/// path), so we refuse to build it at all. This is syntect's own
+/// `Markdown.file_extensions` — deliberately NOT the frontend's Rendered-view
+/// set in `src/lib/markdown.ts` (`mkd` has no grammar; `markdn` does and would
+/// otherwise hitch). Resolution is case-insensitive, so match lowercased input.
+const MARKDOWN_GRAMMAR_EXTENSIONS: [&str; 4] = ["md", "mdown", "markdown", "markdn"];
+
+fn is_markdown_grammar(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    MARKDOWN_GRAMMAR_EXTENSIONS.contains(&lower.as_str())
+}
+
 /// Create a reusable highlighter for a file extension.
 /// Returns None if the extension has no syntax definition (plain text).
 pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
+    if is_markdown_grammar(extension) {
+        return None;
+    }
     let syntax = SYNTAX_SET.find_syntax_by_extension(extension)?;
     if syntax.name == "Plain Text" {
         return None;
@@ -75,6 +91,12 @@ pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
 /// exposes — the two are not interchangeable, which is why both exist.
 /// Returns None when the token has no syntax definition.
 pub fn create_highlighter_by_token(token: &str) -> Option<HighlightLines<'static>> {
+    // Second path to the pathological Markdown grammar (see MARKDOWN_GRAMMAR_EXTENSIONS):
+    // a ```markdown / ```md fenced block in the Rendered view resolves the same grammar
+    // by token and would backtrack identically. Refuse it here too.
+    if is_markdown_grammar(token) {
+        return None;
+    }
     let syntax = SYNTAX_SET.find_syntax_by_token(token)?;
     if syntax.name == "Plain Text" {
         return None;
@@ -217,6 +239,32 @@ mod tests {
     #[test]
     fn highlighter_by_token_returns_none_for_garbage() {
         assert!(create_highlighter_by_token("notalang999").is_none());
+    }
+
+    #[test]
+    fn create_highlighter_refuses_markdown() {
+        for ext in ["md", "mdown", "markdown", "markdn"] {
+            assert!(
+                create_highlighter(ext).is_none(),
+                "markdown extension {ext:?} must not build a highlighter"
+            );
+        }
+        // Load-bearing: extension_from_path returns raw case, grammar resolution is
+        // case-insensitive — MD must be refused too or README.MD slips past.
+        assert!(
+            create_highlighter("MD").is_none(),
+            "uppercase MD must be refused (lowercasing guard)"
+        );
+    }
+
+    #[test]
+    fn create_highlighter_by_token_refuses_markdown() {
+        for token in ["md", "mdown", "markdown", "markdn"] {
+            assert!(
+                create_highlighter_by_token(token).is_none(),
+                "markdown token {token:?} must not build a highlighter"
+            );
+        }
     }
 
     #[test]

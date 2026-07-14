@@ -625,3 +625,54 @@ mod word_span_tests {
         assert_eq!(emphasized(new, &add), vec!["b", "2"]);
     }
 }
+
+#[cfg(test)]
+mod enrich_tests {
+    use super::*;
+
+    fn line(origin: DiffOrigin, content: &str) -> DiffLine {
+        DiffLine {
+            origin,
+            content: content.to_string(),
+            old_lineno: None,
+            new_lineno: None,
+            spans: vec![],
+        }
+    }
+
+    // A changed markdown line mixing **bold** and `code` is exactly the shape
+    // that made syntect's Markdown grammar backtrack. Enrichment must now leave
+    // the syntax class empty (grammar never built) while keeping the word-diff
+    // emphasis that makes the change legible.
+    #[test]
+    fn enrich_drops_markdown_syntax_but_keeps_word_emphasis() {
+        let mut file_diffs = vec![FileDiff {
+            path: "notes.md".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ -1 +1 @@".to_string(),
+                old_start: 1,
+                old_lines: 1,
+                new_start: 1,
+                new_lines: 1,
+                lines: vec![
+                    line(DiffOrigin::Delete, "the value is plain here\n"),
+                    line(DiffOrigin::Add, "the value is **bold** `code` here\n"),
+                ],
+            }],
+        }];
+
+        enrich_file_diffs(&mut file_diffs);
+
+        let added = &file_diffs[0].hunks[0].lines[1];
+        assert!(
+            added.spans.iter().all(|s| s.syntax_class.is_empty()),
+            "markdown line must carry no syntax_class spans"
+        );
+        assert!(
+            added.spans.iter().any(|s| s.emphasized),
+            "word-diff emphasis must survive the dropped highlighting"
+        );
+    }
+}
