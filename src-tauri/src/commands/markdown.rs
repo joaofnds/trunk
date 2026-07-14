@@ -354,30 +354,21 @@ pub fn render_markdown_html(
     options.extension.tasklist = true;
     options.extension.autolink = true;
     options.extension.tagfilter = true;
-    // Recognize YAML front matter so comrak excludes it from the prose body
-    // (otherwise `---` reads as a thematic break and the YAML renders as a
-    // run-on paragraph). We render it ourselves as a GitHub-style table below.
+    // Recognize YAML front matter so comrak excludes it from the prose body:
+    // with the delimiter set, comrak renders front matter as nothing (without it,
+    // `---` reads as a thematic break and the YAML leaks as a run-on paragraph).
     options.extension.front_matter_delimiter = Some("---".to_string());
     // `render.unsafe` stays at its default (off): raw HTML is stripped and
     // dangerous hrefs emptied. Ammonia below is the second, authoritative layer.
 
     let root = comrak::parse_document(&arena, markdown, &options);
 
-    let mut front_matter_html = String::new();
     for node in root.descendants() {
         let mut data = node.data.borrow_mut();
-        match &mut data.value {
-            NodeValue::Image(link) => {
-                if let Some(new_url) = rewrite_image(&link.url) {
-                    link.url = new_url;
-                }
+        if let NodeValue::Image(link) = &mut data.value {
+            if let Some(new_url) = rewrite_image(&link.url) {
+                link.url = new_url;
             }
-            NodeValue::FrontMatter(raw) => {
-                if let Some(table) = frontmatter_table_html(raw) {
-                    front_matter_html = table;
-                }
-            }
-            _ => {}
         }
     }
 
@@ -389,7 +380,7 @@ pub fn render_markdown_html(
     comrak::format_html_with_plugins(root, &options, &mut html, &plugins)
         .expect("formatting to a String cannot fail");
 
-    sanitize_html(&format!("{front_matter_html}{html}"))
+    sanitize_html(&html)
 }
 
 /// True if `url` begins with a URI scheme (`scheme:`), per RFC 3986. Scheme-ful
@@ -513,68 +504,6 @@ pub fn resolve_trunk_asset<R: tauri::Runtime>(
 /// images render).
 pub fn render_comment_text(text: &str) -> String {
     render_markdown_html(text, &|_| None)
-}
-
-fn escape_text(s: &str) -> String {
-    let mut out = String::new();
-    let _ = comrak::html::escape(&mut out, s);
-    out
-}
-
-/// Render a parsed YAML value as an HTML fragment for a frontmatter table cell:
-/// scalars become escaped text, sequences a `<ul>`, and nested maps a nested
-/// table — matching GitHub's frontmatter rendering shape.
-fn yaml_value_html(value: &serde_yaml_ng::Value) -> String {
-    use serde_yaml_ng::Value;
-    match value {
-        Value::Null => String::new(),
-        Value::Bool(b) => b.to_string(),
-        Value::Number(n) => n.to_string(),
-        Value::String(s) => escape_text(s),
-        Value::Sequence(items) => {
-            let mut out = String::from("<ul>");
-            for item in items {
-                out.push_str("<li>");
-                out.push_str(&yaml_value_html(item));
-                out.push_str("</li>");
-            }
-            out.push_str("</ul>");
-            out
-        }
-        Value::Mapping(map) => yaml_mapping_table(map),
-        Value::Tagged(tagged) => yaml_value_html(&tagged.value),
-    }
-}
-
-fn yaml_mapping_table(map: &serde_yaml_ng::Mapping) -> String {
-    let mut out = String::from("<table><tbody>");
-    for (key, value) in map {
-        let key_text = match key {
-            serde_yaml_ng::Value::String(s) => escape_text(s),
-            other => escape_text(&format!("{other:?}")),
-        };
-        out.push_str("<tr><th>");
-        out.push_str(&key_text);
-        out.push_str("</th><td>");
-        out.push_str(&yaml_value_html(value));
-        out.push_str("</td></tr>");
-    }
-    out.push_str("</tbody></table>");
-    out
-}
-
-/// Build a GitHub-style key/value table from a raw YAML frontmatter block (the
-/// string comrak captured, including its `---` delimiters). Returns None if the
-/// block isn't a YAML mapping — the frontmatter is then simply omitted (comrak
-/// already kept it out of the prose body).
-fn frontmatter_table_html(raw: &str) -> Option<String> {
-    let inner = raw.trim().trim_start_matches('-').trim();
-    let inner = inner.strip_suffix("---").unwrap_or(inner);
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(inner).ok()?;
-    match value {
-        serde_yaml_ng::Value::Mapping(map) if !map.is_empty() => Some(yaml_mapping_table(&map)),
-        _ => None,
-    }
 }
 
 fn sanitize_html(html: &str) -> String {
@@ -703,31 +632,21 @@ mod tests {
     }
 
     #[test]
-    fn renders_yaml_frontmatter_as_table_not_prose() {
+    fn frontmatter_renders_as_nothing_not_prose() {
         let doc = "---\nname: grill\ndescription: >\n  Interview the user.\nmetadata:\n  trigger: an approach exists\n---\n\n# Grill\n\nBody text.";
         let html = render_markdown_html(doc, &no_rewrite);
 
-        // Frontmatter becomes a table with the keys, not a run-on paragraph.
+        // With front_matter_delimiter set, comrak keeps the block out of the prose
+        // body and renders nothing for it — no table, no `---` rule, no run-on
+        // paragraph like "name: grill description:".
+        assert!(!html.contains("<table>"), "no frontmatter table: {html}");
+        assert!(!html.contains("<hr"), "no thematic break: {html}");
         assert!(
-            html.contains("<table>"),
-            "frontmatter table present: {html}"
+            !html.contains("name: grill"),
+            "frontmatter must not leak as prose: {html}"
         );
-        assert!(
-            html.contains("<th>name</th>"),
-            "key rendered as row: {html}"
-        );
-        assert!(html.contains("grill"), "value rendered: {html}");
-        assert!(
-            html.contains("<th>trigger</th>"),
-            "nested key rendered: {html}"
-        );
-        // The body still renders after the table.
+        // The body still renders.
         assert!(html.contains("<h1>Grill</h1>"), "body heading kept: {html}");
-        // It must NOT leak as a prose paragraph like "name: grill description:".
-        assert!(
-            !html.contains("<p>name: grill"),
-            "frontmatter must not render as prose: {html}"
-        );
     }
 
     #[test]
