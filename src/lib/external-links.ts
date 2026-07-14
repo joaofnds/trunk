@@ -17,10 +17,14 @@ export function externalLinks(node: HTMLElement) {
 			openUrl(href).catch(() => {});
 		}
 	}
+	// auxclick covers middle-click, which fires no `click` event but would still
+	// trigger a webview navigation to the href.
 	node.addEventListener("click", handler);
+	node.addEventListener("auxclick", handler);
 	return {
 		destroy() {
 			node.removeEventListener("click", handler);
+			node.removeEventListener("auxclick", handler);
 		},
 	};
 }

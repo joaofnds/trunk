@@ -29,11 +29,13 @@ fn set_traffic_light_zoom(window: tauri::WebviewWindow, zoom: f64) {
     let _ = (window, zoom);
 }
 
-/// Internal origins the webview may navigate to in-app: the Tauri/IPC schemes,
-/// the dev/prod localhost origins, and our own `trunk-asset` image scheme.
+/// Internal origins the webview may navigate to in-app: the Tauri/IPC schemes
+/// and the dev/prod localhost origins. `trunk-asset` is intentionally excluded —
+/// it is a fetchable image subresource, never a navigable document (a top-level
+/// nav to an `.svg` would otherwise execute its embedded script outside the CSP).
 fn is_internal_url(url: &tauri::Url) -> bool {
     match url.scheme() {
-        "tauri" | "ipc" | "trunk-asset" => true,
+        "tauri" | "ipc" => true,
         "http" | "https" => matches!(
             url.host_str(),
             Some("localhost") | Some("tauri.localhost") | Some("ipc.localhost")
@@ -76,6 +78,14 @@ pub fn run() {
                 Ok((bytes, mime)) => tauri::http::Response::builder()
                     .status(tauri::http::StatusCode::OK)
                     .header(tauri::http::header::CONTENT_TYPE, mime)
+                    // Custom-protocol responses don't inherit the app CSP: pin the
+                    // declared MIME (no content sniffing) and neuter any script an
+                    // SVG might carry, so a served asset can't execute as a document.
+                    .header(tauri::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+                    .header(
+                        tauri::http::header::CONTENT_SECURITY_POLICY,
+                        "script-src 'none'; sandbox",
+                    )
                     .body(std::borrow::Cow::Owned(bytes))
                     .expect("building a byte-body response cannot fail"),
                 Err(_) => tauri::http::Response::builder()
