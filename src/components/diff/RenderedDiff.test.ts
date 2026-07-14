@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { describe, expect, it, vi } from "vitest";
-import type { FileDiff } from "../../lib/types.js";
 import RenderedDiff from "./RenderedDiff.svelte";
 
 function deferred<T>() {
@@ -28,11 +27,10 @@ const baseProps = {
 	commitOid: "",
 	repoPath: "/repo",
 	commitDetail: null,
-	fileDiffs: [] as FileDiff[],
 };
 
 describe("RenderedDiff", () => {
-	it("renders the present side and a placeholder for the absent side (added file, full mode)", async () => {
+	it("renders the present side and a placeholder for the absent side (added file)", async () => {
 		safeInvoke.mockImplementation(
 			(_cmd: string, args: { rev: { type: string } }) => {
 				// The "before" side of an added file (HEAD) has no blob → not_found.

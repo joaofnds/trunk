@@ -2,7 +2,7 @@
 import { externalLinks } from "../../lib/external-links.js";
 import { isTrunkError } from "../../lib/invoke.js";
 import { afterRev, beforeRev, renderMarkdown } from "../../lib/markdown.js";
-import type { CommitDetail, FileDiff } from "../../lib/types.js";
+import type { CommitDetail } from "../../lib/types.js";
 
 // Rendered markdown view of a `.md` diff. Always renders the whole document at
 // each side's rev. `inline` renders the "after" side; `split` renders before
@@ -17,7 +17,6 @@ interface Props {
 	commitOid: string;
 	repoPath: string;
 	commitDetail: CommitDetail | null;
-	fileDiffs: FileDiff[];
 }
 
 let {
@@ -27,7 +26,6 @@ let {
 	commitOid,
 	repoPath,
 	commitDetail,
-	fileDiffs,
 }: Props = $props();
 
 type SideState =

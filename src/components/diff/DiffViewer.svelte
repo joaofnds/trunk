@@ -133,7 +133,6 @@ let {
       {commitOid}
       {repoPath}
       {commitDetail}
-      {fileDiffs}
     />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView
