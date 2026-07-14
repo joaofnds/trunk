@@ -67,6 +67,21 @@ let {
     {#if selectedPath}{selectedPath}{/if}
   </span>
 
+  {#if selectedPath && isMarkdownPath(selectedPath)}
+    <button
+      class="toggle-btn"
+      class:active={renderMode === "rendered"}
+      title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
+      onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
+    >
+      {#if renderMode === "source"}
+        <Eye size={14} />
+      {:else}
+        <Code2 size={14} />
+      {/if}
+    </button>
+  {/if}
+
   <button
     class="toggle-btn"
     title={contentMode === "hunk" ? "Show full file" : "Show hunks"}
@@ -90,21 +105,6 @@ let {
       <Rows2 size={14} />
     {/if}
   </button>
-
-  {#if selectedPath && isMarkdownPath(selectedPath)}
-    <button
-      class="toggle-btn"
-      class:active={renderMode === "rendered"}
-      title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
-      onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
-    >
-      {#if renderMode === "source"}
-        <Eye size={14} />
-      {:else}
-        <Code2 size={14} />
-      {/if}
-    </button>
-  {/if}
 
   <button
     class="toggle-btn"
