@@ -13,8 +13,10 @@ function deferred<T>() {
 }
 
 // Mock the shared IPC helper (not `invoke`) per the project's test convention.
+// Keep the real `isTrunkError` guard — RenderedDiff's catch depends on it.
 const safeInvoke = vi.fn();
-vi.mock("../../lib/invoke.js", () => ({
+vi.mock("../../lib/invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("../../lib/invoke.js")>()),
 	safeInvoke: (cmd: string, args: Record<string, unknown>) =>
 		safeInvoke(cmd, args),
 }));

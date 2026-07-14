@@ -1,5 +1,6 @@
 <script lang="ts">
 import { externalLinks } from "../../lib/external-links.js";
+import { isTrunkError } from "../../lib/invoke.js";
 import { afterRev, beforeRev, renderMarkdown } from "../../lib/markdown.js";
 import type { CommitDetail, FileDiff } from "../../lib/types.js";
 
@@ -51,14 +52,12 @@ function loadSide(promise: Promise<string>, set: (s: SideState) => void) {
 		.then((html) => set({ kind: "html", html }))
 		.catch((e) => {
 			// A file absent at this rev (added/deleted) is expected.
-			const code = (e as { code?: string })?.code;
-			if (code === "not_found") {
+			if (isTrunkError(e) && e.code === "not_found") {
 				set({ kind: "absent" });
 			} else {
 				set({
 					kind: "error",
-					message:
-						(e as { message?: string })?.message ?? "Failed to render markdown",
+					message: isTrunkError(e) ? e.message : "Failed to render markdown",
 				});
 			}
 		});
