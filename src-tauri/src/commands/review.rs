@@ -845,18 +845,47 @@ pub async fn list_session_commits(
     Ok(result)
 }
 
-/// List the active session's comments incl. stable ids (CMT-01). Read-only: clones
-/// `.comments` from the in-memory map by CANONICAL key; no `save_session`, no emit
-/// (mirrors `list_session_commits`). A missing in-memory session is `no_session`
-/// (distinct from `canonical_repo_path`'s `not_open`) so the frontend can branch on
-/// session-active vs repo-not-open. No git2 work — the resolvability/orphan check is
-/// the separate `resolve_session_comments` command.
+/// A session comment plus its markdown body rendered to sanitized HTML. The
+/// persisted `Comment` stays raw source (the composer/edit textareas round-trip
+/// it); `text_html` is a derived, list-time-only field so the frontend can
+/// `{@html}` the body without a per-card render IPC (grill §1).
+#[derive(Debug, Serialize, Clone)]
+pub struct CommentView {
+    pub id: String,
+    pub text: String,
+    pub anchor: Option<crate::git::types::Anchor>,
+    pub cached_excerpt: Option<String>,
+    pub commit_oid: Option<String>,
+    pub text_html: String,
+}
+
+impl CommentView {
+    fn from_comment(c: Comment) -> Self {
+        let text_html = crate::commands::markdown::render_comment_text(&c.text);
+        CommentView {
+            id: c.id,
+            text: c.text,
+            anchor: c.anchor,
+            cached_excerpt: c.cached_excerpt,
+            commit_oid: c.commit_oid,
+            text_html,
+        }
+    }
+}
+
+/// List the active session's comments incl. stable ids (CMT-01) and rendered
+/// markdown HTML per body. Read-only: clones `.comments` from the in-memory map
+/// by CANONICAL key; no `save_session`, no emit (mirrors `list_session_commits`).
+/// A missing in-memory session is `no_session` (distinct from
+/// `canonical_repo_path`'s `not_open`) so the frontend can branch on
+/// session-active vs repo-not-open. No git2 work — the resolvability/orphan check
+/// is the separate `resolve_session_comments` command.
 #[tauri::command]
 pub async fn list_session_comments(
     path: String,
     state: State<'_, RepoState>,
     sessions: State<'_, ReviewSessionsState>,
-) -> Result<Vec<Comment>, String> {
+) -> Result<Vec<CommentView>, String> {
     let state_map = state.0.lock().unwrap().clone();
     let canonical = canonical_repo_path(&path, &state_map).map_err(|e| e.to_json())?;
 
@@ -871,7 +900,10 @@ pub async fn list_session_comments(
             .clone()
     };
 
-    Ok(comments)
+    Ok(comments
+        .into_iter()
+        .map(CommentView::from_comment)
+        .collect())
 }
 
 /// The two snapshot OIDs the active session currently tracks. Both `None` when

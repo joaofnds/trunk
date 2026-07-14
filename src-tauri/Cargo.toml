@@ -29,6 +29,10 @@ notify-debouncer-mini = "0.5"
 tauri-plugin-store = "2.4.2"
 tauri-plugin-window-state = "2"
 tauri-plugin-clipboard-manager = "2"
+tauri-plugin-opener = "2"
+comrak = "0.54"
+ammonia = "4"
+serde_yaml_ng = "0.10"
 tokio = { version = "1", features = ["process", "io-util"] }
 libc = "0.2"
 similar = { version = "2.7", features = ["unicode"] }

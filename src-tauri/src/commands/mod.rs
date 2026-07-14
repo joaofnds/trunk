@@ -22,6 +22,7 @@ pub mod diff;
 pub mod fs;
 pub mod history;
 pub mod interactive_rebase;
+pub mod markdown;
 pub mod merge_editor;
 pub mod operation_state;
 pub mod remote;

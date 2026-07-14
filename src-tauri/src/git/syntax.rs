@@ -69,6 +69,20 @@ pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
     Some(HighlightLines::new(syntax, theme))
 }
 
+/// Create a reusable highlighter for a language *token* (e.g. "rust", "python"),
+/// as fenced code blocks name their language. Unlike `create_highlighter` (which
+/// resolves by file extension for the diff path), this resolves the token syntect
+/// exposes — the two are not interchangeable, which is why both exist.
+/// Returns None when the token has no syntax definition.
+pub fn create_highlighter_by_token(token: &str) -> Option<HighlightLines<'static>> {
+    let syntax = SYNTAX_SET.find_syntax_by_token(token)?;
+    if syntax.name == "Plain Text" {
+        return None;
+    }
+    let theme = &THEME_SET.themes["base16-ocean.dark"];
+    Some(HighlightLines::new(syntax, theme))
+}
+
 /// Highlight a single line using a reusable highlighter instance.
 /// The highlighter maintains parse state across calls, giving correct multi-line highlighting.
 pub fn highlight_line_with(
@@ -188,6 +202,21 @@ mod tests {
             has_keyword,
             "Rust 'fn' should be highlighted as syn-keyword"
         );
+    }
+
+    #[test]
+    fn highlighter_by_token_resolves_known_language() {
+        let mut hl = create_highlighter_by_token("rust").expect("rust token should resolve");
+        let tokens = highlight_line_with(&mut hl, "fn main() {");
+        assert!(
+            tokens.iter().any(|t| t.scope == "syn-keyword"),
+            "'fn' should highlight as syn-keyword via the language token"
+        );
+    }
+
+    #[test]
+    fn highlighter_by_token_returns_none_for_garbage() {
+        assert!(create_highlighter_by_token("notalang999").is_none());
     }
 
     #[test]

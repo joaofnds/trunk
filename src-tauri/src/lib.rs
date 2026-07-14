@@ -29,13 +29,61 @@ fn set_traffic_light_zoom(window: tauri::WebviewWindow, zoom: f64) {
     let _ = (window, zoom);
 }
 
+/// Internal origins the webview may navigate to in-app: the Tauri/IPC schemes,
+/// the dev/prod localhost origins, and our own `trunk-asset` image scheme.
+fn is_internal_url(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "tauri" | "ipc" | "trunk-asset" => true,
+        "http" | "https" => matches!(
+            url.host_str(),
+            Some("localhost") | Some("tauri.localhost") | Some("ipc.localhost")
+        ),
+        _ => false,
+    }
+}
+
+/// Navigation guard: any off-origin link (a rendered-markdown `<a href>`, say) is
+/// cancelled in-app and handed to the OS browser via the opener. This is the
+/// authoritative link boundary — even if the sanitizer ever let a dangerous href
+/// through, the webview still can't be navigated away from the app.
+fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    use tauri_plugin_opener::OpenerExt;
+    tauri::plugin::Builder::new("navigation-guard")
+        .on_navigation(|webview, url| {
+            if is_internal_url(url) {
+                return true;
+            }
+            if matches!(url.scheme(), "http" | "https" | "mailto" | "tel") {
+                let _ = webview.opener().open_url(url.to_string(), None::<&str>);
+            }
+            false
+        })
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(navigation_guard())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .register_uri_scheme_protocol("trunk-asset", |ctx, request| {
+            let uri = request.uri().to_string();
+            match commands::markdown::resolve_trunk_asset(ctx.app_handle(), &uri) {
+                Ok((bytes, mime)) => tauri::http::Response::builder()
+                    .status(tauri::http::StatusCode::OK)
+                    .header(tauri::http::header::CONTENT_TYPE, mime)
+                    .body(std::borrow::Cow::Owned(bytes))
+                    .expect("building a byte-body response cannot fail"),
+                Err(_) => tauri::http::Response::builder()
+                    .status(tauri::http::StatusCode::NOT_FOUND)
+                    .body(std::borrow::Cow::Borrowed(&b""[..]))
+                    .expect("building an empty response cannot fail"),
+            }
+        })
         .on_window_event(|_window, _event| {
             // Live resize is handled flicker-free by the NSWindowDidResize observer
             // (see macos_traffic_lights); here we cover the other title-bar relayouts:
@@ -127,12 +175,16 @@ pub fn run() {
         .manage(RunningOp(Default::default()))
         .manage(WatcherState(Default::default()))
         .manage(ReviewSessionsState(Default::default()))
+        .manage(commands::markdown::MarkdownCache(Default::default()))
         .invoke_handler(tauri::generate_handler![
             set_traffic_light_zoom,
             commands::repo::open_repo,
             commands::repo::close_repo,
             commands::repo::force_close_repo,
             commands::fs::validate_recent_path,
+            commands::markdown::read_file_at,
+            commands::markdown::render_markdown,
+            commands::markdown::render_markdown_text,
             commands::history::get_commit_graph,
             commands::history::refresh_commit_graph,
             commands::history::get_commit_stats,
