@@ -3,6 +3,10 @@
 // `trunk-asset://` protocol handler (wired in lib.rs) streams those same bytes
 // for local images. Keeping the resolver in one place means the security
 // boundary — working-tree path-escape rejection — lives in exactly one function.
+//
+// TODO(rev_reads): extract `RevSpec` + the `read_file_at*` family into their own
+// module once image-diff (grill §11) reuses the blob resolver, so the security
+// boundary stops being a transitive dependency of every renderer call.
 
 use crate::error::TrunkError;
 use crate::git::syntax;
@@ -463,6 +467,7 @@ fn mime_for_ext(path: &str) -> &'static str {
 
 /// Decode a `trunk-asset://asset/?repo=&rev=&path=` URL into its parts.
 /// `Url::query_pairs` percent-decodes automatically.
+// TODO: give this a named return struct if a second caller appears.
 fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
     let url = tauri::Url::parse(uri).map_err(|e| TrunkError::new("bad_uri", e.to_string()))?;
     let (mut repo, mut rev_tok, mut path) = (None, None, None);
