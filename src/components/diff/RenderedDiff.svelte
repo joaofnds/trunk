@@ -1,28 +1,16 @@
 <script lang="ts">
 import { externalLinks } from "../../lib/external-links.js";
-import {
-	afterRev,
-	beforeRev,
-	hunkMarkdown,
-	type RevSpec,
-	renderMarkdown,
-	renderMarkdownText,
-} from "../../lib/markdown.js";
-import type { CommitDetail, ContentMode, FileDiff } from "../../lib/types.js";
+import { afterRev, beforeRev, renderMarkdown } from "../../lib/markdown.js";
+import type { CommitDetail, FileDiff } from "../../lib/types.js";
 
-// Rendered markdown view of a `.md` diff.
-//   • full mode → renders the whole document at each side's rev.
-//   • hunk mode → renders ONLY the changed hunks' markdown (context + added
-//     lines for the "after" side, context + deleted for "before"), so the
-//     preview scopes to what changed, matching the hunk/full toggle.
-// `inline` renders the "after" side; `split` renders before (HEAD/parent) and
-// after side-by-side (grill §2 rev fidelity). Each column renders independently:
-// a side absent at its rev (added → no before, deleted → no after) shows a muted
-// placeholder — it must NOT abort the other column. V1 has no prose-level change
-// highlighting.
+// Rendered markdown view of a `.md` diff. Always renders the whole document at
+// each side's rev. `inline` renders the "after" side; `split` renders before
+// (HEAD/parent) and after side-by-side (grill §2 rev fidelity). Each column
+// renders independently: a side absent at its rev (added → no before, deleted →
+// no after) shows a muted placeholder — it must NOT abort the other column. V1
+// has no prose-level change highlighting.
 interface Props {
 	layoutMode: "inline" | "split";
-	contentMode: ContentMode;
 	selectedPath: string;
 	diffKind: "unstaged" | "staged" | "commit";
 	commitOid: string;
@@ -33,7 +21,6 @@ interface Props {
 
 let {
 	layoutMode,
-	contentMode,
 	selectedPath,
 	diffKind,
 	commitOid,
@@ -52,32 +39,18 @@ let after = $state<SideState>({ kind: "loading" });
 let before = $state<SideState>({ kind: "loading" });
 
 // Per-run token: each effect run bumps it, and a render's async result is only
-// applied if its run is still the latest. Without this, toggling hunk↔full while
-// a render is in flight lets the slower stale request clobber the fresh one.
+// applied if its run is still the latest. Without this, switching files or revs
+// while a render is in flight lets the slower stale request clobber the fresh one.
 let seq = 0;
 
 const parentOid = $derived(commitDetail?.parent_oids[0] ?? null);
-
-function renderSide(
-	repo: string,
-	path: string,
-	rev: RevSpec,
-	side: "before" | "after",
-	fd: FileDiff | undefined,
-	hunkScoped: boolean,
-): Promise<string> {
-	if (hunkScoped && fd) {
-		return renderMarkdownText(repo, path, rev, hunkMarkdown(fd, side));
-	}
-	return renderMarkdown(repo, path, rev);
-}
 
 function loadSide(promise: Promise<string>, set: (s: SideState) => void) {
 	set({ kind: "loading" });
 	promise
 		.then((html) => set({ kind: "html", html }))
 		.catch((e) => {
-			// A file absent at this rev (added/deleted, whole-file mode) is expected.
+			// A file absent at this rev (added/deleted) is expected.
 			const code = (e as { code?: string })?.code;
 			if (code === "not_found") {
 				set({ kind: "absent" });
@@ -101,22 +74,14 @@ $effect(() => {
 	const oid = commitOid;
 	const parent = parentOid;
 	const split = layoutMode === "split";
-	const hunkScoped = contentMode === "hunk";
-	const fd = fileDiffs.find((f) => f.path === path);
 
-	loadSide(
-		renderSide(repo, path, afterRev(kind, oid), "after", fd, hunkScoped),
-		(s) => {
-			if (my === seq) after = s;
-		},
-	);
+	loadSide(renderMarkdown(repo, path, afterRev(kind, oid)), (s) => {
+		if (my === seq) after = s;
+	});
 	if (split) {
-		loadSide(
-			renderSide(repo, path, beforeRev(kind, parent), "before", fd, hunkScoped),
-			(s) => {
-				if (my === seq) before = s;
-			},
-		);
+		loadSide(renderMarkdown(repo, path, beforeRev(kind, parent)), (s) => {
+			if (my === seq) before = s;
+		});
 	}
 });
 </script>

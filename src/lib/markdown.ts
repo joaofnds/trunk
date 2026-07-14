@@ -1,5 +1,4 @@
 import { safeInvoke } from "./invoke.js";
-import type { FileDiff } from "./types.js";
 
 // Extension-only markdown detection (grill §5). Case-insensitive; `.mdx` is
 // deliberately excluded — it's JSX-in-markdown, which comrak won't render as
@@ -52,42 +51,4 @@ export function renderMarkdown(
 	rev: RevSpec,
 ): Promise<string> {
 	return safeInvoke<string>("render_markdown", { repoPath, filePath, rev });
-}
-
-export function renderMarkdownText(
-	repoPath: string,
-	filePath: string,
-	rev: RevSpec,
-	text: string,
-): Promise<string> {
-	return safeInvoke<string>("render_markdown_text", {
-		repoPath,
-		filePath,
-		rev,
-		text,
-	});
-}
-
-// Reconstruct the markdown text of the changed hunks for one side of the diff:
-// "after" keeps context + added lines, "before" keeps context + deleted lines.
-// Line contents already carry their trailing newlines; hunks are separated by a
-// blank line so non-contiguous regions don't merge into one block. Used for
-// hunk-scoped rendered markdown (render only what changed, not the whole file).
-export function hunkMarkdown(
-	fileDiff: FileDiff,
-	side: "before" | "after",
-): string {
-	const keep =
-		side === "after"
-			? (o: string) => o === "Context" || o === "Add"
-			: (o: string) => o === "Context" || o === "Delete";
-	return fileDiff.hunks
-		.map((h) =>
-			h.lines
-				.filter((l) => keep(l.origin))
-				.map((l) => l.content)
-				.join(""),
-		)
-		.filter((t) => t.length > 0)
-		.join("\n");
 }

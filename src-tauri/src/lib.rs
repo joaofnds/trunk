@@ -184,7 +184,6 @@ pub fn run() {
             commands::fs::validate_recent_path,
             commands::markdown::read_file_at,
             commands::markdown::render_markdown,
-            commands::markdown::render_markdown_text,
             commands::history::get_commit_graph,
             commands::history::refresh_commit_graph,
             commands::history::get_commit_stats,

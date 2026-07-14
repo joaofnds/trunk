@@ -208,12 +208,10 @@ pub fn render_markdown_from_state(
 }
 
 /// Render a markdown string, rewriting scheme-less image URLs to `trunk-asset://`
-/// resolved against `file_path`'s directory at `rev`. Shared by whole-file renders
-/// (read from disk/tree) and hunk-scoped renders (a diff excerpt) so both resolve
-/// images identically. repo + rev + path ride as percent-encoded query params (not
-/// path/host segments) so filesystem paths with spaces/slashes and the repo key
-/// survive intact, and the protocol handler can identify which open repo the image
-/// belongs to. Fixed host `asset`.
+/// resolved against `file_path`'s directory at `rev`. repo + rev + path ride as
+/// percent-encoded query params (not path/host segments) so filesystem paths with
+/// spaces/slashes and the repo key survive intact, and the protocol handler can
+/// identify which open repo the image belongs to. Fixed host `asset`.
 pub fn render_markdown_with_asset_base(
     markdown: &str,
     repo_path: &str,
@@ -237,23 +235,6 @@ pub fn render_markdown_with_asset_base(
         }
     };
     render_markdown_html(markdown, &rewrite)
-}
-
-#[tauri::command]
-pub async fn render_markdown_text(
-    repo_path: String,
-    file_path: String,
-    rev: RevSpec,
-    text: String,
-) -> Result<String, String> {
-    // Renders a caller-supplied markdown excerpt (the changed hunks) rather than
-    // the whole file. Not cached — the excerpt is cheap and depends on the live
-    // diff. Image URLs still resolve against `file_path`'s dir at `rev`.
-    tauri::async_runtime::spawn_blocking(move || {
-        render_markdown_with_asset_base(&text, &repo_path, &file_path, &rev)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())
 }
 
 #[tauri::command]

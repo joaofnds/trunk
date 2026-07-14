@@ -42,7 +42,7 @@ describe("RenderedDiff", () => {
 		);
 
 		const { container } = render(RenderedDiff, {
-			props: { ...baseProps, contentMode: "full" },
+			props: { ...baseProps },
 		});
 
 		expect(await screen.findByText("Hello")).toBeInTheDocument();
@@ -52,111 +52,33 @@ describe("RenderedDiff", () => {
 		expect(container.querySelector(".rendered-error")).toBeNull();
 	});
 
-	it("renders only the changed hunks' markdown in hunk mode", async () => {
-		safeInvoke.mockImplementation((cmd: string, args: { text?: string }) => {
-			// Hunk mode must call the text renderer with the extracted hunk content.
-			expect(cmd).toBe("render_markdown_text");
-			return Promise.resolve(`<rendered>${args.text}</rendered>`);
-		});
-
-		const fileDiffs: FileDiff[] = [
-			{
-				path: "README.md",
-				status: "Modified",
-				is_binary: false,
-				hunks: [
-					{
-						header: "@@ -1 +1 @@",
-						old_start: 1,
-						old_lines: 1,
-						new_start: 1,
-						new_lines: 2,
-						lines: [
-							{
-								origin: "Context",
-								content: "# Title\n",
-								old_lineno: 1,
-								new_lineno: 1,
-								spans: [],
-							},
-							{
-								origin: "Add",
-								content: "new line\n",
-								old_lineno: null,
-								new_lineno: 2,
-								spans: [],
-							},
-						],
-					},
-				],
-			},
-		];
-
-		render(RenderedDiff, {
-			props: { ...baseProps, contentMode: "hunk", fileDiffs },
-		});
-
-		// The "after" side keeps context + added lines.
-		expect(await screen.findByText(/# Title\s+new line/)).toBeInTheDocument();
-		expect(safeInvoke).toHaveBeenCalledWith(
-			"render_markdown_text",
-			expect.objectContaining({ text: "# Title\nnew line\n" }),
-		);
-	});
-
-	it("ignores a stale in-flight render when the mode is toggled mid-flight", async () => {
-		const fileDiffs: FileDiff[] = [
-			{
-				path: "README.md",
-				status: "Modified",
-				is_binary: false,
-				hunks: [
-					{
-						header: "@@",
-						old_start: 1,
-						old_lines: 1,
-						new_start: 1,
-						new_lines: 1,
-						lines: [
-							{
-								origin: "Add",
-								content: "changed\n",
-								old_lineno: null,
-								new_lineno: 1,
-								spans: [],
-							},
-						],
-					},
-				],
-			},
-		];
-		const full = deferred<string>();
-		const hunk = deferred<string>();
-		safeInvoke.mockImplementation((cmd: string) =>
-			cmd === "render_markdown_text" ? hunk.promise : full.promise,
+	it("ignores a stale in-flight render when the selected file changes mid-flight", async () => {
+		const first = deferred<string>();
+		const second = deferred<string>();
+		safeInvoke.mockImplementation((_cmd: string, args: { filePath: string }) =>
+			args.filePath === "A.md" ? first.promise : second.promise,
 		);
 
 		const inlineProps = {
 			...baseProps,
 			layoutMode: "inline" as const,
-			fileDiffs,
 		};
-		// Start in full mode (its render is left slow/in-flight), then toggle to hunk.
+		// Start on A.md (its render is left slow/in-flight), then switch to B.md.
 		const { rerender } = render(RenderedDiff, {
-			props: { ...inlineProps, contentMode: "full" },
+			props: { ...inlineProps, selectedPath: "A.md" },
 		});
-		await rerender({ ...inlineProps, contentMode: "hunk" });
+		await rerender({ ...inlineProps, selectedPath: "B.md" });
 
-		// The fresh (hunk) render resolves first.
-		hunk.resolve("<p>HUNK</p>");
-		expect(await screen.findByText("HUNK")).toBeInTheDocument();
+		// The fresh (B.md) render resolves first.
+		second.resolve("<p>SECOND</p>");
+		expect(await screen.findByText("SECOND")).toBeInTheDocument();
 
-		// The stale (full) render resolves late — it must NOT overwrite the fresh one.
-		full.resolve("<p>FULL</p>");
+		// The stale (A.md) render resolves late — it must NOT overwrite the fresh one.
+		first.resolve("<p>FIRST</p>");
 		await tick();
 		await Promise.resolve();
 
-		expect(screen.queryByText("FULL")).toBeNull();
-		expect(screen.getByText("HUNK")).toBeInTheDocument();
+		expect(screen.queryByText("FIRST")).toBeNull();
+		expect(screen.getByText("SECOND")).toBeInTheDocument();
 	});
 });

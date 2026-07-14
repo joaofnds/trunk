@@ -128,7 +128,6 @@ let {
   {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath)}
     <RenderedDiff
       {layoutMode}
-      {contentMode}
       selectedPath={selectedPath}
       {diffKind}
       {commitOid}
