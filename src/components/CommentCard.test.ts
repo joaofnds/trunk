@@ -31,4 +31,30 @@ describe("CommentCard", () => {
 		expect(gutter).toHaveClass("select-none");
 		expect(gutter).not.toHaveClass("select-text");
 	});
+
+	it("renders the backend-provided markdown HTML and keeps select-text inline", () => {
+		const md: Comment = {
+			...comment,
+			text: "**bold** body",
+			text_html: "<p><strong>bold</strong> body</p>",
+		};
+		const { container } = render(CommentCard, {
+			props: { comment: md, onedit: () => {}, ondelete: () => {} },
+		});
+
+		const body = container.querySelector(".comment-card-text") as HTMLElement;
+		expect(body.querySelector("strong")?.textContent).toBe("bold");
+		// select-text must stay INLINE on the wrapper (jsdom only reads inline
+		// styles; a scoped class wouldn't unit-assert).
+		expect(body).toHaveClass("select-text");
+	});
+
+	it("falls back to raw text when no rendered HTML is present", () => {
+		const { container } = render(CommentCard, {
+			props: { comment, onedit: () => {}, ondelete: () => {} },
+		});
+		const body = container.querySelector(".comment-card-text") as HTMLElement;
+		expect(body.tagName).toBe("SPAN");
+		expect(body.textContent).toBe(comment.text);
+	});
 });

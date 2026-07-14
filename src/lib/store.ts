@@ -1,6 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { PersistedTab } from "./tab-types.js";
-import type { ContentMode, LayoutMode } from "./types.js";
+import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
 
 export type { PersistedTab } from "./tab-types.js";
 
@@ -335,6 +335,22 @@ export async function getDiffLayoutMode(): Promise<LayoutMode> {
 
 export async function setDiffLayoutMode(mode: LayoutMode): Promise<void> {
 	await store.set(DIFF_LAYOUT_MODE_KEY, mode);
+	await store.save();
+}
+
+// Source|Rendered toggle for markdown-file diffs. Global, defaults to "source"
+// (grill §6): Rendered V1 has no change highlighting, so a rendered-by-default
+// diff would hide the very changes the user opened it to see.
+const DIFF_RENDER_MODE_KEY = "render_mode";
+
+export async function getRenderMode(): Promise<RenderMode> {
+	const stored = await store.get<string>(DIFF_RENDER_MODE_KEY);
+	if (stored === "source" || stored === "rendered") return stored;
+	return "source";
+}
+
+export async function setRenderMode(mode: RenderMode): Promise<void> {
+	await store.set(DIFF_RENDER_MODE_KEY, mode);
 	await store.save();
 }
 

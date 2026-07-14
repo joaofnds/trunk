@@ -56,7 +56,13 @@ vi.mock("../lib/store.js", () => {
 	let currentIgnoreWhitespace = false;
 	let currentShowInvisibles = false;
 	let currentWordWrap = false;
+	let currentRenderMode = "source";
 	return {
+		getRenderMode: vi.fn(() => Promise.resolve(currentRenderMode)),
+		setRenderMode: vi.fn((mode: string) => {
+			currentRenderMode = mode;
+			return Promise.resolve(undefined);
+		}),
 		getDiffContextLines: vi.fn(() => Promise.resolve(3)),
 		getDiffContentMode: vi.fn(() => Promise.resolve(currentContentMode)),
 		setDiffContentMode: vi.fn((mode: string) => {

@@ -195,6 +195,7 @@ export interface DiffRequestOptions {
 
 export type ContentMode = "hunk" | "full";
 export type LayoutMode = "inline" | "split";
+export type RenderMode = "source" | "rendered";
 
 export interface HeadCommitMessage {
 	subject: string;
@@ -333,6 +334,11 @@ export interface Comment {
 	anchor: Anchor | null;
 	cached_excerpt: string | null;
 	commit_oid?: string | null;
+	// Markdown body rendered to sanitized HTML by the backend. Present only on
+	// comments returned by `list_session_comments` (the render batch); optional so
+	// optimistic/raw Comment shapes elsewhere still type-check. CommentCard
+	// `{@html}`s it, falling back to escaped raw `text` when absent.
+	text_html?: string;
 }
 
 // Why a comment cannot be jumped to / no longer resolves against the repo.

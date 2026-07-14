@@ -18,12 +18,14 @@ import {
 	getDiffShowFullFile,
 	getDiffShowInvisibles,
 	getDiffWordWrap,
+	getRenderMode,
 	setDiffContentMode,
 	setDiffIgnoreWhitespace,
 	setDiffLayoutMode,
 	setDiffShowFullFile,
 	setDiffShowInvisibles,
 	setDiffWordWrap,
+	setRenderMode,
 } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
@@ -35,6 +37,7 @@ import type {
 	DiffRequestOptions,
 	FileDiff,
 	LayoutMode,
+	RenderMode,
 	SessionStatus,
 	Side,
 } from "../lib/types.js";
@@ -78,6 +81,7 @@ let {
 
 let contentMode = $state<ContentMode>("hunk");
 let layoutMode = $state<LayoutMode>("inline");
+let renderMode = $state<RenderMode>("source");
 let contextLines = $state(3);
 let ignoreWhitespace = $state(false);
 let showInvisibles = $state(false);
@@ -326,14 +330,16 @@ $effect(() => {
 		getDiffIgnoreWhitespace(),
 		getDiffShowInvisibles(),
 		getDiffWordWrap(),
+		getRenderMode(),
 	])
-		.then(([cm, lm, cl, iw, si, ww]) => {
+		.then(([cm, lm, cl, iw, si, ww, rm]) => {
 			contentMode = cm;
 			layoutMode = lm;
 			contextLines = cl;
 			ignoreWhitespace = iw;
 			showInvisibles = si;
 			wordWrap = ww;
+			renderMode = rm;
 		})
 		.catch(() => {});
 });
@@ -361,6 +367,11 @@ async function handleLayoutModeChange(mode: LayoutMode) {
 	layoutMode = mode;
 	clearSelection();
 	setDiffLayoutMode(mode);
+}
+
+function handleRenderModeChange(mode: RenderMode) {
+	renderMode = mode;
+	setRenderMode(mode);
 }
 
 async function handleIgnoreWhitespaceChange(value: boolean) {
@@ -840,8 +851,10 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	<DiffToolbar
 		{contentMode}
 		{layoutMode}
+		{renderMode}
 		oncontentmodechange={handleContentModeChange}
 		onlayoutmodechange={handleLayoutModeChange}
+		onrendermodechange={handleRenderModeChange}
 		selectedPath={selectedPath}
 		{diffKind}
 		{hunkOperationInFlight}
@@ -861,6 +874,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	<DiffViewer
 		{contentMode}
 		{layoutMode}
+		{renderMode}
 		{fileDiffs}
 		{commitDetail}
 		{selectedPath}

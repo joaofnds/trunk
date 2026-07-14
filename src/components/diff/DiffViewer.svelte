@@ -1,4 +1,5 @@
 <script lang="ts">
+import { isMarkdownPath } from "../../lib/markdown.js";
 import type {
 	Comment,
 	CommitDetail,
@@ -7,14 +8,17 @@ import type {
 	DiffOrigin,
 	FileDiff,
 	LayoutMode,
+	RenderMode,
 } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
+import RenderedDiff from "./RenderedDiff.svelte";
 import SplitView from "./SplitView.svelte";
 
 interface Props {
 	contentMode: ContentMode;
 	layoutMode: LayoutMode;
+	renderMode: RenderMode;
 	fileDiffs: FileDiff[];
 	commitDetail: CommitDetail | null;
 	selectedPath: string | null;
@@ -72,6 +76,7 @@ interface Props {
 let {
 	contentMode,
 	layoutMode,
+	renderMode,
 	fileDiffs,
 	commitDetail,
 	selectedPath,
@@ -120,6 +125,17 @@ let {
     ">
       Select a file or commit to view its diff
     </div>
+  {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath)}
+    <RenderedDiff
+      {layoutMode}
+      {contentMode}
+      selectedPath={selectedPath}
+      {diffKind}
+      {commitOid}
+      {repoPath}
+      {commitDetail}
+      {fileDiffs}
+    />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView
       {fileDiffs}

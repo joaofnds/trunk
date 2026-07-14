@@ -192,6 +192,12 @@
 	--color-warning-border: color-mix(in oklch, var(--warn) 30%, transparent);
 	--color-muted-bg: color-mix(in oklch, var(--fg-3) 10%, transparent);
 
+	/* Rendered-markdown prose (comment bodies + .md diff view). Three aliases
+	   onto the ramp; everything else reuses existing tokens directly. */
+	--color-md-code-bg: var(--color-muted-bg);
+	--color-md-blockquote-border: var(--line-strong);
+	--color-md-table-border: var(--line);
+
 	/* File-status icon colors (FileRow status map) */
 	--color-status-new: var(--ok);
 	--color-status-modified: var(--warn);
@@ -303,4 +309,177 @@ textarea::placeholder {
 	.tooltip-pop {
 		transition: none;
 	}
+}
+
+/* ── Rendered markdown prose ──
+   Applies to {@html} output: comment bodies (.comment-card-text.markdown-body)
+   and the .md diff view (.rendered-col.markdown-body). GLOBAL on purpose —
+   {@html} markup escapes Svelte's scoped-style hashing, so a scoped rule would
+   never reach it; the reused .syn-* rules below are global for the same reason. */
+.markdown-body {
+	user-select: text;
+	-webkit-user-select: text;
+	color: var(--color-text);
+	line-height: 1.6;
+	word-wrap: break-word;
+}
+.markdown-body > *:first-child {
+	margin-top: 0;
+}
+.markdown-body > *:last-child {
+	margin-bottom: 0;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+	margin: 1.2em 0 0.6em;
+	font-weight: 600;
+	line-height: 1.25;
+	color: var(--fg-0);
+}
+.markdown-body h1 {
+	font-size: 1.6em;
+}
+.markdown-body h2 {
+	font-size: 1.4em;
+	padding-bottom: 0.3em;
+	border-bottom: 1px solid var(--color-md-table-border);
+}
+.markdown-body h3 {
+	font-size: 1.2em;
+}
+.markdown-body h4 {
+	font-size: 1.05em;
+}
+.markdown-body h5 {
+	font-size: 1em;
+}
+.markdown-body h6 {
+	font-size: 0.9em;
+	color: var(--color-text-muted);
+}
+.markdown-body p {
+	margin: 0.6em 0;
+}
+.markdown-body a {
+	color: var(--color-accent);
+	text-decoration: none;
+}
+.markdown-body a:hover,
+.markdown-body a:focus-visible {
+	text-decoration: underline;
+}
+.markdown-body ul,
+.markdown-body ol {
+	margin: 0.6em 0;
+	padding-left: 1.6em;
+}
+.markdown-body li {
+	margin: 0.2em 0;
+}
+.markdown-body li input[type="checkbox"] {
+	margin-right: 0.4em;
+}
+.markdown-body blockquote {
+	margin: 0.6em 0;
+	padding: 0 0.9em;
+	color: var(--color-text-muted);
+	border-left: 3px solid var(--color-md-blockquote-border);
+}
+.markdown-body hr {
+	height: 1px;
+	margin: 1.2em 0;
+	border: 0;
+	background: var(--color-md-table-border);
+}
+.markdown-body code {
+	padding: 0.12em 0.35em;
+	border-radius: var(--radius-s);
+	background: var(--color-md-code-bg);
+	font-family: var(--font-mono);
+	font-size: 0.9em;
+}
+.markdown-body pre {
+	margin: 0.7em 0;
+	padding: 0.8em 1em;
+	overflow: auto;
+	border-radius: var(--radius-m);
+	background: var(--color-md-code-bg);
+}
+.markdown-body pre code {
+	padding: 0;
+	border-radius: 0;
+	background: transparent;
+	font-size: 0.85em;
+	line-height: 1.5;
+	white-space: pre;
+}
+.markdown-body table {
+	display: block;
+	margin: 0.7em 0;
+	overflow: auto;
+	border-collapse: collapse;
+}
+.markdown-body th,
+.markdown-body td {
+	padding: 0.35em 0.7em;
+	border: 1px solid var(--color-md-table-border);
+}
+.markdown-body th {
+	background: var(--color-md-code-bg);
+	font-weight: 600;
+}
+.markdown-body img {
+	max-width: 100%;
+}
+.markdown-body del {
+	color: var(--color-text-muted);
+}
+.markdown-body .syn-keyword {
+	color: var(--color-syn-keyword);
+}
+.markdown-body .syn-string {
+	color: var(--color-syn-string);
+}
+.markdown-body .syn-comment {
+	color: var(--color-syn-comment);
+}
+.markdown-body .syn-number {
+	color: var(--color-syn-number);
+}
+.markdown-body .syn-type {
+	color: var(--color-syn-type);
+}
+.markdown-body .syn-function {
+	color: var(--color-syn-function);
+}
+.markdown-body .syn-variable {
+	color: var(--color-syn-variable);
+}
+.markdown-body .syn-constant {
+	color: var(--color-syn-constant);
+}
+.markdown-body .syn-operator {
+	color: var(--color-syn-operator);
+}
+.markdown-body .syn-punctuation {
+	color: var(--color-syn-punctuation);
+}
+.markdown-body .syn-attribute {
+	color: var(--color-syn-attribute);
+}
+.markdown-body .syn-tag {
+	color: var(--color-syn-tag);
+}
+.markdown-body .syn-property {
+	color: var(--color-syn-property);
+}
+.markdown-body .syn-regex {
+	color: var(--color-syn-regex);
+}
+.markdown-body .syn-escape {
+	color: var(--color-syn-escape);
 }

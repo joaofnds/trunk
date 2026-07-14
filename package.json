@@ -19,6 +19,7 @@
 		"@tauri-apps/api": "^2",
 		"@tauri-apps/plugin-clipboard-manager": "^2.3.2",
 		"@tauri-apps/plugin-dialog": "^2.6.0",
+		"@tauri-apps/plugin-opener": "^2",
 		"@tauri-apps/plugin-store": "^2.4.2",
 		"@tauri-apps/plugin-window-state": "^2.4.1",
 		"sortablejs": "^1.15.7"

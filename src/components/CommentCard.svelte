@@ -9,6 +9,7 @@
 // panel-context decorations; inline hosts omit the optional props and get a bare
 // card. `variant` swaps width/padding tokens between the panel and inline hosts.
 
+import { externalLinks } from "../lib/external-links.js";
 import type { Comment } from "../lib/types.js";
 
 interface Props {
@@ -179,6 +180,10 @@ async function requestDelete() {
           onclick={cancelEdit}
         >Cancel</button>
       </div>
+    {:else if comment.text_html !== undefined}
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
+           (comrak unsafe-off + ammonia); see commands/markdown.rs -->
+      <div class="comment-card-text markdown-body select-text" use:externalLinks>{@html comment.text_html}</div>
     {:else}
       <span class="comment-card-text select-text">{comment.text}</span>
     {/if}

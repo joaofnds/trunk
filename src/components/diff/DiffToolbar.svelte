@@ -1,6 +1,8 @@
 <script lang="ts">
 import {
+	Code2,
 	Columns2,
+	Eye,
 	FoldVertical,
 	Pilcrow,
 	Rows2,
@@ -8,13 +10,16 @@ import {
 	TextWrap,
 	UnfoldVertical,
 } from "@lucide/svelte";
-import type { ContentMode, LayoutMode } from "../../lib/types.js";
+import { isMarkdownPath } from "../../lib/markdown.js";
+import type { ContentMode, LayoutMode, RenderMode } from "../../lib/types.js";
 
 interface Props {
 	contentMode: ContentMode;
 	layoutMode: LayoutMode;
+	renderMode: RenderMode;
 	oncontentmodechange: (mode: ContentMode) => void;
 	onlayoutmodechange: (mode: LayoutMode) => void;
+	onrendermodechange: (mode: RenderMode) => void;
 	selectedPath: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
 	hunkOperationInFlight: boolean;
@@ -35,8 +40,10 @@ interface Props {
 let {
 	contentMode,
 	layoutMode,
+	renderMode,
 	oncontentmodechange,
 	onlayoutmodechange,
+	onrendermodechange,
 	selectedPath,
 	diffKind,
 	hunkOperationInFlight,
@@ -83,6 +90,21 @@ let {
       <Rows2 size={14} />
     {/if}
   </button>
+
+  {#if selectedPath && isMarkdownPath(selectedPath)}
+    <button
+      class="toggle-btn"
+      class:active={renderMode === "rendered"}
+      title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
+      onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
+    >
+      {#if renderMode === "source"}
+        <Eye size={14} />
+      {:else}
+        <Code2 size={14} />
+      {/if}
+    </button>
+  {/if}
 
   <button
     class="toggle-btn"
