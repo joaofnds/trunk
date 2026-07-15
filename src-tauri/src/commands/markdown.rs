@@ -10,6 +10,7 @@
 
 use crate::error::TrunkError;
 use crate::git::syntax;
+use crate::git::types::WordSpan;
 use crate::state::RepoState;
 use comrak::adapters::SyntaxHighlighterAdapter;
 use comrak::nodes::NodeValue;
@@ -28,12 +29,19 @@ use tauri::State;
 #[derive(Default)]
 pub struct MarkdownCache(pub Mutex<HashMap<String, String>>);
 
+/// Block-diff cache keyed `(repo, file, before-oid, after-oid)`. Only commit-vs-
+/// commit diffs are cached (both revs immutable); any working-tree/index side is
+/// recomputed on every `repo-changed`. Same cap-128 drop-on-overflow policy as
+/// `MarkdownCache`. Registered as Tauri managed state in lib.rs.
+#[derive(Default)]
+pub struct MarkdownDiffCache(pub Mutex<HashMap<String, Vec<DiffRow>>>);
+
 const MARKDOWN_CACHE_CAP: usize = 128;
 
 /// Insert into the render cache, bounding its size. Rendered HTML is cheap to
 /// recompute, so on overflow we drop the whole cache rather than track LRU order
 /// (no dependency, fewest elements) — a rare full miss beats unbounded growth.
-fn cache_put(map: &mut HashMap<String, String>, key: String, value: String) {
+fn cache_put<V>(map: &mut HashMap<String, V>, key: String, value: V) {
     if map.len() >= MARKDOWN_CACHE_CAP {
         map.clear();
     }
@@ -54,6 +62,12 @@ const SYN_CLASSES: &[&str] = &[
     "syn-punctuation",
     "syn-attribute",
 ];
+
+/// The tint classes the table/list post-pass injects onto `<tr>`/`<li>` inside a
+/// changed container fragment. Allowlisted so they survive sanitization; the
+/// fixed strings can't smuggle anything else past ammonia. Block-level tints live
+/// on the frontend wrapper, outside the sanitized fragment (grill §D4).
+const MD_TINT_CLASSES: &[&str] = &["md-added", "md-removed", "md-changed"];
 
 /// Which version of a file to read. Shared by `read_file_at`, `render_markdown`,
 /// and the `trunk-asset://` protocol handler so all three agree on what "the file
@@ -97,6 +111,356 @@ impl RevSpec {
                 }),
         }
     }
+}
+
+/// One row of a rendered-markdown block diff, in document reading order. Mirrors
+/// the frontend `DiffRow` union (serde `kind` tag). `Changed` carries both sides'
+/// fragments plus reserved Layer-2 word-span slots — always `None` in Layer 1.
+#[derive(Debug, Clone, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum DiffRow {
+    Unchanged {
+        html: String,
+    },
+    Added {
+        html: String,
+    },
+    Removed {
+        html: String,
+    },
+    Changed {
+        before_html: String,
+        after_html: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        before_word_spans: Option<Vec<WordSpan>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        after_word_spans: Option<Vec<WordSpan>>,
+    },
+}
+
+/// A top-level block reduced to what the diff needs: a normalized signature for
+/// alignment (node type + whitespace-collapsed text, so a reflow-only edit stays
+/// equal) and its rendered, sanitized HTML fragment. Multi-leaf containers (table,
+/// list) also carry their leaf rows/items and a sourcepos-annotated fragment, so a
+/// container classified `Changed` can tint just the changed `<tr>`/`<li>` inside.
+struct Block {
+    signature: String,
+    html: String,
+    leaves: Vec<Leaf>,
+    sourcepos_html: String,
+}
+
+/// A direct-child leaf of a container (a table row or list item): its signature
+/// for the inner diff and its `data-sourcepos` value, which uniquely identifies its
+/// element in the sourcepos-annotated fragment so the tint lands on the right row.
+struct Leaf {
+    signature: String,
+    sourcepos: String,
+}
+
+/// Diff two markdown documents at the top-level-block granularity, returning an
+/// aligned row per block in reading order. `repo`/`file`/`rev` are needed only to
+/// resolve each side's images. The frontend projects every layout from this array.
+pub fn diff_markdown_blocks(
+    before_md: &str,
+    after_md: &str,
+    repo_path: &str,
+    file_path: &str,
+    before_rev: &RevSpec,
+    after_rev: &RevSpec,
+) -> Vec<DiffRow> {
+    let before = extract_blocks(before_md, repo_path, file_path, before_rev);
+    let after = extract_blocks(after_md, repo_path, file_path, after_rev);
+    let before_sigs: Vec<String> = before.iter().map(|b| b.signature.clone()).collect();
+    let after_sigs: Vec<String> = after.iter().map(|b| b.signature.clone()).collect();
+
+    let mut rows = Vec::new();
+    for op in similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs) {
+        match op {
+            similar::DiffOp::Equal { new_index, len, .. } => {
+                for b in &after[new_index..new_index + len] {
+                    rows.push(DiffRow::Unchanged {
+                        html: b.html.clone(),
+                    });
+                }
+            }
+            similar::DiffOp::Delete {
+                old_index, old_len, ..
+            } => {
+                for b in &before[old_index..old_index + old_len] {
+                    rows.push(DiffRow::Removed {
+                        html: b.html.clone(),
+                    });
+                }
+            }
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                for b in &after[new_index..new_index + new_len] {
+                    rows.push(DiffRow::Added {
+                        html: b.html.clone(),
+                    });
+                }
+            }
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                let paired = old_len.min(new_len);
+                for k in 0..paired {
+                    let b = &before[old_index + k];
+                    let a = &after[new_index + k];
+                    if reclassify_as_changed(&b.signature, &a.signature) {
+                        let (before_html, after_html) = changed_fragments(b, a);
+                        rows.push(DiffRow::Changed {
+                            before_html,
+                            after_html,
+                            before_word_spans: None,
+                            after_word_spans: None,
+                        });
+                    } else {
+                        rows.push(DiffRow::Removed {
+                            html: b.html.clone(),
+                        });
+                        rows.push(DiffRow::Added {
+                            html: a.html.clone(),
+                        });
+                    }
+                }
+                for b in &before[old_index + paired..old_index + old_len] {
+                    rows.push(DiffRow::Removed {
+                        html: b.html.clone(),
+                    });
+                }
+                for a in &after[new_index + paired..new_index + new_len] {
+                    rows.push(DiffRow::Added {
+                        html: a.html.clone(),
+                    });
+                }
+            }
+        }
+    }
+    rows
+}
+
+/// The before/after HTML for a `Changed` pair. A single-leaf block (paragraph,
+/// heading, …) carries its plain fragments — the frontend tints the wrapper. A
+/// multi-leaf container (table, list) descends to its leaves: the specific changed
+/// `<tr>`/`<li>` get an `md-*` class inside the fragment (criterion 6), everything
+/// else stays untinted.
+fn changed_fragments(before: &Block, after: &Block) -> (String, String) {
+    if before.leaves.is_empty() {
+        return (before.html.clone(), after.html.clone());
+    }
+    let before_sigs: Vec<String> = before.leaves.iter().map(|l| l.signature.clone()).collect();
+    let after_sigs: Vec<String> = after.leaves.iter().map(|l| l.signature.clone()).collect();
+
+    let mut before_tints: Vec<(&str, &str)> = Vec::new();
+    let mut after_tints: Vec<(&str, &str)> = Vec::new();
+    for op in similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs) {
+        match op {
+            similar::DiffOp::Equal { .. } => {}
+            similar::DiffOp::Delete {
+                old_index, old_len, ..
+            } => {
+                for l in &before.leaves[old_index..old_index + old_len] {
+                    before_tints.push((&l.sourcepos, "md-removed"));
+                }
+            }
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                for l in &after.leaves[new_index..new_index + new_len] {
+                    after_tints.push((&l.sourcepos, "md-added"));
+                }
+            }
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                let paired = old_len.min(new_len);
+                for k in 0..paired {
+                    before_tints.push((&before.leaves[old_index + k].sourcepos, "md-changed"));
+                    after_tints.push((&after.leaves[new_index + k].sourcepos, "md-changed"));
+                }
+                for l in &before.leaves[old_index + paired..old_index + old_len] {
+                    before_tints.push((&l.sourcepos, "md-removed"));
+                }
+                for l in &after.leaves[new_index + paired..new_index + new_len] {
+                    after_tints.push((&l.sourcepos, "md-added"));
+                }
+            }
+        }
+    }
+    (
+        sanitize_html(&tint_leaves(&before.sourcepos_html, &before_tints)),
+        sanitize_html(&tint_leaves(&after.sourcepos_html, &after_tints)),
+    )
+}
+
+/// Inject an `md-*` class onto each leaf element in a sourcepos-annotated fragment,
+/// matched by its unique `data-sourcepos` value. The leftover `data-sourcepos`
+/// attributes are not allowlisted, so ammonia strips them next; only the injected
+/// class survives.
+fn tint_leaves(sourcepos_html: &str, tints: &[(&str, &str)]) -> String {
+    let mut out = sourcepos_html.to_string();
+    for (sourcepos, class) in tints {
+        let needle = format!("data-sourcepos=\"{sourcepos}\"");
+        let replacement = format!("class=\"{class}\" {needle}");
+        out = out.replacen(&needle, &replacement, 1);
+    }
+    out
+}
+
+/// Whether an aligned before/after pair is an in-place edit (`Changed`) rather
+/// than a full replacement (stacked remove + add). True only when the node type is
+/// unchanged — a type change (paragraph → heading) stays split (criterion 5) — and
+/// at least 40% of the longer text's ascii bytes are shared (the char-ratio idea
+/// from `diff.rs`'s word-span dissimilarity guard).
+fn reclassify_as_changed(before_sig: &str, after_sig: &str) -> bool {
+    let (before_kind, before_text) = before_sig.split_once(':').unwrap_or((before_sig, ""));
+    let (after_kind, after_text) = after_sig.split_once(':').unwrap_or((after_sig, ""));
+    if before_kind != after_kind {
+        return false;
+    }
+    let long = before_text.len().max(after_text.len());
+    if long == 0 {
+        return true;
+    }
+    let mut counts = [0i32; 128];
+    for &byte in before_text.as_bytes() {
+        if (byte as usize) < 128 {
+            counts[byte as usize] += 1;
+        }
+    }
+    let mut shared = 0usize;
+    for &byte in after_text.as_bytes() {
+        let i = byte as usize;
+        if i < 128 && counts[i] > 0 {
+            counts[i] -= 1;
+            shared += 1;
+        }
+    }
+    shared * 5 >= long * 2
+}
+
+/// The alignment signature for a top-level block: its node type plus its
+/// whitespace-collapsed text. Type in the signature makes a type change (e.g.
+/// paragraph → heading) a delete+insert, not a reflow; collapsing whitespace makes
+/// a rewrapped paragraph compare equal.
+fn block_signature<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
+    let mut text = String::new();
+    for d in node.descendants() {
+        match &d.data.borrow().value {
+            NodeValue::Text(t) => {
+                text.push_str(t);
+                text.push(' ');
+            }
+            NodeValue::HtmlInline(t) => {
+                text.push_str(t);
+                text.push(' ');
+            }
+            NodeValue::Code(c) => {
+                text.push_str(&c.literal);
+                text.push(' ');
+            }
+            NodeValue::CodeBlock(c) => {
+                text.push_str(&c.literal);
+                text.push(' ');
+            }
+            NodeValue::HtmlBlock(h) => {
+                text.push_str(&h.literal);
+                text.push(' ');
+            }
+            _ => {}
+        }
+    }
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let kind = node.data.borrow().value.xml_node_name();
+    format!("{kind}:{normalized}")
+}
+
+/// Read one side of the diff as a string, mapping a `not_found` (the file is
+/// absent at this rev — added or deleted) to `None` so the diff renders the present
+/// side alone (every block added or removed). Other errors propagate.
+fn read_side(
+    repo_path: &str,
+    file_path: &str,
+    rev: &RevSpec,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<Option<String>, TrunkError> {
+    match read_file_at_from_state(repo_path, file_path, rev, state_map) {
+        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+        Err(e) if e.code == "not_found" => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// Resolve `repo_path`, read `file_path` at both revs, and diff their markdown
+/// blocks. A `not_found` on one side (added/deleted file) is handled by the caller
+/// so the present side still renders.
+pub fn render_markdown_diff_from_state(
+    repo_path: &str,
+    file_path: &str,
+    before_rev: &RevSpec,
+    after_rev: &RevSpec,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<Vec<DiffRow>, TrunkError> {
+    let before = read_side(repo_path, file_path, before_rev, state_map)?;
+    let after = read_side(repo_path, file_path, after_rev, state_map)?;
+    Ok(diff_markdown_blocks(
+        before.as_deref().unwrap_or(""),
+        after.as_deref().unwrap_or(""),
+        repo_path,
+        file_path,
+        before_rev,
+        after_rev,
+    ))
+}
+
+/// Parse a document and reduce each top-level block (direct child of the comrak
+/// root, front matter skipped) to a `Block`. Images are rewritten once over the
+/// whole tree first, so each fragment resolves them like the whole-doc render would.
+fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpec) -> Vec<Block> {
+    let arena = comrak::Arena::new();
+    let options = build_options();
+    let mut options_sp = build_options();
+    options_sp.render.sourcepos = true;
+    let root = comrak::parse_document(&arena, markdown, &options);
+    apply_image_rewrite(root, &build_image_rewrite(repo_path, file_path, rev));
+    root.children()
+        .filter(|n| !matches!(n.data.borrow().value, NodeValue::FrontMatter(_)))
+        .map(|n| {
+            let kind = n.data.borrow().value.xml_node_name();
+            let is_container = kind == "table" || kind == "list";
+            let (leaves, sourcepos_html) = if is_container {
+                let leaves = n
+                    .children()
+                    .map(|c| Leaf {
+                        signature: block_signature(c),
+                        sourcepos: c.data.borrow().sourcepos.to_string(),
+                    })
+                    .collect();
+                (leaves, format_node(n, &options_sp))
+            } else {
+                (Vec::new(), String::new())
+            };
+            Block {
+                signature: block_signature(n),
+                html: sanitize_html(&format_node(n, &options)),
+                leaves,
+                sourcepos_html,
+            }
+        })
+        .collect()
 }
 
 /// Read a file's raw bytes at `rev`. Committed revs (Head/Index/Commit) read git
@@ -222,13 +586,26 @@ pub fn render_markdown_with_asset_base(
     file_path: &str,
     rev: &RevSpec,
 ) -> String {
+    render_markdown_html(markdown, &build_image_rewrite(repo_path, file_path, rev))
+}
+
+/// Build the scheme-less-image → `trunk-asset://asset/?repo=&rev=&path=` rewrite
+/// for a file at a rev: repo + rev + path ride as percent-encoded query params so
+/// filesystem paths with spaces/slashes and the repo key survive intact. Shared by
+/// the whole-doc renderer and the per-block diff path so per-block images resolve
+/// identically. Remote (`http(s)`) and anchor URLs are left untouched.
+fn build_image_rewrite(
+    repo_path: &str,
+    file_path: &str,
+    rev: &RevSpec,
+) -> impl Fn(&str) -> Option<String> {
     let base_dir = Path::new(file_path)
         .parent()
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_default();
     let repo_q = pct_encode(repo_path);
     let rev_q = pct_encode(&rev.to_url_token());
-    let rewrite = |url: &str| {
+    move |url: &str| {
         if url.is_empty() || url.starts_with('#') || has_url_scheme(url) {
             None
         } else {
@@ -237,8 +614,7 @@ pub fn render_markdown_with_asset_base(
                 "trunk-asset://asset/?repo={repo_q}&rev={rev_q}&path={path_q}"
             ))
         }
-    };
-    render_markdown_html(markdown, &rewrite)
+    }
 }
 
 #[tauri::command]
@@ -273,6 +649,52 @@ pub async fn render_markdown(
         cache_put(&mut cache.0.lock().unwrap(), key, html.clone());
     }
     Ok(html)
+}
+
+/// Cache key for a block diff — `Some` only when both revs are immutable commits,
+/// so working-tree/index diffs always recompute (they move on every `repo-changed`).
+fn diff_cache_key(
+    repo_path: &str,
+    file_path: &str,
+    before_rev: &RevSpec,
+    after_rev: &RevSpec,
+) -> Option<String> {
+    match (before_rev, after_rev) {
+        (RevSpec::Commit { oid: before }, RevSpec::Commit { oid: after }) => Some(format!(
+            "{repo_path}\u{1f}{file_path}\u{1f}{before}\u{1f}{after}"
+        )),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+pub async fn render_markdown_diff(
+    repo_path: String,
+    file_path: String,
+    before_rev: RevSpec,
+    after_rev: RevSpec,
+    state: State<'_, RepoState>,
+    cache: State<'_, MarkdownDiffCache>,
+) -> Result<Vec<DiffRow>, String> {
+    let cache_key = diff_cache_key(&repo_path, &file_path, &before_rev, &after_rev);
+    if let Some(ref key) = cache_key {
+        if let Some(hit) = cache.0.lock().unwrap().get(key).cloned() {
+            return Ok(hit);
+        }
+    }
+
+    let state_map = state.0.lock().unwrap().clone();
+    let rows = tauri::async_runtime::spawn_blocking(move || {
+        render_markdown_diff_from_state(&repo_path, &file_path, &before_rev, &after_rev, &state_map)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    if let Some(key) = cache_key {
+        cache_put(&mut cache.0.lock().unwrap(), key, rows.clone());
+    }
+    Ok(rows)
 }
 
 /// Wraps the existing diff highlighter (`git/syntax.rs`) as a comrak codefence
@@ -351,21 +773,35 @@ pub fn render_markdown_html(
     rewrite_image: &dyn Fn(&str) -> Option<String>,
 ) -> String {
     let arena = comrak::Arena::new();
+    let options = build_options();
+    let root = comrak::parse_document(&arena, markdown, &options);
+    apply_image_rewrite(root, rewrite_image);
+    sanitize_html(&format_node(root, &options))
+}
+
+/// The comrak options shared by the whole-doc renderer and the per-block diff
+/// path, so both parse identically. Front matter is delimited by `---` so comrak
+/// excludes it from the prose body (without it, `---` reads as a thematic break
+/// and the YAML leaks as a run-on paragraph). `render.unsafe` stays off: raw HTML
+/// is stripped and dangerous hrefs emptied, with ammonia as the authoritative
+/// second layer.
+fn build_options() -> comrak::Options<'static> {
     let mut options = comrak::Options::default();
     options.extension.table = true;
     options.extension.strikethrough = true;
     options.extension.tasklist = true;
     options.extension.autolink = true;
     options.extension.tagfilter = true;
-    // Recognize YAML front matter so comrak excludes it from the prose body:
-    // with the delimiter set, comrak renders front matter as nothing (without it,
-    // `---` reads as a thematic break and the YAML leaks as a run-on paragraph).
     options.extension.front_matter_delimiter = Some("---".to_string());
-    // `render.unsafe` stays at its default (off): raw HTML is stripped and
-    // dangerous hrefs emptied. Ammonia below is the second, authoritative layer.
+    options
+}
 
-    let root = comrak::parse_document(&arena, markdown, &options);
-
+/// Rewrite scheme-less image URLs across the whole tree before formatting, so a
+/// per-block fragment resolves its images identically to the whole-doc render.
+fn apply_image_rewrite<'a>(
+    root: &'a comrak::nodes::AstNode<'a>,
+    rewrite_image: &dyn Fn(&str) -> Option<String>,
+) {
     for node in root.descendants() {
         let mut data = node.data.borrow_mut();
         if let NodeValue::Image(link) = &mut data.value {
@@ -374,16 +810,19 @@ pub fn render_markdown_html(
             }
         }
     }
+}
 
+/// Format one AST node to raw, UNsanitized HTML. Given a top-level block node
+/// (not the document root) comrak emits only that block's fragment — the diff
+/// path relies on this to render one fragment per block.
+fn format_node<'a>(node: &'a comrak::nodes::AstNode<'a>, options: &comrak::Options<'_>) -> String {
     let adapter = TrunkSyntaxAdapter;
     let mut plugins = comrak::options::Plugins::default();
     plugins.render.codefence_syntax_highlighter = Some(&adapter);
-
     let mut html = String::new();
-    comrak::format_html_with_plugins(root, &options, &mut html, &plugins)
+    comrak::format_html_with_plugins(node, options, &mut html, &plugins)
         .expect("formatting to a String cannot fail");
-
-    sanitize_html(&html)
+    html
 }
 
 /// True if `url` begins with a URI scheme (`scheme:`), per RFC 3986. Scheme-ful
@@ -516,7 +955,9 @@ fn sanitize_html(html: &str) -> String {
         .add_tags(["span", "input"])
         .add_tag_attributes("input", ["type", "checked", "disabled"])
         .add_url_schemes(["trunk-asset"])
-        .add_allowed_classes("span", SYN_CLASSES.iter().copied());
+        .add_allowed_classes("span", SYN_CLASSES.iter().copied())
+        .add_allowed_classes("tr", MD_TINT_CLASSES.iter().copied())
+        .add_allowed_classes("li", MD_TINT_CLASSES.iter().copied());
     builder.clean(html).to_string()
 }
 
@@ -629,6 +1070,327 @@ mod tests {
     }
 
     #[test]
+    fn identical_documents_yield_all_unchanged_rows() {
+        let md = "# Title\n\nfirst para\n\nsecond para";
+        let rows = diff_markdown_blocks(
+            md,
+            md,
+            "/repo",
+            "doc.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(rows.len(), 3, "one row per top-level block: {rows:?}");
+        assert!(
+            rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "all rows unchanged: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn large_and_adversarial_input_terminates_without_panic() {
+        let mut before = String::new();
+        let mut after = String::new();
+        for i in 0..2000 {
+            before.push_str(&format!("paragraph number {i}\n\n"));
+            after.push_str(&format!("paragraph number {}\n\n", i + 1));
+        }
+        // deeply nested quote + a ```markdown fence (the historically pathological
+        // grammar): both must stay bounded via the grammar-refusal guard.
+        after.push_str("> > > > > > > > deep\n\n```markdown\n**b** `c` mix\n```\n");
+        let rows = diff_markdown_blocks(
+            &before,
+            &after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert!(!rows.is_empty(), "returns without hanging or panicking");
+    }
+
+    #[test]
+    fn diff_cache_key_only_for_commit_pairs() {
+        let commit = |oid: &str| RevSpec::Commit {
+            oid: oid.to_string(),
+        };
+        assert!(
+            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb")).is_some(),
+            "commit-vs-commit is cacheable"
+        );
+        assert!(
+            diff_cache_key("/r", "d.md", &RevSpec::Head, &commit("bbb")).is_none(),
+            "a HEAD side is not cacheable"
+        );
+        assert!(
+            diff_cache_key("/r", "d.md", &commit("aaa"), &RevSpec::WorkingTree).is_none(),
+            "a working-tree side is not cacheable"
+        );
+    }
+
+    #[test]
+    fn absent_side_renders_all_added_or_all_removed() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join("other.md"), b"x").unwrap();
+        {
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new("other.md")).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let s = sig();
+            repo.commit(Some("HEAD"), &s, &s, "init", &tree, &[])
+                .unwrap();
+        }
+        // new.md exists only in the working tree — absent at HEAD.
+        fs::write(dir.path().join("new.md"), b"# added\n\nbody para").unwrap();
+
+        let mut state_map = HashMap::new();
+        state_map.insert(
+            dir.path().to_string_lossy().to_string(),
+            dir.path().to_path_buf(),
+        );
+        let repo_str = dir.path().to_string_lossy().to_string();
+
+        let added = render_markdown_diff_from_state(
+            &repo_str,
+            "new.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+            &state_map,
+        )
+        .unwrap();
+        assert!(
+            !added.is_empty() && added.iter().all(|r| matches!(r, DiffRow::Added { .. })),
+            "absent before → every block added: {added:?}"
+        );
+
+        let removed = render_markdown_diff_from_state(
+            &repo_str,
+            "new.md",
+            &RevSpec::WorkingTree,
+            &RevSpec::Head,
+            &state_map,
+        )
+        .unwrap();
+        assert!(
+            !removed.is_empty() && removed.iter().all(|r| matches!(r, DiffRow::Removed { .. })),
+            "absent after → every block removed: {removed:?}"
+        );
+    }
+
+    #[test]
+    fn tinted_fragment_strips_sourcepos_and_keeps_only_the_tint_class() {
+        let before = "| a | b |\n|---|---|\n| 1 | 2 |";
+        let after = "| a | b |\n|---|---|\n| 9 | 2 |";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("{rows:?}");
+        };
+        assert!(
+            after_html.contains("md-changed"),
+            "tint survives: {after_html}"
+        );
+        assert!(
+            !after_html.contains("data-sourcepos"),
+            "sourcepos is stripped by sanitization: {after_html}"
+        );
+    }
+
+    #[test]
+    fn diff_strips_raw_script_and_does_not_smuggle_a_tint_class_from_text() {
+        let before = "clean paragraph";
+        let after = "<script>alert(1)</script>\n\ntext md-changed here";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
+        assert!(!dump.contains("<script"), "raw <script> stripped: {dump}");
+        assert!(
+            !dump.contains("class=\"md-changed\""),
+            "literal 'md-changed' text must not become a class attribute: {dump}"
+        );
+    }
+
+    #[test]
+    fn changed_table_tints_only_the_changed_row() {
+        let before = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |";
+        let after = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 99 |";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(rows.len(), 1, "the whole table is one row: {rows:?}");
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("a one-cell table edit is a Changed row: {rows:?}");
+        };
+        assert!(
+            after_html.contains("<table"),
+            "table stays intact: {after_html}"
+        );
+        assert_eq!(
+            after_html.matches("md-changed").count(),
+            1,
+            "exactly the changed row is tinted, not the whole table: {after_html}"
+        );
+    }
+
+    #[test]
+    fn changed_list_tints_only_the_changed_item() {
+        let before = "- keep one\n- keep two\n- old third";
+        let after = "- keep one\n- keep two\n- new third";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(rows.len(), 1, "the whole list is one row: {rows:?}");
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("a one-item list edit is a Changed row: {rows:?}");
+        };
+        assert_eq!(
+            after_html.matches("md-changed").count(),
+            1,
+            "exactly the changed item is tinted: {after_html}"
+        );
+    }
+
+    #[test]
+    fn rewrapped_paragraph_reads_as_unchanged() {
+        let before = "the quick brown fox\njumps over the lazy dog";
+        let after = "the quick brown fox jumps over\nthe lazy dog";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(rows.len(), 1, "one paragraph: {rows:?}");
+        assert!(
+            matches!(rows[0], DiffRow::Unchanged { .. }),
+            "a reflow-only edit is not tinted: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn similar_edit_is_changed_type_change_is_remove_plus_add() {
+        let edit = diff_markdown_blocks(
+            "kept intro\n\nold body text here",
+            "kept intro\n\nold body text there",
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert!(
+            edit.iter().any(|r| matches!(r, DiffRow::Changed { .. })),
+            "a same-kind similar edit is one Changed row: {edit:?}"
+        );
+        assert!(
+            !edit
+                .iter()
+                .any(|r| matches!(r, DiffRow::Added { .. } | DiffRow::Removed { .. })),
+            "a similar edit is not split into add/remove: {edit:?}"
+        );
+
+        let type_change = diff_markdown_blocks(
+            "hello world",
+            "# hello world",
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert!(
+            !type_change
+                .iter()
+                .any(|r| matches!(r, DiffRow::Changed { .. })),
+            "paragraph → heading must not be a Changed row: {type_change:?}"
+        );
+        assert!(
+            type_change
+                .iter()
+                .any(|r| matches!(r, DiffRow::Removed { .. }))
+                && type_change
+                    .iter()
+                    .any(|r| matches!(r, DiffRow::Added { .. })),
+            "type change is remove + add: {type_change:?}"
+        );
+    }
+
+    #[test]
+    fn trailing_block_added_on_one_side_removed_on_the_other() {
+        let before = "# Title\n\nkept para";
+        let after = "# Title\n\nkept para\n\nnew para";
+
+        let added = diff_markdown_blocks(
+            before,
+            after,
+            "/repo",
+            "doc.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(added.len(), 3, "{added:?}");
+        match &added[2] {
+            DiffRow::Added { html } => assert!(html.contains("new para"), "{html}"),
+            other => panic!("expected Added carrying the after html, got {other:?}"),
+        }
+
+        let removed = diff_markdown_blocks(
+            after,
+            before,
+            "/repo",
+            "doc.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(removed.len(), 3, "{removed:?}");
+        match &removed[2] {
+            DiffRow::Removed { html } => assert!(html.contains("new para"), "{html}"),
+            other => panic!("expected Removed carrying the before html, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn formats_a_single_block_node_not_the_whole_document() {
+        let arena = comrak::Arena::new();
+        let options = build_options();
+        let root = comrak::parse_document(&arena, "# Title\n\nbody paragraph", &options);
+        let heading = root.children().next().unwrap();
+        let html = format_node(heading, &options);
+        assert!(
+            html.contains("<h1>Title</h1>"),
+            "formats the heading block: {html}"
+        );
+        assert!(
+            !html.contains("body paragraph"),
+            "must format ONLY the first block, not the whole doc: {html}"
+        );
+    }
+
+    #[test]
     fn renders_headings_and_emphasis() {
         let html = render_markdown_html("# Title\n\nsome **bold** text", &no_rewrite);
         assert!(html.contains("<h1>"), "heading should render: {html}");
@@ -715,6 +1477,22 @@ mod tests {
             html.contains("trunk-asset://head/img/logo.png"),
             "local image URL rewritten: {html}"
         );
+    }
+
+    #[test]
+    fn build_image_rewrite_resolves_local_and_leaves_remote() {
+        let rewrite = build_image_rewrite("/repo", "docs/README.md", &RevSpec::Head);
+        let local = rewrite("img/logo.png").expect("local image rewritten");
+        assert!(local.contains("rev=head"), "rev token: {local}");
+        assert!(
+            local.contains("path=docs%2Fimg%2Flogo.png"),
+            "resolved against the file's dir: {local}"
+        );
+        assert!(
+            rewrite("https://ex.com/a.png").is_none(),
+            "remote image left untouched"
+        );
+        assert!(rewrite("#anchor").is_none(), "anchor left untouched");
     }
 
     #[test]
