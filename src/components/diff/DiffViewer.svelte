@@ -17,6 +17,7 @@ import SplitView from "./SplitView.svelte";
 
 interface Props {
 	contentMode: ContentMode;
+	contextLines: number;
 	layoutMode: LayoutMode;
 	renderMode: RenderMode;
 	fileDiffs: FileDiff[];
@@ -75,6 +76,7 @@ interface Props {
 
 let {
 	contentMode,
+	contextLines,
 	layoutMode,
 	renderMode,
 	fileDiffs,
@@ -133,6 +135,8 @@ let {
       {commitOid}
       {repoPath}
       {commitDetail}
+      {contentMode}
+      {contextLines}
     />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView

@@ -5309,6 +5309,7 @@ dependencies = [
  "tokio",
  "two-face",
  "uuid",
+ "yaml-rust",
 ]
 
 [[package]]

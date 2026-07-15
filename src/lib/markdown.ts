@@ -45,10 +45,41 @@ export function beforeRev(
 	return { type: "head" };
 }
 
-export function renderMarkdown(
+// One rendered-markdown word span, reserved for Layer-2 word-level highlighting.
+// Mirrors the Rust `WordSpan`; typed but never read in Layer 1.
+export interface WordSpan {
+	start: number;
+	end: number;
+}
+
+// One row of a block-level markdown diff, in document reading order. Mirrors the
+// Rust `DiffRow` union (serde `kind` tag, camelCase fields). `changed` carries
+// both sides' fragments plus reserved Layer-2 word-span slots (absent in Layer 1).
+export type DiffRow =
+	| { kind: "unchanged"; html: string; lines: number }
+	| { kind: "added"; html: string }
+	| { kind: "removed"; html: string }
+	| {
+			kind: "changed";
+			beforeHtml: string;
+			afterHtml: string;
+			beforeWordSpans?: WordSpan[];
+			afterWordSpans?: WordSpan[];
+	  };
+
+// Diff a markdown file between two revs, returning one aligned row per top-level
+// block. The frontend projects every layout (inline/split × full/hunk) from this
+// array without re-invoking Rust.
+export function renderMarkdownDiff(
 	repoPath: string,
 	filePath: string,
-	rev: RevSpec,
-): Promise<string> {
-	return safeInvoke<string>("render_markdown", { repoPath, filePath, rev });
+	beforeRev: RevSpec,
+	afterRev: RevSpec,
+): Promise<DiffRow[]> {
+	return safeInvoke<DiffRow[]>("render_markdown_diff", {
+		repoPath,
+		filePath,
+		beforeRev,
+		afterRev,
+	});
 }

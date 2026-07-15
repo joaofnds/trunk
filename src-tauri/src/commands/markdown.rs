@@ -22,17 +22,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::State;
 
-/// Rendered-HTML cache keyed by `(repo, file, commit-oid)`. Only immutable
-/// `Commit` revs are cached — working-tree/index/HEAD renders are recomputed so
-/// the existing `repo-changed` refetch always shows fresh content (no separate
-/// invalidation path). Registered as Tauri managed state in lib.rs.
-#[derive(Default)]
-pub struct MarkdownCache(pub Mutex<HashMap<String, String>>);
-
 /// Block-diff cache keyed `(repo, file, before-oid, after-oid)`. Only commit-vs-
 /// commit diffs are cached (both revs immutable); any working-tree/index side is
-/// recomputed on every `repo-changed`. Same cap-128 drop-on-overflow policy as
-/// `MarkdownCache`. Registered as Tauri managed state in lib.rs.
+/// recomputed on every `repo-changed`. `cache_put` bounds it at cap-128, dropping
+/// the whole map on overflow. Registered as Tauri managed state in lib.rs.
 #[derive(Default)]
 pub struct MarkdownDiffCache(pub Mutex<HashMap<String, Vec<DiffRow>>>);
 
@@ -66,12 +59,13 @@ const SYN_CLASSES: &[&str] = &[
 /// The tint classes the table/list post-pass injects onto `<tr>`/`<li>` inside a
 /// changed container fragment. Allowlisted so they survive sanitization; the
 /// fixed strings can't smuggle anything else past ammonia. Block-level tints live
-/// on the frontend wrapper, outside the sanitized fragment (grill §D4).
-const MD_TINT_CLASSES: &[&str] = &["md-added", "md-removed", "md-changed"];
+/// on the frontend wrapper, outside the sanitized fragment (grill §D4). Mirrors
+/// Source: a modified leaf is removed-on-before / added-on-after, no third state.
+const MD_TINT_CLASSES: &[&str] = &["md-added", "md-removed"];
 
-/// Which version of a file to read. Shared by `read_file_at`, `render_markdown`,
-/// and the `trunk-asset://` protocol handler so all three agree on what "the file
-/// at this rev" means. The frontend derives it from `diffKind` + side.
+/// Which version of a file to read. Shared by `read_file_at`, the block-diff
+/// renderer, and the `trunk-asset://` protocol handler so all agree on what "the
+/// file at this rev" means. The frontend derives it from `diffKind` + side.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RevSpec {
@@ -125,6 +119,10 @@ impl RevSpec {
 pub enum DiffRow {
     Unchanged {
         html: String,
+        /// Source-line span of this block, so the frontend can budget hunk
+        /// context by lines (matching Source's `diff_context_lines`) rather than
+        /// by whole blocks.
+        lines: u32,
     },
     Added {
         html: String,
@@ -152,6 +150,7 @@ struct Block {
     html: String,
     leaves: Vec<Leaf>,
     sourcepos_html: String,
+    lines: u32,
 }
 
 /// A direct-child leaf of a container (a table row or list item): its signature
@@ -185,6 +184,7 @@ pub fn diff_markdown_blocks(
                 for b in &after[new_index..new_index + len] {
                     rows.push(DiffRow::Unchanged {
                         html: b.html.clone(),
+                        lines: b.lines,
                     });
                 }
             }
@@ -286,15 +286,10 @@ fn changed_fragments(before: &Block, after: &Block) -> (String, String) {
                 new_index,
                 new_len,
             } => {
-                let paired = old_len.min(new_len);
-                for k in 0..paired {
-                    before_tints.push((&before.leaves[old_index + k].sourcepos, "md-changed"));
-                    after_tints.push((&after.leaves[new_index + k].sourcepos, "md-changed"));
-                }
-                for l in &before.leaves[old_index + paired..old_index + old_len] {
+                for l in &before.leaves[old_index..old_index + old_len] {
                     before_tints.push((&l.sourcepos, "md-removed"));
                 }
-                for l in &after.leaves[new_index + paired..new_index + new_len] {
+                for l in &after.leaves[new_index..new_index + new_len] {
                     after_tints.push((&l.sourcepos, "md-added"));
                 }
             }
@@ -426,15 +421,98 @@ pub fn render_markdown_diff_from_state(
     ))
 }
 
+/// Split leading `---`-fenced YAML front matter off `md`, returning
+/// `(yaml_body, rest_of_document)`. Mirrors comrak's delimiter detection: the doc
+/// must open with a `---` line, and the body ends at the next line that is exactly
+/// `---` or `...`. `None` when there is no front matter.
+fn split_front_matter(md: &str) -> Option<(&str, &str)> {
+    let rest = md
+        .strip_prefix("---\n")
+        .or_else(|| md.strip_prefix("---\r\n"))?;
+    let mut offset = 0;
+    for line in rest.split_inclusive('\n') {
+        let content = line.trim_end_matches(['\r', '\n']);
+        if content == "---" || content == "..." {
+            return Some((&rest[..offset], &rest[offset + line.len()..]));
+        }
+        offset += line.len();
+    }
+    None
+}
+
+/// Rewrite a document's leading YAML front matter into a markdown key/value table
+/// so front-matter edits participate in the block diff (a changed field tints only
+/// its row). Invalid YAML or a non-mapping root leaves `md` unchanged — comrak then
+/// suppresses the front matter as before (`extract_blocks` still filters it out).
+fn front_matter_as_table(md: &str) -> Cow<'_, str> {
+    let Some((yaml, rest)) = split_front_matter(md) else {
+        return Cow::Borrowed(md);
+    };
+    match front_matter_table_markdown(yaml) {
+        Some(table) => Cow::Owned(format!("{table}\n{rest}")),
+        None => Cow::Borrowed(md),
+    }
+}
+
+/// Build a `| Field | Value |` markdown table from a front-matter YAML mapping,
+/// preserving key order. `None` if the YAML doesn't parse or its root isn't a map.
+fn front_matter_table_markdown(yaml: &str) -> Option<String> {
+    let docs = yaml_rust::YamlLoader::load_from_str(yaml).ok()?;
+    let hash = docs.first()?.as_hash()?;
+    let mut table = String::from("| Field | Value |\n| --- | --- |\n");
+    for (key, value) in hash {
+        let _ = writeln!(
+            table,
+            "| {} | {} |",
+            md_cell(&yaml_inline(key)),
+            md_cell(&yaml_inline(value))
+        );
+    }
+    Some(table)
+}
+
+/// Render a YAML value as a compact one-line string for a table cell: scalars as
+/// themselves, collections inline (`[a, b]`, `{k: v}`).
+fn yaml_inline(y: &yaml_rust::Yaml) -> String {
+    use yaml_rust::Yaml;
+    match y {
+        Yaml::String(s) => s.clone(),
+        Yaml::Integer(i) => i.to_string(),
+        Yaml::Real(s) => s.clone(),
+        Yaml::Boolean(b) => b.to_string(),
+        Yaml::Null => "null".to_string(),
+        Yaml::Array(items) => {
+            let inner: Vec<String> = items.iter().map(yaml_inline).collect();
+            format!("[{}]", inner.join(", "))
+        }
+        Yaml::Hash(map) => {
+            let inner: Vec<String> = map
+                .iter()
+                .map(|(k, v)| format!("{}: {}", yaml_inline(k), yaml_inline(v)))
+                .collect();
+            format!("{{{}}}", inner.join(", "))
+        }
+        Yaml::Alias(_) | Yaml::BadValue => String::new(),
+    }
+}
+
+/// Escape a string to sit in one GFM table cell: newlines to spaces, `|` escaped.
+fn md_cell(s: &str) -> String {
+    s.replace(['\r', '\n'], " ").replace('|', "\\|")
+}
+
 /// Parse a document and reduce each top-level block (direct child of the comrak
-/// root, front matter skipped) to a `Block`. Images are rewritten once over the
-/// whole tree first, so each fragment resolves them like the whole-doc render would.
+/// root) to a `Block`. Leading YAML front matter is first rewritten to a key/value
+/// table so its edits diff per-row; if that rewrite fails the raw front matter is
+/// filtered out (suppressed) as before. Images are rewritten once over the whole
+/// tree first, so each fragment resolves them like the whole-doc render would.
 fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpec) -> Vec<Block> {
+    let markdown = front_matter_as_table(markdown);
     let arena = comrak::Arena::new();
     let options = build_options();
     let mut options_sp = build_options();
     options_sp.render.sourcepos = true;
-    let root = comrak::parse_document(&arena, markdown, &options);
+    let root = comrak::parse_document(&arena, &markdown, &options);
     apply_image_rewrite(root, &build_image_rewrite(repo_path, file_path, rev));
     root.children()
         .filter(|n| !matches!(n.data.borrow().value, NodeValue::FrontMatter(_)))
@@ -453,11 +531,14 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
             } else {
                 (Vec::new(), String::new())
             };
+            let sourcepos = n.data.borrow().sourcepos;
+            let lines = (sourcepos.end.line - sourcepos.start.line + 1) as u32;
             Block {
                 signature: block_signature(n),
                 html: sanitize_html(&format_node(n, &options)),
                 leaves,
                 sourcepos_html,
+                lines,
             }
         })
         .collect()
@@ -559,36 +640,6 @@ pub async fn read_file_at(
     .map_err(|e| e.to_json())
 }
 
-/// Read `file_path` at `rev`, render its markdown to sanitized HTML, and rewrite
-/// scheme-less image URLs to `trunk-asset://<rev>/<repo-relative path>` resolved
-/// against the file's directory. Remote (`http(s)`) images are left untouched.
-pub fn render_markdown_from_state(
-    repo_path: &str,
-    file_path: &str,
-    rev: &RevSpec,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<String, TrunkError> {
-    let bytes = read_file_at_from_state(repo_path, file_path, rev, state_map)?;
-    let markdown = String::from_utf8_lossy(&bytes);
-    Ok(render_markdown_with_asset_base(
-        &markdown, repo_path, file_path, rev,
-    ))
-}
-
-/// Render a markdown string, rewriting scheme-less image URLs to `trunk-asset://`
-/// resolved against `file_path`'s directory at `rev`. repo + rev + path ride as
-/// percent-encoded query params (not path/host segments) so filesystem paths with
-/// spaces/slashes and the repo key survive intact, and the protocol handler can
-/// identify which open repo the image belongs to. Fixed host `asset`.
-pub fn render_markdown_with_asset_base(
-    markdown: &str,
-    repo_path: &str,
-    file_path: &str,
-    rev: &RevSpec,
-) -> String {
-    render_markdown_html(markdown, &build_image_rewrite(repo_path, file_path, rev))
-}
-
 /// Build the scheme-less-image → `trunk-asset://asset/?repo=&rev=&path=` rewrite
 /// for a file at a rev: repo + rev + path ride as percent-encoded query params so
 /// filesystem paths with spaces/slashes and the repo key survive intact. Shared by
@@ -615,40 +666,6 @@ fn build_image_rewrite(
             ))
         }
     }
-}
-
-#[tauri::command]
-pub async fn render_markdown(
-    repo_path: String,
-    file_path: String,
-    rev: RevSpec,
-    state: State<'_, RepoState>,
-    cache: State<'_, MarkdownCache>,
-) -> Result<String, String> {
-    // Only content-addressed commit revs are cacheable; HEAD/index/working-tree
-    // all move, so they render fresh every time.
-    let cache_key = match &rev {
-        RevSpec::Commit { oid } => Some(format!("{repo_path}\u{1f}{file_path}\u{1f}{oid}")),
-        _ => None,
-    };
-    if let Some(ref key) = cache_key {
-        if let Some(hit) = cache.0.lock().unwrap().get(key).cloned() {
-            return Ok(hit);
-        }
-    }
-
-    let state_map = state.0.lock().unwrap().clone();
-    let html = tauri::async_runtime::spawn_blocking(move || {
-        render_markdown_from_state(&repo_path, &file_path, &rev, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-
-    if let Some(key) = cache_key {
-        cache_put(&mut cache.0.lock().unwrap(), key, html.clone());
-    }
-    Ok(html)
 }
 
 /// Cache key for a block diff — `Some` only when both revs are immutable commits,
@@ -1195,8 +1212,8 @@ mod tests {
             panic!("{rows:?}");
         };
         assert!(
-            after_html.contains("md-changed"),
-            "tint survives: {after_html}"
+            after_html.contains("md-added"),
+            "the after leaf tints added (Source parity), tint survives: {after_html}"
         );
         assert!(
             !after_html.contains("data-sourcepos"),
@@ -1207,7 +1224,7 @@ mod tests {
     #[test]
     fn diff_strips_raw_script_and_does_not_smuggle_a_tint_class_from_text() {
         let before = "clean paragraph";
-        let after = "<script>alert(1)</script>\n\ntext md-changed here";
+        let after = "<script>alert(1)</script>\n\ntext md-added here";
         let rows = diff_markdown_blocks(
             before,
             after,
@@ -1219,8 +1236,8 @@ mod tests {
         let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
         assert!(!dump.contains("<script"), "raw <script> stripped: {dump}");
         assert!(
-            !dump.contains("class=\"md-changed\""),
-            "literal 'md-changed' text must not become a class attribute: {dump}"
+            !dump.contains("class=\"md-added\""),
+            "literal 'md-added' text must not become a class attribute: {dump}"
         );
     }
 
@@ -1245,9 +1262,9 @@ mod tests {
             "table stays intact: {after_html}"
         );
         assert_eq!(
-            after_html.matches("md-changed").count(),
+            after_html.matches("md-added").count(),
             1,
-            "exactly the changed row is tinted, not the whole table: {after_html}"
+            "exactly the changed row tints added, not the whole table: {after_html}"
         );
     }
 
@@ -1268,9 +1285,9 @@ mod tests {
             panic!("a one-item list edit is a Changed row: {rows:?}");
         };
         assert_eq!(
-            after_html.matches("md-changed").count(),
+            after_html.matches("md-added").count(),
             1,
-            "exactly the changed item is tinted: {after_html}"
+            "exactly the changed item tints added: {after_html}"
         );
     }
 
@@ -1398,6 +1415,99 @@ mod tests {
     }
 
     #[test]
+    fn unchanged_block_reports_its_source_line_span() {
+        // The frontend budgets hunk context by these line counts, so a hard-wrapped
+        // paragraph must report its true span (3), not 1 like a heading.
+        let md = "# Title\n\nline one\nline two\nline three";
+        let rows =
+            diff_markdown_blocks(md, md, "/r", "d.md", &RevSpec::Head, &RevSpec::WorkingTree);
+        let DiffRow::Unchanged { lines, .. } = &rows[0] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(*lines, 1, "the heading is one source line: {rows:?}");
+        let DiffRow::Unchanged { lines, .. } = &rows[1] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            *lines, 3,
+            "the paragraph wrapped across 3 source lines reports 3: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn frontmatter_only_change_shows_as_a_changed_table_row_added_tint() {
+        let before = "---\nname: doc\ndescription: old summary\n---\n\n# Body\n\nsame para";
+        let after = "---\nname: doc\ndescription: new summary\n---\n\n# Body\n\nsame para";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("front-matter table should be the first, changed block: {rows:?}");
+        };
+        assert!(
+            after_html.contains("<table"),
+            "front matter renders as a table: {after_html}"
+        );
+        assert!(
+            after_html.contains("new summary"),
+            "shows the changed value: {after_html}"
+        );
+        assert_eq!(
+            after_html.matches("md-added").count(),
+            1,
+            "only the changed field's row tints added: {after_html}"
+        );
+        assert!(
+            rows.iter()
+                .skip(1)
+                .all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "the body is unchanged: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn frontmatter_renders_as_a_key_value_table_with_nested_values_compacted() {
+        let md =
+            "---\nname: grill\nmetadata:\n  type: workflow\n  tags:\n    - a\n    - b\n---\n\nbody";
+        let rows =
+            diff_markdown_blocks(md, md, "/r", "d.md", &RevSpec::Head, &RevSpec::WorkingTree);
+        let DiffRow::Unchanged { html, .. } = &rows[0] else {
+            panic!("the front-matter table is the first block: {rows:?}");
+        };
+        assert!(html.contains("<table"), "renders as a table: {html}");
+        assert!(html.contains("grill"), "scalar value shown: {html}");
+        assert!(
+            html.contains("type: workflow"),
+            "nested map compacted inline: {html}"
+        );
+        assert!(
+            html.contains("[a, b]"),
+            "nested array compacted inline: {html}"
+        );
+    }
+
+    #[test]
+    fn invalid_frontmatter_yaml_is_suppressed_not_rendered_as_a_table() {
+        let md = "---\nfoo: [1, 2\n---\n\n# Body\n\npara";
+        let rows =
+            diff_markdown_blocks(md, md, "/r", "d.md", &RevSpec::Head, &RevSpec::WorkingTree);
+        let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
+        assert!(
+            !dump.contains("<table"),
+            "invalid front matter falls back to suppression, not a broken table: {dump}"
+        );
+        assert!(
+            rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "only the unchanged body remains: {rows:?}"
+        );
+    }
+
+    #[test]
     fn frontmatter_renders_as_nothing_not_prose() {
         let doc = "---\nname: grill\ndescription: >\n  Interview the user.\nmetadata:\n  trigger: an approach exists\n---\n\n# Grill\n\nBody text.";
         let html = render_markdown_html(doc, &no_rewrite);
@@ -1512,68 +1622,6 @@ mod tests {
         assert!(has_url_scheme("data:image/png;base64,AAA"));
         assert!(!has_url_scheme("img/logo.png"));
         assert!(!has_url_scheme("../logo.png"));
-    }
-
-    #[test]
-    fn render_from_state_rewrites_local_image_against_file_dir() {
-        let dir = TempDir::new().unwrap();
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        fs::create_dir_all(dir.path().join("docs")).unwrap();
-        fs::write(
-            dir.path().join("docs/README.md"),
-            b"![logo](img/logo.png) and ![remote](https://ex.com/a.png)",
-        )
-        .unwrap();
-
-        let oid = {
-            let mut index = repo.index().unwrap();
-            index.add_path(Path::new("docs/README.md")).unwrap();
-            index.write().unwrap();
-            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
-            let s = sig();
-            repo.commit(Some("HEAD"), &s, &s, "initial", &tree, &[])
-                .unwrap()
-        };
-
-        let mut state_map = HashMap::new();
-        state_map.insert(
-            dir.path().to_string_lossy().to_string(),
-            dir.path().to_path_buf(),
-        );
-
-        let rev = RevSpec::Commit {
-            oid: oid.to_string(),
-        };
-        let html = render_markdown_from_state(
-            &dir.path().to_string_lossy(),
-            "docs/README.md",
-            &rev,
-            &state_map,
-        )
-        .unwrap();
-
-        assert!(
-            html.contains(&format!("rev=commit-{oid}"))
-                && html.contains("path=docs%2Fimg%2Flogo.png"),
-            "local image resolved against the file's dir at the doc's rev: {html}"
-        );
-        assert!(
-            html.contains("https://ex.com/a.png"),
-            "remote image left untouched: {html}"
-        );
-
-        // The emitted URL round-trips back through the handler's parser.
-        let repo_str = dir.path().to_string_lossy();
-        let uri = format!(
-            "trunk-asset://asset/?repo={}&rev={}&path={}",
-            pct_encode(&repo_str),
-            pct_encode(&rev.to_url_token()),
-            pct_encode("docs/img/logo.png")
-        );
-        let (repo, parsed_rev, path) = parse_asset_uri(&uri).unwrap();
-        assert_eq!(repo, repo_str);
-        assert_eq!(parsed_rev, rev);
-        assert_eq!(path, "docs/img/logo.png");
     }
 
     #[test]

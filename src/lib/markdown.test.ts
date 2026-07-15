@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { afterRev, beforeRev, isMarkdownPath } from "./markdown.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+	afterRev,
+	beforeRev,
+	isMarkdownPath,
+	renderMarkdownDiff,
+} from "./markdown.js";
+
+const safeInvoke = vi.fn();
+vi.mock("./invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("./invoke.js")>()),
+	safeInvoke: (cmd: string, args: Record<string, unknown>) =>
+		safeInvoke(cmd, args),
+}));
 
 describe("isMarkdownPath", () => {
 	it("detects the four allowed markdown extensions, case-insensitively", () => {
@@ -41,5 +53,20 @@ describe("rev derivation", () => {
 			oid: "parent1",
 		});
 		expect(beforeRev("commit", null)).toEqual({ type: "head" });
+	});
+});
+
+describe("renderMarkdownDiff", () => {
+	it("invokes render_markdown_diff with both revs", () => {
+		safeInvoke.mockResolvedValue([]);
+		const before = beforeRev("unstaged", null);
+		const after = afterRev("unstaged", "");
+		renderMarkdownDiff("/repo", "README.md", before, after);
+		expect(safeInvoke).toHaveBeenCalledWith("render_markdown_diff", {
+			repoPath: "/repo",
+			filePath: "README.md",
+			beforeRev: before,
+			afterRev: after,
+		});
 	});
 });

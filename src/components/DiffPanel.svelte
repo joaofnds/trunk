@@ -873,6 +873,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	/>
 	<DiffViewer
 		{contentMode}
+		{contextLines}
 		{layoutMode}
 		{renderMode}
 		{fileDiffs}

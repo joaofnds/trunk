@@ -185,7 +185,6 @@ pub fn run() {
         .manage(RunningOp(Default::default()))
         .manage(WatcherState(Default::default()))
         .manage(ReviewSessionsState(Default::default()))
-        .manage(commands::markdown::MarkdownCache(Default::default()))
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
         .invoke_handler(tauri::generate_handler![
             set_traffic_light_zoom,
@@ -194,7 +193,6 @@ pub fn run() {
             commands::repo::force_close_repo,
             commands::fs::validate_recent_path,
             commands::markdown::read_file_at,
-            commands::markdown::render_markdown,
             commands::markdown::render_markdown_diff,
             commands::history::get_commit_graph,
             commands::history::refresh_commit_graph,

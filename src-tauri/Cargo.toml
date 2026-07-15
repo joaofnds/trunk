@@ -32,6 +32,10 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-opener = "2"
 comrak = "0.54"
 ammonia = "4"
+# Already in the tree via syntect; used here to parse markdown front matter into a
+# diffable key/value table. Pinned to the version syntect resolves so nothing new
+# is pulled in.
+yaml-rust = "0.4"
 tokio = { version = "1", features = ["process", "io-util"] }
 libc = "0.2"
 similar = { version = "2.7", features = ["unicode"] }

@@ -483,3 +483,30 @@ textarea::placeholder {
 .markdown-body .syn-escape {
 	color: var(--color-syn-escape);
 }
+
+/* ── Rendered-markdown block-diff tints ──
+   GLOBAL on purpose: the tinted <tr>/<li> live inside {@html}-injected fragments
+   (the Rust table/list post-pass), which Svelte scoped styles never reach; the
+   RenderedDiff block-wrapper cells share the same classes. Reuse the AAA-tuned
+   --diff-* tokens — no raw colors, no new hues — and pair each tint with an inset
+   left rail so the add/change/remove state survives grayscale (a11y: color is not
+   the sole carrier). The rail renders on the block/li boxes; a tinted table row
+   is carried by its background alone (box-shadow is unreliable on <tr>). */
+.md-added {
+	background: var(--color-diff-add-bg);
+	box-shadow: inset 3px 0 0 var(--color-diff-add);
+}
+.md-removed {
+	background: var(--color-diff-delete-bg);
+	box-shadow: inset 3px 0 0 var(--color-diff-delete);
+}
+/* A tinted list item sits flush against its own left edge, so the inset rail would
+   touch the text. Nudge the item's box left and pad the content back so the rail
+   gains a gutter without shifting the text out of line with untinted siblings.
+   (Block wrappers already clear the rail via their 20px padding; table rows via
+   their cell padding.) */
+li.md-added,
+li.md-removed {
+	margin-left: -0.6em;
+	padding-left: 0.6em;
+}
