@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/svelte";
-import { tick } from "svelte";
+import { flushSync, mount, tick, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DiffRow, MarkdownDiff } from "../../lib/markdown.js";
+import { reactiveProps } from "../../lib/reactive-props.svelte.js";
 import RenderedDiff from "./RenderedDiff.svelte";
 
 function deferred<T>() {
@@ -658,6 +659,67 @@ describe("RenderedDiff", () => {
 		for (const el of colContents) {
 			expect(el.style.width).toBe("max-content");
 			expect(el.style.minWidth).toBe("100%");
+		}
+	});
+
+	// These two use svelte's own mount + a fine-grained $state props object:
+	// testing-library's rerender replaces its whole props object, re-running
+	// EVERY effect on every call, so it cannot prove which props the fetch
+	// effect depends on (memory: testing_library_rerender_reruns_effects).
+	it("re-invokes the fetch with identical args when refreshToken bumps", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+			const before = safeInvoke.mock.calls.length;
+
+			props.refreshToken = 1;
+			flushSync();
+
+			// A new fetch for the SAME diff: the token itself never reaches the
+			// backend, so the re-invocation has identical args.
+			expect(safeInvoke.mock.calls.length).toBe(before + 1);
+			const distinct = new Set(
+				safeInvoke.mock.calls.map((c) => JSON.stringify(c)),
+			);
+			expect(distinct.size).toBe(1);
+		} finally {
+			await unmount(app);
+			target.remove();
+		}
+	});
+
+	it("does not refetch when a layout-only prop changes and refreshToken holds", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+			const before = safeInvoke.mock.calls.length;
+
+			props.contextLines = 1;
+			props.wordWrap = true;
+			flushSync();
+
+			expect(safeInvoke.mock.calls.length).toBe(before);
+		} finally {
+			await unmount(app);
+			target.remove();
 		}
 	});
 

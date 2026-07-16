@@ -62,6 +62,7 @@ interface Props {
 	loading?: boolean;
 	showInlineComments?: boolean;
 	viewComments?: Comment[];
+	refreshToken?: number;
 }
 
 let {
@@ -77,6 +78,7 @@ let {
 	loading = false,
 	showInlineComments = true,
 	viewComments = [],
+	refreshToken = 0,
 }: Props = $props();
 
 let contentMode = $state<ContentMode>("hunk");
@@ -907,6 +909,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{repoPath}
 		{showInlineComments}
 		{viewComments}
+		{refreshToken}
 		oncommentfullfile={handleCommentFullFile}
 		bind:fullFileView
 	/>

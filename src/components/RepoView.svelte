@@ -232,6 +232,10 @@ let selectedFile = $state<{
 let stagingDiffFiles = $state<FileDiff[]>([]);
 let stagingDiffLoading = $state(false);
 let selectGeneration = 0;
+// Bumped on every debounced repo-changed so the rendered-markdown preview
+// refetches alongside Source's fileDiffs (the fs watcher only reaches Source's
+// data path; the preview holds its own fetch).
+let diffRefreshToken = $state(0);
 let cachedStatus = $state<WorkingTreeStatus | null>(null);
 let stagingPanelRef = $state<StagingPanel | null>(null);
 
@@ -742,6 +746,7 @@ $effect(() => {
 				handleRefresh();
 				loadDirtyCounts();
 				loadHeadBranch();
+				diffRefreshToken += 1;
 				if (selectedFile) {
 					refetchFileDiff(selectedFile.path, selectedFile.kind);
 				}
@@ -1062,6 +1067,7 @@ function startRightResize(e: MouseEvent) {
         {repoPath}
         {showInlineComments}
         {viewComments}
+        refreshToken={diffRefreshToken}
         loading={stagingDiffLoading}
         onhunkaction={async (filePath) => {
           if (selectedFile) {

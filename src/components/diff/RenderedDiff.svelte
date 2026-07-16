@@ -32,6 +32,10 @@ interface Props {
 	contentMode: "hunk" | "full";
 	contextLines: number;
 	wordWrap: boolean;
+	// Bumped by the host when the repo changes on disk (RepoView's debounced
+	// repo-changed handler) so a stale preview refetches. Optional: the rebase-
+	// mode DiffPanel doesn't thread it (rebase-preview staleness is out of scope).
+	refreshToken?: number;
 }
 
 let {
@@ -44,6 +48,7 @@ let {
 	contentMode,
 	contextLines,
 	wordWrap,
+	refreshToken = 0,
 }: Props = $props();
 
 type LoadState =
@@ -70,6 +75,9 @@ $effect(() => {
 	const kind = diffKind;
 	const oid = commitOid;
 	const parent = parentOid;
+	// A dependency only: the token's value never reaches the backend — bumping
+	// it re-runs this effect so the same fetch re-executes against fresh disk.
+	void refreshToken;
 
 	state = { kind: "loading" };
 	renderMarkdownDiff(repo, path, beforeRev(kind, parent), afterRev(kind, oid))

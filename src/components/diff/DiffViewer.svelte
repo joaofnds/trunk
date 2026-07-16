@@ -72,6 +72,7 @@ interface Props {
 	viewComments?: Comment[];
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
+	refreshToken?: number;
 }
 
 let {
@@ -112,6 +113,7 @@ let {
 	viewComments = [],
 	oncommentfullfile,
 	fullFileView = $bindable(null),
+	refreshToken = 0,
 }: Props = $props();
 </script>
 
@@ -138,6 +140,7 @@ let {
       {contentMode}
       {contextLines}
       {wordWrap}
+      {refreshToken}
     />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView
