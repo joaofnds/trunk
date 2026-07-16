@@ -755,6 +755,103 @@ describe("RenderedDiff", () => {
 		}
 	});
 
+	it("registers one element per changed row into hunkElements in document order (inline)", async () => {
+		const rows: DiffRow[] = [
+			{ kind: "unchanged", html: "<p>intro</p>", afterStart: 1, afterEnd: 1 },
+			{
+				kind: "changed",
+				beforeHtml: "<p>the quick fox</p>",
+				afterHtml: "<p>the slow fox</p>",
+				wordHtml:
+					'<p>the <del class="md-word-delete">quick</del><ins class="md-word-add">slow</ins> fox</p>',
+				afterStart: 3,
+				afterEnd: 3,
+			},
+			{
+				kind: "removed",
+				html: "<p>gone</p>",
+				beforeStart: 5,
+				beforeEnd: 5,
+				afterAnchor: 3,
+			},
+			{ kind: "added", html: "<p>fresh</p>", afterStart: 5, afterEnd: 5 },
+			{
+				kind: "changed",
+				beforeHtml: "<p>old block</p>",
+				afterHtml: "<p>new block</p>",
+				afterStart: 7,
+				afterEnd: 7,
+			},
+			{ kind: "unchanged", html: "<p>outro</p>", afterStart: 9, afterEnd: 9 },
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+		const hunkElements: Record<string, HTMLDivElement> = {};
+
+		render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "inline", hunkElements },
+		});
+		await screen.findByText("intro");
+
+		// One jump target per changed row — a no-wordHtml changed row renders two
+		// blocks but registers only its first — keyed in document order.
+		expect(Object.keys(hunkElements)).toEqual([
+			"change-0",
+			"change-1",
+			"change-2",
+			"change-3",
+		]);
+		expect(hunkElements["change-0"].textContent).toContain("fox");
+		expect(hunkElements["change-1"].textContent).toContain("gone");
+		expect(hunkElements["change-2"].textContent).toContain("fresh");
+		expect(hunkElements["change-3"].textContent).toContain("old block");
+	});
+
+	it("registers the content-bearing cell per changed row in split", async () => {
+		const rows: DiffRow[] = [
+			{ kind: "added", html: "<p>addition</p>", afterStart: 1, afterEnd: 1 },
+			{
+				kind: "removed",
+				html: "<p>deletion</p>",
+				beforeStart: 3,
+				beforeEnd: 3,
+				afterAnchor: 1,
+			},
+			{ kind: "unchanged", html: "<p>same</p>", afterStart: 3, afterEnd: 3 },
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+		const hunkElements: Record<string, HTMLDivElement> = {};
+
+		render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "split", hunkElements },
+		});
+		await screen.findAllByText("same");
+
+		expect(Object.keys(hunkElements)).toEqual(["change-0", "change-1"]);
+		expect(hunkElements["change-0"].textContent).toContain("addition");
+		expect(hunkElements["change-1"].textContent).toContain("deletion");
+	});
+
+	it("removes its hunkElements entries on unmount so Source navigation starts clean", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "added", html: "<p>fresh</p>", afterStart: 1, afterEnd: 1 },
+				{ kind: "unchanged", html: "<p>ctx</p>", afterStart: 3, afterEnd: 3 },
+			] satisfies DiffRow[],
+		});
+		const hunkElements: Record<string, HTMLDivElement> = {};
+
+		const { unmount: unmountView } = render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "inline", hunkElements },
+		});
+		await screen.findByText("fresh");
+		expect(Object.keys(hunkElements)).toEqual(["change-0"]);
+
+		unmountView();
+
+		expect(Object.keys(hunkElements)).toEqual([]);
+	});
+
 	it("ignores a stale in-flight render when the selected file changes mid-flight", async () => {
 		const first = deferred<MarkdownDiff>();
 		const second = deferred<MarkdownDiff>();

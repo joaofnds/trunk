@@ -1,4 +1,6 @@
 <script lang="ts">
+import { untrack } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { externalLinks } from "../../lib/external-links.js";
 import { isTrunkError } from "../../lib/invoke.js";
 import {
@@ -37,6 +39,9 @@ interface Props {
 	// repo-changed handler) so a stale preview refetches. Optional: the rebase-
 	// mode DiffPanel doesn't thread it (rebase-preview staleness is out of scope).
 	refreshToken?: number;
+	// DiffPanel's jump-target record: registering each changed row here makes
+	// its existing ]/[ navigation (scrollToHunk) work over rendered rows.
+	hunkElements?: Record<string, HTMLDivElement>;
 }
 
 let {
@@ -51,7 +56,55 @@ let {
 	ignoreWhitespace,
 	wordWrap,
 	refreshToken = 0,
+	hunkElements,
 }: Props = $props();
+
+// Each changed row's first content block, keyed by its document-order change
+// index. An action feeds this; the effect below projects it into the host's
+// `hunkElements` record.
+const changeRegistry = new SvelteMap<number, HTMLDivElement>();
+
+function registerChange(node: HTMLDivElement, index: number | null) {
+	const put = (i: number | null) => {
+		if (i !== null) changeRegistry.set(i, node);
+	};
+	// During a re-projection a new element can claim the index before the old
+	// one unregisters — only ever delete this node's own entry.
+	const drop = (i: number | null) => {
+		if (i !== null && changeRegistry.get(i) === node) changeRegistry.delete(i);
+	};
+	put(index);
+	return {
+		update(next: number | null) {
+			drop(index);
+			index = next;
+			put(index);
+		},
+		destroy() {
+			drop(index);
+		},
+	};
+}
+
+// Rebuild the host record in document order on every registry change, and
+// clear this view's entries on unmount so a switch back to Source starts
+// clean. Writes are untracked: the effect must not depend on the record's
+// own keys (read-and-write of the same state loops).
+$effect(() => {
+	const record = hunkElements;
+	if (!record) return;
+	const ordered = [...changeRegistry.entries()].sort(([a], [b]) => a - b);
+	untrack(() => {
+		for (const key of Object.keys(record)) delete record[key];
+		ordered.forEach(([, el], i) => {
+			record[`change-${i}`] = el;
+		});
+	});
+	return () =>
+		untrack(() => {
+			for (const key of Object.keys(record)) delete record[key];
+		});
+});
 
 type LoadState =
 	| { kind: "loading" }
@@ -227,64 +280,93 @@ const projected = $derived.by((): ProjectedRow[] => {
 });
 
 // One inline stream item: a tinted block or a collapsed-run separator.
+// `changeIndex` is the row's document-order position among changed rows (the
+// ]/[ jump order) — null on unchanged blocks and on the second block of a
+// two-block changed row, so each change registers exactly one jump target.
 type InlineItem =
-	| { type: "block"; tint: Tint; html: string }
+	| { type: "block"; tint: Tint; html: string; changeIndex: number | null }
 	| { type: "sep"; count: number };
 
-const inlineItems = $derived.by((): InlineItem[] =>
-	projected.flatMap((p): InlineItem[] => {
+const inlineItems = $derived.by((): InlineItem[] => {
+	let change = 0;
+	return projected.flatMap((p): InlineItem[] => {
 		if (p.type === "sep") return [p];
 		const r = p.row;
 		if (r.kind === "unchanged")
-			return [{ type: "block", tint: "unchanged", html: r.html }];
+			return [
+				{ type: "block", tint: "unchanged", html: r.html, changeIndex: null },
+			];
+		const changeIndex = change++;
 		if (r.kind === "added")
-			return [{ type: "block", tint: "added", html: r.html }];
+			return [{ type: "block", tint: "added", html: r.html, changeIndex }];
 		if (r.kind === "removed")
-			return [{ type: "block", tint: "removed", html: r.html }];
+			return [{ type: "block", tint: "removed", html: r.html, changeIndex }];
 		// changed with a word-level merge (single-leaf): ONE block, no wrapper tint —
 		// the inline md-word-* del/ins marks inside wordHtml carry the signal.
 		if (r.wordHtml)
-			return [{ type: "block", tint: "unchanged", html: r.wordHtml }];
+			return [
+				{ type: "block", tint: "unchanged", html: r.wordHtml, changeIndex },
+			];
 		// changed without a merge (container / code / dense rewrite): mirror Source —
 		// the removed before-block, then the added after-block.
 		return [
-			{ type: "block", tint: "removed", html: r.beforeHtml },
-			{ type: "block", tint: "added", html: r.afterHtml },
+			{ type: "block", tint: "removed", html: r.beforeHtml, changeIndex },
+			{ type: "block", tint: "added", html: r.afterHtml, changeIndex: null },
 		];
-	}),
-);
+	});
+});
 
 // One split row: a before cell + an after cell (either may be a phantom where
 // that side has no block). Rows group into RUNS between separators; each run
 // renders as ONE column pair (Source's d1c299f model — scroll containers at the
 // column level, never per row, so short rows pan with the run's shared plane).
 type SplitCell = { tint: Tint; html: string } | null;
-type SplitRow = { left: SplitCell; right: SplitCell };
+type SplitRow = {
+	left: SplitCell;
+	right: SplitCell;
+	changeIndex: number | null;
+};
 type SplitSegment =
 	| { type: "run"; rows: SplitRow[] }
 	| { type: "sep"; count: number };
 
-function toSplitRow(r: DiffRow): SplitRow {
+function toSplitRow(r: DiffRow, changeIndex: number | null): SplitRow {
 	if (r.kind === "unchanged")
 		return {
 			left: { tint: "unchanged", html: r.html },
 			right: { tint: "unchanged", html: r.html },
+			changeIndex,
 		};
 	if (r.kind === "added")
-		return { left: null, right: { tint: "added", html: r.html } };
+		return { left: null, right: { tint: "added", html: r.html }, changeIndex };
 	if (r.kind === "removed")
-		return { left: { tint: "removed", html: r.html }, right: null };
+		return {
+			left: { tint: "removed", html: r.html },
+			right: null,
+			changeIndex,
+		};
 	// changed: whole before(red) on the left, after(green) on the right — split
 	// stays block-level (word-level lives in the inline view).
 	return {
 		left: { tint: "removed", html: r.beforeHtml },
 		right: { tint: "added", html: r.afterHtml },
+		changeIndex,
 	};
+}
+
+// The jump target registers on the row's first content-bearing cell: the left
+// (before) side when it exists, otherwise the right (an added row's left cell
+// is a phantom).
+function cellChangeIndex(row: SplitRow, side: "left" | "right"): number | null {
+	if (row.changeIndex === null) return null;
+	const registerSide = row.left !== null ? "left" : "right";
+	return side === registerSide ? row.changeIndex : null;
 }
 
 const splitSegments = $derived.by((): SplitSegment[] => {
 	const segments: SplitSegment[] = [];
 	let run: SplitRow[] = [];
+	let change = 0;
 	for (const p of projected) {
 		if (p.type === "sep") {
 			if (run.length > 0) segments.push({ type: "run", rows: run });
@@ -292,7 +374,8 @@ const splitSegments = $derived.by((): SplitSegment[] => {
 			segments.push(p);
 			continue;
 		}
-		run.push(toSplitRow(p.row));
+		const changeIndex = p.row.kind === "unchanged" ? null : change++;
+		run.push(toSplitRow(p.row, changeIndex));
 	}
 	if (run.length > 0) segments.push({ type: "run", rows: run });
 	return segments;
@@ -356,7 +439,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 }
 </script>
 
-{#snippet block(tint: Tint, html: string)}
+{#snippet block(tint: Tint, html: string, changeIndex: number | null = null)}
   <!-- Tint (bg + rail) on the outer wrapper; the prose lives in an inner
        .markdown-body so the height equalizer can observe natural content
        height while the wrapper flex-stretches to the row height. -->
@@ -365,6 +448,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
     class:md-added={tint === "added"}
     class:md-removed={tint === "removed"}
     use:externalLinks
+    use:registerChange={changeIndex}
   ><div class="markdown-body">{@html html}</div></div>
 {/snippet}
 
@@ -376,10 +460,14 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
   </div>
 {/snippet}
 
-{#snippet cell(side: "left" | "right", c: SplitCell)}
+{#snippet cell(
+  side: "left" | "right",
+  c: SplitCell,
+  changeIndex: number | null = null
+)}
   {#if c}
     <div class="split-cell" data-side={side}>
-      {@render block(c.tint, c.html)}
+      {@render block(c.tint, c.html, changeIndex)}
     </div>
   {:else}
     <div class="split-cell rendered-phantom" data-side={side}></div>
@@ -397,7 +485,11 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
       style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
     >
       {#each rows as row}
-        {@render cell(side, side === "left" ? row.left : row.right)}
+        {@render cell(
+          side,
+          side === "left" ? row.left : row.right,
+          cellChangeIndex(row, side)
+        )}
       {/each}
     </div>
   </div>
@@ -462,7 +554,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
         {#if item.type === "sep"}
           {@render separator(item.count)}
         {:else}
-          {@render block(item.tint, item.html)}
+          {@render block(item.tint, item.html, item.changeIndex)}
         {/if}
       {/each}
     {/if}

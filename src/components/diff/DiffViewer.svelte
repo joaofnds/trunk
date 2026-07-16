@@ -142,6 +142,7 @@ let {
       {ignoreWhitespace}
       {wordWrap}
       {refreshToken}
+      {hunkElements}
     />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView
