@@ -51,3 +51,27 @@ describe("DiffToolbar Source|Rendered toggle", () => {
 		expect(screen.getByTitle("Show source")).toBeInTheDocument();
 	});
 });
+
+describe("DiffToolbar invisibles toggle", () => {
+	it("disables the button with an explanation in rendered mode", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "README.md",
+				renderMode: "rendered",
+			},
+		});
+		const btn = screen.getByTitle(
+			"Invisible characters aren't rendered in preview",
+		);
+		expect(btn).toBeDisabled();
+	});
+
+	it("stays enabled in source mode", () => {
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "README.md", renderMode: "source" },
+		});
+		const btn = screen.getByTitle("Show invisible characters");
+		expect(btn).toBeEnabled();
+	});
+});

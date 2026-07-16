@@ -60,6 +60,15 @@ let {
 	oncommentfile,
 	onclose,
 }: Props = $props();
+
+// Rendered prose collapses whitespace by nature, so the invisibles toggle
+// cannot mean anything while the preview is the active view (renderMode only
+// takes effect for markdown files — DiffViewer's routing gate).
+const renderedActive = $derived(
+	renderMode === "rendered" &&
+		selectedPath !== null &&
+		isMarkdownPath(selectedPath),
+);
 </script>
 
 <div class="toolbar">
@@ -117,7 +126,10 @@ let {
   <button
     class="toggle-btn"
     class:active={showInvisibles}
-    title="Show invisible characters"
+    disabled={renderedActive}
+    title={renderedActive
+      ? "Invisible characters aren't rendered in preview"
+      : "Show invisible characters"}
     onclick={() => onshowinvisibleschange(!showInvisibles)}
   >
     <Pilcrow size={14} />
@@ -274,5 +286,10 @@ let {
     background: var(--color-accent-bg);
     color: var(--color-accent);
     border-color: var(--color-border);
+  }
+
+  .toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 </style>
