@@ -249,6 +249,335 @@ pub fn diff_markdown_blocks(
     rows
 }
 
+/// One atom of an HTML fragment for the word-level merge. A `Tag` is a full
+/// `<…>` span with its attributes intact (so `<img src=… alt="a b">` never
+/// shatters); `Word` is a run of non-space visible text; `Space` is a run of
+/// whitespace. Concatenating every token's inner string reproduces the original
+/// fragment byte-for-byte. `Hash + Ord` are derived so a `&[Token]` can be diffed
+/// by `similar::capture_diff_slices` (the density guard) and the enum ordering is
+/// variant-then-string.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum Token {
+    Tag(String),
+    Word(String),
+    Space(String),
+}
+
+/// Split a raw HTML fragment into atomic tokens. A `<` opens a tag that runs to
+/// the next `>` (attributes and entities inside ride along untouched); the rest is
+/// split into alternating whitespace `Space` runs and non-space `Word` runs. A `<`
+/// with no closing `>` is treated as a trailing word so tokenization always
+/// terminates and stays rejoinable.
+fn tokenize(fragment: &str) -> Vec<Token> {
+    let mut tokens = Vec::new();
+    let mut rest = fragment;
+    while let Some(first) = rest.chars().next() {
+        if first == '<' {
+            match rest.find('>') {
+                Some(end) => {
+                    let (tag, tail) = rest.split_at(end + 1);
+                    tokens.push(Token::Tag(tag.to_string()));
+                    rest = tail;
+                }
+                None => {
+                    tokens.push(Token::Word(rest.to_string()));
+                    rest = "";
+                }
+            }
+        } else if first.is_whitespace() {
+            let end = rest
+                .find(|c: char| !c.is_whitespace())
+                .unwrap_or(rest.len());
+            let (space, tail) = rest.split_at(end);
+            tokens.push(Token::Space(space.to_string()));
+            rest = tail;
+        } else {
+            let end = rest
+                .find(|c: char| c.is_whitespace() || c == '<')
+                .unwrap_or(rest.len());
+            let (word, tail) = rest.split_at(end);
+            tokens.push(Token::Word(word.to_string()));
+            rest = tail;
+        }
+    }
+    tokens
+}
+
+/// Inline elements whose open/close the word merge tracks as *context*: a del/ins
+/// run must not straddle one, and a struck word keeps its wrapper (`<code>foo</code>`
+/// rides inside the `<del>`). Any tag not listed here (block wrappers like `<p>`,
+/// void tags) is passed through as opaque content and never enters the context stack.
+const INLINE_TAGS: &[&str] = &[
+    "a", "abbr", "b", "big", "cite", "code", "del", "em", "i", "ins", "kbd", "mark", "q", "s",
+    "samp", "small", "span", "strong", "sub", "sup", "time", "tt", "u", "var",
+];
+
+/// Void / self-contained tags that never open a context (they have no matching
+/// close). Treated as opaque passthrough content, diffable like a word.
+const VOID_TAGS: &[&str] = &[
+    "area", "br", "col", "embed", "hr", "img", "input", "source", "wbr",
+];
+
+enum TagClass {
+    InlineOpen,
+    InlineClose,
+    Passthrough,
+}
+
+/// Size caps above which the word merge falls back to the block-level pair instead
+/// of diffing. Mirrors the Source word-diff guards (`diff.rs`: 500-char lines, 40
+/// pairs) in spirit — an unguarded `similar` word-diff on a large rewrite was a
+/// measured cost, and the working-tree path re-runs on every save.
+const MAX_MERGE_BYTES: usize = 20_000;
+const MAX_MERGE_TOKENS: usize = 2_000;
+
+/// The lowercase element name of a tag string (`<a href="x">` → `a`, `</strong>` → `strong`).
+fn tag_name(tag: &str) -> String {
+    tag.trim_start_matches('<')
+        .trim_start_matches('/')
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// Categorize a full `<…>` tag string for the context stack. Self-closing (`<x/>`),
+/// declarations (`<!…>`), void tags, and any non-inline element are passthrough
+/// content; only paired inline elements open/close context.
+fn classify_tag(tag: &str) -> TagClass {
+    let inner = tag.trim_start_matches('<').trim_end_matches('>');
+    if inner.starts_with('!') || inner.ends_with('/') {
+        return TagClass::Passthrough;
+    }
+    let is_close = inner.starts_with('/');
+    let name = tag_name(tag);
+    if !INLINE_TAGS.contains(&name.as_str()) || (!is_close && VOID_TAGS.contains(&name.as_str())) {
+        return TagClass::Passthrough;
+    }
+    if is_close {
+        TagClass::InlineClose
+    } else {
+        TagClass::InlineOpen
+    }
+}
+
+/// A diffable unit of an HTML fragment: a run of content (`text`) tagged with the
+/// stack of inline elements open around it (`context`). Folding inline tags into
+/// context is what lets the diff notice a formatting-only change — the same word
+/// under a different context is a different unit — and lets emission reconstruct a
+/// balanced wrapper around any del/ins run. `Ord`/`Hash` are derived for
+/// `capture_diff_slices`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct Unit {
+    context: Vec<String>,
+    text: String,
+}
+
+/// Fold a token stream into content units, resolving inline tags into each unit's
+/// open-element context. `None` if the fragment's inline tags don't nest (a close
+/// with no matching open, or an unclosed open) — a malformed fragment the merge
+/// refuses rather than trying to balance.
+fn build_units(tokens: &[Token]) -> Option<Vec<Unit>> {
+    let mut stack: Vec<String> = Vec::new();
+    let mut units = Vec::new();
+    for token in tokens {
+        match token {
+            Token::Word(text) | Token::Space(text) => units.push(Unit {
+                context: stack.clone(),
+                text: text.clone(),
+            }),
+            Token::Tag(tag) => match classify_tag(tag) {
+                TagClass::InlineOpen => stack.push(tag.clone()),
+                TagClass::InlineClose => match stack.last() {
+                    Some(top) if tag_name(top) == tag_name(tag) => {
+                        stack.pop();
+                    }
+                    _ => return None,
+                },
+                TagClass::Passthrough => units.push(Unit {
+                    context: stack.clone(),
+                    text: tag.clone(),
+                }),
+            },
+        }
+    }
+    stack.is_empty().then_some(units)
+}
+
+/// Open/close inline tags in `current` so it matches `target`, appending the tags
+/// to `out`. Shared prefix stays; the divergent tail is closed (deepest first) then
+/// the target's tail is opened.
+fn transition(out: &mut String, current: &mut Vec<String>, target: &[String]) {
+    let common = current
+        .iter()
+        .zip(target.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    while current.len() > common {
+        let tag = current.pop().expect("len > common ≥ 0");
+        let _ = write!(out, "</{}>", tag_name(&tag));
+    }
+    for tag in &target[common..] {
+        out.push_str(tag);
+        current.push(tag.clone());
+    }
+}
+
+/// Emit one del/ins run: close every open inline element first (so the wrapper can
+/// never straddle an element boundary), then wrap the run — reconstructing each
+/// unit's own context inside the wrapper so a struck `<code>`/`<strong>` keeps its
+/// tags and the fragment stays balanced.
+fn emit_run(out: &mut String, open: &mut Vec<String>, units: &[Unit], tag: &str, class: &str) {
+    transition(out, open, &[]);
+    let _ = write!(out, "<{tag} class=\"{class}\">");
+    let mut local: Vec<String> = Vec::new();
+    for unit in units {
+        transition(out, &mut local, &unit.context);
+        out.push_str(&unit.text);
+    }
+    transition(out, &mut local, &[]);
+    let _ = write!(out, "</{tag}>");
+}
+
+/// Walk the unit diff into one merged fragment: `Equal` runs pass through (adjusting
+/// the open-context), `Delete`/`Insert`/`Replace` runs become balanced
+/// `md-word-delete`/`md-word-add` wrappers.
+fn merge_emit(ops: &[similar::DiffOp], before: &[Unit], after: &[Unit]) -> String {
+    let mut out = String::new();
+    let mut open: Vec<String> = Vec::new();
+    for op in ops {
+        match *op {
+            similar::DiffOp::Equal { new_index, len, .. } => {
+                for unit in &after[new_index..new_index + len] {
+                    transition(&mut out, &mut open, &unit.context);
+                    out.push_str(&unit.text);
+                }
+            }
+            similar::DiffOp::Delete {
+                old_index, old_len, ..
+            } => emit_run(
+                &mut out,
+                &mut open,
+                &before[old_index..old_index + old_len],
+                "del",
+                "md-word-delete",
+            ),
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => emit_run(
+                &mut out,
+                &mut open,
+                &after[new_index..new_index + new_len],
+                "ins",
+                "md-word-add",
+            ),
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                emit_run(
+                    &mut out,
+                    &mut open,
+                    &before[old_index..old_index + old_len],
+                    "del",
+                    "md-word-delete",
+                );
+                emit_run(
+                    &mut out,
+                    &mut open,
+                    &after[new_index..new_index + new_len],
+                    "ins",
+                    "md-word-add",
+                );
+            }
+        }
+    }
+    transition(&mut out, &mut open, &[]);
+    out
+}
+
+/// Self-check that the merged fragment's tags nest correctly. The merge returns
+/// `None` rather than hand a caller broken markup — losing a real change to the
+/// block-level fallback beats emitting an unbalanced fragment.
+fn merged_is_balanced(html: &str) -> bool {
+    let mut stack: Vec<String> = Vec::new();
+    let mut rest = html;
+    while let Some(open) = rest.find('<') {
+        rest = &rest[open..];
+        let Some(close) = rest.find('>') else {
+            return false;
+        };
+        let tag = &rest[..close + 1];
+        rest = &rest[close + 1..];
+        match classify_tag(tag) {
+            TagClass::InlineOpen => stack.push(tag_name(tag)),
+            TagClass::InlineClose => match stack.pop() {
+                Some(name) if name == tag_name(tag) => {}
+                _ => return false,
+            },
+            TagClass::Passthrough => {}
+        }
+    }
+    stack.is_empty()
+}
+
+/// Fraction of tokens that must change before the merge gives up and falls back —
+/// the "confetti" fence. Measured on the flat token diff (not the context units) so
+/// a formatting-only move (e.g. un-bolding a word) stays cheap and doesn't trip it.
+const MAX_CHANGED_SHARE: f64 = 0.5;
+
+/// Whether the flat token diff changes more than `MAX_CHANGED_SHARE` of the tokens —
+/// the signal that this is a rewrite, not an edit, and a word-level diff would be
+/// noise. `reclassify_as_changed`'s 40%-shared-byte gate is too weak on its own
+/// (grill §"Sharpened the guards"); this is the dedicated density fence.
+fn too_dense(before: &[Token], after: &[Token]) -> bool {
+    let total = before.len() + after.len();
+    if total == 0 {
+        return false;
+    }
+    let mut changed = 0usize;
+    for op in similar::capture_diff_slices(similar::Algorithm::Myers, before, after) {
+        match op {
+            similar::DiffOp::Equal { .. } => {}
+            similar::DiffOp::Delete { old_len, .. } => changed += old_len,
+            similar::DiffOp::Insert { new_len, .. } => changed += new_len,
+            similar::DiffOp::Replace {
+                old_len, new_len, ..
+            } => changed += old_len + new_len,
+        }
+    }
+    changed as f64 / total as f64 > MAX_CHANGED_SHARE
+}
+
+/// Merge the raw (unsanitized) before/after HTML of one changed leaf block into a
+/// single word-level diff fragment: removed words wrapped in
+/// `<del class="md-word-delete">`, added in `<ins class="md-word-add">`, tags kept
+/// balanced. `None` when a guard trips (input imbalance, or an unbalanced result) —
+/// the caller then falls back to the shipped block-level `Removed`+`Added` pair.
+/// The output is UNsanitized; the P1 seam sanitizes it.
+// P1 wires this into `changed_fragments`; it and its helpers are unused until then.
+#[allow(dead_code)]
+fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
+    if before_raw.len() > MAX_MERGE_BYTES || after_raw.len() > MAX_MERGE_BYTES {
+        return None;
+    }
+    let before_tokens = tokenize(before_raw);
+    let after_tokens = tokenize(after_raw);
+    if before_tokens.len() > MAX_MERGE_TOKENS || after_tokens.len() > MAX_MERGE_TOKENS {
+        return None;
+    }
+    if too_dense(&before_tokens, &after_tokens) {
+        return None;
+    }
+    let before_units = build_units(&before_tokens)?;
+    let after_units = build_units(&after_tokens)?;
+    let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &before_units, &after_units);
+    let merged = merge_emit(&ops, &before_units, &after_units);
+    merged_is_balanced(&merged).then_some(merged)
+}
+
 /// The before/after HTML for a `Changed` pair. A single-leaf block (paragraph,
 /// heading, …) carries its plain fragments — the frontend tints the wrapper. A
 /// multi-leaf container (table, list) descends to its leaves: the specific changed
@@ -988,6 +1317,64 @@ mod tests {
         None
     }
 
+    /// Independent oracle for "the fragment's tags nest correctly" — deliberately
+    /// not `html_token_merge`'s own self-check, so a merge test never certifies
+    /// balance with the same code it is exercising.
+    fn is_tag_balanced(html: &str) -> bool {
+        let mut stack: Vec<String> = Vec::new();
+        let mut rest = html;
+        while let Some(open) = rest.find('<') {
+            rest = &rest[open..];
+            let Some(close) = rest.find('>') else {
+                return false;
+            };
+            let tag = &rest[..close + 1];
+            rest = &rest[close + 1..];
+            let inner = tag.trim_start_matches('<').trim_end_matches('>');
+            if inner.ends_with('/') || inner.starts_with('!') {
+                continue;
+            }
+            let name: String = inner
+                .trim_start_matches('/')
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect::<String>()
+                .to_ascii_lowercase();
+            const VOID: &[&str] = &["br", "img", "hr", "input", "wbr"];
+            if VOID.contains(&name.as_str()) {
+                continue;
+            }
+            if inner.starts_with('/') {
+                match stack.pop() {
+                    Some(open_name) if open_name == name => {}
+                    _ => return false,
+                }
+            } else {
+                stack.push(name);
+            }
+        }
+        stack.is_empty()
+    }
+
+    #[test]
+    fn merge_plain_prose_wraps_only_changed_words() {
+        let merged = html_token_merge("the quick brown fox", "the slow brown fox")
+            .expect("a small word change merges, not None");
+        assert!(
+            merged.contains(r#"<del class="md-word-delete">quick</del>"#),
+            "removed word wrapped in md-word-delete: {merged}"
+        );
+        assert!(
+            merged.contains(r#"<ins class="md-word-add">slow</ins>"#),
+            "added word wrapped in md-word-add: {merged}"
+        );
+        assert!(is_tag_balanced(&merged), "output is tag-balanced: {merged}");
+        assert!(
+            !merged.contains("md-word-delete\">brown") && !merged.contains("md-word-add\">brown"),
+            "unchanged words are not wrapped in any diff marker: {merged}"
+        );
+    }
+
     fn sig() -> git2::Signature<'static> {
         git2::Signature::new("Test", "test@example.com", &git2::Time::new(0, 0)).unwrap()
     }
@@ -1657,6 +2044,153 @@ mod tests {
         assert_eq!(mime_for_ext("x.JPG"), "image/jpeg");
         assert_eq!(mime_for_ext("s.svg"), "image/svg+xml");
         assert_eq!(mime_for_ext("weird.xyz"), "application/octet-stream");
+    }
+
+    #[test]
+    fn tokenize_keeps_multiattr_img_as_one_tag() {
+        let tokens = tokenize(r#"<img src="x" alt="a b">"#);
+        assert_eq!(
+            tokens,
+            vec![Token::Tag(r#"<img src="x" alt="a b">"#.to_string())],
+            "a multi-attribute tag stays one atomic Tag token: {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn tokenize_keeps_void_tag_atomic_and_splits_surrounding_text() {
+        let tokens = tokenize("a<br>b c");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Word("a".to_string()),
+                Token::Tag("<br>".to_string()),
+                Token::Word("b".to_string()),
+                Token::Space(" ".to_string()),
+                Token::Word("c".to_string()),
+            ],
+            "void tag is one atom, text splits into word/space runs: {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn tokenize_keeps_entity_inside_a_word_run() {
+        let tokens = tokenize("a&amp;b &lt;");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Word("a&amp;b".to_string()),
+                Token::Space(" ".to_string()),
+                Token::Word("&lt;".to_string()),
+            ],
+            "an entity is opaque within its word run, never split on & or ;: {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn tokenize_is_rejoinable_to_the_original() {
+        let fragment =
+            r#"<p>the <strong>quick</strong> <code>fox</code><br>&amp; <a href="x">jumps</a></p>"#;
+        let rejoined: String = tokenize(fragment)
+            .iter()
+            .map(|t| match t {
+                Token::Tag(s) | Token::Word(s) | Token::Space(s) => s.as_str(),
+            })
+            .collect();
+        assert_eq!(
+            rejoined, fragment,
+            "tokens concatenate back to the original"
+        );
+    }
+
+    #[test]
+    fn merge_returns_none_over_size_cap() {
+        let big = "lorem ipsum ".repeat(3000);
+        let after = format!("{big} tail");
+        assert!(
+            html_token_merge(&big, &after).is_none(),
+            "an oversized fragment falls back to block-level rather than word-diffing"
+        );
+    }
+
+    #[test]
+    fn merge_returns_none_on_full_rewrite() {
+        assert!(
+            html_token_merge("alpha beta gamma delta", "one two three four").is_none(),
+            "a full rewrite (disjoint words) falls back rather than emitting confetti"
+        );
+    }
+
+    #[test]
+    fn merge_unbold_word_stays_balanced() {
+        let merged = html_token_merge(
+            "<strong>quick brown</strong>",
+            "<strong>quick</strong> brown",
+        )
+        .expect("un-bolding a word merges, not None");
+        assert!(is_tag_balanced(&merged), "output is tag-balanced: {merged}");
+        assert!(
+            merged.contains("<strong>quick</strong>"),
+            "the still-bold word stays bold and unwrapped: {merged}"
+        );
+        assert!(
+            merged.contains("md-word-delete") && merged.contains("md-word-add"),
+            "the word whose formatting changed is shown as del+ins, not left plain: {merged}"
+        );
+    }
+
+    #[test]
+    fn merge_removed_inline_code_keeps_code_tag_inside_del() {
+        let merged = html_token_merge("keep <code>foo</code> tail", "keep tail")
+            .expect("removing an inline-code span merges, not None");
+        assert!(is_tag_balanced(&merged), "output is tag-balanced: {merged}");
+        assert!(
+            merged.contains(r#"md-word-delete"><code>foo</code>"#),
+            "the struck <code>foo</code> keeps its wrapper inside the del run: {merged}"
+        );
+    }
+
+    #[test]
+    fn merge_authored_strikethrough_not_tinted_as_deletion() {
+        // comrak renders `~~gone~~` as a bare <del>; it is unchanged here, while
+        // "here"→"there" is the real edit. The author's <del> must not gain a
+        // diff class, and the diff's del must carry `md-word-delete`.
+        let merged = html_token_merge("kept <del>gone</del> here", "kept <del>gone</del> there")
+            .expect("merges, not None");
+        assert!(is_tag_balanced(&merged), "output is tag-balanced: {merged}");
+        assert!(
+            merged.contains("<del>gone</del>"),
+            "author strikethrough stays a bare <del>, never tinted as a deletion: {merged}"
+        );
+        assert!(
+            merged.contains(r#"<del class="md-word-delete">here</del>"#)
+                && merged.contains(r#"<ins class="md-word-add">there</ins>"#),
+            "the real edit carries the md-word-* diff classes: {merged}"
+        );
+    }
+
+    #[test]
+    fn merge_returns_none_when_output_would_be_unbalanced() {
+        assert!(
+            html_token_merge("<em>dangling", "plain text").is_none(),
+            "an unclosed inline tag falls back rather than emitting broken markup"
+        );
+        assert!(
+            html_token_merge("ok", "a stray </strong> tag").is_none(),
+            "a stray closing tag falls back too"
+        );
+    }
+
+    #[test]
+    fn balance_self_check_rejects_unbalanced_fragments() {
+        assert!(
+            !merged_is_balanced("<strong>x"),
+            "unclosed open is unbalanced"
+        );
+        assert!(!merged_is_balanced("x</em>"), "stray close is unbalanced");
+        assert!(
+            merged_is_balanced(r#"<strong>x</strong> <del class="md-word-delete">y</del>"#),
+            "well-nested tags (with a class) are balanced"
+        );
     }
 
     #[test]
