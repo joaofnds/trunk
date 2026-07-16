@@ -45,16 +45,11 @@ export function beforeRev(
 	return { type: "head" };
 }
 
-// One rendered-markdown word span, reserved for Layer-2 word-level highlighting.
-// Mirrors the Rust `WordSpan`; typed but never read in Layer 1.
-export interface WordSpan {
-	start: number;
-	end: number;
-}
-
 // One row of a block-level markdown diff, in document reading order. Mirrors the
-// Rust `DiffRow` union (serde `kind` tag, camelCase fields). `changed` carries
-// both sides' fragments plus reserved Layer-2 word-span slots (absent in Layer 1).
+// Rust `DiffRow` union (serde `kind` tag, camelCase fields). `changed` always
+// carries its before/after fragments (split columns / stacked inline fallback) and,
+// for a single-leaf block that word-merges, an inline `wordHtml` with `md-word-*`
+// del/ins marks (absent for containers, code blocks, and dense rewrites).
 export type DiffRow =
 	| { kind: "unchanged"; html: string; lines: number }
 	| { kind: "added"; html: string }
@@ -63,8 +58,7 @@ export type DiffRow =
 			kind: "changed";
 			beforeHtml: string;
 			afterHtml: string;
-			beforeWordSpans?: WordSpan[];
-			afterWordSpans?: WordSpan[];
+			wordHtml?: string;
 	  };
 
 // Diff a markdown file between two revs, returning one aligned row per top-level

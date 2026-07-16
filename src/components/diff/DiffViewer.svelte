@@ -137,6 +137,7 @@ let {
       {commitDetail}
       {contentMode}
       {contextLines}
+      {wordWrap}
     />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView

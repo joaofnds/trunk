@@ -510,3 +510,46 @@ li.md-removed {
 	margin-left: -0.6em;
 	padding-left: 0.6em;
 }
+
+/* ── Word-level inline diff marks (inside a merged single-leaf Changed block) ──
+   GLOBAL for the same reason as .md-added above: they live in {@html}-injected
+   fragments (the Rust html_token_merge output) that Svelte scoped styles never
+   reach. Keyed strictly on the md-word-* classes — never bare <del>/<ins> — so an
+   author's ~~strikethrough~~ (a classless <del>) is never read as a diff deletion.
+   Color is NOT the sole carrier (AAA invariant, app.css:490-494): the deletion adds
+   line-through, the insertion adds an underline, both surviving grayscale. The low
+   16% translucent tints keep body text at AAA over --bg-0 (verified with the
+   .planning/contrast helper — no colored-text desaturation). */
+.md-word-delete {
+	background: var(--color-diff-word-delete-bg);
+	text-decoration: line-through;
+}
+.md-word-add {
+	background: var(--color-diff-word-add-bg);
+	text-decoration: underline;
+}
+/* Override .markdown-body del's muted color so a struck diff word stays full-
+   brightness and AAA-legible on the red tint (authored strikethrough stays muted). */
+.markdown-body del.md-word-delete {
+	color: var(--color-text);
+}
+/* Screen-reader cue: without it, a merged paragraph reads as nonsense prose ("the
+   quick slow brown fox") with no del/ins signal. Prefix each diff run with a
+   visually-hidden "removed "/"added " announced by AT (generated content is read by
+   VoiceOver/NVDA) and clipped from sighted view via the standard sr-only pattern. */
+.md-word-delete::before,
+.md-word-add::before {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+.md-word-delete::before {
+	content: "removed ";
+}
+.md-word-add::before {
+	content: "added ";
+}

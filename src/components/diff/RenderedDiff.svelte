@@ -7,14 +7,19 @@ import {
 	type DiffRow,
 	renderMarkdownDiff,
 } from "../../lib/markdown.js";
+import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
 import type { CommitDetail } from "../../lib/types.js";
 
+// All split columns pan as one under wrap-off (Source's splitColSync model):
+// scrolling any column mirrors its scrollLeft to every other.
+const colSync = createHorizontalScrollSync();
+
 // Rendered markdown view of a `.md` diff, projected from one block-diff fetch
-// (`render_markdown_diff`, both revs). Every layout — inline/split × full/hunk —
-// is a pure frontend projection of the returned `DiffRow[]`; toggling never
-// re-invokes Rust (grill §B). Inline is a single interleaved stream (removed
-// blocks shown in original position); split pairs each row's before/after cells
-// in one CSS grid row so heights align structurally (grill §A).
+// (`render_markdown_diff`, both revs). Every layout — inline/split × full/hunk — is
+// a pure frontend projection of the returned `DiffRow[]`; toggling never re-invokes
+// Rust. Split pairs each row's before/after cells in one CSS grid row. Inline is a
+// single stream; a changed single-leaf block collapses to ONE block carrying inline
+// `md-word-*` del/ins (`wordHtml`), otherwise it shows before(red)+after(green).
 interface Props {
 	layoutMode: "inline" | "split";
 	selectedPath: string;
@@ -24,6 +29,7 @@ interface Props {
 	commitDetail: CommitDetail | null;
 	contentMode: "hunk" | "full";
 	contextLines: number;
+	wordWrap: boolean;
 }
 
 let {
@@ -35,6 +41,7 @@ let {
 	commitDetail,
 	contentMode,
 	contextLines,
+	wordWrap,
 }: Props = $props();
 
 type LoadState =
@@ -185,7 +192,12 @@ const inlineItems = $derived.by((): InlineItem[] =>
 			return [{ type: "block", tint: "added", html: r.html }];
 		if (r.kind === "removed")
 			return [{ type: "block", tint: "removed", html: r.html }];
-		// changed: mirror Source — the removed before-block, then the added after-block.
+		// changed with a word-level merge (single-leaf): ONE block, no wrapper tint —
+		// the inline md-word-* del/ins marks inside wordHtml carry the signal.
+		if (r.wordHtml)
+			return [{ type: "block", tint: "unchanged", html: r.wordHtml }];
+		// changed without a merge (container / code / dense rewrite): mirror Source —
+		// the removed before-block, then the added after-block.
 		return [
 			{ type: "block", tint: "removed", html: r.beforeHtml },
 			{ type: "block", tint: "added", html: r.afterHtml },
@@ -223,8 +235,8 @@ const splitItems = $derived.by((): SplitItem[] =>
 				left: { tint: "removed", html: r.html },
 				right: null,
 			};
-		// changed: mirror Source — before removed (red) on the left, after added
-		// (green) on the right.
+		// changed: whole before(red) on the left, after(green) on the right — split
+		// stays block-level (word-level lives in the inline view).
 		return {
 			type: "row",
 			left: { tint: "removed", html: r.beforeHtml },
@@ -251,69 +263,121 @@ const splitItems = $derived.by((): SplitItem[] =>
   </div>
 {/snippet}
 
-{#snippet cell(c: SplitCell)}
+{#snippet col(c: SplitCell)}
   {#if c}
-    {@render block(c.tint, c.html)}
+    <!-- Each column is its own hidden-scrollbar horizontal scroller (Source's
+         .split-column), synced with every other so wrap-off pans both columns
+         together; the inner wrapper is Source's per-side width pattern. -->
+    <div class="split-column" use:colSync>
+      <div
+        class="split-col-content"
+        style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+      >
+        {@render block(c.tint, c.html)}
+      </div>
+    </div>
   {:else}
-    <div class="rendered-phantom"></div>
+    <div class="split-column rendered-phantom"></div>
   {/if}
 {/snippet}
 
-<div class="rendered-diff" class:split={layoutMode === "split"}>
-  {#if showNoChange}
-    <div class="rendered-nochange">No changes</div>
-  {/if}
-  {#if state.kind === "error"}
-    <div class="rendered-note rendered-error">{state.message}</div>
-  {:else if state.kind === "loading"}
-    <div class="rendered-block"></div>
-  {:else if layoutMode === "split" && absentSide === "before"}
-    <div class="rendered-col rendered-note">Not present at this revision</div>
-    <div class="rendered-stack">
-      {#each presentHtmls as html}{@render block("added", html)}{/each}
-    </div>
-  {:else if layoutMode === "split" && absentSide === "after"}
-    <div class="rendered-stack">
-      {#each presentHtmls as html}{@render block("removed", html)}{/each}
-    </div>
-    <div class="rendered-col rendered-note">Not present at this revision</div>
-  {:else if layoutMode === "split"}
-    {#each splitItems as item}
-      {#if item.type === "sep"}
-        {@render separator(item.count)}
-      {:else}
-        {@render cell(item.left)}
-        {@render cell(item.right)}
-      {/if}
-    {/each}
-  {:else}
-    {#each inlineItems as item}
-      {#if item.type === "sep"}
-        {@render separator(item.count)}
-      {:else}
-        {@render block(item.tint, item.html)}
-      {/if}
-    {/each}
-  {/if}
+<div class="rendered-diff" class:wrap={wordWrap}>
+  <!-- ONE shared content wrapper sized by the wrap toggle (Source's HunkView
+       pattern): at max-content every inline block, tint, and separator spans the
+       same scrolled width. In split the outer wrapper never widens — panning
+       lives inside the per-row columns. -->
+  <div
+    class="rendered-content"
+    class:split={layoutMode === "split"}
+    style="min-width: 100%; width: {wordWrap || layoutMode === 'split'
+      ? '100%'
+      : 'max-content'};"
+  >
+    {#if showNoChange}
+      <div class="rendered-nochange">No changes</div>
+    {/if}
+    {#if state.kind === "error"}
+      <div class="rendered-note rendered-error">{state.message}</div>
+    {:else if state.kind === "loading"}
+      <div class="rendered-block"></div>
+    {:else if layoutMode === "split" && absentSide === "before"}
+      <div class="split-columns">
+        <div class="split-column rendered-note">Not present at this revision</div>
+        <div class="split-column" use:colSync>
+          <div
+            class="split-col-content"
+            style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+          >
+            {#each presentHtmls as html}{@render block("added", html)}{/each}
+          </div>
+        </div>
+      </div>
+    {:else if layoutMode === "split" && absentSide === "after"}
+      <div class="split-columns">
+        <div class="split-column" use:colSync>
+          <div
+            class="split-col-content"
+            style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+          >
+            {#each presentHtmls as html}{@render block("removed", html)}{/each}
+          </div>
+        </div>
+        <div class="split-column rendered-note">Not present at this revision</div>
+      </div>
+    {:else if layoutMode === "split"}
+      {#each splitItems as item}
+        {#if item.type === "sep"}
+          {@render separator(item.count)}
+        {:else}
+          <div class="split-columns">
+            {@render col(item.left)}
+            {@render col(item.right)}
+          </div>
+        {/if}
+      {/each}
+    {:else}
+      {#each inlineItems as item}
+        {#if item.type === "sep"}
+          {@render separator(item.count)}
+        {:else}
+          {@render block(item.tint, item.html)}
+        {/if}
+      {/each}
+    {/if}
+  </div>
 </div>
 
 <style>
   /* Single outer scroller: vertical scroll needs no JS sync, and in split the
-     grid rows align both columns structurally (grill §A). */
+     grid rows align both columns structurally. */
   .rendered-diff {
     height: 100%;
     overflow: auto;
     box-sizing: border-box;
     background: var(--bg-0);
   }
-  /* Each DiffRow's before/after cells are adjacent grid children, so a row's
-     height is max(left, right) — exact alignment of variable-height blocks. The
-     1px column gap on the border color draws the split rule. */
-  .rendered-diff.split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 1px;
-    background: var(--color-border);
+  /* One flex pair per DiffRow (Source's .split-columns): the row's height is
+     max(left, right) via flex stretch, so variable-height blocks stay row-aligned
+     without a shared grid. */
+  .split-columns {
+    display: flex;
+  }
+  /* Half-panel column that pans horizontally on its own (scrollbars hidden,
+     panning synced across all columns) — Source's .split-column verbatim. This is
+     what keeps split at panel width under wrap-off instead of widening 2×. */
+  .split-column {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: none;
+    scrollbar-width: none;
+    background: var(--bg-0);
+  }
+  .split-column::-webkit-scrollbar {
+    display: none;
+  }
+  .split-column:first-child {
+    border-right: 1px solid var(--color-border);
   }
   /* No overflow here: any non-visible overflow on one axis forces the other to
      compute non-visible too, turning the block into a scroll container whose grid
@@ -326,23 +390,31 @@ const splitItems = $derived.by((): SplitItem[] =>
     background: var(--bg-0);
     min-width: 0;
   }
-  /* One grid cell holding the whole present column when the other side is absent
-     (added/deleted file), so the placeholder stays a single opposite-column cell
-     rather than a phantom per row. */
-  .rendered-stack {
-    min-width: 0;
-    background: var(--bg-0);
+  /* The toolbar's word-wrap toggle, mirroring Source's semantics (HunkView:
+     pre-wrap + 100% when on, pre + max-content when off).
+     ON: prose wraps natively; code fences flip from their pre scroller to
+     pre-wrap. :global reaches the {@html}-injected fragment Svelte scoping can't. */
+  .rendered-diff.wrap :global(.markdown-body pre code) {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
-  /* The empty counterpart of an added/removed block: fills its grid cell so the
-     split rule stays continuous, carries no content. */
-  .rendered-phantom {
+  /* OFF: nothing wraps — nowrap inherits into the injected prose (a paragraph is
+     one long line; `pre code` keeps its explicit white-space:pre). The shared
+     wrapper's max-content width makes every block span the widest line; the
+     outer .rendered-diff scroller pans horizontally, like Source. */
+  .rendered-diff:not(.wrap) .rendered-content {
+    white-space: nowrap;
+  }
+  /* The empty counterpart column of an added/removed block: stretches to the
+     row's height, carries no content. */
+  .split-column.rendered-phantom {
     background: var(--color-diff-phantom-bg);
   }
-  /* A collapsed run of unchanged blocks. Spans both columns in split. A centered
-     count flanked by hairline rules, so the fold reads as a seam in the content
-     rather than a boxed-in banner. Non-expandable, matching Source (criterion 12). */
+  /* A collapsed run of unchanged blocks: a full-width sibling of the .split-columns
+     rows in split, a plain block inline. A centered count flanked by hairline
+     rules, so the fold reads as a seam in the content rather than a boxed-in
+     banner. Non-expandable, matching Source (criterion 12). */
   .rendered-sep {
-    grid-column: 1 / -1;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -363,7 +435,6 @@ const splitItems = $derived.by((): SplitItem[] =>
     white-space: nowrap;
   }
   .rendered-nochange {
-    grid-column: 1 / -1;
     padding: 6px 20px;
     background: var(--bg-1);
     color: var(--color-text-muted);

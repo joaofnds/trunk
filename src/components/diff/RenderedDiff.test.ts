@@ -30,6 +30,7 @@ const baseProps = {
 	commitDetail: null,
 	contentMode: "full" as const,
 	contextLines: 3,
+	wordWrap: false,
 };
 
 // Isolate call counts + implementations between tests so a per-test mock can't
@@ -37,7 +38,37 @@ const baseProps = {
 afterEach(() => safeInvoke.mockReset());
 
 describe("RenderedDiff", () => {
-	it("renders in reading order, a changed row as removed-before then added-after (inline)", async () => {
+	it("renders a word-merged changed block as ONE block with inline del/ins (inline)", async () => {
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: "<p>the quick fox</p>",
+				afterHtml: "<p>the slow fox</p>",
+				wordHtml:
+					'<p>the <del class="md-word-delete">quick</del><ins class="md-word-add">slow</ins> fox</p>',
+			},
+		];
+		safeInvoke.mockResolvedValue(rows);
+
+		const { container } = render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "inline" },
+		});
+		await screen.findByText(/slow/);
+
+		// One merged block, no wrapper tint — the inline md-word-* marks carry it.
+		const blocks = container.querySelectorAll(".rendered-block");
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0].classList.contains("md-removed")).toBe(false);
+		expect(blocks[0].classList.contains("md-added")).toBe(false);
+		expect(blocks[0].querySelector("del.md-word-delete")?.textContent).toBe(
+			"quick",
+		);
+		expect(blocks[0].querySelector("ins.md-word-add")?.textContent).toBe(
+			"slow",
+		);
+	});
+
+	it("renders a changed row WITHOUT wordHtml as removed-before then added-after (inline)", async () => {
 		const rows: DiffRow[] = [
 			{ kind: "unchanged", html: "<p>intro</p>", lines: 1 },
 			{ kind: "removed", html: "<p>gone</p>" },
@@ -53,59 +84,63 @@ describe("RenderedDiff", () => {
 
 		const blocks = container.querySelectorAll(".rendered-block");
 		expect(blocks).toHaveLength(5);
-		expect(blocks[0].classList.contains("md-removed")).toBe(false);
 		expect(blocks[1].classList.contains("md-removed")).toBe(true);
 		expect(blocks[1].textContent).toContain("gone");
 		expect(blocks[2].classList.contains("md-added")).toBe(true);
 		expect(blocks[2].textContent).toContain("fresh");
-		// A changed row mirrors Source: the removed before-block, then the added
-		// after-block — red then green, no third "changed" tint.
+		// A container/code/dense changed row (no wordHtml) mirrors Source: removed
+		// before-block, then added after-block — red then green.
 		expect(blocks[3].classList.contains("md-removed")).toBe(true);
 		expect(blocks[3].textContent).toContain("old");
 		expect(blocks[4].classList.contains("md-added")).toBe(true);
 		expect(blocks[4].textContent).toContain("new");
 	});
 
-	it("pairs each row's before/after cells as adjacent grid children (split)", async () => {
+	it("pairs each row as two side-by-side columns, ignoring wordHtml (split)", async () => {
 		const rows: DiffRow[] = [
 			{ kind: "unchanged", html: "<p>same</p>", lines: 1 },
 			{ kind: "added", html: "<p>addition</p>" },
 			{ kind: "removed", html: "<p>deletion</p>" },
-			{ kind: "changed", beforeHtml: "<p>bef</p>", afterHtml: "<p>aft</p>" },
+			{
+				kind: "changed",
+				beforeHtml: "<p>bef</p>",
+				afterHtml: "<p>aft</p>",
+				// Even with a word merge available, split stays whole-block red/green.
+				wordHtml: '<p><ins class="md-word-add">aft</ins></p>',
+			},
 		];
 		safeInvoke.mockResolvedValue(rows);
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "split" },
 		});
-		// unchanged renders "same" on both sides, so it appears twice.
 		await screen.findAllByText("same");
 
-		const grid = container.querySelector(".rendered-diff.split");
-		expect(grid).not.toBeNull();
-		// Both cells of every DiffRow are adjacent direct children of the one grid,
-		// so grid-template-columns:1fr 1fr places them in one row (height aligns).
-		const cells = [...(grid as Element).children];
-		expect(cells).toHaveLength(8);
+		// One flex pair per DiffRow (Source's .split-columns model): the row's
+		// height is max(left, right) via flex stretch, and each column is its own
+		// synced horizontal scroller.
+		const rowEls = container.querySelectorAll(".split-columns");
+		expect(rowEls).toHaveLength(4);
+		const cols = (i: number) => [...rowEls[i].children] as HTMLElement[];
 
 		// unchanged: same html both sides, untinted.
-		expect(cells[0].textContent).toContain("same");
-		expect(cells[1].textContent).toContain("same");
-		expect(cells[0].classList.contains("md-added")).toBe(false);
-		expect(cells[0].classList.contains("md-removed")).toBe(false);
-		// added: left phantom, right added-tint.
-		expect(cells[2].classList.contains("rendered-phantom")).toBe(true);
-		expect(cells[3].classList.contains("md-added")).toBe(true);
-		expect(cells[3].textContent).toContain("addition");
-		// removed: left removed-tint, right phantom.
-		expect(cells[4].classList.contains("md-removed")).toBe(true);
-		expect(cells[4].textContent).toContain("deletion");
-		expect(cells[5].classList.contains("rendered-phantom")).toBe(true);
-		// changed: mirror Source — before removed (red) left, after added (green) right.
-		expect(cells[6].classList.contains("md-removed")).toBe(true);
-		expect(cells[6].textContent).toContain("bef");
-		expect(cells[7].classList.contains("md-added")).toBe(true);
-		expect(cells[7].textContent).toContain("aft");
+		expect(cols(0)[0].textContent).toContain("same");
+		expect(cols(0)[1].textContent).toContain("same");
+		expect(cols(0)[0].querySelector(".md-added, .md-removed")).toBeNull();
+		// added: left phantom column, right added-tint.
+		expect(cols(1)[0].classList.contains("rendered-phantom")).toBe(true);
+		expect(cols(1)[1].querySelector(".md-added")).not.toBeNull();
+		expect(cols(1)[1].textContent).toContain("addition");
+		// removed: left removed-tint, right phantom column.
+		expect(cols(2)[0].querySelector(".md-removed")).not.toBeNull();
+		expect(cols(2)[0].textContent).toContain("deletion");
+		expect(cols(2)[1].classList.contains("rendered-phantom")).toBe(true);
+		// changed: whole before(red) left, after(green) right — NOT the word merge.
+		expect(cols(3)[0].querySelector(".md-removed")).not.toBeNull();
+		expect(cols(3)[0].textContent).toContain("bef");
+		expect(cols(3)[1].querySelector(".md-added")).not.toBeNull();
+		expect(cols(3)[1].textContent).toContain("aft");
+		expect(cols(3)[1].querySelector("ins.md-word-add")).toBeNull();
 	});
 
 	it("shows one placeholder for the absent before column of an added file (split)", async () => {
@@ -120,13 +155,11 @@ describe("RenderedDiff", () => {
 		expect(await screen.findByText("Hello")).toBeInTheDocument();
 		expect(screen.getByText("body")).toBeInTheDocument();
 
-		// One placeholder for the whole absent column, not a phantom per row.
 		expect(screen.getAllByText("Not present at this revision")).toHaveLength(1);
 		expect(container.querySelectorAll(".rendered-phantom")).toHaveLength(0);
 
-		// Placeholder occupies the left (before) column: it is the first grid child.
-		const grid = container.querySelector(".rendered-diff.split") as Element;
-		expect(grid.children[0].textContent).toContain(
+		const row = container.querySelector(".split-columns") as Element;
+		expect(row.children[0].textContent).toContain(
 			"Not present at this revision",
 		);
 	});
@@ -142,17 +175,14 @@ describe("RenderedDiff", () => {
 		expect(await screen.findByText("Bye")).toBeInTheDocument();
 		expect(screen.getAllByText("Not present at this revision")).toHaveLength(1);
 
-		// Placeholder occupies the right (after) column: it is the last grid child.
-		const grid = container.querySelector(".rendered-diff.split") as Element;
-		const kids = grid.children;
+		const row = container.querySelector(".split-columns") as Element;
+		const kids = row.children;
 		expect(kids[kids.length - 1].textContent).toContain(
 			"Not present at this revision",
 		);
 	});
 
 	it("collapses an interior unchanged run to a separator, honoring contextLines (inline)", async () => {
-		// A change at each end with a long unchanged run between them: only the
-		// interior run collapses (boundary runs are handled separately).
 		const rows: DiffRow[] = [
 			{ kind: "changed", beforeHtml: "<p>ob</p>", afterHtml: "<p>nb</p>" },
 		];
@@ -175,21 +205,19 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("nb");
 
-		// 3 context blocks each side; the middle 4 collapse to one sep. Each change
-		// is a changed row → 2 inline blocks (removed+added), so 2×2 + 3 + 3 = 10.
+		// 3 context each side; middle 4 collapse. Each change (no wordHtml) is 2
+		// inline blocks (removed+added): 2×2 + 3 + 3 = 10.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(10);
 		expect(container.querySelector(".rendered-sep")?.textContent).toContain(
 			"4",
 		);
 
-		// A tighter context keeps fewer blocks and hides more.
 		await rerender({
 			...baseProps,
 			layoutMode: "inline",
 			contentMode: "hunk",
 			contextLines: 1,
 		});
-		// 1 context block each side; the middle 8 collapse. 2×2 + 1 + 1 = 6.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(6);
 		expect(container.querySelector(".rendered-sep")?.textContent).toContain(
 			"8",
@@ -197,10 +225,6 @@ describe("RenderedDiff", () => {
 	});
 
 	it("always keeps the adjacent block even when it alone exceeds the budget, never bare (hunk)", async () => {
-		// contextLines is a source-line budget (like Source). Blocks are atomic, so
-		// the immediately-adjacent block is always shown whole — a 5-line block next
-		// to a change is kept under a budget of 3 rather than collapsed, so the
-		// change never renders bare with no surrounding context.
 		const rows: DiffRow[] = [
 			{ kind: "changed", beforeHtml: "<p>ob</p>", afterHtml: "<p>nb</p>" },
 			{ kind: "unchanged", html: "<p>big</p>", lines: 5 },
@@ -218,16 +242,12 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("nb");
 
-		// The 5-line block is the only context between the two changes: kept, not
-		// collapsed. 2 changes × 2 inline blocks + 1 context block = 5; no separator.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(5);
 		expect(screen.getByText("big")).toBeInTheDocument();
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(0);
 	});
 
 	it("drops leading and trailing unchanged runs without a separator (hunk)", async () => {
-		// Unchanged runs at the document edges collapse away entirely — no "N
-		// unchanged blocks" marker beyond the last change, matching source hunks.
 		const rows: DiffRow[] = [];
 		for (let i = 0; i < 5; i++)
 			rows.push({ kind: "unchanged", html: `<p>lead${i}</p>`, lines: 1 });
@@ -250,8 +270,6 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("nb");
 
-		// changed row (2 inline blocks) + 1 context each side = 4 blocks; the edge
-		// runs vanish, no separator.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(4);
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(0);
 	});
@@ -279,7 +297,6 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findAllByText("nb");
 
-		// 8 kept rows × 2 cells = 16 cells; one full-width sep for the interior run.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(16);
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(1);
 	});
@@ -300,7 +317,6 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("alpha");
 
-		// Full document, not an all-collapsed blank.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(2);
 		expect(container.querySelector(".rendered-sep")).toBeNull();
 		expect(screen.getByText("No changes")).toBeInTheDocument();
@@ -348,23 +364,75 @@ describe("RenderedDiff", () => {
 			await rerender({ ...baseProps, ...t });
 		}
 
-		// The fetch is driven by rev/path only: every call carries the identical
-		// command + revs, so a layout/content toggle never alters what is fetched.
-		// (testing-library rerender re-runs effects unconditionally, so an exact
-		// call *count* can't distinguish a toggle-driven refetch from a harness
-		// re-run; the single-fetch guarantee is structural — the effect reads no
-		// layout/content props — and is verified in the dev build, task 11.)
 		const distinctFetches = new Set(
 			safeInvoke.mock.calls.map((c) => JSON.stringify(c)),
 		);
 		expect(distinctFetches.size).toBe(1);
 		expect(safeInvoke.mock.calls[0][0]).toBe("render_markdown_diff");
 
-		// The final toggle (inline + hunk) re-laid-out the same fetched array.
-		expect(container.querySelector(".rendered-diff.split")).toBeNull();
+		expect(container.querySelector(".rendered-content.split")).toBeNull();
 		expect(
 			container.querySelectorAll(".rendered-block").length,
 		).toBeGreaterThan(0);
+	});
+
+	it("sizes one shared content wrapper by the word-wrap toggle, like Source", async () => {
+		safeInvoke.mockResolvedValue([
+			{
+				kind: "unchanged",
+				html: "<pre><code>long line</code></pre>",
+				lines: 1,
+			},
+		] satisfies DiffRow[]);
+
+		const { container, rerender } = render(RenderedDiff, {
+			props: { ...baseProps, wordWrap: true },
+		});
+		await screen.findByText("long line");
+
+		// Wrap on: the wrap class (keys the pre-wrap CSS) + the shared wrapper at
+		// 100%. The width is an inline style — the one seam jsdom can assert.
+		expect(container.querySelector(".rendered-diff.wrap")).not.toBeNull();
+		const wrapped = container.querySelector(".rendered-content") as HTMLElement;
+		expect(wrapped.style.width).toBe("100%");
+
+		// Wrap off: no wrap class; the ONE wrapper grows to the longest line so
+		// every block, tint, and separator spans the same scrolled width.
+		await rerender({ ...baseProps, wordWrap: false });
+		expect(container.querySelector(".rendered-diff.wrap")).toBeNull();
+		const unwrapped = container.querySelector(
+			".rendered-content",
+		) as HTMLElement;
+		expect(unwrapped.style.width).toBe("max-content");
+		expect(unwrapped.style.minWidth).toBe("100%");
+	});
+
+	it("pans split per column under wrap-off: outer stays panel width, column content grows (like Source)", async () => {
+		// Source parity: the outer wrapper never widens in split — each half-panel
+		// column is its own (synced) horizontal scroller whose inner content grows
+		// to max-content, exactly SplitView's per-column wrappers.
+		safeInvoke.mockResolvedValue([
+			{ kind: "unchanged", html: "<p>same</p>", lines: 1 },
+		] satisfies DiffRow[]);
+
+		const { container } = render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "split", wordWrap: false },
+		});
+		await screen.findAllByText("same");
+
+		const wrapper = container.querySelector(
+			".rendered-content.split",
+		) as HTMLElement;
+		expect(wrapper.style.width).toBe("100%");
+
+		const colContents = [
+			...container.querySelectorAll(".split-col-content"),
+		] as HTMLElement[];
+		expect(colContents).toHaveLength(2);
+		for (const el of colContents) {
+			expect(el.style.width).toBe("max-content");
+			expect(el.style.minWidth).toBe("100%");
+		}
 	});
 
 	it("ignores a stale in-flight render when the selected file changes mid-flight", async () => {
@@ -383,11 +451,9 @@ describe("RenderedDiff", () => {
 			selectedPath: "B.md",
 		});
 
-		// The fresh (B.md) render resolves first.
 		second.resolve([{ kind: "unchanged", html: "<p>SECOND</p>", lines: 1 }]);
 		expect(await screen.findByText("SECOND")).toBeInTheDocument();
 
-		// The stale (A.md) render resolves late — it must NOT overwrite the fresh one.
 		first.resolve([{ kind: "unchanged", html: "<p>FIRST</p>", lines: 1 }]);
 		await tick();
 		await Promise.resolve();
