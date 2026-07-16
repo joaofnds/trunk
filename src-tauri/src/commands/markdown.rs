@@ -246,8 +246,8 @@ pub fn diff_markdown_blocks(
     } else {
         dirty_lines(&before_text, &after_text)
     };
-    let before_dirty = dirty_blocks(&before, &before_lines, &before_text);
-    let after_dirty = dirty_blocks(&after, &after_lines, &after_text);
+    let (before_dirty, before_dropped) = dirty_blocks(&before, &before_lines, &before_text);
+    let (after_dirty, after_dropped) = dirty_blocks(&after, &after_lines, &after_text);
 
     let rows = emit_rows(
         &before,
@@ -256,7 +256,10 @@ pub fn diff_markdown_blocks(
         &after_dirty,
         ignore_whitespace,
     );
-    let whitespace_only = differs && rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. }));
+    let whitespace_only = differs
+        && !before_dropped
+        && !after_dropped
+        && rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. }));
     MarkdownDiff {
         rows,
         whitespace_only,
@@ -315,12 +318,16 @@ fn dirty_lines(before_text: &str, after_text: &str) -> (HashSet<u32>, HashSet<u3
 /// between blocks, link-reference definitions, suppressed front matter) are
 /// orphans: whitespace-only orphans are ignored — rendered output cannot
 /// represent them — and any other orphan marks the nearest following block
-/// (the preceding one at EOF) so the change stays visible somewhere.
-fn dirty_blocks(blocks: &[Block], dirty: &HashSet<u32>, text: &str) -> Vec<bool> {
+/// (the preceding one at EOF) so the change stays visible somewhere. The
+/// second return says a non-whitespace orphan had NO block to land on (a
+/// zero-block doc): the edit is dropped from the rows, and the caller must
+/// not label the diff whitespace-only.
+fn dirty_blocks(blocks: &[Block], dirty: &HashSet<u32>, text: &str) -> (Vec<bool>, bool) {
     let mut flags: Vec<bool> = blocks
         .iter()
         .map(|b| (b.start_line..=b.end_line).any(|l| dirty.contains(&l)))
         .collect();
+    let mut dropped_edit = false;
     let lines: Vec<&str> = text.lines().collect();
     for &line in dirty {
         // Blocks are disjoint and in document order: the block containing `line`
@@ -336,14 +343,13 @@ fn dirty_blocks(blocks: &[Block], dirty: &HashSet<u32>, text: &str) -> Vec<bool>
         }
         match flags.get_mut(next) {
             Some(flag) => *flag = true,
-            None => {
-                if let Some(last) = flags.last_mut() {
-                    *last = true;
-                }
-            }
+            None => match flags.last_mut() {
+                Some(last) => *last = true,
+                None => dropped_edit = true,
+            },
         }
     }
-    flags
+    (flags, dropped_edit)
 }
 
 /// Walk both block lists in document order. Clean blocks with identical kind +
@@ -2268,6 +2274,30 @@ mod tests {
             rows.iter().any(|r| !matches!(r, DiffRow::Unchanged { .. })),
             "the orphan edit is visible on a block, not silently dropped: {rows:?}"
         );
+    }
+
+    #[test]
+    fn zero_block_doc_with_a_real_edit_is_not_whitespace_only() {
+        // A doc that is ONLY link-reference definitions produces no blocks at
+        // all, so a URL edit has no block to land on. Dropping it is acceptable
+        // (rendered output has nothing to show); labeling the diff
+        // whitespace-only is a lie about a real edit.
+        let before = "[ref]: https://old.example.com\n";
+        let after = "[ref]: https://new.example.com\n";
+        let diff = diff_md(before, after);
+        assert!(
+            !diff.whitespace_only,
+            "a dropped non-whitespace edit must not report whitespace-only: {:?}",
+            diff.rows
+        );
+    }
+
+    #[test]
+    fn zero_block_doc_with_a_whitespace_edit_stays_whitespace_only() {
+        let before = "[ref]: https://example.com\n";
+        let after = "[ref]: https://example.com\n\n";
+        let diff = diff_md(before, after);
+        assert!(diff.whitespace_only, "{:?}", diff.rows);
     }
 
     #[test]
