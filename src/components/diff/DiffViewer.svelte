@@ -139,6 +139,7 @@ let {
       {commitDetail}
       {contentMode}
       {contextLines}
+      {ignoreWhitespace}
       {wordWrap}
       {refreshToken}
     />

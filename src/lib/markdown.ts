@@ -98,11 +98,13 @@ export function renderMarkdownDiff(
 	filePath: string,
 	beforeRev: RevSpec,
 	afterRev: RevSpec,
+	ignoreWhitespace: boolean,
 ): Promise<MarkdownDiff> {
 	return safeInvoke<MarkdownDiff>("render_markdown_diff", {
 		repoPath,
 		filePath,
 		beforeRev,
 		afterRev,
+		ignoreWhitespace,
 	});
 }

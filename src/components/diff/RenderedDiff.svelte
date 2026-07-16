@@ -31,6 +31,7 @@ interface Props {
 	commitDetail: CommitDetail | null;
 	contentMode: "hunk" | "full";
 	contextLines: number;
+	ignoreWhitespace: boolean;
 	wordWrap: boolean;
 	// Bumped by the host when the repo changes on disk (RepoView's debounced
 	// repo-changed handler) so a stale preview refetches. Optional: the rebase-
@@ -47,6 +48,7 @@ let {
 	commitDetail,
 	contentMode,
 	contextLines,
+	ignoreWhitespace,
 	wordWrap,
 	refreshToken = 0,
 }: Props = $props();
@@ -75,12 +77,19 @@ $effect(() => {
 	const kind = diffKind;
 	const oid = commitOid;
 	const parent = parentOid;
+	const ignoreWs = ignoreWhitespace;
 	// A dependency only: the token's value never reaches the backend — bumping
 	// it re-runs this effect so the same fetch re-executes against fresh disk.
 	void refreshToken;
 
 	state = { kind: "loading" };
-	renderMarkdownDiff(repo, path, beforeRev(kind, parent), afterRev(kind, oid))
+	renderMarkdownDiff(
+		repo,
+		path,
+		beforeRev(kind, parent),
+		afterRev(kind, oid),
+		ignoreWs,
+	)
 		.then((diff) => {
 			if (my === seq)
 				state = {

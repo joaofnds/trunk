@@ -214,6 +214,9 @@ struct Leaf {
 /// texts are front-matter-rewritten BEFORE the line diff so line numbers and
 /// sourcepos share one coordinate system. `repo`/`file`/`rev` are needed only to
 /// resolve each side's images. The frontend projects every layout from the rows.
+/// `ignore_whitespace` compares line keys with ALL whitespace stripped — git's
+/// `-w`, matching Source's GIT_DIFF_IGNORE_WHITESPACE — while the original
+/// lines still classify blocks and render.
 pub fn diff_markdown_blocks(
     before_md: &str,
     after_md: &str,
@@ -221,6 +224,7 @@ pub fn diff_markdown_blocks(
     file_path: &str,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
+    ignore_whitespace: bool,
 ) -> MarkdownDiff {
     let differs = before_md != after_md;
     // comrak counts a lone \r as a line ending (CommonMark); str::lines() and
@@ -234,11 +238,24 @@ pub fn diff_markdown_blocks(
     let before = extract_blocks(&before_text, repo_path, file_path, before_rev);
     let after = extract_blocks(&after_text, repo_path, file_path, after_rev);
 
-    let (before_lines, after_lines) = dirty_lines(&before_text, &after_text);
+    let (before_lines, after_lines) = if ignore_whitespace {
+        dirty_lines(
+            &strip_line_whitespace(&before_text),
+            &strip_line_whitespace(&after_text),
+        )
+    } else {
+        dirty_lines(&before_text, &after_text)
+    };
     let before_dirty = dirty_blocks(&before, &before_lines, &before_text);
     let after_dirty = dirty_blocks(&after, &after_lines, &after_text);
 
-    let rows = emit_rows(&before, &before_dirty, &after, &after_dirty);
+    let rows = emit_rows(
+        &before,
+        &before_dirty,
+        &after,
+        &after_dirty,
+        ignore_whitespace,
+    );
     let whitespace_only = differs && rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. }));
     MarkdownDiff {
         rows,
@@ -248,6 +265,16 @@ pub fn diff_markdown_blocks(
 
 fn normalize_line_endings(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// Each line with every whitespace character removed — the ignore-whitespace
+/// comparison keys. Line count is preserved, so the diff ops' indices stay in
+/// the original text's line coordinates.
+fn strip_line_whitespace(text: &str) -> String {
+    text.lines()
+        .map(|l| l.chars().filter(|c| !c.is_whitespace()).collect::<String>())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The 1-based line numbers the plain-text line diff marks changed on each side:
@@ -327,13 +354,26 @@ fn dirty_blocks(blocks: &[Block], dirty: &HashSet<u32>, text: &str) -> Vec<bool>
 /// identity differs (block boundaries shifted across an equal region) demotes
 /// to the dirty runs rather than misaligning every anchor after it. Identity is
 /// the raw source, never rendered html — html embeds each side's rev in image
-/// URLs, so identical markdown renders differently per side.
+/// URLs, so identical markdown renders differently per side. Under
+/// `ignore_whitespace` identity is whitespace-stripped to match the line keys:
+/// a pair the stripped diff called clean must anchor, not demote to `Changed`.
 fn emit_rows(
     before: &[Block],
     before_dirty: &[bool],
     after: &[Block],
     after_dirty: &[bool],
+    ignore_whitespace: bool,
 ) -> Vec<DiffRow> {
+    let sources_match = |b: &Block, a: &Block| {
+        if ignore_whitespace {
+            b.source
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .eq(a.source.chars().filter(|c| !c.is_whitespace()))
+        } else {
+            b.source == a.source
+        }
+    };
     // Only ever an AFTER-side block: `Unchanged` publishes after-axis spans, and
     // a before block's lines in those fields is exactly the axis violation the
     // tail arms below used to commit.
@@ -362,7 +402,7 @@ fn emit_rows(
             continue;
         }
         match (before.get(i), after.get(j)) {
-            (Some(b), Some(a)) if b.kind == a.kind && b.source == a.source => {
+            (Some(b), Some(a)) if b.kind == a.kind && sources_match(b, a) => {
                 flush_runs(&mut rows, &mut before_run, &mut after_run, a.start_line);
                 rows.push(unchanged(a));
                 after_cursor = a.end_line;
@@ -944,6 +984,7 @@ pub fn render_markdown_diff_from_state(
     file_path: &str,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
+    ignore_whitespace: bool,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<MarkdownDiff, TrunkError> {
     let before = read_side(repo_path, file_path, before_rev, state_map)?;
@@ -955,6 +996,7 @@ pub fn render_markdown_diff_from_state(
         file_path,
         before_rev,
         after_rev,
+        ignore_whitespace,
     ))
 }
 
@@ -1222,10 +1264,11 @@ fn diff_cache_key(
     file_path: &str,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
+    ignore_whitespace: bool,
 ) -> Option<String> {
     match (before_rev, after_rev) {
         (RevSpec::Commit { oid: before }, RevSpec::Commit { oid: after }) => Some(format!(
-            "{repo_path}\u{1f}{file_path}\u{1f}{before}\u{1f}{after}"
+            "{repo_path}\u{1f}{file_path}\u{1f}{before}\u{1f}{after}\u{1f}{ignore_whitespace}"
         )),
         _ => None,
     }
@@ -1237,10 +1280,17 @@ pub async fn render_markdown_diff(
     file_path: String,
     before_rev: RevSpec,
     after_rev: RevSpec,
+    ignore_whitespace: bool,
     state: State<'_, RepoState>,
     cache: State<'_, MarkdownDiffCache>,
 ) -> Result<MarkdownDiff, String> {
-    let cache_key = diff_cache_key(&repo_path, &file_path, &before_rev, &after_rev);
+    let cache_key = diff_cache_key(
+        &repo_path,
+        &file_path,
+        &before_rev,
+        &after_rev,
+        ignore_whitespace,
+    );
     if let Some(ref key) = cache_key {
         if let Some(hit) = cache.0.lock().unwrap().get(key).cloned() {
             return Ok(hit);
@@ -1249,7 +1299,14 @@ pub async fn render_markdown_diff(
 
     let state_map = state.0.lock().unwrap().clone();
     let diff = tauri::async_runtime::spawn_blocking(move || {
-        render_markdown_diff_from_state(&repo_path, &file_path, &before_rev, &after_rev, &state_map)
+        render_markdown_diff_from_state(
+            &repo_path,
+            &file_path,
+            &before_rev,
+            &after_rev,
+            ignore_whitespace,
+            &state_map,
+        )
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -1540,6 +1597,10 @@ mod tests {
     /// The full markdown diff of two docs; repo/file/rev args (image resolution
     /// only) are irrelevant to row semantics and defaulted.
     fn diff_md(before: &str, after: &str) -> MarkdownDiff {
+        diff_md_ws(before, after, false)
+    }
+
+    fn diff_md_ws(before: &str, after: &str, ignore_whitespace: bool) -> MarkdownDiff {
         diff_markdown_blocks(
             before,
             after,
@@ -1547,6 +1608,7 @@ mod tests {
             "d.md",
             &RevSpec::Head,
             &RevSpec::WorkingTree,
+            ignore_whitespace,
         )
     }
 
@@ -1753,16 +1815,29 @@ mod tests {
             oid: oid.to_string(),
         };
         assert!(
-            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb")).is_some(),
+            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb"), false).is_some(),
             "commit-vs-commit is cacheable"
         );
         assert!(
-            diff_cache_key("/r", "d.md", &RevSpec::Head, &commit("bbb")).is_none(),
+            diff_cache_key("/r", "d.md", &RevSpec::Head, &commit("bbb"), false).is_none(),
             "a HEAD side is not cacheable"
         );
         assert!(
-            diff_cache_key("/r", "d.md", &commit("aaa"), &RevSpec::WorkingTree).is_none(),
+            diff_cache_key("/r", "d.md", &commit("aaa"), &RevSpec::WorkingTree, false).is_none(),
             "a working-tree side is not cacheable"
+        );
+    }
+
+    #[test]
+    fn diff_cache_key_separates_whitespace_modes() {
+        // Same commit pair, different flag → different entries; a shared key
+        // would serve rows computed under the other whitespace mode.
+        let commit = |oid: &str| RevSpec::Commit {
+            oid: oid.to_string(),
+        };
+        assert_ne!(
+            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb"), false),
+            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb"), true),
         );
     }
 
@@ -1795,6 +1870,7 @@ mod tests {
             "new.md",
             &RevSpec::Head,
             &RevSpec::WorkingTree,
+            false,
             &state_map,
         )
         .unwrap()
@@ -1809,6 +1885,7 @@ mod tests {
             "new.md",
             &RevSpec::WorkingTree,
             &RevSpec::Head,
+            false,
             &state_map,
         )
         .unwrap()
@@ -1837,6 +1914,7 @@ mod tests {
             "doc.md",
             &RevSpec::Index,
             &RevSpec::WorkingTree,
+            false,
             &state_map,
         )
         .unwrap()
@@ -1871,6 +1949,7 @@ mod tests {
             "doc.md",
             &RevSpec::Empty,
             &RevSpec::WorkingTree,
+            false,
             &state_map,
         )
         .unwrap()
@@ -2090,6 +2169,60 @@ mod tests {
             matches!(rows[0], DiffRow::Changed { .. }),
             "a reflow-only edit is a same-kind change, never Unchanged: {rows:?}"
         );
+    }
+
+    #[test]
+    fn ignore_whitespace_compares_lines_with_all_whitespace_stripped() {
+        // git -w semantics: "foo bar" and "foobar" compare EQUAL — not just
+        // collapsed runs (-b), ALL whitespace is stripped from the line key.
+        let before = "foo bar\n\nother para";
+        let after = "foobar\n\nother para";
+
+        let ignored = diff_md_ws(before, after, true);
+        assert!(
+            ignored
+                .rows
+                .iter()
+                .all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "a whitespace-only line edit is unchanged under the flag: {:?}",
+            ignored.rows
+        );
+        assert!(
+            ignored.whitespace_only,
+            "the sources differ, so the whitespace note explains the empty diff"
+        );
+
+        let shown = diff_md_ws(before, after, false);
+        assert!(
+            shown
+                .rows
+                .iter()
+                .any(|r| !matches!(r, DiffRow::Unchanged { .. })),
+            "without the flag the same edit shows, matching Source: {:?}",
+            shown.rows
+        );
+    }
+
+    #[test]
+    fn ignore_whitespace_still_shows_real_edits_with_the_actual_content() {
+        // The stripped keys drive CLASSIFICATION only; the original lines still
+        // render, so a real edit shows its true after-side content.
+        let before = "the quick fox\n\nctx";
+        let after = "the  slow fox\n\nctx";
+        let diff = diff_md_ws(before, after, true);
+        let changed = diff
+            .rows
+            .iter()
+            .find_map(|r| match r {
+                DiffRow::Changed { after_html, .. } => Some(after_html),
+                _ => None,
+            })
+            .expect("a real word edit stays visible under the flag");
+        assert!(
+            changed.contains("the  slow fox"),
+            "rendered content is the original line, not the stripped key: {changed}"
+        );
+        assert!(!diff.whitespace_only);
     }
 
     #[test]

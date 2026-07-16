@@ -31,6 +31,7 @@ const baseProps = {
 	commitDetail: null,
 	contentMode: "full" as const,
 	contextLines: 3,
+	ignoreWhitespace: false,
 	wordWrap: false,
 };
 
@@ -691,6 +692,37 @@ describe("RenderedDiff", () => {
 				safeInvoke.mock.calls.map((c) => JSON.stringify(c)),
 			);
 			expect(distinct.size).toBe(1);
+		} finally {
+			await unmount(app);
+			target.remove();
+		}
+	});
+
+	it("refetches with the flag in the invoke args when ignoreWhitespace toggles", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+			expect(safeInvoke).toHaveBeenLastCalledWith(
+				"render_markdown_diff",
+				expect.objectContaining({ ignoreWhitespace: false }),
+			);
+
+			props.ignoreWhitespace = true;
+			flushSync();
+
+			expect(safeInvoke).toHaveBeenLastCalledWith(
+				"render_markdown_diff",
+				expect.objectContaining({ ignoreWhitespace: true }),
+			);
 		} finally {
 			await unmount(app);
 			target.remove();

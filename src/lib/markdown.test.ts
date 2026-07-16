@@ -61,16 +61,17 @@ describe("rev derivation", () => {
 });
 
 describe("renderMarkdownDiff", () => {
-	it("invokes render_markdown_diff with both revs", () => {
+	it("invokes render_markdown_diff with both revs and the whitespace flag", () => {
 		safeInvoke.mockResolvedValue({ rows: [], whitespaceOnly: false });
 		const before = beforeRev("unstaged", null);
 		const after = afterRev("unstaged", "");
-		renderMarkdownDiff("/repo", "README.md", before, after);
+		renderMarkdownDiff("/repo", "README.md", before, after, true);
 		expect(safeInvoke).toHaveBeenCalledWith("render_markdown_diff", {
 			repoPath: "/repo",
 			filePath: "README.md",
 			beforeRev: before,
 			afterRev: after,
+			ignoreWhitespace: true,
 		});
 	});
 });
