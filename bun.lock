@@ -5,14 +5,14 @@
     "": {
       "name": "trunk",
       "dependencies": {
-        "@humanspeak/svelte-virtual-list": "^0.5.12",
         "@lucide/svelte": "^1.24.0",
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
         "@tauri-apps/plugin-dialog": "^2.7.1",
-        "@tauri-apps/plugin-opener": "^2",
+        "@tauri-apps/plugin-opener": "^2.5.4",
         "@tauri-apps/plugin-store": "^2.4.3",
         "@tauri-apps/plugin-window-state": "^2.4.1",
+        "esm-env": "^1.2.2",
         "sortablejs": "^1.15.7",
       },
       "devDependencies": {
@@ -25,7 +25,7 @@
         "@types/sortablejs": "^1.15.9",
         "@vitest/coverage-v8": "^4.1.10",
         "jsdom": "29.1.1",
-        "svelte": "^5.0.0",
+        "svelte": "^5.56.6",
         "svelte-check": "^4.7.3",
         "tailwindcss": "^4.3.3",
         "typescript": "~6.0.3",
@@ -98,8 +98,6 @@
     "@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
 
     "@exodus/bytes": ["@exodus/bytes@1.15.0", "", { "peerDependencies": { "@noble/hashes": "^1.8.0 || ^2.0.0" }, "optionalPeers": ["@noble/hashes"] }, "sha512-UY0nlA+feH81UGSHv92sLEPLCeZFjXOuHhrIo0HQydScuQc8s0A7kL/UdgwgDq8g8ilksmuoF35YVTNphV2aBQ=="],
-
-    "@humanspeak/svelte-virtual-list": ["@humanspeak/svelte-virtual-list@0.5.12", "", { "dependencies": { "esm-env": "^1.2.2" }, "peerDependencies": { "svelte": "^5.0.0" } }, "sha512-wfKK4NX+Jlnl9SuNnaGlp36qPtf5gkDwocekr2MuWVNE89Zno/H3/xn+TBnu68FRTKbALBZf/a6IsEXG1IjvRg=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
