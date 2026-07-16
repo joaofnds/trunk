@@ -10,7 +10,6 @@
 
 use crate::error::TrunkError;
 use crate::git::syntax;
-use crate::git::types::WordSpan;
 use crate::state::RepoState;
 use comrak::adapters::SyntaxHighlighterAdapter;
 use comrak::nodes::NodeValue;
@@ -63,6 +62,13 @@ const SYN_CLASSES: &[&str] = &[
 /// Source: a modified leaf is removed-on-before / added-on-after, no third state.
 const MD_TINT_CLASSES: &[&str] = &["md-added", "md-removed"];
 
+/// The word-level diff classes the `html_token_merge` emission injects onto
+/// `<del>`/`<ins>`. `del`/`ins` are in ammonia's default tag set, but the class
+/// attribute is stripped without this allowlist — so the fixed strings survive
+/// while any other class is dropped. Keyed strictly on these classes (never bare
+/// `<del>`/`<ins>`) so an author's `~~strikethrough~~` is never tinted (invariant §5).
+const MD_WORD_CLASSES: &[&str] = &["md-word-delete", "md-word-add"];
+
 /// Which version of a file to read. Shared by `read_file_at`, the block-diff
 /// renderer, and the `trunk-asset://` protocol handler so all agree on what "the
 /// file at this rev" means. The frontend derives it from `diffKind` + side.
@@ -108,8 +114,10 @@ impl RevSpec {
 }
 
 /// One row of a rendered-markdown block diff, in document reading order. Mirrors
-/// the frontend `DiffRow` union (serde `kind` tag). `Changed` carries both sides'
-/// fragments plus reserved Layer-2 word-span slots — always `None` in Layer 1.
+/// the frontend `DiffRow` union (serde `kind` tag). `Changed` always carries its
+/// before/after fragments (the split columns / stacked inline fallback) and, for a
+/// single-leaf block that word-merges, an inline `word_html` with `md-word-*`
+/// del/ins marks. `word_html` is `None` for containers, code blocks, and rewrites.
 #[derive(Debug, Clone, Serialize)]
 #[serde(
     tag = "kind",
@@ -134,9 +142,7 @@ pub enum DiffRow {
         before_html: String,
         after_html: String,
         #[serde(skip_serializing_if = "Option::is_none")]
-        before_word_spans: Option<Vec<WordSpan>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        after_word_spans: Option<Vec<WordSpan>>,
+        word_html: Option<String>,
     },
 }
 
@@ -146,8 +152,13 @@ pub enum DiffRow {
 /// list) also carry their leaf rows/items and a sourcepos-annotated fragment, so a
 /// container classified `Changed` can tint just the changed `<tr>`/`<li>` inside.
 struct Block {
+    kind: String,
     signature: String,
     html: String,
+    /// Raw (pre-sanitize) comrak HTML for the word-level merge. Populated only for
+    /// single-leaf blocks (paragraph, heading); empty for containers, which merge
+    /// via their `sourcepos_html` leaf-tint path instead. Never serialized.
+    raw_html: String,
     leaves: Vec<Leaf>,
     sourcepos_html: String,
     lines: u32,
@@ -217,12 +228,11 @@ pub fn diff_markdown_blocks(
                     let b = &before[old_index + k];
                     let a = &after[new_index + k];
                     if reclassify_as_changed(&b.signature, &a.signature) {
-                        let (before_html, after_html) = changed_fragments(b, a);
+                        let cf = changed_fragments(b, a);
                         rows.push(DiffRow::Changed {
-                            before_html,
-                            after_html,
-                            before_word_spans: None,
-                            after_word_spans: None,
+                            before_html: cf.before_html,
+                            after_html: cf.after_html,
+                            word_html: cf.word_html,
                         });
                     } else {
                         rows.push(DiffRow::Removed {
@@ -523,17 +533,29 @@ fn merged_is_balanced(html: &str) -> bool {
     stack.is_empty()
 }
 
-/// Fraction of tokens that must change before the merge gives up and falls back —
-/// the "confetti" fence. Measured on the flat token diff (not the context units) so
-/// a formatting-only move (e.g. un-bolding a word) stays cheap and doesn't trip it.
+/// Fraction of *word* tokens that must change before the merge gives up and falls
+/// back — the "confetti" fence. Measured on words only (not tags/whitespace) so a
+/// formatting-only move (e.g. un-bolding a word) leaves every word Equal and stays
+/// cheap, while a genuine rewrite pushes it over the threshold.
 const MAX_CHANGED_SHARE: f64 = 0.5;
 
-/// Whether the flat token diff changes more than `MAX_CHANGED_SHARE` of the tokens —
-/// the signal that this is a rewrite, not an edit, and a word-level diff would be
-/// noise. `reclassify_as_changed`'s 40%-shared-byte gate is too weak on its own
-/// (grill §"Sharpened the guards"); this is the dedicated density fence.
+/// Count the `Word` tokens in a slice. Density is measured on words only: the
+/// always-shared structural tokens (`<p>`/`</p>` tags, aligned whitespace) would
+/// otherwise dilute the ratio so far that no all-word rewrite could ever cross the
+/// threshold at the block level (a `<p>`-wrapped fragment is ~half tags+spaces).
+fn word_count(tokens: &[Token]) -> usize {
+    tokens
+        .iter()
+        .filter(|t| matches!(t, Token::Word(_)))
+        .count()
+}
+
+/// Whether more than `MAX_CHANGED_SHARE` of the word tokens change — the signal
+/// that this is a rewrite, not an edit, and a word-level diff would be noise.
+/// `reclassify_as_changed`'s 40%-shared-byte gate is too weak on its own (grill
+/// §"Sharpened the guards"); this is the dedicated density fence.
 fn too_dense(before: &[Token], after: &[Token]) -> bool {
-    let total = before.len() + after.len();
+    let total = word_count(before) + word_count(after);
     if total == 0 {
         return false;
     }
@@ -541,11 +563,21 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
     for op in similar::capture_diff_slices(similar::Algorithm::Myers, before, after) {
         match op {
             similar::DiffOp::Equal { .. } => {}
-            similar::DiffOp::Delete { old_len, .. } => changed += old_len,
-            similar::DiffOp::Insert { new_len, .. } => changed += new_len,
+            similar::DiffOp::Delete {
+                old_index, old_len, ..
+            } => changed += word_count(&before[old_index..old_index + old_len]),
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => changed += word_count(&after[new_index..new_index + new_len]),
             similar::DiffOp::Replace {
-                old_len, new_len, ..
-            } => changed += old_len + new_len,
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                changed += word_count(&before[old_index..old_index + old_len]);
+                changed += word_count(&after[new_index..new_index + new_len]);
+            }
         }
     }
     changed as f64 / total as f64 > MAX_CHANGED_SHARE
@@ -556,9 +588,7 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
 /// `<del class="md-word-delete">`, added in `<ins class="md-word-add">`, tags kept
 /// balanced. `None` when a guard trips (input imbalance, or an unbalanced result) —
 /// the caller then falls back to the shipped block-level `Removed`+`Added` pair.
-/// The output is UNsanitized; the P1 seam sanitizes it.
-// P1 wires this into `changed_fragments`; it and its helpers are unused until then.
-#[allow(dead_code)]
+/// The output is UNsanitized; `changed_fragments` sanitizes it before it crosses IPC.
 fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
     if before_raw.len() > MAX_MERGE_BYTES || after_raw.len() > MAX_MERGE_BYTES {
         return None;
@@ -578,14 +608,31 @@ fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
     merged_is_balanced(&merged).then_some(merged)
 }
 
-/// The before/after HTML for a `Changed` pair. A single-leaf block (paragraph,
-/// heading, …) carries its plain fragments — the frontend tints the wrapper. A
-/// multi-leaf container (table, list) descends to its leaves: the specific changed
-/// `<tr>`/`<li>` get an `md-*` class inside the fragment (criterion 6), everything
-/// else stays untinted.
-fn changed_fragments(before: &Block, after: &Block) -> (String, String) {
+/// The before/after fragments for a `Changed` row, plus an optional inline
+/// word-merged `word_html`. `before_html`/`after_html` feed the split columns and
+/// the stacked inline fallback. `word_html` is the GitHub-style inline del/ins
+/// merge — present only for a single-leaf block (paragraph, heading) that merges
+/// cleanly; `None` for `code_block` (never token-merge highlighted `<pre>`,
+/// invariant §4), for containers (table/list stay leaf-tinted), and for rewrites
+/// the density/balance guards reject.
+struct ChangedFragments {
+    before_html: String,
+    after_html: String,
+    word_html: Option<String>,
+}
+
+fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     if before.leaves.is_empty() {
-        return (before.html.clone(), after.html.clone());
+        let word_html = if before.kind == "code_block" || after.kind == "code_block" {
+            None
+        } else {
+            html_token_merge(&before.raw_html, &after.raw_html).map(|m| sanitize_html(&m))
+        };
+        return ChangedFragments {
+            before_html: before.html.clone(),
+            after_html: after.html.clone(),
+            word_html,
+        };
     }
     let before_sigs: Vec<String> = before.leaves.iter().map(|l| l.signature.clone()).collect();
     let after_sigs: Vec<String> = after.leaves.iter().map(|l| l.signature.clone()).collect();
@@ -624,10 +671,11 @@ fn changed_fragments(before: &Block, after: &Block) -> (String, String) {
             }
         }
     }
-    (
-        sanitize_html(&tint_leaves(&before.sourcepos_html, &before_tints)),
-        sanitize_html(&tint_leaves(&after.sourcepos_html, &after_tints)),
-    )
+    ChangedFragments {
+        before_html: sanitize_html(&tint_leaves(&before.sourcepos_html, &before_tints)),
+        after_html: sanitize_html(&tint_leaves(&after.sourcepos_html, &after_tints)),
+        word_html: None,
+    }
 }
 
 /// Inject an `md-*` class onto each leaf element in a sourcepos-annotated fragment,
@@ -848,7 +896,8 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
         .map(|n| {
             let kind = n.data.borrow().value.xml_node_name();
             let is_container = kind == "table" || kind == "list";
-            let (leaves, sourcepos_html) = if is_container {
+            let raw = format_node(n, &options);
+            let (leaves, sourcepos_html, raw_html) = if is_container {
                 let leaves = n
                     .children()
                     .map(|c| Leaf {
@@ -856,15 +905,17 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                         sourcepos: c.data.borrow().sourcepos.to_string(),
                     })
                     .collect();
-                (leaves, format_node(n, &options_sp))
+                (leaves, format_node(n, &options_sp), String::new())
             } else {
-                (Vec::new(), String::new())
+                (Vec::new(), String::new(), raw.clone())
             };
             let sourcepos = n.data.borrow().sourcepos;
             let lines = (sourcepos.end.line - sourcepos.start.line + 1) as u32;
             Block {
+                kind: kind.to_string(),
                 signature: block_signature(n),
-                html: sanitize_html(&format_node(n, &options)),
+                html: sanitize_html(&raw),
+                raw_html,
                 leaves,
                 sourcepos_html,
                 lines,
@@ -1303,7 +1354,9 @@ fn sanitize_html(html: &str) -> String {
         .add_url_schemes(["trunk-asset"])
         .add_allowed_classes("span", SYN_CLASSES.iter().copied())
         .add_allowed_classes("tr", MD_TINT_CLASSES.iter().copied())
-        .add_allowed_classes("li", MD_TINT_CLASSES.iter().copied());
+        .add_allowed_classes("li", MD_TINT_CLASSES.iter().copied())
+        .add_allowed_classes("del", MD_WORD_CLASSES.iter().copied())
+        .add_allowed_classes("ins", MD_WORD_CLASSES.iter().copied());
     builder.clean(html).to_string()
 }
 
@@ -1641,7 +1694,12 @@ mod tests {
             &RevSpec::WorkingTree,
         );
         assert_eq!(rows.len(), 1, "the whole table is one row: {rows:?}");
-        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            word_html,
+        } = &rows[0]
+        else {
             panic!("a one-cell table edit is a Changed row: {rows:?}");
         };
         assert!(
@@ -1653,6 +1711,55 @@ mod tests {
             1,
             "exactly the changed row tints added, not the whole table: {after_html}"
         );
+        assert_eq!(
+            before_html.matches("md-removed").count(),
+            1,
+            "the before fragment tints the same row removed: {before_html}"
+        );
+        assert!(
+            word_html.is_none(),
+            "a container never word-merges (leaf-tint only): {word_html:?}"
+        );
+    }
+
+    #[test]
+    fn changed_table_keeps_before_and_after_as_separate_leaf_tinted_fragments() {
+        // A container's Changed carries the before table (removed rows, red) and
+        // the after table (added rows, green) as separate fields — the split view
+        // pairs them into columns, inline stacks them. word_html stays None (row
+        // interleave inside one <table> is P3).
+        let before = "| a | b |\n|---|---|\n| 1 | 2 |";
+        let after = "| a | b |\n|---|---|\n| 9 | 2 |";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(
+            rows.len(),
+            1,
+            "the whole table is one Changed row: {rows:?}"
+        );
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            word_html,
+        } = &rows[0]
+        else {
+            panic!("a one-cell table edit is a Changed row: {rows:?}");
+        };
+        assert!(
+            before_html.contains("md-removed") && before_html.contains(">1<"),
+            "before fragment: removed-tinted row with the old value: {before_html}"
+        );
+        assert!(
+            after_html.contains("md-added") && after_html.contains(">9<"),
+            "after fragment: added-tinted row with the new value: {after_html}"
+        );
+        assert!(word_html.is_none(), "no word merge for a container");
     }
 
     #[test]
@@ -1675,6 +1782,91 @@ mod tests {
             after_html.matches("md-added").count(),
             1,
             "exactly the changed item tints added: {after_html}"
+        );
+    }
+
+    #[test]
+    fn changed_paragraph_word_merges_into_word_html() {
+        let before = "the quick brown fox";
+        let after = "the slow brown fox";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        assert_eq!(rows.len(), 1, "a same-kind edit is one row: {rows:?}");
+        let DiffRow::Changed { word_html, .. } = &rows[0] else {
+            panic!("a small word edit is a Changed row: {rows:?}");
+        };
+        let word_html = word_html
+            .as_deref()
+            .expect("a single-leaf paragraph edit produces inline word_html");
+        assert!(
+            word_html.contains(r#"<del class="md-word-delete">quick</del>"#),
+            "the removed word is wrapped in md-word-delete and survives sanitize: {word_html}"
+        );
+        assert!(
+            word_html.contains(r#"<ins class="md-word-add">slow</ins>"#),
+            "the added word is wrapped in md-word-add and survives sanitize: {word_html}"
+        );
+    }
+
+    #[test]
+    fn code_block_change_has_before_after_but_no_word_html() {
+        // A fenced code block is single-leaf but must never reach the word-token
+        // merge (invariant §4): word_html stays None so highlighted <pre><code> is
+        // never htmldiff'd — it renders as before/after (columns or stacked).
+        let before = "```rust\nlet x = 1;\n```";
+        let after = "```rust\nlet x = 2;\n```";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            word_html,
+        } = &rows[0]
+        else {
+            panic!("a code fence edit is a Changed row: {rows:?}");
+        };
+        assert!(
+            word_html.is_none(),
+            "a code fence never word-merges: {word_html:?}"
+        );
+        assert!(
+            before_html.contains("<pre>") && after_html.contains("<pre>"),
+            "before/after carry the highlighted code fragments: {before_html} / {after_html}"
+        );
+    }
+
+    #[test]
+    fn dense_rewrite_has_no_word_html() {
+        // A paragraph rewritten to disjoint words trips the density guard, so
+        // word_html is None (no confetti) — it renders as before/after instead.
+        let before = "alpha beta gamma delta epsilon zeta";
+        let after = "one two three four five six";
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        );
+        let DiffRow::Changed { word_html, .. } = &rows[0] else {
+            panic!("a same-kind rewrite is still a Changed row: {rows:?}");
+        };
+        assert!(
+            word_html.is_none(),
+            "a dense rewrite must not emit a confetti word diff: {word_html:?}"
         );
     }
 
