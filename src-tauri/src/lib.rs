@@ -8,10 +8,10 @@ pub mod state;
 pub mod watcher;
 
 use state::{CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::Emitter;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use watcher::WatcherState;
 
 /// Report the current webview zoom so the macOS traffic lights (fixed on-screen
@@ -104,10 +104,9 @@ pub fn run() {
                 if matches!(
                     _event,
                     WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. }
-                ) {
-                    if let Ok(ns_window) = _window.ns_window() {
-                        macos_traffic_lights::reposition(ns_window);
-                    }
+                ) && let Ok(ns_window) = _window.ns_window()
+                {
+                    macos_traffic_lights::reposition(ns_window);
                 }
             }
         })
@@ -170,10 +169,10 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 macos_traffic_lights::observe_resize();
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Ok(ns_window) = window.ns_window() {
-                        macos_traffic_lights::reposition(ns_window);
-                    }
+                if let Some(window) = app.get_webview_window("main")
+                    && let Ok(ns_window) = window.ns_window()
+                {
+                    macos_traffic_lights::reposition(ns_window);
                 }
             }
 

@@ -28,7 +28,7 @@ mod resolution;
 // Re-export so `crate::commands::review::{classify_anchor, OrphanReason}` (used by
 // git/review.rs) and the resolution types/fn keep resolving after the move.
 pub(crate) use resolution::classify_anchor;
-pub use resolution::{resolve_all, CommentResolution, OrphanReason};
+pub use resolution::{CommentResolution, OrphanReason, resolve_all};
 
 /// The three review-session states the frontend renders (D-12). Serializes
 /// kebab-case to match the stub strings `active` / `resume-available` / `none`.

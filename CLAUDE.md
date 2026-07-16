@@ -16,7 +16,7 @@ Run `just check` before every commit and push.
 ## Stack
 
 - **Frontend:** Svelte 5 (runes: `$state`, `$derived`), Vite 6, TypeScript 5.6 strict, Tailwind CSS 4
-- **Backend:** Tauri 2, git2 0.19 (libgit2), notify 7 (fs watcher), tokio 1
+- **Backend:** Tauri 2, git2 0.21 (libgit2), notify 8 (fs watcher), tokio 1
 - **Frontend→Backend:** `invoke("command_name", args)` calls Rust `#[tauri::command]` fns
 - **Paths:** `$lib` → `src/lib`, commands in `src-tauri/src/commands/`
 

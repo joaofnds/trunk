@@ -9,7 +9,7 @@ use tokio::process::Command;
 use crate::error::TrunkError;
 use crate::git::{graph, types::GraphResult};
 use crate::shell_env;
-use crate::state::{kill_process, CommitCache, RepoState, RunningOp};
+use crate::state::{CommitCache, RepoState, RunningOp, kill_process};
 
 /// Classifies git stderr output into structured error codes.
 pub fn classify_git_error(stderr: &str) -> TrunkError {

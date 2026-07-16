@@ -217,16 +217,16 @@ fn walk_diff(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
             };
             let content = String::from_utf8_lossy(line.content()).into_owned();
             let mut diffs = file_diffs.borrow_mut();
-            if let Some(fd) = diffs.last_mut() {
-                if let Some(hunk) = fd.hunks.last_mut() {
-                    hunk.lines.push(DiffLine {
-                        origin,
-                        content,
-                        old_lineno: line.old_lineno(),
-                        new_lineno: line.new_lineno(),
-                        spans: vec![],
-                    });
-                }
+            if let Some(fd) = diffs.last_mut()
+                && let Some(hunk) = fd.hunks.last_mut()
+            {
+                hunk.lines.push(DiffLine {
+                    origin,
+                    content,
+                    old_lineno: line.old_lineno(),
+                    new_lineno: line.new_lineno(),
+                    spans: vec![],
+                });
             }
             true
         }),
@@ -314,16 +314,16 @@ pub fn walk_diff_raw_for_bench(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, Tr
             };
             let content = String::from_utf8_lossy(line.content()).into_owned();
             let mut diffs = file_diffs.borrow_mut();
-            if let Some(fd) = diffs.last_mut() {
-                if let Some(hunk) = fd.hunks.last_mut() {
-                    hunk.lines.push(DiffLine {
-                        origin,
-                        content,
-                        old_lineno: line.old_lineno(),
-                        new_lineno: line.new_lineno(),
-                        spans: vec![],
-                    });
-                }
+            if let Some(fd) = diffs.last_mut()
+                && let Some(hunk) = fd.hunks.last_mut()
+            {
+                hunk.lines.push(DiffLine {
+                    origin,
+                    content,
+                    old_lineno: line.old_lineno(),
+                    new_lineno: line.new_lineno(),
+                    spans: vec![],
+                });
             }
             true
         }),
@@ -494,8 +494,8 @@ pub fn get_commit_detail_inner(
     Ok(CommitDetail {
         oid: commit.id().to_string(),
         short_oid: commit.id().to_string()[..7].to_owned(),
-        summary: commit.summary().unwrap_or("").to_owned(),
-        body: commit.body().map(str::to_owned),
+        summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
+        body: commit.body().ok().flatten().map(str::to_owned),
         author_name: author.name().unwrap_or("").to_owned(),
         author_email: author.email().unwrap_or("").to_owned(),
         author_timestamp: author.when().seconds(),

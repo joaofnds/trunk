@@ -1297,10 +1297,10 @@ pub async fn render_markdown_diff(
         &after_rev,
         ignore_whitespace,
     );
-    if let Some(ref key) = cache_key {
-        if let Some(hit) = cache.0.lock().unwrap().get(key).cloned() {
-            return Ok(hit);
-        }
+    if let Some(ref key) = cache_key
+        && let Some(hit) = cache.0.lock().unwrap().get(key).cloned()
+    {
+        return Ok(hit);
     }
 
     let state_map = state.0.lock().unwrap().clone();
@@ -1431,10 +1431,10 @@ fn apply_image_rewrite<'a>(
 ) {
     for node in root.descendants() {
         let mut data = node.data.borrow_mut();
-        if let NodeValue::Image(link) = &mut data.value {
-            if let Some(new_url) = rewrite_image(&link.url) {
-                link.url = new_url;
-            }
+        if let NodeValue::Image(link) = &mut data.value
+            && let Some(new_url) = rewrite_image(&link.url)
+        {
+            link.url = new_url;
         }
     }
 }

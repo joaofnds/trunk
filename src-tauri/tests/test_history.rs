@@ -63,9 +63,11 @@ fn message_summary_match() {
     let ctx = build_search_ctx();
     let results = ctx.search_commits("Initial").unwrap();
     assert!(!results.is_empty(), "expected message match for 'Initial'");
-    assert!(results
-        .iter()
-        .any(|r| r.match_types.contains(&MatchType::Message)));
+    assert!(
+        results
+            .iter()
+            .any(|r| r.match_types.contains(&MatchType::Message))
+    );
 }
 
 #[test]
@@ -84,9 +86,11 @@ fn message_match_case_insensitive() {
         !results.is_empty(),
         "expected case-insensitive message match for 'FEATURE'"
     );
-    assert!(results
-        .iter()
-        .any(|r| r.match_types.contains(&MatchType::Message)));
+    assert!(
+        results
+            .iter()
+            .any(|r| r.match_types.contains(&MatchType::Message))
+    );
 }
 
 #[test]

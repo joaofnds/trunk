@@ -46,7 +46,9 @@ fn classify_non_fast_forward() {
 
 #[test]
 fn classify_non_fast_forward_fetch_first() {
-    let err = classify_git_error("hint: Updates were rejected because the remote contains work that you do not have locally. Fetch first.");
+    let err = classify_git_error(
+        "hint: Updates were rejected because the remote contains work that you do not have locally. Fetch first.",
+    );
     assert_eq!(err.code, "non_fast_forward");
 }
 

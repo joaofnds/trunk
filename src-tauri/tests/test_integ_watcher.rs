@@ -4,11 +4,11 @@
 
 mod common;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tauri::Listener;
-use trunk_lib::watcher::{start_watcher, stop_watcher, WatcherState};
+use trunk_lib::watcher::{WatcherState, start_watcher, stop_watcher};
 
 /// Poll an AtomicBool flag until it becomes true or timeout is reached.
 /// Returns the final value of the flag.

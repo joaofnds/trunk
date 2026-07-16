@@ -22,7 +22,7 @@ pub fn list_refs_inner(
     let head_name: Option<String> = repo
         .head()
         .ok()
-        .and_then(|h| h.shorthand().map(str::to_owned));
+        .and_then(|h| h.shorthand().ok().map(str::to_owned));
 
     let local: Vec<BranchInfo> = repo
         .branches(Some(BranchType::Local))?
@@ -143,7 +143,7 @@ pub fn delete_branch_inner(
     let head_name = repo
         .head()
         .ok()
-        .and_then(|h| h.shorthand().map(str::to_owned));
+        .and_then(|h| h.shorthand().ok().map(str::to_owned));
     if head_name.as_deref() == Some(branch_name) {
         return Err(TrunkError::new(
             "cannot_delete_head",

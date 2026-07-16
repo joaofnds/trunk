@@ -151,17 +151,17 @@ pub fn walk_commits(
     // Pre-compute HEAD's first-parent chain and tip OID
     let mut head_chain: HashSet<git2::Oid> = HashSet::new();
     let mut head_tip: Option<git2::Oid> = None;
-    if let Ok(head_ref) = repo.head() {
-        if let Some(oid) = head_ref.target() {
-            head_tip = Some(oid);
-            let mut current = Some(oid);
-            while let Some(c_oid) = current {
-                head_chain.insert(c_oid);
-                current = repo
-                    .find_commit(c_oid)
-                    .ok()
-                    .and_then(|c| c.parent_id(0).ok());
-            }
+    if let Ok(head_ref) = repo.head()
+        && let Some(oid) = head_ref.target()
+    {
+        head_tip = Some(oid);
+        let mut current = Some(oid);
+        while let Some(c_oid) = current {
+            head_chain.insert(c_oid);
+            current = repo
+                .find_commit(c_oid)
+                .ok()
+                .and_then(|c| c.parent_id(0).ok());
         }
     }
 
@@ -244,37 +244,37 @@ pub fn walk_commits(
         let mut edges: Vec<GraphEdge> = Vec::new();
         let mut fork_in_cols: Vec<usize> = Vec::new();
         for (other_col, slot) in active_lanes.iter().enumerate() {
-            if other_col != col {
-                if let Some(&(occupant, lane_dashed)) = slot.as_ref() {
-                    let is_dashed = lane_dashed;
-                    if occupant == oid {
-                        // Fork-in: a child kept this lane alive pointing to us.
-                        // Emit fork-out edge from our column to the branch column.
-                        fork_in_cols.push(other_col);
-                        let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
-                        let edge_type = if other_col < col {
-                            EdgeType::ForkLeft
-                        } else {
-                            EdgeType::ForkRight
-                        };
-                        edges.push(GraphEdge {
-                            from_column: col,
-                            to_column: other_col,
-                            edge_type,
-                            color_index: edge_color,
-                            dashed: is_dashed,
-                        });
+            if other_col != col
+                && let Some(&(occupant, lane_dashed)) = slot.as_ref()
+            {
+                let is_dashed = lane_dashed;
+                if occupant == oid {
+                    // Fork-in: a child kept this lane alive pointing to us.
+                    // Emit fork-out edge from our column to the branch column.
+                    fork_in_cols.push(other_col);
+                    let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
+                    let edge_type = if other_col < col {
+                        EdgeType::ForkLeft
                     } else {
-                        // Normal pass-through
-                        let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
-                        edges.push(GraphEdge {
-                            from_column: other_col,
-                            to_column: other_col,
-                            edge_type: EdgeType::Straight,
-                            color_index: edge_color,
-                            dashed: is_dashed,
-                        });
-                    }
+                        EdgeType::ForkRight
+                    };
+                    edges.push(GraphEdge {
+                        from_column: col,
+                        to_column: other_col,
+                        edge_type,
+                        color_index: edge_color,
+                        dashed: is_dashed,
+                    });
+                } else {
+                    // Normal pass-through
+                    let edge_color = *lane_colors.get(&other_col).unwrap_or(&other_col);
+                    edges.push(GraphEdge {
+                        from_column: other_col,
+                        to_column: other_col,
+                        edge_type: EdgeType::Straight,
+                        color_index: edge_color,
+                        dashed: is_dashed,
+                    });
                 }
             }
         }
@@ -438,8 +438,8 @@ pub fn walk_commits(
         result.push(GraphCommit {
             oid: oid.to_string(),
             short_oid: short_oid.to_owned(),
-            summary: commit.summary().unwrap_or("").to_owned(),
-            body: commit.body().map(|s| s.to_owned()),
+            summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
+            body: commit.body().ok().flatten().map(|s| s.to_owned()),
             author_name: author.name().unwrap_or("").to_owned(),
             author_email: author.email().unwrap_or("").to_owned(),
             author_timestamp: author.when().seconds(),

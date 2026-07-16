@@ -1,5 +1,5 @@
 use notify_debouncer_mini::notify::RecommendedWatcher;
-use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode, DebounceEventResult, Debouncer};
+use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer, notify::RecursiveMode};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;

@@ -444,8 +444,8 @@ pub fn undo_commit_inner(
         ));
     }
 
-    let subject = head.summary().unwrap_or("").to_owned();
-    let body = head.body().map(str::to_owned);
+    let subject = head.summary().ok().flatten().unwrap_or("").to_owned();
+    let body = head.body().ok().flatten().map(str::to_owned);
     drop(head);
     drop(repo);
 

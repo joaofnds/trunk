@@ -48,7 +48,7 @@ pub fn stash_save_inner(
         let branch = repo
             .head()
             .ok()
-            .and_then(|h| h.shorthand().map(str::to_owned))
+            .and_then(|h| h.shorthand().ok().map(str::to_owned))
             .unwrap_or_else(|| "HEAD".to_owned());
         format!("WIP on {}", branch)
     } else {
@@ -87,7 +87,10 @@ pub fn stash_pop_inner(
             .iter()
             .any(|s| s.status().contains(git2::Status::CONFLICTED));
         if has_conflicts {
-            return Err(TrunkError::new("conflict_state", "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed."));
+            return Err(TrunkError::new(
+                "conflict_state",
+                "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.",
+            ));
         }
     }
     graph::walk_commits(&mut repo, 0, usize::MAX)

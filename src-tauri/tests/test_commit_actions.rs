@@ -87,7 +87,7 @@ fn create_tag_empty_message_uses_name() {
     let repo = ctx.repo();
     let tag_ref = repo.find_reference("refs/tags/v2.0.0").unwrap();
     let tag_obj = tag_ref.peel_to_tag().unwrap();
-    assert_eq!(tag_obj.message().unwrap(), "v2.0.0");
+    assert_eq!(tag_obj.message().unwrap().unwrap(), "v2.0.0");
 }
 
 #[test]

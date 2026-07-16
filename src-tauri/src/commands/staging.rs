@@ -308,7 +308,7 @@ pub fn discard_all_inner(
     let untracked_paths: Vec<PathBuf> = statuses
         .iter()
         .filter(|entry| entry.status().contains(Status::WT_NEW))
-        .filter_map(|entry| entry.path().map(|p| repo.workdir().unwrap().join(p)))
+        .filter_map(|entry| entry.path().ok().map(|p| repo.workdir().unwrap().join(p)))
         .collect();
 
     // Force checkout HEAD to restore all tracked modifications

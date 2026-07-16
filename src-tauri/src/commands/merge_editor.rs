@@ -21,7 +21,7 @@ pub fn get_merge_sides_inner(
 
     let conflict = conflicts
         .find(|entry| {
-            if let Ok(ref c) = entry {
+            if let Ok(c) = entry {
                 let entry_path = c
                     .our
                     .as_ref()

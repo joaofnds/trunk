@@ -41,7 +41,7 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
         .head()
         .ok()
         .and_then(|h| h.resolve().ok())
-        .and_then(|r| r.name().map(|n| n.to_owned()));
+        .and_then(|r| r.name().ok().map(|n| n.to_owned()));
 
     if let Ok(refs) = repo.references() {
         for reference in refs.flatten() {

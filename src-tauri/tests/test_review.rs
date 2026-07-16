@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use trunk_lib::commands::review::{
-    end_review_session_inner, get_review_session_status_inner, resume_review_session_inner,
-    start_review_session_inner, SessionState,
+    SessionState, end_review_session_inner, get_review_session_status_inner,
+    resume_review_session_inner, start_review_session_inner,
 };
-use trunk_lib::git::review_store::{load_session, save_session, LoadOutcome};
+use trunk_lib::git::review_store::{LoadOutcome, load_session, save_session};
 use trunk_lib::git::types::ReviewSession;
 
 fn empty_session() -> ReviewSession {

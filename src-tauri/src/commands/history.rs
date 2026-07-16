@@ -279,10 +279,10 @@ pub fn search_commits_inner(
         // Message match (summary + body)
         if commit.summary.to_lowercase().contains(&q) {
             match_types.push(MatchType::Message);
-        } else if let Some(ref body) = commit.body {
-            if body.to_lowercase().contains(&q) {
-                match_types.push(MatchType::Message);
-            }
+        } else if let Some(ref body) = commit.body
+            && body.to_lowercase().contains(&q)
+        {
+            match_types.push(MatchType::Message);
         }
 
         // Ref match (short_name)

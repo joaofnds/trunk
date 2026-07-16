@@ -38,12 +38,11 @@ fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
 fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<String> {
     let oid = git2::Oid::from_str(oid_str).ok()?;
     for reference in repo.references().ok()?.flatten() {
-        if reference.is_branch() {
-            if let Some(target) = reference.target() {
-                if target == oid {
-                    return reference.shorthand().map(String::from);
-                }
-            }
+        if reference.is_branch()
+            && let Some(target) = reference.target()
+            && target == oid
+        {
+            return reference.shorthand().ok().map(String::from);
         }
     }
     // Fallback: return short OID
@@ -65,7 +64,7 @@ pub fn get_operation_state_inner(
             let target = repo
                 .head()
                 .ok()
-                .and_then(|h| h.shorthand().map(String::from));
+                .and_then(|h| h.shorthand().ok().map(String::from));
             Ok(OperationInfo {
                 op_type: OperationType::Merge,
                 source_branch: source,

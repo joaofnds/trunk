@@ -51,7 +51,7 @@ pub fn get_rebase_todo_inner(
         let commit = repo.find_commit(oid).map_err(TrunkError::from)?;
         let oid_str = oid.to_string();
         let short_oid = oid_str.chars().take(7).collect();
-        let summary = commit.summary().unwrap_or("").to_owned();
+        let summary = commit.summary().ok().flatten().unwrap_or("").to_owned();
         let author_name = commit.author().name().unwrap_or("").to_owned();
         let author_timestamp = commit.time().seconds();
 

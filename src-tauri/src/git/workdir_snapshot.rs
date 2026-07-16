@@ -168,7 +168,7 @@ pub fn clear_snapshot_refs(repo: &git2::Repository) -> Result<(), TrunkError> {
     let names: Vec<String> = repo
         .references_glob(&glob)?
         .filter_map(|r| r.ok())
-        .filter_map(|r| r.name().map(str::to_owned))
+        .filter_map(|r| r.name().ok().map(str::to_owned))
         .collect();
     for name in names {
         if let Ok(mut reference) = repo.find_reference(&name) {

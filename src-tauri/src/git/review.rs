@@ -8,7 +8,7 @@
 //! All resolution failures are routed INTO the returned markdown (per L-04 +
 //! L-09); the renderer NEVER returns an error.
 
-use crate::commands::review::{classify_anchor, OrphanReason};
+use crate::commands::review::{OrphanReason, classify_anchor};
 use crate::git::types::{Anchor, ReviewSession, Side, Source};
 
 /// Render-only failure kinds. Does NOT cross the IPC wire (the Phase 69
@@ -428,7 +428,7 @@ pub fn render(session: &ReviewSession, repo: &git2::Repository) -> String {
             let subject = git2::Oid::from_str(oid_str)
                 .ok()
                 .and_then(|oid| repo.find_commit(oid).ok())
-                .and_then(|c| c.summary().map(String::from))
+                .and_then(|c| c.summary().ok().flatten().map(String::from))
                 .unwrap_or_else(|| "(subject unavailable)".to_string());
             let _ = writeln!(out, "- {short} -- {subject}");
         }
@@ -535,7 +535,7 @@ pub fn render(session: &ReviewSession, repo: &git2::Repository) -> String {
                 let subject = git2::Oid::from_str(commit_oid)
                     .ok()
                     .and_then(|oid| repo.find_commit(oid).ok())
-                    .and_then(|c| c.summary().map(String::from))
+                    .and_then(|c| c.summary().ok().flatten().map(String::from))
                     .unwrap_or_else(|| "(subject unavailable)".to_string());
                 let _ = writeln!(out, "### {short} -- {subject}");
                 let _ = writeln!(out);

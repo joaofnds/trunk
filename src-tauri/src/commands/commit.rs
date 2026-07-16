@@ -79,8 +79,8 @@ pub fn get_head_commit_message_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let commit = repo.head()?.peel_to_commit()?;
     Ok(HeadCommitMessage {
-        subject: commit.summary().unwrap_or("").to_owned(),
-        body: commit.body().map(str::to_owned),
+        subject: commit.summary().ok().flatten().unwrap_or("").to_owned(),
+        body: commit.body().ok().flatten().map(str::to_owned),
     })
 }
 

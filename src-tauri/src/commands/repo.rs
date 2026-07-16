@@ -3,7 +3,7 @@ use crate::git::review_store;
 use crate::git::types::ReviewSession;
 use crate::git::{graph, repository};
 use crate::state::{
-    kill_process, CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp,
+    CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp, kill_process,
 };
 use crate::watcher::{self, WatcherState};
 use std::collections::HashMap;

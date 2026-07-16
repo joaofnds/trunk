@@ -27,7 +27,7 @@ fn create_commit_creates_new_commit() {
 
     let repo = ctx.repo();
     let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
-    assert_eq!(head_commit.summary().unwrap(), "New commit");
+    assert_eq!(head_commit.summary().unwrap().unwrap(), "New commit");
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn create_commit_works_on_unborn_head() {
 
     let repo = ctx.repo();
     let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
-    assert_eq!(head_commit.summary().unwrap(), "Initial commit");
+    assert_eq!(head_commit.summary().unwrap().unwrap(), "Initial commit");
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn amend_commit_updates_message() {
 
     let repo = ctx.repo();
     let head_commit = repo.head().unwrap().peel_to_commit().unwrap();
-    assert_eq!(head_commit.summary().unwrap(), "Amended subject");
+    assert_eq!(head_commit.summary().unwrap().unwrap(), "Amended subject");
 }
 
 #[test]
