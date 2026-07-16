@@ -15,7 +15,7 @@ use comrak::adapters::SyntaxHighlighterAdapter;
 use comrak::nodes::NodeValue;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as FmtWrite;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -26,7 +26,7 @@ use tauri::State;
 /// recomputed on every `repo-changed`. `cache_put` bounds it at cap-128, dropping
 /// the whole map on overflow. Registered as Tauri managed state in lib.rs.
 #[derive(Default)]
-pub struct MarkdownDiffCache(pub Mutex<HashMap<String, Vec<DiffRow>>>);
+pub struct MarkdownDiffCache(pub Mutex<HashMap<String, MarkdownDiff>>);
 
 const MARKDOWN_CACHE_CAP: usize = 128;
 
@@ -78,7 +78,13 @@ pub enum RevSpec {
     WorkingTree,
     Index,
     Head,
-    Commit { oid: String },
+    /// The file does not exist at this rev — e.g. the before side of a root
+    /// commit (no parent tree). Every read maps to `not_found`, so the diff
+    /// renders the present side alone.
+    Empty,
+    Commit {
+        oid: String,
+    },
 }
 
 impl RevSpec {
@@ -92,6 +98,7 @@ impl RevSpec {
             RevSpec::WorkingTree => "working-tree".to_string(),
             RevSpec::Index => "index".to_string(),
             RevSpec::Head => "head".to_string(),
+            RevSpec::Empty => "empty".to_string(),
             RevSpec::Commit { oid } => format!("commit-{oid}"),
         }
     }
@@ -101,6 +108,7 @@ impl RevSpec {
             "working-tree" => Ok(RevSpec::WorkingTree),
             "index" => Ok(RevSpec::Index),
             "head" => Ok(RevSpec::Head),
+            "empty" => Ok(RevSpec::Empty),
             other => other
                 .strip_prefix("commit-")
                 .map(|oid| RevSpec::Commit {
@@ -118,6 +126,12 @@ impl RevSpec {
 /// before/after fragments (the split columns / stacked inline fallback) and, for a
 /// single-leaf block that word-merges, an inline `word_html` with `md-word-*`
 /// del/ins marks. `word_html` is `None` for containers, code blocks, and rewrites.
+///
+/// Every row carries its 1-based inclusive source-line span so the frontend can
+/// budget hunk context by line distance, matching Source's `diff_context_lines`.
+/// Spans live on the AFTER axis; `Removed` has no after side, so it carries its
+/// before span plus `after_anchor` — the after-side line the deletion sits at —
+/// keeping all context math on one axis.
 #[derive(Debug, Clone, Serialize)]
 #[serde(
     tag = "kind",
@@ -127,41 +141,62 @@ impl RevSpec {
 pub enum DiffRow {
     Unchanged {
         html: String,
-        /// Source-line span of this block, so the frontend can budget hunk
-        /// context by lines (matching Source's `diff_context_lines`) rather than
-        /// by whole blocks.
-        lines: u32,
+        after_start: u32,
+        after_end: u32,
     },
     Added {
         html: String,
+        after_start: u32,
+        after_end: u32,
     },
     Removed {
         html: String,
+        before_start: u32,
+        before_end: u32,
+        after_anchor: u32,
     },
     Changed {
         before_html: String,
         after_html: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         word_html: Option<String>,
+        after_start: u32,
+        after_end: u32,
     },
 }
 
-/// A top-level block reduced to what the diff needs: a normalized signature for
-/// alignment (node type + whitespace-collapsed text, so a reflow-only edit stays
-/// equal) and its rendered, sanitized HTML fragment. Multi-leaf containers (table,
-/// list) also carry their leaf rows/items and a sourcepos-annotated fragment, so a
-/// container classified `Changed` can tint just the changed `<tr>`/`<li>` inside.
+/// A rendered-markdown diff crossing IPC: the aligned rows plus whether the
+/// line diff found only changes the rendered view cannot represent (whitespace
+/// between blocks) — every row `Unchanged` yet the sources differ. The frontend
+/// then explains the untinted state instead of claiming "No changes".
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownDiff {
+    pub rows: Vec<DiffRow>,
+    pub whitespace_only: bool,
+}
+
+/// A top-level block reduced to what the diff needs: its node kind (the pairing
+/// gate — a paragraph never merges with a heading), its rendered, sanitized HTML
+/// fragment, and its 1-based inclusive sourcepos line span (how the line diff's
+/// dirty lines map onto blocks). Multi-leaf containers (table, list) also carry
+/// their leaf rows/items and a sourcepos-annotated fragment, so a container
+/// classified `Changed` can tint just the changed `<tr>`/`<li>` inside.
 struct Block {
     kind: String,
-    signature: String,
     html: String,
     /// Raw (pre-sanitize) comrak HTML for the word-level merge. Populated only for
     /// single-leaf blocks (paragraph, heading); empty for containers, which merge
     /// via their `sourcepos_html` leaf-tint path instead. Never serialized.
     raw_html: String,
+    /// The block's raw markdown lines — its rev-INDEPENDENT identity. Anchor
+    /// matching compares this, never `html`: rendered html embeds each side's
+    /// rev in image URLs, so identical markdown renders differently per side.
+    source: String,
     leaves: Vec<Leaf>,
     sourcepos_html: String,
-    lines: u32,
+    start_line: u32,
+    end_line: u32,
 }
 
 /// A direct-child leaf of a container (a table row or list item): its signature
@@ -172,9 +207,13 @@ struct Leaf {
     sourcepos: String,
 }
 
-/// Diff two markdown documents at the top-level-block granularity, returning an
-/// aligned row per block in reading order. `repo`/`file`/`rev` are needed only to
-/// resolve each side's images. The frontend projects every layout from this array.
+/// Diff two markdown documents, returning an aligned row per top-level block in
+/// reading order. Row semantics derive from the plain-text LINE diff of the two
+/// sources — the same diff Source mode shows — mapped onto blocks via sourcepos:
+/// a block is dirty iff its line span intersects its side's changed lines. Both
+/// texts are front-matter-rewritten BEFORE the line diff so line numbers and
+/// sourcepos share one coordinate system. `repo`/`file`/`rev` are needed only to
+/// resolve each side's images. The frontend projects every layout from the rows.
 pub fn diff_markdown_blocks(
     before_md: &str,
     after_md: &str,
@@ -182,40 +221,53 @@ pub fn diff_markdown_blocks(
     file_path: &str,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
-) -> Vec<DiffRow> {
-    let before = extract_blocks(before_md, repo_path, file_path, before_rev);
-    let after = extract_blocks(after_md, repo_path, file_path, after_rev);
-    let before_sigs: Vec<String> = before.iter().map(|b| b.signature.clone()).collect();
-    let after_sigs: Vec<String> = after.iter().map(|b| b.signature.clone()).collect();
+) -> MarkdownDiff {
+    let differs = before_md != after_md;
+    // comrak counts a lone \r as a line ending (CommonMark); str::lines() and
+    // similar::from_lines split on \n only. Normalizing BEFORE the line diff and
+    // extraction is what keeps all three in one line coordinate system — without
+    // it a CR-only file panics the source slice in extract_blocks.
+    let before_md = normalize_line_endings(before_md);
+    let after_md = normalize_line_endings(after_md);
+    let before_text = front_matter_as_table(&before_md);
+    let after_text = front_matter_as_table(&after_md);
+    let before = extract_blocks(&before_text, repo_path, file_path, before_rev);
+    let after = extract_blocks(&after_text, repo_path, file_path, after_rev);
 
-    let mut rows = Vec::new();
-    for op in similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs) {
-        match op {
-            similar::DiffOp::Equal { new_index, len, .. } => {
-                for b in &after[new_index..new_index + len] {
-                    rows.push(DiffRow::Unchanged {
-                        html: b.html.clone(),
-                        lines: b.lines,
-                    });
-                }
-            }
+    let (before_lines, after_lines) = dirty_lines(&before_text, &after_text);
+    let before_dirty = dirty_blocks(&before, &before_lines, &before_text);
+    let after_dirty = dirty_blocks(&after, &after_lines, &after_text);
+
+    let rows = emit_rows(&before, &before_dirty, &after, &after_dirty);
+    let whitespace_only = differs && rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. }));
+    MarkdownDiff {
+        rows,
+        whitespace_only,
+    }
+}
+
+fn normalize_line_endings(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// The 1-based line numbers the plain-text line diff marks changed on each side:
+/// Delete lines on before, Insert lines on after, Replace on both.
+fn dirty_lines(before_text: &str, after_text: &str) -> (HashSet<u32>, HashSet<u32>) {
+    let diff = similar::TextDiff::from_lines(before_text, after_text);
+    let mut before_lines = HashSet::new();
+    let mut after_lines = HashSet::new();
+    for op in diff.ops() {
+        match *op {
+            similar::DiffOp::Equal { .. } => {}
             similar::DiffOp::Delete {
                 old_index, old_len, ..
             } => {
-                for b in &before[old_index..old_index + old_len] {
-                    rows.push(DiffRow::Removed {
-                        html: b.html.clone(),
-                    });
-                }
+                before_lines.extend((old_index + 1..=old_index + old_len).map(|l| l as u32));
             }
             similar::DiffOp::Insert {
                 new_index, new_len, ..
             } => {
-                for b in &after[new_index..new_index + new_len] {
-                    rows.push(DiffRow::Added {
-                        html: b.html.clone(),
-                    });
-                }
+                after_lines.extend((new_index + 1..=new_index + new_len).map(|l| l as u32));
             }
             similar::DiffOp::Replace {
                 old_index,
@@ -223,40 +275,182 @@ pub fn diff_markdown_blocks(
                 new_index,
                 new_len,
             } => {
-                let paired = old_len.min(new_len);
-                for k in 0..paired {
-                    let b = &before[old_index + k];
-                    let a = &after[new_index + k];
-                    if reclassify_as_changed(&b.signature, &a.signature) {
-                        let cf = changed_fragments(b, a);
-                        rows.push(DiffRow::Changed {
-                            before_html: cf.before_html,
-                            after_html: cf.after_html,
-                            word_html: cf.word_html,
-                        });
-                    } else {
-                        rows.push(DiffRow::Removed {
-                            html: b.html.clone(),
-                        });
-                        rows.push(DiffRow::Added {
-                            html: a.html.clone(),
-                        });
-                    }
-                }
-                for b in &before[old_index + paired..old_index + old_len] {
-                    rows.push(DiffRow::Removed {
-                        html: b.html.clone(),
-                    });
-                }
-                for a in &after[new_index + paired..new_index + new_len] {
-                    rows.push(DiffRow::Added {
-                        html: a.html.clone(),
-                    });
+                before_lines.extend((old_index + 1..=old_index + old_len).map(|l| l as u32));
+                after_lines.extend((new_index + 1..=new_index + new_len).map(|l| l as u32));
+            }
+        }
+    }
+    (before_lines, after_lines)
+}
+
+/// Which blocks a side's dirty lines touch: a block is dirty iff its sourcepos
+/// span intersects the dirty set. Dirty lines outside every span (blank lines
+/// between blocks, link-reference definitions, suppressed front matter) are
+/// orphans: whitespace-only orphans are ignored — rendered output cannot
+/// represent them — and any other orphan marks the nearest following block
+/// (the preceding one at EOF) so the change stays visible somewhere.
+fn dirty_blocks(blocks: &[Block], dirty: &HashSet<u32>, text: &str) -> Vec<bool> {
+    let mut flags: Vec<bool> = blocks
+        .iter()
+        .map(|b| (b.start_line..=b.end_line).any(|l| dirty.contains(&l)))
+        .collect();
+    let lines: Vec<&str> = text.lines().collect();
+    for &line in dirty {
+        // Blocks are disjoint and in document order: the block containing `line`
+        // can only be the last one starting at or before it, and `next` is also
+        // the "nearest following block" the orphan rule wants — one search, not
+        // two linear scans (a root-commit view marks every line dirty).
+        let next = blocks.partition_point(|b| b.start_line <= line);
+        if next > 0 && line <= blocks[next - 1].end_line {
+            continue;
+        }
+        if lines[line as usize - 1].trim().is_empty() {
+            continue;
+        }
+        match flags.get_mut(next) {
+            Some(flag) => *flag = true,
+            None => {
+                if let Some(last) = flags.last_mut() {
+                    *last = true;
                 }
             }
         }
     }
+    flags
+}
+
+/// Walk both block lists in document order. Clean blocks with identical kind +
+/// markdown source are the anchors, emitted `Unchanged`; between anchors the
+/// accumulated dirty runs pair positionally — Source's delete/add-run pairing.
+/// An equal-`kind` pair merges into `Changed` via `changed_fragments`; a kind
+/// mismatch or unpaired excess stays `Removed`/`Added`. A clean pair whose
+/// identity differs (block boundaries shifted across an equal region) demotes
+/// to the dirty runs rather than misaligning every anchor after it. Identity is
+/// the raw source, never rendered html — html embeds each side's rev in image
+/// URLs, so identical markdown renders differently per side.
+fn emit_rows(
+    before: &[Block],
+    before_dirty: &[bool],
+    after: &[Block],
+    after_dirty: &[bool],
+) -> Vec<DiffRow> {
+    // Only ever an AFTER-side block: `Unchanged` publishes after-axis spans, and
+    // a before block's lines in those fields is exactly the axis violation the
+    // tail arms below used to commit.
+    let unchanged = |a: &Block| DiffRow::Unchanged {
+        html: a.html.clone(),
+        after_start: a.start_line,
+        after_end: a.end_line,
+    };
+
+    let mut rows = Vec::new();
+    let mut before_run: Vec<&Block> = Vec::new();
+    let mut after_run: Vec<&Block> = Vec::new();
+    // The last after-side line consumed by an anchor — where a deletion with no
+    // after-side content at all anchors its context math.
+    let mut after_cursor: u32 = 0;
+    let (mut i, mut j) = (0, 0);
+    while i < before.len() || j < after.len() {
+        if i < before.len() && before_dirty[i] {
+            before_run.push(&before[i]);
+            i += 1;
+            continue;
+        }
+        if j < after.len() && after_dirty[j] {
+            after_run.push(&after[j]);
+            j += 1;
+            continue;
+        }
+        match (before.get(i), after.get(j)) {
+            (Some(b), Some(a)) if b.kind == a.kind && b.source == a.source => {
+                flush_runs(&mut rows, &mut before_run, &mut after_run, a.start_line);
+                rows.push(unchanged(a));
+                after_cursor = a.end_line;
+                i += 1;
+                j += 1;
+            }
+            (Some(b), Some(a)) => {
+                before_run.push(b);
+                after_run.push(a);
+                i += 1;
+                j += 1;
+            }
+            // A clean block whose counterpart side is exhausted is never a valid
+            // anchor — its equal lines live inside an already-consumed block on
+            // the other side (boundary shift across an equal region). Demote it,
+            // like the mismatched-pair arm above.
+            (Some(b), None) => {
+                before_run.push(b);
+                i += 1;
+            }
+            (None, Some(a)) => {
+                after_run.push(a);
+                j += 1;
+            }
+            (None, None) => unreachable!("loop condition guarantees one side has blocks left"),
+        }
+    }
+    flush_runs(&mut rows, &mut before_run, &mut after_run, after_cursor + 1);
     rows
+}
+
+/// Pair a dirty before-run with a dirty after-run positionally and append the
+/// resulting rows, clearing both runs. A `Removed` paired against a different
+/// kind anchors at its partner's after-side start; unpaired excess anchors at
+/// the run's last after-side line, or — when the run has none — at
+/// `deletion_anchor`: the after-side line the deletion sits at (the upcoming
+/// anchor's start, or one past the last consumed after line at EOF).
+fn flush_runs(
+    rows: &mut Vec<DiffRow>,
+    before_run: &mut Vec<&Block>,
+    after_run: &mut Vec<&Block>,
+    deletion_anchor: u32,
+) {
+    let paired = before_run.len().min(after_run.len());
+    for k in 0..paired {
+        let b = before_run[k];
+        let a = after_run[k];
+        if b.kind == a.kind {
+            let cf = changed_fragments(b, a);
+            rows.push(DiffRow::Changed {
+                before_html: cf.before_html,
+                after_html: cf.after_html,
+                word_html: cf.word_html,
+                after_start: a.start_line,
+                after_end: a.end_line,
+            });
+        } else {
+            rows.push(DiffRow::Removed {
+                html: b.html.clone(),
+                before_start: b.start_line,
+                before_end: b.end_line,
+                after_anchor: a.start_line,
+            });
+            rows.push(DiffRow::Added {
+                html: a.html.clone(),
+                after_start: a.start_line,
+                after_end: a.end_line,
+            });
+        }
+    }
+    let excess_anchor = after_run.last().map_or(deletion_anchor, |a| a.end_line);
+    for b in &before_run[paired..] {
+        rows.push(DiffRow::Removed {
+            html: b.html.clone(),
+            before_start: b.start_line,
+            before_end: b.end_line,
+            after_anchor: excess_anchor,
+        });
+    }
+    for a in &after_run[paired..] {
+        rows.push(DiffRow::Added {
+            html: a.html.clone(),
+            after_start: a.start_line,
+            after_end: a.end_line,
+        });
+    }
+    before_run.clear();
+    after_run.clear();
 }
 
 /// One atom of an HTML fragment for the word-level merge. A `Tag` is a full
@@ -551,9 +745,8 @@ fn word_count(tokens: &[Token]) -> usize {
 }
 
 /// Whether more than `MAX_CHANGED_SHARE` of the word tokens change — the signal
-/// that this is a rewrite, not an edit, and a word-level diff would be noise.
-/// `reclassify_as_changed`'s 40%-shared-byte gate is too weak on its own (grill
-/// §"Sharpened the guards"); this is the dedicated density fence.
+/// that this is a rewrite, not an edit, and a word-level diff would be noise
+/// (grill §"Sharpened the guards"): the dedicated density fence.
 fn too_dense(before: &[Token], after: &[Token]) -> bool {
     let total = word_count(before) + word_count(after);
     if total == 0 {
@@ -692,42 +885,9 @@ fn tint_leaves(sourcepos_html: &str, tints: &[(&str, &str)]) -> String {
     out
 }
 
-/// Whether an aligned before/after pair is an in-place edit (`Changed`) rather
-/// than a full replacement (stacked remove + add). True only when the node type is
-/// unchanged — a type change (paragraph → heading) stays split (criterion 5) — and
-/// at least 40% of the longer text's ascii bytes are shared (the char-ratio idea
-/// from `diff.rs`'s word-span dissimilarity guard).
-fn reclassify_as_changed(before_sig: &str, after_sig: &str) -> bool {
-    let (before_kind, before_text) = before_sig.split_once(':').unwrap_or((before_sig, ""));
-    let (after_kind, after_text) = after_sig.split_once(':').unwrap_or((after_sig, ""));
-    if before_kind != after_kind {
-        return false;
-    }
-    let long = before_text.len().max(after_text.len());
-    if long == 0 {
-        return true;
-    }
-    let mut counts = [0i32; 128];
-    for &byte in before_text.as_bytes() {
-        if (byte as usize) < 128 {
-            counts[byte as usize] += 1;
-        }
-    }
-    let mut shared = 0usize;
-    for &byte in after_text.as_bytes() {
-        let i = byte as usize;
-        if i < 128 && counts[i] > 0 {
-            counts[i] -= 1;
-            shared += 1;
-        }
-    }
-    shared * 5 >= long * 2
-}
-
-/// The alignment signature for a top-level block: its node type plus its
-/// whitespace-collapsed text. Type in the signature makes a type change (e.g.
-/// paragraph → heading) a delete+insert, not a reflow; collapsing whitespace makes
-/// a rewrapped paragraph compare equal.
+/// The signature for a container's leaf (a table row or list item): its node
+/// type plus its whitespace-collapsed text. The leaf-tint inner diff aligns
+/// leaves by these, so a reflowed-but-equal leaf stays untinted.
 fn block_signature<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
     let mut text = String::new();
     for d in node.descendants() {
@@ -785,7 +945,7 @@ pub fn render_markdown_diff_from_state(
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     state_map: &HashMap<String, PathBuf>,
-) -> Result<Vec<DiffRow>, TrunkError> {
+) -> Result<MarkdownDiff, TrunkError> {
     let before = read_side(repo_path, file_path, before_rev, state_map)?;
     let after = read_side(repo_path, file_path, after_rev, state_map)?;
     Ok(diff_markdown_blocks(
@@ -879,18 +1039,20 @@ fn md_cell(s: &str) -> String {
 }
 
 /// Parse a document and reduce each top-level block (direct child of the comrak
-/// root) to a `Block`. Leading YAML front matter is first rewritten to a key/value
-/// table so its edits diff per-row; if that rewrite fails the raw front matter is
-/// filtered out (suppressed) as before. Images are rewritten once over the whole
-/// tree first, so each fragment resolves them like the whole-doc render would.
+/// root) to a `Block`. `markdown` must already be front-matter-rewritten
+/// (`front_matter_as_table`) — the caller line-diffs that same text, keeping the
+/// block spans and the diff in one coordinate system; a rewrite that failed
+/// leaves raw front matter, which comrak parses and this filter suppresses.
+/// Images are rewritten once over the whole tree first, so each fragment
+/// resolves them like the whole-doc render would.
 fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpec) -> Vec<Block> {
-    let markdown = front_matter_as_table(markdown);
     let arena = comrak::Arena::new();
     let options = build_options();
     let mut options_sp = build_options();
     options_sp.render.sourcepos = true;
-    let root = comrak::parse_document(&arena, &markdown, &options);
+    let root = comrak::parse_document(&arena, markdown, &options);
     apply_image_rewrite(root, &build_image_rewrite(repo_path, file_path, rev));
+    let lines: Vec<&str> = markdown.lines().collect();
     root.children()
         .filter(|n| !matches!(n.data.borrow().value, NodeValue::FrontMatter(_)))
         .map(|n| {
@@ -910,15 +1072,16 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                 (Vec::new(), String::new(), raw.clone())
             };
             let sourcepos = n.data.borrow().sourcepos;
-            let lines = (sourcepos.end.line - sourcepos.start.line + 1) as u32;
+            let (start_line, end_line) = (sourcepos.start.line, sourcepos.end.line);
             Block {
                 kind: kind.to_string(),
-                signature: block_signature(n),
                 html: sanitize_html(&raw),
                 raw_html,
+                source: lines[start_line - 1..end_line.min(lines.len())].join("\n"),
                 leaves,
                 sourcepos_html,
-                lines,
+                start_line: start_line as u32,
+                end_line: end_line as u32,
             }
         })
         .collect()
@@ -936,6 +1099,10 @@ pub fn read_file_at_inner(
     match rev {
         RevSpec::WorkingTree => read_working_tree_file(repo, file_path),
         RevSpec::Index => read_index_blob(repo, file_path),
+        RevSpec::Empty => Err(TrunkError::new(
+            "not_found",
+            format!("no file at the empty rev: {file_path}"),
+        )),
         RevSpec::Head => {
             let tree = repo.head()?.peel_to_tree()?;
             read_tree_blob(repo, &tree, file_path)
@@ -1072,7 +1239,7 @@ pub async fn render_markdown_diff(
     after_rev: RevSpec,
     state: State<'_, RepoState>,
     cache: State<'_, MarkdownDiffCache>,
-) -> Result<Vec<DiffRow>, String> {
+) -> Result<MarkdownDiff, String> {
     let cache_key = diff_cache_key(&repo_path, &file_path, &before_rev, &after_rev);
     if let Some(ref key) = cache_key {
         if let Some(hit) = cache.0.lock().unwrap().get(key).cloned() {
@@ -1081,7 +1248,7 @@ pub async fn render_markdown_diff(
     }
 
     let state_map = state.0.lock().unwrap().clone();
-    let rows = tauri::async_runtime::spawn_blocking(move || {
+    let diff = tauri::async_runtime::spawn_blocking(move || {
         render_markdown_diff_from_state(&repo_path, &file_path, &before_rev, &after_rev, &state_map)
     })
     .await
@@ -1089,9 +1256,9 @@ pub async fn render_markdown_diff(
     .map_err(|e| e.to_json())?;
 
     if let Some(key) = cache_key {
-        cache_put(&mut cache.0.lock().unwrap(), key, rows.clone());
+        cache_put(&mut cache.0.lock().unwrap(), key, diff.clone());
     }
-    Ok(rows)
+    Ok(diff)
 }
 
 /// Wraps the existing diff highlighter (`git/syntax.rs`) as a comrak codefence
@@ -1370,6 +1537,23 @@ mod tests {
         None
     }
 
+    /// The full markdown diff of two docs; repo/file/rev args (image resolution
+    /// only) are irrelevant to row semantics and defaulted.
+    fn diff_md(before: &str, after: &str) -> MarkdownDiff {
+        diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "d.md",
+            &RevSpec::Head,
+            &RevSpec::WorkingTree,
+        )
+    }
+
+    fn diff_rows(before: &str, after: &str) -> Vec<DiffRow> {
+        diff_md(before, after).rows
+    }
+
     /// Independent oracle for "the fragment's tags nest correctly" — deliberately
     /// not `html_token_merge`'s own self-check, so a merge test never certifies
     /// balance with the same code it is exercising.
@@ -1493,6 +1677,16 @@ mod tests {
     }
 
     #[test]
+    fn empty_rev_reads_as_not_found() {
+        let (_dir, repo, _oid) = repo_with_three_revs();
+        let err = read_file_at_inner(&repo, "doc.md", &RevSpec::Empty).unwrap_err();
+        assert_eq!(
+            err.code, "not_found",
+            "the Empty rev has no file at any path: {err:?}"
+        );
+    }
+
+    #[test]
     fn rejects_working_tree_path_escape() {
         let (_dir, repo, _oid) = repo_with_three_revs();
         let err = read_file_at_inner(&repo, "../../../../../../etc/hosts", &RevSpec::WorkingTree)
@@ -1512,6 +1706,7 @@ mod tests {
             RevSpec::WorkingTree,
             RevSpec::Index,
             RevSpec::Head,
+            RevSpec::Empty,
             RevSpec::Commit {
                 oid: "deadbeef".to_string(),
             },
@@ -1529,14 +1724,7 @@ mod tests {
     #[test]
     fn identical_documents_yield_all_unchanged_rows() {
         let md = "# Title\n\nfirst para\n\nsecond para";
-        let rows = diff_markdown_blocks(
-            md,
-            md,
-            "/repo",
-            "doc.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(md, md);
         assert_eq!(rows.len(), 3, "one row per top-level block: {rows:?}");
         assert!(
             rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. })),
@@ -1555,14 +1743,7 @@ mod tests {
         // deeply nested quote + a ```markdown fence (the historically pathological
         // grammar): both must stay bounded via the grammar-refusal guard.
         after.push_str("> > > > > > > > deep\n\n```markdown\n**b** `c` mix\n```\n");
-        let rows = diff_markdown_blocks(
-            &before,
-            &after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(&before, &after);
         assert!(!rows.is_empty(), "returns without hanging or panicking");
     }
 
@@ -1616,7 +1797,8 @@ mod tests {
             &RevSpec::WorkingTree,
             &state_map,
         )
-        .unwrap();
+        .unwrap()
+        .rows;
         assert!(
             !added.is_empty() && added.iter().all(|r| matches!(r, DiffRow::Added { .. })),
             "absent before → every block added: {added:?}"
@@ -1629,7 +1811,8 @@ mod tests {
             &RevSpec::Head,
             &state_map,
         )
-        .unwrap();
+        .unwrap()
+        .rows;
         assert!(
             !removed.is_empty() && removed.iter().all(|r| matches!(r, DiffRow::Removed { .. })),
             "absent after → every block removed: {removed:?}"
@@ -1637,17 +1820,73 @@ mod tests {
     }
 
     #[test]
+    fn index_to_workdir_diff_shows_only_the_unstaged_edit() {
+        // B1: the unstaged preview's base is the INDEX, so a partially staged
+        // file diffs "staged"→"workdir". Any fallback to HEAD would re-show the
+        // already-staged edit ("committed"→…) as if it were unstaged.
+        let (dir, _repo, _oid) = repo_with_three_revs();
+        let mut state_map = HashMap::new();
+        state_map.insert(
+            dir.path().to_string_lossy().to_string(),
+            dir.path().to_path_buf(),
+        );
+        let repo_str = dir.path().to_string_lossy().to_string();
+
+        let rows = render_markdown_diff_from_state(
+            &repo_str,
+            "doc.md",
+            &RevSpec::Index,
+            &RevSpec::WorkingTree,
+            &state_map,
+        )
+        .unwrap()
+        .rows;
+
+        let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
+        assert!(
+            dump.contains("staged") && dump.contains("workdir"),
+            "diffs the index content against the working tree: {dump}"
+        );
+        assert!(
+            !dump.contains("committed"),
+            "the committed (HEAD) content must not appear: {dump}"
+        );
+    }
+
+    #[test]
+    fn empty_before_rev_renders_all_added_even_when_head_has_the_file() {
+        // B2: a root commit has no parent — its before side must be absent, not
+        // HEAD. `doc.md` exists at HEAD here, so any fallback to HEAD would
+        // produce Unchanged/Changed rows instead of a pure all-added diff.
+        let (dir, _repo, _oid) = repo_with_three_revs();
+        let mut state_map = HashMap::new();
+        state_map.insert(
+            dir.path().to_string_lossy().to_string(),
+            dir.path().to_path_buf(),
+        );
+        let repo_str = dir.path().to_string_lossy().to_string();
+
+        let rows = render_markdown_diff_from_state(
+            &repo_str,
+            "doc.md",
+            &RevSpec::Empty,
+            &RevSpec::WorkingTree,
+            &state_map,
+        )
+        .unwrap()
+        .rows;
+
+        assert!(
+            !rows.is_empty() && rows.iter().all(|r| matches!(r, DiffRow::Added { .. })),
+            "an Empty before side is absent, never HEAD: {rows:?}"
+        );
+    }
+
+    #[test]
     fn tinted_fragment_strips_sourcepos_and_keeps_only_the_tint_class() {
         let before = "| a | b |\n|---|---|\n| 1 | 2 |";
         let after = "| a | b |\n|---|---|\n| 9 | 2 |";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         let DiffRow::Changed { after_html, .. } = &rows[0] else {
             panic!("{rows:?}");
         };
@@ -1665,14 +1904,7 @@ mod tests {
     fn diff_strips_raw_script_and_does_not_smuggle_a_tint_class_from_text() {
         let before = "clean paragraph";
         let after = "<script>alert(1)</script>\n\ntext md-added here";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
         assert!(!dump.contains("<script"), "raw <script> stripped: {dump}");
         assert!(
@@ -1685,19 +1917,13 @@ mod tests {
     fn changed_table_tints_only_the_changed_row() {
         let before = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |";
         let after = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 99 |";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         assert_eq!(rows.len(), 1, "the whole table is one row: {rows:?}");
         let DiffRow::Changed {
             before_html,
             after_html,
             word_html,
+            ..
         } = &rows[0]
         else {
             panic!("a one-cell table edit is a Changed row: {rows:?}");
@@ -1730,14 +1956,7 @@ mod tests {
         // interleave inside one <table> is P3).
         let before = "| a | b |\n|---|---|\n| 1 | 2 |";
         let after = "| a | b |\n|---|---|\n| 9 | 2 |";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         assert_eq!(
             rows.len(),
             1,
@@ -1747,6 +1966,7 @@ mod tests {
             before_html,
             after_html,
             word_html,
+            ..
         } = &rows[0]
         else {
             panic!("a one-cell table edit is a Changed row: {rows:?}");
@@ -1766,14 +1986,7 @@ mod tests {
     fn changed_list_tints_only_the_changed_item() {
         let before = "- keep one\n- keep two\n- old third";
         let after = "- keep one\n- keep two\n- new third";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         assert_eq!(rows.len(), 1, "the whole list is one row: {rows:?}");
         let DiffRow::Changed { after_html, .. } = &rows[0] else {
             panic!("a one-item list edit is a Changed row: {rows:?}");
@@ -1789,14 +2002,7 @@ mod tests {
     fn changed_paragraph_word_merges_into_word_html() {
         let before = "the quick brown fox";
         let after = "the slow brown fox";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         assert_eq!(rows.len(), 1, "a same-kind edit is one row: {rows:?}");
         let DiffRow::Changed { word_html, .. } = &rows[0] else {
             panic!("a small word edit is a Changed row: {rows:?}");
@@ -1821,18 +2027,12 @@ mod tests {
         // never htmldiff'd — it renders as before/after (columns or stacked).
         let before = "```rust\nlet x = 1;\n```";
         let after = "```rust\nlet x = 2;\n```";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         let DiffRow::Changed {
             before_html,
             after_html,
             word_html,
+            ..
         } = &rows[0]
         else {
             panic!("a code fence edit is a Changed row: {rows:?}");
@@ -1853,14 +2053,7 @@ mod tests {
         // word_html is None (no confetti) — it renders as before/after instead.
         let before = "alpha beta gamma delta epsilon zeta";
         let after = "one two three four five six";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         let DiffRow::Changed { word_html, .. } = &rows[0] else {
             panic!("a same-kind rewrite is still a Changed row: {rows:?}");
         };
@@ -1871,33 +2064,84 @@ mod tests {
     }
 
     #[test]
-    fn rewrapped_paragraph_reads_as_unchanged() {
+    fn identical_docs_with_local_images_stay_unchanged_across_revs() {
+        // The image rewrite embeds each side's REV in the URL (rev=head vs
+        // rev=working-tree), so rendered html differs between sides even for
+        // identical markdown. Anchor matching must compare rev-independent
+        // identity, or every image-bearing block shows as a spurious change.
+        let md = "# Title\n\n![logo](./img/logo.png) same caption\n\ntail para";
+        let rows = diff_rows(md, md);
+        assert!(
+            rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "identical docs are all-unchanged regardless of image rev URLs: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn rewrapped_paragraph_reads_as_changed_matching_source() {
+        // The pivot's defining semantics: rows derive from the plain-text line
+        // diff, so a reflow IS a change — exactly what Source shows. (The old
+        // signature model compared whitespace-collapsed text and hid it.)
         let before = "the quick brown fox\njumps over the lazy dog";
         let after = "the quick brown fox jumps over\nthe lazy dog";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         assert_eq!(rows.len(), 1, "one paragraph: {rows:?}");
         assert!(
-            matches!(rows[0], DiffRow::Unchanged { .. }),
-            "a reflow-only edit is not tinted: {rows:?}"
+            matches!(rows[0], DiffRow::Changed { .. }),
+            "a reflow-only edit is a same-kind change, never Unchanged: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn blank_line_only_insert_yields_no_tinted_rows_and_flags_whitespace_only() {
+        // Rendered output cannot represent a blank line between blocks; the
+        // orphan is ignored, but the flag tells the frontend to explain that
+        // instead of claiming "No changes".
+        let before = "first para\n\nsecond para";
+        let after = "first para\n\n\nsecond para";
+        let diff = diff_md(before, after);
+        assert!(
+            diff.rows
+                .iter()
+                .all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "a blank-line-only edit tints nothing: {:?}",
+            diff.rows
+        );
+        assert!(
+            diff.whitespace_only,
+            "the invisible change is flagged so the frontend can say so"
+        );
+    }
+
+    #[test]
+    fn identical_documents_are_not_flagged_whitespace_only() {
+        let md = "# Title\n\npara";
+        let diff = diff_md(md, md);
+        assert!(
+            !diff.whitespace_only,
+            "no line changes at all → the plain No-changes state"
+        );
+    }
+
+    #[test]
+    fn orphan_link_reference_edit_marks_the_following_block_dirty() {
+        // A link-reference definition produces no block of its own; editing its
+        // URL dirties a line outside every block span. The non-whitespace orphan
+        // must surface on the nearest following block instead of vanishing.
+        let before = "[r]: http://old.example\n\nsee [the link][r] here";
+        let after = "[r]: http://new.example\n\nsee [the link][r] here";
+        let rows = diff_rows(before, after);
+        assert!(
+            rows.iter().any(|r| !matches!(r, DiffRow::Unchanged { .. })),
+            "the orphan edit is visible on a block, not silently dropped: {rows:?}"
         );
     }
 
     #[test]
     fn similar_edit_is_changed_type_change_is_remove_plus_add() {
-        let edit = diff_markdown_blocks(
+        let edit = diff_rows(
             "kept intro\n\nold body text here",
             "kept intro\n\nold body text there",
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
         );
         assert!(
             edit.iter().any(|r| matches!(r, DiffRow::Changed { .. })),
@@ -1910,14 +2154,7 @@ mod tests {
             "a similar edit is not split into add/remove: {edit:?}"
         );
 
-        let type_change = diff_markdown_blocks(
-            "hello world",
-            "# hello world",
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let type_change = diff_rows("hello world", "# hello world");
         assert!(
             !type_change
                 .iter()
@@ -1940,31 +2177,17 @@ mod tests {
         let before = "# Title\n\nkept para";
         let after = "# Title\n\nkept para\n\nnew para";
 
-        let added = diff_markdown_blocks(
-            before,
-            after,
-            "/repo",
-            "doc.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let added = diff_rows(before, after);
         assert_eq!(added.len(), 3, "{added:?}");
         match &added[2] {
-            DiffRow::Added { html } => assert!(html.contains("new para"), "{html}"),
+            DiffRow::Added { html, .. } => assert!(html.contains("new para"), "{html}"),
             other => panic!("expected Added carrying the after html, got {other:?}"),
         }
 
-        let removed = diff_markdown_blocks(
-            after,
-            before,
-            "/repo",
-            "doc.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let removed = diff_rows(after, before);
         assert_eq!(removed.len(), 3, "{removed:?}");
         match &removed[2] {
-            DiffRow::Removed { html } => assert!(html.contains("new para"), "{html}"),
+            DiffRow::Removed { html, .. } => assert!(html.contains("new para"), "{html}"),
             other => panic!("expected Removed carrying the before html, got {other:?}"),
         }
     }
@@ -1995,21 +2218,219 @@ mod tests {
 
     #[test]
     fn unchanged_block_reports_its_source_line_span() {
-        // The frontend budgets hunk context by these line counts, so a hard-wrapped
-        // paragraph must report its true span (3), not 1 like a heading.
+        // The frontend budgets hunk context by source-line distance, so spans are
+        // 1-based inclusive and account for the blank-line gaps between blocks: a
+        // hard-wrapped paragraph after "# Title\n\n" spans [3,5], not [1,3].
         let md = "# Title\n\nline one\nline two\nline three";
-        let rows =
-            diff_markdown_blocks(md, md, "/r", "d.md", &RevSpec::Head, &RevSpec::WorkingTree);
-        let DiffRow::Unchanged { lines, .. } = &rows[0] else {
-            panic!("{rows:?}");
-        };
-        assert_eq!(*lines, 1, "the heading is one source line: {rows:?}");
-        let DiffRow::Unchanged { lines, .. } = &rows[1] else {
+        let rows = diff_rows(md, md);
+        let DiffRow::Unchanged {
+            after_start,
+            after_end,
+            ..
+        } = &rows[0]
+        else {
             panic!("{rows:?}");
         };
         assert_eq!(
-            *lines, 3,
-            "the paragraph wrapped across 3 source lines reports 3: {rows:?}"
+            (*after_start, *after_end),
+            (1, 1),
+            "the heading is source line 1: {rows:?}"
+        );
+        let DiffRow::Unchanged {
+            after_start,
+            after_end,
+            ..
+        } = &rows[1]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            (*after_start, *after_end),
+            (3, 5),
+            "the wrapped paragraph spans lines 3-5 inclusive: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn every_row_kind_carries_its_after_axis_span() {
+        // before:  1 "# Title" · 3 "old body" · 5 "kept para" · 7 "- old item"
+        // after:   1 "# Title" · 3 "new body" · 5 "kept para" · 7 "tail para"
+        // line 3 edits in place (Changed); line 7 changes kind (Removed+Added).
+        let before = "# Title\n\nold body\n\nkept para\n\n- old item";
+        let after = "# Title\n\nnew body\n\nkept para\n\ntail para";
+        let rows = diff_rows(before, after);
+
+        let DiffRow::Unchanged {
+            after_start,
+            after_end,
+            ..
+        } = &rows[0]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!((*after_start, *after_end), (1, 1), "{rows:?}");
+
+        let DiffRow::Changed {
+            after_start,
+            after_end,
+            ..
+        } = &rows[1]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            (*after_start, *after_end),
+            (3, 3),
+            "the in-place edit carries the after block's span: {rows:?}"
+        );
+
+        let DiffRow::Removed {
+            before_start,
+            before_end,
+            after_anchor,
+            ..
+        } = &rows[3]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            (*before_start, *before_end),
+            (7, 7),
+            "the removed list keeps its before span: {rows:?}"
+        );
+        assert_eq!(
+            *after_anchor, 7,
+            "the deletion sits where its paired addition landed: {rows:?}"
+        );
+
+        let DiffRow::Added {
+            after_start,
+            after_end,
+            ..
+        } = &rows[4]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!((*after_start, *after_end), (7, 7), "{rows:?}");
+    }
+
+    #[test]
+    fn unpaired_deletion_anchors_at_the_after_line_it_sits_at() {
+        // "GONE" (before line 3) has no after-side partner: it sits at the diff
+        // op's new-index — where the next anchor ("b") begins, line 3.
+        let rows = diff_rows("a\n\nGONE\n\nb", "a\n\nb");
+        let DiffRow::Removed { after_anchor, .. } = &rows[1] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(*after_anchor, 3, "{rows:?}");
+    }
+
+    #[test]
+    fn unpaired_deletion_at_eof_anchors_one_past_the_last_after_line() {
+        // Trailing newlines on both docs keep "a" an equal line (from_lines
+        // includes the newline in the line), so only GONE is dirty.
+        let rows = diff_rows("a\n\nGONE\n", "a\n");
+        let DiffRow::Removed { after_anchor, .. } = &rows[1] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(*after_anchor, 2, "{rows:?}");
+    }
+
+    #[test]
+    fn boundary_shift_merge_demotes_the_leftover_clean_block_to_removed() {
+        // Deleting the blank line makes the after side parse ONE paragraph where
+        // the before side has two. The only dirty line is a whitespace orphan, so
+        // every block is clean — but the leftover before-block "para2" must join
+        // the dirty run, never surface as `Unchanged` (that duplicated its content
+        // and published before-axis lines in the after-axis span fields).
+        let rows = diff_rows("para1\n\npara2", "para1\npara2");
+
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        let DiffRow::Changed {
+            after_start,
+            after_end,
+            ..
+        } = &rows[0]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!((*after_start, *after_end), (1, 2), "{rows:?}");
+        let DiffRow::Removed {
+            before_start,
+            before_end,
+            after_anchor,
+            ..
+        } = &rows[1]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!((*before_start, *before_end), (3, 3), "{rows:?}");
+        assert_eq!(*after_anchor, 2, "{rows:?}");
+    }
+
+    #[test]
+    fn boundary_shift_split_demotes_the_leftover_clean_block_to_added() {
+        let rows = diff_rows("para1\npara2", "para1\n\npara2");
+
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(matches!(&rows[0], DiffRow::Changed { .. }), "{rows:?}");
+        let DiffRow::Added {
+            after_start,
+            after_end,
+            ..
+        } = &rows[1]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!((*after_start, *after_end), (3, 3), "{rows:?}");
+    }
+
+    #[test]
+    fn cr_only_line_endings_render_without_panic() {
+        // comrak counts a lone \r as a line ending; str::lines() does not — an
+        // unnormalized CR-only doc panics the source slice in extract_blocks.
+        let rows = diff_rows("", "para one\r\rpara two");
+
+        assert_eq!(rows.len(), 2, "{rows:?}");
+        assert!(
+            rows.iter().all(|r| matches!(r, DiffRow::Added { .. })),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn line_ending_only_difference_reports_whitespace_only() {
+        let diff = diff_md("alpha\r\n\r\nbeta", "alpha\n\nbeta");
+
+        assert!(
+            diff.rows
+                .iter()
+                .all(|r| matches!(r, DiffRow::Unchanged { .. })),
+            "{:?}",
+            diff.rows
+        );
+        assert!(diff.whitespace_only, "{:?}", diff.rows);
+    }
+
+    #[test]
+    fn rows_serialize_with_camel_case_span_fields() {
+        let rows = diff_rows(
+            "# Title\n\nold body\n\n- old item",
+            "# Title\n\nnew body\n\ntail",
+        );
+        let json = serde_json::to_string(&rows).unwrap();
+        for key in [
+            r#""afterStart""#,
+            r#""afterEnd""#,
+            r#""beforeStart""#,
+            r#""beforeEnd""#,
+            r#""afterAnchor""#,
+        ] {
+            assert!(json.contains(key), "expected {key} in {json}");
+        }
+        assert!(
+            !json.contains(r#""lines""#),
+            "the block-count field is gone from the wire: {json}"
         );
     }
 
@@ -2017,14 +2438,7 @@ mod tests {
     fn frontmatter_only_change_shows_as_a_changed_table_row_added_tint() {
         let before = "---\nname: doc\ndescription: old summary\n---\n\n# Body\n\nsame para";
         let after = "---\nname: doc\ndescription: new summary\n---\n\n# Body\n\nsame para";
-        let rows = diff_markdown_blocks(
-            before,
-            after,
-            "/r",
-            "d.md",
-            &RevSpec::Head,
-            &RevSpec::WorkingTree,
-        );
+        let rows = diff_rows(before, after);
         let DiffRow::Changed { after_html, .. } = &rows[0] else {
             panic!("front-matter table should be the first, changed block: {rows:?}");
         };
@@ -2053,8 +2467,7 @@ mod tests {
     fn frontmatter_renders_as_a_key_value_table_with_nested_values_compacted() {
         let md =
             "---\nname: grill\nmetadata:\n  type: workflow\n  tags:\n    - a\n    - b\n---\n\nbody";
-        let rows =
-            diff_markdown_blocks(md, md, "/r", "d.md", &RevSpec::Head, &RevSpec::WorkingTree);
+        let rows = diff_rows(md, md);
         let DiffRow::Unchanged { html, .. } = &rows[0] else {
             panic!("the front-matter table is the first block: {rows:?}");
         };
@@ -2073,8 +2486,7 @@ mod tests {
     #[test]
     fn invalid_frontmatter_yaml_is_suppressed_not_rendered_as_a_table() {
         let md = "---\nfoo: [1, 2\n---\n\n# Body\n\npara";
-        let rows =
-            diff_markdown_blocks(md, md, "/r", "d.md", &RevSpec::Head, &RevSpec::WorkingTree);
+        let rows = diff_rows(md, md);
         let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
         assert!(
             !dump.contains("<table"),

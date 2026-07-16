@@ -320,7 +320,7 @@ textarea::placeholder {
 	user-select: text;
 	-webkit-user-select: text;
 	color: var(--color-text);
-	line-height: 1.6;
+	line-height: 1.5;
 	word-wrap: break-word;
 }
 .markdown-body > *:first-child {

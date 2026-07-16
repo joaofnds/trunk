@@ -14,12 +14,14 @@ import type { CommitDetail } from "../../lib/types.js";
 // scrolling any column mirrors its scrollLeft to every other.
 const colSync = createHorizontalScrollSync();
 
-// Rendered markdown view of a `.md` diff, projected from one block-diff fetch
-// (`render_markdown_diff`, both revs). Every layout — inline/split × full/hunk — is
-// a pure frontend projection of the returned `DiffRow[]`; toggling never re-invokes
-// Rust. Split pairs each row's before/after cells in one CSS grid row. Inline is a
-// single stream; a changed single-leaf block collapses to ONE block carrying inline
-// `md-word-*` del/ins (`wordHtml`), otherwise it shows before(red)+after(green).
+// Rendered markdown view of a `.md` diff, projected from one fetch
+// (`render_markdown_diff`, both revs). Row semantics derive from the plain-text
+// line diff of the two sources — the same diff Source shows — mapped onto blocks.
+// Every layout — inline/split × full/hunk — is a pure frontend projection of the
+// returned rows; toggling never re-invokes Rust. Split pairs each row's
+// before/after cells in one CSS grid row. Inline is a single stream; a changed
+// single-leaf block collapses to ONE block carrying inline `md-word-*` del/ins
+// (`wordHtml`), otherwise it shows before(red)+after(green).
 interface Props {
 	layoutMode: "inline" | "split";
 	selectedPath: string;
@@ -46,7 +48,7 @@ let {
 
 type LoadState =
 	| { kind: "loading" }
-	| { kind: "rows"; rows: DiffRow[] }
+	| { kind: "rows"; rows: DiffRow[]; whitespaceOnly: boolean }
 	| { kind: "error"; message: string };
 
 let state = $state<LoadState>({ kind: "loading" });
@@ -71,8 +73,13 @@ $effect(() => {
 
 	state = { kind: "loading" };
 	renderMarkdownDiff(repo, path, beforeRev(kind, parent), afterRev(kind, oid))
-		.then((rows) => {
-			if (my === seq) state = { kind: "rows", rows };
+		.then((diff) => {
+			if (my === seq)
+				state = {
+					kind: "rows",
+					rows: diff.rows,
+					whitespaceOnly: diff.whitespaceOnly,
+				};
 		})
 		.catch((e) => {
 			if (my !== seq) return;
@@ -88,8 +95,15 @@ const hasChanges = $derived(rows.some((r) => r.kind !== "unchanged"));
 
 // Hunk mode over an unchanged document renders the full doc (projected keeps all
 // rows) plus this note, rather than folding to one blank separator (criterion 4).
+// When the sources differ but only in ways the rendered view cannot represent
+// (whitespace between blocks), the note says so instead of claiming "No changes".
 const showNoChange = $derived(
 	contentMode === "hunk" && rows.length > 0 && !hasChanges,
+);
+const noChangeLabel = $derived(
+	state.kind === "rows" && state.whitespaceOnly
+		? "Whitespace-only changes — not visible in rendered view"
+		: "No changes",
 );
 
 // Which split column is genuinely absent (added file → no before; deleted file →
@@ -121,35 +135,49 @@ type ProjectedRow =
 	| { type: "row"; row: DiffRow }
 	| { type: "sep"; count: number };
 
+// An inclusive after-axis source-line range.
+type Span = { start: number; end: number };
+
+// Every row's position on the AFTER axis, where all context math runs: a
+// removed row has no after side, so it sits at its one-line anchor.
+function rowSpan(r: DiffRow): Span {
+	if (r.kind === "removed") return { start: r.afterAnchor, end: r.afterAnchor };
+	return { start: r.afterStart, end: r.afterEnd };
+}
+
+// Edge-to-edge source-line distance between two spans: adjacent lines are 1
+// apart, overlapping spans 0 — so "within N lines" means exactly Source's N
+// context lines (a row starting N+1 lines away is outside the window).
+function lineDistance(a: Span, b: Span): number {
+	if (b.start > a.end) return b.start - a.end;
+	if (a.start > b.end) return a.start - b.end;
+	return 0;
+}
+
 // Keep unchanged blocks as context around each change so hunk context matches
-// Source's `diff_context_lines` (a per-side line count). Walking out from each
-// change, keep the immediately-adjacent block always, then keep further blocks
-// until the cumulative source-line count reaches the budget. Blocks are atomic,
-// so the adjacent block is shown whole even when it alone exceeds the budget — a
-// change is never left bare, matching Source always showing context. A collapsed
-// run at the document edge is dropped entirely (no separator, like source hunks);
-// interior runs collapse to a separator.
+// Source's `diff_context_lines`: an unchanged row stays iff its after-axis span
+// is within `contextLines` source lines of a change (a removed row participates
+// via its anchor), and the immediately-adjacent unchanged row on each side of a
+// change is always kept — a change is never left bare, matching Source always
+// showing context. A collapsed run at the document edge is dropped entirely (no
+// separator, like source hunks); interior runs collapse to a separator counting
+// the hidden source lines, gaps between blocks included.
 function collapseUnchanged(
 	diffRows: DiffRow[],
-	lineBudget: number,
+	contextLines: number,
 ): ProjectedRow[] {
-	const keep = diffRows.map((r) => r.kind !== "unchanged");
-	const lineCount = (r: DiffRow) => (r.kind === "unchanged" ? r.lines : 0);
-
+	const changeSpans = diffRows
+		.filter((r) => r.kind !== "unchanged")
+		.map(rowSpan);
+	const keep = diffRows.map(
+		(r) =>
+			r.kind !== "unchanged" ||
+			changeSpans.some((c) => lineDistance(rowSpan(r), c) <= contextLines),
+	);
 	diffRows.forEach((r, i) => {
 		if (r.kind === "unchanged") return;
-		for (const step of [-1, 1]) {
-			let used = 0;
-			for (
-				let j = i + step;
-				j >= 0 && j < diffRows.length && diffRows[j].kind === "unchanged";
-				j += step
-			) {
-				keep[j] = true;
-				used += lineCount(diffRows[j]);
-				if (used >= lineBudget) break;
-			}
-		}
+		if (i > 0) keep[i - 1] = true;
+		if (i < keep.length - 1) keep[i + 1] = true;
 	});
 
 	const out: ProjectedRow[] = [];
@@ -163,7 +191,11 @@ function collapseUnchanged(
 		let j = i;
 		while (j < diffRows.length && !keep[j]) j++;
 		const atEdge = i === 0 || j === diffRows.length;
-		if (!atEdge) out.push({ type: "sep", count: j - i });
+		if (!atEdge) {
+			const count =
+				rowSpan(diffRows[j]).start - rowSpan(diffRows[i - 1]).end - 1;
+			out.push({ type: "sep", count });
+		}
 		i = j;
 	}
 	return out;
@@ -205,80 +237,153 @@ const inlineItems = $derived.by((): InlineItem[] =>
 	}),
 );
 
-// One split grid row: a before cell + an after cell (either may be a phantom
-// where that side has no block), or a full-width collapsed-run separator. Both
-// cells emit as adjacent grid children so the row's height is max(left, right).
+// One split row: a before cell + an after cell (either may be a phantom where
+// that side has no block). Rows group into RUNS between separators; each run
+// renders as ONE column pair (Source's d1c299f model — scroll containers at the
+// column level, never per row, so short rows pan with the run's shared plane).
 type SplitCell = { tint: Tint; html: string } | null;
-type SplitItem =
-	| { type: "row"; left: SplitCell; right: SplitCell }
+type SplitRow = { left: SplitCell; right: SplitCell };
+type SplitSegment =
+	| { type: "run"; rows: SplitRow[] }
 	| { type: "sep"; count: number };
 
-const splitItems = $derived.by((): SplitItem[] =>
-	projected.map((p): SplitItem => {
-		if (p.type === "sep") return p;
-		const r = p.row;
-		if (r.kind === "unchanged")
-			return {
-				type: "row",
-				left: { tint: "unchanged", html: r.html },
-				right: { tint: "unchanged", html: r.html },
-			};
-		if (r.kind === "added")
-			return {
-				type: "row",
-				left: null,
-				right: { tint: "added", html: r.html },
-			};
-		if (r.kind === "removed")
-			return {
-				type: "row",
-				left: { tint: "removed", html: r.html },
-				right: null,
-			};
-		// changed: whole before(red) on the left, after(green) on the right — split
-		// stays block-level (word-level lives in the inline view).
+function toSplitRow(r: DiffRow): SplitRow {
+	if (r.kind === "unchanged")
 		return {
-			type: "row",
-			left: { tint: "removed", html: r.beforeHtml },
-			right: { tint: "added", html: r.afterHtml },
+			left: { tint: "unchanged", html: r.html },
+			right: { tint: "unchanged", html: r.html },
 		};
-	}),
-);
+	if (r.kind === "added")
+		return { left: null, right: { tint: "added", html: r.html } };
+	if (r.kind === "removed")
+		return { left: { tint: "removed", html: r.html }, right: null };
+	// changed: whole before(red) on the left, after(green) on the right — split
+	// stays block-level (word-level lives in the inline view).
+	return {
+		left: { tint: "removed", html: r.beforeHtml },
+		right: { tint: "added", html: r.afterHtml },
+	};
+}
+
+const splitSegments = $derived.by((): SplitSegment[] => {
+	const segments: SplitSegment[] = [];
+	let run: SplitRow[] = [];
+	for (const p of projected) {
+		if (p.type === "sep") {
+			if (run.length > 0) segments.push({ type: "run", rows: run });
+			run = [];
+			segments.push(p);
+			continue;
+		}
+		run.push(toSplitRow(p.row));
+	}
+	if (run.length > 0) segments.push({ type: "run", rows: run });
+	return segments;
+});
+
+// Equalize each row pair's height across the two column stacks: cells sit in
+// separate scrollers, so CSS alone cannot align them. Observes each cell's
+// natural content (the inner .markdown-body — NOT the flex-stretched block, so
+// setting the cell height can never re-trigger the observer) and sets both
+// cells of a pair to the taller side.
+function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
+	let observer: ResizeObserver | null = null;
+
+	function cellsOf(side: "left" | "right"): HTMLElement[] {
+		return [
+			...node.querySelectorAll(`.split-cell[data-side="${side}"]`),
+		].filter((el): el is HTMLElement => el instanceof HTMLElement);
+	}
+
+	function naturalHeight(cell: HTMLElement): number {
+		const content = cell.querySelector(".markdown-body");
+		const block = cell.querySelector(".rendered-block");
+		if (!(content instanceof HTMLElement) || !(block instanceof HTMLElement))
+			return 0;
+		const style = getComputedStyle(block);
+		return (
+			content.offsetHeight +
+			Number.parseFloat(style.paddingTop) +
+			Number.parseFloat(style.paddingBottom)
+		);
+	}
+
+	function equalize() {
+		const left = cellsOf("left");
+		const right = cellsOf("right");
+		for (let i = 0; i < left.length; i++) {
+			const h = Math.max(naturalHeight(left[i]), naturalHeight(right[i]));
+			left[i].style.height = `${h}px`;
+			right[i].style.height = `${h}px`;
+		}
+	}
+
+	function observe() {
+		observer?.disconnect();
+		observer = new ResizeObserver(equalize);
+		for (const content of node.querySelectorAll(".split-cell .markdown-body")) {
+			observer.observe(content);
+		}
+		equalize();
+	}
+
+	observe();
+	return {
+		update(_rows: readonly SplitRow[]) {
+			observe();
+		},
+		destroy() {
+			observer?.disconnect();
+		},
+	};
+}
 </script>
 
 {#snippet block(tint: Tint, html: string)}
+  <!-- Tint (bg + rail) on the outer wrapper; the prose lives in an inner
+       .markdown-body so the height equalizer can observe natural content
+       height while the wrapper flex-stretches to the row height. -->
   <div
-    class="rendered-block markdown-body"
+    class="rendered-block"
     class:md-added={tint === "added"}
     class:md-removed={tint === "removed"}
     use:externalLinks
-  >{@html html}</div>
+  ><div class="markdown-body">{@html html}</div></div>
 {/snippet}
 
 {#snippet separator(count: number)}
   <div class="rendered-sep" role="separator">
     <span class="rendered-sep-label"
-      >{count} unchanged block{count === 1 ? "" : "s"} hidden</span
+      >{count} line{count === 1 ? "" : "s"} hidden</span
     >
   </div>
 {/snippet}
 
-{#snippet col(c: SplitCell)}
+{#snippet cell(side: "left" | "right", c: SplitCell)}
   {#if c}
-    <!-- Each column is its own hidden-scrollbar horizontal scroller (Source's
-         .split-column), synced with every other so wrap-off pans both columns
-         together; the inner wrapper is Source's per-side width pattern. -->
-    <div class="split-column" use:colSync>
-      <div
-        class="split-col-content"
-        style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
-      >
-        {@render block(c.tint, c.html)}
-      </div>
+    <div class="split-cell" data-side={side}>
+      {@render block(c.tint, c.html)}
     </div>
   {:else}
-    <div class="split-column rendered-phantom"></div>
+    <div class="split-cell rendered-phantom" data-side={side}></div>
   {/if}
+{/snippet}
+
+{#snippet columnStack(rows: SplitRow[], side: "left" | "right")}
+  <!-- ONE hidden-scrollbar horizontal scroller per column per run (Source's
+       .split-column, d1c299f): every row of the run stacks inside the same
+       max-content wrapper, so short rows pan on the run's shared plane and
+       tints span the full scrolled width. -->
+  <div class="split-column" use:colSync>
+    <div
+      class="split-col-content"
+      style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};"
+    >
+      {#each rows as row}
+        {@render cell(side, side === "left" ? row.left : row.right)}
+      {/each}
+    </div>
+  </div>
 {/snippet}
 
 <div class="rendered-diff" class:wrap={wordWrap}>
@@ -294,7 +399,7 @@ const splitItems = $derived.by((): SplitItem[] =>
       : 'max-content'};"
   >
     {#if showNoChange}
-      <div class="rendered-nochange">No changes</div>
+      <div class="rendered-nochange">{noChangeLabel}</div>
     {/if}
     {#if state.kind === "error"}
       <div class="rendered-note rendered-error">{state.message}</div>
@@ -325,13 +430,13 @@ const splitItems = $derived.by((): SplitItem[] =>
         <div class="split-column rendered-note">Not present at this revision</div>
       </div>
     {:else if layoutMode === "split"}
-      {#each splitItems as item}
-        {#if item.type === "sep"}
-          {@render separator(item.count)}
+      {#each splitSegments as segment}
+        {#if segment.type === "sep"}
+          {@render separator(segment.count)}
         {:else}
-          <div class="split-columns">
-            {@render col(item.left)}
-            {@render col(item.right)}
+          <div class="split-columns" use:rowHeights={segment.rows}>
+            {@render columnStack(segment.rows, "left")}
+            {@render columnStack(segment.rows, "right")}
           </div>
         {/if}
       {/each}
@@ -384,11 +489,21 @@ const splitItems = $derived.by((): SplitItem[] =>
      row can then collapse below its content and clip it. Blocks flow at natural
      height so each grid row is max(left, right); wide children (code fences,
      tables, images) self-contain via their own overflow in app.css. min-width:0
-     lets a wide <pre>'s internal scroller work without stretching the 1fr track. */
+     lets a wide <pre>'s internal scroller work without stretching the 1fr track.
+     NO background here: this scoped rule outranks the global .md-added/.md-removed
+     tints (app.css), so an opaque bg-0 would swallow them — the regression that
+     left only the 3px rail visible. Untinted blocks show the pane's bg-0.
+     Padding-only box: rowHeights reconstructs each cell as markdown-body height
+     + this padding — a border or margin here silently breaks row equalization. */
   .rendered-block {
-    padding: 16px 20px;
-    background: var(--bg-0);
+    padding: 8px 20px;
     min-width: 0;
+  }
+  /* GitHub's comment-prose size; the 16px browser default reads oversized
+     against the app's 11-13px chrome. Heading/code sizes are em-based and
+     scale with it. */
+  .rendered-block > :global(.markdown-body) {
+    font-size: 14px;
   }
   /* The toolbar's word-wrap toggle, mirroring Source's semantics (HunkView:
      pre-wrap + 100% when on, pre + max-content when off).
@@ -405,9 +520,19 @@ const splitItems = $derived.by((): SplitItem[] =>
   .rendered-diff:not(.wrap) .rendered-content {
     white-space: nowrap;
   }
-  /* The empty counterpart column of an added/removed block: stretches to the
-     row's height, carries no content. */
-  .split-column.rendered-phantom {
+  /* One row's slot in a column stack. Explicit height comes from the
+     rowHeights equalizer (max of the pair); the block flex-stretches into it
+     so its tint fills the whole row slot. */
+  .split-cell {
+    display: flex;
+    flex-direction: column;
+  }
+  .split-cell > .rendered-block {
+    flex: 1;
+  }
+  /* The empty counterpart cell of an added/removed block: same equalized
+     height, carries no content. */
+  .split-cell.rendered-phantom {
     background: var(--color-diff-phantom-bg);
   }
   /* A collapsed run of unchanged blocks: a full-width sibling of the .split-columns

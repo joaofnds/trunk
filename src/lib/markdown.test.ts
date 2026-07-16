@@ -46,19 +46,23 @@ describe("rev derivation", () => {
 		expect(afterRev("commit", "abc")).toEqual({ type: "commit", oid: "abc" });
 	});
 
-	it("maps the before side to HEAD, or the parent for a commit diff", () => {
-		expect(beforeRev("unstaged", null)).toEqual({ type: "head" });
+	it("maps the before side per kind: index for unstaged, HEAD for staged, parent for commit", () => {
+		expect(beforeRev("unstaged", null)).toEqual({ type: "index" });
+		expect(beforeRev("staged", null)).toEqual({ type: "head" });
 		expect(beforeRev("commit", "parent1")).toEqual({
 			type: "commit",
 			oid: "parent1",
 		});
-		expect(beforeRev("commit", null)).toEqual({ type: "head" });
+	});
+
+	it("maps a parentless (root) commit's before side to the empty rev", () => {
+		expect(beforeRev("commit", null)).toEqual({ type: "empty" });
 	});
 });
 
 describe("renderMarkdownDiff", () => {
 	it("invokes render_markdown_diff with both revs", () => {
-		safeInvoke.mockResolvedValue([]);
+		safeInvoke.mockResolvedValue({ rows: [], whitespaceOnly: false });
 		const before = beforeRev("unstaged", null);
 		const after = afterRev("unstaged", "");
 		renderMarkdownDiff("/repo", "README.md", before, after);

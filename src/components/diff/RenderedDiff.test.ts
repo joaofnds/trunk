@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DiffRow } from "../../lib/markdown.js";
+import type { DiffRow, MarkdownDiff } from "../../lib/markdown.js";
 import RenderedDiff from "./RenderedDiff.svelte";
 
 function deferred<T>() {
@@ -46,9 +46,11 @@ describe("RenderedDiff", () => {
 				afterHtml: "<p>the slow fox</p>",
 				wordHtml:
 					'<p>the <del class="md-word-delete">quick</del><ins class="md-word-add">slow</ins> fox</p>',
+				afterStart: 1,
+				afterEnd: 1,
 			},
 		];
-		safeInvoke.mockResolvedValue(rows);
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "inline" },
@@ -70,12 +72,24 @@ describe("RenderedDiff", () => {
 
 	it("renders a changed row WITHOUT wordHtml as removed-before then added-after (inline)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "unchanged", html: "<p>intro</p>", lines: 1 },
-			{ kind: "removed", html: "<p>gone</p>" },
-			{ kind: "added", html: "<p>fresh</p>" },
-			{ kind: "changed", beforeHtml: "<p>old</p>", afterHtml: "<p>new</p>" },
+			{ kind: "unchanged", html: "<p>intro</p>", afterStart: 1, afterEnd: 1 },
+			{
+				kind: "removed",
+				html: "<p>gone</p>",
+				beforeStart: 3,
+				beforeEnd: 3,
+				afterAnchor: 1,
+			},
+			{ kind: "added", html: "<p>fresh</p>", afterStart: 3, afterEnd: 3 },
+			{
+				kind: "changed",
+				beforeHtml: "<p>old</p>",
+				afterHtml: "<p>new</p>",
+				afterStart: 5,
+				afterEnd: 5,
+			},
 		];
-		safeInvoke.mockResolvedValue(rows);
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "inline" },
@@ -96,58 +110,77 @@ describe("RenderedDiff", () => {
 		expect(blocks[4].textContent).toContain("new");
 	});
 
-	it("pairs each row as two side-by-side columns, ignoring wordHtml (split)", async () => {
+	it("stacks all rows of a run inside exactly two synced column scrollers (split)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "unchanged", html: "<p>same</p>", lines: 1 },
-			{ kind: "added", html: "<p>addition</p>" },
-			{ kind: "removed", html: "<p>deletion</p>" },
+			{ kind: "unchanged", html: "<p>same</p>", afterStart: 1, afterEnd: 1 },
+			{ kind: "added", html: "<p>addition</p>", afterStart: 3, afterEnd: 3 },
+			{
+				kind: "removed",
+				html: "<p>deletion</p>",
+				beforeStart: 3,
+				beforeEnd: 3,
+				afterAnchor: 3,
+			},
 			{
 				kind: "changed",
 				beforeHtml: "<p>bef</p>",
 				afterHtml: "<p>aft</p>",
 				// Even with a word merge available, split stays whole-block red/green.
 				wordHtml: '<p><ins class="md-word-add">aft</ins></p>',
+				afterStart: 5,
+				afterEnd: 5,
 			},
 		];
-		safeInvoke.mockResolvedValue(rows);
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "split" },
 		});
 		await screen.findAllByText("same");
 
-		// One flex pair per DiffRow (Source's .split-columns model): the row's
-		// height is max(left, right) via flex stretch, and each column is its own
-		// synced horizontal scroller.
-		const rowEls = container.querySelectorAll(".split-columns");
-		expect(rowEls).toHaveLength(4);
-		const cols = (i: number) => [...rowEls[i].children] as HTMLElement[];
+		// Source's column-level scroll model (d1c299f): ONE .split-columns for
+		// the whole run with exactly TWO scrollers — never a scroller pair per
+		// row. Rows whose content fits the pane must still pan with the run;
+		// per-row scrollers cannot scroll at all (scrollWidth == clientWidth).
+		expect(container.querySelectorAll(".split-columns")).toHaveLength(1);
+		const columns = container.querySelectorAll(".split-column");
+		expect(columns).toHaveLength(2);
+
+		const cellsOf = (col: Element) =>
+			[...col.querySelectorAll(".split-cell")] as HTMLElement[];
+		const left = cellsOf(columns[0]);
+		const right = cellsOf(columns[1]);
+		expect(left).toHaveLength(4);
+		expect(right).toHaveLength(4);
 
 		// unchanged: same html both sides, untinted.
-		expect(cols(0)[0].textContent).toContain("same");
-		expect(cols(0)[1].textContent).toContain("same");
-		expect(cols(0)[0].querySelector(".md-added, .md-removed")).toBeNull();
-		// added: left phantom column, right added-tint.
-		expect(cols(1)[0].classList.contains("rendered-phantom")).toBe(true);
-		expect(cols(1)[1].querySelector(".md-added")).not.toBeNull();
-		expect(cols(1)[1].textContent).toContain("addition");
-		// removed: left removed-tint, right phantom column.
-		expect(cols(2)[0].querySelector(".md-removed")).not.toBeNull();
-		expect(cols(2)[0].textContent).toContain("deletion");
-		expect(cols(2)[1].classList.contains("rendered-phantom")).toBe(true);
+		expect(left[0].textContent).toContain("same");
+		expect(right[0].textContent).toContain("same");
+		expect(left[0].querySelector(".md-added, .md-removed")).toBeNull();
+		// added: left phantom cell, right added-tint.
+		expect(left[1].classList.contains("rendered-phantom")).toBe(true);
+		expect(right[1].querySelector(".md-added")).not.toBeNull();
+		expect(right[1].textContent).toContain("addition");
+		// removed: left removed-tint, right phantom cell.
+		expect(left[2].querySelector(".md-removed")).not.toBeNull();
+		expect(left[2].textContent).toContain("deletion");
+		expect(right[2].classList.contains("rendered-phantom")).toBe(true);
 		// changed: whole before(red) left, after(green) right — NOT the word merge.
-		expect(cols(3)[0].querySelector(".md-removed")).not.toBeNull();
-		expect(cols(3)[0].textContent).toContain("bef");
-		expect(cols(3)[1].querySelector(".md-added")).not.toBeNull();
-		expect(cols(3)[1].textContent).toContain("aft");
-		expect(cols(3)[1].querySelector("ins.md-word-add")).toBeNull();
+		expect(left[3].querySelector(".md-removed")).not.toBeNull();
+		expect(left[3].textContent).toContain("bef");
+		expect(right[3].querySelector(".md-added")).not.toBeNull();
+		expect(right[3].textContent).toContain("aft");
+		expect(right[3].querySelector("ins.md-word-add")).toBeNull();
 	});
 
 	it("shows one placeholder for the absent before column of an added file (split)", async () => {
-		safeInvoke.mockResolvedValue([
-			{ kind: "added", html: "<h1>Hello</h1>" },
-			{ kind: "added", html: "<p>body</p>" },
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "added", html: "<h1>Hello</h1>", afterStart: 1, afterEnd: 1 },
+				{ kind: "added", html: "<p>body</p>", afterStart: 3, afterEnd: 3 },
+			] satisfies DiffRow[],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "split" },
@@ -165,9 +198,18 @@ describe("RenderedDiff", () => {
 	});
 
 	it("shows one placeholder for the absent after column of a deleted file (split)", async () => {
-		safeInvoke.mockResolvedValue([
-			{ kind: "removed", html: "<h1>Bye</h1>" },
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{
+					kind: "removed",
+					html: "<h1>Bye</h1>",
+					beforeStart: 1,
+					beforeEnd: 1,
+					afterAnchor: 0,
+				},
+			] satisfies DiffRow[],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "split" },
@@ -182,18 +224,41 @@ describe("RenderedDiff", () => {
 		);
 	});
 
-	it("collapses an interior unchanged run to a separator, honoring contextLines (inline)", async () => {
+	// One unchanged one-line paragraph per line 2..11, flanked by a change on
+	// line 1 and one on line 12 — contiguous lines, so contextLines maps exactly
+	// onto visible rows (Source's semantics: N context lines each side).
+	function changeSandwich(): DiffRow[] {
 		const rows: DiffRow[] = [
-			{ kind: "changed", beforeHtml: "<p>ob</p>", afterHtml: "<p>nb</p>" },
+			{
+				kind: "changed",
+				beforeHtml: "<p>ob</p>",
+				afterHtml: "<p>nb</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
 		];
 		for (let i = 0; i < 10; i++)
-			rows.push({ kind: "unchanged", html: `<p>u${i}</p>`, lines: 1 });
+			rows.push({
+				kind: "unchanged",
+				html: `<p>u${i}</p>`,
+				afterStart: 2 + i,
+				afterEnd: 2 + i,
+			});
 		rows.push({
 			kind: "changed",
 			beforeHtml: "<p>oe</p>",
 			afterHtml: "<p>ne</p>",
+			afterStart: 12,
+			afterEnd: 12,
 		});
-		safeInvoke.mockResolvedValue(rows);
+		return rows;
+	}
+
+	it("keeps unchanged rows within contextLines of a change, folding the rest into a line-counted separator (inline)", async () => {
+		safeInvoke.mockResolvedValue({
+			rows: changeSandwich(),
+			whitespaceOnly: false,
+		});
 
 		const { container, rerender } = render(RenderedDiff, {
 			props: {
@@ -205,11 +270,13 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("nb");
 
-		// 3 context each side; middle 4 collapse. Each change (no wordHtml) is 2
-		// inline blocks (removed+added): 2×2 + 3 + 3 = 10.
+		// Exactly 3 context lines each side, like Source: u0..u2 (lines 2-4)
+		// after the top change, u7..u9 (lines 9-11) before the bottom one.
+		// Each change (no wordHtml) is 2 inline blocks: 2×2 + 6 = 10.
+		// Hidden u3..u6 (lines 5-8): 9 − 4 − 1 = 4 lines.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(10);
-		expect(container.querySelector(".rendered-sep")?.textContent).toContain(
-			"4",
+		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
+			"4 lines hidden",
 		);
 
 		await rerender({
@@ -218,19 +285,34 @@ describe("RenderedDiff", () => {
 			contentMode: "hunk",
 			contextLines: 1,
 		});
+		// One context line each side: u0 and u9. Hidden u1..u8 (lines 3-10):
+		// 11 − 2 − 1 = 8 lines.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(6);
-		expect(container.querySelector(".rendered-sep")?.textContent).toContain(
-			"8",
+		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
+			"8 lines hidden",
 		);
 	});
 
-	it("always keeps the adjacent block even when it alone exceeds the budget, never bare (hunk)", async () => {
+	it("always keeps the immediately adjacent unchanged row even outside the line window, never bare (hunk)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "changed", beforeHtml: "<p>ob</p>", afterHtml: "<p>nb</p>" },
-			{ kind: "unchanged", html: "<p>big</p>", lines: 5 },
-			{ kind: "changed", beforeHtml: "<p>oe</p>", afterHtml: "<p>ne</p>" },
+			{
+				kind: "changed",
+				beforeHtml: "<p>ob</p>",
+				afterHtml: "<p>nb</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			// 8 lines from both changes: outside any contextLines=3 window.
+			{ kind: "unchanged", html: "<p>far</p>", afterStart: 10, afterEnd: 10 },
+			{
+				kind: "changed",
+				beforeHtml: "<p>oe</p>",
+				afterHtml: "<p>ne</p>",
+				afterStart: 20,
+				afterEnd: 20,
+			},
 		];
-		safeInvoke.mockResolvedValue(rows);
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -243,22 +325,34 @@ describe("RenderedDiff", () => {
 		await screen.findByText("nb");
 
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(5);
-		expect(screen.getByText("big")).toBeInTheDocument();
+		expect(screen.getByText("far")).toBeInTheDocument();
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(0);
 	});
 
 	it("drops leading and trailing unchanged runs without a separator (hunk)", async () => {
 		const rows: DiffRow[] = [];
 		for (let i = 0; i < 5; i++)
-			rows.push({ kind: "unchanged", html: `<p>lead${i}</p>`, lines: 1 });
+			rows.push({
+				kind: "unchanged",
+				html: `<p>lead${i}</p>`,
+				afterStart: 1 + 2 * i,
+				afterEnd: 1 + 2 * i,
+			});
 		rows.push({
 			kind: "changed",
 			beforeHtml: "<p>ob</p>",
 			afterHtml: "<p>nb</p>",
+			afterStart: 11,
+			afterEnd: 11,
 		});
 		for (let i = 0; i < 5; i++)
-			rows.push({ kind: "unchanged", html: `<p>tail${i}</p>`, lines: 1 });
-		safeInvoke.mockResolvedValue(rows);
+			rows.push({
+				kind: "unchanged",
+				html: `<p>tail${i}</p>`,
+				afterStart: 13 + 2 * i,
+				afterEnd: 13 + 2 * i,
+			});
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -274,18 +368,97 @@ describe("RenderedDiff", () => {
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(0);
 	});
 
-	it("collapses an interior run identically in split, with one full-width separator", async () => {
+	it("gives a deletion context on both sides via its after-side anchor (hunk)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "changed", beforeHtml: "<p>ob</p>", afterHtml: "<p>nb</p>" },
+			{
+				kind: "changed",
+				beforeHtml: "<p>ob</p>",
+				afterHtml: "<p>nb</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			{ kind: "unchanged", html: "<p>u1</p>", afterStart: 3, afterEnd: 3 },
+			{ kind: "unchanged", html: "<p>u2</p>", afterStart: 5, afterEnd: 5 },
+			{ kind: "unchanged", html: "<p>u3</p>", afterStart: 7, afterEnd: 7 },
+			{ kind: "unchanged", html: "<p>u4</p>", afterStart: 9, afterEnd: 9 },
+			// The deleted paragraph sat right after line 9 on the after axis.
+			{
+				kind: "removed",
+				html: "<p>gone</p>",
+				beforeStart: 11,
+				beforeEnd: 11,
+				afterAnchor: 9,
+			},
+			{ kind: "unchanged", html: "<p>u5</p>", afterStart: 11, afterEnd: 11 },
 		];
-		for (let i = 0; i < 10; i++)
-			rows.push({ kind: "unchanged", html: `<p>u${i}</p>`, lines: 1 });
-		rows.push({
-			kind: "changed",
-			beforeHtml: "<p>oe</p>",
-			afterHtml: "<p>ne</p>",
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+				contextLines: 1,
+			},
 		});
-		safeInvoke.mockResolvedValue(rows);
+		await screen.findByText("gone");
+
+		// u1 (adjacent to the change) and u4 (distance 0 to the anchor at line 9)
+		// stay; the deletion keeps context on BOTH sides (u4 above, u5 below).
+		// Hidden u2, u3 (lines 5, 7): 9 − 3 − 1 = 5 lines.
+		expect(screen.getByText("u4")).toBeInTheDocument();
+		expect(screen.getByText("u5")).toBeInTheDocument();
+		expect(screen.queryByText("u2")).toBeNull();
+		expect(screen.queryByText("u3")).toBeNull();
+		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
+			"5 lines hidden",
+		);
+	});
+
+	it("labels a single hidden line in the singular", async () => {
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: "<p>ob</p>",
+				afterHtml: "<p>nb</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			{ kind: "unchanged", html: "<p>u1</p>", afterStart: 2, afterEnd: 2 },
+			{ kind: "unchanged", html: "<p>u2</p>", afterStart: 3, afterEnd: 3 },
+			{ kind: "unchanged", html: "<p>u3</p>", afterStart: 4, afterEnd: 4 },
+			{
+				kind: "changed",
+				beforeHtml: "<p>oe</p>",
+				afterHtml: "<p>ne</p>",
+				afterStart: 5,
+				afterEnd: 5,
+			},
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+				contextLines: 0,
+			},
+		});
+		await screen.findByText("nb");
+
+		// contextLines=0 hides u2 (u1/u3 survive as the always-kept adjacent
+		// rows): 4 − 2 − 1 = 1 line.
+		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
+			"1 line hidden",
+		);
+	});
+
+	it("collapses an interior run identically in split, splitting the column stacks at the separator", async () => {
+		safeInvoke.mockResolvedValue({
+			rows: changeSandwich(),
+			whitespaceOnly: false,
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -297,15 +470,23 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findAllByText("nb");
 
+		// 8 visible rows (2 changes + u0..u2, u7..u9) × 2 columns each.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(16);
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(1);
+		// The separator splits the stacks into two runs — each its own column
+		// pair (Source's run-splitting), so 2 .split-columns × 2 scrollers.
+		expect(container.querySelectorAll(".split-columns")).toHaveLength(2);
+		expect(container.querySelectorAll(".split-column")).toHaveLength(4);
 	});
 
 	it("shows a No changes note in hunk mode when nothing changed, keeping the full doc", async () => {
-		safeInvoke.mockResolvedValue([
-			{ kind: "unchanged", html: "<p>alpha</p>", lines: 1 },
-			{ kind: "unchanged", html: "<p>beta</p>", lines: 1 },
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{ kind: "unchanged", html: "<p>beta</p>", afterStart: 3, afterEnd: 3 },
+			] satisfies DiffRow[],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -322,10 +503,39 @@ describe("RenderedDiff", () => {
 		expect(screen.getByText("No changes")).toBeInTheDocument();
 	});
 
+	it("explains a whitespace-only diff instead of claiming No changes (hunk)", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: true,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+
+		render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+				contextLines: 3,
+			},
+		});
+		await screen.findByText("alpha");
+
+		expect(
+			screen.getByText(
+				"Whitespace-only changes — not visible in rendered view",
+			),
+		).toBeInTheDocument();
+		expect(screen.queryByText("No changes")).toBeNull();
+	});
+
 	it("shows no note in full mode when nothing changed", async () => {
-		safeInvoke.mockResolvedValue([
-			{ kind: "unchanged", html: "<p>alpha</p>", lines: 1 },
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
 
 		render(RenderedDiff, {
 			props: {
@@ -340,10 +550,19 @@ describe("RenderedDiff", () => {
 	});
 
 	it("re-projects the same array across layout/content toggles without varying the fetch", async () => {
-		safeInvoke.mockResolvedValue([
-			{ kind: "changed", beforeHtml: "<p>bef</p>", afterHtml: "<p>aft</p>" },
-			{ kind: "unchanged", html: "<p>ctx</p>", lines: 1 },
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{
+					kind: "changed",
+					beforeHtml: "<p>bef</p>",
+					afterHtml: "<p>aft</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
+				{ kind: "unchanged", html: "<p>ctx</p>", afterStart: 3, afterEnd: 3 },
+			] satisfies DiffRow[],
+		});
 
 		const { container, rerender } = render(RenderedDiff, {
 			props: {
@@ -377,13 +596,17 @@ describe("RenderedDiff", () => {
 	});
 
 	it("sizes one shared content wrapper by the word-wrap toggle, like Source", async () => {
-		safeInvoke.mockResolvedValue([
-			{
-				kind: "unchanged",
-				html: "<pre><code>long line</code></pre>",
-				lines: 1,
-			},
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{
+					kind: "unchanged",
+					html: "<pre><code>long line</code></pre>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
+			] satisfies DiffRow[],
+		});
 
 		const { container, rerender } = render(RenderedDiff, {
 			props: { ...baseProps, wordWrap: true },
@@ -411,9 +634,12 @@ describe("RenderedDiff", () => {
 		// Source parity: the outer wrapper never widens in split — each half-panel
 		// column is its own (synced) horizontal scroller whose inner content grows
 		// to max-content, exactly SplitView's per-column wrappers.
-		safeInvoke.mockResolvedValue([
-			{ kind: "unchanged", html: "<p>same</p>", lines: 1 },
-		] satisfies DiffRow[]);
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>same</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "split", wordWrap: false },
@@ -436,8 +662,8 @@ describe("RenderedDiff", () => {
 	});
 
 	it("ignores a stale in-flight render when the selected file changes mid-flight", async () => {
-		const first = deferred<DiffRow[]>();
-		const second = deferred<DiffRow[]>();
+		const first = deferred<MarkdownDiff>();
+		const second = deferred<MarkdownDiff>();
 		safeInvoke.mockImplementation((_cmd: string, args: { filePath: string }) =>
 			args.filePath === "A.md" ? first.promise : second.promise,
 		);
@@ -451,10 +677,25 @@ describe("RenderedDiff", () => {
 			selectedPath: "B.md",
 		});
 
-		second.resolve([{ kind: "unchanged", html: "<p>SECOND</p>", lines: 1 }]);
+		second.resolve({
+			rows: [
+				{
+					kind: "unchanged",
+					html: "<p>SECOND</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
+			],
+			whitespaceOnly: false,
+		});
 		expect(await screen.findByText("SECOND")).toBeInTheDocument();
 
-		first.resolve([{ kind: "unchanged", html: "<p>FIRST</p>", lines: 1 }]);
+		first.resolve({
+			rows: [
+				{ kind: "unchanged", html: "<p>FIRST</p>", afterStart: 1, afterEnd: 1 },
+			],
+			whitespaceOnly: false,
+		});
 		await tick();
 		await Promise.resolve();
 
