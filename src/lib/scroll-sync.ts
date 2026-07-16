@@ -1,8 +1,7 @@
 // Horizontal scroll-sync for side-by-side columns: every column registered with
 // the returned action mirrors its scrollLeft to all the others, so hidden-
 // scrollbar columns pan as one. Factory (not a module-level set) so each view
-// instance syncs only its own columns. Ported verbatim from SplitView's
-// splitColSync; SplitView migrates here as a follow-up.
+// instance syncs only its own columns.
 export function createHorizontalScrollSync() {
 	const cols: Set<HTMLElement> = new Set();
 	let syncing = false;

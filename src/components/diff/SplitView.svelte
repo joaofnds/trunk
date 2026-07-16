@@ -13,6 +13,7 @@ import {
 	deleteComment,
 	editComment,
 } from "../../lib/review-comment-actions.js";
+import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
 import type {
 	Comment,
 	ContentMode,
@@ -105,31 +106,7 @@ let {
 	viewComments = [],
 }: Props = $props();
 
-const syncedCols: Set<HTMLElement> = new Set();
-let syncing = false;
-
-function splitColSync(node: HTMLElement) {
-	syncedCols.add(node);
-
-	function onScroll() {
-		if (syncing) return;
-		syncing = true;
-		const { scrollLeft } = node;
-		for (const col of syncedCols) {
-			if (col !== node) col.scrollLeft = scrollLeft;
-		}
-		syncing = false;
-	}
-
-	node.addEventListener("scroll", onScroll);
-
-	return {
-		destroy() {
-			node.removeEventListener("scroll", onScroll);
-			syncedCols.delete(node);
-		},
-	};
-}
+const splitColSync = createHorizontalScrollSync();
 
 const stagingDisabled = $derived(hunkOperationInFlight || ignoreWhitespace);
 const stagingDisabledTitle = $derived(
