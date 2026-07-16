@@ -32,8 +32,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: "src-tauri -> target"
           save-if: true
@@ -42,7 +42,7 @@ jobs:
         run: cd src-tauri && cargo bench --bench bench_graph --bench bench_commands --bench bench_ipc -- --output-format bencher | tee output.txt
 
       - name: Download previous benchmark data
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ./cache
           key: ${{ runner.os }}-benchmark
