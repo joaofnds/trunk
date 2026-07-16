@@ -407,7 +407,7 @@ async function handleSaveAndResolve() {
 /** Check if all lines from one side of a conflict region are taken */
 function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
 	const region = regions[regionIdx];
-	if (!region || region.type !== "conflict") return false;
+	if (region?.type !== "conflict") return false;
 	const lines = side === "ours" ? region.oursLines : region.theirsLines;
 	if (lines.length === 0) return false;
 	return lines.every((_, j) => takenLines.has(`${side}-${regionIdx}-${j}`));

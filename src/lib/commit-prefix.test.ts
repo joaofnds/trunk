@@ -29,18 +29,17 @@ describe("parseSummary", () => {
 		});
 	});
 
-	it.each([
-		"Merge branch 'hotfix/typo' into main",
-		"Initial commit",
-		"WIP",
-	])("leaves a non-conventional summary untouched: %s", (summary) => {
-		expect(parseSummary(summary)).toEqual({
-			prefix: null,
-			scope: null,
-			bang: null,
-			rest: summary,
-		});
-	});
+	it.each(["Merge branch 'hotfix/typo' into main", "Initial commit", "WIP"])(
+		"leaves a non-conventional summary untouched: %s",
+		(summary) => {
+			expect(parseSummary(summary)).toEqual({
+				prefix: null,
+				scope: null,
+				bang: null,
+				rest: summary,
+			});
+		},
+	);
 });
 
 describe("prefixToneVar", () => {
@@ -64,14 +63,13 @@ describe("prefixToneVar", () => {
 		expect(prefixToneVar(prefix)).toBe(tone);
 	});
 
-	it.each([
-		"wip",
-		"hotfix",
-		"merge",
-	])("gives an unmapped prefix %s a stable, non-grey lane color", (prefix) => {
-		const tone = prefixToneVar(prefix);
-		expect(tone).not.toBe("var(--fg-3)");
-		expect(tone).toMatch(/^var\(--lane-[0-7]\)$/);
-		expect(prefixToneVar(prefix)).toBe(tone);
-	});
+	it.each(["wip", "hotfix", "merge"])(
+		"gives an unmapped prefix %s a stable, non-grey lane color",
+		(prefix) => {
+			const tone = prefixToneVar(prefix);
+			expect(tone).not.toBe("var(--fg-3)");
+			expect(tone).toMatch(/^var\(--lane-[0-7]\)$/);
+			expect(prefixToneVar(prefix)).toBe(tone);
+		},
+	);
 });
