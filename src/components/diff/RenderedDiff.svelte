@@ -199,10 +199,11 @@ type Tint = "unchanged" | "added" | "removed";
 
 // The rows to actually render, after hunk-mode collapse folds runs of unchanged
 // blocks into separators. Both inline and split project from this same list, so a
-// run collapses identically in either layout. Full mode (and the no-change case)
-// keeps every row.
+// run collapses identically in either layout — and reads the same `changeIndex`
+// (each changed row's document-order position, the ]/[ jump order; null on
+// unchanged rows). Full mode (and the no-change case) keeps every row.
 type ProjectedRow =
-	| { type: "row"; row: DiffRow }
+	| { type: "row"; row: DiffRow; changeIndex: number | null }
 	| { type: "sep"; count: number };
 
 // An inclusive after-axis source-line range.
@@ -254,7 +255,7 @@ function collapseUnchanged(
 	let i = 0;
 	while (i < diffRows.length) {
 		if (keep[i]) {
-			out.push({ type: "row", row: diffRows[i] });
+			out.push({ type: "row", row: diffRows[i], changeIndex: null });
 			i++;
 			continue;
 		}
@@ -274,29 +275,37 @@ function collapseUnchanged(
 const projected = $derived.by((): ProjectedRow[] => {
 	// Full mode, and the no-change case (criterion 4), show every row: nothing to
 	// collapse, and an all-unchanged doc must not fold to one blank separator.
-	if (contentMode !== "hunk" || !hasChanges)
-		return rows.map((row): ProjectedRow => ({ type: "row", row }));
-	return collapseUnchanged(rows, contextLines);
+	const base: ProjectedRow[] =
+		contentMode !== "hunk" || !hasChanges
+			? rows.map(
+					(row): ProjectedRow => ({ type: "row", row, changeIndex: null }),
+				)
+			: collapseUnchanged(rows, contextLines);
+	let change = 0;
+	return base.map(
+		(p): ProjectedRow =>
+			p.type === "row" && p.row.kind !== "unchanged"
+				? { ...p, changeIndex: change++ }
+				: p,
+	);
 });
 
-// One inline stream item: a tinted block or a collapsed-run separator.
-// `changeIndex` is the row's document-order position among changed rows (the
-// ]/[ jump order) — null on unchanged blocks and on the second block of a
-// two-block changed row, so each change registers exactly one jump target.
+// One inline stream item: a tinted block or a collapsed-run separator. Only a
+// changed row's FIRST block carries its changeIndex — a two-block changed row
+// registers exactly one jump target.
 type InlineItem =
 	| { type: "block"; tint: Tint; html: string; changeIndex: number | null }
 	| { type: "sep"; count: number };
 
-const inlineItems = $derived.by((): InlineItem[] => {
-	let change = 0;
-	return projected.flatMap((p): InlineItem[] => {
+const inlineItems = $derived.by((): InlineItem[] =>
+	projected.flatMap((p): InlineItem[] => {
 		if (p.type === "sep") return [p];
 		const r = p.row;
+		const changeIndex = p.changeIndex;
 		if (r.kind === "unchanged")
 			return [
 				{ type: "block", tint: "unchanged", html: r.html, changeIndex: null },
 			];
-		const changeIndex = change++;
 		if (r.kind === "added")
 			return [{ type: "block", tint: "added", html: r.html, changeIndex }];
 		if (r.kind === "removed")
@@ -313,8 +322,8 @@ const inlineItems = $derived.by((): InlineItem[] => {
 			{ type: "block", tint: "removed", html: r.beforeHtml, changeIndex },
 			{ type: "block", tint: "added", html: r.afterHtml, changeIndex: null },
 		];
-	});
-});
+	}),
+);
 
 // One split row: a before cell + an after cell (either may be a phantom where
 // that side has no block). Rows group into RUNS between separators; each run
@@ -366,7 +375,6 @@ function cellChangeIndex(row: SplitRow, side: "left" | "right"): number | null {
 const splitSegments = $derived.by((): SplitSegment[] => {
 	const segments: SplitSegment[] = [];
 	let run: SplitRow[] = [];
-	let change = 0;
 	for (const p of projected) {
 		if (p.type === "sep") {
 			if (run.length > 0) segments.push({ type: "run", rows: run });
@@ -374,8 +382,7 @@ const splitSegments = $derived.by((): SplitSegment[] => {
 			segments.push(p);
 			continue;
 		}
-		const changeIndex = p.row.kind === "unchanged" ? null : change++;
-		run.push(toSplitRow(p.row, changeIndex));
+		run.push(toSplitRow(p.row, p.changeIndex));
 	}
 	if (run.length > 0) segments.push({ type: "run", rows: run });
 	return segments;
