@@ -317,6 +317,7 @@ textarea::placeholder {
    {@html} markup escapes Svelte's scoped-style hashing, so a scoped rule would
    never reach it; the reused .syn-* rules below are global for the same reason. */
 .markdown-body {
+	--md-list-gutter: 1.6em;
 	user-select: text;
 	-webkit-user-select: text;
 	color: var(--color-text);
@@ -375,10 +376,14 @@ textarea::placeholder {
 .markdown-body ul,
 .markdown-body ol {
 	margin: 0.6em 0;
-	padding-left: 1.6em;
+	padding-left: var(--md-list-gutter);
+	list-style: revert;
 }
 .markdown-body li {
 	margin: 0.2em 0;
+}
+.markdown-body li:has(> input[type="checkbox"]) {
+	list-style: none;
 }
 .markdown-body li input[type="checkbox"] {
 	margin-right: 0.4em;
@@ -434,6 +439,8 @@ textarea::placeholder {
 }
 .markdown-body img {
 	max-width: 100%;
+	display: revert;
+	vertical-align: revert;
 }
 .markdown-body del {
 	color: var(--color-text-muted);
@@ -500,15 +507,33 @@ textarea::placeholder {
 	background: var(--color-diff-delete-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
-/* A tinted list item sits flush against its own left edge, so the inset rail would
-   touch the text. Nudge the item's box left and pad the content back so the rail
-   gains a gutter without shifting the text out of line with untinted siblings.
-   (Block wrappers already clear the rail via their 20px padding; table rows via
-   their cell padding.) */
+/* A tinted list item carries NO rail of its own — its Changed-pair wrapper
+   always paints the block-level rail (RenderedDiff cell tints), so an item
+   rail reads as a duplicate edge; like a tinted table row, the item pinpoint
+   is its brighter stacked background. The box is never nudged: WKWebView
+   anchors the outside ::marker to the li border box, so any margin/padding
+   shift drags the bullet out of line with untinted siblings. The ::before
+   extends the tint across the ul's 1.6em gutter so the bullet sits on the
+   highlight without the box moving. */
 li.md-added,
 li.md-removed {
-	margin-left: -0.6em;
-	padding-left: 0.6em;
+	position: relative;
+	box-shadow: none;
+}
+li.md-added::before,
+li.md-removed::before {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: calc(-1 * var(--md-list-gutter));
+	width: var(--md-list-gutter);
+}
+li.md-added::before {
+	background: var(--color-diff-add-bg);
+}
+li.md-removed::before {
+	background: var(--color-diff-delete-bg);
 }
 
 /* ── Word-level inline diff marks (inside a merged single-leaf Changed block) ──
