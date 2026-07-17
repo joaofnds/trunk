@@ -96,7 +96,9 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@ed67fa35ac944f3a9b33f12c4dd43b6f31a47e20 # cargo-llvm-cov
+      - uses: taiki-e/install-action@ed67fa35ac944f3a9b33f12c4dd43b6f31a47e20 # v2.83.3
+        with:
+          tool: cargo-llvm-cov
       - name: Run tests with coverage
         run: just cargo-test-cov
       - name: Upload Rust coverage HTML
