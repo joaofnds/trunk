@@ -11,6 +11,7 @@
 //! command then updates `ReviewSessionsState` → then emits `session-changed`, so
 //! a failed write can never leave memory and disk diverged.
 
+use super::resolve_data_dir;
 use crate::error::TrunkError;
 use crate::git::review_store::{self, LoadOutcome};
 use crate::git::types::{Comment, DraftComment, ReviewSession};
@@ -19,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 mod range;
 use range::*;
@@ -165,13 +166,6 @@ fn merge_status(file_exists: bool, in_memory_present: bool) -> SessionState {
         (true, false) => SessionState::ResumeAvailable,
         (false, _) => SessionState::None,
     }
-}
-
-/// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
-fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())
 }
 
 /// Emit the `session-changed` Tauri event for `canonical`, logging on failure

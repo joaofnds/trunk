@@ -1,6 +1,7 @@
 use crate::error::TrunkError;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tauri::{AppHandle, Manager};
 
 /// Open the git repository registered for `path` in the app's repo-state map.
 /// Returns a `not_open` error if the path was never opened. Shared by every
@@ -15,6 +16,13 @@ pub(crate) fn open_repo_from_state(
     git2::Repository::open(path_buf).map_err(TrunkError::from)
 }
 
+/// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
+pub(crate) fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())
+}
+
 pub mod branches;
 pub mod commit;
 pub mod commit_actions;
@@ -25,6 +33,7 @@ pub mod interactive_rebase;
 pub mod markdown;
 pub mod merge_editor;
 pub mod operation_state;
+pub mod prefs;
 pub mod remote;
 pub mod repo;
 pub mod review;

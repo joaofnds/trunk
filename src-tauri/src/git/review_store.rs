@@ -16,8 +16,8 @@
 
 use crate::error::TrunkError;
 use crate::git::types::ReviewSession;
-use std::fs::{self, File};
-use std::io::Write;
+use crate::storage::{atomic_write_json, quarantine_corrupt};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const CURRENT_SCHEMA_VERSION: u32 = 2;
@@ -58,33 +58,6 @@ fn session_filename(canonical: &Path) -> String {
 
 fn session_path(data_dir: &Path, canonical: &Path) -> PathBuf {
     sessions_dir(data_dir).join(session_filename(canonical))
-}
-
-/// Atomic write: tmp-in-same-dir + `sync_all` + `rename` (D-10, Pitfall 5).
-/// `rename` is only atomic within a filesystem, so the tmp file lives next to
-/// the target. `create_dir_all` covers the first-write case (Pitfall 2).
-fn atomic_write_json(final_path: &Path, json: &str) -> Result<(), TrunkError> {
-    let dir = final_path
-        .parent()
-        .ok_or_else(|| TrunkError::new("bad_path", "session path has no parent dir"))?;
-    fs::create_dir_all(dir).map_err(|e| TrunkError::new("io", e.to_string()))?;
-
-    let tmp_path = final_path.with_extension("json.tmp");
-    {
-        let mut f = File::create(&tmp_path).map_err(|e| TrunkError::new("io", e.to_string()))?;
-        f.write_all(json.as_bytes())
-            .map_err(|e| TrunkError::new("io", e.to_string()))?;
-        f.sync_all()
-            .map_err(|e| TrunkError::new("io", e.to_string()))?;
-    }
-    fs::rename(&tmp_path, final_path).map_err(|e| TrunkError::new("io", e.to_string()))?;
-    Ok(())
-}
-
-/// Rename a file we cannot read to a `.corrupt` sidecar — never delete it (D-15).
-fn quarantine_corrupt(final_path: &Path) -> Result<(), TrunkError> {
-    let corrupt = final_path.with_extension("json.corrupt");
-    fs::rename(final_path, corrupt).map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 /// Persist a session atomically for the given canonical repo path.

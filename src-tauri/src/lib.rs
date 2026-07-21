@@ -5,6 +5,7 @@ pub mod git;
 mod macos_traffic_lights;
 pub mod shell_env;
 pub mod state;
+mod storage;
 pub mod watcher;
 
 use state::{CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp};
@@ -184,9 +185,12 @@ pub fn run() {
         .manage(RunningOp(Default::default()))
         .manage(WatcherState(Default::default()))
         .manage(ReviewSessionsState(Default::default()))
+        .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
         .invoke_handler(tauri::generate_handler![
             set_traffic_light_zoom,
+            commands::prefs::prefs_get,
+            commands::prefs::prefs_set,
             commands::repo::open_repo,
             commands::repo::close_repo,
             commands::repo::force_close_repo,
