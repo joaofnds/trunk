@@ -10,9 +10,12 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 let tauriDriver;
 let exit = false;
 
+// Only `just e2e-build` writes this target dir, and it always bakes the e2e
+// app identifier (tauri.e2e.conf.json) — so a binary at this path can never
+// carry the installed app's identifier and clobber its settings.
 const binaryPath = path.resolve(
   __dirname,
-  '../src-tauri/target/debug/trunk',
+  '../src-tauri/target/e2e/debug/trunk',
 );
 
 export const config = {
@@ -35,24 +38,21 @@ export const config = {
     timeout: 60000,
   },
 
-  // Build the debug binary before any test runs (skip if E2E_SKIP_BUILD is set)
+  // Build the debug binary before any test runs (E2E_SKIP_BUILD skips the
+  // build when a previously built binary exists)
   onPrepare: () => {
-    if (!process.env.E2E_SKIP_BUILD) {
+    if (process.env.E2E_SKIP_BUILD && existsSync(binaryPath)) {
+      console.log('Skipping build (E2E_SKIP_BUILD is set)');
+    } else {
       console.log('Building debug binary...');
-      const result = spawnSync(
-        'bun',
-        ['run', 'tauri', 'build', '--', '--debug', '--no-bundle'],
-        {
-          cwd: path.resolve(__dirname, '..'),
-          stdio: 'inherit',
-          shell: true,
-        },
-      );
+      const result = spawnSync('just', ['e2e-build'], {
+        cwd: path.resolve(__dirname, '..'),
+        stdio: 'inherit',
+        shell: true,
+      });
       if (result.status !== 0) {
         throw new Error(`Build failed with exit code ${result.status}`);
       }
-    } else {
-      console.log('Skipping build (E2E_SKIP_BUILD is set)');
     }
 
     if (!existsSync(binaryPath)) {

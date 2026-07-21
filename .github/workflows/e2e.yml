@@ -38,7 +38,7 @@ jobs:
       - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          workspaces: "src-tauri -> target"
+          workspaces: "src-tauri -> target/e2e"
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install frontend dependencies
@@ -51,7 +51,7 @@ jobs:
         run: cargo install tauri-driver --locked
 
       - name: Build debug binary
-        run: bun run tauri build --debug --no-bundle
+        run: just e2e-build
 
       - name: Run E2E tests
         env:

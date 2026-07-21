@@ -16,6 +16,10 @@ dev:
 build:
     bun run tauri build
 
+# Build the e2e-flavored debug binary (own identifier, own target dir)
+e2e-build:
+    CARGO_TARGET_DIR={{justfile_directory()}}/src-tauri/target/e2e bun run tauri build --debug --no-bundle --config e2e/tauri.e2e.conf.json
+
 # ── Checks ───────────────────────────────────────────
 
 # Run all checks (run before committing)
