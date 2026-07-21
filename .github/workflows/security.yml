@@ -1,0 +1,47 @@
+name: Security
+
+# Advisories land independently of our commits, so this runs on a schedule
+# rather than per-PR — a new CVE should not turn an unrelated pull request red.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'bun.lock'
+      - 'e2e/package.json'
+      - 'e2e/bun.lock'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-audit:
+    name: Cargo Advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: taiki-e/install-action@ed67fa35ac944f3a9b33f12c4dd43b6f31a47e20 # v2.83.3
+        with:
+          tool: cargo-audit
+      - run: cargo audit --file src-tauri/Cargo.lock
+
+  bun-audit:
+    name: Bun Advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - run: bun install --frozen-lockfile
+      - run: bun audit
+      - run: bun install --frozen-lockfile
+        working-directory: e2e
+      - run: bun audit
+        working-directory: e2e
