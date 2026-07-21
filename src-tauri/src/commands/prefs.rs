@@ -217,6 +217,21 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn an_unreadable_file_reports_an_error_instead_of_serving_an_empty_map() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(PREFS_FILE);
+        fs::write(&path, r#"{"zoom_level":1.5}"#).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let err = prefs_get_inner(dir.path(), &PrefsState::default(), "zoom_level").unwrap_err();
+
+        assert_eq!(err.code, "io");
+        assert!(!dir.path().join("trunk-prefs.json.corrupt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn a_failed_write_does_not_leave_the_value_readable() {
         let dir = TempDir::new().unwrap();
         let state = PrefsState::default();
