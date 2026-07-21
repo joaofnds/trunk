@@ -404,7 +404,7 @@ function clearCommit() {
 }
 
 // Cached diff options — loaded once on mount, updated via ondiffoptionschange callback.
-// Avoids 3 LazyStore IPC reads per file click.
+// Avoids 3 prefs IPC reads per file click.
 let cachedDiffOptions = $state<DiffRequestOptions>({
 	contextLines: 3,
 	ignoreWhitespace: false,

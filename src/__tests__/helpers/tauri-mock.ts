@@ -17,21 +17,6 @@ vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock @tauri-apps/plugin-store — LazyStore
-vi.mock("@tauri-apps/plugin-store", () => {
-	const store = new Map<string, unknown>();
-	return {
-		LazyStore: vi.fn().mockImplementation(() => ({
-			get: vi.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
-			set: vi.fn((key: string, value: unknown) => {
-				store.set(key, value);
-				return Promise.resolve();
-			}),
-			save: vi.fn().mockResolvedValue(undefined),
-		})),
-	};
-});
-
 // Mock @tauri-apps/api/path — homeDir
 vi.mock("@tauri-apps/api/path", () => ({
 	homeDir: vi.fn().mockResolvedValue("/Users/test"),

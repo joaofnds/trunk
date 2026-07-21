@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import WelcomeScreen from "./WelcomeScreen.svelte";
 
-// Shared Tauri mock (mocks invoke, dialog, plugin-store, etc.)
+// Shared Tauri mock (mocks invoke, dialog, clipboard, etc.)
 import "../__tests__/helpers/tauri-mock";
 
 // Explicitly mock @tauri-apps/api/path to prevent real homeDir call

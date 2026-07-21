@@ -1,4 +1,4 @@
-import { LazyStore } from "@tauri-apps/plugin-store";
+import { safeInvoke } from "./invoke.js";
 import type { PersistedTab } from "./tab-types.js";
 import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
 
@@ -9,89 +9,90 @@ export interface RecentRepo {
 	path: string;
 }
 
-const store = new LazyStore("trunk-prefs.json");
+// Prefs live in a Rust-side map backed by trunk-prefs.json; every set
+// rewrites the file atomically in one prefs_set call.
+async function getPref<T>(key: string): Promise<T | null> {
+	return await safeInvoke<T | null>("prefs_get", { key });
+}
+
+async function setPref(key: string, value: unknown): Promise<void> {
+	await safeInvoke("prefs_set", { key, value });
+}
+
 const RECENT_KEY = "recent_repos";
 
 export async function addRecentRepo(repo: RecentRepo): Promise<void> {
-	const current = (await store.get<RecentRepo[]>(RECENT_KEY)) ?? [];
+	const current = (await getPref<RecentRepo[]>(RECENT_KEY)) ?? [];
 	const updated = [repo, ...current.filter((r) => r.path !== repo.path)];
-	await store.set(RECENT_KEY, updated);
-	await store.save();
+	await setPref(RECENT_KEY, updated);
 }
 
 export async function getRecentRepos(): Promise<RecentRepo[]> {
-	return (await store.get<RecentRepo[]>(RECENT_KEY)) ?? [];
+	return (await getPref<RecentRepo[]>(RECENT_KEY)) ?? [];
 }
 
 export async function removeRecentRepo(path: string): Promise<void> {
-	const current = (await store.get<RecentRepo[]>(RECENT_KEY)) ?? [];
+	const current = (await getPref<RecentRepo[]>(RECENT_KEY)) ?? [];
 	const updated = current.filter((r) => r.path !== path);
-	await store.set(RECENT_KEY, updated);
-	await store.save();
+	await setPref(RECENT_KEY, updated);
 }
 
 const ZOOM_KEY = "zoom_level";
 
 export async function getZoomLevel(): Promise<number> {
-	return (await store.get<number>(ZOOM_KEY)) ?? 1;
+	return (await getPref<number>(ZOOM_KEY)) ?? 1;
 }
 
 export async function setZoomLevel(level: number): Promise<void> {
-	await store.set(ZOOM_KEY, level);
-	await store.save();
+	await setPref(ZOOM_KEY, level);
 }
 
 const LEFT_PANE_KEY = "left_pane_width";
 const RIGHT_PANE_KEY = "right_pane_width";
 
 export async function getLeftPaneWidth(): Promise<number> {
-	return (await store.get<number>(LEFT_PANE_KEY)) ?? 220;
+	return (await getPref<number>(LEFT_PANE_KEY)) ?? 220;
 }
 
 export async function setLeftPaneWidth(width: number): Promise<void> {
-	await store.set(LEFT_PANE_KEY, width);
-	await store.save();
+	await setPref(LEFT_PANE_KEY, width);
 }
 
 export async function getRightPaneWidth(): Promise<number> {
-	return (await store.get<number>(RIGHT_PANE_KEY)) ?? 240;
+	return (await getPref<number>(RIGHT_PANE_KEY)) ?? 240;
 }
 
 export async function setRightPaneWidth(width: number): Promise<void> {
-	await store.set(RIGHT_PANE_KEY, width);
-	await store.save();
+	await setPref(RIGHT_PANE_KEY, width);
 }
 
 const LEFT_PANE_COLLAPSED_KEY = "left_pane_collapsed";
 const RIGHT_PANE_COLLAPSED_KEY = "right_pane_collapsed";
 
 export async function getLeftPaneCollapsed(): Promise<boolean> {
-	return (await store.get<boolean>(LEFT_PANE_COLLAPSED_KEY)) ?? false;
+	return (await getPref<boolean>(LEFT_PANE_COLLAPSED_KEY)) ?? false;
 }
 
 export async function setLeftPaneCollapsed(collapsed: boolean): Promise<void> {
-	await store.set(LEFT_PANE_COLLAPSED_KEY, collapsed);
-	await store.save();
+	await setPref(LEFT_PANE_COLLAPSED_KEY, collapsed);
 }
 
 export async function getRightPaneCollapsed(): Promise<boolean> {
-	return (await store.get<boolean>(RIGHT_PANE_COLLAPSED_KEY)) ?? false;
+	return (await getPref<boolean>(RIGHT_PANE_COLLAPSED_KEY)) ?? false;
 }
 
 export async function setRightPaneCollapsed(collapsed: boolean): Promise<void> {
-	await store.set(RIGHT_PANE_COLLAPSED_KEY, collapsed);
-	await store.save();
+	await setPref(RIGHT_PANE_COLLAPSED_KEY, collapsed);
 }
 
 const OPEN_REPO_KEY = "open_repo";
 
 export async function getOpenRepo(): Promise<RecentRepo | null> {
-	return (await store.get<RecentRepo>(OPEN_REPO_KEY)) ?? null;
+	return (await getPref<RecentRepo>(OPEN_REPO_KEY)) ?? null;
 }
 
 export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
-	await store.set(OPEN_REPO_KEY, repo);
-	await store.save();
+	await setPref(OPEN_REPO_KEY, repo);
 }
 
 export interface ColumnWidths {
@@ -120,13 +121,12 @@ export async function getColumnWidths(): Promise<ColumnWidths> {
 	// (e.g. `diff`) picks up its default instead of arriving as undefined → NaN.
 	return {
 		...DEFAULT_WIDTHS,
-		...(await store.get<ColumnWidths>(COLUMN_WIDTHS_KEY)),
+		...(await getPref<ColumnWidths>(COLUMN_WIDTHS_KEY)),
 	};
 }
 
 export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
-	await store.set(COLUMN_WIDTHS_KEY, widths);
-	await store.save();
+	await setPref(COLUMN_WIDTHS_KEY, widths);
 }
 
 export interface ColumnVisibility {
@@ -156,15 +156,14 @@ export async function getColumnVisibility(): Promise<ColumnVisibility> {
 	// (e.g. `diff`) defaults to visible instead of arriving as undefined → falsy.
 	return {
 		...DEFAULT_VISIBILITY,
-		...(await store.get<ColumnVisibility>(COLUMN_VISIBILITY_KEY)),
+		...(await getPref<ColumnVisibility>(COLUMN_VISIBILITY_KEY)),
 	};
 }
 
 export async function setColumnVisibility(
 	visibility: ColumnVisibility,
 ): Promise<void> {
-	await store.set(COLUMN_VISIBILITY_KEY, visibility);
-	await store.save();
+	await setPref(COLUMN_VISIBILITY_KEY, visibility);
 }
 
 // Rebase editor column widths
@@ -185,7 +184,7 @@ const DEFAULT_REBASE_WIDTHS: RebaseColumnWidths = {
 
 export async function getRebaseColumnWidths(): Promise<RebaseColumnWidths> {
 	return (
-		(await store.get<RebaseColumnWidths>(REBASE_COLUMN_WIDTHS_KEY)) ??
+		(await getPref<RebaseColumnWidths>(REBASE_COLUMN_WIDTHS_KEY)) ??
 		DEFAULT_REBASE_WIDTHS
 	);
 }
@@ -193,8 +192,7 @@ export async function getRebaseColumnWidths(): Promise<RebaseColumnWidths> {
 export async function setRebaseColumnWidths(
 	widths: RebaseColumnWidths,
 ): Promise<void> {
-	await store.set(REBASE_COLUMN_WIDTHS_KEY, widths);
-	await store.save();
+	await setPref(REBASE_COLUMN_WIDTHS_KEY, widths);
 }
 
 // Rebase editor column visibility
@@ -215,7 +213,7 @@ const DEFAULT_REBASE_VISIBILITY: RebaseColumnVisibility = {
 
 export async function getRebaseColumnVisibility(): Promise<RebaseColumnVisibility> {
 	return (
-		(await store.get<RebaseColumnVisibility>(REBASE_COLUMN_VISIBILITY_KEY)) ??
+		(await getPref<RebaseColumnVisibility>(REBASE_COLUMN_VISIBILITY_KEY)) ??
 		DEFAULT_REBASE_VISIBILITY
 	);
 }
@@ -223,8 +221,7 @@ export async function getRebaseColumnVisibility(): Promise<RebaseColumnVisibilit
 export async function setRebaseColumnVisibility(
 	visibility: RebaseColumnVisibility,
 ): Promise<void> {
-	await store.set(REBASE_COLUMN_VISIBILITY_KEY, visibility);
-	await store.save();
+	await setPref(REBASE_COLUMN_VISIBILITY_KEY, visibility);
 }
 
 // Tab persistence
@@ -232,33 +229,30 @@ const TABS_KEY = "open_tabs";
 const ACTIVE_TAB_KEY = "active_tab_id";
 
 export async function getOpenTabs(): Promise<PersistedTab[]> {
-	return (await store.get<PersistedTab[]>(TABS_KEY)) ?? [];
+	return (await getPref<PersistedTab[]>(TABS_KEY)) ?? [];
 }
 
 export async function setOpenTabs(tabs: PersistedTab[]): Promise<void> {
-	await store.set(TABS_KEY, tabs);
-	await store.save();
+	await setPref(TABS_KEY, tabs);
 }
 
 export async function getActiveTabId(): Promise<string | null> {
-	return (await store.get<string>(ACTIVE_TAB_KEY)) ?? null;
+	return (await getPref<string>(ACTIVE_TAB_KEY)) ?? null;
 }
 
 export async function setActiveTabId(id: string): Promise<void> {
-	await store.set(ACTIVE_TAB_KEY, id);
-	await store.save();
+	await setPref(ACTIVE_TAB_KEY, id);
 }
 
 // Tree view preference
 const TREE_VIEW_KEY = "tree_view_enabled";
 
 export async function getTreeViewEnabled(): Promise<boolean> {
-	return (await store.get<boolean>(TREE_VIEW_KEY)) ?? false;
+	return (await getPref<boolean>(TREE_VIEW_KEY)) ?? false;
 }
 
 export async function setTreeViewEnabled(enabled: boolean): Promise<void> {
-	await store.set(TREE_VIEW_KEY, enabled);
-	await store.save();
+	await setPref(TREE_VIEW_KEY, enabled);
 }
 
 // Review mode preference (gates inline comment cards + in-diff Comment buttons).
@@ -266,12 +260,11 @@ export async function setTreeViewEnabled(enabled: boolean): Promise<void> {
 const SHOW_INLINE_COMMENTS_KEY = "show_inline_comments";
 
 export async function getShowInlineComments(): Promise<boolean> {
-	return (await store.get<boolean>(SHOW_INLINE_COMMENTS_KEY)) ?? false;
+	return (await getPref<boolean>(SHOW_INLINE_COMMENTS_KEY)) ?? false;
 }
 
 export async function setShowInlineComments(show: boolean): Promise<void> {
-	await store.set(SHOW_INLINE_COMMENTS_KEY, show);
-	await store.save();
+	await setPref(SHOW_INLINE_COMMENTS_KEY, show);
 }
 
 // Diff display preferences (global, shared across tabs — per D-06)
@@ -280,30 +273,27 @@ const DIFF_IGNORE_WHITESPACE_KEY = "diff_ignore_whitespace";
 const DIFF_SHOW_FULL_FILE_KEY = "diff_show_full_file";
 
 export async function getDiffContextLines(): Promise<number> {
-	return (await store.get<number>(DIFF_CONTEXT_LINES_KEY)) ?? 3;
+	return (await getPref<number>(DIFF_CONTEXT_LINES_KEY)) ?? 3;
 }
 
 export async function setDiffContextLines(lines: number): Promise<void> {
-	await store.set(DIFF_CONTEXT_LINES_KEY, lines);
-	await store.save();
+	await setPref(DIFF_CONTEXT_LINES_KEY, lines);
 }
 
 export async function getDiffIgnoreWhitespace(): Promise<boolean> {
-	return (await store.get<boolean>(DIFF_IGNORE_WHITESPACE_KEY)) ?? false;
+	return (await getPref<boolean>(DIFF_IGNORE_WHITESPACE_KEY)) ?? false;
 }
 
 export async function setDiffIgnoreWhitespace(ignore: boolean): Promise<void> {
-	await store.set(DIFF_IGNORE_WHITESPACE_KEY, ignore);
-	await store.save();
+	await setPref(DIFF_IGNORE_WHITESPACE_KEY, ignore);
 }
 
 export async function getDiffShowFullFile(): Promise<boolean> {
-	return (await store.get<boolean>(DIFF_SHOW_FULL_FILE_KEY)) ?? false;
+	return (await getPref<boolean>(DIFF_SHOW_FULL_FILE_KEY)) ?? false;
 }
 
 export async function setDiffShowFullFile(show: boolean): Promise<void> {
-	await store.set(DIFF_SHOW_FULL_FILE_KEY, show);
-	await store.save();
+	await setPref(DIFF_SHOW_FULL_FILE_KEY, show);
 }
 
 const DIFF_VIEW_MODE_KEY = "diff_view_mode"; // legacy key for migration
@@ -311,31 +301,29 @@ const DIFF_CONTENT_MODE_KEY = "diff_content_mode";
 const DIFF_LAYOUT_MODE_KEY = "diff_layout_mode";
 
 export async function getDiffContentMode(): Promise<ContentMode> {
-	const stored = await store.get<string>(DIFF_CONTENT_MODE_KEY);
+	const stored = await getPref<string>(DIFF_CONTENT_MODE_KEY);
 	if (stored === "hunk" || stored === "full") return stored;
 	// Migration from old ViewMode key
-	const legacy = await store.get<string>(DIFF_VIEW_MODE_KEY);
+	const legacy = await getPref<string>(DIFF_VIEW_MODE_KEY);
 	if (legacy === "full") return "full";
 	return "hunk";
 }
 
 export async function setDiffContentMode(mode: ContentMode): Promise<void> {
-	await store.set(DIFF_CONTENT_MODE_KEY, mode);
-	await store.save();
+	await setPref(DIFF_CONTENT_MODE_KEY, mode);
 }
 
 export async function getDiffLayoutMode(): Promise<LayoutMode> {
-	const stored = await store.get<string>(DIFF_LAYOUT_MODE_KEY);
+	const stored = await getPref<string>(DIFF_LAYOUT_MODE_KEY);
 	if (stored === "inline" || stored === "split") return stored;
 	// Migration from old ViewMode key
-	const legacy = await store.get<string>(DIFF_VIEW_MODE_KEY);
+	const legacy = await getPref<string>(DIFF_VIEW_MODE_KEY);
 	if (legacy === "split") return "split";
 	return "inline";
 }
 
 export async function setDiffLayoutMode(mode: LayoutMode): Promise<void> {
-	await store.set(DIFF_LAYOUT_MODE_KEY, mode);
-	await store.save();
+	await setPref(DIFF_LAYOUT_MODE_KEY, mode);
 }
 
 // Source|Rendered toggle for markdown-file diffs. Global, defaults to "source"
@@ -344,36 +332,33 @@ export async function setDiffLayoutMode(mode: LayoutMode): Promise<void> {
 const DIFF_RENDER_MODE_KEY = "render_mode";
 
 export async function getRenderMode(): Promise<RenderMode> {
-	const stored = await store.get<string>(DIFF_RENDER_MODE_KEY);
+	const stored = await getPref<string>(DIFF_RENDER_MODE_KEY);
 	if (stored === "source" || stored === "rendered") return stored;
 	return "source";
 }
 
 export async function setRenderMode(mode: RenderMode): Promise<void> {
-	await store.set(DIFF_RENDER_MODE_KEY, mode);
-	await store.save();
+	await setPref(DIFF_RENDER_MODE_KEY, mode);
 }
 
 const DIFF_SHOW_INVISIBLES_KEY = "diff_show_invisibles";
 
 export async function getDiffShowInvisibles(): Promise<boolean> {
-	return (await store.get<boolean>(DIFF_SHOW_INVISIBLES_KEY)) ?? false;
+	return (await getPref<boolean>(DIFF_SHOW_INVISIBLES_KEY)) ?? false;
 }
 
 export async function setDiffShowInvisibles(show: boolean): Promise<void> {
-	await store.set(DIFF_SHOW_INVISIBLES_KEY, show);
-	await store.save();
+	await setPref(DIFF_SHOW_INVISIBLES_KEY, show);
 }
 
 const DIFF_WORD_WRAP_KEY = "diff_word_wrap";
 
 export async function getDiffWordWrap(): Promise<boolean> {
-	return (await store.get<boolean>(DIFF_WORD_WRAP_KEY)) ?? false;
+	return (await getPref<boolean>(DIFF_WORD_WRAP_KEY)) ?? false;
 }
 
 export async function setDiffWordWrap(wrap: boolean): Promise<void> {
-	await store.set(DIFF_WORD_WRAP_KEY, wrap);
-	await store.save();
+	await setPref(DIFF_WORD_WRAP_KEY, wrap);
 }
 
 // Per-repo WIP commit draft (summary + description). Keyed by absolute repo
@@ -389,7 +374,7 @@ export async function getCommitDraft(
 	path: string,
 ): Promise<CommitDraft | null> {
 	const drafts =
-		(await store.get<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+		(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
 	return drafts[path] ?? null;
 }
 
@@ -398,18 +383,16 @@ export async function setCommitDraft(
 	draft: CommitDraft,
 ): Promise<void> {
 	const drafts =
-		(await store.get<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
-	await store.set(COMMIT_DRAFTS_KEY, { ...drafts, [path]: draft });
-	await store.save();
+		(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+	await setPref(COMMIT_DRAFTS_KEY, { ...drafts, [path]: draft });
 }
 
 export async function clearCommitDraft(path: string): Promise<void> {
 	const drafts =
-		(await store.get<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
+		(await getPref<Record<string, CommitDraft>>(COMMIT_DRAFTS_KEY)) ?? {};
 	if (!(path in drafts)) return;
 	const { [path]: _removed, ...rest } = drafts;
-	await store.set(COMMIT_DRAFTS_KEY, rest);
-	await store.save();
+	await setPref(COMMIT_DRAFTS_KEY, rest);
 }
 
 // Periodic background fetch interval. 0 disables. Default 5 min.
@@ -418,11 +401,10 @@ const DEFAULT_FETCH_INTERVAL_MS = 60 * 1000;
 
 export async function getFetchIntervalMs(): Promise<number> {
 	return (
-		(await store.get<number>(FETCH_INTERVAL_KEY)) ?? DEFAULT_FETCH_INTERVAL_MS
+		(await getPref<number>(FETCH_INTERVAL_KEY)) ?? DEFAULT_FETCH_INTERVAL_MS
 	);
 }
 
 export async function setFetchIntervalMs(ms: number): Promise<void> {
-	await store.set(FETCH_INTERVAL_KEY, ms);
-	await store.save();
+	await setPref(FETCH_INTERVAL_KEY, ms);
 }

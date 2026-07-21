@@ -2,26 +2,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PersistedTab, TabInfo } from "./tab-types.js";
 import { createTabId } from "./tab-types.js";
 
-// The backing store for the mock — shared across all LazyStore instances
+// Map-backed fake of the prefs_get/prefs_set Tauri commands, dispatched by
+// command name so an unrelated invoke can never satisfy a prefs call.
 const backingStore = new Map<string, unknown>();
 
-vi.mock("@tauri-apps/plugin-store", () => {
-	class MockLazyStore {
-		get(key: string) {
-			return Promise.resolve(backingStore.get(key) ?? null);
+vi.mock("./invoke.js", () => ({
+	safeInvoke: vi.fn((cmd: string, args?: Record<string, unknown>) => {
+		if (cmd === "prefs_get") {
+			return Promise.resolve(backingStore.get(args?.key as string) ?? null);
 		}
-		set(key: string, value: unknown) {
-			backingStore.set(key, value);
-			return Promise.resolve();
+		if (cmd === "prefs_set") {
+			backingStore.set(args?.key as string, args?.value);
+			return Promise.resolve(undefined);
 		}
-		save() {
-			return Promise.resolve();
-		}
-	}
-	return { LazyStore: MockLazyStore };
-});
+		return Promise.reject({
+			code: "unmocked_command",
+			message: `unmocked command: ${cmd}`,
+		});
+	}),
+}));
 
-// Import store functions after mocking so module-level `new LazyStore(...)` gets the mock
+// Import store functions after mocking so store.ts binds the mocked safeInvoke
 const {
 	addRecentRepo,
 	getRecentRepos,
