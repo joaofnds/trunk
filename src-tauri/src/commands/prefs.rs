@@ -2,10 +2,19 @@
 //! tauri-plugin-store, whose `save()` was a non-atomic whole-file `fs::write`.
 //!
 //! Two thin **async** `#[tauri::command]`s over testable `_inner(data_dir, ...)`
-//! functions, mirroring review.rs (async keeps the blocking `sync_all` write off
-//! the main thread). The whole map is loaded from disk on first access and held
-//! in `PrefsState`; every set updates the map and atomically rewrites the file
-//! under the same lock, so the file always matches the map.
+//! functions, mirroring review.rs. Both wrappers hand the disk work to
+//! `spawn_blocking`, so neither the first-access load nor the `sync_all` write
+//! pins a tokio worker while another call waits on the same lock. The whole map
+//! is loaded from disk on first access and held in `PrefsState`; every set
+//! updates the map and atomically rewrites the file under the same lock, so the
+//! file always matches the map.
+//!
+//! That last guarantee holds only because one process owns the file: a second
+//! instance would rewrite the whole map from its own stale copy. What makes the
+//! premise an invariant rather than an assumption is `tauri-plugin-single-instance`
+//! (registered first in `lib.rs`), whose lock is keyed on the app identifier —
+//! so dev, e2e, and the installed app still run side by side, each alone with
+//! its own state dir.
 //!
 //! The on-disk contract is unchanged from the plugin: a flat JSON object
 //! (`{"key": value, ...}`) at the same name and location, so existing user
@@ -20,7 +29,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager};
 
 const PREFS_FILE: &str = "trunk-prefs.json";
 
@@ -91,25 +100,28 @@ pub fn prefs_set_inner(
     written
 }
 
-#[tauri::command]
-pub async fn prefs_get(
-    key: String,
-    state: State<'_, PrefsState>,
-    app: AppHandle,
-) -> Result<Option<Value>, String> {
-    let data_dir = resolve_data_dir(&app)?;
-    prefs_get_inner(&data_dir, &state, &key).map_err(|e| e.to_json())
+fn join_error(e: tauri::Error) -> String {
+    TrunkError::new("join", e.to_string()).to_json()
 }
 
 #[tauri::command]
-pub async fn prefs_set(
-    key: String,
-    value: Value,
-    state: State<'_, PrefsState>,
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn prefs_get(key: String, app: AppHandle) -> Result<Option<Value>, String> {
     let data_dir = resolve_data_dir(&app)?;
-    prefs_set_inner(&data_dir, &state, key, value).map_err(|e| e.to_json())
+    tauri::async_runtime::spawn_blocking(move || {
+        prefs_get_inner(&data_dir, &app.state::<PrefsState>(), &key).map_err(|e| e.to_json())
+    })
+    .await
+    .map_err(join_error)?
+}
+
+#[tauri::command]
+pub async fn prefs_set(key: String, value: Value, app: AppHandle) -> Result<(), String> {
+    let data_dir = resolve_data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        prefs_set_inner(&data_dir, &app.state::<PrefsState>(), key, value).map_err(|e| e.to_json())
+    })
+    .await
+    .map_err(join_error)?
 }
 
 #[cfg(test)]
