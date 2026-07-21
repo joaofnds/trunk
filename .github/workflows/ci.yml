@@ -42,6 +42,20 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: just svelte-check
 
+  check-parity:
+    name: CI Mirrors just check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Every recipe in `just check` has a CI job
+        run: |
+          mirrored=$(printf '%s\n' biome cargo-test clippy fmt svelte-check vitest | sort)
+          recipes=$(sed -n 's/^check: *//p' justfile | tr ' ' '\n' | sort)
+          if ! diff <(echo "$mirrored") <(echo "$recipes"); then
+            echo "::error::just check and this workflow disagree; add or remove the CI job, then update the mirrored list in ci.yml"
+            exit 1
+          fi
+
   # ── Gate 2: Heavy checks (only after Gate 1 passes) ──
 
   cargo-clippy:
@@ -102,12 +116,30 @@ jobs:
       - name: Run tests with coverage
         run: just cargo-test-cov
       - name: Upload Rust coverage HTML
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rust-coverage-report
           path: rust-coverage-html/
       - name: Compile-check benchmarks
         run: just bench-check
+
+  macos:
+    name: macOS Clippy + Tests
+    needs: [biome, cargo-fmt, svelte-check]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - run: rustup component add clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The Linux jobs cfg out macos_traffic_lights and the macOS shell_env
+      # branches entirely; this is the only job that compiles them.
+      - run: just clippy
+      - run: just cargo-test
 
   vitest:
     name: Vitest
@@ -120,6 +152,7 @@ jobs:
       - name: Run tests with coverage
         run: just vitest-cov
       - name: Upload TypeScript coverage HTML
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: typescript-coverage-report
