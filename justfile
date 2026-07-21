@@ -22,6 +22,15 @@ e2e-build:
 
 # ── Checks ───────────────────────────────────────────
 
+# Static checks only — no compile, no tests (~7s)
+quick: fmt biome svelte-check
+
+# Everything that touches the frontend (~16s)
+front: biome svelte-check vitest
+
+# Everything that touches Rust (~26s, more after an edit)
+rust: fmt clippy cargo-test
+
 # Run all checks (run before committing)
 check: fmt biome svelte-check clippy cargo-test vitest
 
@@ -49,6 +58,7 @@ cargo-test:
 cargo-test-cov:
     cargo llvm-cov --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
     cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
+    cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
 
 # Run frontend tests
 vitest:
@@ -57,6 +67,18 @@ vitest:
 # Run frontend tests with coverage
 vitest-cov:
     bun run test -- --coverage.enabled
+
+# ── Audits (not part of `check`) ─────────────────────
+
+# Scan dependencies for known advisories (needs: cargo install cargo-audit)
+audit:
+    cargo audit --file src-tauri/Cargo.lock
+    bun audit
+    bun --cwd e2e audit
+
+# Report which mutations the Rust tests miss (slow; needs: cargo install cargo-mutants)
+mutants *args:
+    cargo mutants --manifest-path {{manifest}} {{args}}
 
 # ── Benchmarks ───────────────────────────────────────
 

@@ -10,5 +10,10 @@ node_modules
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 /coverage
+/rust-coverage-html
+/rust-lcov.info
+mutants.out
+mutants.out.old
+/e2e/logs
 .claude/settings.local.json
 .vscode

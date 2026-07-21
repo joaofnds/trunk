@@ -30,6 +30,14 @@ export default defineConfig({
 			reportsDirectory: "./coverage",
 			include: ["src/**/*.ts", "src/**/*.svelte"],
 			exclude: ["src/**/*.test.ts"],
+			// Floors sit just under the measured numbers so they catch a
+			// regression, not ordinary churn. Raise them when they get slack.
+			thresholds: {
+				statements: 57,
+				branches: 45,
+				functions: 55,
+				lines: 55,
+			},
 		},
 	},
 });

@@ -8,10 +8,21 @@ Desktop Git GUI — Tauri 2 + Svelte 5 + Rust.
 just              # List all recipes
 just dev          # Vite dev + Tauri watch
 just build        # Production build
+just quick        # Static only: fmt, biome, svelte-check (~7s)
+just front        # biome, svelte-check, vitest (~17s)
+just rust         # fmt, clippy, cargo-test (~26s; longer after an edit)
 just check        # Run ALL checks (fmt, biome, svelte-check, clippy, cargo-test, vitest)
+just audit        # Dependency advisories (cargo-audit + bun audit)
+just mutants      # Which mutations the Rust tests miss (slow, opt-in)
 ```
 
-Run `just check` before every commit and push.
+While working, run the narrowest tier that covers what you touched — `quick` for
+a static sweep, `front` or `rust` for one side of the app. Run the full `just
+check` before every commit and push.
+
+`audit` and `mutants` are not part of `check`: advisories need the network and
+mutation runs take minutes. CI mirrors each `check` recipe as its own job, and
+the `check-parity` job fails if that list and the workflow drift apart.
 
 ## Stack
 
