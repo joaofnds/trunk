@@ -326,22 +326,16 @@ function forceCloseTab(tabId: string) {
 	persistTabs();
 }
 
-// Tab persistence (debounced 500ms)
-let persistTimer: ReturnType<typeof setTimeout> | undefined;
-
+// Tab persistence — both saves fire immediately so they survive Cmd+Q
 function persistTabs() {
-	// Active tab ID saved immediately (no debounce) so it survives Cmd+Q
 	setActiveTabId(activeTabId);
-	if (persistTimer) clearTimeout(persistTimer);
-	persistTimer = setTimeout(async () => {
-		await setOpenTabs(
-			tabs.map((t) => ({
-				id: t.id,
-				repoPath: t.repoPath,
-				repoName: t.repoName,
-			})),
-		);
-	}, 500);
+	setOpenTabs(
+		tabs.map((t) => ({
+			id: t.id,
+			repoPath: t.repoPath,
+			repoName: t.repoName,
+		})),
+	);
 }
 
 // Restore on mount
