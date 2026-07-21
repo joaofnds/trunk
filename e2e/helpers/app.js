@@ -4,9 +4,9 @@
  * @param {string} repoPath - Absolute path to the git repository
  */
 export async function openRepo(repoPath) {
-  await browser.execute(async (path) => {
-    await window.__TAURI_INTERNALS__.invoke('open_repo', { path });
-  }, repoPath);
+	await browser.execute(async (path) => {
+		await window.__TAURI_INTERNALS__.invoke("open_repo", { path });
+	}, repoPath);
 }
 
 /**
@@ -14,8 +14,8 @@ export async function openRepo(repoPath) {
  * @param {number} timeout - Maximum time to wait in milliseconds (default: 10000)
  */
 export async function waitForCommitGraph(timeout = 10000) {
-  const row = await $('[data-testid="commit-row"]');
-  await row.waitForExist({ timeout });
+	const row = await $('[data-testid="commit-row"]');
+	await row.waitForExist({ timeout });
 }
 
 /**
@@ -23,6 +23,6 @@ export async function waitForCommitGraph(timeout = 10000) {
  * @param {number} timeout - Maximum time to wait in milliseconds (default: 10000)
  */
 export async function waitForBranchSidebar(timeout = 10000) {
-  const sidebar = await $('[data-testid="branch-sidebar"]');
-  await sidebar.waitForExist({ timeout });
+	const sidebar = await $('[data-testid="branch-sidebar"]');
+	await sidebar.waitForExist({ timeout });
 }
