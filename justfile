@@ -8,9 +8,9 @@ default:
 
 # ── Dev ──────────────────────────────────────────────
 
-# Start development server
+# Start development server (own identifier so dev state never clobbers the installed app's)
 dev:
-    bun run tauri dev
+    bun run tauri dev -c tauri.dev.conf.json
 
 # Production build
 build:
