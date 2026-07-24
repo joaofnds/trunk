@@ -144,17 +144,6 @@ async function handleRedo() {
 	}
 }
 
-function errorMessage(error: TrunkError): string {
-	switch (error.code) {
-		case "auth_failure":
-			return "Authentication failed \u2014 check your SSH key or credential helper";
-		case "non_fast_forward":
-			return "Push rejected (non-fast-forward)";
-		default:
-			return error.message;
-	}
-}
-
 async function runRemote(
 	cmd: string,
 	successMsg: string,
@@ -169,10 +158,10 @@ async function runRemote(
 		remoteState.progressLine = "";
 		showToast(successMsg, "success");
 	} catch (e: unknown) {
+		// Remote failures persist on remoteState.error and render in the push-recovery
+		// surface; no auto-dismissing error toast (spec C1/C4). Success keeps its toast.
 		remoteState.isRunning = false;
-		const err = e as TrunkError;
-		remoteState.error = err;
-		showToast(errorMessage(err), "error");
+		remoteState.error = e as TrunkError;
 	}
 }
 

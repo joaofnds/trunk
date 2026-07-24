@@ -279,6 +279,42 @@ pub async fn git_push(
     refresh_graph(&path, &state_map, &cache, &app).await
 }
 
+/// Argument vector for the recovery force push. Both lease flags are mandatory:
+/// `--force-with-lease` alone is unsafe in Trunk because the background fetch can
+/// refresh the lease, so `--force-if-includes` requires the remote tip to be in the
+/// local reflog. Never a bare `--force`. Extracted so the flag pairing is unit-tested.
+pub fn force_push_args() -> [&'static str; 4] {
+    [
+        "push",
+        "--force-with-lease",
+        "--force-if-includes",
+        "--progress",
+    ]
+}
+
+#[tauri::command]
+pub async fn git_push_force(
+    path: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    running: State<'_, RunningOp>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let path_buf = state_map
+        .get(&path)
+        .ok_or_else(|| {
+            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
+        })?
+        .clone();
+
+    run_git_remote(&force_push_args(), &path_buf, &app, &path, &running.0)
+        .await
+        .map_err(|e| e.to_json())?;
+
+    refresh_graph(&path, &state_map, &cache, &app).await
+}
+
 #[tauri::command]
 pub async fn delete_remote_branch(
     path: String,

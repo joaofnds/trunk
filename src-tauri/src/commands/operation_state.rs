@@ -224,10 +224,16 @@ pub fn rebase_continue_inner(
         }
     }
 
+    // Pin GIT_EDITOR to a no-op: `git rebase --continue` opens the commit-message
+    // editor for the re-applied commit, and this subprocess has no TTY, so an ambient
+    // interactive editor (vi/nvim/etc. inherited from the environment) blocks forever
+    // and the command never returns. `true` accepts the message already staged in
+    // `.git/rebase-merge/message` (written above) or git's pre-filled original.
     let output = std::process::Command::new("git")
         .args(["rebase", "--continue"])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
+        .env("GIT_EDITOR", "true")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {

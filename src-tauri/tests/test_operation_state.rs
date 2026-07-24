@@ -211,3 +211,54 @@ fn rebase_abort_clears_rebase_state() {
     let info = ctx.get_operation_state().unwrap();
     assert!(matches!(info.op_type, OperationType::None));
 }
+
+#[test]
+fn rebase_continue_after_resolving_conflict_completes() {
+    // Regression: `git rebase --continue` opens the commit-message editor for the
+    // re-applied commit. Without GIT_EDITOR pinned, the subprocess inherits an ambient
+    // interactive editor (e.g. nvim) with no TTY and blocks forever, so the command
+    // never returns and the UI freezes. This asserts the resolve-then-continue path
+    // actually completes.
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .checkout("feature")
+        .build();
+
+    // Conflicting rebase leaves the repo mid-rebase on the conflicted commit.
+    let _ = ctx.rebase_branch("main");
+    let info = ctx.get_operation_state().unwrap();
+    assert!(
+        matches!(info.op_type, OperationType::Rebase),
+        "expected a paused rebase, got {:?}",
+        info.op_type
+    );
+
+    // Resolve the conflict and stage it, as the merge editor's "Mark Resolved" does.
+    std::fs::write(ctx.repo_path().join("file.txt"), "resolved content\n").unwrap();
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("file.txt")).unwrap();
+    index.write().unwrap();
+
+    // Must complete, not hang or error, and leave the repo out of the rebase.
+    let result = ctx.rebase_continue(None);
+    assert!(
+        result.is_ok(),
+        "rebase_continue should complete after resolution: {:?}",
+        result
+    );
+    let info = ctx.get_operation_state().unwrap();
+    assert!(
+        matches!(info.op_type, OperationType::None),
+        "rebase should be finished, got {:?}",
+        info.op_type
+    );
+}

@@ -1,5 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
+import { safeInvoke } from "../lib/invoke.js";
+import { showToast } from "../lib/toast.svelte.js";
 import Toolbar from "./Toolbar.svelte";
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
@@ -352,5 +354,59 @@ describe("Toolbar", () => {
 		});
 		expect(btn).not.toHaveClass("toolbar-btn-toggle-on");
 		expect(btn).toHaveAttribute("aria-pressed", "false");
+	});
+});
+
+describe("Toolbar remote failure feedback", () => {
+	const mockInvoke = vi.mocked(safeInvoke);
+	const mockToast = vi.mocked(showToast);
+
+	it("records a failed push on remoteState.error without an auto-dismissing toast", async () => {
+		mockToast.mockClear();
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "git_push"
+				? Promise.reject({ code: "non_fast_forward", message: "rejected" })
+				: Promise.resolve(false),
+		);
+		const remoteState = makeRemoteState();
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState,
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Push" }));
+
+		await waitFor(() =>
+			expect(remoteState.error).toEqual({
+				code: "non_fast_forward",
+				message: "rejected",
+			}),
+		);
+		expect(mockToast).not.toHaveBeenCalled();
+	});
+
+	it("still shows a success toast on a successful push", async () => {
+		mockToast.mockClear();
+		mockInvoke.mockResolvedValue(false);
+		const remoteState = makeRemoteState();
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState,
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Push" }));
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith("Pushed successfully", "success"),
+		);
+		expect(remoteState.error).toBeNull();
 	});
 });

@@ -252,6 +252,56 @@ describe("RepoView", () => {
 	// nothing until open() is called ({#if isOpen}), so the host is exercised
 	// end-to-end in CommitGraph/BranchSidebar suites where the callback is injected.
 	// Here we guard that adding the host does not break the mount.
+	function baseProps(remoteState: RemoteState, windowVisible = true) {
+		return {
+			repoPath: "/test/repo",
+			repoName: "test-repo",
+			remoteState,
+			undoRedo: createMockUndoRedo(),
+			leftPaneWidth: 200,
+			leftPaneCollapsed: false,
+			rightPaneWidth: 300,
+			rightPaneCollapsed: false,
+			windowVisible,
+			reviewActive: false,
+			onreviewpanelshowingchange: vi.fn(),
+			onleftpanecollapsedchange: vi.fn(),
+			onrightpanecollapsedchange: vi.fn(),
+			onleftpanewidthchange: vi.fn(),
+			onrightpanewidthchange: vi.fn(),
+		};
+	}
+
+	it("suppresses the background fetch while a remote operation is running", async () => {
+		vi.useFakeTimers();
+		try {
+			const remoteState = createMockRemoteState();
+			remoteState.isRunning = true;
+			render(RepoView, { props: baseProps(remoteState) });
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(mockInvoke).not.toHaveBeenCalledWith(
+				"git_fetch_background",
+				expect.anything(),
+			);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("runs the background fetch when idle and the window is visible", async () => {
+		vi.useFakeTimers();
+		try {
+			const remoteState = createMockRemoteState();
+			render(RepoView, { props: baseProps(remoteState) });
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(mockInvoke).toHaveBeenCalledWith("git_fetch_background", {
+				path: "/test/repo",
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("mounts with the MessageEditor host without crashing", () => {
 		const { container } = render(RepoView, {
 			props: {

@@ -46,6 +46,7 @@ import CommitGraph from "./CommitGraph.svelte";
 import DiffPanel from "./DiffPanel.svelte";
 import MergeEditor from "./MergeEditor.svelte";
 import MessageEditor from "./MessageEditor.svelte";
+import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
 import RebaseEditor from "./RebaseEditor.svelte";
 import ReviewPanel from "./ReviewPanel.svelte";
 import StagingPanel from "./StagingPanel.svelte";
@@ -219,6 +220,9 @@ let dirtyCounts = $state<DirtyCounts>({
 	typechange: 0,
 });
 let headBranch = $state<string | undefined>(undefined);
+// Upstream of the head branch (e.g. "origin/main"), retained so the push-recovery
+// surface can name the remote a diverged push targeted.
+let headUpstream = $state<string | null>(null);
 let wipSubject = $state("");
 let wipBody = $state("");
 let draftLoaded = $state(false);
@@ -376,7 +380,9 @@ async function loadHeadBranch() {
 		const refs = await safeInvoke<RefsResponse>("list_refs", {
 			path: repoPath,
 		});
-		headBranch = refs.local.find((b) => b.is_head)?.name;
+		const head = refs.local.find((b) => b.is_head);
+		headBranch = head?.name;
+		headUpstream = head?.upstream ?? null;
 	} catch {
 		// non-fatal -- keep previous value
 	}
@@ -722,7 +728,10 @@ $effect(() => {
 		const intervalMs = await getFetchIntervalMs();
 		if (cancelled || intervalMs <= 0) return;
 		timer = setInterval(() => {
-			if (!windowVisible) return;
+			// Suppress while a remote op (e.g. a recovery chain) holds the per-repo lock:
+			// the lock is released before refresh_graph runs, so an autonomous fetch
+			// could otherwise race into that gap (grilled D4/R1).
+			if (!windowVisible || remoteState.isRunning) return;
 			safeInvoke("git_fetch_background", { path }).catch(() => {});
 		}, intervalMs);
 	})();
@@ -973,6 +982,14 @@ function startRightResize(e: MouseEvent) {
   }
 </style>
 
+<div class="flex-1 overflow-hidden flex flex-col">
+  <PushRecoveryPrompt
+    {repoPath}
+    {remoteState}
+    branch={headBranch ?? ""}
+    remote={headUpstream?.split("/")[0] ?? "origin"}
+    onclear={() => { remoteState.error = null; }}
+  />
 <main class="flex-1 overflow-hidden flex">
   {#if showRebaseEditor}
     <!-- Full-window takeover for interactive rebase -->
@@ -1161,6 +1178,7 @@ function startRightResize(e: MouseEvent) {
   </div>
   {/if}
 </main>
+</div>
 
 <!-- Single MessageEditor host (D-04). Renders nothing until open() is called;
      the threaded onopenmessageeditor callback drives merge/revert message edits. -->

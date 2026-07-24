@@ -2,7 +2,7 @@ mod common;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
-use trunk_lib::commands::remote::classify_git_error;
+use trunk_lib::commands::remote::{classify_git_error, force_push_args};
 
 // --- classify_git_error tests ---
 // classify_git_error is a pure function (string -> TrunkError). No TestContext needed.
@@ -56,6 +56,35 @@ fn classify_non_fast_forward_fetch_first() {
 fn classify_non_fast_forward_failed_push() {
     let err = classify_git_error("error: failed to push some refs to 'origin'");
     assert_eq!(err.code, "non_fast_forward");
+}
+
+#[test]
+fn classify_if_includes_refusal_is_non_fast_forward() {
+    // A `--force-if-includes` / stale-info refusal carries "failed to push some refs",
+    // so it classifies as non_fast_forward and routes back to the diverged prompt
+    // (criterion 12) with no classifier change.
+    let err = classify_git_error(
+        "! [rejected] main -> main (remote ref updated since checkout)\nerror: failed to push some refs",
+    );
+    assert_eq!(err.code, "non_fast_forward");
+}
+
+// --- force_push_args tests ---
+
+#[test]
+fn force_push_uses_both_lease_flags() {
+    // Criterion 11: the recovery force push always pairs --force-with-lease with
+    // --force-if-includes; --force-with-lease alone is unsafe in Trunk (V1).
+    let args = force_push_args();
+    assert!(args.contains(&"--force-with-lease"));
+    assert!(args.contains(&"--force-if-includes"));
+}
+
+#[test]
+fn force_push_never_issues_bare_force() {
+    // Criterion 11: Trunk never issues a bare `--force`.
+    let args = force_push_args();
+    assert!(!args.contains(&"--force"));
 }
 
 #[test]
