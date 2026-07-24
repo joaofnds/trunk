@@ -213,7 +213,7 @@ async function handleForcePush() {
         </div>
       {:else if display.kind === "force_refused"}
         <span class="recovery-text">
-          Force push to <strong>{remote}</strong> refused &mdash; there are commits on <strong>{branch}</strong> you fetched but haven&rsquo;t integrated. Pull &amp; Rebase to include them, then push.
+          Force push to <strong>{remote}</strong> refused &mdash; <strong>{branch}</strong> has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to include them, then push.
         </span>
         <div class="recovery-actions">
           <button class="btn btn-primary" onclick={handlePullRebasePush} disabled={remoteState.isRunning}>Pull &amp; Rebase, then Push</button>
