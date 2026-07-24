@@ -256,10 +256,14 @@ pub fn rebase_skip_inner(
     let path_buf = state_map
         .get(path)
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    // Pinned for the same reason as `--continue` above: `--skip` resumes the todo list,
+    // so a reword/squash step after the skipped commit opens the editor. Unpinned, git
+    // falls through to the repository's own `core.editor` and then to `vi` with no TTY.
     let output = std::process::Command::new("git")
         .args(["rebase", "--skip"])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
+        .env("GIT_EDITOR", "true")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {

@@ -262,3 +262,73 @@ fn rebase_continue_after_resolving_conflict_completes() {
         info.op_type
     );
 }
+
+#[test]
+fn rebase_skip_with_a_later_reword_completes() {
+    // `git rebase --skip` resumes the todo list, so a reword/squash step after the
+    // skipped commit opens the commit-message editor exactly as --continue does.
+    // core.editor is pinned to a failing command so the skip fails unless the command
+    // sets GIT_EDITOR itself. Note this only discriminates where GIT_EDITOR is absent
+    // from the environment: an exported GIT_EDITOR is inherited by the child and
+    // outranks core.editor, which makes the assertion vacuous on such a machine.
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Conflicting commit")
+        .with_file("other.txt", "other")
+        .with_commit("Commit to reword")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .checkout("feature")
+        .build();
+
+    let repo = ctx.repo();
+    repo.config()
+        .unwrap()
+        .set_str("core.editor", "false")
+        .unwrap();
+
+    // Turn the second todo line into a reword, so the rebase has an editor step waiting
+    // beyond the commit that conflicts.
+    let seq_editor = ctx.data_dir().join("seq-editor.sh");
+    std::fs::write(
+        &seq_editor,
+        "#!/bin/sh\nawk 'NR==2 && /^pick/ { sub(/^pick/, \"reword\") } { print }' \"$1\" > \"$1.new\" && mv \"$1.new\" \"$1\"\n",
+    )
+    .unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["rebase", "-i", "main"])
+        .current_dir(ctx.repo_path())
+        .env(
+            "GIT_SEQUENCE_EDITOR",
+            format!("sh {}", seq_editor.display()),
+        )
+        .env("GIT_EDITOR", "true")
+        .output()
+        .unwrap();
+
+    let info = ctx.get_operation_state().unwrap();
+    assert!(
+        matches!(info.op_type, OperationType::Rebase),
+        "expected a paused rebase, got {:?}",
+        info.op_type
+    );
+
+    let result = ctx.rebase_skip();
+
+    assert!(
+        result.is_ok(),
+        "rebase_skip should complete through the reword step: {:?}",
+        result
+    );
+    let info = ctx.get_operation_state().unwrap();
+    assert!(
+        matches!(info.op_type, OperationType::None),
+        "rebase should be finished, got {:?}",
+        info.op_type
+    );
+}
