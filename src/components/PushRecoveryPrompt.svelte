@@ -1,6 +1,10 @@
 <script lang="ts">
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
-import { isForcePushRefusal, remoteErrorMessage } from "../lib/remote-error.js";
+import {
+	autostashConflictError,
+	isForcePushRefusal,
+	remoteErrorMessage,
+} from "../lib/remote-error.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { OperationInfo } from "../lib/types.js";
@@ -91,6 +95,16 @@ async function handlePullRebasePush() {
 			return;
 		}
 		remoteState.error = e as TrunkError;
+		return;
+	}
+	// Without this probe a conflicted autostash restore is invisible — the pull exited 0,
+	// no rebase remains, and the push would publish conflict markers as a success.
+	const counts = await safeInvoke<{ conflicted: number }>("get_dirty_counts", {
+		path: repoPath,
+	}).catch(() => null);
+	if (counts && counts.conflicted > 0) {
+		remoteState.isRunning = false;
+		remoteState.error = autostashConflictError();
 		return;
 	}
 	try {
