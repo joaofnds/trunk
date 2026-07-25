@@ -225,6 +225,16 @@ pub async fn git_fetch_background(
     Ok(())
 }
 
+/// Whether the worktree holds conflicted paths. A pull whose autostash restore
+/// conflicts exits 0, leaves no rebase directory, and reads `repo.state() == Clean`,
+/// so the unmerged paths are the only evidence the pull did not finish the job.
+pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
+    let statuses = repo.statuses(None).map_err(TrunkError::from)?;
+    Ok(statuses
+        .iter()
+        .any(|s| s.status().contains(git2::Status::CONFLICTED)))
+}
+
 #[tauri::command]
 pub async fn git_pull(
     path: String,
@@ -253,7 +263,27 @@ pub async fn git_pull(
         .await
         .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app).await
+    let probe_path = path_buf.clone();
+    let conflicted = tauri::async_runtime::spawn_blocking(move || {
+        let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
+        has_unmerged_paths(&repo)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    // Refresh before reporting the conflict, or the UI never repaints and the files the
+    // message points at stay invisible.
+    refresh_graph(&path, &state_map, &cache, &app).await?;
+
+    if conflicted {
+        return Err(TrunkError::new(
+            "autostash_conflict",
+            "Pull finished, but restoring your local changes conflicted — resolve the conflicts before continuing. Your changes are also saved in the stash.",
+        )
+        .to_json());
+    }
+    Ok(())
 }
 
 #[tauri::command]

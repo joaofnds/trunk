@@ -1,8 +1,9 @@
 mod common;
 
+use common::context::TestContext;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use trunk_lib::commands::remote::{classify_git_error, force_push_args};
+use trunk_lib::commands::remote::{classify_git_error, force_push_args, has_unmerged_paths};
 
 // --- classify_git_error tests ---
 // classify_git_error is a pure function (string -> TrunkError). No TestContext needed.
@@ -110,6 +111,38 @@ fn classify_combined_stderr_with_progress_and_error() {
     let stderr = "Counting objects: 100% (3/3), done.\nfatal: Authentication failed for 'https://github.com/user/repo.git'";
     let err = classify_git_error(stderr);
     assert_eq!(err.code, "auth_failure");
+}
+
+// --- has_unmerged_paths tests ---
+// A pull whose autostash restore conflicts exits 0 and leaves repo.state() Clean, so
+// the unmerged paths are the only evidence the pull did not finish the job.
+
+#[test]
+fn detects_unmerged_paths_in_a_conflicted_worktree() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    assert!(has_unmerged_paths(&ctx.repo()).unwrap());
+}
+
+#[test]
+fn reports_no_unmerged_paths_in_a_clean_worktree() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    assert!(!has_unmerged_paths(&ctx.repo()).unwrap());
 }
 
 // --- per-repo RunningOp tests ---
