@@ -15,17 +15,6 @@ export function remoteErrorMessage(error: TrunkError): string {
 	}
 }
 
-// `git pull --rebase` exits 0 when the rebase succeeds but restoring the autostash
-// conflicts, so only the unmerged paths distinguish it from a clean pull. Not a git
-// error code — the chain mints this to report the outcome on the same surface.
-export function autostashConflictError(): TrunkError {
-	return {
-		code: "autostash_conflict",
-		message:
-			"Rebase finished, but restoring your local changes conflicted — the push did not happen. Resolve the conflicts, then push. Your changes are also saved in the stash.",
-	};
-}
-
 // A lease-protected force push (`--force-with-lease --force-if-includes`) that git
 // refuses because the local reflog does not contain the current remote tip. Both
 // markers are unique to a force push — a plain push rejection says "fetch first" —

@@ -26,19 +26,6 @@ const NONE_OP = {
 
 const REBASE_OP = { ...NONE_OP, op_type: "Rebase" };
 
-const CLEAN_COUNTS = {
-	staged: 0,
-	unstaged: 0,
-	conflicted: 0,
-	modified: 0,
-	new: 0,
-	deleted: 0,
-	renamed: 0,
-	typechange: 0,
-};
-
-const CONFLICTED_COUNTS = { ...CLEAN_COUNTS, conflicted: 1 };
-
 function err(code: string, message = "boom"): TrunkError {
 	return { code, message };
 }
@@ -75,7 +62,6 @@ beforeEach(() => {
 	mockInvoke.mockReset();
 	mockInvoke.mockImplementation((cmd: string) => {
 		if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-		if (cmd === "get_dirty_counts") return Promise.resolve(CLEAN_COUNTS);
 		return Promise.resolve(undefined);
 	});
 	mockToast.mockReset();
@@ -91,24 +77,24 @@ describe("PushRecoveryPrompt", () => {
 		expect(container.textContent?.trim()).toBe("");
 	});
 
-	it("offers the three recovery choices for a diverged push, naming branch and remote", async () => {
+	it("offers Force Push and Cancel for a diverged push, naming branch and remote", async () => {
 		render(PushRecoveryPrompt, { props: baseProps(err("non_fast_forward")) });
 
 		await waitFor(() => {
-			expect(screen.getByText("Pull & Rebase, then Push")).toBeInTheDocument();
+			expect(screen.getByText("Force Push")).toBeInTheDocument();
 		});
-		expect(screen.getByText("Force Push")).toBeInTheDocument();
 		expect(screen.getByText("Cancel")).toBeInTheDocument();
+		expect(screen.queryByText("Pull & Rebase, then Push")).toBeNull();
 
 		const buttons = screen.getAllByRole("button");
-		expect(buttons).toHaveLength(3);
+		expect(buttons).toHaveLength(2);
 
 		const surface = screen.getByRole("alert");
 		expect(surface.textContent).toContain("feature");
 		expect(surface.textContent).toContain("origin");
 	});
 
-	it("steers to Pull & Rebase and drops Force Push on a lease/if-includes refusal", async () => {
+	it("offers Cancel only on a lease/if-includes refusal", async () => {
 		const refusal = err(
 			"non_fast_forward",
 			"! [rejected] main -> main (remote ref updated since checkout)\nerror: failed to push some refs",
@@ -116,116 +102,13 @@ describe("PushRecoveryPrompt", () => {
 		render(PushRecoveryPrompt, { props: baseProps(refusal) });
 
 		await waitFor(() => {
-			expect(screen.getByText("Pull & Rebase, then Push")).toBeInTheDocument();
+			expect(screen.getByText("Cancel")).toBeInTheDocument();
 		});
 		// Force Push would be a guaranteed no-op here, so it must not be offered (D7).
-		expect(screen.queryByText("Force Push")).not.toBeInTheDocument();
-		expect(screen.getByText("Cancel")).toBeInTheDocument();
+		expect(screen.queryByText("Force Push")).toBeNull();
+		expect(screen.queryByText("Pull & Rebase, then Push")).toBeNull();
+		expect(screen.getAllByRole("button")).toHaveLength(1);
 		expect(screen.getByRole("alert").textContent).toContain("refused");
-	});
-});
-
-describe("PushRecoveryPrompt pull-rebase then push", () => {
-	it("rebases then pushes, holding isRunning across both legs", async () => {
-		const rs = createRemoteState();
-		rs.error = err("non_fast_forward");
-		const calls: string[] = [];
-		const runningAt: Record<string, boolean> = {};
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_dirty_counts") return Promise.resolve(CLEAN_COUNTS);
-			calls.push(cmd);
-			runningAt[cmd] = rs.isRunning;
-			return Promise.resolve(undefined);
-		});
-
-		render(PushRecoveryPrompt, { props: propsFor(rs) });
-		await fireEvent.click(await screen.findByText("Pull & Rebase, then Push"));
-
-		await waitFor(() => expect(calls).toEqual(["git_pull", "git_push"]));
-		expect(mockInvoke).toHaveBeenCalledWith("git_pull", {
-			path: "/repo",
-			strategy: "rebase",
-		});
-		expect(mockInvoke).toHaveBeenCalledWith("git_push", { path: "/repo" });
-		expect(runningAt.git_pull).toBe(true);
-		expect(runningAt.git_push).toBe(true);
-		await waitFor(() => expect(rs.isRunning).toBe(false));
-	});
-
-	it("re-opens the three choices when the retried push is itself rejected", async () => {
-		const rs = createRemoteState();
-		rs.error = err("non_fast_forward");
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "git_push") return Promise.reject(err("non_fast_forward"));
-			return Promise.resolve(undefined);
-		});
-
-		render(PushRecoveryPrompt, { props: propsFor(rs) });
-		await fireEvent.click(await screen.findByText("Pull & Rebase, then Push"));
-
-		expect(
-			await screen.findByText("Pull & Rebase, then Push"),
-		).toBeInTheDocument();
-		expect(screen.getByText("Force Push")).toBeInTheDocument();
-		expect(screen.getByText("Cancel")).toBeInTheDocument();
-		await waitFor(() => expect(rs.isRunning).toBe(false));
-	});
-
-	it("does not push, clears the surface, and explains when the rebase conflicts", async () => {
-		const rs = createRemoteState();
-		rs.error = err("non_fast_forward");
-		let midRebase = false;
-		const calls: string[] = [];
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state")
-				return Promise.resolve(midRebase ? REBASE_OP : NONE_OP);
-			calls.push(cmd);
-			if (cmd === "git_pull") {
-				midRebase = true;
-				return Promise.reject(err("remote_error"));
-			}
-			return Promise.resolve(undefined);
-		});
-
-		render(PushRecoveryPrompt, { props: propsFor(rs) });
-		await fireEvent.click(await screen.findByText("Pull & Rebase, then Push"));
-
-		await waitFor(() => expect(rs.error).toBeNull());
-		expect(calls).not.toContain("git_push");
-		expect(mockToast).toHaveBeenCalledTimes(1);
-		expect(mockToast).toHaveBeenCalledWith(
-			expect.stringContaining("Rebase stopped"),
-			"error",
-		);
-		expect(rs.isRunning).toBe(false);
-	});
-
-	it("does not push, and says the push did not happen, when restoring the autostash conflicts", async () => {
-		// `git pull --rebase` exits 0 when the autostash restore conflicts: the rebase
-		// succeeded, no rebase directory remains, and repo state reads Clean — only the
-		// unmerged paths reveal it. Pushing here publishes over conflict markers.
-		const rs = createRemoteState();
-		rs.error = err("non_fast_forward");
-		const calls: string[] = [];
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_dirty_counts") return Promise.resolve(CONFLICTED_COUNTS);
-			calls.push(cmd);
-			return Promise.resolve(undefined);
-		});
-
-		render(PushRecoveryPrompt, { props: propsFor(rs) });
-		await fireEvent.click(await screen.findByText("Pull & Rebase, then Push"));
-
-		await waitFor(() =>
-			expect(screen.getByRole("alert").textContent).toContain(
-				"push did not happen",
-			),
-		);
-		expect(calls).toEqual(["git_pull"]);
-		expect(rs.isRunning).toBe(false);
 	});
 });
 
@@ -264,7 +147,7 @@ describe("PushRecoveryPrompt force push", () => {
 		);
 	});
 
-	it("re-opens the three choices when the force push is refused by if-includes (C12)", async () => {
+	it("re-opens the two recovery choices when the force push is refused by if-includes (C12)", async () => {
 		mockAsk.mockResolvedValue(true);
 		const rs = createRemoteState();
 		rs.error = err("non_fast_forward");
@@ -278,11 +161,9 @@ describe("PushRecoveryPrompt force push", () => {
 		render(PushRecoveryPrompt, { props: propsFor(rs) });
 		await fireEvent.click(await screen.findByText("Force Push"));
 
-		expect(
-			await screen.findByText("Pull & Rebase, then Push"),
-		).toBeInTheDocument();
-		expect(screen.getByText("Force Push")).toBeInTheDocument();
+		expect(await screen.findByText("Force Push")).toBeInTheDocument();
 		expect(screen.getByText("Cancel")).toBeInTheDocument();
+		expect(screen.getAllByRole("button")).toHaveLength(2);
 	});
 });
 
@@ -298,7 +179,6 @@ describe("PushRecoveryPrompt actionless failures", () => {
 			const surface = await screen.findByRole("alert");
 			expect(surface.textContent?.trim().length ?? 0).toBeGreaterThan(0);
 			expect(screen.getByText("Dismiss")).toBeInTheDocument();
-			expect(screen.queryByText("Pull & Rebase, then Push")).toBeNull();
 			expect(screen.queryByText("Force Push")).toBeNull();
 			expect(screen.getAllByRole("button")).toHaveLength(1);
 		},
@@ -361,7 +241,6 @@ describe("PushRecoveryPrompt defensive gate (D6)", () => {
 
 		await screen.findByRole("alert");
 		expect(screen.getByText("Dismiss")).toBeInTheDocument();
-		expect(screen.queryByText("Pull & Rebase, then Push")).toBeNull();
 		expect(screen.queryByText("Force Push")).toBeNull();
 		expect(screen.getAllByRole("button")).toHaveLength(1);
 	});

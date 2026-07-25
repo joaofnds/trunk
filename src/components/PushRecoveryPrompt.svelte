@@ -1,10 +1,6 @@
 <script lang="ts">
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
-import {
-	autostashConflictError,
-	isForcePushRefusal,
-	remoteErrorMessage,
-} from "../lib/remote-error.js";
+import { isForcePushRefusal, remoteErrorMessage } from "../lib/remote-error.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { OperationInfo } from "../lib/types.js";
@@ -28,11 +24,11 @@ type Display =
 let display = $state<Display>({ kind: "none" });
 
 // Decide what the surface shows from the current error. A non_fast_forward offers the
-// three recovery choices, but only when the repo is Clean: a push that fails while a
-// rebase/merge is already in progress must not offer "Pull & Rebase" (grilled D6), so
-// it falls back to the persistent message. A lease/if-includes refusal also arrives as
-// non_fast_forward, but Force Push would be a guaranteed no-op there, so it gets its own
-// state that steers to Pull & Rebase and drops the Force Push button (grilled D7, reversed).
+// recovery actions, but only when the repo is Clean: a push that fails while a
+// rebase/merge is already in progress falls back to the persistent message instead
+// (grilled D6). A lease/if-includes refusal also arrives as non_fast_forward, but Force
+// Push would be a guaranteed no-op there, so it gets its own state without that button
+// (grilled D7, reversed).
 $effect(() => {
 	const err = remoteState.error;
 	if (!err) {
@@ -66,58 +62,6 @@ $effect(() => {
 function dismiss() {
 	remoteState.error = null;
 	onclear();
-}
-
-// Pull-rebase then push as one chain. isRunning is held across BOTH legs and cleared
-// only at a terminal outcome, so the background-fetch suppression (grilled R1) never
-// reopens mid-chain.
-async function handlePullRebasePush() {
-	remoteState.isRunning = true;
-	remoteState.error = null;
-	remoteState.progressLine = "";
-	try {
-		await safeInvoke("git_pull", { path: repoPath, strategy: "rebase" });
-	} catch (e) {
-		remoteState.isRunning = false;
-		// A rebase that stops on conflicts leaves the repo mid-rebase: OperationBanner
-		// and the merge editor own the screen, so clear our surface and just explain
-		// that the push did not happen (grilled D6, C7). A clean pull failure (repo
-		// still Clean) keeps the persistent error surface instead.
-		const info = await safeInvoke<OperationInfo>("get_operation_state", {
-			path: repoPath,
-		}).catch(() => null);
-		if (info && info.op_type !== "None") {
-			remoteState.error = null;
-			showToast(
-				"Rebase stopped on conflicts — resolve them, then push again",
-				"error",
-			);
-			return;
-		}
-		remoteState.error = e as TrunkError;
-		return;
-	}
-	// Without this probe a conflicted autostash restore is invisible — the pull exited 0,
-	// no rebase remains, and the push would publish conflict markers as a success.
-	const counts = await safeInvoke<{ conflicted: number }>("get_dirty_counts", {
-		path: repoPath,
-	}).catch(() => null);
-	if (counts && counts.conflicted > 0) {
-		remoteState.isRunning = false;
-		remoteState.error = autostashConflictError();
-		return;
-	}
-	try {
-		await safeInvoke("git_push", { path: repoPath });
-		remoteState.isRunning = false;
-		remoteState.error = null;
-		showToast("Pushed successfully", "success");
-	} catch (e) {
-		// A push rejected here (the remote moved again during the rebase) re-opens the
-		// same three choices via the error effect (C9); no second auto-retry.
-		remoteState.isRunning = false;
-		remoteState.error = e as TrunkError;
-	}
 }
 
 // Lease-protected force push behind one confirmation naming branch and remote (C10).
@@ -182,11 +126,6 @@ async function handleForcePush() {
     opacity: 0.5;
     cursor: default;
   }
-  .btn-primary {
-    background: var(--color-success-bg);
-    color: var(--color-success);
-    border-color: var(--color-success-border);
-  }
   .btn-danger {
     background: var(--color-danger-bg);
     color: var(--color-danger);
@@ -207,7 +146,6 @@ async function handleForcePush() {
           Push to <strong>{remote}</strong> rejected &mdash; <strong>{branch}</strong> has diverged from the remote.
         </span>
         <div class="recovery-actions">
-          <button class="btn btn-primary" onclick={handlePullRebasePush} disabled={remoteState.isRunning}>Pull &amp; Rebase, then Push</button>
           <button class="btn btn-danger" onclick={handleForcePush} disabled={remoteState.isRunning}>Force Push</button>
           <button class="btn btn-neutral" onclick={dismiss} disabled={remoteState.isRunning}>Cancel</button>
         </div>
@@ -216,7 +154,6 @@ async function handleForcePush() {
           Force push to <strong>{remote}</strong> refused &mdash; <strong>{branch}</strong> has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to include them, then push.
         </span>
         <div class="recovery-actions">
-          <button class="btn btn-primary" onclick={handlePullRebasePush} disabled={remoteState.isRunning}>Pull &amp; Rebase, then Push</button>
           <button class="btn btn-neutral" onclick={dismiss} disabled={remoteState.isRunning}>Cancel</button>
         </div>
       {:else}
