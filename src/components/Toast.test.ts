@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Toast from "./Toast.svelte";
 import "../__tests__/helpers/tauri-mock";
-import { _resetToasts, showToast } from "../lib/toast.svelte.js";
+import { _resetToasts, showToast, toasts } from "../lib/toast.svelte.js";
 
 describe("Toast", () => {
 	beforeEach(() => {
@@ -32,6 +32,20 @@ describe("Toast", () => {
 		const status = screen.getByRole("status");
 		expect(status).toHaveTextContent("Fail");
 	});
+
+	it.each(["success", "error"] as const)(
+		"dismisses a %s toast when it is clicked",
+		async (kind) => {
+			showToast("Dismiss me", kind);
+			render(Toast);
+
+			await fireEvent.click(screen.getByRole("status"));
+
+			expect(
+				toasts.items.find((t) => t.message === "Dismiss me"),
+			).toBeUndefined();
+		},
+	);
 
 	it("renders multiple toasts", () => {
 		showToast("First", "success");

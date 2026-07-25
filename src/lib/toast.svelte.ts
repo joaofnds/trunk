@@ -28,9 +28,9 @@ export function showToast(
 ): void {
 	const id = _nextId++;
 	_toasts = [..._toasts, { id, message, kind }];
-	setTimeout(() => dismiss(id), ms);
+	setTimeout(() => dismissToast(id), ms);
 }
 
-function dismiss(id: number): void {
+export function dismissToast(id: number): void {
 	_toasts = _toasts.filter((t) => t.id !== id);
 }

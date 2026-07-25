@@ -186,6 +186,13 @@
 	--color-danger-bg-strong: color-mix(in oklch, var(--err) 30%, transparent);
 	--color-danger-border: color-mix(in oklch, var(--err) 30%, transparent);
 	--color-danger-bg-subtle: color-mix(in oklch, var(--err) 8%, transparent);
+	/* Toasts float over arbitrary content, so the danger tint is composited onto the
+	   solid surface here; left translucent it shows the diff through the toast. */
+	--color-toast-error-bg: color-mix(
+		in oklch,
+		var(--err) 9%,
+		var(--color-surface)
+	);
 	--color-error: var(--err);
 	--color-warning: var(--warn);
 	--color-warning-bg: color-mix(in oklch, var(--warn) 15%, transparent);
