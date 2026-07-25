@@ -287,7 +287,6 @@ async function handleSubmit() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
       background: var(--accent);
       color: var(--accent-fg);
       border: 0;
@@ -297,7 +296,7 @@ async function handleSubmit() {
       cursor: pointer;
       opacity: {committing ? 0.6 : 1};
     "
-  >{buttonLabel}{#if !committing}<span style="font-family: var(--font-mono); font-weight: 600; font-size: 11px; opacity: 0.85;">⌘↵</span>{/if}</button>
+  >{buttonLabel}</button>
 </div>
 
 <style>
