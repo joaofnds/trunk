@@ -1,7 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { render } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RemoteState } from "../lib/remote-state.svelte.js";
+import {
+	createRemoteState,
+	type RemoteState,
+} from "../lib/remote-state.svelte.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
 
@@ -85,12 +88,7 @@ vi.mock("sortablejs", () => {
 const mockInvoke = vi.mocked(invoke);
 
 function createMockRemoteState(): RemoteState {
-	return {
-		isRunning: false,
-		progressLine: "",
-		error: null,
-		lastOp: null,
-	};
+	return createRemoteState();
 }
 
 function createMockUndoRedo(): UndoRedoManager {

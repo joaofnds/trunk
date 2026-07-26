@@ -2,7 +2,10 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../lib/invoke.js";
-import type { RemoteState } from "../lib/remote-state.svelte.js";
+import {
+	createRemoteState,
+	type RemoteState,
+} from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import Toolbar from "./Toolbar.svelte";
 
@@ -32,7 +35,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 }));
 
 // Mock invoke module — safeInvoke for check_undo_available etc.
-vi.mock("../lib/invoke.js", () => ({
+vi.mock("../lib/invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("../lib/invoke.js")>()),
 	safeInvoke: vi.fn().mockResolvedValue(false),
 }));
 
@@ -51,12 +55,7 @@ beforeEach(() => {
 });
 
 function makeRemoteState(): RemoteState {
-	return {
-		isRunning: false,
-		progressLine: "",
-		error: null,
-		lastOp: null,
-	};
+	return createRemoteState();
 }
 
 function makeUndoRedo() {

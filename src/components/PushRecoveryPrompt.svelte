@@ -24,7 +24,7 @@ type Display =
 // Snapshotted when the failure arrives, never re-read: the banner describes the push
 // that failed, so a checkout while it is up must not relabel it.
 let pushTarget = $state<PushTarget | null>(null);
-let gate = $state<"unknown" | "clean" | "busy">("unknown");
+let repoOperation = $state<"unknown" | "clean" | "busy">("unknown");
 
 $effect(() => {
 	if (!remoteState.error) {
@@ -45,38 +45,40 @@ $effect(() => {
 });
 
 // Reading refreshSignal is what re-probes on every repo change rather than sampling
-// once: the user can finish or start a merge while the banner is up. A probe that
-// fails leaves the gate closed — mid-operation is then unknown, not answered "no".
+// once: the user can finish or start a merge while the banner is up. Only "clean"
+// opens the destructive path, so a failed probe withholds it rather than assuming.
 $effect(() => {
 	refreshSignal;
 	if (!remoteState.error) {
-		gate = "unknown";
+		repoOperation = "unknown";
 		return;
 	}
 	let cancelled = false;
 	safeInvoke<OperationInfo>("get_operation_state", { path: repoPath })
 		.then((info) => {
-			if (!cancelled) gate = info.op_type === "None" ? "clean" : "busy";
+			if (!cancelled)
+				repoOperation = info.op_type === "None" ? "clean" : "busy";
 		})
 		.catch(() => {
-			if (!cancelled) gate = "busy";
+			if (!cancelled) repoOperation = "unknown";
 		});
 	return () => {
 		cancelled = true;
 	};
 });
 
-// Every fall-through to `message` drops the destructive button, so each one is a
-// claim the banner would otherwise make and cannot support.
 let display = $derived.by((): Display => {
 	const err = remoteState.error;
 	if (!err) return { kind: "none" };
 
-	const message: Display = { kind: "message", text: remoteErrorMessage(err) };
+	const message: Display = {
+		kind: "message",
+		text: remoteErrorMessage(err, remoteState.lastOp),
+	};
 	if (err.code !== "non_fast_forward" || remoteState.lastOp !== "push") {
 		return message;
 	}
-	if (gate !== "clean") return message;
+	if (repoOperation !== "clean") return message;
 
 	const remote = pushTarget?.remote;
 	const branch = pushTarget?.branch;
@@ -91,20 +93,24 @@ function dismiss() {
 	remoteState.error = null;
 }
 
-// Refnames are repository-controlled and may carry Unicode separators, so they go on
-// their own labelled line, capped: inline, a crafted name can rewrite the question.
+// Refnames arrive by clone and git permits what looks unremarkable here: U+2028/U+2029
+// and the bidi overrides, which the native dialog lays out as hard breaks. Left in, a
+// branch name adds its own lines to the question and can answer it.
 const MAX_REFNAME_CHARS = 60;
+const RENDER_UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
 
-function capped(name: string): string {
-	return name.length <= MAX_REFNAME_CHARS
-		? name
-		: `${name.slice(0, MAX_REFNAME_CHARS)}…`;
+function forDisplay(name: string): string {
+	const flattened = name.replace(RENDER_UNSAFE, "�");
+	const points = Array.from(flattened);
+	return points.length <= MAX_REFNAME_CHARS
+		? flattened
+		: `${points.slice(0, MAX_REFNAME_CHARS).join("")}…`;
 }
 
 async function handleForcePush(target: Target) {
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
-		`Force push? This overwrites the remote branch.\n\nBranch: ${capped(target.branch)}\nRemote: ${capped(target.remote)}`,
+		`Force push? This overwrites the remote branch.\n\nBranch: ${forDisplay(target.branch)}\nRemote: ${forDisplay(target.remote)}`,
 		{ title: "Force Push", kind: "warning" },
 	);
 	if (!confirmed) return;

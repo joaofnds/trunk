@@ -377,8 +377,7 @@ async function loadHeadBranch() {
 		const refs = await safeInvoke<RefsResponse>("list_refs", {
 			path: repoPath,
 		});
-		const head = refs.local.find((b) => b.is_head);
-		headBranch = head?.name;
+		headBranch = refs.local.find((b) => b.is_head)?.name;
 	} catch {
 		// non-fatal -- keep previous value
 	}

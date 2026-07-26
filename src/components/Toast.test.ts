@@ -33,13 +33,11 @@ describe("Toast", () => {
 		expect(status).toHaveTextContent("Fail");
 	});
 
-	it("exposes the dismiss action as a focusable control", () => {
+	it("exposes the dismiss action as a focusable control named for the message", () => {
 		showToast("Dismiss me", "success");
 		render(Toast);
 
-		const dismiss = screen.getByRole("button", {
-			name: "Dismiss notification",
-		});
+		const dismiss = screen.getByRole("button", { name: "Dismiss me" });
 		dismiss.focus();
 
 		expect(document.activeElement).toBe(dismiss);
@@ -51,9 +49,7 @@ describe("Toast", () => {
 			showToast("Dismiss me", kind);
 			render(Toast);
 
-			await fireEvent.click(
-				screen.getByRole("button", { name: "Dismiss notification" }),
-			);
+			await fireEvent.click(screen.getByRole("button", { name: "Dismiss me" }));
 
 			expect(
 				toasts.items.find((t) => t.message === "Dismiss me"),

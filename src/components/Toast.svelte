@@ -8,8 +8,7 @@ import { dismissToast, toasts } from "../lib/toast.svelte.js";
     <div role="status" transition:fly={{ y: 8, duration: 150 }}>
       <button
         type="button"
-        aria-label="Dismiss notification"
-        class="toast w-full text-left px-4 py-2 rounded-lg text-sm font-medium shadow-lg pointer-events-auto"
+        class="toast block w-full text-left px-4 py-2 rounded-lg text-sm font-medium shadow-lg pointer-events-auto"
         class:error={toast.kind === 'error'}
         onclick={() => dismissToast(toast.id)}
       >

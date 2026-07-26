@@ -22,7 +22,7 @@ describe("remoteErrorMessage", () => {
 			"The remote refused this push — a branch protection rule or a server-side hook rejected it",
 		],
 	])("describes %s", (code, expected) => {
-		expect(remoteErrorMessage(err(code))).toBe(expected);
+		expect(remoteErrorMessage(err(code), "push")).toBe(expected);
 	});
 
 	it("passes an unrecognised failure through unchanged", () => {
@@ -30,6 +30,15 @@ describe("remoteErrorMessage", () => {
 			"ssh: no route",
 		);
 	});
+
+	it.each(["fetch" as const, "pull" as const, null])(
+		"does not blame a push for a divergence reported by %s",
+		(lastOp) => {
+			expect(remoteErrorMessage(err("non_fast_forward"), lastOp)).not.toContain(
+				"Push",
+			);
+		},
+	);
 });
 
 describe("isForcePushRefusal", () => {

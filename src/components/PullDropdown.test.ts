@@ -6,7 +6,10 @@ import { safeInvoke } from "../lib/invoke.js";
 import { createRemoteState } from "../lib/remote-state.svelte";
 import { showToast } from "../lib/toast.svelte.js";
 
-vi.mock("../lib/invoke.js", () => ({ safeInvoke: vi.fn() }));
+vi.mock("../lib/invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("../lib/invoke.js")>()),
+	safeInvoke: vi.fn(),
+}));
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 
 const mockInvoke = vi.mocked(safeInvoke);

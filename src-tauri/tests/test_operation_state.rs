@@ -241,6 +241,15 @@ fn rebase_continue_after_resolving_conflict_completes() {
         .checkout("feature")
         .build();
 
+    // The discriminator: without it, a reverted pin falls back to the host's editor and
+    // this test's outcome is decided by whether that editor happens to fail on a null
+    // stdin, not by the production code. `false` fails for the pinned reason.
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("core.editor", "false")
+        .unwrap();
+
     // Conflicting rebase leaves the repo mid-rebase on the conflicted commit.
     let _ = ctx.rebase_branch("main");
     let info = ctx.get_operation_state().unwrap();

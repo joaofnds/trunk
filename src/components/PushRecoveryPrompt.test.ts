@@ -11,7 +11,10 @@ import {
 import { showToast } from "../lib/toast.svelte.js";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
 
-vi.mock("../lib/invoke.js", () => ({ safeInvoke: vi.fn() }));
+vi.mock("../lib/invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("../lib/invoke.js")>()),
+	safeInvoke: vi.fn(),
+}));
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ ask: vi.fn() }));
 
@@ -166,22 +169,25 @@ describe("PushRecoveryPrompt force push", () => {
 		expect(rs.isRunning).toBe(false);
 	});
 
-	it("re-opens the two recovery choices when the force push is refused by if-includes (C12)", async () => {
+	// The recovery banner is already on screen before the click, so this needs a barrier
+	// proving the SECOND rejection was recorded. Compare by value, not identity: the
+	// $state proxy means `rs.error` is never reference-equal to what was assigned.
+	it("re-opens the recovery choices when the force push is itself rejected", async () => {
 		mockAsk.mockResolvedValue(true);
-		const rs = stateWith(err("non_fast_forward"));
+		const rs = stateWith(err("non_fast_forward", "the original push"));
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
 			if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
 			if (cmd === "git_push_force")
-				return Promise.reject(err("non_fast_forward"));
+				return Promise.reject(err("non_fast_forward", "the force push"));
 			return Promise.resolve(undefined);
 		});
 
 		render(PushRecoveryPrompt, { props: propsFor(rs) });
 		await fireEvent.click(await screen.findByText("Force Push"));
 
+		await waitFor(() => expect(rs.error?.message).toBe("the force push"));
 		expect(await screen.findByText("Force Push")).toBeInTheDocument();
-		expect(screen.getByText("Cancel")).toBeInTheDocument();
 		expect(screen.getAllByRole("button")).toHaveLength(2);
 	});
 });
@@ -224,12 +230,15 @@ describe("PushRecoveryPrompt push target", () => {
 		expect(message).toContain("main");
 	});
 
-	it("confines a hostile refname to its own line and caps its length", async () => {
-		const hostile = `main Force push? This overwrites nothing.${"x".repeat(200)}`;
+	// Git bans ASCII space in a refname but permits U+2028/U+2029/NBSP and the bidi
+	// overrides, and AppKit lays the separators out as hard breaks — so a cloned branch
+	// name can add its own lines to the dialog. Splitting on "\n" alone cannot see that.
+	const RENDERED_BREAK = /[\n\r\u2028\u2029\u0085]/;
+
+	async function confirmationFor(branch: string, remote = "origin") {
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_push_target")
-				return Promise.resolve({ remote: "origin", branch: hostile });
+			if (cmd === "get_push_target") return Promise.resolve({ remote, branch });
 			return Promise.resolve(undefined);
 		});
 
@@ -239,11 +248,31 @@ describe("PushRecoveryPrompt push target", () => {
 		await fireEvent.click(await screen.findByText("Force Push"));
 		await waitFor(() => expect(mockAsk).toHaveBeenCalled());
 
-		const lines = (mockAsk.mock.calls[0][0] as string).split("\n");
-		const branchLine = lines.find((l) => l.startsWith("Branch: "));
-		expect(branchLine).toBeDefined();
-		expect(lines).toContain("Remote: origin");
-		expect(branchLine?.length).toBeLessThan(hostile.length);
+		return mockAsk.mock.calls[0][0] as string;
+	}
+
+	it("renders four lines whatever separators the refname carries", async () => {
+		const message = await confirmationFor(
+			"main\u2028Nothing will be overwritten — a dry run",
+		);
+
+		expect(message.split(RENDERED_BREAK)).toHaveLength(4);
+	});
+
+	it("still names the branch and the remote after neutralising separators", async () => {
+		const message = await confirmationFor("main\u2028injected");
+
+		expect(message).toContain("main");
+		expect(message).toContain("Remote: origin");
+	});
+
+	it("caps an overlong refname at the rendered limit", async () => {
+		const message = await confirmationFor("x".repeat(200));
+
+		const branchLine = message
+			.split(RENDERED_BREAK)
+			.find((l) => l.startsWith("Branch: "));
+		expect(branchLine).toHaveLength("Branch: ".length + 61);
 	});
 
 	it("offers no Force Push when the backend cannot name a target", async () => {

@@ -4,7 +4,10 @@ import { runRemoteOp } from "./remote-op.js";
 import { createRemoteState } from "./remote-state.svelte.js";
 import { showToast } from "./toast.svelte.js";
 
-vi.mock("./invoke.js", () => ({ safeInvoke: vi.fn() }));
+vi.mock("./invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("./invoke.js")>()),
+	safeInvoke: vi.fn(),
+}));
 vi.mock("./toast.svelte.js", () => ({ showToast: vi.fn() }));
 
 const mockInvoke = vi.mocked(safeInvoke);
@@ -21,7 +24,7 @@ describe("runRemoteOp", () => {
 		["git_push_force", "push"],
 		["git_pull", "pull"],
 		["git_fetch", "fetch"],
-	])("records %s as a %s", async (cmd, expected) => {
+	] as const)("records %s as a %s", async (cmd, expected) => {
 		const remoteState = createRemoteState();
 
 		await runRemoteOp(remoteState, "/repo", cmd, "done");
@@ -29,13 +32,22 @@ describe("runRemoteOp", () => {
 		expect(remoteState.lastOp).toBe(expected);
 	});
 
-	it("records no operation for a command it does not know", async () => {
+	it("clears a previous failure when a new operation starts", async () => {
 		const remoteState = createRemoteState();
-		remoteState.lastOp = "push";
+		remoteState.error = { code: "non_fast_forward", message: "rejected" };
 
-		await runRemoteOp(remoteState, "/repo", "git_teleport", "done");
+		await runRemoteOp(remoteState, "/repo", "git_pull", "done");
 
-		expect(remoteState.lastOp).toBeNull();
+		expect(remoteState.error).toBeNull();
+	});
+
+	it("keeps a non-TrunkError failure describable", async () => {
+		mockInvoke.mockRejectedValue("a bare string, not a TrunkError");
+		const remoteState = createRemoteState();
+
+		await runRemoteOp(remoteState, "/repo", "git_pull", "done");
+
+		expect(remoteState.error?.message).toContain("a bare string");
 	});
 
 	it("records the operation even when it fails", async () => {
