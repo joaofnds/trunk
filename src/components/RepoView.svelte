@@ -979,194 +979,194 @@ function startRightResize(e: MouseEvent) {
 
 <div class="flex-1 overflow-hidden flex flex-col">
   <PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
-<main class="flex-1 overflow-hidden flex">
-  {#if showRebaseEditor}
-    <!-- Full-window takeover for interactive rebase -->
-    <div class="flex-1 overflow-hidden">
-      <div style="height: 100%; {rebaseDiffFile ? 'display: none;' : 'display: flex; flex-direction: column;'}">
-        <RebaseEditor
-          {repoPath}
-          commits={rebaseEditorCommits}
-          branchName={rebaseBranchName}
-          baseName={rebaseBaseName}
-          onclose={handleRebaseEditorClose}
-          onstart={handleRebaseStart}
-          onfocuschange={handleRebaseFocusChange}
-        />
-      </div>
-      {#if rebaseDiffFile}
-          <DiffPanel
-            fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
-            commitDetail={rebaseFocusedCommitDetail}
-            selectedPath={rebaseDiffFile}
-            diffKind="commit"
+  <main class="flex-1 overflow-hidden flex">
+    {#if showRebaseEditor}
+      <!-- Full-window takeover for interactive rebase -->
+      <div class="flex-1 overflow-hidden">
+        <div style="height: 100%; {rebaseDiffFile ? 'display: none;' : 'display: flex; flex-direction: column;'}">
+          <RebaseEditor
             {repoPath}
-            onclose={() => { rebaseDiffFile = null; }}
+            commits={rebaseEditorCommits}
+            branchName={rebaseBranchName}
+            baseName={rebaseBaseName}
+            onclose={handleRebaseEditorClose}
+            onstart={handleRebaseStart}
+            onfocuschange={handleRebaseFocusChange}
           />
+        </div>
+        {#if rebaseDiffFile}
+            <DiffPanel
+              fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
+              commitDetail={rebaseFocusedCommitDetail}
+              selectedPath={rebaseDiffFile}
+              diffKind="commit"
+              {repoPath}
+              onclose={() => { rebaseDiffFile = null; }}
+            />
+        {/if}
+      </div>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="pane-divider" onmousedown={startRightResize}></div>
+      <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
+        {#if rebaseFocusedCommitDetail}
+          <CommitDetail
+            commitDetail={rebaseFocusedCommitDetail}
+            fileDiffs={rebaseFocusedFileDiffs}
+            selectedFile={rebaseFocusedFileSelected}
+            onfileselect={(path) => {
+              if (rebaseFocusedFileSelected === path) {
+                rebaseFocusedFileSelected = null;
+                rebaseDiffFile = null;
+              } else {
+                rebaseFocusedFileSelected = path;
+                rebaseDiffFile = path;
+              }
+            }}
+            onclose={() => { rebaseFocusedCommitDetail = null; }}
+            {repoPath}
+            {treeViewEnabled}
+            ontreeviewtoggle={handleTreeViewToggle}
+          />
+        {:else}
+          <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 13px;">
+            Select a commit to view details
+          </div>
+        {/if}
+      </div>
+    {:else}
+    <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
+      <BranchSidebar {repoPath} onrefreshed={handleRefresh} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
+    </div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>
+    <div class="flex-1 overflow-hidden">
+      {#if reviewSession.state.reviewActive && !(reviewSession.state.rightPaneMode === 'diff' && showDiff)}
+        <!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
+             commit/file/ref (or jumps from a comment), rightPaneMode flips to 'diff' and
+             the SAME full DiffPanel below renders — with the correct per-source diffKind
+             and the complete handler set — rather than a separate stripped mount. The old
+             diffKind="commit" clone here rendered every review diff (including dirty files
+             reached via the panel→diff swap) as a commit diff, which dropped the staging
+             buttons and mis-resolved comment anchors (260531-l02e). Wrapper uses
+             height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
+             height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
+        <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
+          <ReviewPanel {repoPath} session={reviewSession} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} />
+        </div>
+      {:else if showMergeEditor && selectedFile}
+        <MergeEditor
+          {repoPath}
+          filePath={selectedFile.path}
+          onclose={handleDiffClose}
+          onresolved={handleFileResolved}
+        />
+      {:else if showDiff}
+        <!-- Single DiffPanel mount, shared by normal and review mode. In review mode
+             rightPaneMode==='diff' routes here (260531-l02e); bind:this exposes the
+             jump-to-comment scroll seam, and onclose returns to the review panel. -->
+        <DiffPanel
+          bind:this={diffPanelRef}
+          fileDiffs={currentDiffFiles}
+          commitDetail={commitDetail}
+          selectedPath={selectedDiffPath}
+          {diffKind}
+          {repoPath}
+          {showInlineComments}
+          {viewComments}
+          refreshToken={diffRefreshToken}
+          loading={stagingDiffLoading}
+          onhunkaction={async (filePath) => {
+            if (selectedFile) {
+              const { path, kind } = selectedFile;
+              const isEmpty = await refetchFileDiff(filePath, kind);
+              if (isEmpty && selectedFile?.path === path && selectedFile?.kind === kind) {
+                advanceToNextFile(path, kind);
+              }
+            }
+          }}
+          onfileemptied={(filePath, action) => {
+            if (selectedFile?.path === filePath) {
+              const { kind } = selectedFile;
+              advanceToNextFile(filePath, kind);
+              stagingPanelRef?.optimisticMove(filePath, kind, action);
+            }
+          }}
+          ondiffoptionschange={async (options) => {
+            cachedDiffOptions = options;
+            if (selectedFile && selectedFile.kind !== "conflicted") {
+              await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
+            } else if (selectedCommitFile && selectedCommitOid) {
+              try {
+                const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
+                  path: repoPath,
+                  oid: selectedCommitOid,
+                  filePath: selectedCommitFile,
+                  options,
+                });
+                commitFileDiffs = commitFileDiffs.map((fd) =>
+                  fd.path === selectedCommitFile && fileDiffs.length > 0 ? fileDiffs[0] : fd,
+                );
+              } catch {
+                // non-fatal
+              }
+            }
+          }}
+          onclose={reviewSession.state.reviewActive
+            ? () => { handleDiffClose(); reviewSession.showPanel(); }
+            : handleDiffClose}
+        />
+      {:else}
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="pane-divider" onmousedown={startRightResize}></div>
+    <div class="pane-divider" style="display: {rightPaneCollapsed ? 'none' : 'block'};" onmousedown={startRightResize}></div>
     <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-      {#if rebaseFocusedCommitDetail}
+      {#if selectedCommitOid && commitDetail}
         <CommitDetail
-          commitDetail={rebaseFocusedCommitDetail}
-          fileDiffs={rebaseFocusedFileDiffs}
-          selectedFile={rebaseFocusedFileSelected}
-          onfileselect={(path) => {
-            if (rebaseFocusedFileSelected === path) {
-              rebaseFocusedFileSelected = null;
-              rebaseDiffFile = null;
-            } else {
-              rebaseFocusedFileSelected = path;
-              rebaseDiffFile = path;
-            }
-          }}
-          onclose={() => { rebaseFocusedCommitDetail = null; }}
+          {commitDetail}
+          fileDiffs={commitFileDiffs}
+          selectedFile={selectedCommitFile}
+          onfileselect={handleCommitFileSelect}
+          onclose={clearCommit}
           {repoPath}
+          {reviewComments}
+          {showInlineComments}
           {treeViewEnabled}
           ontreeviewtoggle={handleTreeViewToggle}
+          nav={commitNav}
+          onnavigate={navigateToCommit}
         />
-      {:else}
-        <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-muted); font-size: 13px;">
-          Select a commit to view details
-        </div>
-      {/if}
-    </div>
-  {:else}
-  <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-    <BranchSidebar {repoPath} onrefreshed={handleRefresh} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
-  </div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>
-  <div class="flex-1 overflow-hidden">
-    {#if reviewSession.state.reviewActive && !(reviewSession.state.rightPaneMode === 'diff' && showDiff)}
-      <!-- Review panel claims the center pane (UI-SPEC:133). When the user selects a
-           commit/file/ref (or jumps from a comment), rightPaneMode flips to 'diff' and
-           the SAME full DiffPanel below renders — with the correct per-source diffKind
-           and the complete handler set — rather than a separate stripped mount. The old
-           diffKind="commit" clone here rendered every review diff (including dirty files
-           reached via the panel→diff swap) as a commit diff, which dropped the staging
-           buttons and mis-resolved comment anchors (260531-l02e). Wrapper uses
-           height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
-           height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
-      <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-        <ReviewPanel {repoPath} session={reviewSession} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} />
-      </div>
-    {:else if showMergeEditor && selectedFile}
-      <MergeEditor
-        {repoPath}
-        filePath={selectedFile.path}
-        onclose={handleDiffClose}
-        onresolved={handleFileResolved}
-      />
-    {:else if showDiff}
-      <!-- Single DiffPanel mount, shared by normal and review mode. In review mode
-           rightPaneMode==='diff' routes here (260531-l02e); bind:this exposes the
-           jump-to-comment scroll seam, and onclose returns to the review panel. -->
-      <DiffPanel
-        bind:this={diffPanelRef}
-        fileDiffs={currentDiffFiles}
-        commitDetail={commitDetail}
-        selectedPath={selectedDiffPath}
-        {diffKind}
-        {repoPath}
-        {showInlineComments}
-        {viewComments}
-        refreshToken={diffRefreshToken}
-        loading={stagingDiffLoading}
-        onhunkaction={async (filePath) => {
-          if (selectedFile) {
-            const { path, kind } = selectedFile;
-            const isEmpty = await refetchFileDiff(filePath, kind);
-            if (isEmpty && selectedFile?.path === path && selectedFile?.kind === kind) {
+      {:else if draftLoaded}
+        <StagingPanel
+          bind:this={stagingPanelRef}
+          {repoPath}
+          currentBranch={headBranch}
+          initialSubject={wipSubject}
+          initialBody={wipBody}
+          onfileselect={handleFileSelect}
+          onsubjectchange={(v) => (wipSubject = v)}
+          onbodychange={(v) => (wipBody = v)}
+          onfileresolved={handleFileResolved}
+          onfileadvance={(path, kind) => {
+            if (selectedFile?.path === path && selectedFile?.kind === kind) {
               advanceToNextFile(path, kind);
             }
-          }
-        }}
-        onfileemptied={(filePath, action) => {
-          if (selectedFile?.path === filePath) {
-            const { kind } = selectedFile;
-            advanceToNextFile(filePath, kind);
-            stagingPanelRef?.optimisticMove(filePath, kind, action);
-          }
-        }}
-        ondiffoptionschange={async (options) => {
-          cachedDiffOptions = options;
-          if (selectedFile && selectedFile.kind !== "conflicted") {
-            await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
-          } else if (selectedCommitFile && selectedCommitOid) {
-            try {
-              const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-                path: repoPath,
-                oid: selectedCommitOid,
-                filePath: selectedCommitFile,
-                options,
-              });
-              commitFileDiffs = commitFileDiffs.map((fd) =>
-                fd.path === selectedCommitFile && fileDiffs.length > 0 ? fileDiffs[0] : fd,
-              );
-            } catch {
-              // non-fatal
-            }
-          }
-        }}
-        onclose={reviewSession.state.reviewActive
-          ? () => { handleDiffClose(); reviewSession.showPanel(); }
-          : handleDiffClose}
-      />
-    {:else}
-      <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
+          }}
+          selectedPath={selectedFile?.path ?? null}
+          selectedKind={selectedFile?.kind ?? null}
+          onstatuschange={(s) => { cachedStatus = s; }}
+          clearRedoStack={undoRedo.clear}
+          {treeViewEnabled}
+          ontreeviewtoggle={handleTreeViewToggle}
+          onopenmessageeditor={handleOpenMessageEditor}
+          {reviewComments}
+          {showInlineComments}
+        />
+      {/if}
+    </div>
     {/if}
-  </div>
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="pane-divider" style="display: {rightPaneCollapsed ? 'none' : 'block'};" onmousedown={startRightResize}></div>
-  <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-    {#if selectedCommitOid && commitDetail}
-      <CommitDetail
-        {commitDetail}
-        fileDiffs={commitFileDiffs}
-        selectedFile={selectedCommitFile}
-        onfileselect={handleCommitFileSelect}
-        onclose={clearCommit}
-        {repoPath}
-        {reviewComments}
-        {showInlineComments}
-        {treeViewEnabled}
-        ontreeviewtoggle={handleTreeViewToggle}
-        nav={commitNav}
-        onnavigate={navigateToCommit}
-      />
-    {:else if draftLoaded}
-      <StagingPanel
-        bind:this={stagingPanelRef}
-        {repoPath}
-        currentBranch={headBranch}
-        initialSubject={wipSubject}
-        initialBody={wipBody}
-        onfileselect={handleFileSelect}
-        onsubjectchange={(v) => (wipSubject = v)}
-        onbodychange={(v) => (wipBody = v)}
-        onfileresolved={handleFileResolved}
-        onfileadvance={(path, kind) => {
-          if (selectedFile?.path === path && selectedFile?.kind === kind) {
-            advanceToNextFile(path, kind);
-          }
-        }}
-        selectedPath={selectedFile?.path ?? null}
-        selectedKind={selectedFile?.kind ?? null}
-        onstatuschange={(s) => { cachedStatus = s; }}
-        clearRedoStack={undoRedo.clear}
-        {treeViewEnabled}
-        ontreeviewtoggle={handleTreeViewToggle}
-        onopenmessageeditor={handleOpenMessageEditor}
-        {reviewComments}
-        {showInlineComments}
-      />
-    {/if}
-  </div>
-  {/if}
-</main>
+  </main>
 </div>
 
 <!-- Single MessageEditor host (D-04). Renders nothing until open() is called;
