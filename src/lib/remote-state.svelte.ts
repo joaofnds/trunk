@@ -1,9 +1,12 @@
 import type { TrunkError } from "./invoke.js";
 
+export type RemoteOpKind = "push" | "pull" | "fetch";
+
 export interface RemoteState {
 	isRunning: boolean;
 	progressLine: string;
 	error: TrunkError | null;
+	lastOp: RemoteOpKind | null;
 }
 
 export function createRemoteState(): RemoteState {
@@ -11,6 +14,7 @@ export function createRemoteState(): RemoteState {
 		isRunning: false,
 		progressLine: "",
 		error: null as TrunkError | null,
+		lastOp: null as RemoteOpKind | null,
 	});
 	return state;
 }

@@ -1,62 +1,91 @@
 <script lang="ts">
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { safeInvoke } from "../lib/invoke.js";
 import { isForcePushRefusal, remoteErrorMessage } from "../lib/remote-error.js";
+import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
-import { showToast } from "../lib/toast.svelte.js";
-import type { OperationInfo } from "../lib/types.js";
+import type { OperationInfo, PushTarget } from "../lib/types.js";
 
 interface Props {
 	repoPath: string;
 	remoteState: RemoteState;
-	branch: string;
-	remote: string;
+	refreshSignal: number;
 	onclear: () => void;
 }
 
-let { repoPath, remoteState, branch, remote, onclear }: Props = $props();
+let { repoPath, remoteState, refreshSignal, onclear }: Props = $props();
+
+type Target = { remote: string; branch: string };
 
 type Display =
 	| { kind: "none" }
-	| { kind: "recovery" }
-	| { kind: "force_refused" }
+	| ({ kind: "recovery" } & Target)
+	| ({ kind: "force_refused" } & Target)
 	| { kind: "message"; text: string };
 
-let display = $state<Display>({ kind: "none" });
+// Snapshotted when the failure arrives, never re-read: the banner describes the push
+// that failed, so a checkout while it is up must not relabel it.
+let pushTarget = $state<PushTarget | null>(null);
+let gate = $state<"unknown" | "clean" | "busy">("unknown");
 
-// Decide what the surface shows from the current error. A non_fast_forward offers the
-// recovery actions, but only when the repo is Clean: a push that fails while a
-// rebase/merge is already in progress falls back to the persistent message instead
-// (grilled D6). A lease/if-includes refusal also arrives as non_fast_forward, but Force
-// Push would be a guaranteed no-op there, so it gets its own state without that button
-// (grilled D7, reversed).
 $effect(() => {
-	const err = remoteState.error;
-	if (!err) {
-		display = { kind: "none" };
+	if (!remoteState.error) {
+		pushTarget = null;
 		return;
 	}
-	if (err.code !== "non_fast_forward") {
-		display = { kind: "message", text: remoteErrorMessage(err) };
-		return;
-	}
-	const clean: Display = isForcePushRefusal(err)
-		? { kind: "force_refused" }
-		: { kind: "recovery" };
 	let cancelled = false;
-	safeInvoke<OperationInfo>("get_operation_state", { path: repoPath })
-		.then((info) => {
-			if (cancelled) return;
-			display =
-				info.op_type === "None"
-					? clean
-					: { kind: "message", text: remoteErrorMessage(err) };
+	safeInvoke<PushTarget>("get_push_target", { path: repoPath })
+		.then((target) => {
+			if (!cancelled) pushTarget = target;
 		})
 		.catch(() => {
-			if (!cancelled) display = clean;
+			if (!cancelled) pushTarget = null;
 		});
 	return () => {
 		cancelled = true;
 	};
+});
+
+// Reading refreshSignal is what re-probes on every repo change rather than sampling
+// once: the user can finish or start a merge while the banner is up. A probe that
+// fails leaves the gate closed — mid-operation is then unknown, not answered "no".
+$effect(() => {
+	refreshSignal;
+	if (!remoteState.error) {
+		gate = "unknown";
+		return;
+	}
+	let cancelled = false;
+	safeInvoke<OperationInfo>("get_operation_state", { path: repoPath })
+		.then((info) => {
+			if (!cancelled) gate = info.op_type === "None" ? "clean" : "busy";
+		})
+		.catch(() => {
+			if (!cancelled) gate = "busy";
+		});
+	return () => {
+		cancelled = true;
+	};
+});
+
+// Every fall-through to `message` drops the destructive button, so each one is a
+// claim the banner would otherwise make and cannot support.
+let display = $derived.by((): Display => {
+	const err = remoteState.error;
+	if (!err) return { kind: "none" };
+
+	const message: Display = { kind: "message", text: remoteErrorMessage(err) };
+	if (err.code !== "non_fast_forward" || remoteState.lastOp !== "push") {
+		return message;
+	}
+	if (gate !== "clean") return message;
+
+	const remote = pushTarget?.remote;
+	const branch = pushTarget?.branch;
+	if (!remote || !branch) return message;
+
+	return isForcePushRefusal(err)
+		? { kind: "force_refused", remote, branch }
+		: { kind: "recovery", remote, branch };
 });
 
 function dismiss() {
@@ -64,29 +93,19 @@ function dismiss() {
 	onclear();
 }
 
-// Lease-protected force push behind one confirmation naming branch and remote (C10).
-// The backend command always pairs --force-with-lease with --force-if-includes (C11).
-async function handleForcePush() {
+async function handleForcePush(target: Target) {
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
-		`Force push ${branch} to ${remote}? This overwrites the remote branch.`,
+		`Force push ${target.branch} to ${target.remote}? This overwrites the remote branch.`,
 		{ title: "Force Push", kind: "warning" },
 	);
 	if (!confirmed) return;
-	remoteState.isRunning = true;
-	remoteState.error = null;
-	remoteState.progressLine = "";
-	try {
-		await safeInvoke("git_push_force", { path: repoPath });
-		remoteState.isRunning = false;
-		remoteState.error = null;
-		showToast("Force pushed successfully", "success");
-	} catch (e) {
-		// An if-includes refusal classifies as non_fast_forward and re-opens the three
-		// choices via the error effect (C12); no dead end.
-		remoteState.isRunning = false;
-		remoteState.error = e as TrunkError;
-	}
+	await runRemoteOp(
+		remoteState,
+		repoPath,
+		"git_push_force",
+		"Force pushed successfully",
+	);
 }
 </script>
 
@@ -142,16 +161,17 @@ async function handleForcePush() {
   <div class="recovery-surface" role="alert">
     <div class="recovery-body">
       {#if display.kind === "recovery"}
+        {@const target = { remote: display.remote, branch: display.branch }}
         <span class="recovery-text">
-          Push to <strong>{remote}</strong> rejected &mdash; <strong>{branch}</strong> has diverged from the remote.
+          Push to <strong>{target.remote}</strong> rejected &mdash; <strong>{target.branch}</strong> has diverged from the remote.
         </span>
         <div class="recovery-actions">
-          <button class="btn btn-danger" onclick={handleForcePush} disabled={remoteState.isRunning}>Force Push</button>
+          <button class="btn btn-danger" onclick={() => handleForcePush(target)} disabled={remoteState.isRunning}>Force Push</button>
           <button class="btn btn-neutral" onclick={dismiss} disabled={remoteState.isRunning}>Cancel</button>
         </div>
       {:else if display.kind === "force_refused"}
         <span class="recovery-text">
-          Force push to <strong>{remote}</strong> refused &mdash; <strong>{branch}</strong> has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to include them, then push.
+          Force push to <strong>{display.remote}</strong> refused &mdash; <strong>{display.branch}</strong> has remote commits you haven&rsquo;t integrated. Pull &amp; Rebase to include them, then push.
         </span>
         <div class="recovery-actions">
           <button class="btn btn-neutral" onclick={dismiss} disabled={remoteState.isRunning}>Cancel</button>

@@ -220,9 +220,6 @@ let dirtyCounts = $state<DirtyCounts>({
 	typechange: 0,
 });
 let headBranch = $state<string | undefined>(undefined);
-// Upstream of the head branch (e.g. "origin/main"), retained so the push-recovery
-// surface can name the remote a diverged push targeted.
-let headUpstream = $state<string | null>(null);
 let wipSubject = $state("");
 let wipBody = $state("");
 let draftLoaded = $state(false);
@@ -382,7 +379,6 @@ async function loadHeadBranch() {
 		});
 		const head = refs.local.find((b) => b.is_head);
 		headBranch = head?.name;
-		headUpstream = head?.upstream ?? null;
 	} catch {
 		// non-fatal -- keep previous value
 	}
@@ -986,8 +982,7 @@ function startRightResize(e: MouseEvent) {
   <PushRecoveryPrompt
     {repoPath}
     {remoteState}
-    branch={headBranch ?? ""}
-    remote={headUpstream?.split("/")[0] ?? "origin"}
+    {refreshSignal}
     onclear={() => { remoteState.error = null; }}
   />
 <main class="flex-1 overflow-hidden flex">

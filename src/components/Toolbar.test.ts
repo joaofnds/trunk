@@ -1,6 +1,8 @@
+import { emit, listen } from "@tauri-apps/api/event";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../lib/invoke.js";
+import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import Toolbar from "./Toolbar.svelte";
 
@@ -39,11 +41,21 @@ vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
 }));
 
-function makeRemoteState() {
+beforeEach(() => {
+	vi.mocked(safeInvoke).mockReset();
+	vi.mocked(showToast).mockReset();
+	vi.mocked(emit).mockReset();
+	vi.mocked(listen)
+		.mockReset()
+		.mockResolvedValue(() => {});
+});
+
+function makeRemoteState(): RemoteState {
 	return {
 		isRunning: false,
 		progressLine: "",
 		error: null,
+		lastOp: null,
 	};
 }
 
@@ -362,7 +374,6 @@ describe("Toolbar remote failure feedback", () => {
 	const mockToast = vi.mocked(showToast);
 
 	it("records a failed push on remoteState.error without an auto-dismissing toast", async () => {
-		mockToast.mockClear();
 		mockInvoke.mockImplementation((cmd: string) =>
 			cmd === "git_push"
 				? Promise.reject({ code: "non_fast_forward", message: "rejected" })
@@ -390,7 +401,6 @@ describe("Toolbar remote failure feedback", () => {
 	});
 
 	it("still shows a success toast on a successful push", async () => {
-		mockToast.mockClear();
 		mockInvoke.mockResolvedValue(false);
 		const remoteState = makeRemoteState();
 

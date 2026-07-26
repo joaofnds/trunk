@@ -138,6 +138,14 @@ export type OperationType =
 	| "CherryPick"
 	| "Revert";
 
+// Where a bare `git push` would send the current branch, resolved in Rust through
+// pushRemote/pushDefault (mirrors the Rust PushTarget). Either field is null when
+// git cannot name one — a detached HEAD, or no resolvable remote.
+export interface PushTarget {
+	remote: string | null;
+	branch: string | null;
+}
+
 export interface OperationInfo {
 	op_type: OperationType;
 	source_branch: string | null;

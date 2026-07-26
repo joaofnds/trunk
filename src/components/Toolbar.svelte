@@ -13,6 +13,7 @@ import {
 import { emit, listen } from "@tauri-apps/api/event";
 import type { TrunkError } from "../lib/invoke.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { tooltip } from "../lib/tooltip.js";
@@ -144,33 +145,12 @@ async function handleRedo() {
 	}
 }
 
-async function runRemote(
-	cmd: string,
-	successMsg: string,
-	extra: Record<string, unknown> = {},
-) {
-	remoteState.isRunning = true;
-	remoteState.error = null;
-	remoteState.progressLine = "";
-	try {
-		await safeInvoke(cmd, { path: repoPath, ...extra });
-		remoteState.isRunning = false;
-		remoteState.progressLine = "";
-		showToast(successMsg, "success");
-	} catch (e: unknown) {
-		// Remote failures persist on remoteState.error and render in the push-recovery
-		// surface; no auto-dismissing error toast (spec C1/C4). Success keeps its toast.
-		remoteState.isRunning = false;
-		remoteState.error = e as TrunkError;
-	}
-}
-
 function handlePull() {
-	runRemote("git_pull", "Pulled successfully");
+	runRemoteOp(remoteState, repoPath, "git_pull", "Pulled successfully");
 }
 
 function handlePush() {
-	runRemote("git_push", "Pushed successfully");
+	runRemoteOp(remoteState, repoPath, "git_push", "Pushed successfully");
 }
 
 async function handleStash() {

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { render } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
@@ -89,6 +89,7 @@ function createMockRemoteState(): RemoteState {
 		isRunning: false,
 		progressLine: "",
 		error: null,
+		lastOp: null,
 	};
 }
 
@@ -125,6 +126,8 @@ describe("RepoView", () => {
 						target_color_index: null,
 						rebase_message: null,
 					});
+				case "get_push_target":
+					return Promise.resolve({ remote: "origin", branch: "main" });
 				case "get_status":
 					return Promise.resolve({
 						unstaged: [],
@@ -247,12 +250,7 @@ describe("RepoView", () => {
 		expect((leftPane as HTMLElement).style.width).toBe("0px");
 	});
 
-	// 76-03 Task 1: RepoView hosts a single MessageEditor and threads
-	// onopenmessageeditor to its merge/revert trigger children. The editor renders
-	// nothing until open() is called ({#if isOpen}), so the host is exercised
-	// end-to-end in CommitGraph/BranchSidebar suites where the callback is injected.
-	// Here we guard that adding the host does not break the mount.
-	function baseProps(remoteState: RemoteState, windowVisible = true) {
+	function baseProps(remoteState: RemoteState) {
 		return {
 			repoPath: "/test/repo",
 			repoName: "test-repo",
@@ -262,7 +260,7 @@ describe("RepoView", () => {
 			leftPaneCollapsed: false,
 			rightPaneWidth: 300,
 			rightPaneCollapsed: false,
-			windowVisible,
+			windowVisible: true,
 			reviewActive: false,
 			onreviewpanelshowingchange: vi.fn(),
 			onleftpanecollapsedchange: vi.fn(),
@@ -272,36 +270,48 @@ describe("RepoView", () => {
 		};
 	}
 
-	it("suppresses the background fetch while a remote operation is running", async () => {
-		vi.useFakeTimers();
-		try {
+	describe("background fetch", () => {
+		// Long enough that the assertion reads "the interval fires", not "the
+		// interval is 60s" (DEFAULT_FETCH_INTERVAL_MS, src/lib/store.ts).
+		const SEVERAL_INTERVALS_MS = 10 * 60_000;
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("is suppressed while a remote operation is running", async () => {
 			const remoteState = createMockRemoteState();
 			remoteState.isRunning = true;
+
 			render(RepoView, { props: baseProps(remoteState) });
-			await vi.advanceTimersByTimeAsync(60_000);
+			await vi.advanceTimersByTimeAsync(SEVERAL_INTERVALS_MS);
+
 			expect(mockInvoke).not.toHaveBeenCalledWith(
 				"git_fetch_background",
 				expect.anything(),
 			);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
+		});
 
-	it("runs the background fetch when idle and the window is visible", async () => {
-		vi.useFakeTimers();
-		try {
-			const remoteState = createMockRemoteState();
-			render(RepoView, { props: baseProps(remoteState) });
-			await vi.advanceTimersByTimeAsync(60_000);
+		it("runs when idle and the window is visible", async () => {
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+
+			await vi.advanceTimersByTimeAsync(SEVERAL_INTERVALS_MS);
+
 			expect(mockInvoke).toHaveBeenCalledWith("git_fetch_background", {
 				path: "/test/repo",
 			});
-		} finally {
-			vi.useRealTimers();
-		}
+		});
 	});
 
+	// RepoView hosts a single MessageEditor and threads onopenmessageeditor to its
+	// merge/revert trigger children. The editor renders nothing until open() is
+	// called ({#if isOpen}), so it is exercised end-to-end in the
+	// CommitGraph/BranchSidebar suites where the callback is injected; here we only
+	// guard that hosting it does not break the mount.
 	it("mounts with the MessageEditor host without crashing", () => {
 		const { container } = render(RepoView, {
 			props: {
