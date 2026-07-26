@@ -1,8 +1,17 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::commands::operation_state::MergeBeginResult;
+use std::ffi::OsStr;
+use std::path::Path;
+use trunk_lib::commands::operation_state::{MergeBeginResult, rebase_command};
 use trunk_lib::git::types::OperationType;
+
+/// `GIT_EDITOR` outranks every git config key, so no repo-local or global
+/// discriminator can prove the pin is in place — only the built command can.
+fn pins_the_editor(cmd: &std::process::Command) -> bool {
+    cmd.get_envs()
+        .any(|(key, value)| key == "GIT_EDITOR" && value == Some(OsStr::new("true")))
+}
 
 #[test]
 fn clean_repo_returns_none_operation_type() {
@@ -243,10 +252,7 @@ fn rebase_continue_after_resolving_conflict_completes() {
 
     // Resolve the conflict and stage it, as the merge editor's "Mark Resolved" does.
     std::fs::write(ctx.repo_path().join("file.txt"), "resolved content\n").unwrap();
-    let repo = ctx.repo();
-    let mut index = repo.index().unwrap();
-    index.add_path(std::path::Path::new("file.txt")).unwrap();
-    index.write().unwrap();
+    ctx.stage_file("file.txt").unwrap();
 
     // Must complete, not hang or error, and leave the repo out of the rebase.
     let result = ctx.rebase_continue(None);
@@ -268,9 +274,8 @@ fn rebase_skip_with_a_later_reword_completes() {
     // `git rebase --skip` resumes the todo list, so a reword/squash step after the
     // skipped commit opens the commit-message editor exactly as --continue does.
     // core.editor is pinned to a failing command so the skip fails unless the command
-    // sets GIT_EDITOR itself. Note this only discriminates where GIT_EDITOR is absent
-    // from the environment: an exported GIT_EDITOR is inherited by the child and
-    // outranks core.editor, which makes the assertion vacuous on such a machine.
+    // sets GIT_EDITOR itself. `just cargo-test` scrubs the ambient editor vars, without
+    // which an exported GIT_EDITOR outranks core.editor and this passes vacuously.
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
         .with_commit("Initial commit")
@@ -331,4 +336,20 @@ fn rebase_skip_with_a_later_reword_completes() {
         "rebase should be finished, got {:?}",
         info.op_type
     );
+}
+
+#[test]
+fn rebase_skip_pins_the_editor() {
+    assert!(pins_the_editor(&rebase_command(
+        Path::new("/tmp"),
+        "--skip"
+    )));
+}
+
+#[test]
+fn rebase_continue_pins_the_editor() {
+    assert!(pins_the_editor(&rebase_command(
+        Path::new("/tmp"),
+        "--continue"
+    )));
 }

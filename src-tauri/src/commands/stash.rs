@@ -81,17 +81,11 @@ pub fn stash_pop_inner(
         }
     })?;
     // Check for post-apply conflicts (git2 may return Ok even with conflicts)
-    {
-        let statuses = repo.statuses(None).map_err(TrunkError::from)?;
-        let has_conflicts = statuses
-            .iter()
-            .any(|s| s.status().contains(git2::Status::CONFLICTED));
-        if has_conflicts {
-            return Err(TrunkError::new(
-                "conflict_state",
-                "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.",
-            ));
-        }
+    if crate::commands::has_unmerged_paths(&repo)? {
+        return Err(TrunkError::new(
+            "conflict_state",
+            "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.",
+        ));
     }
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }
@@ -112,17 +106,11 @@ pub fn stash_apply_inner(
             TrunkError::from(e)
         }
     })?;
-    {
-        let statuses = repo.statuses(None).map_err(TrunkError::from)?;
-        let has_conflicts = statuses
-            .iter()
-            .any(|s| s.status().contains(git2::Status::CONFLICTED));
-        if has_conflicts {
-            return Err(TrunkError::new(
-                "conflict_state",
-                "Stash applied with conflicts — resolve conflicts before continuing",
-            ));
-        }
+    if crate::commands::has_unmerged_paths(&repo)? {
+        return Err(TrunkError::new(
+            "conflict_state",
+            "Stash applied with conflicts — resolve conflicts before continuing",
+        ));
     }
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }

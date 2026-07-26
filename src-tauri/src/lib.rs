@@ -276,6 +276,7 @@ pub fn run() {
             commands::remote::git_pull,
             commands::remote::git_push,
             commands::remote::git_push_force,
+            commands::remote::get_push_target,
             commands::remote::delete_remote_branch,
             commands::remote::cancel_remote_op,
             commands::operation_state::get_operation_state,

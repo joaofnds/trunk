@@ -199,6 +199,20 @@ pub fn merge_abort_inner(
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }
 
+/// `git rebase <step>` with the commit-message editor pinned to a no-op.
+/// `--continue` and `--skip` both resume the todo list, so a reword or squash step
+/// opens an editor; this subprocess has no TTY, so an ambient interactive editor
+/// (vi/nvim inherited from the environment) blocks forever and the command never
+/// returns. `true` accepts whatever message git has already staged.
+pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["rebase", step])
+        .current_dir(dir)
+        .env("PATH", shell_env::system_path())
+        .env("GIT_EDITOR", "true");
+    cmd
+}
+
 pub fn rebase_continue_inner(
     path: &str,
     message: Option<&str>,
@@ -224,16 +238,7 @@ pub fn rebase_continue_inner(
         }
     }
 
-    // Pin GIT_EDITOR to a no-op: `git rebase --continue` opens the commit-message
-    // editor for the re-applied commit, and this subprocess has no TTY, so an ambient
-    // interactive editor (vi/nvim/etc. inherited from the environment) blocks forever
-    // and the command never returns. `true` accepts the message already staged in
-    // `.git/rebase-merge/message` (written above) or git's pre-filled original.
-    let output = std::process::Command::new("git")
-        .args(["rebase", "--continue"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .env("GIT_EDITOR", "true")
+    let output = rebase_command(path_buf, "--continue")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {
@@ -256,14 +261,7 @@ pub fn rebase_skip_inner(
     let path_buf = state_map
         .get(path)
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
-    // Pinned for the same reason as `--continue` above: `--skip` resumes the todo list,
-    // so a reword/squash step after the skipped commit opens the editor. Unpinned, git
-    // falls through to the repository's own `core.editor` and then to `vi` with no TTY.
-    let output = std::process::Command::new("git")
-        .args(["rebase", "--skip"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
-        .env("GIT_EDITOR", "true")
+    let output = rebase_command(path_buf, "--skip")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {

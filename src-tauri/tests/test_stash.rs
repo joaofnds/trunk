@@ -159,3 +159,44 @@ fn stash_drop_removes_entry_without_restoring() {
     // file.txt should NOT exist (was stashed, not restored)
     assert!(!ctx.repo_path().join("file.txt").exists());
 }
+
+// -- conflicted restore tests --
+// Both restore paths deliberately leave the conflicted paths in the worktree and
+// keep the stash entry, so the user can resolve without losing the stash.
+
+/// Stash `file.txt`, then commit different content over it, so restoring conflicts.
+fn ctx_with_a_conflicting_stash() -> TestContext {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("file.txt"), "stashed content").unwrap();
+    ctx.stash_save("wip").unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    ctx.create_commit("Diverging commit", None).unwrap();
+    ctx
+}
+
+#[test]
+fn stash_pop_with_conflicts_reports_conflict_state() {
+    let ctx = ctx_with_a_conflicting_stash();
+
+    let err = ctx.stash_pop(0).unwrap_err();
+
+    assert_eq!(err.code, "conflict_state");
+    // Characterized, not endorsed: git2 applies with conflicts, returns Ok and drops
+    // the entry, so the post-check's "stash was NOT removed" is false on this path.
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+}
+
+#[test]
+fn stash_apply_with_conflicts_reports_conflict_state() {
+    let ctx = ctx_with_a_conflicting_stash();
+
+    let err = ctx.stash_apply(0).unwrap_err();
+
+    assert_eq!(err.code, "conflict_state");
+    assert_eq!(ctx.list_stashes().unwrap().len(), 1);
+}

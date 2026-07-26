@@ -2,6 +2,11 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 manifest := "src-tauri/Cargo.toml"
 
+# The Rust suite drives real `git` subprocesses. Without this the developer's
+# editor vars and global git config decide which path a test takes, and the
+# rebase editor-pin guards pass with the production fix reverted.
+scrubbed_env := "env -u GIT_EDITOR -u EDITOR -u VISUAL GIT_CONFIG_GLOBAL=/dev/null"
+
 # List available recipes
 default:
     @just --list
@@ -52,13 +57,13 @@ clippy:
 
 # Run Rust tests
 cargo-test:
-    cargo test --manifest-path {{manifest}}
+    {{scrubbed_env}} cargo test --manifest-path {{manifest}}
 
 # Run Rust tests with coverage
 cargo-test-cov:
-    cargo llvm-cov --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
-    cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
-    cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
+    {{scrubbed_env}} cargo llvm-cov --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
+    {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
+    {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
 
 # Run frontend tests
 vitest:

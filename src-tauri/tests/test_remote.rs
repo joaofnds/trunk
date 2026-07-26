@@ -1,9 +1,68 @@
 mod common;
 
 use common::context::TestContext;
+use common::drivers::remote::error_code;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Mutex;
-use trunk_lib::commands::remote::{classify_git_error, force_push_args, has_unmerged_paths};
+use trunk_lib::commands::has_unmerged_paths;
+use trunk_lib::commands::remote::{
+    FORCE_PUSH_ARGS, classify_git_error, get_push_target_inner, resolve_push_target,
+};
+
+fn set_config(ctx: &TestContext, pairs: &[(&str, &str)]) {
+    let repo = ctx.repo();
+    let mut cfg = repo.config().unwrap();
+    for (key, value) in pairs {
+        cfg.set_str(key, value).unwrap();
+    }
+}
+
+/// Point `branch` at the remote so a bare `git pull`/`git push` has a target.
+/// `with_remote` registers the remote but configures no tracking.
+fn track_upstream(ctx: &TestContext, remote: &str, branch: &str) {
+    set_config(
+        ctx,
+        &[
+            (&format!("branch.{branch}.remote"), remote),
+            (
+                &format!("branch.{branch}.merge"),
+                &format!("refs/heads/{branch}"),
+            ),
+        ],
+    );
+}
+
+fn bare_remote(ctx: &TestContext, remote: &str) -> std::path::PathBuf {
+    ctx.repo_path().join(format!("{remote}.git"))
+}
+
+/// Commit straight into the bare remote, standing in for another clone pushing to it.
+fn commit_on_remote(bare: &Path, branch: &str, file: &str, content: &str, message: &str) {
+    let repo = git2::Repository::open(bare).unwrap();
+    let tip = repo
+        .find_reference(&format!("refs/heads/{branch}"))
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    let blob = repo.blob(content.as_bytes()).unwrap();
+    let mut builder = repo.treebuilder(Some(&tip.tree().unwrap())).unwrap();
+    builder
+        .insert(file, blob, git2::FileMode::Blob.into())
+        .unwrap();
+    let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+    let sig =
+        git2::Signature::new("Test User", "test@example.com", &git2::Time::new(0, 0)).unwrap();
+    repo.commit(
+        Some(&format!("refs/heads/{branch}")),
+        &sig,
+        &sig,
+        message,
+        &tree,
+        &[&tip],
+    )
+    .unwrap();
+}
 
 // --- classify_git_error tests ---
 // classify_git_error is a pure function (string -> TrunkError). No TestContext needed.
@@ -70,22 +129,15 @@ fn classify_if_includes_refusal_is_non_fast_forward() {
     assert_eq!(err.code, "non_fast_forward");
 }
 
-// --- force_push_args tests ---
-
 #[test]
-fn force_push_uses_both_lease_flags() {
-    // Criterion 11: the recovery force push always pairs --force-with-lease with
-    // --force-if-includes; --force-with-lease alone is unsafe in Trunk (V1).
-    let args = force_push_args();
-    assert!(args.contains(&"--force-with-lease"));
-    assert!(args.contains(&"--force-if-includes"));
-}
-
-#[test]
-fn force_push_never_issues_bare_force() {
-    // Criterion 11: Trunk never issues a bare `--force`.
-    let args = force_push_args();
-    assert!(!args.contains(&"--force"));
+fn classify_hook_decline_is_not_non_fast_forward() {
+    // Verbatim git 2.55 output for a pre-receive decline. It carries "failed to push
+    // some refs" like every failed push, so the divergence arm captures it unless the
+    // decline is tested first — and a force push cannot fix a declined hook.
+    let err = classify_git_error(
+        "remote: error: pushing to a protected branch is not allowed\n! [remote rejected] HEAD -> master (pre-receive hook declined)\nerror: failed to push some refs to '/tmp/hookprobe/remote.git'",
+    );
+    assert_eq!(err.code, "push_declined");
 }
 
 #[test]
@@ -111,6 +163,27 @@ fn classify_combined_stderr_with_progress_and_error() {
     let stderr = "Counting objects: 100% (3/3), done.\nfatal: Authentication failed for 'https://github.com/user/repo.git'";
     let err = classify_git_error(stderr);
     assert_eq!(err.code, "auth_failure");
+}
+
+// --- FORCE_PUSH_ARGS tests ---
+
+#[test]
+fn force_push_args_are_the_four_fixed_flags() {
+    assert_eq!(
+        FORCE_PUSH_ARGS,
+        [
+            "push",
+            "--force-with-lease",
+            "--force-if-includes",
+            "--progress"
+        ]
+    );
+}
+
+#[test]
+fn force_push_never_issues_bare_force() {
+    // Criterion 11: Trunk never issues a bare `--force`.
+    assert!(!FORCE_PUSH_ARGS.contains(&"--force"));
 }
 
 // --- has_unmerged_paths tests ---
@@ -199,4 +272,353 @@ fn cancel_removes_only_target_repo() {
         assert!(!guard.contains_key("/repo/a"));
         assert_eq!(*guard.get("/repo/b").unwrap(), 1002);
     }
+}
+
+// --- live remote operations ---
+
+#[test]
+fn clean_pull_returns_ok() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    commit_on_remote(
+        &bare_remote(&ctx, "origin"),
+        "main",
+        "upstream.txt",
+        "from the remote",
+        "Remote commit",
+    );
+
+    remote.pull(None).unwrap();
+
+    let summaries: Vec<String> = remote
+        .cached_graph()
+        .expect("pull refreshes the cached graph")
+        .commits
+        .iter()
+        .map(|c| c.summary.clone())
+        .collect();
+    assert!(
+        summaries.contains(&"Remote commit".to_string()),
+        "pull should bring the remote commit into the graph; got {summaries:?}"
+    );
+}
+
+#[test]
+fn pull_reports_autostash_conflict() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_bool("rebase.autostash", true)
+        .unwrap();
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    commit_on_remote(
+        &bare_remote(&ctx, "origin"),
+        "main",
+        "file.txt",
+        "remote content",
+        "Remote commit",
+    );
+    std::fs::write(ctx.repo_path().join("file.txt"), "local content").unwrap();
+
+    let err = remote.pull(Some("rebase")).unwrap_err();
+
+    assert_eq!(error_code(&err), "autostash_conflict");
+    let summaries: Vec<String> = remote
+        .cached_graph()
+        .expect("the graph is refreshed before the conflict is reported")
+        .commits
+        .iter()
+        .map(|c| c.summary.clone())
+        .collect();
+    assert!(
+        summaries.contains(&"Remote commit".to_string()),
+        "the cache must already hold the post-pull graph when the Err arrives; got {summaries:?}"
+    );
+}
+
+#[test]
+fn pull_over_a_preexisting_stash_pop_conflict_is_not_blamed_as_an_autostash_conflict() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "stashed content").unwrap();
+    ctx.stash_save("wip").unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    ctx.create_commit("Diverging commit", None).unwrap();
+    ctx.stash_pop(0).unwrap_err();
+    assert!(
+        has_unmerged_paths(&ctx.repo()).unwrap(),
+        "setup precondition: the pop leaves conflicted paths behind"
+    );
+
+    let err = remote.pull(None).unwrap_err();
+
+    assert_eq!(
+        error_code(&err),
+        "remote_error",
+        "git refuses to pull at all over an unmerged index"
+    );
+    assert_ne!(
+        error_code(&err),
+        "autostash_conflict",
+        "a conflict the pull did not cause must never be reported as one it did"
+    );
+}
+
+/// Replace `branch`'s tip with a fresh commit on the same parent, as an amend or
+/// an interactive rebase would.
+fn rewrite_tip(ctx: &TestContext, branch: &str, content: &str) {
+    let repo = ctx.repo();
+    let tip = repo
+        .find_branch(branch, git2::BranchType::Local)
+        .unwrap()
+        .get()
+        .peel_to_commit()
+        .unwrap();
+    let parent = tip.parent(0).unwrap();
+    let blob = repo.blob(content.as_bytes()).unwrap();
+    let mut builder = repo.treebuilder(Some(&parent.tree().unwrap())).unwrap();
+    builder
+        .insert("rewritten.txt", blob, git2::FileMode::Blob.into())
+        .unwrap();
+    let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+    let sig =
+        git2::Signature::new("Test User", "test@example.com", &git2::Time::new(0, 0)).unwrap();
+    let rewritten = repo
+        .commit(
+            None,
+            &sig,
+            &sig,
+            &format!("Rewritten {branch}"),
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+    repo.reference(
+        &format!("refs/heads/{branch}"),
+        rewritten,
+        true,
+        "rewrite tip",
+    )
+    .unwrap();
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+        .unwrap();
+}
+
+fn remote_tip(bare: &Path, branch: &str) -> git2::Oid {
+    git2::Repository::open(bare)
+        .unwrap()
+        .find_reference(&format!("refs/heads/{branch}"))
+        .unwrap()
+        .target()
+        .unwrap()
+}
+
+#[test]
+fn force_push_targets_only_the_current_branch() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("release")
+        .checkout("release")
+        .with_file("release.txt", "release work")
+        .with_commit("Release commit")
+        .checkout("main")
+        .with_file("main.txt", "main work")
+        .with_commit("Main commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    // Exactly the fan-out trigger finding 1 reproduces: git derives the ref set from
+    // config, not from the branch the confirmation named.
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("remote.origin.push", "refs/heads/*:refs/heads/*")
+        .unwrap();
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    let release_before = remote_tip(&bare, "release");
+    rewrite_tip(&ctx, "release", "rewritten release");
+    rewrite_tip(&ctx, "main", "rewritten main");
+
+    remote.push_force().unwrap();
+
+    assert_eq!(
+        remote_tip(&bare, "release"),
+        release_before,
+        "force-pushing main must not move a branch the caller never named"
+    );
+    assert_eq!(
+        remote_tip(&bare, "main"),
+        ctx.repo().head().unwrap().target().unwrap(),
+        "force-pushing main must move main"
+    );
+}
+
+#[test]
+fn force_push_refuses_mid_merge() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_remote("origin")
+        .with_conflict("feature")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    commit_on_remote(&bare, "main", "remote.txt", "ahead", "Remote commit");
+    let before = remote_tip(&bare, "main");
+
+    let err = remote.push_force().unwrap_err();
+
+    assert_eq!(error_code(&err), "op_in_progress_local");
+    assert_eq!(
+        remote_tip(&bare, "main"),
+        before,
+        "a refused force push must not reach the remote at all"
+    );
+}
+
+// --- resolve_push_target tests ---
+// The four-step chain git itself walks: branch.<n>.pushRemote -> remote.pushDefault
+// -> branch.<n>.remote -> origin-by-name.
+
+fn repo_on_main() -> TestContext {
+    TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build()
+}
+
+#[test]
+fn push_target_prefers_the_branch_push_remote() {
+    let ctx = repo_on_main();
+    set_config(
+        &ctx,
+        &[
+            ("branch.main.pushRemote", "mirror"),
+            ("remote.pushDefault", "fallback"),
+            ("branch.main.remote", "origin"),
+        ],
+    );
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("mirror"));
+    assert_eq!(target.branch.as_deref(), Some("main"));
+}
+
+#[test]
+fn push_target_falls_back_to_the_push_default() {
+    let ctx = repo_on_main();
+    set_config(
+        &ctx,
+        &[
+            ("remote.pushDefault", "mirror"),
+            ("branch.main.remote", "origin"),
+        ],
+    );
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("mirror"));
+}
+
+#[test]
+fn push_target_falls_back_to_the_branch_remote() {
+    let ctx = repo_on_main();
+    set_config(&ctx, &[("branch.main.remote", "upstream")]);
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("upstream"));
+}
+
+#[test]
+fn push_target_falls_back_to_origin() {
+    let ctx = repo_on_main();
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("origin"));
+}
+
+#[test]
+fn push_target_has_no_remote_when_none_is_named_origin() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("upstream")
+        .build();
+
+    let target = resolve_push_target(&ctx.repo()).unwrap();
+
+    assert_eq!(
+        target.remote, None,
+        "a sole non-origin remote is not a target"
+    );
+    assert_eq!(target.branch.as_deref(), Some("main"));
+}
+
+#[test]
+fn push_target_has_no_branch_on_a_detached_head() {
+    let ctx = repo_on_main();
+    let repo = ctx.repo();
+    let head = repo.head().unwrap().target().unwrap();
+    repo.set_head_detached(head).unwrap();
+
+    let target = resolve_push_target(&repo).unwrap();
+
+    assert_eq!(target.branch, None);
+}
+
+// --- get_push_target tests ---
+
+#[test]
+fn get_push_target_resolves_the_open_repo() {
+    let ctx = repo_on_main();
+
+    let target = get_push_target_inner(ctx.path(), ctx.state_map()).unwrap();
+
+    assert_eq!(target.remote.as_deref(), Some("origin"));
+    assert_eq!(target.branch.as_deref(), Some("main"));
+}
+
+#[test]
+fn get_push_target_reports_not_open_for_an_unregistered_repo() {
+    let ctx = repo_on_main();
+
+    let err = get_push_target_inner("/not/a/registered/repo", ctx.state_map()).unwrap_err();
+
+    assert_eq!(err.code, "not_open");
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
@@ -22,6 +22,10 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
         || lower.contains("connection refused")
     {
         TrunkError::new("auth_failure", stderr)
+    } else if lower.contains("remote rejected") || lower.contains("hook declined") {
+        // Tested before divergence: a decline also prints "failed to push some refs",
+        // and offering a force push as the remedy loops the user into the same refusal.
+        TrunkError::new("push_declined", stderr)
     } else if lower.contains("non-fast-forward")
         || lower.contains("fetch first")
         || lower.contains("failed to push some refs")
@@ -39,10 +43,10 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
 /// Stores child PID in `running` for cancel support.
 /// Emits `remote-progress` Tauri events per stderr line.
 /// On failure, classifies the error using `classify_git_error`.
-async fn run_git_remote(
+async fn run_git_remote<R: Runtime>(
     args: &[&str],
     cwd: &std::path::Path,
-    app: &AppHandle,
+    app: &AppHandle<R>,
     repo_path: &str,
     running: &Mutex<HashMap<String, u32>>,
 ) -> Result<(), TrunkError> {
@@ -119,11 +123,11 @@ async fn run_git_remote(
 }
 
 /// Rebuild the commit graph and update the cache after a successful remote operation.
-async fn refresh_graph(
+async fn refresh_graph<R: Runtime>(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache: &State<'_, CommitCache>,
-    app: &AppHandle,
+    cache: &CommitCache,
+    app: &AppHandle<R>,
 ) -> Result<(), String> {
     let path_buf = state_map
         .get(path)
@@ -225,14 +229,24 @@ pub async fn git_fetch_background(
     Ok(())
 }
 
-/// Whether the worktree holds conflicted paths. A pull whose autostash restore
-/// conflicts exits 0, leaves no rebase directory, and reads `repo.state() == Clean`,
-/// so the unmerged paths are the only evidence the pull did not finish the job.
-pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
-    let statuses = repo.statuses(None).map_err(TrunkError::from)?;
-    Ok(statuses
-        .iter()
-        .any(|s| s.status().contains(git2::Status::CONFLICTED)))
+pub fn get_push_target_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<PushTarget, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    resolve_push_target(&repo)
+}
+
+#[tauri::command]
+pub async fn get_push_target(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<PushTarget, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || get_push_target_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e: TrunkError| e.to_json())
 }
 
 #[tauri::command]
@@ -245,28 +259,47 @@ pub async fn git_pull(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    git_pull_inner(
+        &path,
+        strategy.as_deref(),
+        &state_map,
+        &cache,
+        &running.0,
+        &app,
+    )
+    .await
+}
+
+pub async fn git_pull_inner<R: Runtime>(
+    path: &str,
+    strategy: Option<&str>,
+    state_map: &HashMap<String, PathBuf>,
+    cache: &CommitCache,
+    running: &Mutex<HashMap<String, u32>>,
+    app: &AppHandle<R>,
+) -> Result<(), String> {
     let path_buf = state_map
-        .get(&path)
+        .get(path)
         .ok_or_else(|| {
             TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
         })?
         .clone();
 
-    let args: Vec<&str> = match strategy.as_deref() {
+    let args: Vec<&str> = match strategy {
         Some("ff") => vec!["pull", "--ff", "--progress"],
         Some("ff-only") => vec!["pull", "--ff-only", "--progress"],
         Some("rebase") => vec!["pull", "--rebase", "--progress"],
         _ => vec!["pull", "--progress"],
     };
 
-    run_git_remote(&args, &path_buf, &app, &path, &running.0)
+    run_git_remote(&args, &path_buf, app, path, running)
         .await
         .map_err(|e| e.to_json())?;
 
     let probe_path = path_buf.clone();
     let conflicted = tauri::async_runtime::spawn_blocking(move || {
         let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
-        has_unmerged_paths(&repo)
+        crate::commands::has_unmerged_paths(&repo)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -274,7 +307,7 @@ pub async fn git_pull(
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
-    refresh_graph(&path, &state_map, &cache, &app).await?;
+    refresh_graph(path, state_map, cache, app).await?;
 
     if conflicted {
         return Err(TrunkError::new(
@@ -295,31 +328,73 @@ pub async fn git_push(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    git_push_inner(&path, &state_map, &cache, &running.0, &app).await
+}
+
+pub async fn git_push_inner<R: Runtime>(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+    cache: &CommitCache,
+    running: &Mutex<HashMap<String, u32>>,
+    app: &AppHandle<R>,
+) -> Result<(), String> {
     let path_buf = state_map
-        .get(&path)
+        .get(path)
         .ok_or_else(|| {
             TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
         })?
         .clone();
 
-    run_git_remote(&["push", "--progress"], &path_buf, &app, &path, &running.0)
+    run_git_remote(&["push", "--progress"], &path_buf, app, path, running)
         .await
         .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app).await
+    refresh_graph(path, state_map, cache, app).await
 }
 
-/// Argument vector for the recovery force push. Both lease flags are mandatory:
+/// Fixed prefix of the recovery force push. Both lease flags are mandatory:
 /// `--force-with-lease` alone is unsafe in Trunk because the background fetch can
 /// refresh the lease, so `--force-if-includes` requires the remote tip to be in the
-/// local reflog. Never a bare `--force`. Extracted so the flag pairing is unit-tested.
-pub fn force_push_args() -> [&'static str; 4] {
-    [
-        "push",
-        "--force-with-lease",
-        "--force-if-includes",
-        "--progress",
-    ]
+/// local reflog. Never a bare `--force`.
+pub const FORCE_PUSH_ARGS: [&str; 4] = [
+    "push",
+    "--force-with-lease",
+    "--force-if-includes",
+    "--progress",
+];
+
+/// Where a bare `git push` would send the current branch.
+#[derive(Debug, serde::Serialize)]
+pub struct PushTarget {
+    pub remote: Option<String>,
+    pub branch: Option<String>,
+}
+
+/// Resolve the push target the way git does, so the argv and the confirmation
+/// name the same ref. git2's `branch.upstream()` reads `branch.<name>.remote`
+/// only and cannot see a triangular `pushRemote` / `pushDefault` config.
+pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkError> {
+    let head = repo.head().ok();
+    let branch = head
+        .as_ref()
+        .filter(|head| head.is_branch())
+        .and_then(|head| head.shorthand().ok())
+        .map(str::to_owned);
+
+    let config = repo.config().map_err(TrunkError::from)?;
+    let branch_key = |suffix: &str| {
+        branch
+            .as_deref()
+            .and_then(|name| config.get_string(&format!("branch.{name}.{suffix}")).ok())
+    };
+    let remote = branch_key("pushRemote")
+        .or_else(|| config.get_string("remote.pushDefault").ok())
+        .or_else(|| branch_key("remote"))
+        // A bare push falls back to `origin` by name, not to "the only remote":
+        // with a sole differently-named remote git fatals with "no upstream branch".
+        .or_else(|| repo.find_remote("origin").ok().map(|_| "origin".to_owned()));
+
+    Ok(PushTarget { remote, branch })
 }
 
 #[tauri::command]
@@ -331,18 +406,60 @@ pub async fn git_push_force(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    git_push_force_inner(&path, &state_map, &cache, &running.0, &app).await
+}
+
+pub async fn git_push_force_inner<R: Runtime>(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+    cache: &CommitCache,
+    running: &Mutex<HashMap<String, u32>>,
+    app: &AppHandle<R>,
+) -> Result<(), String> {
     let path_buf = state_map
-        .get(&path)
+        .get(path)
         .ok_or_else(|| {
             TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
         })?
         .clone();
 
-    run_git_remote(&force_push_args(), &path_buf, &app, &path, &running.0)
+    let target_path = path_buf.clone();
+    let target = tauri::async_runtime::spawn_blocking(move || {
+        let repo = git2::Repository::open(&target_path).map_err(TrunkError::from)?;
+        // Guarding here rather than in the caller: a frontend gate can be stale or
+        // skipped, and this rewrites remote history.
+        if repo.state() != git2::RepositoryState::Clean {
+            return Err(TrunkError::new(
+                "op_in_progress_local",
+                "Finish or abort the merge, rebase or cherry-pick in progress before force pushing.",
+            ));
+        }
+        resolve_push_target(&repo)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    let (Some(remote), Some(branch)) = (target.remote, target.branch) else {
+        return Err(TrunkError::new(
+            "no_push_target",
+            "Trunk cannot tell which branch and remote this push would rewrite, so it will not force push.",
+        )
+        .to_json());
+    };
+
+    // Naming the ref explicitly is what keeps the push to the branch the user
+    // confirmed; a bare argv lets `push.default` / `remote.<name>.push` widen it.
+    let refspec = format!("HEAD:refs/heads/{branch}");
+    let mut args = FORCE_PUSH_ARGS.to_vec();
+    args.push(&remote);
+    args.push(&refspec);
+
+    run_git_remote(&args, &path_buf, app, path, running)
         .await
         .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app).await
+    refresh_graph(path, state_map, cache, app).await
 }
 
 #[tauri::command]
