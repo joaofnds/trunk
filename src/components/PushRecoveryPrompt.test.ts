@@ -128,6 +128,8 @@ describe("PushRecoveryPrompt force push", () => {
 		await waitFor(() =>
 			expect(mockInvoke).toHaveBeenCalledWith("git_push_force", {
 				path: "/repo",
+				remote: "origin",
+				branch: "feature",
 			}),
 		);
 		expect(mockAsk).toHaveBeenCalledTimes(1);
@@ -189,6 +191,41 @@ describe("PushRecoveryPrompt force push", () => {
 		await waitFor(() => expect(rs.error?.message).toBe("the force push"));
 		expect(await screen.findByText("Force Push")).toBeInTheDocument();
 		expect(screen.getAllByRole("button")).toHaveLength(2);
+	});
+
+	describe("when the repository left the confirmed branch", () => {
+		const REFUSAL = err(
+			"push_target_changed",
+			"You confirmed a force push of feature, but the repository is now on main. Nothing was pushed.",
+		);
+
+		async function refusedForcePush() {
+			const rs = stateWith(err("non_fast_forward"));
+			mockInvoke.mockImplementation((cmd: string) => {
+				if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
+				if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
+				if (cmd === "git_push_force") return Promise.reject(REFUSAL);
+				return Promise.resolve(undefined);
+			});
+
+			render(PushRecoveryPrompt, { props: propsFor(rs) });
+			await fireEvent.click(await screen.findByText("Force Push"));
+			await waitFor(() => expect(rs.error?.code).toBe("push_target_changed"));
+		}
+
+		it("shows the refusal naming both branches, with only a dismiss control", async () => {
+			await refusedForcePush();
+
+			expect(screen.getByRole("alert").textContent).toContain(REFUSAL.message);
+			expect(screen.getByText("Dismiss")).toBeInTheDocument();
+			expect(screen.getAllByRole("button")).toHaveLength(1);
+		});
+
+		it("reports no success", async () => {
+			await refusedForcePush();
+
+			expect(mockToast).not.toHaveBeenCalled();
+		});
 	});
 });
 
@@ -273,6 +310,20 @@ describe("PushRecoveryPrompt push target", () => {
 			.split(RENDERED_BREAK)
 			.find((l) => l.startsWith("Branch: "));
 		expect(branchLine).toHaveLength("Branch: ".length + 61);
+	});
+
+	it("sends the raw refname, not the one the display capped", async () => {
+		const branch = "x".repeat(200);
+
+		await confirmationFor(branch);
+
+		await waitFor(() =>
+			expect(mockInvoke).toHaveBeenCalledWith("git_push_force", {
+				path: "/repo",
+				remote: "origin",
+				branch,
+			}),
+		);
 	});
 
 	it("offers no Force Push when the backend cannot name a target", async () => {

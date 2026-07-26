@@ -370,9 +370,13 @@ pub struct PushTarget {
     pub branch: Option<String>,
 }
 
-/// Resolve the push target the way git does, so the argv and the confirmation
-/// name the same ref. git2's `branch.upstream()` reads `branch.<name>.remote`
-/// only and cannot see a triangular `pushRemote` / `pushDefault` config.
+/// Resolve the *remote* the way git does — the full `pushRemote` / `pushDefault`
+/// chain, which git2's `branch.upstream()` cannot see because it reads
+/// `branch.<name>.remote` only.
+///
+/// The *branch* is HEAD's shorthand and nothing else: `branch.<name>.merge`,
+/// `push.default` and a renaming `remote.<name>.push` are not consulted, so under
+/// those configs this names a different ref than a bare `git push` would.
 pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkError> {
     let head = repo.head().ok();
     let branch = head
@@ -400,17 +404,24 @@ pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkE
 #[tauri::command]
 pub async fn git_push_force(
     path: String,
+    remote: String,
+    branch: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    git_push_force_inner(&path, &state_map, &cache, &running.0, &app).await
+    git_push_force_inner(
+        &path, &remote, &branch, &state_map, &cache, &running.0, &app,
+    )
+    .await
 }
 
 pub async fn git_push_force_inner<R: Runtime>(
     path: &str,
+    confirmed_remote: &str,
+    confirmed_branch: &str,
     state_map: &HashMap<String, PathBuf>,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
@@ -448,11 +459,24 @@ pub async fn git_push_force_inner<R: Runtime>(
         .to_json());
     };
 
+    // The banner snapshots the push that failed and the repository can move under it.
+    // Without this the refspec would still name the confirmed ref, but Trunk would push
+    // onto it from a working tree that has since left it.
+    if remote != confirmed_remote || branch != confirmed_branch {
+        return Err(TrunkError::new(
+            "push_target_changed",
+            format!(
+                "You confirmed a force push of {confirmed_branch}, but the repository is now on {branch}. Nothing was pushed."
+            ),
+        )
+        .to_json());
+    }
+
     // Naming the ref explicitly is what keeps the push to the branch the user
     // confirmed; a bare argv lets `push.default` / `remote.<name>.push` widen it.
-    let refspec = format!("HEAD:refs/heads/{branch}");
+    let refspec = format!("HEAD:refs/heads/{confirmed_branch}");
     let mut args = FORCE_PUSH_ARGS.to_vec();
-    args.push(&remote);
+    args.push(confirmed_remote);
     args.push(&refspec);
 
     run_git_remote(&args, &path_buf, app, path, running)

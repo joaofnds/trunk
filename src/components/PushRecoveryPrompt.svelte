@@ -119,6 +119,7 @@ async function handleForcePush(target: Target) {
 		repoPath,
 		"git_push_force",
 		"Force pushed successfully",
+		{ remote: target.remote, branch: target.branch },
 	);
 }
 </script>

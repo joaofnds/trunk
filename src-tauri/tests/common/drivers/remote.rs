@@ -59,9 +59,11 @@ impl RemoteDriver<'_> {
         ))
     }
 
-    pub fn push_force(&self) -> Result<(), String> {
+    pub fn push_force(&self, remote: &str, branch: &str) -> Result<(), String> {
         tauri::async_runtime::block_on(remote::git_push_force_inner(
             self.ctx.path(),
+            remote,
+            branch,
             self.ctx.state_map(),
             &self.cache,
             &self.running.0,

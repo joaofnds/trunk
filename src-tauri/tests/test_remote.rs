@@ -424,6 +424,13 @@ fn rewrite_tip(ctx: &TestContext, branch: &str, content: &str) {
         .unwrap();
 }
 
+fn checkout_branch(ctx: &TestContext, branch: &str) {
+    let repo = ctx.repo();
+    repo.set_head(&format!("refs/heads/{branch}")).unwrap();
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+        .unwrap();
+}
+
 fn remote_tip(bare: &Path, branch: &str) -> git2::Oid {
     git2::Repository::open(bare)
         .unwrap()
@@ -462,7 +469,7 @@ fn force_push_targets_only_the_current_branch() {
     rewrite_tip(&ctx, "release", "rewritten release");
     rewrite_tip(&ctx, "main", "rewritten main");
 
-    remote.push_force().unwrap();
+    remote.push_force("origin", "main").unwrap();
 
     assert_eq!(
         remote_tip(&bare, "release"),
@@ -474,6 +481,49 @@ fn force_push_targets_only_the_current_branch() {
         ctx.repo().head().unwrap().target().unwrap(),
         "force-pushing main must move main"
     );
+}
+
+#[test]
+fn force_push_refuses_when_the_repo_left_the_confirmed_branch() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("release")
+        .checkout("release")
+        .with_file("release.txt", "release work")
+        .with_commit("Release commit")
+        .checkout("main")
+        .with_file("main.txt", "main work")
+        .with_commit("Main commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    ctx.repo()
+        .config()
+        .unwrap()
+        .set_str("remote.origin.push", "refs/heads/*:refs/heads/*")
+        .unwrap();
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    let release_before = remote_tip(&bare, "release");
+    let main_before = remote_tip(&bare, "main");
+    rewrite_tip(&ctx, "release", "rewritten release");
+    checkout_branch(&ctx, "release");
+
+    let result = remote.push_force("origin", "main");
+
+    assert_eq!(
+        remote_tip(&bare, "release"),
+        release_before,
+        "a force push confirmed for main must not rewrite the branch checked out since"
+    );
+    assert_eq!(
+        remote_tip(&bare, "main"),
+        main_before,
+        "a force push confirmed for main must not put another branch's commits on it"
+    );
+    assert_eq!(error_code(&result.unwrap_err()), "push_target_changed");
 }
 
 #[test]
@@ -498,7 +548,7 @@ fn force_push_refuses_mid_merge() {
     commit_on_remote(&bare, "main", "remote.txt", "ahead", "Remote commit");
     let before = remote_tip(&bare, "main");
 
-    let err = remote.push_force().unwrap_err();
+    let err = remote.push_force("origin", "main").unwrap_err();
 
     assert_eq!(error_code(&err), "op_in_progress_local");
     assert_eq!(
