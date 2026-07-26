@@ -5,16 +5,16 @@ import { dismissToast, toasts } from "../lib/toast.svelte.js";
 
 <div class="fixed bottom-4 right-4 flex flex-col gap-2 z-50 pointer-events-none">
   {#each toasts.items as toast (toast.id)}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      role="status"
-      transition:fly={{ y: 8, duration: 150 }}
-      class="toast px-4 py-2 rounded-lg text-sm font-medium shadow-lg pointer-events-auto"
-      class:error={toast.kind === 'error'}
-      onclick={() => dismissToast(toast.id)}
-    >
-      {toast.message}
+    <div role="status" transition:fly={{ y: 8, duration: 150 }}>
+      <button
+        type="button"
+        aria-label="Dismiss notification"
+        class="toast w-full text-left px-4 py-2 rounded-lg text-sm font-medium shadow-lg pointer-events-auto"
+        class:error={toast.kind === 'error'}
+        onclick={() => dismissToast(toast.id)}
+      >
+        {toast.message}
+      </button>
     </div>
   {/each}
 </div>
@@ -25,6 +25,10 @@ import { dismissToast, toasts } from "../lib/toast.svelte.js";
     border: 1px solid var(--color-border);
     color: var(--color-text);
     cursor: pointer;
+  }
+  .toast:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
   .toast.error {
     background: var(--color-toast-error-bg);

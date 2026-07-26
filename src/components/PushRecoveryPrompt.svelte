@@ -9,10 +9,9 @@ interface Props {
 	repoPath: string;
 	remoteState: RemoteState;
 	refreshSignal: number;
-	onclear: () => void;
 }
 
-let { repoPath, remoteState, refreshSignal, onclear }: Props = $props();
+let { repoPath, remoteState, refreshSignal }: Props = $props();
 
 type Target = { remote: string; branch: string };
 
@@ -90,13 +89,22 @@ let display = $derived.by((): Display => {
 
 function dismiss() {
 	remoteState.error = null;
-	onclear();
+}
+
+// Refnames are repository-controlled and may carry Unicode separators, so they go on
+// their own labelled line, capped: inline, a crafted name can rewrite the question.
+const MAX_REFNAME_CHARS = 60;
+
+function capped(name: string): string {
+	return name.length <= MAX_REFNAME_CHARS
+		? name
+		: `${name.slice(0, MAX_REFNAME_CHARS)}…`;
 }
 
 async function handleForcePush(target: Target) {
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const confirmed = await ask(
-		`Force push ${target.branch} to ${target.remote}? This overwrites the remote branch.`,
+		`Force push? This overwrites the remote branch.\n\nBranch: ${capped(target.branch)}\nRemote: ${capped(target.remote)}`,
 		{ title: "Force Push", kind: "warning" },
 	);
 	if (!confirmed) return;

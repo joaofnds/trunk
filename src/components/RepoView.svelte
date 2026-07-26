@@ -724,9 +724,8 @@ $effect(() => {
 		const intervalMs = await getFetchIntervalMs();
 		if (cancelled || intervalMs <= 0) return;
 		timer = setInterval(() => {
-			// Suppress while a remote op (e.g. a recovery chain) holds the per-repo lock:
-			// the lock is released before refresh_graph runs, so an autonomous fetch
-			// could otherwise race into that gap (grilled D4/R1).
+			// A remote op releases the per-repo lock before refresh_graph runs, so
+			// without the isRunning guard an autonomous fetch races into that gap.
 			if (!windowVisible || remoteState.isRunning) return;
 			safeInvoke("git_fetch_background", { path }).catch(() => {});
 		}, intervalMs);
@@ -979,12 +978,7 @@ function startRightResize(e: MouseEvent) {
 </style>
 
 <div class="flex-1 overflow-hidden flex flex-col">
-  <PushRecoveryPrompt
-    {repoPath}
-    {remoteState}
-    {refreshSignal}
-    onclear={() => { remoteState.error = null; }}
-  />
+  <PushRecoveryPrompt {repoPath} {remoteState} {refreshSignal} />
 <main class="flex-1 overflow-hidden flex">
   {#if showRebaseEditor}
     <!-- Full-window takeover for interactive rebase -->

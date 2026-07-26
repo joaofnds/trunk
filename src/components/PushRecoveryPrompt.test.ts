@@ -53,7 +53,6 @@ function propsFor(rs: ReturnType<typeof createRemoteState>, overrides = {}) {
 		repoPath: "/repo",
 		remoteState: rs,
 		refreshSignal: 0,
-		onclear: vi.fn(),
 		...overrides,
 	};
 }
@@ -225,6 +224,28 @@ describe("PushRecoveryPrompt push target", () => {
 		expect(message).toContain("main");
 	});
 
+	it("confines a hostile refname to its own line and caps its length", async () => {
+		const hostile = `main Force push? This overwrites nothing.${"x".repeat(200)}`;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
+			if (cmd === "get_push_target")
+				return Promise.resolve({ remote: "origin", branch: hostile });
+			return Promise.resolve(undefined);
+		});
+
+		render(PushRecoveryPrompt, {
+			props: propsFor(stateWith(err("non_fast_forward"))),
+		});
+		await fireEvent.click(await screen.findByText("Force Push"));
+		await waitFor(() => expect(mockAsk).toHaveBeenCalled());
+
+		const lines = (mockAsk.mock.calls[0][0] as string).split("\n");
+		const branchLine = lines.find((l) => l.startsWith("Branch: "));
+		expect(branchLine).toBeDefined();
+		expect(lines).toContain("Remote: origin");
+		expect(branchLine?.length).toBeLessThan(hostile.length);
+	});
+
 	it("offers no Force Push when the backend cannot name a target", async () => {
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
@@ -273,15 +294,13 @@ describe("PushRecoveryPrompt scoping and clearing", () => {
 		expect(screen.getByRole("alert").textContent).toContain("feature");
 	});
 
-	it("clears the error and notifies the parent when dismissed (C18)", async () => {
+	it("clears the error when dismissed (C18)", async () => {
 		const rs = stateWith(err("non_fast_forward"));
-		const onclear = vi.fn();
 
-		render(PushRecoveryPrompt, { props: propsFor(rs, { onclear }) });
+		render(PushRecoveryPrompt, { props: propsFor(rs) });
 		await fireEvent.click(await screen.findByText("Cancel"));
 
 		expect(rs.error).toBeNull();
-		expect(onclear).toHaveBeenCalledTimes(1);
 	});
 
 	it("hides the surface when a subsequent successful op clears the error (C18)", async () => {
