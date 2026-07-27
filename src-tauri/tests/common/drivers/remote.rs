@@ -3,18 +3,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::test::MockRuntime;
 use trunk_lib::commands::remote;
+use trunk_lib::error::TrunkError;
 use trunk_lib::git::types::GraphResult;
 use trunk_lib::state::{CommitCache, RunningOp};
-
-/// The stable `code` of a command's JSON error payload — the contract the
-/// frontend branches on, as opposed to the human-facing message.
-pub fn error_code(err: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(err)
-        .unwrap_or_else(|_| panic!("command error is not JSON: {err}"))["code"]
-        .as_str()
-        .unwrap_or_else(|| panic!("command error has no code: {err}"))
-        .to_owned()
-}
 
 /// Drives the remote commands against a real `git` subprocess and a real bare
 /// remote. Owns the Tauri state the commands write to, so a test can read the
@@ -38,7 +29,7 @@ impl TestContext {
 }
 
 impl RemoteDriver<'_> {
-    pub fn pull(&self, strategy: Option<&str>) -> Result<(), String> {
+    pub fn pull(&self, strategy: Option<&str>) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_pull_inner(
             self.ctx.path(),
             strategy,
@@ -49,7 +40,7 @@ impl RemoteDriver<'_> {
         ))
     }
 
-    pub fn push(&self) -> Result<(), String> {
+    pub fn push(&self) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_inner(
             self.ctx.path(),
             self.ctx.state_map(),
@@ -59,7 +50,7 @@ impl RemoteDriver<'_> {
         ))
     }
 
-    pub fn push_force(&self, remote: &str, branch: &str) -> Result<(), String> {
+    pub fn push_force(&self, remote: &str, branch: &str) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_force_inner(
             self.ctx.path(),
             remote,
@@ -69,6 +60,12 @@ impl RemoteDriver<'_> {
             &self.running.0,
             self.app.handle(),
         ))
+    }
+
+    /// Mark `path` as having a remote op in flight, as a live `git` child would. Lets a
+    /// test observe the mutual-exclusion guard without a real process to signal.
+    pub fn seed_running_op(&self, path: &str, pid: u32) {
+        self.running.0.lock().unwrap().insert(path.to_owned(), pid);
     }
 
     /// The graph the last successful command cached, as the UI would receive it.

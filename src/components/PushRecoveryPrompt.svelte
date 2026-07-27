@@ -1,6 +1,6 @@
 <script lang="ts">
 import { safeInvoke } from "../lib/invoke.js";
-import { isForcePushRefusal, remoteErrorMessage } from "../lib/remote-error.js";
+import { remoteErrorMessage } from "../lib/remote-error.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import type { OperationInfo, PushTarget } from "../lib/types.js";
@@ -75,7 +75,10 @@ let display = $derived.by((): Display => {
 		kind: "message",
 		text: remoteErrorMessage(err, remoteState.lastOp),
 	};
-	if (err.code !== "non_fast_forward" || remoteState.lastOp !== "push") {
+	if (
+		(err.code !== "non_fast_forward" && err.code !== "push_lease_refused") ||
+		remoteState.lastOp !== "push"
+	) {
 		return message;
 	}
 	if (repoOperation !== "clean") return message;
@@ -84,7 +87,7 @@ let display = $derived.by((): Display => {
 	const branch = pushTarget?.branch;
 	if (!remote || !branch) return message;
 
-	return isForcePushRefusal(err)
+	return err.code === "push_lease_refused"
 		? { kind: "force_refused", remote, branch }
 		: { kind: "recovery", remote, branch };
 });

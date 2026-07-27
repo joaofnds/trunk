@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TrunkError } from "./invoke.js";
-import { isForcePushRefusal, remoteErrorMessage } from "./remote-error.js";
+import { remoteErrorMessage } from "./remote-error.js";
 
 function err(code: string, message = "raw git stderr"): TrunkError {
 	return { code, message };
@@ -21,6 +21,10 @@ describe("remoteErrorMessage", () => {
 			"push_declined",
 			"The remote refused this push — a branch protection rule or a server-side hook rejected it",
 		],
+		[
+			"push_lease_refused",
+			"Push rejected — the remote has commits you don’t have locally",
+		],
 	])("describes %s", (code, expected) => {
 		expect(remoteErrorMessage(err(code), "push")).toBe(expected);
 	});
@@ -31,46 +35,12 @@ describe("remoteErrorMessage", () => {
 		);
 	});
 
-	it.each(["fetch" as const, "pull" as const, null])(
-		"does not blame a push for a divergence reported by %s",
-		(lastOp) => {
-			expect(remoteErrorMessage(err("non_fast_forward"), lastOp)).not.toContain(
-				"Push",
-			);
-		},
-	);
-});
-
-describe("isForcePushRefusal", () => {
 	it.each([
-		["! [rejected] main -> main (remote ref updated since checkout)"],
-		["! [rejected] main -> main (stale info)"],
-	])("recognises %s", (stderr) => {
-		expect(isForcePushRefusal(err("non_fast_forward", stderr))).toBe(true);
-	});
-
-	it("is false for a plain divergence", () => {
-		expect(
-			isForcePushRefusal(
-				err("non_fast_forward", "! [rejected] main -> main (fetch first)"),
-			),
-		).toBe(false);
-	});
-
-	it("ignores a marker the remote wrote on its own lines", () => {
-		const stderr = [
-			"remote: error: your push contains stale info, please retry",
-			"remote: error: remote ref updated since checkout",
-			" ! [rejected]        main -> main (fetch first)",
-			"error: failed to push some refs to 'origin'",
-		].join("\n");
-
-		expect(isForcePushRefusal(err("non_fast_forward", stderr))).toBe(false);
-	});
-
-	it("is false for a failure that is not a divergence", () => {
-		expect(
-			isForcePushRefusal(err("auth_failure", "stale info in the message")),
-		).toBe(false);
+		["non_fast_forward", "fetch" as const],
+		["non_fast_forward", "pull" as const],
+		["non_fast_forward", null],
+		["push_lease_refused", "fetch" as const],
+	])("does not blame a push for %s reported by %s", (code, lastOp) => {
+		expect(remoteErrorMessage(err(code), lastOp)).not.toContain("Push");
 	});
 });

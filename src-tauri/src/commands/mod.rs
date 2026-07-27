@@ -16,16 +16,6 @@ pub(crate) fn open_repo_from_state(
     git2::Repository::open(path_buf).map_err(TrunkError::from)
 }
 
-/// Whether the worktree holds conflicted paths. A pull whose autostash restore
-/// conflicts exits 0, leaves no rebase directory, and reads `repo.state() == Clean`,
-/// so the unmerged paths are the only evidence the pull did not finish the job.
-pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
-    let statuses = repo.statuses(None).map_err(TrunkError::from)?;
-    Ok(statuses
-        .iter()
-        .any(|s| s.status().contains(git2::Status::CONFLICTED)))
-}
-
 /// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
 pub(crate) fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()

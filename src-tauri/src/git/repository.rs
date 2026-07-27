@@ -23,6 +23,23 @@ pub fn is_repo_dirty(repo: &git2::Repository) -> Result<bool, git2::Error> {
     Ok(statuses.iter().any(|s| s.status().intersects(dirty_flags)))
 }
 
+/// Whether the worktree holds conflicted paths. A pull whose autostash restore
+/// conflicts exits 0, leaves no rebase directory, and reads `repo.state() == Clean`,
+/// so the unmerged paths are the only evidence the pull did not finish the job.
+pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
+    let statuses = repo.statuses(None).map_err(TrunkError::from)?;
+    Ok(statuses
+        .iter()
+        .any(|s| s.status().contains(git2::Status::CONFLICTED)))
+}
+
+/// Whether the repository is mid-operation for the purposes of a guard that must not
+/// let history be rewritten underneath it. `repo.state()` alone is insufficient: a
+/// conflicted stash or autostash restore leaves unmerged paths while it reads `Clean`.
+pub fn is_mid_operation(repo: &git2::Repository) -> Result<bool, TrunkError> {
+    Ok(repo.state() != git2::RepositoryState::Clean || has_unmerged_paths(repo)?)
+}
+
 pub fn validate_and_open(path: &std::path::Path) -> Result<(), TrunkError> {
     git2::Repository::open(path).map_err(|e| TrunkError {
         code: "not_a_git_repo".into(),

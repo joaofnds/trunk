@@ -186,9 +186,7 @@ fn stash_pop_with_conflicts_reports_conflict_state() {
     let err = ctx.stash_pop(0).unwrap_err();
 
     assert_eq!(err.code, "conflict_state");
-    // Characterized, not endorsed: git2 applies with conflicts, returns Ok and drops
-    // the entry, so the post-check's "stash was NOT removed" is false on this path.
-    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+    assert_eq!(ctx.list_stashes().unwrap().len(), 1);
 }
 
 #[test]

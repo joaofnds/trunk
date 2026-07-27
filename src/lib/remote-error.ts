@@ -9,6 +9,7 @@ export function remoteErrorMessage(
 		case "auth_failure":
 			return "Authentication failed — check your SSH key or credential helper";
 		case "non_fast_forward":
+		case "push_lease_refused":
 			return lastOp === "push"
 				? "Push rejected — the remote has commits you don’t have locally"
 				: "The remote has commits you don’t have locally";
@@ -19,20 +20,4 @@ export function remoteErrorMessage(
 		default:
 			return error.message;
 	}
-}
-
-// Both markers are unique to a lease-refused force push, but only on git's own lines:
-// without dropping the `remote:` ones, a hook that prints either phrase makes every
-// ordinary divergence render as a refusal.
-export function isForcePushRefusal(error: TrunkError): boolean {
-	if (error.code !== "non_fast_forward") return false;
-	return error.message
-		.toLowerCase()
-		.split("\n")
-		.filter((line) => !line.trimStart().startsWith("remote:"))
-		.some(
-			(line) =>
-				line.includes("remote ref updated since checkout") ||
-				line.includes("stale info"),
-		);
 }

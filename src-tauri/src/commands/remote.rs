@@ -11,6 +11,15 @@ use crate::git::{graph, types::GraphResult};
 use crate::shell_env;
 use crate::state::{CommitCache, RepoState, RunningOp, kill_process};
 
+/// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
+/// markers to these is what keeps a hook printing either phrase from turning every
+/// ordinary divergence into a refusal, which would withhold the force-push remedy.
+fn git_own_lines(lower: &str) -> impl Iterator<Item = &str> {
+    lower
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("remote:"))
+}
+
 /// Classifies git stderr output into structured error codes.
 pub fn classify_git_error(stderr: &str) -> TrunkError {
     let lower = stderr.to_lowercase();
@@ -26,6 +35,10 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
         // Tested before divergence: a decline also prints "failed to push some refs",
         // and offering a force push as the remedy loops the user into the same refusal.
         TrunkError::new("push_declined", stderr)
+    } else if git_own_lines(&lower).any(|line| {
+        line.contains("remote ref updated since checkout") || line.contains("stale info")
+    }) {
+        TrunkError::new("push_lease_refused", stderr)
     } else if lower.contains("non-fast-forward")
         || lower.contains("fetch first")
         || lower.contains("failed to push some refs")
@@ -128,12 +141,10 @@ async fn refresh_graph<R: Runtime>(
     state_map: &HashMap<String, PathBuf>,
     cache: &CommitCache,
     app: &AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<(), TrunkError> {
     let path_buf = state_map
         .get(path)
-        .ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
-        })?
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
         .clone();
 
     let path_owned = path.to_owned();
@@ -143,8 +154,7 @@ async fn refresh_graph<R: Runtime>(
         graph::walk_commits(&mut repo, 0, usize::MAX)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
     cache
         .0
@@ -181,7 +191,9 @@ pub async fn git_fetch(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app).await
+    refresh_graph(&path, &state_map, &cache, &app)
+        .await
+        .map_err(|e| e.to_json())
 }
 
 /// Silent periodic fetch. Best-effort: skips when the repo is mid-operation
@@ -268,6 +280,7 @@ pub async fn git_pull(
         &app,
     )
     .await
+    .map_err(|e| e.to_json())
 }
 
 pub async fn git_pull_inner<R: Runtime>(
@@ -277,12 +290,10 @@ pub async fn git_pull_inner<R: Runtime>(
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
     app: &AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<(), TrunkError> {
     let path_buf = state_map
         .get(path)
-        .ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
-        })?
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
         .clone();
 
     let args: Vec<&str> = match strategy {
@@ -292,18 +303,15 @@ pub async fn git_pull_inner<R: Runtime>(
         _ => vec!["pull", "--progress"],
     };
 
-    run_git_remote(&args, &path_buf, app, path, running)
-        .await
-        .map_err(|e| e.to_json())?;
+    run_git_remote(&args, &path_buf, app, path, running).await?;
 
     let probe_path = path_buf.clone();
     let conflicted = tauri::async_runtime::spawn_blocking(move || {
         let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
-        crate::commands::has_unmerged_paths(&repo)
+        crate::git::repository::has_unmerged_paths(&repo)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
@@ -313,8 +321,7 @@ pub async fn git_pull_inner<R: Runtime>(
         return Err(TrunkError::new(
             "autostash_conflict",
             "Pull finished, but restoring your local changes conflicted — resolve the conflicts before continuing. Your changes are also saved in the stash.",
-        )
-        .to_json());
+        ));
     }
     Ok(())
 }
@@ -328,7 +335,9 @@ pub async fn git_push(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    git_push_inner(&path, &state_map, &cache, &running.0, &app).await
+    git_push_inner(&path, &state_map, &cache, &running.0, &app)
+        .await
+        .map_err(|e| e.to_json())
 }
 
 pub async fn git_push_inner<R: Runtime>(
@@ -337,17 +346,13 @@ pub async fn git_push_inner<R: Runtime>(
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
     app: &AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<(), TrunkError> {
     let path_buf = state_map
         .get(path)
-        .ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
-        })?
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
         .clone();
 
-    run_git_remote(&["push", "--progress"], &path_buf, app, path, running)
-        .await
-        .map_err(|e| e.to_json())?;
+    run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
 
     refresh_graph(path, state_map, cache, app).await
 }
@@ -416,6 +421,7 @@ pub async fn git_push_force(
         &path, &remote, &branch, &state_map, &cache, &running.0, &app,
     )
     .await
+    .map_err(|e| e.to_json())
 }
 
 pub async fn git_push_force_inner<R: Runtime>(
@@ -426,12 +432,10 @@ pub async fn git_push_force_inner<R: Runtime>(
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
     app: &AppHandle<R>,
-) -> Result<(), String> {
+) -> Result<(), TrunkError> {
     let path_buf = state_map
         .get(path)
-        .ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
-        })?
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
         .clone();
 
     let target_path = path_buf.clone();
@@ -439,24 +443,22 @@ pub async fn git_push_force_inner<R: Runtime>(
         let repo = git2::Repository::open(&target_path).map_err(TrunkError::from)?;
         // Guarding here rather than in the caller: a frontend gate can be stale or
         // skipped, and this rewrites remote history.
-        if repo.state() != git2::RepositoryState::Clean {
+        if crate::git::repository::is_mid_operation(&repo)? {
             return Err(TrunkError::new(
                 "op_in_progress_local",
-                "Finish or abort the merge, rebase or cherry-pick in progress before force pushing.",
+                "Finish or abort the merge, rebase or cherry-pick in progress, and resolve any conflicted files, before force pushing.",
             ));
         }
         resolve_push_target(&repo)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
     let (Some(remote), Some(branch)) = (target.remote, target.branch) else {
         return Err(TrunkError::new(
             "no_push_target",
             "Trunk cannot tell which branch and remote this push would rewrite, so it will not force push.",
-        )
-        .to_json());
+        ));
     };
 
     // The banner snapshots the push that failed and the repository can move under it.
@@ -468,8 +470,7 @@ pub async fn git_push_force_inner<R: Runtime>(
             format!(
                 "You confirmed a force push of {confirmed_branch}, but the repository is now on {branch}. Nothing was pushed."
             ),
-        )
-        .to_json());
+        ));
     }
 
     // Naming the ref explicitly is what keeps the push to the branch the user
@@ -479,9 +480,7 @@ pub async fn git_push_force_inner<R: Runtime>(
     args.push(confirmed_remote);
     args.push(&refspec);
 
-    run_git_remote(&args, &path_buf, app, path, running)
-        .await
-        .map_err(|e| e.to_json())?;
+    run_git_remote(&args, &path_buf, app, path, running).await?;
 
     refresh_graph(path, state_map, cache, app).await
 }
@@ -524,7 +523,9 @@ pub async fn delete_remote_branch(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app).await
+    refresh_graph(&path, &state_map, &cache, &app)
+        .await
+        .map_err(|e| e.to_json())
 }
 
 #[tauri::command]

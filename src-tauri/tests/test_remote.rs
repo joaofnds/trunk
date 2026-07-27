@@ -1,14 +1,11 @@
 mod common;
 
 use common::context::TestContext;
-use common::drivers::remote::error_code;
-use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
-use trunk_lib::commands::has_unmerged_paths;
 use trunk_lib::commands::remote::{
     FORCE_PUSH_ARGS, classify_git_error, get_push_target_inner, resolve_push_target,
 };
+use trunk_lib::git::repository::has_unmerged_paths;
 
 fn set_config(ctx: &TestContext, pairs: &[(&str, &str)]) {
     let repo = ctx.repo();
@@ -119,12 +116,33 @@ fn classify_non_fast_forward_failed_push() {
 }
 
 #[test]
-fn classify_if_includes_refusal_is_non_fast_forward() {
-    // A `--force-if-includes` / stale-info refusal carries "failed to push some refs",
-    // so it classifies as non_fast_forward and routes back to the diverged prompt
-    // (criterion 12) with no classifier change.
+fn classify_remote_ref_updated_is_a_lease_refusal() {
     let err = classify_git_error(
         "! [rejected] main -> main (remote ref updated since checkout)\nerror: failed to push some refs",
+    );
+    assert_eq!(err.code, "push_lease_refused");
+}
+
+#[test]
+fn classify_stale_info_is_a_lease_refusal() {
+    let err = classify_git_error(
+        "! [rejected] main -> main (stale info)\nerror: failed to push some refs",
+    );
+    assert_eq!(err.code, "push_lease_refused");
+}
+
+#[test]
+fn classify_plain_divergence_is_not_a_lease_refusal() {
+    let err = classify_git_error("! [rejected] main -> main (fetch first)");
+    assert_eq!(err.code, "non_fast_forward");
+}
+
+#[test]
+fn classify_hook_forged_lease_markers_are_not_a_lease_refusal() {
+    // A remote can print either marker on its own lines. Unscoped, that would make an
+    // ordinary divergence render as a refusal and withhold the force-push remedy.
+    let err = classify_git_error(
+        "remote: error: your push contains stale info, please retry\nremote: error: remote ref updated since checkout\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'origin'",
     );
     assert_eq!(err.code, "non_fast_forward");
 }
@@ -168,110 +186,9 @@ fn classify_combined_stderr_with_progress_and_error() {
 // --- FORCE_PUSH_ARGS tests ---
 
 #[test]
-fn force_push_args_are_the_four_fixed_flags() {
-    assert_eq!(
-        FORCE_PUSH_ARGS,
-        [
-            "push",
-            "--force-with-lease",
-            "--force-if-includes",
-            "--progress"
-        ]
-    );
-}
-
-#[test]
 fn force_push_never_issues_bare_force() {
     // Criterion 11: Trunk never issues a bare `--force`.
     assert!(!FORCE_PUSH_ARGS.contains(&"--force"));
-}
-
-// --- has_unmerged_paths tests ---
-// A pull whose autostash restore conflicts exits 0 and leaves repo.state() Clean, so
-// the unmerged paths are the only evidence the pull did not finish the job.
-
-#[test]
-fn detects_unmerged_paths_in_a_conflicted_worktree() {
-    let ctx = TestContext::builder()
-        .with_file("file.txt", "hello")
-        .with_commit("Initial commit")
-        .with_branch("feature")
-        .checkout("feature")
-        .with_file("file.txt", "feature content")
-        .with_commit("Feature commit")
-        .checkout("main")
-        .with_file("file.txt", "main content")
-        .with_commit("Main commit")
-        .with_conflict("feature")
-        .build();
-
-    assert!(has_unmerged_paths(&ctx.repo()).unwrap());
-}
-
-#[test]
-fn reports_no_unmerged_paths_in_a_clean_worktree() {
-    let ctx = TestContext::builder()
-        .with_file("file.txt", "hello")
-        .with_commit("Initial commit")
-        .build();
-
-    assert!(!has_unmerged_paths(&ctx.repo()).unwrap());
-}
-
-// --- per-repo RunningOp tests ---
-
-#[test]
-fn running_op_allows_different_repos() {
-    let map = Mutex::new(HashMap::<String, u32>::new());
-    {
-        let mut guard = map.lock().unwrap();
-        guard.insert("/repo/a".to_string(), 1001);
-        guard.insert("/repo/b".to_string(), 1002);
-        assert_eq!(guard.len(), 2);
-    }
-}
-
-#[test]
-fn running_op_blocks_same_repo() {
-    let map = Mutex::new(HashMap::<String, u32>::new());
-    {
-        let mut guard = map.lock().unwrap();
-        guard.insert("/repo/a".to_string(), 1001);
-        assert!(guard.contains_key("/repo/a"));
-    }
-}
-
-#[test]
-fn running_op_remove_one_keeps_other() {
-    let map = Mutex::new(HashMap::<String, u32>::new());
-    {
-        let mut guard = map.lock().unwrap();
-        guard.insert("/repo/a".to_string(), 1001);
-        guard.insert("/repo/b".to_string(), 1002);
-        guard.remove("/repo/a");
-        assert!(!guard.contains_key("/repo/a"));
-        assert!(guard.contains_key("/repo/b"));
-    }
-}
-
-#[test]
-fn cancel_removes_only_target_repo() {
-    let map = Mutex::new(HashMap::<String, u32>::new());
-    {
-        let mut guard = map.lock().unwrap();
-        guard.insert("/repo/a".to_string(), 1001);
-        guard.insert("/repo/b".to_string(), 1002);
-    }
-    // Simulate cancel for /repo/a
-    {
-        let mut guard = map.lock().unwrap();
-        guard.remove("/repo/a");
-    }
-    {
-        let guard = map.lock().unwrap();
-        assert!(!guard.contains_key("/repo/a"));
-        assert_eq!(*guard.get("/repo/b").unwrap(), 1002);
-    }
 }
 
 // --- live remote operations ---
@@ -310,6 +227,42 @@ fn clean_pull_returns_ok() {
 }
 
 #[test]
+fn push_is_refused_while_the_same_repo_has_an_op_running() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.seed_running_op(ctx.path(), 4242);
+
+    let err = remote.push().unwrap_err();
+
+    assert_eq!(err.code, "op_in_progress");
+}
+
+#[test]
+fn push_proceeds_while_a_different_repo_has_an_op_running() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.seed_running_op("/another/repo", 4242);
+
+    remote.push().unwrap();
+
+    assert_eq!(
+        remote_tip(&bare_remote(&ctx, "origin"), "main"),
+        ctx.repo().head().unwrap().target().unwrap(),
+        "one repo's running op must not hold another repo's push"
+    );
+}
+
+#[test]
 fn pull_reports_autostash_conflict() {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
@@ -335,7 +288,7 @@ fn pull_reports_autostash_conflict() {
 
     let err = remote.pull(Some("rebase")).unwrap_err();
 
-    assert_eq!(error_code(&err), "autostash_conflict");
+    assert_eq!(err.code, "autostash_conflict");
     let summaries: Vec<String> = remote
         .cached_graph()
         .expect("the graph is refreshed before the conflict is reported")
@@ -373,13 +326,11 @@ fn pull_over_a_preexisting_stash_pop_conflict_is_not_blamed_as_an_autostash_conf
     let err = remote.pull(None).unwrap_err();
 
     assert_eq!(
-        error_code(&err),
-        "remote_error",
+        err.code, "remote_error",
         "git refuses to pull at all over an unmerged index"
     );
     assert_ne!(
-        error_code(&err),
-        "autostash_conflict",
+        err.code, "autostash_conflict",
         "a conflict the pull did not cause must never be reported as one it did"
     );
 }
@@ -523,7 +474,7 @@ fn force_push_refuses_when_the_repo_left_the_confirmed_branch() {
         main_before,
         "a force push confirmed for main must not put another branch's commits on it"
     );
-    assert_eq!(error_code(&result.unwrap_err()), "push_target_changed");
+    assert_eq!(result.unwrap_err().code, "push_target_changed");
 }
 
 #[test]
@@ -550,7 +501,78 @@ fn force_push_refuses_mid_merge() {
 
     let err = remote.push_force("origin", "main").unwrap_err();
 
-    assert_eq!(error_code(&err), "op_in_progress_local");
+    assert_eq!(err.code, "op_in_progress_local");
+    assert_eq!(
+        remote_tip(&bare, "main"),
+        before,
+        "a refused force push must not reach the remote at all"
+    );
+}
+
+#[test]
+fn force_push_lease_refuses_a_remote_tip_we_never_fetched() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_file("main.txt", "main work")
+        .with_commit("Main commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    commit_on_remote(
+        &bare,
+        "main",
+        "upstream.txt",
+        "from a colleague",
+        "Remote commit",
+    );
+    let before = remote_tip(&bare, "main");
+    rewrite_tip(&ctx, "main", "rewritten main");
+
+    let err = remote.push_force("origin", "main").unwrap_err();
+
+    assert_eq!(err.code, "push_lease_refused");
+    assert_eq!(
+        remote_tip(&bare, "main"),
+        before,
+        "the lease must keep a rewrite off a remote tip this clone never saw"
+    );
+}
+
+#[test]
+fn force_push_refuses_a_worktree_with_unresolved_conflicts() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    let bare = bare_remote(&ctx, "origin");
+    let before = remote_tip(&bare, "main");
+    std::fs::write(ctx.repo_path().join("file.txt"), "stashed content").unwrap();
+    ctx.stash_save("wip").unwrap();
+    std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+    ctx.create_commit("Diverging commit", None).unwrap();
+    ctx.stash_pop(0).unwrap_err();
+    assert!(
+        has_unmerged_paths(&ctx.repo()).unwrap(),
+        "setup precondition: the pop leaves conflicted paths behind"
+    );
+    assert_eq!(
+        ctx.repo().state(),
+        git2::RepositoryState::Clean,
+        "setup precondition: repo.state() alone cannot see this conflict, which is the gap under test"
+    );
+
+    let err = remote.push_force("origin", "main").unwrap_err();
+
+    assert_eq!(err.code, "op_in_progress_local");
     assert_eq!(
         remote_tip(&bare, "main"),
         before,

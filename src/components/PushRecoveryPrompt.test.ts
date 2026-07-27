@@ -60,13 +60,27 @@ function propsFor(rs: ReturnType<typeof createRemoteState>, overrides = {}) {
 	};
 }
 
+type InvokeResponder = () => Promise<unknown>;
+
+const DEFAULT_RESPONSES: Record<string, InvokeResponder> = {
+	get_operation_state: () => Promise.resolve(NONE_OP),
+	get_push_target: () => Promise.resolve(PUSH_TARGET),
+};
+
+// The sole `mockImplementation`: every arrange varies one command against these
+// defaults, so a test says which response it cares about and nothing else.
+function respondWith(overrides: Record<string, InvokeResponder> = {}) {
+	const responders = new Map(
+		Object.entries({ ...DEFAULT_RESPONSES, ...overrides }),
+	);
+	mockInvoke.mockImplementation(
+		(cmd: string) => responders.get(cmd)?.() ?? Promise.resolve(undefined),
+	);
+}
+
 beforeEach(() => {
 	mockInvoke.mockReset();
-	mockInvoke.mockImplementation((cmd: string) => {
-		if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-		if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
-		return Promise.resolve(undefined);
-	});
+	respondWith();
 	mockToast.mockReset();
 	mockAsk.mockReset();
 	mockAsk.mockResolvedValue(true);
@@ -100,11 +114,9 @@ describe("PushRecoveryPrompt", () => {
 	});
 
 	it("offers Cancel only on a lease/if-includes refusal", async () => {
-		const refusal = err(
-			"non_fast_forward",
-			"! [rejected] main -> main (remote ref updated since checkout)\nerror: failed to push some refs",
-		);
-		render(PushRecoveryPrompt, { props: propsFor(stateWith(refusal)) });
+		render(PushRecoveryPrompt, {
+			props: propsFor(stateWith(err("push_lease_refused"))),
+		});
 
 		await waitFor(() => {
 			expect(screen.getByText("Cancel")).toBeInTheDocument();
@@ -177,12 +189,9 @@ describe("PushRecoveryPrompt force push", () => {
 	it("re-opens the recovery choices when the force push is itself rejected", async () => {
 		mockAsk.mockResolvedValue(true);
 		const rs = stateWith(err("non_fast_forward", "the original push"));
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
-			if (cmd === "git_push_force")
-				return Promise.reject(err("non_fast_forward", "the force push"));
-			return Promise.resolve(undefined);
+		respondWith({
+			git_push_force: () =>
+				Promise.reject(err("non_fast_forward", "the force push")),
 		});
 
 		render(PushRecoveryPrompt, { props: propsFor(rs) });
@@ -201,12 +210,7 @@ describe("PushRecoveryPrompt force push", () => {
 
 		async function refusedForcePush() {
 			const rs = stateWith(err("non_fast_forward"));
-			mockInvoke.mockImplementation((cmd: string) => {
-				if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-				if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
-				if (cmd === "git_push_force") return Promise.reject(REFUSAL);
-				return Promise.resolve(undefined);
-			});
+			respondWith({ git_push_force: () => Promise.reject(REFUSAL) });
 
 			render(PushRecoveryPrompt, { props: propsFor(rs) });
 			await fireEvent.click(await screen.findByText("Force Push"));
@@ -247,11 +251,9 @@ describe("PushRecoveryPrompt actionless failures", () => {
 
 describe("PushRecoveryPrompt push target", () => {
 	it("names the target the backend resolved, in the banner and the confirmation", async () => {
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_push_target")
-				return Promise.resolve({ remote: "mirror", branch: "main" });
-			return Promise.resolve(undefined);
+		respondWith({
+			get_push_target: () =>
+				Promise.resolve({ remote: "mirror", branch: "main" }),
 		});
 
 		render(PushRecoveryPrompt, {
@@ -273,11 +275,7 @@ describe("PushRecoveryPrompt push target", () => {
 	const RENDERED_BREAK = /[\n\r\u2028\u2029\u0085]/;
 
 	async function confirmationFor(branch: string, remote = "origin") {
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_push_target") return Promise.resolve({ remote, branch });
-			return Promise.resolve(undefined);
-		});
+		respondWith({ get_push_target: () => Promise.resolve({ remote, branch }) });
 
 		render(PushRecoveryPrompt, {
 			props: propsFor(stateWith(err("non_fast_forward"))),
@@ -327,11 +325,8 @@ describe("PushRecoveryPrompt push target", () => {
 	});
 
 	it("offers no Force Push when the backend cannot name a target", async () => {
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(NONE_OP);
-			if (cmd === "get_push_target")
-				return Promise.resolve({ remote: null, branch: null });
-			return Promise.resolve(undefined);
+		respondWith({
+			get_push_target: () => Promise.resolve({ remote: null, branch: null }),
 		});
 
 		render(PushRecoveryPrompt, {
@@ -415,11 +410,7 @@ describe("PushRecoveryPrompt gate liveness", () => {
 
 	it("restores the recovery actions once the repo change clears the merge", async () => {
 		let op: unknown = MERGE_OP;
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(op);
-			if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
-			return Promise.resolve(undefined);
-		});
+		respondWith({ get_operation_state: () => Promise.resolve(op) });
 		const props = reactiveProps(propsFor(stateWith(err("non_fast_forward"))));
 		app = mount(PushRecoveryPrompt, { target, props });
 		await screen.findByText("Dismiss");
@@ -433,11 +424,8 @@ describe("PushRecoveryPrompt gate liveness", () => {
 
 describe("PushRecoveryPrompt when the operation-state probe fails", () => {
 	it("offers no Force Push", async () => {
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state")
-				return Promise.reject(err("not_open", "repo closed"));
-			if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
-			return Promise.resolve(undefined);
+		respondWith({
+			get_operation_state: () => Promise.reject(err("not_open", "repo closed")),
 		});
 
 		render(PushRecoveryPrompt, {
@@ -453,11 +441,7 @@ describe("PushRecoveryPrompt when the operation-state probe fails", () => {
 describe("PushRecoveryPrompt defensive gate (D6)", () => {
 	it("shows a message, not recovery actions, when a diverged push fails mid-operation", async () => {
 		const rs = stateWith(err("non_fast_forward"));
-		mockInvoke.mockImplementation((cmd: string) => {
-			if (cmd === "get_operation_state") return Promise.resolve(REBASE_OP);
-			if (cmd === "get_push_target") return Promise.resolve(PUSH_TARGET);
-			return Promise.resolve(undefined);
-		});
+		respondWith({ get_operation_state: () => Promise.resolve(REBASE_OP) });
 
 		render(PushRecoveryPrompt, { props: propsFor(rs) });
 

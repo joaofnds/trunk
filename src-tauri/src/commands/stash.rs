@@ -73,20 +73,23 @@ pub fn stash_pop_inner(
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
-    repo.stash_pop(index, None).map_err(|e| {
+    // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
+    // when it applied with conflicts, leaving the user's stashed work nowhere once they
+    // clear the conflict markers. Real `git stash pop` keeps it, and so does this.
+    repo.stash_apply(index, None).map_err(|e| {
         if e.message().contains("conflict") || e.message().contains("merge") {
             TrunkError::new("conflict_state", "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.")
         } else {
             TrunkError::from(e)
         }
     })?;
-    // Check for post-apply conflicts (git2 may return Ok even with conflicts)
-    if crate::commands::has_unmerged_paths(&repo)? {
+    if crate::git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new(
             "conflict_state",
             "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.",
         ));
     }
+    repo.stash_drop(index).map_err(TrunkError::from)?;
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }
 
@@ -106,7 +109,7 @@ pub fn stash_apply_inner(
             TrunkError::from(e)
         }
     })?;
-    if crate::commands::has_unmerged_paths(&repo)? {
+    if crate::git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new(
             "conflict_state",
             "Stash applied with conflicts — resolve conflicts before continuing",
