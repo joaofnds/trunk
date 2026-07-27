@@ -24,7 +24,7 @@ pub async fn get_commit_graph(
     let lock = cache.0.lock().unwrap();
     let graph_result = lock
         .get(&path)
-        .ok_or_else(|| TrunkError::new("repo_not_open", "Repository not open").to_json())?;
+        .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
     let len = graph_result.commits.len();
     let start = offset.min(len);
@@ -185,7 +185,7 @@ pub async fn get_commit_stats(
         let lock = cache.0.lock().unwrap();
         let graph_result = lock
             .get(&path)
-            .ok_or_else(|| TrunkError::new("repo_not_open", "Repository not open").to_json())?;
+            .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
         let len = graph_result.commits.len();
         let start = offset.min(len);
         let end = (offset + 200).min(len);
@@ -261,9 +261,9 @@ pub fn search_commits_inner(
     }
     let q = query.to_lowercase();
 
-    let graph_result = cache_map.get(path).ok_or_else(|| {
-        TrunkError::new("repo_not_open", format!("Repository not open: {}", path))
-    })?;
+    let graph_result = cache_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
 
     let mut results = Vec::new();
     for commit in &graph_result.commits {
