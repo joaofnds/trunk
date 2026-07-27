@@ -37,6 +37,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_miss_reports_not_open() {
+        let err = repo_path_from_state("/Users/someone/code/my-repo", &HashMap::new()).unwrap_err();
+
+        assert_eq!(err.code, "not_open");
+    }
+
+    #[test]
     fn a_miss_names_the_repository_without_its_path() {
         let err = repo_path_from_state("/Users/someone/code/my-repo", &HashMap::new()).unwrap_err();
 
