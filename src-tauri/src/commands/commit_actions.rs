@@ -25,7 +25,8 @@ pub fn checkout_commit_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
 
     if crate::git::repository::is_repo_dirty(&repo)? {
         return Err(TrunkError::new(
@@ -40,7 +41,6 @@ pub fn checkout_commit_inner(
     drop(obj);
     drop(repo);
 
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     graph::walk_commits(&mut repo2, 0, usize::MAX)
 }
@@ -52,7 +52,8 @@ pub fn create_tag_inner(
     message: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
     let obj = repo.revparse_single(oid)?;
     let sig = repo.signature().map_err(TrunkError::from)?;
     let msg = if message.trim().is_empty() {
@@ -64,7 +65,6 @@ pub fn create_tag_inner(
     drop(obj);
     drop(repo);
 
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     graph::walk_commits(&mut repo2, 0, usize::MAX)
 }
@@ -74,14 +74,14 @@ pub fn delete_tag_inner(
     tag_name: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
     let tag_ref_name = format!("refs/tags/{}", tag_name);
     let mut reference = repo.find_reference(&tag_ref_name)?;
     reference.delete()?;
     drop(reference);
     drop(repo);
 
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     graph::walk_commits(&mut repo2, 0, usize::MAX)
 }
@@ -412,7 +412,8 @@ pub fn undo_commit_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<UndoResult, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
     let head = repo.head()?.peel_to_commit()?;
 
     if head.parent_count() == 0 {
@@ -432,8 +433,6 @@ pub fn undo_commit_inner(
     let body = head.body().ok().flatten().map(str::to_owned);
     drop(head);
     drop(repo);
-
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
         .args(["reset", "--soft", "HEAD~1"])

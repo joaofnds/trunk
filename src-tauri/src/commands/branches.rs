@@ -137,7 +137,8 @@ pub fn delete_branch_inner(
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
 
     // Check if this is the HEAD branch
     let head_name = repo
@@ -157,7 +158,6 @@ pub fn delete_branch_inner(
     drop(repo);
 
     // Rebuild graph cache
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
@@ -173,14 +173,14 @@ pub fn rename_branch_inner(
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
     let mut branch = repo.find_branch(old_name, BranchType::Local)?;
     branch.rename(new_name, false)?; // false = no force (fail if new_name exists)
     drop(branch);
     drop(repo);
 
     // Rebuild graph cache
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
@@ -229,7 +229,8 @@ pub fn checkout_branch_inner(
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
 
     let branch_ref = format!("refs/heads/{}", branch_name);
     {
@@ -243,7 +244,6 @@ pub fn checkout_branch_inner(
     drop(repo);
 
     // Rebuild graph cache after checkout
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
@@ -344,7 +344,8 @@ pub fn create_branch_inner(
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let repo = git2::Repository::open(path_buf)?;
 
     let target_oid = match from_oid {
         Some(oid_str) => repo.revparse_single(oid_str)?.id(),
@@ -363,7 +364,6 @@ pub fn create_branch_inner(
     if crate::git::repository::is_repo_dirty(&repo)? {
         drop(repo);
         // Rebuild cache even though checkout didn't happen — branch was created
-        let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
         let mut repo2 = git2::Repository::open(path_buf)?;
         let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
         cache_map.insert(path.to_owned(), graph_result);
@@ -386,7 +386,6 @@ pub fn create_branch_inner(
     drop(repo);
 
     // Rebuild graph cache after branch creation
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
