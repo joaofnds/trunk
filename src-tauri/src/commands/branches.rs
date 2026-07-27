@@ -157,9 +157,7 @@ pub fn delete_branch_inner(
     drop(repo);
 
     // Rebuild graph cache
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
@@ -182,9 +180,7 @@ pub fn rename_branch_inner(
     drop(repo);
 
     // Rebuild graph cache
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
@@ -247,9 +243,7 @@ pub fn checkout_branch_inner(
     drop(repo);
 
     // Rebuild graph cache after checkout
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
@@ -291,9 +285,7 @@ pub fn fast_forward_to_inner(
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
         .args(["merge", "--ff-only", target_oid])
@@ -371,9 +363,7 @@ pub fn create_branch_inner(
     if crate::git::repository::is_repo_dirty(&repo)? {
         drop(repo);
         // Rebuild cache even though checkout didn't happen — branch was created
-        let path_buf = state_map
-            .get(path)
-            .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+        let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
         let mut repo2 = git2::Repository::open(path_buf)?;
         let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
         cache_map.insert(path.to_owned(), graph_result);
@@ -396,9 +386,7 @@ pub fn create_branch_inner(
     drop(repo);
 
     // Rebuild graph cache after branch creation
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
     cache_map.insert(path.to_owned(), graph_result);
