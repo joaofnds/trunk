@@ -138,15 +138,10 @@ async fn run_git_remote<R: Runtime>(
 /// Rebuild the commit graph and update the cache after a successful remote operation.
 async fn refresh_graph<R: Runtime>(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    path_buf: PathBuf,
     cache: &CommitCache,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
-        .clone();
-
     let path_owned = path.to_owned();
     let graph_result: GraphResult = tauri::async_runtime::spawn_blocking(move || {
         let mut repo = git2::Repository::open(&path_buf)
@@ -174,11 +169,8 @@ pub async fn git_fetch(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let path_buf = state_map
-        .get(&path)
-        .ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
-        })?
+    let path_buf = crate::commands::repo_path_from_state(&path, &state_map)
+        .map_err(|e| e.to_json())?
         .clone();
 
     run_git_remote(
@@ -191,7 +183,7 @@ pub async fn git_fetch(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app)
+    refresh_graph(&path, path_buf, &cache, &app)
         .await
         .map_err(|e| e.to_json())
 }
@@ -237,7 +229,7 @@ pub async fn git_fetch_background(
         return Ok(());
     }
 
-    let _ = refresh_graph(&path, &state_map, &cache, &app).await;
+    let _ = refresh_graph(&path, path_buf, &cache, &app).await;
     Ok(())
 }
 
@@ -291,10 +283,7 @@ pub async fn git_pull_inner<R: Runtime>(
     running: &Mutex<HashMap<String, u32>>,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
-        .clone();
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
 
     let args: Vec<&str> = match strategy {
         Some("ff") => vec!["pull", "--ff", "--progress"],
@@ -315,7 +304,7 @@ pub async fn git_pull_inner<R: Runtime>(
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
-    refresh_graph(path, state_map, cache, app).await?;
+    refresh_graph(path, path_buf, cache, app).await?;
 
     if conflicted {
         return Err(TrunkError::new(
@@ -347,14 +336,11 @@ pub async fn git_push_inner<R: Runtime>(
     running: &Mutex<HashMap<String, u32>>,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
-        .clone();
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
 
     run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
 
-    refresh_graph(path, state_map, cache, app).await
+    refresh_graph(path, path_buf, cache, app).await
 }
 
 /// Fixed prefix of the recovery force push. Both lease flags are mandatory:
@@ -433,10 +419,7 @@ pub async fn git_push_force_inner<R: Runtime>(
     running: &Mutex<HashMap<String, u32>>,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?
-        .clone();
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
 
     let target_path = path_buf.clone();
     let target = tauri::async_runtime::spawn_blocking(move || {
@@ -482,7 +465,7 @@ pub async fn git_push_force_inner<R: Runtime>(
 
     run_git_remote(&args, &path_buf, app, path, running).await?;
 
-    refresh_graph(path, state_map, cache, app).await
+    refresh_graph(path, path_buf, cache, app).await
 }
 
 #[tauri::command]
@@ -495,11 +478,8 @@ pub async fn delete_remote_branch(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let path_buf = state_map
-        .get(&path)
-        .ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path)).to_json()
-        })?
+    let path_buf = crate::commands::repo_path_from_state(&path, &state_map)
+        .map_err(|e| e.to_json())?
         .clone();
 
     // Parse "origin/feature" into remote="origin", branch="feature"
@@ -523,7 +503,7 @@ pub async fn delete_remote_branch(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, &state_map, &cache, &app)
+    refresh_graph(&path, path_buf, &cache, &app)
         .await
         .map_err(|e| e.to_json())
 }

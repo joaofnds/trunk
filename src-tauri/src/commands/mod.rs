@@ -3,17 +3,24 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// Open the git repository registered for `path` in the app's repo-state map.
+/// Look up the on-disk path registered for `path` in the app's repo-state map.
 /// Returns a `not_open` error if the path was never opened. Shared by every
-/// command module so the open/error contract lives in exactly one place.
+/// command module so the lookup/error contract lives in exactly one place.
+pub(crate) fn repo_path_from_state<'a>(
+    path: &str,
+    state_map: &'a HashMap<String, PathBuf>,
+) -> Result<&'a PathBuf, TrunkError> {
+    state_map
+        .get(path)
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))
+}
+
+/// Open the git repository registered for `path` in the app's repo-state map.
 pub(crate) fn open_repo_from_state(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<git2::Repository, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
-    git2::Repository::open(path_buf).map_err(TrunkError::from)
+    git2::Repository::open(repo_path_from_state(path, state_map)?).map_err(TrunkError::from)
 }
 
 /// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
