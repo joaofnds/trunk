@@ -8,6 +8,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 
+/// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
+const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.";
+const APPLY_CONFLICT_MESSAGE: &str =
+    "Stash applied with conflicts — resolve conflicts before continuing";
+
 pub fn list_stashes_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
@@ -78,16 +83,13 @@ pub fn stash_pop_inner(
     // clear the conflict markers. Real `git stash pop` keeps it, and so does this.
     repo.stash_apply(index, None).map_err(|e| {
         if e.message().contains("conflict") || e.message().contains("merge") {
-            TrunkError::new("conflict_state", "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.")
+            TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE)
         } else {
             TrunkError::from(e)
         }
     })?;
     if crate::git::repository::has_unmerged_paths(&repo)? {
-        return Err(TrunkError::new(
-            "conflict_state",
-            "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.",
-        ));
+        return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
     repo.stash_drop(index).map_err(TrunkError::from)?;
     graph::walk_commits(&mut repo, 0, usize::MAX)
@@ -101,19 +103,13 @@ pub fn stash_apply_inner(
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     repo.stash_apply(index, None).map_err(|e| {
         if e.message().contains("conflict") || e.message().contains("merge") {
-            TrunkError::new(
-                "conflict_state",
-                "Stash applied with conflicts — resolve conflicts before continuing",
-            )
+            TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE)
         } else {
             TrunkError::from(e)
         }
     })?;
     if crate::git::repository::has_unmerged_paths(&repo)? {
-        return Err(TrunkError::new(
-            "conflict_state",
-            "Stash applied with conflicts — resolve conflicts before continuing",
-        ));
+        return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }
