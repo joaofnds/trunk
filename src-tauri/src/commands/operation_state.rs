@@ -269,10 +269,7 @@ pub fn rebase_abort_inner(
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
-    let output = std::process::Command::new("git")
-        .args(["rebase", "--abort"])
-        .current_dir(path_buf)
-        .env("PATH", shell_env::system_path())
+    let output = rebase_command(path_buf, "--abort")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {
