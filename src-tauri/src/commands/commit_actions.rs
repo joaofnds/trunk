@@ -40,9 +40,7 @@ pub fn checkout_commit_inner(
     drop(obj);
     drop(repo);
 
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     graph::walk_commits(&mut repo2, 0, usize::MAX)
 }
@@ -66,9 +64,7 @@ pub fn create_tag_inner(
     drop(obj);
     drop(repo);
 
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     graph::walk_commits(&mut repo2, 0, usize::MAX)
 }
@@ -85,9 +81,7 @@ pub fn delete_tag_inner(
     drop(reference);
     drop(repo);
 
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo2 = git2::Repository::open(path_buf)?;
     graph::walk_commits(&mut repo2, 0, usize::MAX)
 }
@@ -97,9 +91,7 @@ pub fn cherry_pick_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
         .args(["cherry-pick", oid])
@@ -127,9 +119,7 @@ pub fn revert_commit_begin_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<RevertBeginResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // Stage the revert without committing so the editor can edit the message.
     // git writes the default message (Revert "<subject>" + full 40-char OID) to
@@ -164,9 +154,7 @@ pub fn revert_continue_inner(
     message: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
     // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
     let output = std::process::Command::new("git")
@@ -187,9 +175,7 @@ pub fn revert_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
     // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
     let output = std::process::Command::new("git")
@@ -212,9 +198,7 @@ pub fn reset_to_commit_inner(
     mode: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let valid_modes = ["soft", "mixed", "hard"];
     if !valid_modes.contains(&mode) {
@@ -449,9 +433,7 @@ pub fn undo_commit_inner(
     drop(head);
     drop(repo);
 
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
         .args(["reset", "--soft", "HEAD~1"])
@@ -505,9 +487,7 @@ pub async fn undo_commit(
     let (undo_result, graph_result) = tauri::async_runtime::spawn_blocking(move || {
         let undo = undo_commit_inner(&path_clone, &state_map)?;
         let graph = {
-            let path_buf = state_map.get(path_clone.as_str()).ok_or_else(|| {
-                TrunkError::new("not_open", format!("Repository not open: {}", path_clone))
-            })?;
+            let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
             graph::walk_commits(&mut repo, 0, usize::MAX)?
         };
@@ -535,9 +515,7 @@ pub async fn redo_commit(
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         redo_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-        let path_buf = state_map.get(path_clone.as_str()).ok_or_else(|| {
-            TrunkError::new("not_open", format!("Repository not open: {}", path_clone))
-        })?;
+        let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
         graph::walk_commits(&mut repo, 0, usize::MAX)
     })
