@@ -9,9 +9,7 @@ fn refresh_commit_cache(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<crate::git::types::GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }

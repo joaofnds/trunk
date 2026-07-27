@@ -78,9 +78,7 @@ fn canonical_repo_path(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<PathBuf, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     std::fs::canonicalize(path_buf).map_err(|e| TrunkError::new("io", e.to_string()))
 }
 

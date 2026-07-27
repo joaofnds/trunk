@@ -75,9 +75,7 @@ pub fn get_fork_point_inner(
     branch: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<String, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
         .args(["merge-base", branch, "HEAD"])
@@ -102,9 +100,7 @@ pub fn start_interactive_rebase_blocking(
     session_dir: &std::path::Path,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<crate::git::types::GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
     let todo_path = session_dir.join("trunk-rebase-todo");
