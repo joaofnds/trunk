@@ -155,9 +155,7 @@ pub fn merge_continue_inner(
     message: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // The editor flow always supplies a message (frontend aborts on null and
     // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
     // so conflicted-merge bodies stay clean (MSG-01 fidelity).
@@ -182,9 +180,7 @@ pub fn merge_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
         .args(["merge", "--abort"])
         .current_dir(path_buf)
@@ -218,9 +214,7 @@ pub fn rebase_continue_inner(
     message: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // Write edited message to .git/rebase-merge/message before continuing
     if let Some(msg) = message {
@@ -258,9 +252,7 @@ pub fn rebase_skip_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = rebase_command(path_buf, "--skip")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
@@ -276,9 +268,7 @@ pub fn rebase_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
         .args(["rebase", "--abort"])
         .current_dir(path_buf)
@@ -310,9 +300,7 @@ pub fn merge_branch_begin_inner(
     branch: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<MergeBeginResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
@@ -368,9 +356,7 @@ pub fn rebase_branch_inner(
     onto_branch: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
-    let path_buf = state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
         .args(["rebase", onto_branch])
         .current_dir(path_buf)
