@@ -115,12 +115,16 @@ by rewriting behavior.
 - **Fix:** Move to `git/` as `pub(crate) fn is_repo_dirty(repo) -> Result<bool, …>`;
   import in both.
 
-### C4 — ~~`not_open` error code overloaded~~ — DISMISSED on inspection (2026-06-04)
-- An audit pass flagged `not_open` as overloaded for both repo and session
-  lookups. **Not true:** `not_open` appears only at `review.rs:73` and `:1094`,
-  both "Repository not open" (repo-map misses); session misses already use a
-  distinct `no_session` code (8 sites: `review.rs:465,714,757,846,1074,1140,1175,1232`).
-  The taxonomy is already clean. Kept as a record that this was checked.
+### C4 — `not_open` error code covers two lookups — REOPENED (2026-07-27)
+- Dismissed 2026-06-04 on the grounds that `not_open` meant only "repo-map miss",
+  with session misses already carrying a distinct `no_session` code. The
+  repo-vs-session split still holds, but the premise was already wrong at
+  `review.rs`'s CommitCache miss, and `9fa2d77` widened it: `history.rs:26,187,265`
+  now emit `not_open` for a **graph-cache** miss as well as a repo-state miss.
+- Deliberate, not accidental — `CommitGraph.svelte:398-406` documents `not_open` as
+  covering the first-run window before the cache is populated, and the three sites
+  were renamed off `repo_not_open` to agree with it. Recorded so the next reader
+  does not trust the 2026-06-04 check.
 
 ### C5 — ✅ PAID in `7a6f10f` — Internal helpers marked `pub` for testability
 - **Severity:** low · **Effort:** trivial

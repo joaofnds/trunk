@@ -3,16 +3,18 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// Look up the on-disk path registered for `path` in the app's repo-state map.
-/// Returns a `not_open` error if the path was never opened. Shared by every
-/// command module so the lookup/error contract lives in exactly one place.
+/// The message reaches the user as a toast, so it names the repository rather than
+/// spelling out where it lives on disk.
 pub(crate) fn repo_path_from_state<'a>(
     path: &str,
     state_map: &'a HashMap<String, PathBuf>,
 ) -> Result<&'a PathBuf, TrunkError> {
-    state_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))
+    state_map.get(path).ok_or_else(|| {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map_or(path, |n| n.to_str().unwrap_or(path));
+        TrunkError::new("not_open", format!("Repository not open: {}", name))
+    })
 }
 
 /// Open the git repository registered for `path` in the app's repo-state map.
@@ -28,6 +30,25 @@ pub(crate) fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_miss_names_the_repository_without_its_path() {
+        let err = repo_path_from_state("/Users/someone/code/my-repo", &HashMap::new()).unwrap_err();
+
+        assert_eq!(err.message, "Repository not open: my-repo");
+    }
+
+    #[test]
+    fn a_miss_falls_back_to_the_key_when_it_has_no_final_component() {
+        let err = repo_path_from_state("/", &HashMap::new()).unwrap_err();
+
+        assert_eq!(err.message, "Repository not open: /");
+    }
 }
 
 pub mod branches;

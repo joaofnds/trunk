@@ -1,6 +1,6 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { mount, unmount } from "svelte";
+import { mount, tick, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { reactiveProps } from "../lib/reactive-props.svelte.js";
@@ -58,6 +58,14 @@ function propsFor(rs: ReturnType<typeof createRemoteState>, overrides = {}) {
 		refreshSignal: 0,
 		...overrides,
 	};
+}
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
 }
 
 type InvokeResponder = () => Promise<unknown>;
@@ -449,5 +457,33 @@ describe("PushRecoveryPrompt defensive gate (D6)", () => {
 		expect(screen.getByText("Dismiss")).toBeInTheDocument();
 		expect(screen.queryByText("Force Push")).toBeNull();
 		expect(screen.getAllByRole("button")).toHaveLength(1);
+	});
+});
+
+describe("PushRecoveryPrompt when a superseded probe resolves late", () => {
+	it("keeps the target the current probe reported", async () => {
+		const superseded = deferred<typeof PUSH_TARGET>();
+		const current = deferred<typeof PUSH_TARGET>();
+		const probes = [superseded.promise, current.promise];
+		respondWith({
+			get_push_target: () => probes.shift() ?? Promise.resolve(PUSH_TARGET),
+		});
+		const rs = stateWith(err("non_fast_forward"));
+		render(PushRecoveryPrompt, { props: propsFor(rs) });
+		await screen.findByRole("alert");
+
+		rs.error = err("non_fast_forward", "a second push failed");
+		current.resolve({ remote: "origin", branch: "current-branch" });
+		await waitFor(() => {
+			expect(screen.getByRole("alert").textContent).toContain("current-branch");
+		});
+		superseded.resolve({ remote: "origin", branch: "superseded-branch" });
+		await superseded.promise;
+		await tick();
+
+		expect(screen.getByRole("alert").textContent).toContain("current-branch");
+		expect(screen.getByRole("alert").textContent).not.toContain(
+			"superseded-branch",
+		);
 	});
 });

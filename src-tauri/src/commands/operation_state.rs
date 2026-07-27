@@ -200,6 +200,7 @@ pub fn merge_abort_inner(
 /// opens an editor; this subprocess has no TTY, so an ambient interactive editor
 /// (vi/nvim inherited from the environment) blocks forever and the command never
 /// returns. `true` accepts whatever message git has already staged.
+/// `--abort` reaches no editor at all — the pin is inert there, not load-bearing.
 pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Command {
     let mut cmd = std::process::Command::new("git");
     cmd.args(["rebase", step])

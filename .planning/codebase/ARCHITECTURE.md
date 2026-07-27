@@ -279,7 +279,7 @@
 
 **Patterns:**
 - Rust commands return `Result<T, String>` where `Err` is always `serde_json::to_string(&TrunkError{...}).unwrap()`
-- `TrunkError` has a string `code` (e.g., `"repo_not_open"`, `"auth_failure"`, `"dirty_workdir"`) and a human-readable `message`
+- `TrunkError` has a string `code` (e.g., `"not_open"`, `"auth_failure"`, `"dirty_workdir"`) and a human-readable `message`
 - `safeInvoke` on the frontend parses the JSON string back into a typed `TrunkError` object and rethrows
 - Components `catch` the typed error and either show a toast (`showToast(e.message, "error")`) or display inline error state
 - Remote op errors are classified by `classify_git_error()` in `src-tauri/src/commands/remote.rs:15` which maps stderr substrings to error codes
