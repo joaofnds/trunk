@@ -26,22 +26,38 @@ type Display =
 let pushTarget = $state<PushTarget | null>(null);
 let repoOperation = $state<"unknown" | "clean" | "busy">("unknown");
 
+function settleIfCurrent<T>(
+	probe: Promise<T>,
+	ok: (value: T) => void,
+	failed: () => void,
+): () => void {
+	let cancelled = false;
+	probe
+		.then((value) => {
+			if (!cancelled) ok(value);
+		})
+		.catch(() => {
+			if (!cancelled) failed();
+		});
+	return () => {
+		cancelled = true;
+	};
+}
+
 $effect(() => {
 	if (!remoteState.error) {
 		pushTarget = null;
 		return;
 	}
-	let cancelled = false;
-	safeInvoke<PushTarget>("get_push_target", { path: repoPath })
-		.then((target) => {
-			if (!cancelled) pushTarget = target;
-		})
-		.catch(() => {
-			if (!cancelled) pushTarget = null;
-		});
-	return () => {
-		cancelled = true;
-	};
+	return settleIfCurrent(
+		safeInvoke<PushTarget>("get_push_target", { path: repoPath }),
+		(target) => {
+			pushTarget = target;
+		},
+		() => {
+			pushTarget = null;
+		},
+	);
 });
 
 // Reading refreshSignal is what re-probes on every repo change rather than sampling
@@ -53,18 +69,15 @@ $effect(() => {
 		repoOperation = "unknown";
 		return;
 	}
-	let cancelled = false;
-	safeInvoke<OperationInfo>("get_operation_state", { path: repoPath })
-		.then((info) => {
-			if (!cancelled)
-				repoOperation = info.op_type === "None" ? "clean" : "busy";
-		})
-		.catch(() => {
-			if (!cancelled) repoOperation = "unknown";
-		});
-	return () => {
-		cancelled = true;
-	};
+	return settleIfCurrent(
+		safeInvoke<OperationInfo>("get_operation_state", { path: repoPath }),
+		(info) => {
+			repoOperation = info.op_type === "None" ? "clean" : "busy";
+		},
+		() => {
+			repoOperation = "unknown";
+		},
+	);
 });
 
 let display = $derived.by((): Display => {
