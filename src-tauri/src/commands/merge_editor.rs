@@ -121,9 +121,7 @@ pub async fn save_merge_result(
     // Repopulate cache and emit repo-changed (same pattern as merge_continue)
     let path_for_cache = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = state_map
-            .get(&path_for_cache)
-            .ok_or_else(|| TrunkError::new("not_open", "Repository not open"))?;
+        let path_buf = crate::commands::repo_path_from_state(&path_for_cache, &state_map)?;
         let mut repo = git2::Repository::open(path_buf)?;
         graph::walk_commits(&mut repo, 0, usize::MAX)
     })
