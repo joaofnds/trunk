@@ -3,11 +3,19 @@ import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { safeInvoke } from "../lib/invoke.js";
+import { relativeLabel } from "../lib/relative-time.js";
+import { resetCache } from "../lib/text-measure.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { SessionStatus } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
-// Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth)
+// Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth).
+// Widths are per-glyph rather than uniform so that two equal-length strings can
+// still measure differently, as they do in the real proportional font.
+const WIDE_GLYPH = /[0-9mwMW]/;
+function stubTextWidth(text: string): number {
+	return [...text].reduce((w, ch) => w + (WIDE_GLYPH.test(ch) ? 10 : 6), 0);
+}
 if (typeof globalThis.OffscreenCanvas === "undefined") {
 	globalThis.OffscreenCanvas = class {
 		constructor(
@@ -17,11 +25,20 @@ if (typeof globalThis.OffscreenCanvas === "undefined") {
 		getContext() {
 			return {
 				font: "",
-				measureText: () => ({ width: 50 }),
+				measureText: (text: string) => ({ width: stubTextWidth(text) }),
 			};
 		}
 	} as unknown as typeof OffscreenCanvas;
 }
+
+// Every label relativeLabel can emit, derived from the formatter rather than
+// copied, so a new or reworded bucket joins the width expectation automatically.
+const NOW_MINUTE = 30_000_000;
+const LABEL_VOCABULARY = [
+	0, 1, 59, 60, 1439, 1440, 43199, 43200, 525599, 525600, 5_256_000,
+].map((minutesAgo) =>
+	relativeLabel((NOW_MINUTE - minutesAgo) * 60, NOW_MINUTE),
+);
 
 // Stub Element.scrollTo for jsdom — VirtualList uses viewport.scrollTo()
 if (typeof Element.prototype.scrollTo === "undefined") {
@@ -191,6 +208,7 @@ beforeEach(() => {
 	sessionChangedHandler = null;
 	vi.clearAllMocks();
 	menuActions.clear();
+	resetCache();
 	installReads();
 });
 
@@ -557,6 +575,45 @@ describe("CommitGraph", () => {
 			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
 				"merge_continue",
 				expect.anything(),
+			);
+		});
+	});
+
+	describe("date column width", () => {
+		const COLUMN_PADDING_X = 4;
+
+		function dateColumnWidth(): number {
+			const style = screen.getByText("Date").getAttribute("style") ?? "";
+			const match = /width:\s*([\d.]+)px/.exec(style);
+			if (!match) throw new Error(`no width in date header style: ${style}`);
+			return Number(match[1]);
+		}
+
+		it("re-fits to the widest producible label when the graph refreshes", async () => {
+			const { rerender } = render(CommitGraph, {
+				props: {
+					repoPath: "/test/repo",
+					clearRedoStack: vi.fn(),
+					refreshSignal: 0,
+				},
+			});
+			await waitFor(() => {
+				expect(screen.getByText("Date")).toBeInTheDocument();
+			});
+			await flush();
+
+			await rerender({
+				repoPath: "/test/repo",
+				clearRedoStack: vi.fn(),
+				refreshSignal: 1,
+			});
+			await flush();
+
+			const widestLabel = Math.max(
+				...LABEL_VOCABULARY.map((label) => stubTextWidth(label)),
+			);
+			expect(dateColumnWidth()).toBeGreaterThanOrEqual(
+				widestLabel + 2 * COLUMN_PADDING_X,
 			);
 		});
 	});

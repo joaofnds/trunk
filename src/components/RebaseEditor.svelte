@@ -3,7 +3,9 @@ import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
 import { COLUMN_PADDING_X, ROW_HEIGHT } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";
+import { relativeLabel } from "../lib/relative-time.js";
 import type {
 	RebaseColumnVisibility,
 	RebaseColumnWidths,
@@ -107,6 +109,7 @@ let hasChanges = $derived(
 	JSON.stringify(items) !== JSON.stringify(originalItems),
 );
 let canStart = $derived(validationErrors.length === 0);
+const nowMinute = $derived(currentMinute());
 
 // Emit focus change when focused commit changes
 $effect(() => {
@@ -134,18 +137,6 @@ function actionColor(action: string): string {
 		default:
 			return "var(--color-text-muted)";
 	}
-}
-
-function formatRelativeDate(timestamp: number): string {
-	const now = Date.now() / 1000;
-	const diff = Math.max(0, now - timestamp);
-	const minutes = Math.floor(diff / 60);
-	const hours = Math.floor(diff / 3600);
-	const days = Math.floor(diff / 86400);
-
-	if (days > 0) return `${days}d ago`;
-	if (hours > 0) return `${hours}h ago`;
-	return `${minutes}m ago`;
 }
 
 function errorForIndex(idx: number): string | null {
@@ -628,7 +619,7 @@ let lastVisibleColumn = $derived.by(() => {
             class="rebase-cell flex-shrink-0 rebase-cell-date"
             style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
           >
-            <span class:rebase-text-drop={item.action === 'drop'}>{formatRelativeDate(item.authorTimestamp)}</span>
+            <span class:rebase-text-drop={item.action === 'drop'}>{relativeLabel(item.authorTimestamp, nowMinute)}</span>
           </div>
         {/if}
       </div>

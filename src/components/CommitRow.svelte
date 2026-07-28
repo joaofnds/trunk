@@ -7,6 +7,8 @@ import {
 	LANE_WIDTH,
 	ROW_HEIGHT,
 } from "../lib/graph-constants.js";
+import { currentMinute } from "../lib/now.svelte.js";
+import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
 import { tooltip } from "../lib/tooltip.js";
@@ -66,17 +68,9 @@ let {
 	diffStat,
 }: Props = $props();
 
-function relativeDate(ts: number): string {
-	if (ts === 0) return "";
-	const now = Date.now() / 1000;
-	const diff = Math.max(0, now - ts);
-	if (diff < 60) return "just now";
-	if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-	if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-	if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
-	if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo ago`;
-	return `${Math.floor(diff / 31536000)}y ago`;
-}
+const dateLabel = $derived(
+	relativeLabel(commit.author_timestamp, currentMinute()),
+);
 
 const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
@@ -224,7 +218,7 @@ const rowShadow = $derived(
   <!-- Column 6: Date -->
   {#if columnVisibility.date}
     <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: {columnWidths.date}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}{relativeDate(commit.author_timestamp)}{/if}
+      {#if !isWip && !isStash}{dateLabel}{/if}
     </div>
   {/if}
 

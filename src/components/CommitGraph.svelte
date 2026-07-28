@@ -30,6 +30,7 @@ import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { buildOverlayPaths } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
+import { WIDEST_LABELS } from "../lib/relative-time.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import {
 	type ColumnVisibility,
@@ -259,18 +260,6 @@ let maxAuthorContentWidth = $state(0);
 let maxDateContentWidth = $state(0);
 let shaContentWidth = $state(0);
 
-function relativeDateStr(ts: number): string {
-	if (ts === 0) return "";
-	const now = Date.now() / 1000;
-	const diff = Math.max(0, now - ts);
-	if (diff < 60) return "just now";
-	if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-	if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-	if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`;
-	if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo ago`;
-	return `${Math.floor(diff / 31536000)}y ago`;
-}
-
 function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	if (reset) {
 		maxAuthorContentWidth = 0;
@@ -284,10 +273,15 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 			2 * COLUMN_PADDING_X +
 			AUTHOR_AVATAR_WIDTH;
 		if (aw > maxAuthorContentWidth) maxAuthorContentWidth = aw;
-		const dw =
-			measureTextWidth(relativeDateStr(c.author_timestamp), DATE_CONTENT_FONT) +
+	}
+	if (newCommits.length > 0 && maxDateContentWidth === 0) {
+		maxDateContentWidth =
+			Math.max(
+				...WIDEST_LABELS.map((label) =>
+					measureTextWidth(label, DATE_CONTENT_FONT),
+				),
+			) +
 			2 * COLUMN_PADDING_X;
-		if (dw > maxDateContentWidth) maxDateContentWidth = dw;
 	}
 	if (newCommits.length > 0 && shaContentWidth === 0) {
 		shaContentWidth =

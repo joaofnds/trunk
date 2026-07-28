@@ -1,6 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommitRow from "./CommitRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import { makeCommit } from "../__tests__/helpers/factories";
@@ -471,5 +472,53 @@ describe("CommitRow", () => {
 		const style = screen.getByTestId("commit-row").getAttribute("style") ?? "";
 		expect(style).toContain("var(--color-review-row)");
 		expect(style).toContain("var(--color-review-pending-base)");
+	});
+
+	describe("date column", () => {
+		const pinnedNow = new Date("2026-07-28T10:29:00Z");
+		const twoHours = 2 * 60 * 60 * 1000;
+		const threeHours = 3 * 60 * 60 * 1000;
+
+		function renderAtPinnedTime() {
+			return render(CommitRow, {
+				props: {
+					commit: makeCommit({
+						oid: "abc1234567",
+						author_timestamp: pinnedNow.getTime() / 1000,
+					}),
+					rowIndex: 0,
+					columnWidths: defaultWidths,
+					columnVisibility: allVisible,
+				},
+			});
+		}
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+			vi.setSystemTime(pinnedNow);
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("advances a mounted date cell without a prop change", async () => {
+			const { getByText } = renderAtPinnedTime();
+			const dateCell = getByText("just now");
+
+			await vi.advanceTimersByTimeAsync(twoHours + 1_000);
+
+			expect(dateCell).toHaveTextContent("2h ago");
+		});
+
+		it("renders a date cell mounted after a gap with no other row mounted", async () => {
+			renderAtPinnedTime().unmount();
+			await tick();
+
+			vi.setSystemTime(pinnedNow.getTime() + threeHours);
+			const { getByText } = renderAtPinnedTime();
+
+			expect(getByText("3h ago")).toBeInTheDocument();
+		});
 	});
 });

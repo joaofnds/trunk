@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RebaseTodoItem } from "../lib/types.js";
 import RebaseEditor from "./RebaseEditor.svelte";
 
@@ -296,5 +296,61 @@ describe("RebaseEditor", () => {
 		expect(screen.getByText("SHA")).toBeInTheDocument();
 		expect(screen.getByText("Author")).toBeInTheDocument();
 		expect(screen.getByText("Date")).toBeInTheDocument();
+	});
+
+	describe("date column", () => {
+		const pinnedNow = new Date("2026-07-28T10:29:00Z");
+
+		function renderItemAgedDays(days: number) {
+			return render(RebaseEditor, {
+				props: {
+					repoPath: "/test/repo",
+					commits: [
+						{
+							oid: "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa",
+							short_oid: "aaa111a",
+							summary: "feat: add login",
+							author_name: "Test Author",
+							author_timestamp:
+								pinnedNow.getTime() / 1000 - days * 24 * 60 * 60,
+						},
+					],
+					branchName: "feature/login",
+					baseName: "main",
+					onclose: vi.fn(),
+					onstart: vi.fn(),
+				},
+			});
+		}
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+			vi.setSystemTime(pinnedNow);
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("renders a commit from the current minute as just now", () => {
+			const { getByText } = renderItemAgedDays(0);
+
+			expect(getByText("just now")).toBeInTheDocument();
+		});
+
+		it("renders a 400-day-old commit in years", () => {
+			const { getByText } = renderItemAgedDays(400);
+
+			expect(getByText("1y ago")).toBeInTheDocument();
+		});
+
+		it("advances a mounted date cell without a prop change", async () => {
+			const { getByText } = renderItemAgedDays(0);
+			const dateCell = getByText("just now");
+
+			await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000 + 1_000);
+
+			expect(dateCell).toHaveTextContent("2h ago");
+		});
 	});
 });
