@@ -312,11 +312,7 @@ fn end_leaves_no_session_a_concurrent_writer_recreated() {
         let handle = app.handle().clone();
         thread::spawn(move || {
             tauri::async_runtime::block_on(end_review_session_inner(
-                &data_dir,
-                &path,
-                &state_map,
-                &sessions,
-                &handle,
+                &data_dir, &path, &state_map, &sessions, &handle,
             ))
         })
     };

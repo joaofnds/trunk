@@ -135,19 +135,13 @@ pub async fn end_review_session_inner<R: Runtime>(
     sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
     app: &AppHandle<R>,
 ) -> Result<PathBuf, TrunkError> {
-    let data_dir_for_delete = data_dir.to_path_buf();
-    let path_for_delete = path.to_string();
-    let state_map_for_delete = state_map.clone();
-    let canonical = tauri::async_runtime::spawn_blocking(move || {
-        let canonical = canonical_repo_path(&path_for_delete, &state_map_for_delete)?;
-        review_store::delete_session(&data_dir_for_delete, &canonical)?;
-        Ok::<PathBuf, TrunkError>(canonical)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+    let canonical = canonical_repo_path(path, state_map)?;
+
+    end_session_rmw(data_dir, &canonical, sessions)?;
 
     // Best-effort: drop the working-tree snapshot keepalive refs (C3). The session is
     // already ended; a failure here only delays gc reachability, so it never aborts End.
+    // Outside the critical section — git2 work has no business under the sessions lock.
     let path_for_refs = path.to_string();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         if let Ok(repo) = git2::Repository::open(&path_for_refs) {
@@ -156,8 +150,6 @@ pub async fn end_review_session_inner<R: Runtime>(
     })
     .await;
 
-    // Disk-first ordering (D-10): the file is gone → drop in-memory → emit.
-    sessions.lock().unwrap().remove(&canonical);
     emit_session_changed(app, &canonical);
 
     Ok(canonical)
@@ -250,6 +242,26 @@ where
     mutate(&mut next);
     review_store::save_session(data_dir, canonical, &next)?;
     map.insert(canonical.to_path_buf(), next);
+    Ok(())
+}
+
+/// Delete the session from disk and from the map under the sessions mutex.
+///
+/// Same critical section as `mutate_session_rmw` and for the same reason: a writer
+/// that persists between End's two halves recreates the file End already unlinked,
+/// leaving a file with no in-memory entry — the `ResumeAvailable` state, which the
+/// panel resumes on its own. Disk-first ordering (D-10) holds: a failed delete
+/// leaves the map entry in place, so the two halves never diverge.
+fn end_session_rmw(
+    data_dir: &Path,
+    canonical: &Path,
+    sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
+) -> Result<(), TrunkError> {
+    let mut map = sessions.lock().unwrap();
+
+    review_store::delete_session(data_dir, canonical)?;
+    map.remove(canonical);
+
     Ok(())
 }
 
