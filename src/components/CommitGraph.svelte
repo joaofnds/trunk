@@ -78,6 +78,9 @@ interface Props {
 		title: string,
 	) => Promise<string | null>;
 	clearRedoStack: () => void;
+	/** Whether this graph's tab is the active one. Every tab stays mounted, so the
+	 *  window-global search-toggle event reaches all of them. */
+	tabActive: boolean;
 	/** Center-pane inline-comments toggle; gates the per-row comment badge. */
 	showInlineComments?: boolean;
 	/** Shared comments store; supplies the per-commit count map. */
@@ -97,6 +100,7 @@ let {
 	onopenrebaseeditor,
 	onopenmessageeditor,
 	clearRedoStack,
+	tabActive,
 	showInlineComments = false,
 	reviewComments,
 }: Props = $props();
@@ -1652,6 +1656,10 @@ $effect(() => {
 $effect(() => {
 	let unlisten: (() => void) | undefined;
 	listen<void>("search-toggle", () => {
+		// Webview-global event, and every tab stays mounted — without this a
+		// background graph opens its own search bar on the active tab's Cmd+F.
+		if (!tabActive) return;
+
 		if (searchOpen) {
 			const input =
 				containerRef?.querySelector<HTMLInputElement>(".search-bar-input");

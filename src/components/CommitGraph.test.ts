@@ -231,6 +231,7 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				clearRedoStack: vi.fn(),
+				tabActive: true,
 			},
 		});
 		expect(container).toBeTruthy();
@@ -241,6 +242,7 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				clearRedoStack: vi.fn(),
+				tabActive: true,
 			},
 		});
 		await waitFor(() => {
@@ -258,6 +260,7 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				clearRedoStack: vi.fn(),
+				tabActive: true,
 			},
 		});
 		await waitFor(() => {
@@ -273,6 +276,7 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				clearRedoStack: vi.fn(),
+				tabActive: true,
 			},
 		});
 		expect(container.querySelector('[role="listbox"]')).toBeTruthy();
@@ -283,6 +287,7 @@ describe("CommitGraph", () => {
 			props: {
 				repoPath: "/test/repo",
 				clearRedoStack: vi.fn(),
+				tabActive: true,
 			},
 		});
 		await waitFor(() => {
@@ -303,7 +308,11 @@ describe("CommitGraph", () => {
 			// the listener to gate on canonicalPath being known AND matching.
 			installReads({ status: null });
 			render(CommitGraph, {
-				props: { repoPath: "/this/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/this/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await flush();
 
@@ -339,7 +348,11 @@ describe("CommitGraph", () => {
 				},
 			});
 			render(CommitGraph, {
-				props: { repoPath: "/this/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/this/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await flush();
 
@@ -376,7 +389,11 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { repoPath: "/this/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/this/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await flush();
 			expect(vi.mocked(showToast)).not.toHaveBeenCalled();
@@ -390,7 +407,11 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { repoPath: "/this/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/this/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await flush();
 			expect(vi.mocked(showToast)).not.toHaveBeenCalled();
@@ -404,7 +425,11 @@ describe("CommitGraph", () => {
 						: undefined,
 			});
 			render(CommitGraph, {
-				props: { repoPath: "/this/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/this/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await flush();
 			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
@@ -452,6 +477,7 @@ describe("CommitGraph", () => {
 				props: {
 					repoPath: "/test/repo",
 					clearRedoStack: vi.fn(),
+					tabActive: true,
 					onopenmessageeditor,
 				},
 			});
@@ -489,6 +515,7 @@ describe("CommitGraph", () => {
 				props: {
 					repoPath: "/test/repo",
 					clearRedoStack: vi.fn(),
+					tabActive: true,
 					onopenmessageeditor,
 				},
 			});
@@ -516,6 +543,7 @@ describe("CommitGraph", () => {
 				props: {
 					repoPath: "/test/repo",
 					clearRedoStack: vi.fn(),
+					tabActive: true,
 					onopenmessageeditor,
 				},
 			});
@@ -550,6 +578,7 @@ describe("CommitGraph", () => {
 				props: {
 					repoPath: "/test/repo",
 					clearRedoStack: vi.fn(),
+					tabActive: true,
 					onopenmessageeditor,
 				},
 			});
@@ -577,6 +606,7 @@ describe("CommitGraph", () => {
 				props: {
 					repoPath: "/test/repo",
 					clearRedoStack: vi.fn(),
+					tabActive: true,
 					onopenmessageeditor,
 				},
 			});
@@ -607,6 +637,7 @@ describe("CommitGraph", () => {
 				props: {
 					repoPath: "/test/repo",
 					clearRedoStack: vi.fn(),
+					tabActive: true,
 					refreshSignal: 0,
 				},
 			});
@@ -618,6 +649,7 @@ describe("CommitGraph", () => {
 			await rerender({
 				repoPath: "/test/repo",
 				clearRedoStack: vi.fn(),
+				tabActive: true,
 				refreshSignal: 1,
 			});
 			await flush();
@@ -648,12 +680,22 @@ describe("CommitGraph", () => {
 			Element.prototype.scrollTo = originalScrollTo;
 		});
 
+		// Only one tab is ever active, so the background graph is the realistic
+		// shape for both the focus target and the toggle guard.
 		function renderPair() {
 			const first = render(CommitGraph, {
-				props: { repoPath: "/repo/a", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/repo/a",
+					clearRedoStack: vi.fn(),
+					tabActive: false,
+				},
 			});
 			const second = render(CommitGraph, {
-				props: { repoPath: "/repo/b", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/repo/b",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			return { first, second };
 		}
@@ -669,6 +711,18 @@ describe("CommitGraph", () => {
 
 			expect(second.container.contains(document.activeElement)).toBe(true);
 			expect(first.container.contains(document.activeElement)).toBe(false);
+		});
+
+		it("leaves a background tab's search closed", async () => {
+			const { first } = renderPair();
+			await flush();
+
+			fireSearchToggle();
+			await flush();
+
+			expect(first.container.querySelectorAll(".search-bar-input").length).toBe(
+				0,
+			);
 		});
 
 		it("centers the row in its own viewport", async () => {
@@ -705,7 +759,11 @@ describe("CommitGraph", () => {
 			});
 
 			return render(CommitGraph, {
-				props: { repoPath: "/test/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/test/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 		}
 
@@ -757,7 +815,11 @@ describe("CommitGraph", () => {
 			});
 
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/test/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await waitFor(() => {
 				expect(screen.getByText("commit 3")).toBeInTheDocument();
@@ -775,6 +837,7 @@ describe("CommitGraph", () => {
 		const props = (refreshSignal: number) => ({
 			repoPath: "/test/repo",
 			clearRedoStack: vi.fn(),
+			tabActive: true,
 			refreshSignal,
 		});
 
@@ -850,7 +913,11 @@ describe("CommitGraph", () => {
 		async function mountGraph() {
 			installReads({ commits: [HEAD_COMMIT, BRANCH_COMMIT, REMOTE_COMMIT] });
 			render(CommitGraph, {
-				props: { repoPath: "/test/repo", clearRedoStack: vi.fn() },
+				props: {
+					repoPath: "/test/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
 			});
 			await screen.findAllByTestId("commit-row");
 			await flush();

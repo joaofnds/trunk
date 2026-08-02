@@ -72,6 +72,9 @@ interface Props {
 	rightPaneWidth: number;
 	rightPaneCollapsed: boolean;
 	windowVisible: boolean;
+	// Whether this is the active tab. Every tab stays mounted, so window-global
+	// menu events (search-toggle) need it to tell themselves apart.
+	tabActive: boolean;
 	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
 	// global event only affects the active tab; App passes the flag down per tab.
 	reviewActive: boolean;
@@ -105,6 +108,7 @@ let {
 	rightPaneWidth,
 	rightPaneCollapsed,
 	windowVisible,
+	tabActive,
 	reviewActive,
 	showInlineComments = true,
 	onreviewpanelshowingchange,
@@ -1121,7 +1125,7 @@ function startRightResize(e: MouseEvent) {
             : handleDiffClose}
         />
       {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {showInlineComments} {reviewComments} />
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {tabActive} {showInlineComments} {reviewComments} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->

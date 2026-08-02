@@ -670,6 +670,7 @@ $effect(() => {
             {rightPaneWidth}
             {rightPaneCollapsed}
             {windowVisible}
+            tabActive={tab.id === activeTabId}
             reviewActive={reviewPanelOpen && tab.id === activeTabId}
             {showInlineComments}
             oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
