@@ -501,14 +501,13 @@ async function handleStageFile() {
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("stage_file", { path: repoPath, filePath: path });
+		onfileemptied?.(path, "stage");
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Stage file failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
 	}
-	onfileemptied?.(path, "stage");
 }
 
 async function handleUnstageFile() {
@@ -520,14 +519,13 @@ async function handleUnstageFile() {
 			path: repoPath,
 			filePath: path,
 		});
+		onfileemptied?.(path, "unstage");
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Unstage file failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
 	}
-	onfileemptied?.(path, "unstage");
 }
 
 async function handleDiscardFile() {
@@ -550,15 +548,14 @@ async function handleDiscardFile() {
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("discard_file", { path: repoPath, filePath: path });
+		showToast(`Discarded ${path}`, "success");
+		onfileemptied?.(path, "discard");
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Discard file failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
 	}
-	showToast(`Discarded ${path}`, "success");
-	onfileemptied?.(path, "discard");
 }
 
 async function handleStageHunk(filePath: string, hunkIndex: number) {
@@ -566,17 +563,16 @@ async function handleStageHunk(filePath: string, hunkIndex: number) {
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("stage_hunk", { path: repoPath, filePath, hunkIndex });
+		if (isLastHunk(filePath)) {
+			onfileemptied?.(filePath, "stage");
+		} else {
+			await onhunkaction?.(filePath);
+		}
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Stage hunk failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
-	}
-	if (isLastHunk(filePath)) {
-		onfileemptied?.(filePath, "stage");
-	} else {
-		await onhunkaction?.(filePath);
 	}
 }
 
@@ -585,17 +581,16 @@ async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("unstage_hunk", { path: repoPath, filePath, hunkIndex });
+		if (isLastHunk(filePath)) {
+			onfileemptied?.(filePath, "unstage");
+		} else {
+			await onhunkaction?.(filePath);
+		}
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Unstage hunk failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
-	}
-	if (isLastHunk(filePath)) {
-		onfileemptied?.(filePath, "unstage");
-	} else {
-		await onhunkaction?.(filePath);
 	}
 }
 
@@ -611,18 +606,17 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 	hunkOperationInFlight = true;
 	try {
 		await safeInvoke("discard_hunk", { path: repoPath, filePath, hunkIndex });
+		showToast("Discarded hunk", "success");
+		if (isLastHunk(filePath)) {
+			onfileemptied?.(filePath, "discard");
+		} else {
+			await onhunkaction?.(filePath);
+		}
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Discard hunk failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
-	}
-	showToast("Discarded hunk", "success");
-	if (isLastHunk(filePath)) {
-		onfileemptied?.(filePath, "discard");
-	} else {
-		await onhunkaction?.(filePath);
 	}
 }
 
@@ -783,15 +777,14 @@ async function handleStageLines(filePath: string, hunkIndex: number) {
 			hunkIndex,
 			lineIndices: Array.from(selectedLineIndices),
 		});
+		await onhunkaction?.(filePath);
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Stage lines failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
 		clearSelection();
 	}
-	await onhunkaction?.(filePath);
 }
 
 async function handleUnstageLines(filePath: string, hunkIndex: number) {
@@ -804,15 +797,14 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 			hunkIndex,
 			lineIndices: Array.from(selectedLineIndices),
 		});
+		await onhunkaction?.(filePath);
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Unstage lines failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
 		clearSelection();
 	}
-	await onhunkaction?.(filePath);
 }
 
 async function handleDiscardLines(filePath: string, hunkIndex: number) {
@@ -836,16 +828,15 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			hunkIndex,
 			lineIndices: Array.from(selectedLineIndices),
 		});
+		showToast(`Discarded ${count} lines`, "success");
+		await onhunkaction?.(filePath);
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Discard lines failed", "error");
-		return;
 	} finally {
 		hunkOperationInFlight = false;
 		clearSelection();
 	}
-	showToast(`Discarded ${count} lines`, "success");
-	await onhunkaction?.(filePath);
 }
 </script>
 

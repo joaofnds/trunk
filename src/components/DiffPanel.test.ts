@@ -2153,4 +2153,95 @@ describe("Discard File button", () => {
 		);
 		expect(onfileemptied).not.toHaveBeenCalled();
 	});
+
+	// The action buttons' only `disabled` binding is `hunkOperationInFlight`
+	// (HunkView.svelte:103). Clearing it in the `finally` reopens them while the
+	// refetch is still in flight, so the second click carries a hunk index from
+	// the stale render and the backend applies it positionally against an
+	// already-updated worktree.
+	describe("hunk operation in-flight guard", () => {
+		const twoHunkDiff: FileDiff = {
+			path: "src/main.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,1 +1,1 @@",
+					old_start: 1,
+					old_lines: 1,
+					new_start: 1,
+					new_lines: 1,
+					lines: [
+						{
+							origin: "Add",
+							content: "first hunk",
+							old_lineno: null,
+							new_lineno: 1,
+							spans: [],
+						},
+					],
+				},
+				{
+					header: "@@ -20,1 +20,1 @@",
+					old_start: 20,
+					old_lines: 1,
+					new_start: 20,
+					new_lines: 1,
+					lines: [
+						{
+							origin: "Add",
+							content: "second hunk",
+							old_lineno: null,
+							new_lineno: 20,
+							spans: [],
+						},
+					],
+				},
+			],
+		};
+
+		function stageHunkCalls() {
+			return vi
+				.mocked(safeInvoke)
+				.mock.calls.filter(([cmd]) => cmd === "stage_hunk").length;
+		}
+
+		it("stays closed until the refetch completes", async () => {
+			let releaseRefetch: () => void = () => {};
+			const onhunkaction = vi.fn(
+				() =>
+					new Promise<void>((resolve) => {
+						releaseRefetch = resolve;
+					}),
+			);
+			render(DiffPanel, {
+				props: {
+					fileDiffs: [twoHunkDiff],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "unstaged",
+					repoPath: "/test/repo",
+					selectedPath: "src/main.ts",
+					onhunkaction,
+				},
+			});
+			await flushPrefs();
+
+			await fireEvent.click(screen.getAllByText("Stage Hunk")[0]);
+			await flushPrefs();
+			expect(stageHunkCalls()).toBe(1);
+			expect(onhunkaction).toHaveBeenCalledOnce();
+
+			await fireEvent.click(screen.getAllByText("Stage Hunk")[1]);
+			await flushPrefs();
+			expect(stageHunkCalls()).toBe(1);
+
+			releaseRefetch();
+			await flushPrefs();
+
+			await fireEvent.click(screen.getAllByText("Stage Hunk")[1]);
+			await flushPrefs();
+			expect(stageHunkCalls()).toBe(2);
+		});
+	});
 });
