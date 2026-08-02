@@ -21,12 +21,13 @@ git repo
   │
   ▼
 [TypeScript: active-lanes.ts] buildGraphData()
-  │  Coalesces adjacent same-property Straight edges into OverlayEdge rails.
-  │  Translates GraphCommit[] → OverlayNode[] + OverlayEdge[]
+  │  Translates GraphCommit[] → OverlayNode[] + OverlayConnection[],
+  │  one connection per loaded parent. No lane state, no coalescing.
   │
   ▼
 [TypeScript: overlay-paths.ts] buildOverlayPaths()
-  │  Converts OverlayEdge[] → SVG path strings (M…V rails, cubic bezier connections).
+  │  Converts each OverlayConnection → one SVG path string
+  │  (M…V vertical, or a cubic bezier 90° corner for cross-column).
   │
   ▼
 [TypeScript: overlay-visible.ts] getVisibleOverlayElements()
@@ -205,21 +206,25 @@ Transforms `GraphCommit[]` into the overlay coordinate system.
 - Emits dashed straight edges from WIP down to the anchor, **split around inline
   stash rows** so the dashed line doesn't visually pass through hollow stash squares.
 
-**Edge coalescing** (the core of this layer):
-- Maintains `activeLanes: Map<column, { startY, colorIndex, dashed }>`.
-- For each commit row, processes its `edges[]`:
-  - Straight edges (`from_col == to_col`): coalesced. If an active lane exists at
-    that column with identical `colorIndex` and `dashed`, extend it (no-op). Otherwise
-    flush the old lane as an `OverlayEdge` and start a new one.
-  - Non-straight edges (connections): emitted immediately as single-row `OverlayEdge`.
-- At end of each row: flush any active lanes not continued by a Straight edge.
-- **Why this matters**: adjacent rows with identical Straight edges become a single
-  long `OverlayEdge` spanning many rows, greatly reducing SVG path count. The
-  `dashed` flag is part of the coalesce key — a dashed→non-dashed transition always
-  creates a break (stash rail above, regular rail below).
+**Per-parent connections** (every non-WIP row):
+- One `OverlayConnection` per entry in `parent_oids`, child → parent.
+- A parent that is not on the loaded page is skipped, so the line just stops at the
+  pagination boundary rather than running off the end.
+- Colour selection:
+  - Same column: the colour of the Straight edge in the child's own column, falling
+    back to the child's `color_index`.
+  - Cross-column merge: the **parent's** colour — the branch being merged in.
+  - Cross-column fork: the **child's** colour — the new branch.
+- `dashed` is `commit.is_stash`.
 
-**`OverlayEdge`** (same-lane): `fromX == toX`, spans `fromY..toY`.
-**`OverlayEdge`** (connection): `fromX != toX`, single row (`fromY == toY`).
+**There is no lane state and no coalescing.** Each connection spans exactly one
+child→parent pair, however many rows apart they sit, and Layer 3 emits one path for
+each. `commit.edges[]` is read for one purpose only: the same-column colour lookup
+above. Nothing consumes the Rust `EdgeType` variants on this side.
+
+**`OverlayConnection`** (`types.ts`): `childX/childY` → `parentX/parentY`, plus
+`colorIndex` and `dashed`. Same column and cross-column use the same record; Layer 3
+branches on the coordinates.
 
 ---
 
@@ -227,47 +232,39 @@ Transforms `GraphCommit[]` into the overlay coordinate system.
 
 ### `buildOverlayPaths(data, settings): OverlayPath[]`
 
-Pure function. Converts each `OverlayEdge` to an SVG path string.
+Pure function. Emits exactly one `OverlayPath` per `OverlayConnection`, in order.
 
 **Coordinate helpers** (from `GraphDisplaySettings`):
 ```
 cx(col) = col * laneWidth + laneWidth / 2   // column center x
 cy(row) = row * rowHeight + rowHeight / 2   // row center y
-rowTop(row) = row * rowHeight
-rowBottom(row) = (row + 1) * rowHeight
 R = laneWidth / 2                           // bezier corner radius
+KAPPA = 4(√2−1)/3                           // quarter-circle control offset
+DASH_GAP = 3                                // matches stroke-dasharray "3 3"
 ```
 
-### Rail paths (same-lane, `fromX == toX`)
+`isHollowTip(node)` is `(isBranchTip || isWip) && (isStash || isWip || isMerge)`.
+A hollow tip pulls the path end back by `dotRadius + DASH_GAP` so the stroke stops at
+the ring's edge instead of crossing it.
 
-`M cx(col) startY V endY`
+### Which of three shapes
 
-Endpoint awareness:
-- **Start (fromY has a node)**:
-  - Branch tip + hollow (stash/WIP/merge): start at `cy(fromY) + dotRadius + DASH_GAP` (below hollow dot edge)
-  - Branch tip + filled: start at `cy(fromY)` (dot center)
-  - No tip: start at `rowTop(fromY)` (full row top)
-- **End (toY)**:
-  - Branch tip + hollow: end at `cy(toY) - dotRadius - DASH_GAP` (above hollow dot edge)
-  - Branch tip + filled: end at `cy(toY)` (dot center)
-  - No node: end at `cy(toY) - R` (leave room for bezier corner)
-  - Non-tip node: end at `rowBottom(toY)` (continue through row)
+Decided per connection, in this order:
 
-### `isHollow(node)`: stash, WIP, merge → hollow (rect or ring, not filled dot)
+1. **`childX === parentX` — vertical.** `M cx(col) startY V endY`. If the endpoint
+   pull-in leaves `startY >= endY` (adjacent rows, both hollow tips), the path is
+   emitted with an empty `d` rather than an inverted line.
+2. **`childNode.isMerge` — horizontal, corner down, vertical.**
+   `M startX startY H hTarget C … cornerX cornerY V endY`. The corner lands in the
+   parent's column, `R` below the child's row.
+3. **Otherwise (fork) — vertical, corner, horizontal.**
+   `M cornerX startY V vTarget C … hStart cornerY H endX`. The corner lands in the
+   child's column, at the parent's row.
 
-### Connection paths (cross-lane, `fromX != toX`)
+Shapes 2 and 3 both keep a tail past the curve. The choice is the child node's
+`isMerge` flag, not an inspection of what else occupies the target column.
 
-Manhattan routing with a single cubic bezier 90° rounded corner:
-```
-M cx(fromX) cy(fromY)          ← start at source column center
-H hTarget                       ← horizontal to R before corner
-C cp1x cp1y cp2x cp2y cornerX cornerY  ← bezier quarter-circle
-```
-No vertical tail — the rail in the target column provides vertical continuity.
-
-**Corner direction** determined by `isMergePattern()`:
-- If a rail in `toX` **starts** at `fromY` → merge (curves down, `vSign = +1`)
-- If a rail in `toX` **ends** at `fromY` → fork (curves up, `vSign = -1`)
+Every path also carries `minRow`/`maxRow`, which is what `overlay-visible.ts` culls on.
 
 ---
 
@@ -381,8 +378,8 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 | `src-tauri/src/git/graph.rs` | Rust lane algorithm, all column/color/edge computation |
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
-| `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayEdge`, `OverlayPath`) |
-| `src/lib/active-lanes.ts` | `buildGraphData()` — edge coalescing, WIP sentinel |
+| `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
+| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, WIP sentinel |
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
