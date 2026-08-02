@@ -9,7 +9,7 @@ rendering.
 The binding constraints on this pipeline live in `.claude/rules/commit-graph.md`. This
 document explains how the algorithm works; it does not restate the rules.
 
-## Overview: Four-Stage Pipeline
+## Overview: The Pipeline
 
 ```
 git repo
@@ -27,6 +27,10 @@ git repo
   ▼
 [TypeScript: overlay-paths.ts] buildOverlayPaths()
   │  Converts OverlayEdge[] → SVG path strings (M…V rails, cubic bezier connections).
+  │
+  ▼
+[TypeScript: overlay-visible.ts] getVisibleOverlayElements()
+  │  Drops paths, dots and pills outside the scrolled viewport.
   │
   ▼
 [Svelte: CommitGraph.svelte]
@@ -119,7 +123,7 @@ land in that same column — so without it the stash square sits on the WIP line
 accepted churn: because the inline path consumes neither lane nor colour and stashes are
 placed before branch tips, toggling clean↔dirty can shift an unrelated branch's colour, and
 its column too when that branch sorts between the stash and the stash's parent. Both shapes
-are pinned in `tests/test_graph.rs` (`dirtiness_relayouts_unrelated_branches`,
+are pinned in `src-tauri/tests/test_graph.rs` (`dirtiness_relayouts_unrelated_branches`,
 `dirtiness_recolors_branches_below_the_stash_parent`).
 
 #### Phase 2: Pass-through and fork-in detection

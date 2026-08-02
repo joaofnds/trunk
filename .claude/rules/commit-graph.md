@@ -13,21 +13,22 @@ paths:
 
 # Commit Graph Rules
 
-Four stages, each a pure transformation: `graph.rs` assigns columns, colours and edges →
+A pipeline of pure transformations: `graph.rs` assigns columns, colours and edges →
 `active-lanes.ts` coalesces edges into rails → `overlay-paths.ts` emits SVG paths →
 `overlay-visible.ts` culls off-screen paths, dots and pills → `CommitGraph.svelte` renders.
 
 ## Binding rules
 
-This file is the binding source for the constraints below. `docs/architecture/commit-graph.md`
-and `docs/architecture/overview.md` point here instead of restating them; if you change a rule
-here, check that neither has grown a copy.
+This file is the binding source for the constraints below. `docs/architecture/commit-graph.md`,
+`docs/architecture/overview.md`, and the staleness notes in
+`docs/research/gitamine-graph-algorithm.md` point here instead of restating them. When you
+change a rule here, grep the docs tree for the symbol it names — `can_inline`,
+`worktree_dirty`, the marker shapes — because copies drift where you don't expect them.
 
 - Never post-process the output of one stage to fix something an earlier stage should have
   done — the stages are interdependent and partial fixups desync
-- Where a reference doc disagrees with the pipeline source — `src-tauri/src/git/graph.rs`,
-  `src/lib/active-lanes.ts`, `src/lib/overlay-paths.ts`, `src/components/CommitGraph.svelte`
-  — or with their tests, the code wins; correct the doc in the same change
+- Where a reference doc disagrees with the pipeline source — any file in this rule's `paths:`
+  list — or with its tests, the code wins; correct the doc in the same change
 - A stash's graph marker is a dashed hollow **square** (`<rect>`) with dashed edges. Hollow
   alone does not identify a stash: WIP is a dashed hollow **circle**, a merge is a
   solid-stroke hollow circle
@@ -47,7 +48,8 @@ here, check that neither has grown a copy.
 ## Reference
 
 - `docs/architecture/commit-graph.md` — read before changing lane assignment, edge
-  emission, or node rendering. Covers the four stages, the per-commit phases, and the file map
+  emission, or node rendering. Covers the pipeline stages, the per-commit phases, and the
+  file map
 - `docs/research/gitamine-graph-algorithm.md` — read only when reworking the placement algorithm
   itself. A comparison against gitamine's "straight branches", not a spec of current
   behaviour; its stash sections carry staleness notes
