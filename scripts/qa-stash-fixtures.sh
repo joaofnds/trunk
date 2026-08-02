@@ -356,7 +356,7 @@ an oversight. It is nil in single-lane repos, which is the common case.
 - [ ] **15-backdated-stash** — **KNOWN DEFERRED DEFECT, not a regression.** The
       stash's committer date predates its parent's, so it sorts *below* both
       commits with its dashed line running upward. Tracked in
-      `.planning/todos/pending/2026-08-02-stash-sorts-below-its-parent-when-backdated.md`.
+      `docs/known-issues/2026-08-02-stash-sorts-below-its-parent-when-backdated.md`.
       Unaffected by dirtiness. Only report it if the *placement* looks new.
 
 ### Edge cases
@@ -366,7 +366,7 @@ an oversight. It is nil in single-lane repos, which is the common case.
       **KNOWN DEFERRED DEFECT:** the tab shows **no dirty dot**, because the tab
       computes `staged + unstaged` and drops `conflicted`, while the WIP row uses
       all three. Verified here as `staged=0 unstaged=0 conflicted=1`. Tracked in
-      `.planning/todos/pending/2026-08-02-tab-dirty-dot-ignores-conflicted.md`.
+      `docs/known-issues/2026-08-02-tab-dirty-dot-ignores-conflicted.md`.
 - [ ] **13-detached-head** — HEAD detached on the stash's parent, e.g. mid-rebase.
       Clean: inline at column 0. Dirty: column 1 with a fork. The WIP row anchors on
       the head chain, so it must still appear even with no branch checked out.

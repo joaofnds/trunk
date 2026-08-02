@@ -36,45 +36,23 @@ the `check-parity` job fails if that list and the workflow drift apart.
 - Never inline colors — always use CSS custom properties from the theme
 - Never fight layout with positioning hacks — use grid/flexbox so elements flow naturally
 - All git operations go through git2 crate, no shelling out (except GIT_EDITOR for rebase/merge message editing)
-- Trunk-based: commit directly to `main`. Never auto-create a feature branch when asked to commit (overrides the harness default). Only branch when explicitly asked (e.g. a PR branch). Keep planning artifacts (`.planning/`, `docs/plans/`) out of code commits.
+- Trunk-based: commit directly to `main`. Never auto-create a feature branch when asked to commit (overrides the harness default). Only branch when explicitly asked (e.g. a PR branch). Keep working artifacts (`.boris/`) out of code commits — `.gitignore` already excludes them.
 
-## Get Shit Done (GSD)
+## Planning artifacts
 
-This project uses GSD (`/gsd:*` slash commands) for planning and execution. All planning lives in `.planning/`.
+Working artifacts live in `.boris/`, which is gitignored. They are per-task and local:
 
-### Navigation
+| Path | Holds |
+|------|-------|
+| `.boris/CONTEXT.md` | Project glossary — shared vocabulary for specs and plans |
+| `.boris/plans/` | Specs, options, grilled designs, and implementation plans |
+| `.boris/reviews/` | Panel and adversarial review reports |
+| `.boris/handoffs/` | Mid-task context dumps |
+| `.boris/archive/` | Plans whose work has shipped |
 
-| File | Purpose |
-|------|---------|
-| `.planning/STATE.md` | Current milestone, phase progress, where we stopped |
-| `.planning/PROJECT.md` | Project definition, validated requirements, architecture decisions |
-| `.planning/ROADMAP.md` | All phases with success criteria |
-| `.planning/REQUIREMENTS.md` | Current milestone's numbered requirements |
-| `.planning/RETROSPECTIVE.md` | Lessons learned across milestones |
-| `.planning/phases/NN-name/` | Phase docs: CONTEXT, RESEARCH, PLANs, SUMMARYs, VERIFICATION |
-| `.planning/milestones/` | Archived milestone docs |
-| `.planning/todos/` | Tracked bugs and tasks (`pending/`, `done/`) |
-| `.planning/debug/` | Open debugging notes |
+Durable material is committed under `docs/` instead — see `docs/README.md` for the index.
+When a `.boris/` artifact turns out to be a lasting reference (an architecture note, a
+decision record, a known issue), move it into `docs/` and add it to that index.
 
-### Key commands
-
-- `/gsd:progress` — Check where we are (reads STATE.md)
-- `/gsd:next` — What to do next
-- `/gsd:plan-phase N` — Create plans for phase N
-- `/gsd:execute-phase N` — Execute phase N's plans
-- `/gsd:verify-work N` — Test phase N deliverables
-- `/gsd:quick <task>` — Small self-contained task outside milestone phases
-- `/gsd:do <intent>` — Routes freeform text to the right GSD command
-- `/gsd:help` — Full command reference
-
-### Workflow
-
-```
-new-project → [per phase: discuss → plan → execute → verify] → complete-milestone
-```
-
-### When resuming work
-
-1. Read `.planning/STATE.md` for current position
-2. Check `stopped_at` field to know exactly where we left off
-3. Use `/gsd:progress` or `/gsd:next` to continue
+This project used GSD (`/gsd:*`) through v0.14. Its `.planning/` tree was retired on
+2026-08-02; everything not carried into `docs/` is readable at `git show 5fd4683:.planning/…`.

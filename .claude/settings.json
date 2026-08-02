@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Skill(gsd:*)",
       "Bash(bun run *)",
       "Bash(git add *)",
       "Bash(git commit *)"

@@ -551,7 +551,7 @@ li.md-removed::before {
    Color is NOT the sole carrier (AAA invariant, app.css:490-494): the deletion adds
    line-through, the insertion adds an underline, both surviving grayscale. The low
    16% translucent tints keep body text at AAA over --bg-0 (verified with the
-   .planning/contrast helper — no colored-text desaturation). */
+   scripts/contrast helper — no colored-text desaturation). */
 .md-word-delete {
 	background: var(--color-diff-word-delete-bg);
 	text-decoration: line-through;

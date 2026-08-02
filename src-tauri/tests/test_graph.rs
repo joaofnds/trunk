@@ -1492,7 +1492,7 @@ fn topic_layout_clean_then_dirty(
     (clean, dirty)
 }
 
-/// D6 (`.boris/plans/2026-08-02-stash-wip-column-collision-grilled.md`): a branching stash
+/// The `!worktree_dirty` clause in `.claude/rules/commit-graph.md`: a branching stash
 /// consumes a lane and a colour that an inline stash does not, and stashes are placed before
 /// branch tips. A branch tip sorting between the stash and the stash's parent finds that lane
 /// still held, so it shifts a column right and a colour along. Accepted trade, pinned here so

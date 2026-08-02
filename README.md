@@ -35,6 +35,8 @@ just check    # fmt, biome, svelte-check, clippy, cargo test, vitest
 
 Run `just check` before you commit.
 
+Architecture notes, decision records, and known issues live in [`docs/`](docs/README.md).
+
 ## License
 
 MIT

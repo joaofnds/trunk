@@ -16,4 +16,6 @@ mutants.out
 mutants.out.old
 /e2e/logs
 .claude/settings.local.json
+.claude/worktrees
 .vscode
+.boris/

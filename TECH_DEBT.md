@@ -16,7 +16,8 @@ _Last audited: 2026-06-04 (`main` @ 8869754)_
 ## A. Tracked & ready
 
 ### A1 — ✅ CLOSED as OBSOLETE (2026-06-05) — Clean-tree snapshot changeless commit
-- **Source:** `.planning/todos/done/2026-05-31-snapshot-empty-working-tree-no-op-guard.md`
+- **Source:** `todos/done/2026-05-31-snapshot-empty-working-tree-no-op-guard.md` in the
+  retired `.planning/` tree — read it with `git show 5fd4683:.planning/todos/done/2026-05-31-snapshot-empty-working-tree-no-op-guard.md`
 - **Why obsolete:** the flow no longer exists. `add_working_tree_review` was
   removed in the 260531-l02 refactor; the only snapshot entry point is now
   `ensure_review_snapshot` (`commands/review.rs`), invoked solely at
@@ -332,7 +333,7 @@ _Append `- [ID] paid in <sha> — note` as items are closed._
 - **E1** paid — deleted the caller-less `diff_commit` command wrapper + its
   `lib.rs` registration; kept `diff_commit_inner` and all tests.
 - **A1** closed as **obsolete** — filed flow (`add_working_tree_review`) was
-  removed in a refactor; todo moved to `.planning/todos/done/`.
+  removed in a refactor; todo closed (see A1 for how to read the retired note).
 
 ### Third pass (2026-06-05)
 - **B1** partial — extracted the two pure cores `review/range.rs` (`5ac15c1`) and
