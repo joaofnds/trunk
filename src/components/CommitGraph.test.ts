@@ -618,6 +618,44 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	describe("mount scroll anchor", () => {
+		function detachedPage() {
+			return Array.from({ length: 200 }, (_, i) =>
+				makeCommit({
+					oid: `${i}`.padStart(40, "0"),
+					summary: `commit ${i}`,
+					in_head_chain: i >= 3,
+				}),
+			);
+		}
+
+		it("stops paging once the head chain is on screen, HEAD detached", async () => {
+			const pages = [detachedPage(), []];
+			installReads({
+				override: (cmd) =>
+					cmd === "get_commit_graph"
+						? Promise.resolve({
+								commits: pages.shift() ?? [],
+								max_columns: 1,
+							})
+						: undefined,
+			});
+
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", clearRedoStack: vi.fn() },
+			});
+			await waitFor(() => {
+				expect(screen.getByText("commit 3")).toBeInTheDocument();
+			});
+			await flush();
+
+			const graphCalls = vi
+				.mocked(safeInvoke)
+				.mock.calls.filter(([cmd]) => cmd === "get_commit_graph");
+			expect(graphCalls).toHaveLength(1);
+		});
+	});
+
 	describe("out-of-order refreshes", () => {
 		const props = (refreshSignal: number) => ({
 			repoPath: "/test/repo",

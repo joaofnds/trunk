@@ -1629,7 +1629,10 @@ $effect(() => {
 	if (!listRef) return;
 	if (displayItems.length === 0) return;
 
-	const headIdx = displayItems.findIndex((c) => c.is_head);
+	// in_head_chain, not is_head: a detached HEAD (mid-rebase, or after checking
+	// out a sha) carries no is_head row, and the fallback below would then page
+	// the entire history looking for one.
+	const headIdx = displayItems.findIndex((c) => c.in_head_chain);
 	if (headIdx >= 0) {
 		scrolledToHead = true;
 		tick().then(() =>
@@ -1639,6 +1642,8 @@ $effect(() => {
 		// HEAD not in current batch -- load the next batch so the effect re-fires with more commits.
 		// untrack prevents hasMore from creating a reactive dependency here.
 		untrack(() => loadMore());
+	} else {
+		scrolledToHead = true;
 	}
 });
 
