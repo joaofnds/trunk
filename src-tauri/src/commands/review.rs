@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 mod range;
 use range::*;
@@ -122,14 +122,44 @@ pub fn resume_review_session_inner(
     Ok((canonical, outcome))
 }
 
-/// Hard-delete the session file for a currently-open repo (SESS-03 / D-13).
-pub fn end_review_session_inner(
+/// End a review session for a currently-open repo (SESS-03 / D-13): drop the file,
+/// drop the in-memory entry, release the snapshot keepalive refs, and announce it.
+///
+/// Generic over `R` so a test can drive the whole composition against
+/// `tauri::test::mock_app()` — the `#[tauri::command]` wrapper's bare `AppHandle`
+/// is `AppHandle<Wry>` and cannot (matches `remote::git_pull_inner`).
+pub async fn end_review_session_inner<R: Runtime>(
     data_dir: &Path,
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
+    app: &AppHandle<R>,
 ) -> Result<PathBuf, TrunkError> {
-    let canonical = canonical_repo_path(path, state_map)?;
-    review_store::delete_session(data_dir, &canonical)?;
+    let data_dir_for_delete = data_dir.to_path_buf();
+    let path_for_delete = path.to_string();
+    let state_map_for_delete = state_map.clone();
+    let canonical = tauri::async_runtime::spawn_blocking(move || {
+        let canonical = canonical_repo_path(&path_for_delete, &state_map_for_delete)?;
+        review_store::delete_session(&data_dir_for_delete, &canonical)?;
+        Ok::<PathBuf, TrunkError>(canonical)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+
+    // Best-effort: drop the working-tree snapshot keepalive refs (C3). The session is
+    // already ended; a failure here only delays gc reachability, so it never aborts End.
+    let path_for_refs = path.to_string();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        if let Ok(repo) = git2::Repository::open(&path_for_refs) {
+            let _ = crate::git::workdir_snapshot::clear_snapshot_refs(&repo);
+        }
+    })
+    .await;
+
+    // Disk-first ordering (D-10): the file is gone → drop in-memory → emit.
+    sessions.lock().unwrap().remove(&canonical);
+    emit_session_changed(app, &canonical);
+
     Ok(canonical)
 }
 
@@ -171,7 +201,7 @@ fn merge_status(file_exists: bool, in_memory_present: bool) -> SessionState {
 /// silent-discard pattern violated it. Failure here is an unrecoverable
 /// runtime fault (dead event bus); the diagnostic goes to stderr because the
 /// codebase has no `log`/`tracing` dependency.
-fn emit_session_changed(app: &AppHandle, canonical: &Path) {
+fn emit_session_changed<R: Runtime>(app: &AppHandle<R>, canonical: &Path) {
     if let Err(e) = app.emit("session-changed", canonical.to_string_lossy().into_owned()) {
         eprintln!(
             "session-changed emit failed for {}: {}",
@@ -1139,26 +1169,11 @@ pub async fn end_review_session(
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let data_dir = resolve_data_dir(&app)?;
-    let path_for_refs = path.clone();
-    let canonical = tauri::async_runtime::spawn_blocking(move || {
-        end_review_session_inner(&data_dir, &path, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
 
-    // Best-effort: drop the working-tree snapshot keepalive refs (C3). The session is
-    // already ended; a failure here only delays gc reachability, so it never aborts End.
-    let _ = tauri::async_runtime::spawn_blocking(move || {
-        if let Ok(repo) = git2::Repository::open(&path_for_refs) {
-            let _ = crate::git::workdir_snapshot::clear_snapshot_refs(&repo);
-        }
-    })
-    .await;
+    end_review_session_inner(&data_dir, &path, &state_map, &sessions.0, &app)
+        .await
+        .map_err(|e| e.to_json())?;
 
-    // Disk-first ordering (D-10): _inner deleted the file → drop in-memory → emit.
-    sessions.0.lock().unwrap().remove(&canonical);
-    emit_session_changed(&app, &canonical);
     Ok(())
 }
 

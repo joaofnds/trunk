@@ -4,6 +4,7 @@ use common::context::TestContext;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use trunk_lib::commands::review::{
     SessionState, end_review_session_inner, get_review_session_status_inner,
     resume_review_session_inner, start_review_session_inner,
@@ -228,8 +229,17 @@ fn symlink_resumes_same_session() {
 fn end_clears_session() {
     let ctx = TestContext::new_empty();
     start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    let sessions = Mutex::new(HashMap::new());
+    let app = tauri::test::mock_app();
 
-    end_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    tauri::async_runtime::block_on(end_review_session_inner(
+        ctx.data_dir(),
+        ctx.path(),
+        ctx.state_map(),
+        &sessions,
+        app.handle(),
+    ))
+    .unwrap();
 
     let status =
         get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
