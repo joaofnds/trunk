@@ -266,6 +266,14 @@ but also more complex to maintain.
 
 ## Part 4: Stash Handling — The Critical Comparison
 
+> **STALE as of 2026-08-02.** This part describes Trunk's pre-`b5c1222` stash algorithm.
+> Trunk no longer always branches stashes right: `can_inline` (`graph.rs:203-209`) places a
+> stash at its parent's own column, inheriting its colour, when the worktree is clean and the
+> parent is the HEAD tip. It also no longer tracks `stash_lanes` — the dashed flag rides on
+> the lane slot (`graph.rs:17`). For current behaviour see
+> `.planning/COMMIT-GRAPH-ARCHITECTURE.md` § "Stash rendering". The gitamine comparison
+> itself is unaffected.
+
 ### Gitamine: Zero Special Logic
 
 The ENTIRE stash-specific code in gitamine's column placement:
@@ -376,6 +384,12 @@ Process B: only branchChild is S at col 0 → replace → B at col 0
 | 7 | Color strategy | `color = col % N` (deterministic) | `lane_colors` HashMap with counter |
 
 ### Why Stashes End Up Far Right in Trunk
+
+> **STALE as of 2026-08-02.** Two premises below no longer hold: stashes are merged into the
+> walk by committer timestamp, not "interleaved before parent" (`graph.rs:98-127`), and a
+> stash on a clean worktree's HEAD tip is placed inline at column 0 rather than far right
+> (`can_inline`). `5b29894` ("compact stash placement via temporal sort and proximity search")
+> already addressed the far-right complaint this section describes.
 
 Root cause chain:
 1. HEAD chain pre-reservation puts ALL HEAD ancestors into `pending_parents[oid] = 0`

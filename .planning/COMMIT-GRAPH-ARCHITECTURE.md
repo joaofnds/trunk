@@ -51,10 +51,12 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 1. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` with
    `TOPOLOGICAL | TIME` sort → `base_oids`.
 2. Stash OIDs are collected separately via `repo.stash_foreach()`.
-3. Each stash is **interleaved immediately before its parent** in the final `oids`
-   list — so stashes appear topologically above their parent commit, just like any
-   branch tip would.
-4. Orphan stashes (parent not reachable from any ref) are prepended at the top.
+3. Stashes are sorted **newest committer-time first** and then **merged into `base_oids`
+   by timestamp** (`graph.rs:98-127`) — each stash is inserted ahead of the first base
+   commit whose time it is not older than. This replaced an earlier interleave-before-parent
+   design; a stash is *not* pinned to its parent's row, and one whose committer time
+   predates its parent's will sort below it.
+4. Stashes older than every base commit are appended at the end.
 5. A page slice `[offset..offset+limit]` is extracted for display, but the **lane
    algorithm runs over ALL oids** for correct lane continuity. Only `per_oid_data`
    for page commits is emitted.
@@ -63,14 +65,17 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 
 | Variable | Type | Purpose |
 |---|---|---|
-| `active_lanes` | `Vec<Option<Oid>>` | `active_lanes[col] = Some(oid)` means col is tracking oid's chain (waiting for that commit to be processed). `None` = lane is free. |
+| `active_lanes` | `Vec<LaneSlot>` | `active_lanes[col] = Some((oid, dashed))` means col is tracking oid's chain (waiting for that commit to be processed). `None` = lane is free. |
 | `pending_parents` | `HashMap<Oid, usize>` | `pending_parents[oid] = col` means a child already reserved column `col` for `oid`. When `oid` is processed in Phase 1, it reads this to get its column. |
-| `reserved_cols` | `HashSet<usize>` | Columns pre-reserved for stash parents. Prevents other commits from stealing these columns without creating ghost pass-through lines (we don't set `active_lanes` for reserved columns — the reservation is only in `pending_parents`). |
 | `lane_colors` | `HashMap<usize, usize>` | Maps column → color index. Set when a branch first enters a column, removed when the branch terminates. |
-| `stash_lanes` | `HashSet<usize>` | Columns currently belonging to a stash. Edges in these columns are marked `dashed: true`. |
 | `next_color` | `usize` | Monotonically incrementing color counter. Color 0 is reserved for the HEAD chain. |
 
-### HEAD chain pre-reservation (lines ~107-130)
+`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`graph.rs:17`).
+The `bool` is the dashed flag, set by whichever commit takes the lane — `true` for a stash,
+`false` otherwise. There is no separate `stash_lanes` or `reserved_cols` set; `4a9f15e`
+removed the last of them in favour of carrying the flag on the lane.
+
+### HEAD chain pre-reservation (`graph.rs:168-176`)
 
 Before processing any commit:
 - Walk HEAD's first-parent chain into `head_chain: HashSet<Oid>`.
@@ -92,19 +97,36 @@ if pending_parents.contains(oid)  → use that col (HEAD chain, merge parents, e
 else                              → new branch/stash, scan for free col
 ```
 
-**Stashes use the exact same codepath as regular branch tips.** They get a free column,
-a new color via `lane_colors`, and are marked in `stash_lanes` so their edges render
-dashed. No special inline/branch-right logic — stashes are just branches with dashed visuals.
+**Stashes mostly share the branch-tip codepath, with one placement exception.**
+`can_inline` (`graph.rs:209-215`) puts a stash *inline* — at its parent's own column,
+consuming no new lane and no new colour — when all of these hold:
+
+1. it is a stash;
+2. **the worktree is clean** (`!worktree_dirty`, read once per walk via
+   `git::status::worktree_dirty`);
+3. its first parent already has a column reserved;
+4. that parent is the HEAD tip, or is outside the HEAD chain;
+5. the parent's column is unoccupied in `active_lanes`.
+
+Otherwise it takes a free column and a new colour like any branch tip.
+
+Clause 2 exists because the frontend draws its WIP row in the HEAD column whenever the
+worktree is dirty (`CommitGraph.svelte`, `displayItems`), and an inline stash can only ever
+land in that same column — so without it the stash square sits on the WIP line. The cost is
+accepted churn: because the inline path consumes neither lane nor colour and stashes are
+placed before branch tips, toggling clean↔dirty can shift an unrelated branch's colour, and
+its column too when that branch sorts between the stash and the stash's parent. Both shapes
+are pinned in `tests/test_graph.rs` (`dirtiness_relayouts_unrelated_branches`,
+`dirtiness_recolors_branches_below_the_stash_parent`).
 
 #### Phase 2: Pass-through and fork-in detection
 
 Iterate `active_lanes`. For each `other_col != col`:
 - If `active_lanes[other_col] == Some(oid)` → **fork-in**: a child kept this lane
   alive pointing to the current commit. Emit `ForkRight`/`ForkLeft` edge from `col`
-  to `other_col`. Clean up: `active_lanes[other_col] = None`, `lane_colors.remove(other_col)`,
-  `stash_lanes.remove(other_col)`.
+  to `other_col`. Clean up: `active_lanes[other_col] = None`, `lane_colors.remove(other_col)`.
 - Otherwise → **pass-through**: emit `Straight` edge at `other_col` with that lane's
-  color, `dashed` if `other_col ∈ stash_lanes`.
+  color, `dashed` from that lane slot's flag.
 
 #### Phase 3: Terminate current slot
 
@@ -114,11 +136,11 @@ Iterate `active_lanes`. For each `other_col != col`:
 
 For the first parent:
 - If `pending_parents[parent_oid] == col` (same column, already reserved):
-  - Emit Straight edge using `lane_colors[col]`, `dashed` if `stash_lanes.contains(col)`.
+  - Emit Straight edge using `lane_colors[col]`, `dashed` from the lane slot's flag.
   - Set `active_lanes[col] = Some(parent_oid)`, `col_reoccupied = true`.
 - If `pending_parents[parent_oid] != col` (different column):
   - Keep lane alive: `active_lanes[col] = Some(parent_oid)`, `col_reoccupied = true`.
-  - Emit Straight edge at `col` (dashed if `stash_lanes.contains(col)`).
+  - Emit Straight edge at `col` (dashed from the lane slot's flag).
   - The parent, when later processed, detects this as a fork-in and emits ForkRight.
 - If parent not in `pending_parents`:
   - **Orphan stash guard**: if `is_stash` and parent not in `base_oid_set`, lane ends
@@ -267,9 +289,10 @@ part of the history DAG.
 
 ### Stash rendering
 
-A stash is treated as a **regular branch tip** with dashed visuals. No special column
-assignment, no inline placement — it flows through the exact same algorithm as any
-other commit that's not in `pending_parents`.
+A stash renders as a dashed hollow square. Its **placement** takes one of two shapes,
+decided by `can_inline` (see Phase 1 above) — the deciding input is worktree dirtiness.
+
+Branch-right (dirty worktree, or any other `can_inline` clause failing):
 
 ```
     ┊ □        ← stash at own col, dashed hollow rect
@@ -278,13 +301,24 @@ other commit that's not in `pending_parents`.
     │
 ```
 
-Algorithm:
-1. Stash gets a free column via the standard branch-tip scan (same as any new branch).
-2. `stash_lanes.insert(stash_col)` → all edges at that col are marked `dashed: true`.
-3. Stash Phase 4: `active_lanes[stash_col] = Some(parent_oid)`, `pending_parents[parent_oid] = stash_col`, emit dashed Straight.
+1. Stash gets a free column via the standard branch-tip scan and a new colour.
+2. The lane's dashed flag is set to `true`, so edges at that col render dashed.
+3. Stash Phase 4: `active_lanes[stash_col] = Some((parent_oid, true))`, `pending_parents[parent_oid] = stash_col`, emit dashed Straight.
    - **Orphan stash guard**: if parent not in `base_oid_set`, lane ends here (no Straight, no `pending_parents` claim).
 4. Parent Phase 2: detects fork-in at `stash_col`, emits dashed `ForkRight`.
-5. Parent Phase 2 cleanup: `active_lanes[stash_col] = None`, `lane_colors.remove`, `stash_lanes.remove`.
+5. Parent Phase 2 cleanup: `active_lanes[stash_col] = None`, `lane_colors.remove`.
+
+Inline (clean worktree, parent is the HEAD tip and its column is free):
+
+```
+    □          ← stash in the parent's own column, dashed hollow rect
+    ┊          ← dashed Straight, no fork
+────●──        ← parent, no ForkRight
+    │
+```
+
+The stash takes the parent's column verbatim and inherits its colour, consuming no new
+lane and no new colour. `max_columns` is unchanged.
 
 ---
 
@@ -294,14 +328,16 @@ The lane algorithm has deeply coupled state. Changing any one thing cascades:
 
 | If you change... | ...it affects |
 |---|---|
-| `stash_lanes` | Every pass-through edge at that column gets dashed |
+| A lane's dashed flag | Every pass-through edge at that column gets dashed |
 | `pending_parents` removal timing | Fork-in detection in Phase 2 depends on `active_lanes` holding the child's oid until the parent is processed |
 | `active_lanes` layout | `max_columns` high-water mark, `is_branch_tip` detection, fork-in scan all use this |
+| The dirtiness read | Stash placement, and through it the column and colour of unrelated branches — see `can_inline` in Phase 1 |
 
-**Design principle**: stashes use the same algorithm as regular branches. The ONLY
-stash-specific code is: (1) parent filtering (only first parent), (2) `stash_lanes`
-marking for dashed visuals, (3) orphan stash guard in Phase 4, (4) `is_stash` flag
-on output.
+**Design principle**: stash *rendering* differs from a regular commit only in being dashed
+and hollow, but stash *lane assignment* is allowed to depend on worktree state. The
+stash-specific code is: (1) parent filtering (only first parent), (2) the lane's dashed
+flag, (3) orphan stash guard in Phase 4, (4) `is_stash` flag on output, (5) the `can_inline`
+placement exception.
 
 **Rule**: Never post-process graph output. If the visual output is wrong, fix the
 algorithm that produces it.
@@ -311,8 +347,9 @@ algorithm that produces it.
 ## Testing
 
 ```bash
-# Rust unit tests (fast, in-process test repos)
-cd src-tauri && cargo test --lib
+# Rust tests (fast, in-process test repos). NOT --lib: the graph assertions live in
+# tests/test_graph.rs, which --lib does not run.
+cd src-tauri && cargo test
 
 # TypeScript unit tests
 npx vitest run
@@ -321,11 +358,16 @@ npx vitest run
 cargo tauri dev    # then open a repo with stashes
 ```
 
-Key test cases to maintain:
-- `stash_branches_right_like_regular_branch` — stash at own col, own color, dashed edges, ForkRight on parent
-- `multiple_stashes_on_same_parent` — both stashes branch right at own columns, 2 ForkRight on parent
+Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
+- `stash_inline_on_head_tip` — clean tree, stash on the HEAD tip: parent's column, parent's colour, dashed Straight, no ForkRight
+- `stash_inline_with_topic_branch` — inline still holds with another branch present
+- `stash_stays_inline_when_worktree_clean` / `stash_branches_right_when_worktree_dirty` — the paired control for the dirtiness clause
+- `stash_branches_right_when_only_untracked` / `..._only_staged` — pins `include_untracked(true)` and the `INDEX_*` bits
+- `multiple_stashes_on_same_parent` — the newest inlines, the older branches right
 - `stash_branches_right_when_head_chain_occupies_lane` — mid-chain stash branches right, ForkRight on parent
-- `stash_branches_right_with_topic_branch` — stash on HEAD branches right even with other branches present
+- `dirtiness_relayouts_unrelated_branches` / `dirtiness_recolors_branches_below_the_stash_parent` — the accepted churn
+- `graph_and_dirty_counts_agree_when_*` — the graph and `get_dirty_counts` never disagree about dirtiness
+- `walk_commits_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it
 - Orphan stash — standalone dot, no connector, no ghost lane
 - WIP + stash coexist — dashed WIP line splits around inline stash nodes
 
