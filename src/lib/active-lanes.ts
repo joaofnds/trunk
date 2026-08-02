@@ -49,7 +49,14 @@ export function buildGraphData(
 				}
 			}
 
-			// Dashed connections from WIP to HEAD, split around stash rows
+			// Dashed connections from WIP to HEAD, split around stash rows.
+			// A dirty worktree moves the stash out of the WIP column, so in a settled
+			// frame stashRows is empty. The split guards the unsettled one: on a
+			// clean->dirty edit get_dirty_counts resolves ~40ms before
+			// refresh_commit_graph (RepoView dispatches loadDirtyCounts synchronously
+			// while the graph fetch waits a microtask for CommitGraph's $effect), so
+			// the WIP row is drawn over the previous layout with the stash still inline.
+			// Structural ordering, not a race — the window grows with history size.
 			if (headRow > y) {
 				const wipCol = commit.column;
 				const stashRows: number[] = [];

@@ -3,6 +3,7 @@ pub mod graph;
 pub mod repository;
 pub mod review;
 pub mod review_store;
+pub mod status;
 pub mod syntax;
 pub mod types;
 pub mod workdir_snapshot;

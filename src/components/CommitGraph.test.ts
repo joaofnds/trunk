@@ -617,4 +617,46 @@ describe("CommitGraph", () => {
 			);
 		});
 	});
+
+	describe("out-of-order refreshes", () => {
+		const props = (refreshSignal: number) => ({
+			repoPath: "/test/repo",
+			clearRedoStack: vi.fn(),
+			refreshSignal,
+		});
+
+		function graphPage(summary: string, oidChar: string) {
+			return {
+				commits: [makeCommit({ oid: oidChar.repeat(40), summary })],
+				max_columns: 1,
+			};
+		}
+
+		it("keeps the newest layout when an older refresh resolves last", async () => {
+			const pending: ((page: unknown) => void)[] = [];
+			installReads({
+				override: (cmd) =>
+					cmd === "refresh_commit_graph"
+						? new Promise((resolve) => pending.push(resolve))
+						: undefined,
+			});
+			const { rerender } = render(CommitGraph, { props: props(0) });
+			await waitFor(() => {
+				expect(screen.getByText("first commit")).toBeInTheDocument();
+			});
+			await rerender(props(1));
+			await flush();
+			await rerender(props(2));
+			await flush();
+			expect(pending).toHaveLength(2);
+
+			pending[1](graphPage("fresh refresh", "f"));
+			await flush();
+			pending[0](graphPage("stale refresh", "5"));
+			await flush();
+
+			expect(screen.getByText("fresh refresh")).toBeInTheDocument();
+			expect(screen.queryByText("stale refresh")).not.toBeInTheDocument();
+		});
+	});
 });

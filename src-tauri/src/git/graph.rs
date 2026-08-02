@@ -1,5 +1,6 @@
 use crate::error::TrunkError;
 use crate::git::repository;
+use crate::git::status;
 use crate::git::types::{EdgeType, GraphCommit, GraphEdge, GraphResult};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -54,6 +55,10 @@ pub fn walk_commits(
     offset: usize,
     limit: usize,
 ) -> Result<GraphResult, TrunkError> {
+    // Step 0: Worktree state, read once — the frontend draws a WIP row in column 0
+    // whenever this is true, so inline stash placement has to yield the lane.
+    let worktree_dirty = status::worktree_dirty(repo);
+
     // Step 1: Build ref map (needs &mut repo for stash_foreach)
     let ref_map = repository::build_ref_map(repo);
 
@@ -199,8 +204,10 @@ pub fn walk_commits(
             // as parent) with a straight dashed line — like GitKraken.
             // Safe when: parent is HEAD tip (no HEAD chain members between stash
             // and parent) or parent is not in the HEAD chain (no pre-reserved
-            // commits at that column).
+            // commits at that column), and the worktree is clean — a dirty
+            // worktree puts the frontend's WIP row in the same column.
             let can_inline = is_stash
+                && !worktree_dirty
                 && parent_col.is_some()
                 && parent_oid.is_some_and(|p| !head_chain.contains(&p) || head_tip == Some(p))
                 && parent_col

@@ -336,4 +336,51 @@ describe("RepoView", () => {
 			container.querySelector('[data-testid="message-editor-backdrop"]'),
 		).toBeFalsy();
 	});
+
+	describe("out-of-order dirty-count loads", () => {
+		const props = () => ({
+			repoPath: "/test/repo",
+			repoName: "test-repo",
+			remoteState: createMockRemoteState(),
+			undoRedo: createMockUndoRedo(),
+			leftPaneWidth: 200,
+			leftPaneCollapsed: false,
+			rightPaneWidth: 300,
+			rightPaneCollapsed: false,
+			windowVisible: true,
+			reviewActive: false,
+			onreviewpanelshowingchange: vi.fn(),
+			onleftpanecollapsedchange: vi.fn(),
+			onrightpanecollapsedchange: vi.fn(),
+			onleftpanewidthchange: vi.fn(),
+			onrightpanewidthchange: vi.fn(),
+		});
+
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+		}
+
+		it("keeps the newest counts when an older load resolves last", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const pending: ((counts: unknown) => void)[] = [];
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "get_dirty_counts"
+					? new Promise((resolve) => pending.push(resolve))
+					: base(cmd, args),
+			);
+			const { container, rerender } = render(RepoView, { props: props() });
+			await flush();
+			await rerender(props());
+			await flush();
+			expect(pending.length).toBeGreaterThanOrEqual(2);
+
+			pending[pending.length - 1]({ staged: 1, unstaged: 0, conflicted: 0 });
+			await flush();
+			pending[0]({ staged: 0, unstaged: 0, conflicted: 0 });
+			await flush();
+
+			expect(container.textContent).toContain("// WIP");
+		});
+	});
 });

@@ -164,6 +164,11 @@ let diffColumnWasVisible = false;
 // (the working tree changes constantly; only the latest fetch's result is valid).
 let wipStatsSeq = 0;
 
+// Same token for whole-graph refreshes. Layout now depends on worktree dirtiness, so
+// a burst of edits issues overlapping refreshes; a late one would freeze a layout
+// that disagrees with the tree until the next fs event.
+let refreshSeq = 0;
+
 let columnWidths = $state<ColumnWidths>({
 	ref: 120,
 	graph: 24,
@@ -1508,10 +1513,12 @@ export async function scrollToOid(oid: string): Promise<void> {
 }
 
 async function refresh() {
+	const seq = ++refreshSeq;
 	try {
 		const response = await safeInvoke<GraphResponse>("refresh_commit_graph", {
 			path: repoPath,
 		});
+		if (seq !== refreshSeq) return;
 		// Swap data atomically -- old data stays visible until this assignment
 		commits = response.commits;
 		maxColumns = response.max_columns;
@@ -1526,6 +1533,7 @@ async function refresh() {
 		void fetchWipStats();
 		await loadStashMap();
 	} catch (e) {
+		if (seq !== refreshSeq) return;
 		const err = e as TrunkError;
 		error = err.message ?? "Failed to load commits";
 		// Keep old commits visible on error -- do NOT clear

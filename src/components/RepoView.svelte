@@ -219,6 +219,10 @@ let dirtyCounts = $state<DirtyCounts>({
 	renamed: 0,
 	typechange: 0,
 });
+// Monotonic token so an out-of-order dirty-count response can't clobber a newer one.
+// Graph layout now depends on this value, so a stale one freezes a layout that
+// disagrees with the worktree until the next fs event.
+let dirtyCountsSeq = 0;
 let headBranch = $state<string | undefined>(undefined);
 let wipSubject = $state("");
 let wipBody = $state("");
@@ -362,10 +366,12 @@ $effect(() => {
 });
 
 async function loadDirtyCounts() {
+	const seq = ++dirtyCountsSeq;
 	try {
 		const result = await safeInvoke<DirtyCounts>("get_dirty_counts", {
 			path: repoPath,
 		});
+		if (seq !== dirtyCountsSeq) return;
 		dirtyCounts = result;
 	} catch {
 		// non-fatal -- keep previous counts

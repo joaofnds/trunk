@@ -1243,6 +1243,310 @@ fn stash_inline_with_topic_branch() {
     );
 }
 
+/// C0 -> C1 -> C2 -> "Add stash marker" (HEAD tip) with one stash on the marker.
+/// `with_stash` reverts the worktree, so the fixture arrives clean. The committed `.gitignore`
+/// is what lets a test distinguish `dirty_status_options()` from `statuses(None)`.
+fn stash_on_head_tip_ctx() -> TestContext {
+    TestContext::builder()
+        .with_file(".gitignore", "ignored.txt\n")
+        .with_commit("Add ignore rules")
+        .with_file("f0.txt", "f0")
+        .with_commit("C0")
+        .with_file("f1.txt", "f1")
+        .with_commit("C1")
+        .with_file("f2.txt", "f2")
+        .with_commit("C2")
+        .with_stash(Some("test stash"))
+        .build()
+}
+
+fn stash_and_parent(commits: &[trunk_lib::git::types::GraphCommit]) -> (usize, usize) {
+    let stash_idx = commits
+        .iter()
+        .position(|c| c.is_stash)
+        .expect("no stash commit found");
+    let parent_oid = &commits[stash_idx].parent_oids[0];
+    let parent_idx = commits
+        .iter()
+        .position(|c| &c.oid == parent_oid)
+        .expect("stash parent not found");
+    (stash_idx, parent_idx)
+}
+
+#[test]
+fn stash_branches_right_when_worktree_dirty() {
+    let ctx = stash_on_head_tip_ctx();
+    std::fs::write(ctx.repo_path().join("f2.txt"), "modified").unwrap();
+
+    let mut repo = ctx.repo();
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+    let (stash_idx, parent_idx) = stash_and_parent(&result.commits);
+    let stash = &result.commits[stash_idx];
+    let parent = &result.commits[parent_idx];
+    assert_eq!(
+        stash.column, 1,
+        "dirty worktree should push the stash off the WIP column, got col {}",
+        stash.column
+    );
+    assert_ne!(
+        stash.color_index, 0,
+        "branching stash should take its own color, edges: {:?}",
+        stash.edges
+    );
+    let stash_straight = stash.edges.iter().find(|e| {
+        matches!(e.edge_type, EdgeType::Straight) && e.from_column == 1 && e.to_column == 1
+    });
+    assert!(
+        stash_straight.is_some_and(|e| e.dashed),
+        "stash should have a dashed Straight at column 1, edges: {:?}",
+        stash.edges
+    );
+    let parent_fork = parent.edges.iter().find(|e| {
+        matches!(e.edge_type, EdgeType::ForkRight) && e.from_column == 0 && e.to_column == 1
+    });
+    assert!(
+        parent_fork.is_some_and(|e| e.dashed),
+        "stash parent should emit a dashed ForkRight 0->1, edges: {:?}",
+        parent.edges
+    );
+}
+
+#[test]
+fn stash_branches_right_when_only_untracked() {
+    let ctx = stash_on_head_tip_ctx();
+    std::fs::write(ctx.repo_path().join("untracked.txt"), "u").unwrap();
+
+    let mut repo = ctx.repo();
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+    let (stash_idx, _) = stash_and_parent(&result.commits);
+    assert_eq!(
+        result.commits[stash_idx].column, 1,
+        "an untracked file alone is dirty; status options must include untracked"
+    );
+}
+
+#[test]
+fn stash_branches_right_when_only_staged() {
+    let ctx = stash_on_head_tip_ctx();
+    std::fs::write(ctx.repo_path().join("staged.txt"), "s").unwrap();
+
+    let mut repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("staged.txt")).unwrap();
+    index.write().unwrap();
+    drop(index);
+
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+    let (stash_idx, _) = stash_and_parent(&result.commits);
+    assert_eq!(
+        result.commits[stash_idx].column, 1,
+        "a staged-only change is dirty; the mask must include the INDEX_* bits"
+    );
+}
+
+/// Invariant 1: `walk_commits` and `get_dirty_counts_inner` must never disagree about whether
+/// the worktree is dirty — drift between them reproduces the stash/WIP collision intermittently.
+/// `walk_commits`'s reading is invisible in `GraphResult`, so the stash's column is the only
+/// observable that stands in for it.
+fn assert_readings_agree(dirty_the_tree: impl Fn(&TestContext)) {
+    use trunk_lib::commands::staging::get_dirty_counts_inner;
+
+    let ctx = stash_on_head_tip_ctx();
+    dirty_the_tree(&ctx);
+
+    let counts = get_dirty_counts_inner(ctx.path(), ctx.state_map()).unwrap();
+    let mut repo = ctx.repo();
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+    let (stash_idx, _) = stash_and_parent(&result.commits);
+    let counts_say_dirty = counts.staged + counts.unstaged + counts.conflicted > 0;
+    let graph_says_dirty = result.commits[stash_idx].column == 1;
+    assert_eq!(
+        counts_say_dirty, graph_says_dirty,
+        "get_dirty_counts dirty={counts_say_dirty}, graph dirty={graph_says_dirty}"
+    );
+}
+
+#[test]
+fn graph_and_dirty_counts_agree_when_clean() {
+    assert_readings_agree(|_| {});
+}
+
+#[test]
+fn graph_and_dirty_counts_agree_when_only_ignored() {
+    assert_readings_agree(|ctx| {
+        std::fs::write(ctx.repo_path().join("ignored.txt"), "i").unwrap();
+    });
+}
+
+#[test]
+fn graph_and_dirty_counts_agree_when_only_untracked() {
+    assert_readings_agree(|ctx| {
+        std::fs::write(ctx.repo_path().join("untracked.txt"), "u").unwrap();
+    });
+}
+
+#[test]
+fn graph_and_dirty_counts_agree_when_only_staged() {
+    assert_readings_agree(|ctx| {
+        std::fs::write(ctx.repo_path().join("staged.txt"), "s").unwrap();
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("staged.txt")).unwrap();
+        index.write().unwrap();
+    });
+}
+
+#[test]
+fn graph_and_dirty_counts_agree_when_only_unstaged() {
+    assert_readings_agree(|ctx| {
+        std::fs::write(ctx.repo_path().join("f2.txt"), "modified").unwrap();
+    });
+}
+
+/// `open_repo` walks bare repositories too — `validate_and_open` only remaps the error, so
+/// `workdir()` is not always `Some`. `repo.statuses()` refuses to run against one, and the
+/// walk must survive that rather than propagate it.
+#[test]
+fn walk_commits_on_bare_repo_does_not_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut repo = git2::Repository::init_bare(dir.path()).unwrap();
+
+    let result = walk_commits(&mut repo, 0, usize::MAX);
+
+    assert!(result.is_ok(), "bare repo walk failed: {:?}", result.err());
+}
+
+/// `C0 -> C1` on main with `C0 -> T1` on topic, plus one stash on the main tip. Timestamps are
+/// spaced so the `TOPOLOGICAL | TIME` sort is deterministic; `t1_secs` places T1 above or below
+/// C1, which is what decides how far D6's churn reaches. The tree is left clean.
+fn topic_and_stash_repo(t1_secs: i64) -> tempfile::TempDir {
+    let sig_at =
+        |secs: i64| git2::Signature::new("T", "t@t.com", &git2::Time::new(secs, 0)).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let mut repo = git2::Repository::init(dir.path()).unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+        drop(cfg);
+
+        {
+            let c0 = raw_commit(
+                &repo,
+                &sig_at(1000),
+                "refs/heads/main",
+                "C0",
+                "f0.txt",
+                "f0",
+                &[],
+            );
+            let c0c = repo.find_commit(c0).unwrap();
+            raw_commit(
+                &repo,
+                &sig_at(t1_secs),
+                "refs/heads/topic",
+                "T1",
+                "topic.txt",
+                "topic",
+                &[&c0c],
+            );
+            raw_commit(
+                &repo,
+                &sig_at(2000),
+                "refs/heads/main",
+                "C1",
+                "f1.txt",
+                "f1",
+                &[&c0c],
+            );
+        }
+        repo.set_head("refs/heads/main").unwrap();
+
+        std::fs::write(dir.path().join("f1.txt"), "to be stashed").unwrap();
+        repo.stash_save(&sig_at(4000), "test stash", None).unwrap();
+    }
+    dir
+}
+
+/// (max_columns, T1's column, T1's color) clean, then with the worktree dirtied.
+fn topic_layout_clean_then_dirty(
+    dir: &tempfile::TempDir,
+) -> ((usize, usize, usize), (usize, usize, usize)) {
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let read = |result: &trunk_lib::git::types::GraphResult| {
+        let t1 = result
+            .commits
+            .iter()
+            .find(|c| c.summary == "T1")
+            .expect("T1 not found");
+        (result.max_columns, t1.column, t1.color_index)
+    };
+
+    let clean = read(&walk_commits(&mut repo, 0, usize::MAX).unwrap());
+    std::fs::write(dir.path().join("f1.txt"), "dirty").unwrap();
+    let dirty = read(&walk_commits(&mut repo, 0, usize::MAX).unwrap());
+    (clean, dirty)
+}
+
+/// D6 (`.boris/plans/2026-08-02-stash-wip-column-collision-grilled.md`): a branching stash
+/// consumes a lane and a colour that an inline stash does not, and stashes are placed before
+/// branch tips. A branch tip sorting between the stash and the stash's parent finds that lane
+/// still held, so it shifts a column right and a colour along. Accepted trade, pinned here so
+/// it cannot change unnoticed.
+#[test]
+fn dirtiness_relayouts_unrelated_branches() {
+    let dir = topic_and_stash_repo(3000);
+
+    let (clean, dirty) = topic_layout_clean_then_dirty(&dir);
+
+    assert_eq!(clean, (2, 1, 1), "clean: (max_columns, T1 col, T1 color)");
+    assert_eq!(dirty, (3, 2, 2), "dirty: (max_columns, T1 col, T1 color)");
+}
+
+/// The other half of D6, and the bound on it: a branch tip sorting *below* the stash's parent
+/// finds the stash's lane already released, so it keeps its column and only the colour moves.
+#[test]
+fn dirtiness_recolors_branches_below_the_stash_parent() {
+    let dir = topic_and_stash_repo(1500);
+
+    let (clean, dirty) = topic_layout_clean_then_dirty(&dir);
+
+    assert_eq!(clean, (2, 1, 1), "clean: (max_columns, T1 col, T1 color)");
+    assert_eq!(dirty, (2, 1, 2), "dirty: (max_columns, T1 col, T1 color)");
+}
+
+#[test]
+fn stash_stays_inline_when_worktree_clean() {
+    let ctx = stash_on_head_tip_ctx();
+
+    let mut repo = ctx.repo();
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+
+    let (stash_idx, parent_idx) = stash_and_parent(&result.commits);
+    let stash = &result.commits[stash_idx];
+    let parent = &result.commits[parent_idx];
+    assert_eq!(
+        stash.column, 0,
+        "clean worktree should keep the stash inline"
+    );
+    assert_eq!(
+        stash.color_index, 0,
+        "inline stash should inherit the HEAD lane's color"
+    );
+    assert!(
+        !parent
+            .edges
+            .iter()
+            .any(|e| matches!(e.edge_type, EdgeType::ForkRight)),
+        "inline stash's parent should emit no ForkRight, edges: {:?}",
+        parent.edges
+    );
+}
+
 #[test]
 fn detached_head_marks_first_parent_chain() {
     // Mid-rebase shape: HEAD detached at a1 (parent r2), reachable from no ref.

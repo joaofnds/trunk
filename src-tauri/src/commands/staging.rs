@@ -1,4 +1,5 @@
 use crate::error::TrunkError;
+use crate::git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
 use crate::git::types::{FileStatus, FileStatusType, WorkingTreeStatus};
 use crate::state::RepoState;
 use git2::{Status, StatusOptions};
@@ -546,10 +547,7 @@ pub fn get_dirty_counts_inner(
     state_map: &std::collections::HashMap<String, std::path::PathBuf>,
 ) -> Result<DirtyCounts, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
-    let mut opts = StatusOptions::new();
-    opts.include_untracked(true)
-        .include_ignored(false)
-        .recurse_untracked_dirs(true);
+    let mut opts = dirty_status_options();
     let statuses = repo.statuses(Some(&mut opts)).map_err(TrunkError::from)?;
     let mut staged = 0usize;
     let mut unstaged = 0usize;
@@ -561,22 +559,10 @@ pub fn get_dirty_counts_inner(
     let mut typechange = 0usize;
     for entry in statuses.iter() {
         let s = entry.status();
-        if s.intersects(
-            Status::INDEX_NEW
-                | Status::INDEX_MODIFIED
-                | Status::INDEX_DELETED
-                | Status::INDEX_RENAMED
-                | Status::INDEX_TYPECHANGE,
-        ) {
+        if s.intersects(STAGED_BITS) {
             staged += 1;
         }
-        if s.intersects(
-            Status::WT_NEW
-                | Status::WT_MODIFIED
-                | Status::WT_DELETED
-                | Status::WT_RENAMED
-                | Status::WT_TYPECHANGE,
-        ) {
+        if s.intersects(UNSTAGED_BITS) {
             unstaged += 1;
         }
         // Classify each changed path into a single bucket by priority so the
