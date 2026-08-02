@@ -1246,3 +1246,63 @@ fn conflicted_binary_file_is_reported_as_binary() {
         "a conflicted PNG must not be reported as text"
     );
 }
+
+/// A tracked symlink whose target does not exist. `Path::exists()` follows the
+/// link and reports false, which reads as "the file was deleted".
+#[cfg(unix)]
+fn dangling_symlink_ctx() -> TestContext {
+    let ctx = TestContext::builder()
+        .with_file("real.txt", "content")
+        .with_commit("Initial commit")
+        .build();
+
+    let link = ctx.repo_path().join("link");
+    std::os::unix::fs::symlink("real.txt", &link).unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("link")).unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let sig = repo.signature().unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Add link", &tree, &[&parent])
+            .unwrap();
+    }
+
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink("gone.txt", &link).unwrap();
+
+    ctx
+}
+
+#[cfg(unix)]
+#[test]
+fn staging_a_symlink_that_now_dangles_keeps_it_in_the_index() {
+    let ctx = dangling_symlink_ctx();
+
+    ctx.stage_file("link").expect("stage_file failed");
+
+    let repo = ctx.repo();
+    let entry = repo
+        .index()
+        .unwrap()
+        .get_path(std::path::Path::new("link"), 0)
+        .expect("link must stay in the index");
+    let target = repo.find_blob(entry.id).unwrap();
+    assert_eq!(target.content(), b"gone.txt");
+}
+
+#[cfg(unix)]
+#[test]
+fn staging_many_keeps_a_symlink_that_now_dangles_in_the_index() {
+    let ctx = dangling_symlink_ctx();
+
+    ctx.stage_files(&["link"]).expect("stage_files failed");
+
+    let index = ctx.repo().index().unwrap();
+    assert!(
+        index.get_path(std::path::Path::new("link"), 0).is_some(),
+        "link must stay in the index"
+    );
+}

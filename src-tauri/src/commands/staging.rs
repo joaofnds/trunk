@@ -135,6 +135,13 @@ pub fn get_status_inner(
     })
 }
 
+/// Whether staging should record the path rather than remove it. `Path::exists()`
+/// follows symlinks, so a link whose target is gone reads as deleted and the whole
+/// link is dropped from the index; `symlink_metadata` stats the link itself.
+fn present_in_workdir(abs_path: &Path) -> bool {
+    abs_path.symlink_metadata().is_ok()
+}
+
 pub fn stage_file_inner(
     path: &str,
     file_path: &str,
@@ -146,7 +153,7 @@ pub fn stage_file_inner(
         .workdir()
         .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?
         .join(file_path);
-    if abs_path.exists() {
+    if present_in_workdir(&abs_path) {
         index.add_path(Path::new(file_path))?;
     } else {
         index.remove_path(Path::new(file_path))?;
@@ -170,7 +177,7 @@ pub fn stage_files_inner(
     let mut index = repo.index()?;
     for fp in file_paths {
         let abs_path = workdir.join(fp);
-        if abs_path.exists() {
+        if present_in_workdir(&abs_path) {
             index.add_path(Path::new(fp))?;
         } else {
             index.remove_path(Path::new(fp))?;
