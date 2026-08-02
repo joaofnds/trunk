@@ -85,6 +85,11 @@ fn canonical_repo_path(
 /// Start a fresh review session for a currently-open repo (SESS-01 / D-08).
 /// Rejects with `session_exists` if a file is already present — the client must
 /// Resume or End-and-clear first (RESEARCH Open Question 2).
+///
+/// Same critical section as `mutate_session_rmw` and `end_session_rmw`: the
+/// existence guard, the write and the map insert are one step, so a concurrent
+/// End can neither delete the file this just wrote nor miss the entry it is about
+/// to add. Canonicalizing stays outside the lock (as in `add_review_commit`).
 pub fn start_review_session_inner(
     data_dir: &Path,
     path: &str,
@@ -92,6 +97,8 @@ pub fn start_review_session_inner(
     sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
 ) -> Result<PathBuf, TrunkError> {
     let canonical = canonical_repo_path(path, state_map)?;
+
+    let mut map = sessions.lock().unwrap();
     if review_store::session_exists(data_dir, &canonical) {
         return Err(TrunkError::new(
             "session_exists",
@@ -109,7 +116,7 @@ pub fn start_review_session_inner(
     };
 
     review_store::save_session(data_dir, &canonical, &session)?;
-    sessions.lock().unwrap().insert(canonical.clone(), session);
+    map.insert(canonical.clone(), session);
 
     Ok(canonical)
 }
