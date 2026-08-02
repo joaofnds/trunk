@@ -460,6 +460,7 @@ pub async fn git_push_force_inner<R: Runtime>(
     // confirmed; a bare argv lets `push.default` / `remote.<name>.push` widen it.
     let refspec = format!("HEAD:refs/heads/{confirmed_branch}");
     let mut args = FORCE_PUSH_ARGS.to_vec();
+    args.push("--");
     args.push(confirmed_remote);
     args.push(&refspec);
 
@@ -494,7 +495,7 @@ pub async fn delete_remote_branch(
     let branch = &branch_name[slash + 1..];
 
     run_git_remote(
-        &["push", "--delete", "--progress", remote, branch],
+        &["push", "--delete", "--progress", "--", remote, branch],
         &path_buf,
         &app,
         &path,

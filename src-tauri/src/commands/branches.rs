@@ -288,7 +288,7 @@ pub fn fast_forward_to_inner(
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
-        .args(["merge", "--ff-only", target_oid])
+        .args(["merge", "--ff-only", "--", target_oid])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()

@@ -304,7 +304,7 @@ pub fn merge_branch_begin_inner(
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
     //    fails clean on a non-ff merge (exit 128, MERGE_HEAD absent, tree clean).
     let probe = std::process::Command::new("git")
-        .args(["merge", "--ff-only", branch])
+        .args(["merge", "--ff-only", "--", branch])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()
@@ -318,7 +318,7 @@ pub fn merge_branch_begin_inner(
     // 2. Non-ff: branches are now provably divergent (the ff probe left the tree
     //    clean), so --no-commit creates a real merge. --no-ff is unnecessary.
     let output = std::process::Command::new("git")
-        .args(["merge", "--no-commit", branch])
+        .args(["merge", "--no-commit", "--", branch])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()
@@ -356,7 +356,7 @@ pub fn rebase_branch_inner(
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
-        .args(["rebase", onto_branch])
+        .args(["rebase", "--", onto_branch])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()

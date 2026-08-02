@@ -78,7 +78,7 @@ pub fn get_fork_point_inner(
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
-        .args(["merge-base", branch, "HEAD"])
+        .args(["merge-base", "--", branch, "HEAD"])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()
@@ -174,7 +174,7 @@ exit 0
 
     // 5. Run git rebase -i (blocking — waits for completion)
     let output = std::process::Command::new("git")
-        .args(["rebase", "-i", base_oid])
+        .args(["rebase", "-i", "--", base_oid])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())

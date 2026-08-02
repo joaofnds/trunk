@@ -94,7 +94,7 @@ pub fn cherry_pick_inner(
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
-        .args(["cherry-pick", oid])
+        .args(["cherry-pick", "--", oid])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()
@@ -125,7 +125,7 @@ pub fn revert_commit_begin_inner(
     // git writes the default message (Revert "<subject>" + full 40-char OID) to
     // .git/MERGE_MSG. REVERT_HEAD is set; the wrapper emits repo-changed.
     let output = std::process::Command::new("git")
-        .args(["revert", "--no-commit", oid])
+        .args(["revert", "--no-commit", "--", oid])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()
