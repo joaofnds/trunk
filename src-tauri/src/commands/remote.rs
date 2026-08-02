@@ -78,7 +78,9 @@ async fn run_git_remote<R: Runtime>(
         .args(args)
         .current_dir(cwd)
         .env("PATH", shell_env::system_path())
-        .stdout(std::process::Stdio::piped())
+        // Nothing reads stdout, and git blocks writing a large merge diffstat
+        // into a full pipe while this task blocks in wait().
+        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| TrunkError::new("remote_error", e.to_string()))?;

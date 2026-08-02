@@ -226,6 +226,57 @@ fn clean_pull_returns_ok() {
     );
 }
 
+/// One commit adding `count` files, so the merge diffstat `git pull` writes to
+/// stdout runs `count` lines long.
+fn commit_many_on_remote(bare: &Path, branch: &str, count: usize, message: &str) {
+    let repo = git2::Repository::open(bare).unwrap();
+    let tip = repo
+        .find_reference(&format!("refs/heads/{branch}"))
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    let mut builder = repo.treebuilder(Some(&tip.tree().unwrap())).unwrap();
+    for i in 0..count {
+        let blob = repo.blob(format!("line {i}\n").as_bytes()).unwrap();
+        builder
+            .insert(
+                format!("bulk-{i:05}.txt"),
+                blob,
+                git2::FileMode::Blob.into(),
+            )
+            .unwrap();
+    }
+    let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+    let sig =
+        git2::Signature::new("Test User", "test@example.com", &git2::Time::new(0, 0)).unwrap();
+    repo.commit(
+        Some(&format!("refs/heads/{branch}")),
+        &sig,
+        &sig,
+        message,
+        &tree,
+        &[&tip],
+    )
+    .unwrap();
+}
+
+#[test]
+fn pull_completes_when_the_diffstat_outgrows_the_stdout_pipe_buffer() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_remote("origin")
+        .build();
+    track_upstream(&ctx, "origin", "main");
+    let remote = ctx.remote();
+    remote.push().unwrap();
+    commit_many_on_remote(&bare_remote(&ctx, "origin"), "main", 4000, "Bulk import");
+
+    remote.pull(None).unwrap();
+
+    assert!(ctx.repo_path().join("bulk-03999.txt").exists());
+}
+
 #[test]
 fn push_is_refused_while_the_same_repo_has_an_op_running() {
     let ctx = TestContext::builder()
