@@ -1157,3 +1157,64 @@ fn dirty_counts_conflicted_path_goes_to_conflicted_bucket() {
         "conflicted path excluded from modified bucket"
     );
 }
+
+// -- pathspec is a filename, not a glob --
+
+/// libgit2 matches a pathspec with fnmatch unless told otherwise, so a filename
+/// carrying `[`, `]`, `*` or `?` selects every file the pattern happens to match.
+/// Every hunk and discard path then acts on whichever of them the diff lists first.
+mod pathspec_is_literal {
+    use super::*;
+    use trunk_lib::commands::staging::{discard_file_inner, discard_hunk_inner};
+
+    const GLOB_NAME: &str = "foo[1].txt";
+    const COLLIDING_NAME: &str = "foo1.txt";
+
+    fn context_with_colliding_names() -> TestContext {
+        let ctx = TestContext::builder()
+            .with_file(GLOB_NAME, "one\ntwo\nthree\n")
+            .with_file(COLLIDING_NAME, "one\ntwo\nthree\n")
+            .with_commit("Initial commit")
+            .build();
+
+        std::fs::write(ctx.repo_path().join(GLOB_NAME), "one\nCHANGED\nthree\n").unwrap();
+        std::fs::write(
+            ctx.repo_path().join(COLLIDING_NAME),
+            "one\nUNTOUCHED\nthree\n",
+        )
+        .unwrap();
+        ctx
+    }
+
+    fn read(ctx: &TestContext, name: &str) -> String {
+        std::fs::read_to_string(ctx.repo_path().join(name)).unwrap()
+    }
+
+    #[test]
+    fn discard_hunk_leaves_a_glob_matched_sibling_alone() {
+        let ctx = context_with_colliding_names();
+
+        discard_hunk_inner(ctx.path(), GLOB_NAME, 0, ctx.state_map()).unwrap();
+
+        assert_eq!(
+            read(&ctx, COLLIDING_NAME),
+            "one\nUNTOUCHED\nthree\n",
+            "discarding a hunk of {GLOB_NAME} must not touch {COLLIDING_NAME}"
+        );
+        assert_eq!(read(&ctx, GLOB_NAME), "one\ntwo\nthree\n");
+    }
+
+    #[test]
+    fn discard_file_leaves_a_glob_matched_sibling_alone() {
+        let ctx = context_with_colliding_names();
+
+        discard_file_inner(ctx.path(), GLOB_NAME, ctx.state_map()).unwrap();
+
+        assert_eq!(
+            read(&ctx, COLLIDING_NAME),
+            "one\nUNTOUCHED\nthree\n",
+            "discarding {GLOB_NAME} must not touch {COLLIDING_NAME}"
+        );
+        assert_eq!(read(&ctx, GLOB_NAME), "one\ntwo\nthree\n");
+    }
+}

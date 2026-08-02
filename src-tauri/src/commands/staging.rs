@@ -154,6 +154,7 @@ pub fn stage_files_inner(
 fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
     opts.include_untracked(true);
     opts.recurse_untracked_dirs(true);
     opts.show_untracked_content(true);
@@ -254,6 +255,7 @@ pub fn discard_file_inner(
 
     let mut opts = StatusOptions::new();
     opts.pathspec(file_path)
+        .disable_pathspec_match(true)
         .include_untracked(true)
         .include_ignored(false)
         .recurse_untracked_dirs(true);
@@ -280,7 +282,10 @@ pub fn discard_file_inner(
     ) {
         // Tracked file with working tree changes — checkout from HEAD
         let mut checkout = git2::build::CheckoutBuilder::new();
-        checkout.path(file_path).force();
+        checkout
+            .path(file_path)
+            .disable_pathspec_match(true)
+            .force();
         repo.checkout_head(Some(&mut checkout))?;
     } else {
         return Err(TrunkError::new(
@@ -400,7 +405,10 @@ pub fn unstage_hunk_inner(
 
     // Generate reversed diff (index -> HEAD) so applying it to index undoes the staged change
     let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.pathspec(file_path).reverse(true);
+    diff_opts
+        .pathspec(file_path)
+        .disable_pathspec_match(true)
+        .reverse(true);
 
     let diff = if is_head_unborn(&repo) {
         repo.diff_tree_to_index(None, None, Some(&mut diff_opts))?
@@ -1015,7 +1023,7 @@ pub fn unstage_lines_inner(
     // We use the forward diff so line indices match the user's view,
     // then build a reversed partial patch to undo selected lines.
     let mut diff_opts = git2::DiffOptions::new();
-    diff_opts.pathspec(file_path);
+    diff_opts.pathspec(file_path).disable_pathspec_match(true);
 
     let diff = if is_head_unborn(&repo) {
         repo.diff_tree_to_index(None, None, Some(&mut diff_opts))?

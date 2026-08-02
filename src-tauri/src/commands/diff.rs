@@ -343,6 +343,7 @@ pub fn diff_unstaged_raw_for_bench(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
     walk_diff_raw_for_bench(diff)
@@ -357,6 +358,7 @@ pub fn diff_unstaged_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
     opts.include_untracked(true);
     opts.recurse_untracked_dirs(true);
     opts.show_untracked_content(true);
@@ -374,6 +376,7 @@ pub fn diff_staged_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
     let diff = if is_head_unborn(&repo) {
         repo.diff_tree_to_index(None, None, Some(&mut opts))?
@@ -470,6 +473,7 @@ pub fn diff_commit_file_inner(
     let commit_tree = commit.tree()?;
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
     let diff = if commit.parent_count() == 0 {
         repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
