@@ -42,6 +42,11 @@ pub fn create_commit_inner(
     let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
 
     repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &parent_refs)?;
+    // git2's commit is plumbing: unlike `git commit` it leaves CHERRY_PICK_HEAD
+    // and REVERT_HEAD in place. The normal commit form renders during both
+    // (StagingPanel's isOperation covers only merge and rebase), so without this
+    // the repository stays mid-operation forever with no in-app way out.
+    repo.cleanup_state()?;
     Ok(())
 }
 

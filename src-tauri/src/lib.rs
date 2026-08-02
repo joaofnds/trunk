@@ -265,6 +265,8 @@ pub fn run() {
             commands::commit_actions::delete_tag,
             commands::commit_actions::cherry_pick,
             commands::commit_actions::revert_commit_begin,
+            commands::commit_actions::cherry_pick_continue,
+            commands::commit_actions::cherry_pick_abort,
             commands::commit_actions::revert_continue,
             commands::commit_actions::revert_abort,
             commands::commit_actions::reset_to_commit,

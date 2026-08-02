@@ -22,6 +22,7 @@ let loading = $state(false);
 let isMerge = $derived(info.op_type === "Merge");
 let isRebase = $derived(info.op_type === "Rebase");
 let isRevert = $derived(info.op_type === "Revert");
+let isCherryPick = $derived(info.op_type === "CherryPick");
 
 let sourceBranch = $derived(info.source_branch ?? "???");
 let targetBranch = $derived(info.target_branch ?? "???");
@@ -108,6 +109,48 @@ async function handleRevertContinue() {
 	} catch (e) {
 		const err = e as TrunkError;
 		showToast(err.message ?? "Continue failed", "error");
+	} finally {
+		loading = false;
+		onaction?.();
+	}
+}
+
+async function handleCherryPickContinue() {
+	loading = true;
+	try {
+		const def = await safeInvoke<string | null>("get_merge_message", {
+			path: repoPath,
+		});
+		const msg = await onopenmessageeditor?.(
+			def ?? "",
+			"Cherry-pick commit message",
+		);
+		if (msg == null) return;
+		await safeInvoke("cherry_pick_continue", { path: repoPath, message: msg });
+		showToast("Cherry-pick completed", "success");
+	} catch (e) {
+		const err = e as TrunkError;
+		showToast(err.message ?? "Continue failed", "error");
+	} finally {
+		loading = false;
+		onaction?.();
+	}
+}
+
+async function handleCherryPickAbort() {
+	const { ask } = await import("@tauri-apps/plugin-dialog");
+	const confirmed = await ask(
+		"Abort cherry-pick? This will discard the in-progress cherry-pick and return to the previous state.",
+		{ title: "Abort Cherry-pick", kind: "warning" },
+	);
+	if (!confirmed) return;
+	loading = true;
+	try {
+		await safeInvoke("cherry_pick_abort", { path: repoPath });
+		showToast("Cherry-pick aborted", "success");
+	} catch (e) {
+		const err = e as TrunkError;
+		showToast(err.message ?? "Abort failed", "error");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -215,6 +258,38 @@ async function handleRevertAbort() {
       >Skip</button>
       <button
         onclick={handleAbort}
+        disabled={loading}
+        style="
+          background: var(--color-danger-bg);
+          color: var(--color-danger);
+          font-size: 11px;
+          border: 1px solid var(--color-danger-border);
+          border-radius: 4px;
+          cursor: pointer;
+          padding: 2px 8px;
+          white-space: nowrap;
+        "
+      >Abort</button>
+    </div>
+  {/if}
+  {#if isCherryPick}
+    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+      <button
+        onclick={handleCherryPickContinue}
+        disabled={loading}
+        style="
+          background: var(--color-success-bg);
+          color: var(--color-success);
+          font-size: 11px;
+          border: 1px solid var(--color-success-border);
+          border-radius: 4px;
+          cursor: pointer;
+          padding: 2px 8px;
+          white-space: nowrap;
+        "
+      >Continue</button>
+      <button
+        onclick={handleCherryPickAbort}
         disabled={loading}
         style="
           background: var(--color-danger-bg);

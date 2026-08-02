@@ -114,6 +114,49 @@ pub fn cherry_pick_inner(
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }
 
+pub fn cherry_pick_continue_inner(
+    path: &str,
+    message: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<GraphResult, TrunkError> {
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
+    // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
+    let output = std::process::Command::new("git")
+        .args(["commit", "-m", message, "--cleanup=strip"])
+        .current_dir(path_buf)
+        .env("PATH", shell_env::system_path())
+        .output()
+        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+    }
+    let mut repo = git2::Repository::open(path_buf)?;
+    graph::walk_commits(&mut repo, 0, usize::MAX)
+}
+
+pub fn cherry_pick_abort_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<GraphResult, TrunkError> {
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
+    // which a cherry-pick never sets.
+    let output = std::process::Command::new("git")
+        .args(["cherry-pick", "--abort"])
+        .current_dir(path_buf)
+        .env("PATH", shell_env::system_path())
+        .output()
+        .map_err(|e| TrunkError::new("cherry_pick_error", e.to_string()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
+    }
+    let mut repo = git2::Repository::open(path_buf)?;
+    graph::walk_commits(&mut repo, 0, usize::MAX)
+}
+
 pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
@@ -364,6 +407,49 @@ pub async fn revert_commit_begin(
         .insert(path.clone(), result.graph.clone());
     let _ = app.emit("repo-changed", path);
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn cherry_pick_continue(
+    path: String,
+    message: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        cherry_pick_continue_inner(&path_clone, &message, &state_map)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    let _ = app.emit("repo-changed", path);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cherry_pick_abort(
+    path: String,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        cherry_pick_abort_inner(&path_clone, &state_map)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    let _ = app.emit("repo-changed", path);
+    Ok(())
 }
 
 #[tauri::command]

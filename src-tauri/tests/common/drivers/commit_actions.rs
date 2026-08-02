@@ -29,6 +29,16 @@ impl TestContext {
         commit_actions::cherry_pick_inner(self.path(), oid, self.state_map())
     }
 
+    /// Finish a conflicted cherry-pick with the given message.
+    pub fn cherry_pick_continue(&self, message: &str) -> Result<GraphResult, TrunkError> {
+        commit_actions::cherry_pick_continue_inner(self.path(), message, self.state_map())
+    }
+
+    /// Abort an in-progress cherry-pick, restoring a clean tree.
+    pub fn cherry_pick_abort(&self) -> Result<GraphResult, TrunkError> {
+        commit_actions::cherry_pick_abort_inner(self.path(), self.state_map())
+    }
+
     /// Stage a revert without committing (two-step begin); shells out to git CLI.
     /// Returns the rebuilt graph + default message read from MERGE_MSG.
     pub fn revert_commit_begin(&self, oid: &str) -> Result<RevertBeginResult, TrunkError> {

@@ -237,3 +237,95 @@ describe("OperationBanner revert recovery", () => {
 		expect(screen.queryByText("Abort")).toBeNull();
 	});
 });
+
+// A CherryPick state rendered a label and no buttons, so a conflicted
+// cherry-pick had no exit inside the app. This is the same trap the revert
+// recovery above was written to close.
+describe("OperationBanner cherry-pick recovery", () => {
+	const mockInvoke = vi.mocked(invoke);
+	const mockAsk = vi.mocked(ask);
+
+	beforeEach(() => {
+		mockInvoke.mockReset();
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_merge_message") return Promise.resolve("Side change\n");
+			return Promise.resolve(undefined);
+		});
+		mockAsk.mockReset();
+		mockAsk.mockResolvedValue(true);
+	});
+
+	it("renders Continue and Abort buttons for a cherry-pick state", () => {
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+			},
+		});
+		expect(screen.getByText("Continue")).toBeInTheDocument();
+		expect(screen.getByText("Abort")).toBeInTheDocument();
+	});
+
+	it("calls cherry_pick_abort and onaction when Abort is confirmed", async () => {
+		const onaction = vi.fn();
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+				onaction,
+			},
+		});
+		await fireEvent.click(screen.getByText("Abort"));
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("cherry_pick_abort", {
+				path: "/repo",
+			});
+		});
+		await waitFor(() => {
+			expect(onaction).toHaveBeenCalled();
+		});
+	});
+
+	it("routes Continue through get_merge_message, the editor, then cherry_pick_continue", async () => {
+		const onopenmessageeditor = vi.fn().mockResolvedValue("edited pick");
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+				onopenmessageeditor,
+			},
+		});
+		await fireEvent.click(screen.getByText("Continue"));
+		await waitFor(() => {
+			expect(onopenmessageeditor).toHaveBeenCalledWith(
+				"Side change\n",
+				"Cherry-pick commit message",
+			);
+		});
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("cherry_pick_continue", {
+				path: "/repo",
+				message: "edited pick",
+			});
+		});
+	});
+
+	it("makes no commit when the editor is cancelled", async () => {
+		const onopenmessageeditor = vi.fn().mockResolvedValue(null);
+		render(OperationBanner, {
+			props: {
+				info: makeInfo({ op_type: "CherryPick" }),
+				repoPath: "/repo",
+				onopenmessageeditor,
+			},
+		});
+		await fireEvent.click(screen.getByText("Continue"));
+		await waitFor(() => {
+			expect(onopenmessageeditor).toHaveBeenCalled();
+		});
+		expect(mockInvoke).not.toHaveBeenCalledWith(
+			"cherry_pick_continue",
+			expect.anything(),
+		);
+	});
+});

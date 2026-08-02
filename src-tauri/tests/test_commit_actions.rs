@@ -271,3 +271,102 @@ fn revert_abort_restores_the_reverted_file() {
         "revert --abort restores the staged removal"
     );
 }
+
+// -- cherry-pick has a way out --
+
+/// A conflicted cherry-pick leaves CHERRY_PICK_HEAD set. Until this module the
+/// app had no command that clears it: the banner rendered a label and no
+/// buttons, `is_mid_operation` stayed true so force-push refused and background
+/// fetch skipped every poll, and committing through the normal form used git2's
+/// plumbing commit, which does not conclude a sequencer operation. The only exit
+/// was a terminal.
+mod cherry_pick_lifecycle {
+    use super::*;
+    use trunk_lib::git::types::OperationType;
+
+    /// Two commits changing the same file from a shared base, so cherry-picking
+    /// the one that is not on HEAD's line conflicts.
+    fn conflicting_cherry_pick_ctx() -> (TestContext, String) {
+        let ctx = TestContext::builder()
+            .with_file("f.txt", "base\n")
+            .with_commit("Base")
+            .with_branch("side")
+            .checkout("side")
+            .with_file("f.txt", "side\n")
+            .with_commit("Side change")
+            .checkout("main")
+            .with_file("f.txt", "main\n")
+            .with_commit("Main change")
+            .build();
+
+        let side_oid = {
+            let repo = ctx.repo();
+            repo.revparse_single("side").unwrap().id().to_string()
+        };
+        (ctx, side_oid)
+    }
+
+    fn cherry_pick_head_exists(ctx: &TestContext) -> bool {
+        ctx.repo_path()
+            .join(".git")
+            .join("CHERRY_PICK_HEAD")
+            .exists()
+    }
+
+    fn resolve_conflict(ctx: &TestContext) {
+        std::fs::write(ctx.repo_path().join("f.txt"), "resolved\n").unwrap();
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("f.txt")).unwrap();
+        index.write().unwrap();
+    }
+
+    #[test]
+    fn committing_through_the_normal_form_concludes_the_cherry_pick() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        let err = ctx.cherry_pick(&side_oid).unwrap_err();
+        assert_eq!(err.code, "conflict_state");
+        assert!(cherry_pick_head_exists(&ctx), "precondition");
+        resolve_conflict(&ctx);
+
+        ctx.create_commit("Resolved the pick", None).unwrap();
+
+        assert!(
+            !cherry_pick_head_exists(&ctx),
+            "the commit must clear CHERRY_PICK_HEAD, not strand the repository"
+        );
+        let info = ctx.get_operation_state().unwrap();
+        assert!(matches!(info.op_type, OperationType::None));
+    }
+
+    #[test]
+    fn cherry_pick_continue_commits_the_resolution_and_clears_the_state() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        ctx.cherry_pick(&side_oid).unwrap_err();
+        resolve_conflict(&ctx);
+
+        ctx.cherry_pick_continue("Pick the side change").unwrap();
+
+        assert!(!cherry_pick_head_exists(&ctx));
+        let head = ctx.get_head_commit_message().unwrap();
+        assert_eq!(head.subject, "Pick the side change");
+    }
+
+    #[test]
+    fn cherry_pick_abort_restores_a_clean_tree() {
+        let (ctx, side_oid) = conflicting_cherry_pick_ctx();
+        ctx.cherry_pick(&side_oid).unwrap_err();
+        assert!(cherry_pick_head_exists(&ctx), "precondition");
+
+        ctx.cherry_pick_abort().unwrap();
+
+        assert!(!cherry_pick_head_exists(&ctx));
+        let info = ctx.get_operation_state().unwrap();
+        assert!(matches!(info.op_type, OperationType::None));
+        assert_eq!(
+            std::fs::read_to_string(ctx.repo_path().join("f.txt")).unwrap(),
+            "main\n",
+            "abort must restore HEAD's content"
+        );
+    }
+}
