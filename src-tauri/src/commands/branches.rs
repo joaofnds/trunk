@@ -222,6 +222,25 @@ pub async fn resolve_ref(
         .map_err(|e| e.to_json())
 }
 
+/// Run a graph-rebuilding branch operation off the UI thread and merge only the
+/// entries it produced into the shared cache. The map is keyed by repository, so
+/// writing a whole snapshot back would revert every graph another repository
+/// refreshed while this operation was running.
+async fn rebuild_graph_cache<F>(cache: &CommitCache, op: F) -> Result<(), TrunkError>
+where
+    F: FnOnce(&mut HashMap<String, GraphResult>) -> Result<(), TrunkError> + Send + 'static,
+{
+    let rebuilt = tauri::async_runtime::spawn_blocking(move || {
+        let mut rebuilt = HashMap::new();
+        op(&mut rebuilt).map(|()| rebuilt)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+
+    cache.0.lock().unwrap().extend(rebuilt);
+    Ok(())
+}
+
 /// A safe checkout refuses with `Conflict` only when uncommitted work would be
 /// overwritten, which is the `dirty_workdir` outcome the branch commands already
 /// raise by hand when they pre-check the working tree.
@@ -275,19 +294,13 @@ pub async fn checkout_branch(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let mut cache_map = cache.0.lock().unwrap().clone();
-
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        checkout_branch_inner(&path_clone, &branch_name, &state_map, &mut cache_map)
-            .map(|_| cache_map)
+
+    rebuild_graph_cache(&cache, move |rebuilt| {
+        checkout_branch_inner(&path_clone, &branch_name, &state_map, rebuilt)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
-
-    // Update cache in main thread with rebuilt data
-    *cache.0.lock().unwrap() = result;
 
     let _ = app.emit("repo-changed", path);
 
@@ -331,18 +344,14 @@ pub async fn fast_forward_to(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let mut cache_map = cache.0.lock().unwrap().clone();
-
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        fast_forward_to_inner(&path_clone, &target_oid, &state_map, &mut cache_map)
-            .map(|_| cache_map)
+
+    rebuild_graph_cache(&cache, move |rebuilt| {
+        fast_forward_to_inner(&path_clone, &target_oid, &state_map, rebuilt)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    *cache.0.lock().unwrap() = result;
     let _ = app.emit("repo-changed", path);
 
     Ok(())
@@ -418,25 +427,13 @@ pub async fn create_branch(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let mut cache_map = cache.0.lock().unwrap().clone();
-
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        create_branch_inner(
-            &path_clone,
-            &name,
-            from_oid.as_deref(),
-            &state_map,
-            &mut cache_map,
-        )
-        .map(|_| cache_map)
+
+    rebuild_graph_cache(&cache, move |rebuilt| {
+        create_branch_inner(&path_clone, &name, from_oid.as_deref(), &state_map, rebuilt)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
-
-    // Update cache in main thread with rebuilt data
-    *cache.0.lock().unwrap() = result;
 
     let _ = app.emit("repo-changed", path);
 
@@ -452,17 +449,14 @@ pub async fn delete_branch(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let mut cache_map = cache.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        delete_branch_inner(&path_clone, &branch_name, &state_map, &mut cache_map)
-            .map(|_| cache_map)
+
+    rebuild_graph_cache(&cache, move |rebuilt| {
+        delete_branch_inner(&path_clone, &branch_name, &state_map, rebuilt)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    *cache.0.lock().unwrap() = result;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -477,23 +471,77 @@ pub async fn rename_branch(
     app: AppHandle,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let mut cache_map = cache.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        rename_branch_inner(
-            &path_clone,
-            &old_name,
-            &new_name,
-            &state_map,
-            &mut cache_map,
-        )
-        .map(|_| cache_map)
+
+    rebuild_graph_cache(&cache, move |rebuilt| {
+        rename_branch_inner(&path_clone, &old_name, &new_name, &state_map, rebuilt)
     })
     .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    *cache.0.lock().unwrap() = result;
     let _ = app.emit("repo-changed", path);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    fn graph(max_columns: usize) -> GraphResult {
+        GraphResult {
+            commits: Vec::new(),
+            max_columns,
+        }
+    }
+
+    #[test]
+    fn another_repos_graph_refreshed_mid_operation_is_not_rolled_back() {
+        let cache = Arc::new(CommitCache(Mutex::new(HashMap::new())));
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo/b".to_owned(), graph(1));
+        let concurrent = Arc::clone(&cache);
+
+        tauri::async_runtime::block_on(rebuild_graph_cache(&cache, move |rebuilt| {
+            concurrent
+                .0
+                .lock()
+                .unwrap()
+                .insert("/repo/b".to_owned(), graph(9));
+            rebuilt.insert("/repo/a".to_owned(), graph(1));
+            Ok(())
+        }))
+        .unwrap();
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(cached["/repo/a"].max_columns, 1);
+        assert_eq!(
+            cached["/repo/b"].max_columns, 9,
+            "/repo/b was reverted to the pre-operation snapshot"
+        );
+    }
+
+    #[test]
+    fn a_failed_operation_leaves_the_cache_untouched() {
+        let cache = CommitCache(Mutex::new(HashMap::new()));
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo/b".to_owned(), graph(7));
+
+        let err = tauri::async_runtime::block_on(rebuild_graph_cache(&cache, |rebuilt| {
+            rebuilt.insert("/repo/a".to_owned(), graph(1));
+            Err(TrunkError::new("boom", "no"))
+        }))
+        .unwrap_err();
+
+        assert_eq!(err.code, "boom");
+        let cached = cache.0.lock().unwrap();
+        assert!(!cached.contains_key("/repo/a"));
+        assert_eq!(cached["/repo/b"].max_columns, 7);
+    }
 }
