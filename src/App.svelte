@@ -241,6 +241,9 @@ function openRepoInTab(tabId: string, path: string, name: string) {
 
 	const tab = tabs.find((t) => t.id === tabId);
 	if (tab) {
+		// The pending redo carries the outgoing repo's commit message; replayed
+		// against the incoming one it commits that message here.
+		getOrCreateTabState(tabId).undoRedo.clear();
 		tab.repoPath = path;
 		tab.repoName = name;
 		persistTabs();
@@ -655,6 +658,7 @@ $effect(() => {
     {#each tabs as tab (tab.id)}
       <div style="position: absolute; inset: 0; display: flex; flex-direction: column; {tab.id !== activeTabId ? 'visibility: hidden; pointer-events: none;' : ''}">
         {#if tab.repoPath}
+          {#key tab.repoPath}
           {@const tabState = getOrCreateTabState(tab.id)}
           <RepoView
             repoPath={tab.repoPath}
@@ -675,6 +679,7 @@ $effect(() => {
             onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
             onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
           />
+          {/key}
         {:else}
           <WelcomeScreen {isFullscreen} onopen={(path, name) => openRepoInTab(tab.id, path, name)} />
         {/if}
