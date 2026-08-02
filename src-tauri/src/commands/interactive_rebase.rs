@@ -227,6 +227,21 @@ pub async fn get_fork_point(
         .map_err(|e: TrunkError| e.to_json())
 }
 
+/// One scratch directory per invocation, removed when this value drops.
+///
+/// Keying it by process id shared it across every concurrent rebase in an app
+/// whose RepoState holds many repositories: a second todo write replaced the
+/// first while git may not have read it yet, and whichever rebase finished
+/// first deleted the other's editor scripts mid-run. Dropping rather than an
+/// explicit remove also covers the early returns, which leaked an executable
+/// script directory at a guessable path.
+fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
+    tempfile::Builder::new()
+        .prefix("trunk-rebase-")
+        .tempdir()
+        .map_err(|e| TrunkError::new("io_error", e.to_string()))
+}
+
 #[tauri::command]
 pub async fn start_interactive_rebase(
     path: String,
@@ -239,9 +254,8 @@ pub async fn start_interactive_rebase(
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
-    let session_dir = std::env::temp_dir().join(format!("trunk-rebase-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&session_dir);
-    let session_dir_cleanup = session_dir.clone();
+    let session = new_session_dir().map_err(|e| e.to_json())?;
+    let session_dir = session.path().to_path_buf();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         start_interactive_rebase_blocking(
@@ -256,9 +270,34 @@ pub async fn start_interactive_rebase(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e: TrunkError| e.to_json())?;
 
-    let _ = std::fs::remove_dir_all(&session_dir_cleanup);
-
     cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_rebase_gets_its_own_scratch_directory() {
+        let first = new_session_dir().unwrap();
+        let second = new_session_dir().unwrap();
+
+        assert_ne!(first.path(), second.path());
+    }
+
+    #[test]
+    fn the_scratch_directory_goes_away_when_the_rebase_ends() {
+        let path = {
+            let session = new_session_dir().unwrap();
+            assert!(session.path().exists());
+            session.path().to_path_buf()
+        };
+
+        assert!(
+            !path.exists(),
+            "a rebase that returns early must not leak its executable editor scripts"
+        );
+    }
 }
