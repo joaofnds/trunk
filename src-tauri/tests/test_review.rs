@@ -4,7 +4,9 @@ use common::context::TestContext;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread;
+use std::time::{Duration, Instant};
 use trunk_lib::commands::review::{
     SessionState, end_review_session_inner, get_review_session_status_inner,
     resume_review_session_inner, start_review_session_inner,
@@ -322,38 +324,75 @@ fn status_reports_resume_available_for_a_file_this_process_never_loaded() {
     assert_eq!(status.state, SessionState::ResumeAvailable);
 }
 
+// ── Lifecycle race harness ───────────────────────────────────────────────────
+// Every session writer holds ReviewSessionsState across its disk write and its
+// map write (mutate_session_rmw). These tests park one such writer mid-critical-
+// section and run another lifecycle operation against it: whatever the operation
+// does to disk must not land while the mutex is held by someone else.
+
+type Sessions = Arc<Mutex<HashMap<PathBuf, ReviewSession>>>;
+
+/// A session writer holding the mutex with its work still ahead of it.
+struct ParkedWriter {
+    release: mpsc::Sender<()>,
+    thread: thread::JoinHandle<()>,
+}
+
+impl ParkedWriter {
+    /// Take the mutex, then block until released and run `work` under the guard.
+    /// Returns once the mutex is actually held.
+    fn park<F>(sessions: &Sessions, work: F) -> Self
+    where
+        F: FnOnce(&mut HashMap<PathBuf, ReviewSession>) + Send + 'static,
+    {
+        let (holding_tx, holding_rx) = mpsc::channel();
+        let (release, release_rx) = mpsc::channel();
+        let sessions = Arc::clone(sessions);
+        let thread = thread::spawn(move || {
+            let mut map = sessions.lock().unwrap();
+            holding_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+
+            work(&mut map);
+        });
+        holding_rx.recv().unwrap();
+
+        Self { release, thread }
+    }
+
+    fn finish(self) {
+        self.release.send(()).unwrap();
+        self.thread.join().unwrap();
+    }
+}
+
+/// Wait for `condition`, or spend the budget. A condition that never holds is the
+/// passing case for these races — it means the operation stayed off disk — so the
+/// budget is spent in full whenever the code under test is correct.
+fn settle(condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while !condition() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 /// Starting a session is the same critical section as ending one. A start that
 /// persists the file outside the mutex can have it deleted by an End that lands
 /// before the map insert does, leaving an in-memory session with nothing on disk.
 #[test]
 fn start_leaves_no_in_memory_session_without_its_file() {
-    use std::sync::Arc;
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::{Duration, Instant};
-
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    let sessions: Arc<Mutex<HashMap<PathBuf, ReviewSession>>> =
-        Arc::new(Mutex::new(HashMap::new()));
+    let sessions: Sessions = Arc::new(Mutex::new(HashMap::new()));
 
-    // An End parked mid-critical-section: mutex in hand, its delete still ahead.
-    let (holding_tx, holding_rx) = mpsc::channel();
-    let (release_tx, release_rx) = mpsc::channel();
     let ender = {
-        let sessions = Arc::clone(&sessions);
         let data_dir = ctx.data_dir().to_path_buf();
         let canonical = canonical.clone();
-        thread::spawn(move || {
-            let mut map = sessions.lock().unwrap();
-            holding_tx.send(()).unwrap();
-            release_rx.recv().unwrap();
-
+        ParkedWriter::park(&sessions, move |map| {
             delete_session(&data_dir, &canonical).unwrap();
             map.remove(&canonical);
         })
     };
-    holding_rx.recv().unwrap();
 
     let start = {
         let sessions = Arc::clone(&sessions);
@@ -362,22 +401,61 @@ fn start_leaves_no_in_memory_session_without_its_file() {
         let state_map = ctx.state_map().clone();
         thread::spawn(move || start_review_session_inner(&data_dir, &path, &state_map, &sessions))
     };
+    settle(|| session_exists(ctx.data_dir(), &canonical));
 
-    // Same budget as the End race: a file that never appears while the mutex is
-    // held is the passing case, not a stalled one.
-    let deadline = Instant::now() + Duration::from_millis(300);
-    while !session_exists(ctx.data_dir(), &canonical) && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(5));
-    }
-
-    release_tx.send(()).unwrap();
-    ender.join().unwrap();
+    ender.finish();
     start.join().unwrap().unwrap();
 
     assert_eq!(
         session_exists(ctx.data_dir(), &canonical),
         sessions.lock().unwrap().contains_key(&canonical),
         "a session on disk and a session in memory must appear and vanish together"
+    );
+}
+
+/// Resume's disk work belongs in the same critical section. On the corrupt-recovery
+/// path it quarantines the bad file and writes a fresh one — outside the mutex, an
+/// End deletes that fresh file and resume's insert still lands, leaving an in-memory
+/// session with nothing on disk. The plain `Loaded` path rides the same lock; its
+/// read leaves no trace to observe, so this pins the branch that writes.
+#[test]
+fn resume_leaves_no_in_memory_session_without_its_file() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    save_session(ctx.data_dir(), &canonical, &empty_session()).unwrap();
+    let quarantined = the_session_file(ctx.data_dir()).with_extension("json.corrupt");
+    fs::write(the_session_file(ctx.data_dir()), b"}}}not valid json{{{").unwrap();
+    let sessions: Sessions = Arc::new(Mutex::new(HashMap::new()));
+
+    let ender = {
+        let data_dir = ctx.data_dir().to_path_buf();
+        let canonical = canonical.clone();
+        ParkedWriter::park(&sessions, move |map| {
+            delete_session(&data_dir, &canonical).unwrap();
+            map.remove(&canonical);
+        })
+    };
+
+    let resume = {
+        let sessions = Arc::clone(&sessions);
+        let data_dir = ctx.data_dir().to_path_buf();
+        let path = ctx.path().to_string();
+        let state_map = ctx.state_map().clone();
+        thread::spawn(move || resume_review_session_inner(&data_dir, &path, &state_map, &sessions))
+    };
+    // Both conditions, not just the quarantine: the rename happens before the fresh
+    // write, and releasing between them lets the delete beat the write and hides the
+    // divergence. This pair is the instant resume reaches for the mutex.
+    settle(|| quarantined.exists() && session_exists(ctx.data_dir(), &canonical));
+
+    ender.finish();
+    let (_, outcome) = resume.join().unwrap().unwrap();
+
+    assert!(matches!(outcome, LoadOutcome::RecoveredCorrupt));
+    assert_eq!(
+        session_exists(ctx.data_dir(), &canonical),
+        sessions.lock().unwrap().contains_key(&canonical),
+        "a recovered session on disk and in memory must appear and vanish together"
     );
 }
 
@@ -389,37 +467,23 @@ fn start_leaves_no_in_memory_session_without_its_file() {
 /// `ResumeAvailable`, and the panel resumes that state on its own.
 #[test]
 fn end_leaves_no_session_a_concurrent_writer_recreated() {
-    use std::sync::Arc;
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::{Duration, Instant};
-
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     save_session(ctx.data_dir(), &canonical, &empty_session()).unwrap();
-    let sessions = Arc::new(Mutex::new(HashMap::from([(
+    let sessions: Sessions = Arc::new(Mutex::new(HashMap::from([(
         canonical.clone(),
         empty_session(),
     )])));
     let app = tauri::test::mock_app();
 
-    // A writer parked mid-RMW: mutex in hand, its save and its map-write still ahead.
-    let (holding_tx, holding_rx) = mpsc::channel();
-    let (release_tx, release_rx) = mpsc::channel();
     let writer = {
-        let sessions = Arc::clone(&sessions);
         let data_dir = ctx.data_dir().to_path_buf();
         let canonical = canonical.clone();
-        thread::spawn(move || {
-            let mut map = sessions.lock().unwrap();
-            holding_tx.send(()).unwrap();
-            release_rx.recv().unwrap();
-
+        ParkedWriter::park(&sessions, move |map| {
             save_session(&data_dir, &canonical, &empty_session()).unwrap();
             map.insert(canonical, empty_session());
         })
     };
-    holding_rx.recv().unwrap();
 
     let end = {
         let sessions = Arc::clone(&sessions);
@@ -434,16 +498,9 @@ fn end_leaves_no_session_a_concurrent_writer_recreated() {
         })
     };
 
-    // Nothing signals "End reached its delete", and once End is correct that moment
-    // no longer exists — so watch the observable effect within a budget. A session
-    // that outlives the budget is the passing case, not a stalled one.
-    let deadline = Instant::now() + Duration::from_millis(300);
-    while session_exists(ctx.data_dir(), &canonical) && Instant::now() < deadline {
-        thread::sleep(Duration::from_millis(5));
-    }
+    settle(|| !session_exists(ctx.data_dir(), &canonical));
 
-    release_tx.send(()).unwrap();
-    writer.join().unwrap();
+    writer.finish();
     end.join().unwrap().unwrap();
 
     assert!(
