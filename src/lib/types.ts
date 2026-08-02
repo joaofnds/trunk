@@ -296,6 +296,7 @@ export interface OverlayRefPill {
 	width: number; // computed from text measurement + padding
 	textWidth: number; // raw canvas-measured text width (for precise foreignObject sizing)
 	height: number; // PILL_HEIGHT constant
+	name: string; // fully-qualified ref (refs/heads/x, refs/remotes/origin/x)
 	label: string; // original ref short_name
 	truncatedLabel: string; // possibly truncated with "…"
 	refType: RefType; // for icon rendering

@@ -724,13 +724,13 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 			await MenuItem.new({
 				text: `Merge ${clickedBranch.short_name} into ${headBranchName}`,
 				action: () => {
-					handleMergeBranch(clickedBranch.short_name).catch(() => {});
+					handleMergeBranch(clickedBranch.name).catch(() => {});
 				},
 			}),
 			await MenuItem.new({
 				text: `Rebase ${headBranchName} onto ${clickedBranch.short_name}`,
 				action: () => {
-					handleRebaseBranch(clickedBranch.short_name).catch(() => {});
+					handleRebaseBranch(clickedBranch.name).catch(() => {});
 				},
 			}),
 			await PredefinedMenuItem.new({ item: "Separator" }),
@@ -1104,18 +1104,33 @@ async function handleDeleteTag(tagName: string) {
 
 // --- Unified ref handlers (used by both pill and overflow ref) ---
 
+// `name` is the fully-qualified ref and is what every DWIM-resolving sink gets:
+// a bare shorthand is resolved against refs/tags first, so a tag named
+// `origin/feature` captures every action aimed at that branch pill. `shortName`
+// is for display and for the commands that re-qualify it themselves.
 interface RefInfo {
 	name: string;
+	shortName: string;
 	refType: RefType;
 	isHead: boolean;
 }
 
 function refFromPill(pill: OverlayRefPill): RefInfo {
-	return { name: pill.label, refType: pill.refType, isHead: pill.isHead };
+	return {
+		name: pill.name,
+		shortName: pill.label,
+		refType: pill.refType,
+		isHead: pill.isHead,
+	};
 }
 
 function refFromLabel(ref: RefLabel): RefInfo {
-	return { name: ref.short_name, refType: ref.ref_type, isHead: ref.is_head };
+	return {
+		name: ref.name,
+		shortName: ref.short_name,
+		refType: ref.ref_type,
+		isHead: ref.is_head,
+	};
 }
 
 function checkoutLocalBranch(name: string) {
@@ -1125,12 +1140,12 @@ function checkoutLocalBranch(name: string) {
 	});
 }
 
-function checkoutRemoteBranch(fullName: string) {
-	const shortName = fullName.slice(fullName.indexOf("/") + 1);
+function checkoutRemoteBranch(ref: RefInfo) {
+	const localName = ref.shortName.slice(ref.shortName.indexOf("/") + 1);
 	return safeInvoke<void>("create_branch", {
 		path: repoPath,
-		name: shortName,
-		fromOid: fullName,
+		name: localName,
+		fromOid: ref.name,
 	});
 }
 
@@ -1139,8 +1154,8 @@ async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 	e.stopPropagation();
 	if (ref.isHead) return;
 	try {
-		if (ref.refType === "RemoteBranch") await checkoutRemoteBranch(ref.name);
-		else await checkoutLocalBranch(ref.name);
+		if (ref.refType === "RemoteBranch") await checkoutRemoteBranch(ref);
+		else await checkoutLocalBranch(ref.shortName);
 	} catch (e) {
 		showToast((e as TrunkError).message ?? "Checkout failed", "error");
 	}
@@ -1162,7 +1177,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				...(!ref.isHead
 					? [
 							await MenuItem.new({
-								text: `Checkout ${ref.name}`,
+								text: `Checkout ${ref.shortName}`,
 								action: () => {
 									handleRefCheckout(e, ref);
 								},
@@ -1173,19 +1188,19 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				...(!ref.isHead && headBranchName
 					? [
 							await MenuItem.new({
-								text: `Merge ${ref.name} into ${headBranchName}`,
+								text: `Merge ${ref.shortName} into ${headBranchName}`,
 								action: () => {
 									handleMergeBranch(ref.name).catch(() => {});
 								},
 							}),
 							await MenuItem.new({
-								text: `Rebase ${headBranchName} onto ${ref.name}`,
+								text: `Rebase ${headBranchName} onto ${ref.shortName}`,
 								action: () => {
 									handleRebaseBranch(ref.name).catch(() => {});
 								},
 							}),
 							await MenuItem.new({
-								text: `Interactive Rebase ${ref.name}...`,
+								text: `Interactive Rebase ${ref.shortName}...`,
 								action: () => {
 									handleInteractiveRebaseBranch(ref.name).catch(() => {});
 								},
@@ -1196,7 +1211,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Rename…",
 					action: () => {
-						handleRenameBranch(ref.name);
+						handleRenameBranch(ref.shortName);
 					},
 				}),
 				await PredefinedMenuItem.new({ item: "Separator" }),
@@ -1204,7 +1219,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 					text: "Delete",
 					enabled: !ref.isHead,
 					action: () => {
-						handleDeleteBranch(ref.name).catch(() => {});
+						handleDeleteBranch(ref.shortName).catch(() => {});
 					},
 				}),
 			],
@@ -1214,7 +1229,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 		const menu = await Menu.new({
 			items: [
 				await MenuItem.new({
-					text: `Checkout ${ref.name}`,
+					text: `Checkout ${ref.shortName}`,
 					action: () => {
 						handleRefCheckout(e, ref);
 					},
@@ -1223,19 +1238,19 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 					? [
 							await PredefinedMenuItem.new({ item: "Separator" }),
 							await MenuItem.new({
-								text: `Merge ${ref.name} into ${headBranchName}`,
+								text: `Merge ${ref.shortName} into ${headBranchName}`,
 								action: () => {
 									handleMergeBranch(ref.name).catch(() => {});
 								},
 							}),
 							await MenuItem.new({
-								text: `Rebase ${headBranchName} onto ${ref.name}`,
+								text: `Rebase ${headBranchName} onto ${ref.shortName}`,
 								action: () => {
 									handleRebaseBranch(ref.name).catch(() => {});
 								},
 							}),
 							await MenuItem.new({
-								text: `Interactive Rebase ${ref.name}...`,
+								text: `Interactive Rebase ${ref.shortName}...`,
 								action: () => {
 									handleInteractiveRebaseBranch(ref.name).catch(() => {});
 								},
@@ -1246,7 +1261,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Delete",
 					action: () => {
-						handleDeleteRemoteBranch(ref.name).catch(() => {});
+						handleDeleteRemoteBranch(ref.shortName).catch(() => {});
 					},
 				}),
 			],
@@ -1258,7 +1273,7 @@ async function showRefContextMenu(e: MouseEvent, ref: RefInfo) {
 				await MenuItem.new({
 					text: "Delete",
 					action: () => {
-						handleDeleteTag(ref.name).catch(() => {});
+						handleDeleteTag(ref.shortName).catch(() => {});
 					},
 				}),
 			],

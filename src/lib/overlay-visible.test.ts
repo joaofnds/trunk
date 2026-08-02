@@ -155,6 +155,7 @@ describe("getVisibleOverlayElements", () => {
 				width: 60,
 				textWidth: 52,
 				height: 20,
+				name: "refs/heads/main",
 				label: "main",
 				truncatedLabel: "main",
 				refType: "LocalBranch",

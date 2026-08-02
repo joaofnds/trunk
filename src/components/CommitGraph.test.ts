@@ -512,7 +512,7 @@ describe("CommitGraph", () => {
 
 			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("merge_branch_begin", {
 				path: "/test/repo",
-				branch: "feature",
+				branch: "refs/heads/feature",
 			});
 			expect(onopenmessageeditor).toHaveBeenCalledWith(
 				"Merge default",
@@ -657,6 +657,114 @@ describe("CommitGraph", () => {
 
 			expect(screen.getByText("fresh refresh")).toBeInTheDocument();
 			expect(screen.queryByText("stale refresh")).not.toBeInTheDocument();
+		});
+	});
+
+	// git resolves a bare shorthand under DWIM, which tries refs/tags before
+	// refs/heads and refs/remotes. A hostile repo carrying a tag literally named
+	// `origin/feature` therefore captures every action aimed at the branch pill
+	// reading `origin/feature`. Sending the fully-qualified ref removes the choice.
+	describe("ref identity sent to the backend", () => {
+		const SHADOWED = makeRef({
+			short_name: "origin/feature",
+			name: "refs/remotes/origin/feature",
+			ref_type: "RemoteBranch",
+		});
+		const FEATURE = makeRef({
+			short_name: "feature",
+			name: "refs/heads/feature",
+			ref_type: "LocalBranch",
+		});
+		const HEAD_COMMIT = makeCommit({
+			oid: "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa",
+			summary: "main tip",
+			is_head: true,
+			refs: [
+				makeRef({ short_name: "main", ref_type: "LocalBranch", is_head: true }),
+			],
+		});
+		const BRANCH_COMMIT = makeCommit({
+			oid: "ccc333ccc333ccc3ccc333ccc333ccc3ccc333cc",
+			summary: "topic work",
+			refs: [FEATURE],
+		});
+		const REMOTE_COMMIT = makeCommit({
+			oid: "ddd444ddd444ddd4ddd444ddd444ddd4ddd444dd",
+			summary: "remote work",
+			refs: [SHADOWED],
+		});
+
+		async function mountGraph() {
+			installReads({ commits: [HEAD_COMMIT, BRANCH_COMMIT, REMOTE_COMMIT] });
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", clearRedoStack: vi.fn() },
+			});
+			await screen.findAllByTestId("commit-row");
+			await flush();
+		}
+
+		// The canvas stub measures every string at the same width, so long labels
+		// come back truncated — match the pill by its surviving prefix.
+		async function findPill(labelPrefix: string) {
+			return await screen.findByText(new RegExp(`^${labelPrefix}`));
+		}
+
+		async function openRowMenu() {
+			await mountGraph();
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+		}
+
+		it("merges the fully-qualified ref, not the shorthand", async () => {
+			await openRowMenu();
+
+			await getMenuAction("Merge feature into main")();
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("merge_branch_begin", {
+				path: "/test/repo",
+				branch: "refs/heads/feature",
+			});
+		});
+
+		it("rebases onto the fully-qualified ref, not the shorthand", async () => {
+			await openRowMenu();
+
+			await getMenuAction("Rebase main onto feature")();
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("rebase_branch", {
+				path: "/test/repo",
+				ontoBranch: "refs/heads/feature",
+			});
+		});
+
+		it("branches a remote checkout from the fully-qualified ref", async () => {
+			await mountGraph();
+
+			await fireEvent.dblClick(await findPill("origin"));
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("create_branch", {
+				path: "/test/repo",
+				name: "feature",
+				fromOid: "refs/remotes/origin/feature",
+			});
+		});
+
+		it("detects the fork point from the fully-qualified ref", async () => {
+			await mountGraph();
+
+			await fireEvent.contextMenu(await findPill("feature"));
+			await flush();
+			await getMenuAction("Interactive Rebase feature...")();
+			await flush();
+
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("get_fork_point", {
+				path: "/test/repo",
+				branch: "refs/heads/feature",
+			});
 		});
 	});
 });

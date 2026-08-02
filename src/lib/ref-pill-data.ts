@@ -136,6 +136,7 @@ export function buildRefPillData(
 			width: pillWidth,
 			textWidth,
 			height: PILL_HEIGHT,
+			name: primary.name,
 			label: primary.short_name,
 			truncatedLabel,
 			refType: primary.ref_type,
