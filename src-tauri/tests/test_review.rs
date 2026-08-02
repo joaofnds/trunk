@@ -416,8 +416,9 @@ fn start_leaves_no_in_memory_session_without_its_file() {
 /// Resume's disk work belongs in the same critical section. On the corrupt-recovery
 /// path it quarantines the bad file and writes a fresh one — outside the mutex, an
 /// End deletes that fresh file and resume's insert still lands, leaving an in-memory
-/// session with nothing on disk. The plain `Loaded` path rides the same lock; its
-/// read leaves no trace to observe, so this pins the branch that writes.
+/// session with nothing on disk. Inside it, the End that holds the mutex simply wins
+/// and resume finds nothing to recover. The plain `Loaded` path rides the same lock;
+/// its read leaves no trace to observe, so this pins the branch that writes.
 #[test]
 fn resume_leaves_no_in_memory_session_without_its_file() {
     let ctx = TestContext::new_empty();
@@ -451,11 +452,14 @@ fn resume_leaves_no_in_memory_session_without_its_file() {
     ender.finish();
     let (_, outcome) = resume.join().unwrap().unwrap();
 
-    assert!(matches!(outcome, LoadOutcome::RecoveredCorrupt));
     assert_eq!(
         session_exists(ctx.data_dir(), &canonical),
         sessions.lock().unwrap().contains_key(&canonical),
         "a recovered session on disk and in memory must appear and vanish together"
+    );
+    assert!(
+        matches!(outcome, LoadOutcome::None),
+        "the End held the mutex, so it wins: resume finds the session already gone"
     );
 }
 

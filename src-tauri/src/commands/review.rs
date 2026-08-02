@@ -124,6 +124,11 @@ pub fn start_review_session_inner(
 /// Load an existing session from disk for a currently-open repo (SESS-02 / D-14) and
 /// cache it. Returns the canonical path + the `LoadOutcome` so the command layer can
 /// still branch on it (RefusedNewer → warn; RecoveredCorrupt → toast).
+///
+/// Same critical section as `mutate_session_rmw` and `end_session_rmw`. The load can
+/// quarantine and rewrite the file, so it is disk work that a concurrent End must not
+/// interleave with: outside the lock, End deletes the file this just recovered and
+/// the insert below still lands.
 pub fn resume_review_session_inner(
     data_dir: &Path,
     path: &str,
@@ -131,14 +136,13 @@ pub fn resume_review_session_inner(
     sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
 ) -> Result<(PathBuf, LoadOutcome), TrunkError> {
     let canonical = canonical_repo_path(path, state_map)?;
+
+    let mut map = sessions.lock().unwrap();
     let outcome = review_store::load_session(data_dir, &canonical)?;
 
     match &outcome {
         LoadOutcome::Loaded(session) => {
-            sessions
-                .lock()
-                .unwrap()
-                .insert(canonical.clone(), session.clone());
+            map.insert(canonical.clone(), session.clone());
         }
         LoadOutcome::None => {
             // No file to resume — nothing to load, nothing to insert.
@@ -155,7 +159,7 @@ pub fn resume_review_session_inner(
                 index_snapshot: None,
             };
             review_store::save_session(data_dir, &canonical, &fresh)?;
-            sessions.lock().unwrap().insert(canonical.clone(), fresh);
+            map.insert(canonical.clone(), fresh);
         }
         LoadOutcome::RefusedNewer => {
             // D-16: a newer-schema file is left untouched; do NOT create a fresh
@@ -209,8 +213,12 @@ pub fn get_review_session_status_inner(
 ) -> Result<SessionStatus, TrunkError> {
     let canonical = canonical_repo_path(path, state_map)?;
 
+    // One critical section, so the pair describes a single instant. Sampled apart, an
+    // End between them yields (stale true, fresh false) — ResumeAvailable for a session
+    // that is entirely gone, which `ReviewPanel.svelte` then resumes on its own.
+    let map = sessions.lock().unwrap();
     let file_exists = review_store::session_exists(data_dir, &canonical);
-    let in_memory_present = sessions.lock().unwrap().contains_key(&canonical);
+    let in_memory_present = map.contains_key(&canonical);
 
     Ok(SessionStatus {
         state: merge_status(file_exists, in_memory_present),
