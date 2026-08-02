@@ -1506,9 +1506,9 @@ export async function scrollToOid(oid: string): Promise<void> {
 	// VirtualList doesn't support 'center' alignment, so we calculate:
 	//   scrollTop = rowTop - (viewportHeight / 2) + (rowHeight / 2)
 	const rowTop = idx * svgRowHeight;
-	const viewport = document.querySelector(
+	const viewport = containerRef?.querySelector<HTMLElement>(
 		".virtual-list-viewport",
-	) as HTMLElement | null;
+	);
 	if (viewport) {
 		const viewportHeight = viewport.clientHeight;
 		const centerOffset = Math.max(
@@ -1653,9 +1653,8 @@ $effect(() => {
 	let unlisten: (() => void) | undefined;
 	listen<void>("search-toggle", () => {
 		if (searchOpen) {
-			const input = document.querySelector(
-				".search-bar-input",
-			) as HTMLInputElement | null;
+			const input =
+				containerRef?.querySelector<HTMLInputElement>(".search-bar-input");
 			if (input) {
 				input.focus();
 				input.select();

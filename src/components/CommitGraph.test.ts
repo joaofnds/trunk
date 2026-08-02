@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { safeInvoke } from "../lib/invoke.js";
 import { relativeLabel } from "../lib/relative-time.js";
@@ -63,11 +63,16 @@ vi.mock("../lib/toast.svelte.js", () => ({
 }));
 
 // Capture the session-changed handler so tests can simulate cross-tab emits.
-// CommitGraph also registers a search-toggle listener; filter by event name.
+// CommitGraph registers a session-changed and a search-toggle listener; keep them
+// apart by event name. search-toggle is webview-global, so every mounted instance
+// gets one and the fire helper calls them all.
 let sessionChangedHandler: ((event: { payload: string }) => void) | null = null;
+let searchToggleHandlers: (() => void)[] = [];
 vi.mock("@tauri-apps/api/event", () => ({
 	listen: vi.fn((event: string, cb: (event: { payload: string }) => void) => {
 		if (event === "session-changed") sessionChangedHandler = cb;
+		if (event === "search-toggle")
+			searchToggleHandlers.push(cb as unknown as () => void);
 		return Promise.resolve(() => {
 			if (event === "session-changed") sessionChangedHandler = null;
 		});
@@ -76,6 +81,10 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 function fireSessionChanged(payload: string): void {
 	sessionChangedHandler?.({ payload });
+}
+
+function fireSearchToggle(): void {
+	for (const handler of searchToggleHandlers) handler();
 }
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -209,6 +218,7 @@ async function flush() {
 
 beforeEach(() => {
 	sessionChangedHandler = null;
+	searchToggleHandlers = [];
 	vi.clearAllMocks();
 	menuActions.clear();
 	resetCache();
@@ -617,6 +627,60 @@ describe("CommitGraph", () => {
 			);
 			expect(dateColumnWidth()).toBeGreaterThanOrEqual(
 				widestLabel + 2 * COLUMN_PADDING_X,
+			);
+		});
+	});
+
+	// App.svelte keeps every tab mounted in one document, so a document-rooted
+	// query returns the first match in DOM order rather than this instance's.
+	describe("with a second graph mounted", () => {
+		const scrollTargets: Element[] = [];
+		const originalScrollTo = Element.prototype.scrollTo;
+
+		beforeEach(() => {
+			scrollTargets.length = 0;
+			Element.prototype.scrollTo = function scrollTo() {
+				scrollTargets.push(this);
+			};
+		});
+
+		afterEach(() => {
+			Element.prototype.scrollTo = originalScrollTo;
+		});
+
+		function renderPair() {
+			const first = render(CommitGraph, {
+				props: { repoPath: "/repo/a", clearRedoStack: vi.fn() },
+			});
+			const second = render(CommitGraph, {
+				props: { repoPath: "/repo/b", clearRedoStack: vi.fn() },
+			});
+			return { first, second };
+		}
+
+		it("focuses its own search input", async () => {
+			const { first, second } = renderPair();
+			await flush();
+
+			fireSearchToggle();
+			await flush();
+			fireSearchToggle();
+			await flush();
+
+			expect(second.container.contains(document.activeElement)).toBe(true);
+			expect(first.container.contains(document.activeElement)).toBe(false);
+		});
+
+		it("centers the row in its own viewport", async () => {
+			const { second } = renderPair();
+			await flush();
+			scrollTargets.length = 0;
+
+			await second.component.scrollToOid(TEST_COMMITS[1].oid);
+			await flush();
+
+			expect(second.container.contains(scrollTargets.at(-1) ?? null)).toBe(
+				true,
 			);
 		});
 	});

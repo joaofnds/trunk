@@ -252,7 +252,7 @@ $effect(() => {
 // --- Keyboard shortcuts ---
 
 function scrollRowIntoView(idx: number) {
-	const row = document.querySelector(`[data-rebase-row="${idx}"]`);
+	const row = listEl?.querySelector(`[data-rebase-row="${idx}"]`);
 	row?.scrollIntoView({ block: "nearest" });
 }
 

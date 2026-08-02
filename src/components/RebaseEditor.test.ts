@@ -353,4 +353,47 @@ describe("RebaseEditor", () => {
 			expect(dateCell).toHaveTextContent("2h ago");
 		});
 	});
+
+	// Every open tab's editor lives in the one document, and data-rebase-row is a
+	// raw loop index, so a document-rooted query collides across instances.
+	describe("with a second editor mounted", () => {
+		const scrolled: Element[] = [];
+		const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+		beforeEach(() => {
+			scrolled.length = 0;
+			Element.prototype.scrollIntoView = function scrollIntoView() {
+				scrolled.push(this);
+			};
+		});
+
+		afterEach(() => {
+			Element.prototype.scrollIntoView = originalScrollIntoView;
+		});
+
+		function renderEditor() {
+			return render(RebaseEditor, {
+				props: {
+					repoPath: "/test/repo",
+					commits: TEST_ITEMS,
+					branchName: "feature/login",
+					baseName: "main",
+					onclose: vi.fn(),
+					onstart: vi.fn(),
+				},
+			});
+		}
+
+		it("scrolls its own row into view", async () => {
+			renderEditor();
+			const second = renderEditor();
+
+			await fireEvent.keyDown(
+				second.container.querySelector(".rebase-editor") as Element,
+				{ key: "ArrowDown" },
+			);
+
+			expect(second.container.contains(scrolled.at(-1) ?? null)).toBe(true);
+		});
+	});
 });
