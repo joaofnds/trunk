@@ -1,10 +1,10 @@
 // Adapted from https://github.com/tauri-apps/webdriver-example/blob/main/v2/webdriver/webdriverio/wdio.conf.js
 
-import { spawn, spawnSync } from "child_process";
-import { existsSync } from "fs";
-import os from "os";
-import path from "path";
-import { fileURLToPath } from "url";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
