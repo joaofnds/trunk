@@ -140,10 +140,9 @@ fn newer_version_refused() {
 }
 
 // ── Lifecycle _inner tests (Plan 65-03) ──────────────────────────────────────
-// These exercise the testability wedge: each _inner takes data_dir + a plain
-// state_map, with NO Tauri state, so the 3-state status merge that needs the
-// in-memory ReviewSessionsState lives only in the thin command (tested via the
-// disk half here).
+// These exercise the testability wedge: each _inner takes data_dir, a plain
+// state_map and the raw sessions mutex, so both halves of the session — the file
+// and the in-memory entry — are sampled and mutated where a test can drive them.
 
 /// Start a session for the context's repo against a throwaway in-memory map, for
 /// the tests that only assert on the disk half.
@@ -215,12 +214,18 @@ fn resume_after_restart() {
     start_on_disk(&ctx);
 
     // A fresh process has no in-memory state — resume loads from disk.
-    let (_canonical, outcome) =
-        resume_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    let sessions = Mutex::new(HashMap::new());
+    let (canonical, outcome) =
+        resume_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map(), &sessions)
+            .unwrap();
 
     assert!(
         matches!(outcome, LoadOutcome::Loaded(_)),
         "resume after a start must load the same session from disk"
+    );
+    assert!(
+        sessions.lock().unwrap().contains_key(&canonical),
+        "resume must cache what it loaded"
     );
 }
 
@@ -240,8 +245,13 @@ fn symlink_resumes_same_session() {
     let mut alias_map: HashMap<String, PathBuf> = HashMap::new();
     alias_map.insert(link_str.clone(), link_path.clone());
 
-    let (alias_canonical, outcome) =
-        resume_review_session_inner(ctx.data_dir(), &link_str, &alias_map).unwrap();
+    let (alias_canonical, outcome) = resume_review_session_inner(
+        ctx.data_dir(),
+        &link_str,
+        &alias_map,
+        &Mutex::new(HashMap::new()),
+    )
+    .unwrap();
 
     let real_canonical = ctx.repo_path().canonicalize().unwrap();
     assert_eq!(
@@ -271,24 +281,43 @@ fn end_clears_session() {
     .unwrap();
 
     let status =
-        get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+        get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map(), &sessions)
+            .unwrap();
     assert!(!status.file_exists, "the file must be gone after end");
     assert_eq!(
         status.state,
         SessionState::None,
-        "the disk-only view reports None once the file is deleted"
+        "both halves are gone once the session is ended"
     );
 }
 
 #[test]
-fn status_inner_never_reports_active() {
+fn status_reports_active_when_both_halves_are_present() {
+    let ctx = TestContext::new_empty();
+    let sessions = Mutex::new(HashMap::new());
+    start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map(), &sessions).unwrap();
+
+    let status =
+        get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map(), &sessions)
+            .unwrap();
+
+    assert!(status.file_exists);
+    assert_eq!(status.state, SessionState::Active);
+}
+
+#[test]
+fn status_reports_resume_available_for_a_file_this_process_never_loaded() {
     let ctx = TestContext::new_empty();
     start_on_disk(&ctx);
 
-    // _inner sees only disk: a present file is ResumeAvailable, never Active.
-    // Promotion to Active is the thin command's job after locking the in-memory map.
-    let status =
-        get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    let status = get_review_session_status_inner(
+        ctx.data_dir(),
+        ctx.path(),
+        ctx.state_map(),
+        &Mutex::new(HashMap::new()),
+    )
+    .unwrap();
+
     assert!(status.file_exists);
     assert_eq!(status.state, SessionState::ResumeAvailable);
 }

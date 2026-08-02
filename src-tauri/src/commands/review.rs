@@ -121,16 +121,48 @@ pub fn start_review_session_inner(
     Ok(canonical)
 }
 
-/// Load an existing session from disk for a currently-open repo (SESS-02 / D-14).
-/// Returns the canonical path + the `LoadOutcome` so the command layer can branch
-/// (Loaded → insert + emit; RecoveredCorrupt → fresh + toast; RefusedNewer → warn).
+/// Load an existing session from disk for a currently-open repo (SESS-02 / D-14) and
+/// cache it. Returns the canonical path + the `LoadOutcome` so the command layer can
+/// still branch on it (RefusedNewer → warn; RecoveredCorrupt → toast).
 pub fn resume_review_session_inner(
     data_dir: &Path,
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
 ) -> Result<(PathBuf, LoadOutcome), TrunkError> {
     let canonical = canonical_repo_path(path, state_map)?;
     let outcome = review_store::load_session(data_dir, &canonical)?;
+
+    match &outcome {
+        LoadOutcome::Loaded(session) => {
+            sessions
+                .lock()
+                .unwrap()
+                .insert(canonical.clone(), session.clone());
+        }
+        LoadOutcome::None => {
+            // No file to resume — nothing to load, nothing to insert.
+        }
+        LoadOutcome::RecoveredCorrupt => {
+            // D-15: the corrupt file was quarantined; start a fresh session, persist
+            // it (disk-first), cache it, and let the frontend toast the warning.
+            let fresh = ReviewSession {
+                schema_version: 2,
+                commits: vec![],
+                comments: vec![],
+                draft_comment: None,
+                working_tree_snapshot: None,
+                index_snapshot: None,
+            };
+            review_store::save_session(data_dir, &canonical, &fresh)?;
+            sessions.lock().unwrap().insert(canonical.clone(), fresh);
+        }
+        LoadOutcome::RefusedNewer => {
+            // D-16: a newer-schema file is left untouched; do NOT create a fresh
+            // session, so a downgrade cannot wipe newer data.
+        }
+    }
+
     Ok((canonical, outcome))
 }
 
@@ -167,31 +199,28 @@ pub async fn end_review_session_inner<R: Runtime>(
     Ok(canonical)
 }
 
-/// Report the DISK half of the session status (D-14). `_inner` has no Tauri state
-/// so it NEVER returns `Active` — it sets `ResumeAvailable` if the file exists,
-/// else `None`. The thin command promotes to `Active` after locking the in-memory map.
+/// Report the three-state session status (D-14): disk presence merged with in-memory
+/// presence. Both halves are sampled here so the pair describes one instant.
 pub fn get_review_session_status_inner(
     data_dir: &Path,
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
 ) -> Result<SessionStatus, TrunkError> {
     let canonical = canonical_repo_path(path, state_map)?;
+
     let file_exists = review_store::session_exists(data_dir, &canonical);
-    let state = if file_exists {
-        SessionState::ResumeAvailable
-    } else {
-        SessionState::None
-    };
+    let in_memory_present = sessions.lock().unwrap().contains_key(&canonical);
+
     Ok(SessionStatus {
-        state,
+        state: merge_status(file_exists, in_memory_present),
         file_exists,
         canonical_path: canonical.to_string_lossy().into_owned(),
     })
 }
 
 /// Derive the final three-state status from disk presence + in-memory presence.
-/// This is the merge `_inner` structurally cannot do (it has no Tauri state).
-/// `Active` is produced ONLY here, when both halves are present.
+/// `Active` requires both halves.
 fn merge_status(file_exists: bool, in_memory_present: bool) -> SessionState {
     match (file_exists, in_memory_present) {
         (true, true) => SessionState::Active,
@@ -1127,50 +1156,19 @@ pub async fn resume_review_session(
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let data_dir = resolve_data_dir(&app)?;
-    let data_dir_for_save = data_dir.clone();
-    let (canonical, outcome) = tauri::async_runtime::spawn_blocking(move || {
-        resume_review_session_inner(&data_dir, &path, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
 
-    match outcome {
-        LoadOutcome::Loaded(session) => {
-            sessions
-                .0
-                .lock()
-                .unwrap()
-                .insert(canonical.clone(), session);
-        }
-        LoadOutcome::None => {
-            // No file to resume — nothing to load, nothing to insert.
-        }
-        LoadOutcome::RecoveredCorrupt => {
-            // D-15: the corrupt file was quarantined; start a fresh session, persist
-            // it (disk-first), cache it, and let the frontend toast the warning.
-            let fresh = ReviewSession {
-                schema_version: 2,
-                commits: vec![],
-                comments: vec![],
-                draft_comment: None,
-                working_tree_snapshot: None,
-                index_snapshot: None,
-            };
-            review_store::save_session(&data_dir_for_save, &canonical, &fresh)
-                .map_err(|e| e.to_json())?;
-            sessions.0.lock().unwrap().insert(canonical.clone(), fresh);
-        }
-        LoadOutcome::RefusedNewer => {
-            // D-16: a newer-schema file is left untouched; do NOT create a fresh
-            // session, so a downgrade cannot wipe newer data.
-            return Err(TrunkError::new(
-                "newer_version",
-                "This review session was written by a newer version of Trunk and cannot be opened",
-            )
-            .to_json());
-        }
+    let (canonical, outcome) =
+        resume_review_session_inner(&data_dir, &path, &state_map, &sessions.0)
+            .map_err(|e| e.to_json())?;
+
+    if matches!(outcome, LoadOutcome::RefusedNewer) {
+        return Err(TrunkError::new(
+            "newer_version",
+            "This review session was written by a newer version of Trunk and cannot be opened",
+        )
+        .to_json());
     }
+
     emit_session_changed(&app, &canonical);
     Ok(())
 }
@@ -1201,19 +1199,9 @@ pub async fn get_review_session_status(
 ) -> Result<SessionStatus, String> {
     let state_map = state.0.lock().unwrap().clone();
     let data_dir = resolve_data_dir(&app)?;
-    let mut status = tauri::async_runtime::spawn_blocking(move || {
-        get_review_session_status_inner(&data_dir, &path, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
 
-    // THREE-STATE MERGE: _inner returned the disk half; promote to Active here by
-    // checking the canonical key in the in-memory map (the only place Active is born).
-    let canonical = PathBuf::from(&status.canonical_path);
-    let in_memory_present = sessions.0.lock().unwrap().contains_key(&canonical);
-    status.state = merge_status(status.file_exists, in_memory_present);
-    Ok(status)
+    get_review_session_status_inner(&data_dir, &path, &state_map, &sessions.0)
+        .map_err(|e| e.to_json())
 }
 
 #[cfg(test)]
