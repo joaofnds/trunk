@@ -89,7 +89,8 @@ pub fn start_review_session_inner(
     data_dir: &Path,
     path: &str,
     state_map: &HashMap<String, PathBuf>,
-) -> Result<(PathBuf, ReviewSession), TrunkError> {
+    sessions: &Mutex<HashMap<PathBuf, ReviewSession>>,
+) -> Result<PathBuf, TrunkError> {
     let canonical = canonical_repo_path(path, state_map)?;
     if review_store::session_exists(data_dir, &canonical) {
         return Err(TrunkError::new(
@@ -97,6 +98,7 @@ pub fn start_review_session_inner(
             "A review session already exists for this repository — resume or end it first",
         ));
     }
+
     let session = ReviewSession {
         schema_version: 2,
         commits: vec![],
@@ -105,8 +107,11 @@ pub fn start_review_session_inner(
         working_tree_snapshot: None,
         index_snapshot: None,
     };
+
     review_store::save_session(data_dir, &canonical, &session)?;
-    Ok((canonical, session))
+    sessions.lock().unwrap().insert(canonical.clone(), session);
+
+    Ok(canonical)
 }
 
 /// Load an existing session from disk for a currently-open repo (SESS-02 / D-14).
@@ -1098,19 +1103,10 @@ pub async fn start_review_session(
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let data_dir = resolve_data_dir(&app)?;
-    let (canonical, session) = tauri::async_runtime::spawn_blocking(move || {
-        start_review_session_inner(&data_dir, &path, &state_map)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
 
-    // Disk-first ordering (D-10): _inner already wrote the file → in-memory → emit.
-    sessions
-        .0
-        .lock()
-        .unwrap()
-        .insert(canonical.clone(), session);
+    let canonical = start_review_session_inner(&data_dir, &path, &state_map, &sessions.0)
+        .map_err(|e| e.to_json())?;
+
     emit_session_changed(&app, &canonical);
     Ok(())
 }

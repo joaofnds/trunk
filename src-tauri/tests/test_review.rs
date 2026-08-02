@@ -9,7 +9,9 @@ use trunk_lib::commands::review::{
     SessionState, end_review_session_inner, get_review_session_status_inner,
     resume_review_session_inner, start_review_session_inner,
 };
-use trunk_lib::git::review_store::{LoadOutcome, load_session, save_session, session_exists};
+use trunk_lib::git::review_store::{
+    LoadOutcome, delete_session, load_session, save_session, session_exists,
+};
 use trunk_lib::git::types::ReviewSession;
 
 fn empty_session() -> ReviewSession {
@@ -143,13 +145,28 @@ fn newer_version_refused() {
 // in-memory ReviewSessionsState lives only in the thin command (tested via the
 // disk half here).
 
+/// Start a session for the context's repo against a throwaway in-memory map, for
+/// the tests that only assert on the disk half.
+fn start_on_disk(ctx: &TestContext) -> PathBuf {
+    start_review_session_inner(
+        ctx.data_dir(),
+        ctx.path(),
+        ctx.state_map(),
+        &Mutex::new(HashMap::new()),
+    )
+    .unwrap()
+}
+
 #[test]
 fn start_creates_session() {
     let ctx = TestContext::new_empty();
+    let sessions = Mutex::new(HashMap::new());
 
-    let (canonical, session) =
-        start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    let canonical =
+        start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map(), &sessions).unwrap();
 
+    let map = sessions.lock().unwrap();
+    let session = map.get(&canonical).expect("start must cache the session");
     assert_eq!(session.schema_version, 2);
     assert!(session.commits.is_empty());
     assert!(session.comments.is_empty());
@@ -165,7 +182,13 @@ fn start_rejects_closed_repo() {
     let ctx = TestContext::new_empty();
     let empty: HashMap<String, PathBuf> = HashMap::new();
 
-    let err = start_review_session_inner(ctx.data_dir(), ctx.path(), &empty).unwrap_err();
+    let err = start_review_session_inner(
+        ctx.data_dir(),
+        ctx.path(),
+        &empty,
+        &Mutex::new(HashMap::new()),
+    )
+    .unwrap_err();
 
     assert_eq!(err.code, "not_open");
 }
@@ -173,9 +196,15 @@ fn start_rejects_closed_repo() {
 #[test]
 fn start_rejects_when_session_exists() {
     let ctx = TestContext::new_empty();
-    start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    start_on_disk(&ctx);
 
-    let err = start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap_err();
+    let err = start_review_session_inner(
+        ctx.data_dir(),
+        ctx.path(),
+        ctx.state_map(),
+        &Mutex::new(HashMap::new()),
+    )
+    .unwrap_err();
 
     assert_eq!(err.code, "session_exists");
 }
@@ -183,7 +212,7 @@ fn start_rejects_when_session_exists() {
 #[test]
 fn resume_after_restart() {
     let ctx = TestContext::new_empty();
-    start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    start_on_disk(&ctx);
 
     // A fresh process has no in-memory state — resume loads from disk.
     let (_canonical, outcome) =
@@ -201,7 +230,7 @@ fn symlink_resumes_same_session() {
     use std::os::unix::fs::symlink;
 
     let ctx = TestContext::new_empty();
-    start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    start_on_disk(&ctx);
 
     // Create a symlink pointing at the real repo dir and open via that path.
     let link_dir = tempfile::tempdir().unwrap();
@@ -228,7 +257,7 @@ fn symlink_resumes_same_session() {
 #[test]
 fn end_clears_session() {
     let ctx = TestContext::new_empty();
-    start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    start_on_disk(&ctx);
     let sessions = Mutex::new(HashMap::new());
     let app = tauri::test::mock_app();
 
@@ -254,7 +283,7 @@ fn end_clears_session() {
 #[test]
 fn status_inner_never_reports_active() {
     let ctx = TestContext::new_empty();
-    start_review_session_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
+    start_on_disk(&ctx);
 
     // _inner sees only disk: a present file is ResumeAvailable, never Active.
     // Promotion to Active is the thin command's job after locking the in-memory map.
@@ -262,6 +291,65 @@ fn status_inner_never_reports_active() {
         get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
     assert!(status.file_exists);
     assert_eq!(status.state, SessionState::ResumeAvailable);
+}
+
+/// Starting a session is the same critical section as ending one. A start that
+/// persists the file outside the mutex can have it deleted by an End that lands
+/// before the map insert does, leaving an in-memory session with nothing on disk.
+#[test]
+fn start_leaves_no_in_memory_session_without_its_file() {
+    use std::sync::Arc;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let sessions: Arc<Mutex<HashMap<PathBuf, ReviewSession>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+
+    // An End parked mid-critical-section: mutex in hand, its delete still ahead.
+    let (holding_tx, holding_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let ender = {
+        let sessions = Arc::clone(&sessions);
+        let data_dir = ctx.data_dir().to_path_buf();
+        let canonical = canonical.clone();
+        thread::spawn(move || {
+            let mut map = sessions.lock().unwrap();
+            holding_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+
+            delete_session(&data_dir, &canonical).unwrap();
+            map.remove(&canonical);
+        })
+    };
+    holding_rx.recv().unwrap();
+
+    let start = {
+        let sessions = Arc::clone(&sessions);
+        let data_dir = ctx.data_dir().to_path_buf();
+        let path = ctx.path().to_string();
+        let state_map = ctx.state_map().clone();
+        thread::spawn(move || start_review_session_inner(&data_dir, &path, &state_map, &sessions))
+    };
+
+    // Same budget as the End race: a file that never appears while the mutex is
+    // held is the passing case, not a stalled one.
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while !session_exists(ctx.data_dir(), &canonical) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    release_tx.send(()).unwrap();
+    ender.join().unwrap();
+    start.join().unwrap().unwrap();
+
+    assert_eq!(
+        session_exists(ctx.data_dir(), &canonical),
+        sessions.lock().unwrap().contains_key(&canonical),
+        "a session on disk and a session in memory must appear and vanish together"
+    );
 }
 
 /// Ending a session must be atomic against the writers that share its mutex. Every
