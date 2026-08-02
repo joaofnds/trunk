@@ -9,7 +9,7 @@ use trunk_lib::commands::review::{
     SessionState, end_review_session_inner, get_review_session_status_inner,
     resume_review_session_inner, start_review_session_inner,
 };
-use trunk_lib::git::review_store::{LoadOutcome, load_session, save_session};
+use trunk_lib::git::review_store::{LoadOutcome, load_session, save_session, session_exists};
 use trunk_lib::git::types::ReviewSession;
 
 fn empty_session() -> ReviewSession {
@@ -262,6 +262,85 @@ fn status_inner_never_reports_active() {
         get_review_session_status_inner(ctx.data_dir(), ctx.path(), ctx.state_map()).unwrap();
     assert!(status.file_exists);
     assert_eq!(status.state, SessionState::ResumeAvailable);
+}
+
+/// Ending a session must be atomic against the writers that share its mutex. Every
+/// other writer holds `ReviewSessionsState` across `save_session` → map-write
+/// (`mutate_session_rmw`), so a writer that owns the lock when End runs has to see
+/// End's file delete and its map removal both before its own write or both after —
+/// never straddling it. A file left on disk with no in-memory entry is
+/// `ResumeAvailable`, and the panel resumes that state on its own.
+#[test]
+fn end_leaves_no_session_a_concurrent_writer_recreated() {
+    use std::sync::Arc;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    save_session(ctx.data_dir(), &canonical, &empty_session()).unwrap();
+    let sessions = Arc::new(Mutex::new(HashMap::from([(
+        canonical.clone(),
+        empty_session(),
+    )])));
+    let app = tauri::test::mock_app();
+
+    // A writer parked mid-RMW: mutex in hand, its save and its map-write still ahead.
+    let (holding_tx, holding_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let writer = {
+        let sessions = Arc::clone(&sessions);
+        let data_dir = ctx.data_dir().to_path_buf();
+        let canonical = canonical.clone();
+        thread::spawn(move || {
+            let mut map = sessions.lock().unwrap();
+            holding_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+
+            save_session(&data_dir, &canonical, &empty_session()).unwrap();
+            map.insert(canonical, empty_session());
+        })
+    };
+    holding_rx.recv().unwrap();
+
+    let end = {
+        let sessions = Arc::clone(&sessions);
+        let data_dir = ctx.data_dir().to_path_buf();
+        let path = ctx.path().to_string();
+        let state_map = ctx.state_map().clone();
+        let handle = app.handle().clone();
+        thread::spawn(move || {
+            tauri::async_runtime::block_on(end_review_session_inner(
+                &data_dir,
+                &path,
+                &state_map,
+                &sessions,
+                &handle,
+            ))
+        })
+    };
+
+    // Nothing signals "End reached its delete", and once End is correct that moment
+    // no longer exists — so watch the observable effect within a budget. A session
+    // that outlives the budget is the passing case, not a stalled one.
+    let deadline = Instant::now() + Duration::from_millis(300);
+    while session_exists(ctx.data_dir(), &canonical) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    release_tx.send(()).unwrap();
+    writer.join().unwrap();
+    end.join().unwrap().unwrap();
+
+    assert!(
+        !session_exists(ctx.data_dir(), &canonical),
+        "end must not leave a session file the concurrent writer put back"
+    );
+    assert!(
+        !sessions.lock().unwrap().contains_key(&canonical),
+        "end must drop the in-memory entry"
+    );
 }
 
 /// True when a session round-trips back as `Loaded` for the canonical path.
