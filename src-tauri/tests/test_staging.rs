@@ -1218,3 +1218,31 @@ mod pathspec_is_literal {
         assert_eq!(read(&ctx, GLOB_NAME), "one\ntwo\nthree\n");
     }
 }
+
+#[test]
+fn conflicted_binary_file_is_reported_as_binary() {
+    let ctx = TestContext::builder()
+        .with_binary_file("image.png", b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfeBASE")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_binary_file("image.png", b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfeTHEM")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_binary_file("image.png", b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfeOURS")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    let status = ctx.get_status().expect("get_status failed");
+
+    let entry = status
+        .conflicted
+        .iter()
+        .find(|f| f.path == "image.png")
+        .expect("image.png should be conflicted");
+    assert!(
+        entry.is_binary,
+        "a conflicted PNG must not be reported as text"
+    );
+}

@@ -48,6 +48,36 @@ fn classify_workdir(s: Status) -> Option<FileStatusType> {
     None
 }
 
+/// A conflicted path has no working-tree blob to inspect — the sides live in the
+/// index at stages 1-3. Any side that is binary makes the merge editor the wrong
+/// tool for the file.
+fn conflict_is_binary(repo: &git2::Repository, file_path: &str) -> bool {
+    let Ok(index) = repo.index() else {
+        return false;
+    };
+    let Ok(conflicts) = index.conflicts() else {
+        return false;
+    };
+
+    for conflict in conflicts.flatten() {
+        let sides = [&conflict.our, &conflict.their, &conflict.ancestor];
+        let names_this_file = sides
+            .iter()
+            .filter_map(|side| side.as_ref())
+            .any(|entry| entry.path == file_path.as_bytes());
+        if !names_this_file {
+            continue;
+        }
+        return sides
+            .iter()
+            .filter_map(|side| side.as_ref())
+            .filter_map(|entry| repo.find_blob(entry.id).ok())
+            .any(|blob| blob.is_binary());
+    }
+
+    false
+}
+
 pub fn get_status_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
@@ -74,7 +104,7 @@ pub fn get_status_inner(
             conflicted.push(FileStatus {
                 path: file_path.clone(),
                 status: FileStatusType::Conflicted,
-                is_binary: false,
+                is_binary: conflict_is_binary(&repo, &file_path),
             });
             continue;
         }

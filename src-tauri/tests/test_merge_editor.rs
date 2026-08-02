@@ -87,3 +87,28 @@ fn save_merge_result_writes_and_stages() {
         "index should have no conflicts after staging"
     );
 }
+
+/// A PNG carries no text sides. Reading it through `String::from_utf8_lossy`
+/// replaces every invalid byte with U+FFFD, and saving that back writes the
+/// replacement characters over the file with both original sides already gone.
+#[test]
+fn get_merge_sides_refuses_a_binary_conflict() {
+    let ours: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfeOURS";
+    let theirs: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfeTHEM";
+    let ctx = TestContext::builder()
+        .with_binary_file("image.png", b"\x89PNG\r\n\x1a\n\x00\x00\xff\xfeBASE")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_binary_file("image.png", theirs)
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_binary_file("image.png", ours)
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    let err = ctx.get_merge_sides("image.png").unwrap_err();
+
+    assert_eq!(err.code, "binary_conflict");
+}

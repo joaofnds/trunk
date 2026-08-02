@@ -41,14 +41,20 @@ pub fn get_merge_sides_inner(
         })?
         .map_err(|e| TrunkError::new("conflict_error", e.to_string()))?;
 
+    // `from_utf8_lossy` would replace every invalid byte with U+FFFD and the save
+    // path writes that text back over the file, with both original sides already
+    // dropped from the index. Refusing here is what keeps the sides recoverable.
     let read_blob = |entry: &Option<git2::IndexEntry>| -> Result<String, TrunkError> {
-        match entry {
-            Some(e) => {
-                let blob = repo.find_blob(e.id)?;
-                Ok(String::from_utf8_lossy(blob.content()).into_owned())
-            }
-            None => Ok(String::new()),
-        }
+        let Some(e) = entry else {
+            return Ok(String::new());
+        };
+        let blob = repo.find_blob(e.id)?;
+        String::from_utf8(blob.content().to_vec()).map_err(|_| {
+            TrunkError::new(
+                "binary_conflict",
+                format!("{file_path} is binary — resolve it outside the merge editor."),
+            )
+        })
     };
 
     Ok(MergeSides {
