@@ -34,14 +34,34 @@ describe("safeInvoke", () => {
 	});
 
 	it("wraps non-string error with unknown_error code and generic message", async () => {
-		// When rejected with a non-string, JSON.parse(42 as string) parses successfully as a number.
-		// The catch block's inner try succeeds, returning 42 — which is not a TrunkError.
-		// safeInvoke doesn't validate the shape, so it throws whatever JSON.parse returns.
-		// Use an object that fails JSON.parse to trigger the outer catch.
 		mockInvoke.mockRejectedValueOnce({ weird: true });
 		await expect(safeInvoke("test_cmd")).rejects.toEqual({
 			code: "unknown_error",
 			message: "An unexpected error occurred",
+		});
+	});
+
+	it("wraps a JSON error missing its code with unknown_error", async () => {
+		mockInvoke.mockRejectedValueOnce('{"message":"no code here"}');
+		await expect(safeInvoke("test_cmd")).rejects.toEqual({
+			code: "unknown_error",
+			message: '{"message":"no code here"}',
+		});
+	});
+
+	it("wraps a JSON error whose code is not a string with unknown_error", async () => {
+		mockInvoke.mockRejectedValueOnce('{"code":404,"message":"nope"}');
+		await expect(safeInvoke("test_cmd")).rejects.toEqual({
+			code: "unknown_error",
+			message: '{"code":404,"message":"nope"}',
+		});
+	});
+
+	it("wraps a JSON null error with unknown_error", async () => {
+		mockInvoke.mockRejectedValueOnce("null");
+		await expect(safeInvoke("test_cmd")).rejects.toEqual({
+			code: "unknown_error",
+			message: "null",
 		});
 	});
 

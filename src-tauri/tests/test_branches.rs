@@ -132,9 +132,28 @@ fn create_branch_duplicate_fails() {
     );
     assert_eq!(
         result.unwrap_err().code,
-        "git_error",
-        "expected git_error code for duplicate branch"
+        "git_exists",
+        "expected git_exists code for duplicate branch"
     );
+}
+
+#[test]
+fn checkout_branch_blocked_by_local_edits_reports_dirty_workdir() {
+    let mut ctx = TestContext::builder()
+        .with_file("README.md", "base")
+        .with_commit("Initial commit")
+        .with_branch("feat")
+        .checkout("feat")
+        .with_file("README.md", "feature side")
+        .with_commit("Feature edit")
+        .checkout("main")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("README.md"), "local edit").unwrap();
+
+    let err = ctx.checkout_branch("feat").unwrap_err();
+
+    assert_eq!(err.code, "dirty_workdir");
 }
 
 #[test]

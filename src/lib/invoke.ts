@@ -16,6 +16,7 @@ export function isTrunkError(e: unknown): e is TrunkError {
 		e !== null &&
 		"code" in e &&
 		"message" in e &&
+		typeof (e as { code: unknown }).code === "string" &&
 		typeof (e as { message: unknown }).message === "string"
 	);
 }
@@ -27,15 +28,23 @@ export async function safeInvoke<T>(
 	try {
 		return await invoke<T>(cmd, args);
 	} catch (e: unknown) {
-		let parsed: TrunkError;
-		try {
-			parsed = JSON.parse(e as string) as TrunkError;
-		} catch {
-			parsed = {
-				code: "unknown_error",
-				message: typeof e === "string" ? e : "An unexpected error occurred",
-			};
-		}
-		throw parsed;
+		throw asTrunkError(e);
+	}
+}
+
+function asTrunkError(e: unknown): TrunkError {
+	if (typeof e !== "string") {
+		return { code: "unknown_error", message: "An unexpected error occurred" };
+	}
+
+	return parseTrunkError(e) ?? { code: "unknown_error", message: e };
+}
+
+function parseTrunkError(payload: string): TrunkError | null {
+	try {
+		const parsed: unknown = JSON.parse(payload);
+		return isTrunkError(parsed) ? parsed : null;
+	} catch {
+		return null;
 	}
 }

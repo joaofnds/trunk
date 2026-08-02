@@ -222,6 +222,20 @@ pub async fn resolve_ref(
         .map_err(|e| e.to_json())
 }
 
+/// A safe checkout refuses with `Conflict` only when uncommitted work would be
+/// overwritten, which is the `dirty_workdir` outcome the branch commands already
+/// raise by hand when they pre-check the working tree.
+fn classify_checkout_error(e: git2::Error) -> TrunkError {
+    if e.code() == git2::ErrorCode::Conflict {
+        return TrunkError::new(
+            "dirty_workdir",
+            "Working tree has uncommitted changes that this checkout would overwrite",
+        );
+    }
+
+    e.into()
+}
+
 /// Inner implementation of checkout_branch — separated for testability.
 pub fn checkout_branch_inner(
     path: &str,
@@ -238,7 +252,8 @@ pub fn checkout_branch_inner(
         repo.checkout_tree(
             &object,
             Some(&mut git2::build::CheckoutBuilder::new().safe()),
-        )?;
+        )
+        .map_err(classify_checkout_error)?;
     }
     repo.set_head(&branch_ref)?;
     drop(repo);

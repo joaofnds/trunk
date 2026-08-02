@@ -1152,7 +1152,14 @@ pub fn read_file_at_inner(
             format!("no file at the empty rev: {file_path}"),
         )),
         RevSpec::Head => {
-            let tree = repo.head()?.peel_to_tree()?;
+            let head = repo.head().map_err(|e| match e.code() {
+                git2::ErrorCode::UnbornBranch => TrunkError::new(
+                    "not_found",
+                    format!("no commit yet, so nothing at HEAD: {file_path}"),
+                ),
+                _ => e.into(),
+            })?;
+            let tree = head.peel_to_tree()?;
             read_tree_blob(repo, &tree, file_path)
         }
         RevSpec::Commit { oid } => {
@@ -1899,6 +1906,39 @@ mod tests {
         assert!(
             !removed.is_empty() && removed.iter().all(|r| matches!(r, DiffRow::Removed { .. })),
             "absent after → every block removed: {removed:?}"
+        );
+    }
+
+    #[test]
+    fn staged_diff_before_the_first_commit_renders_every_block_added() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join("new.md"), b"# added\n\nbody para").unwrap();
+        {
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new("new.md")).unwrap();
+            idx.write().unwrap();
+        }
+        let mut state_map = HashMap::new();
+        state_map.insert(
+            dir.path().to_string_lossy().to_string(),
+            dir.path().to_path_buf(),
+        );
+
+        let rows = render_markdown_diff_from_state(
+            &dir.path().to_string_lossy(),
+            "new.md",
+            &RevSpec::Head,
+            &RevSpec::Index,
+            false,
+            &state_map,
+        )
+        .expect("an unborn HEAD is an absent before side, not a failure")
+        .rows;
+
+        assert!(
+            !rows.is_empty() && rows.iter().all(|r| matches!(r, DiffRow::Added { .. })),
+            "unborn HEAD → every block added: {rows:?}"
         );
     }
 

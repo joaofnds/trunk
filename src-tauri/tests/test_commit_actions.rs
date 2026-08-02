@@ -97,7 +97,7 @@ fn create_tag_duplicate_fails() {
     ctx.create_tag(&second_oid, "v1.0.0", "first").unwrap();
     let result = ctx.create_tag(&second_oid, "v1.0.0", "second");
     assert!(result.is_err(), "duplicate tag should fail");
-    assert_eq!(result.unwrap_err().code, "git_error");
+    assert_eq!(result.unwrap_err().code, "git_exists");
 }
 
 // --- delete_tag tests ---
