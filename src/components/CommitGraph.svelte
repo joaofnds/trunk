@@ -1925,6 +1925,10 @@ $effect(() => {
           height={contentHeight}
           style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
         >
+          <!-- Layers A and B live in the Graph column's band; with the column
+               hidden CommitRow drops that cell and the Message text slides into
+               the band, so anything painted here lands on top of it. -->
+          {#if columnVisibility.graph}
           <!-- GRAPH-02: clip graph content to column width -->
           <defs>
             <clipPath id="graph-clip">
@@ -1975,6 +1979,7 @@ $effect(() => {
               {/if}
             {/each}
           </g>
+          {/if}
           {#if columnVisibility.ref}
             <g class="overlay-pills">
               {#each visible.pills as pill}

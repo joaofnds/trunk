@@ -158,7 +158,10 @@ const TEST_COMMITS = [
 
 // Install the dispatcher. Reads route by command name; tests override individual
 // commands via `extra` (called BEFORE this installer to layer rejections).
-type DispatchOverride = (cmd: string) => unknown | undefined;
+type DispatchOverride = (
+	cmd: string,
+	args?: Record<string, unknown>,
+) => unknown | undefined;
 function installReads(
 	opts: {
 		commits?: typeof TEST_COMMITS;
@@ -171,8 +174,8 @@ function installReads(
 	const commits = opts.commits ?? TEST_COMMITS;
 	const sessionCommits = opts.sessionCommits ?? [];
 	vi.mocked(safeInvoke).mockReset();
-	vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
-		const overridden = opts.override?.(cmd);
+	vi.mocked(safeInvoke).mockImplementation((cmd: string, args) => {
+		const overridden = opts.override?.(cmd, args);
 		if (overridden !== undefined) return overridden as Promise<unknown>;
 		switch (cmd) {
 			case "get_commit_graph":
@@ -615,6 +618,54 @@ describe("CommitGraph", () => {
 			expect(dateColumnWidth()).toBeGreaterThanOrEqual(
 				widestLabel + 2 * COLUMN_PADDING_X,
 			);
+		});
+	});
+
+	// CommitRow drops the graph cell when the column is hidden, so the flex-1
+	// message cell slides into the band the overlay still painted into.
+	describe("hidden graph column", () => {
+		function withGraphColumn(graph: boolean) {
+			installReads({
+				override: (cmd, args) =>
+					cmd === "prefs_get" && args?.key === "column_visibility"
+						? Promise.resolve({
+								ref: true,
+								graph,
+								message: true,
+								diff: true,
+								author: true,
+								date: true,
+								sha: true,
+							})
+						: undefined,
+			});
+
+			return render(CommitGraph, {
+				props: { repoPath: "/test/repo", clearRedoStack: vi.fn() },
+			});
+		}
+
+		const count = (container: HTMLElement, selector: string) =>
+			container.querySelectorAll(selector).length;
+
+		it("draws the dots when the column is shown", async () => {
+			const { container } = withGraphColumn(true);
+
+			await waitFor(() => {
+				expect(count(container, ".overlay-dots circle")).toBe(2);
+			});
+		});
+
+		it("draws no dots or rails when the column is hidden", async () => {
+			const { container } = withGraphColumn(false);
+
+			await waitFor(() => {
+				expect(screen.getAllByText("first commit").length).toBe(1);
+			});
+			await flush();
+
+			expect(count(container, ".overlay-dots")).toBe(0);
+			expect(count(container, ".overlay-paths")).toBe(0);
 		});
 	});
 
