@@ -317,7 +317,7 @@ fn pull_over_a_preexisting_stash_pop_conflict_is_not_blamed_as_an_autostash_conf
     std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
     ctx.stage_file("file.txt").unwrap();
     ctx.create_commit("Diverging commit", None).unwrap();
-    ctx.stash_pop(0).unwrap_err();
+    ctx.stash_pop(&ctx.top_stash_oid()).unwrap_err();
     assert!(
         has_unmerged_paths(&ctx.repo()).unwrap(),
         "setup precondition: the pop leaves conflicted paths behind"
@@ -559,7 +559,7 @@ fn force_push_refuses_a_worktree_with_unresolved_conflicts() {
     std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
     ctx.stage_file("file.txt").unwrap();
     ctx.create_commit("Diverging commit", None).unwrap();
-    ctx.stash_pop(0).unwrap_err();
+    ctx.stash_pop(&ctx.top_stash_oid()).unwrap_err();
     assert!(
         has_unmerged_paths(&ctx.repo()).unwrap(),
         "setup precondition: the pop leaves conflicted paths behind"

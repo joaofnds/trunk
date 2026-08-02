@@ -336,7 +336,7 @@ $effect(() => {
 	}
 });
 
-let stashOidToIndex = $state<Map<string, number>>(new Map());
+let stashOids = $state<Set<string>>(new Set());
 
 // Search state
 let searchOpen = $state(false);
@@ -417,13 +417,9 @@ async function loadStashMap() {
 		const stashes = await safeInvoke<StashEntry[]>("list_stashes", {
 			path: repoPath,
 		});
-		const map = new Map<string, number>();
-		for (const stash of stashes) {
-			map.set(stash.oid, stash.index);
-		}
-		stashOidToIndex = map;
+		stashOids = new Set(stashes.map((stash) => stash.oid));
 	} catch {
-		stashOidToIndex = new Map();
+		stashOids = new Set();
 	}
 }
 
@@ -929,9 +925,9 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 
 // Stash context menu actions
 
-async function handleStashPop(index: number) {
+async function handleStashPop(oid: string) {
 	try {
-		await safeInvoke("stash_pop", { path: repoPath, index });
+		await safeInvoke("stash_pop", { path: repoPath, oid });
 	} catch (e) {
 		const err = e as TrunkError;
 		await message(err.message ?? "Failed to pop stash", {
@@ -941,9 +937,9 @@ async function handleStashPop(index: number) {
 	}
 }
 
-async function handleStashApply(index: number) {
+async function handleStashApply(oid: string) {
 	try {
-		await safeInvoke("stash_apply", { path: repoPath, index });
+		await safeInvoke("stash_apply", { path: repoPath, oid });
 	} catch (e) {
 		const err = e as TrunkError;
 		await message(err.message ?? "Failed to apply stash", {
@@ -953,14 +949,14 @@ async function handleStashApply(index: number) {
 	}
 }
 
-async function handleStashDrop(index: number) {
-	const confirmed = await ask(`Drop stash@{${index}}? This cannot be undone.`, {
-		title: "Confirm Drop",
-		kind: "warning",
-	});
+async function handleStashDrop(commit: GraphCommit) {
+	const confirmed = await ask(
+		`Drop stash "${commit.summary}"? This cannot be undone.`,
+		{ title: "Confirm Drop", kind: "warning" },
+	);
 	if (!confirmed) return;
 	try {
-		await safeInvoke("stash_drop", { path: repoPath, index });
+		await safeInvoke("stash_drop", { path: repoPath, oid: commit.oid });
 	} catch (e) {
 		const err = e as TrunkError;
 		await message(err.message ?? "Failed to drop stash", {
@@ -972,26 +968,25 @@ async function handleStashDrop(index: number) {
 
 async function showStashContextMenu(e: MouseEvent, commit: GraphCommit) {
 	e.preventDefault();
-	const stashIndex = stashOidToIndex.get(commit.oid);
-	if (stashIndex === undefined) return;
+	if (!stashOids.has(commit.oid)) return;
 	const menu = await Menu.new({
 		items: [
 			await MenuItem.new({
 				text: "Pop",
 				action: () => {
-					handleStashPop(stashIndex).catch(() => {});
+					handleStashPop(commit.oid).catch(() => {});
 				},
 			}),
 			await MenuItem.new({
 				text: "Apply",
 				action: () => {
-					handleStashApply(stashIndex).catch(() => {});
+					handleStashApply(commit.oid).catch(() => {});
 				},
 			}),
 			await MenuItem.new({
 				text: "Drop",
 				action: () => {
-					handleStashDrop(stashIndex).catch(() => {});
+					handleStashDrop(commit).catch(() => {});
 				},
 			}),
 		],

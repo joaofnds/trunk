@@ -96,7 +96,7 @@ fn workflow_stash_save_checkout_pop() {
     ctx.assert_head_at("main");
 
     // Pop the stash
-    ctx.stash_pop(0).unwrap();
+    ctx.stash_pop(&ctx.top_stash_oid()).unwrap();
 
     // Verify: file has modified content and stash list is empty
     ctx.assert_file_content("README.md", "modified content");

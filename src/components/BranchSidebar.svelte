@@ -45,7 +45,7 @@ let showStashForm = $state(false);
 let stashName = $state("");
 let stashSaving = $state(false);
 let stashCreateError = $state<string | null>(null);
-let stashEntryErrors = $state<Record<number, string | null>>({});
+let stashEntryErrors = $state<Record<string, string | null>>({});
 let showCreateInput = $state(false);
 let newBranchName = $state("");
 let createError = $state<string | null>(null);
@@ -230,7 +230,7 @@ async function handleStashSave() {
 	}
 }
 
-async function showStashEntryMenu(e: MouseEvent, stashIndex: number) {
+async function showStashEntryMenu(e: MouseEvent, stash: StashEntry) {
 	e.preventDefault();
 	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
 	const menu = await Menu.new({
@@ -238,19 +238,19 @@ async function showStashEntryMenu(e: MouseEvent, stashIndex: number) {
 			await MenuItem.new({
 				text: "Pop",
 				action: () => {
-					handleStashPop(stashIndex).catch(() => {});
+					handleStashPop(stash.oid).catch(() => {});
 				},
 			}),
 			await MenuItem.new({
 				text: "Apply",
 				action: () => {
-					handleStashApply(stashIndex).catch(() => {});
+					handleStashApply(stash.oid).catch(() => {});
 				},
 			}),
 			await MenuItem.new({
 				text: "Drop",
 				action: () => {
-					handleStashDrop(stashIndex).catch(() => {});
+					handleStashDrop(stash).catch(() => {});
 				},
 			}),
 		],
@@ -258,50 +258,50 @@ async function showStashEntryMenu(e: MouseEvent, stashIndex: number) {
 	await menu.popup();
 }
 
-async function handleStashPop(index: number) {
-	stashEntryErrors = { ...stashEntryErrors, [index]: null };
+async function handleStashPop(oid: string) {
+	stashEntryErrors = { ...stashEntryErrors, [oid]: null };
 	try {
-		await safeInvoke("stash_pop", { path: repoPath, index });
+		await safeInvoke("stash_pop", { path: repoPath, oid });
 		await loadRefs(repoPath);
 	} catch (e) {
 		const err = e as TrunkError;
 		stashEntryErrors = {
 			...stashEntryErrors,
-			[index]: err.message ?? "Failed to pop stash",
+			[oid]: err.message ?? "Failed to pop stash",
 		};
 	}
 }
 
-async function handleStashApply(index: number) {
-	stashEntryErrors = { ...stashEntryErrors, [index]: null };
+async function handleStashApply(oid: string) {
+	stashEntryErrors = { ...stashEntryErrors, [oid]: null };
 	try {
-		await safeInvoke("stash_apply", { path: repoPath, index });
+		await safeInvoke("stash_apply", { path: repoPath, oid });
 		await loadRefs(repoPath);
 	} catch (e) {
 		const err = e as TrunkError;
 		stashEntryErrors = {
 			...stashEntryErrors,
-			[index]: err.message ?? "Failed to apply stash",
+			[oid]: err.message ?? "Failed to apply stash",
 		};
 	}
 }
 
-async function handleStashDrop(index: number) {
+async function handleStashDrop(stash: StashEntry) {
 	const { ask } = await import("@tauri-apps/plugin-dialog");
-	const confirmed = await ask(`Drop stash@{${index}}? This cannot be undone.`, {
-		title: "Confirm Drop",
-		kind: "warning",
-	});
+	const confirmed = await ask(
+		`Drop ${stash.short_name} (${stash.name})? This cannot be undone.`,
+		{ title: "Confirm Drop", kind: "warning" },
+	);
 	if (!confirmed) return;
-	stashEntryErrors = { ...stashEntryErrors, [index]: null };
+	stashEntryErrors = { ...stashEntryErrors, [stash.oid]: null };
 	try {
-		await safeInvoke("stash_drop", { path: repoPath, index });
+		await safeInvoke("stash_drop", { path: repoPath, oid: stash.oid });
 		await loadRefs(repoPath);
 	} catch (e) {
 		const err = e as TrunkError;
 		stashEntryErrors = {
 			...stashEntryErrors,
-			[index]: err.message ?? "Failed to drop stash",
+			[stash.oid]: err.message ?? "Failed to drop stash",
 		};
 	}
 }
@@ -765,14 +765,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
           tabindex="0"
           onclick={() => onrefnavigate?.(stash.oid)}
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onrefnavigate?.(stash.oid); } }}
-          oncontextmenu={(e) => showStashEntryMenu(e, stash.index)}
+          oncontextmenu={(e) => showStashEntryMenu(e, stash)}
         >
           <Archive size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
           <span class="stash-index">{stash.short_name}</span>
           <span class="stash-message">{stash.name}</span>
         </div>
-        {#if stashEntryErrors[stash.index]}
-          <p class="stash-error stash-entry-error">{stashEntryErrors[stash.index]}</p>
+        {#if stashEntryErrors[stash.oid]}
+          <p class="stash-error stash-entry-error">{stashEntryErrors[stash.oid]}</p>
         {/if}
       {/each}
     </BranchSection>

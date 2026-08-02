@@ -12,15 +12,20 @@ impl TestContext {
         stash::stash_save_inner(self.path(), message, self.state_map())
     }
 
-    pub fn stash_pop(&self, index: usize) -> Result<GraphResult, TrunkError> {
-        stash::stash_pop_inner(self.path(), index, self.state_map())
+    /// The most recent stash, for tests whose subject is not which entry is picked.
+    pub fn top_stash_oid(&self) -> String {
+        self.list_stashes().unwrap()[0].oid.clone()
     }
 
-    pub fn stash_apply(&self, index: usize) -> Result<GraphResult, TrunkError> {
-        stash::stash_apply_inner(self.path(), index, self.state_map())
+    pub fn stash_pop(&self, oid: &str) -> Result<GraphResult, TrunkError> {
+        stash::stash_pop_inner(self.path(), oid, self.state_map())
     }
 
-    pub fn stash_drop(&self, index: usize) -> Result<GraphResult, TrunkError> {
-        stash::stash_drop_inner(self.path(), index, self.state_map())
+    pub fn stash_apply(&self, oid: &str) -> Result<GraphResult, TrunkError> {
+        stash::stash_apply_inner(self.path(), oid, self.state_map())
+    }
+
+    pub fn stash_drop(&self, oid: &str) -> Result<GraphResult, TrunkError> {
+        stash::stash_drop_inner(self.path(), oid, self.state_map())
     }
 }

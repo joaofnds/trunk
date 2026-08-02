@@ -17,6 +17,7 @@ import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { tooltip } from "../lib/tooltip.js";
+import type { StashEntry } from "../lib/types.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import InputDialog from "./InputDialog.svelte";
 import PullDropdown from "./PullDropdown.svelte";
@@ -165,7 +166,15 @@ async function handleStash() {
 
 async function handlePop() {
 	try {
-		await safeInvoke("stash_pop", { path: repoPath, index: 0 });
+		const stashes = await safeInvoke<StashEntry[]>("list_stashes", {
+			path: repoPath,
+		});
+		const latest = stashes[0];
+		if (!latest) {
+			showToast("No stash to apply", "error");
+			return;
+		}
+		await safeInvoke("stash_pop", { path: repoPath, oid: latest.oid });
 		showToast("Stash applied", "success");
 	} catch (e) {
 		console.error("stash_pop failed:", e);

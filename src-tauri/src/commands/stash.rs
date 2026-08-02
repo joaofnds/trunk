@@ -13,6 +13,31 @@ const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve con
 const APPLY_CONFLICT_MESSAGE: &str =
     "Stash applied with conflicts — resolve conflicts before continuing";
 
+/// `stash@{n}` is a position in a stack anything can renumber — a second window,
+/// a terminal, or this app on another tab. Resolving the caller's stash commit to
+/// its current position at call time is what keeps an operation on the entry the
+/// user picked; a stale position silently names a different one.
+fn stash_index_of(repo: &mut git2::Repository, oid: &str) -> Result<usize, TrunkError> {
+    let wanted = git2::Oid::from_str(oid)
+        .map_err(|_| TrunkError::new("stash_not_found", format!("Not a stash id: {oid}")))?;
+
+    let mut found = None;
+    repo.stash_foreach(|idx, _, stash_oid| {
+        if *stash_oid == wanted {
+            found = Some(idx);
+            return false;
+        }
+        true
+    })?;
+
+    found.ok_or_else(|| {
+        TrunkError::new(
+            "stash_not_found",
+            "That stash is no longer in this repository — it was applied or dropped elsewhere.",
+        )
+    })
+}
+
 pub fn list_stashes_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
@@ -74,10 +99,11 @@ pub fn stash_save_inner(
 
 pub fn stash_pop_inner(
     path: &str,
-    index: usize,
+    oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let index = stash_index_of(&mut repo, oid)?;
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
     // when it applied with conflicts, leaving the user's stashed work nowhere once they
     // clear the conflict markers. Real `git stash pop` keeps it, and so does this.
@@ -97,10 +123,11 @@ pub fn stash_pop_inner(
 
 pub fn stash_apply_inner(
     path: &str,
-    index: usize,
+    oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let index = stash_index_of(&mut repo, oid)?;
     repo.stash_apply(index, None).map_err(|e| {
         if e.message().contains("conflict") || e.message().contains("merge") {
             TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE)
@@ -116,10 +143,11 @@ pub fn stash_apply_inner(
 
 pub fn stash_drop_inner(
     path: &str,
-    index: usize,
+    oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let index = stash_index_of(&mut repo, oid)?;
     repo.stash_drop(index).map_err(TrunkError::from)?;
     graph::walk_commits(&mut repo, 0, usize::MAX)
 }
@@ -161,7 +189,7 @@ pub async fn stash_save(
 #[tauri::command]
 pub async fn stash_pop(
     path: String,
-    index: usize,
+    oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     app: AppHandle,
@@ -169,7 +197,7 @@ pub async fn stash_pop(
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_pop_inner(&path_clone, index, &state_map)
+        stash_pop_inner(&path_clone, &oid, &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -183,7 +211,7 @@ pub async fn stash_pop(
 #[tauri::command]
 pub async fn stash_apply(
     path: String,
-    index: usize,
+    oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     app: AppHandle,
@@ -191,7 +219,7 @@ pub async fn stash_apply(
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_apply_inner(&path_clone, index, &state_map)
+        stash_apply_inner(&path_clone, &oid, &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -205,7 +233,7 @@ pub async fn stash_apply(
 #[tauri::command]
 pub async fn stash_drop(
     path: String,
-    index: usize,
+    oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     app: AppHandle,
@@ -213,7 +241,7 @@ pub async fn stash_drop(
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_drop_inner(&path_clone, index, &state_map)
+        stash_drop_inner(&path_clone, &oid, &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
