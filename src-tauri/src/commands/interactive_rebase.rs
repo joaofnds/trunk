@@ -131,46 +131,29 @@ pub fn start_interactive_rebase_blocking(
             .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
     }
 
-    // 3. Write pre-edited message files (consumed by GIT_EDITOR in order)
-    let msg_queue_dir = session_dir.join("msg-queue");
-    let _ = std::fs::create_dir_all(&msg_queue_dir);
-    let mut msg_index = 0u32;
-    for item in todo_items.iter().filter(|i| i.action != "drop") {
-        if item.action == "reword" || item.action == "squash" {
-            if let Some(ref new_msg) = item.new_message {
-                let msg_file = msg_queue_dir.join(format!("{:04}", msg_index));
-                std::fs::write(&msg_file, new_msg)
-                    .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
-            }
-            msg_index += 1;
+    // 3. File each pre-edited message under the commit git will name when it opens
+    //    the editor. These live in the repository's git dir rather than the session
+    //    dir, because a rebase that stops on a conflict outlives this call and
+    //    `rebase --continue` still has messages left to deliver.
+    let msg_dir = {
+        let repo = git2::Repository::open(path_buf)?;
+        repo.path().join(crate::git::editor::MESSAGE_DIR)
+    };
+    // Clearing first is load-bearing: a message left over from an earlier rebase is
+    // named for a commit this one could touch without editing.
+    let _ = std::fs::remove_dir_all(&msg_dir);
+    let bindings = message_bindings(todo_items);
+    if !bindings.is_empty() {
+        std::fs::create_dir_all(&msg_dir)
+            .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
+        for (oid, message) in &bindings {
+            std::fs::write(msg_dir.join(oid), message)
+                .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
         }
     }
 
-    // 4. Write GIT_EDITOR script — consumes the first available message file, or accepts default.
-    // T-75-T04 parity: bind the queue path into a single-quoted shell variable so embedded
-    // `"` or `'` in $TMPDIR cannot break out into shell syntax.
-    let editor_script_path = session_dir.join("trunk-rebase-editor.sh");
-    let editor_script = format!(
-        r#"#!/bin/sh
-QUEUE={queue}
-MSG=$(ls -1 "$QUEUE/" 2>/dev/null | sort | head -1)
-if [ -n "$MSG" ]; then
-  cp "$QUEUE/$MSG" "$1"
-  rm "$QUEUE/$MSG"
-  exit 0
-fi
-exit 0
-"#,
-        queue = crate::git::editor::shell_single_quote(&msg_queue_dir.display().to_string()),
-    );
-    std::fs::write(&editor_script_path, &editor_script)
-        .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&editor_script_path, std::fs::Permissions::from_mode(0o755))
-            .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
-    }
+    // 4. The editor that reads them, keyed by the commit git is working on.
+    let editor = crate::git::editor::keyed_rebase_editor()?;
 
     // 5. Run git rebase -i (blocking — waits for completion)
     let output = std::process::Command::new("git")
@@ -178,7 +161,7 @@ exit 0
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())
-        .env("GIT_EDITOR", editor_script_path.to_str().unwrap())
+        .env("GIT_EDITOR", editor.script_path())
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
 
@@ -194,7 +177,55 @@ exit 0
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
+    let rebase_still_running = repo.path().join("rebase-merge").exists();
+    if !rebase_still_running {
+        let _ = std::fs::remove_dir_all(&msg_dir);
+    }
+
     graph::walk_commits(&mut repo, 0, usize::MAX)
+}
+
+/// Which commit gets which pre-edited message.
+///
+/// `git rebase -i` opens the editor once per reword, and once per *run* of
+/// squashes — at the run's last item, whatever the run's length. It opens it not
+/// at all for an item that turns out empty and gets skipped. So a message belongs
+/// to a commit, never to a position in a queue.
+///
+/// Within a run, the winning message is the last squash the user actually edited;
+/// a run nobody edited binds nothing and keeps git's combined default. A reword
+/// heading a run keeps its own message for its own invocation and does not carry
+/// it into the run, whose default is built on the reworded text anyway.
+fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
+    let mut bindings: Vec<(String, String)> = Vec::new();
+    let mut run_last_oid: Option<String> = None;
+    let mut run_message: Option<String> = None;
+
+    for item in todo_items.iter().filter(|i| i.action != "drop") {
+        if item.action == "squash" {
+            run_last_oid = Some(item.oid.clone());
+            if let Some(new_msg) = item.new_message.clone() {
+                run_message = Some(new_msg);
+            }
+            continue;
+        }
+
+        if let (Some(oid), Some(message)) = (run_last_oid.take(), run_message.take()) {
+            bindings.push((oid, message));
+        }
+
+        if item.action == "reword"
+            && let Some(new_msg) = item.new_message.clone()
+        {
+            bindings.push((item.oid.clone(), new_msg));
+        }
+    }
+
+    if let (Some(oid), Some(message)) = (run_last_oid, run_message) {
+        bindings.push((oid, message));
+    }
+
+    bindings
 }
 
 #[tauri::command]
@@ -278,6 +309,97 @@ pub async fn start_interactive_rebase(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn item(oid: &str, action: &str, new_message: Option<&str>) -> RebaseTodoAction {
+        RebaseTodoAction {
+            oid: oid.to_string(),
+            action: action.to_string(),
+            summary: "summary".to_string(),
+            new_message: new_message.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_reword_binds_its_message_to_its_own_commit() {
+        let bindings = message_bindings(&[
+            item("aaa", "pick", None),
+            item("bbb", "reword", Some("New title")),
+        ]);
+
+        assert_eq!(bindings, vec![("bbb".to_string(), "New title".to_string())]);
+    }
+
+    #[test]
+    fn a_squash_run_binds_one_message_to_the_commit_git_opens_the_editor_for() {
+        // Git opens the editor once for the whole run, at its last item.
+        let bindings = message_bindings(&[
+            item("aaa", "pick", None),
+            item("bbb", "squash", Some("Combined A")),
+            item("ccc", "squash", Some("Combined B")),
+        ]);
+
+        assert_eq!(
+            bindings,
+            vec![("ccc".to_string(), "Combined B".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_squash_run_keeps_the_last_edited_message_even_when_later_squashes_have_none() {
+        let bindings = message_bindings(&[
+            item("aaa", "pick", None),
+            item("bbb", "squash", Some("Combined A")),
+            item("ccc", "squash", None),
+        ]);
+
+        assert_eq!(
+            bindings,
+            vec![("ccc".to_string(), "Combined A".to_string())]
+        );
+    }
+
+    #[test]
+    fn an_unedited_squash_run_binds_nothing_and_keeps_gits_default() {
+        let bindings = message_bindings(&[item("aaa", "pick", None), item("bbb", "squash", None)]);
+
+        assert!(bindings.is_empty(), "got {bindings:?}");
+    }
+
+    #[test]
+    fn a_reword_heading_a_run_keeps_its_message_for_its_own_invocation() {
+        let bindings = message_bindings(&[
+            item("aaa", "reword", Some("Reworded head")),
+            item("bbb", "squash", None),
+        ]);
+
+        assert_eq!(
+            bindings,
+            vec![("aaa".to_string(), "Reworded head".to_string())],
+            "the run's own default is built on the reworded text, so nothing carries into it"
+        );
+    }
+
+    #[test]
+    fn a_squash_without_a_message_cannot_take_a_later_rewords_message() {
+        let bindings = message_bindings(&[
+            item("aaa", "pick", None),
+            item("bbb", "squash", None),
+            item("ccc", "reword", Some("New title")),
+        ]);
+
+        assert_eq!(bindings, vec![("ccc".to_string(), "New title".to_string())]);
+    }
+
+    #[test]
+    fn dropped_items_bind_nothing() {
+        let bindings = message_bindings(&[
+            item("aaa", "pick", None),
+            item("bbb", "drop", Some("Never applied")),
+            item("ccc", "reword", Some("New title")),
+        ]);
+
+        assert_eq!(bindings, vec![("ccc".to_string(), "New title".to_string())]);
+    }
 
     #[test]
     fn each_rebase_gets_its_own_scratch_directory() {

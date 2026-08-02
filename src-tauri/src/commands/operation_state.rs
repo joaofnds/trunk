@@ -201,6 +201,10 @@ pub fn merge_abort_inner(
 /// (vi/nvim inherited from the environment) blocks forever and the command never
 /// returns. `true` accepts whatever message git has already staged.
 /// `--abort` reaches no editor at all — the pin is inert there, not load-bearing.
+///
+/// Resuming steps override the pin with `git::editor::keyed_rebase_editor`, which
+/// is equally TTY-free but also delivers the messages an interactive rebase filed
+/// before it stopped. `true` would drop every one of them silently.
 pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Command {
     let mut cmd = std::process::Command::new("git");
     cmd.args(["rebase", step])
@@ -233,7 +237,9 @@ pub fn rebase_continue_inner(
         }
     }
 
+    let editor = crate::git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--continue")
+        .env("GIT_EDITOR", editor.script_path())
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {
@@ -254,7 +260,9 @@ pub fn rebase_skip_inner(
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let editor = crate::git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--skip")
+        .env("GIT_EDITOR", editor.script_path())
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
     if !output.status.success() {

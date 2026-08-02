@@ -6,9 +6,9 @@
 //! returned [`EditorHandle`] owns both files and removes them on `Drop` —
 //! including the early-return path where the handle leaves scope on `?`.
 //!
-//! This is the single-shot extract of the queue-based pattern in
-//! `src-tauri/src/commands/interactive_rebase.rs:131-179` (per D-08 the queue
-//! stays inline; only the single-shot is extracted here per D-07).
+//! [`keyed_rebase_editor`] covers the other shape: an interactive rebase, where
+//! git decides how many times the editor runs and for which commit, so the
+//! message cannot be chosen up front.
 //!
 //! # Usage (Phase 76)
 //!
@@ -52,9 +52,7 @@ impl EditorHandle {
 impl Drop for EditorHandle {
     fn drop(&mut self) {
         // Best-effort cleanup — Drop cannot return Result, and any leftover
-        // file in temp_dir() is reaped by the OS eventually. Matches the
-        // `let _ = std::fs::create_dir_all(...)` pattern at
-        // src-tauri/src/commands/interactive_rebase.rs:144.
+        // file in temp_dir() is reaped by the OS eventually.
         let _ = std::fs::remove_file(&self.script_path);
         let _ = std::fs::remove_file(&self.msg_path);
     }
@@ -100,6 +98,65 @@ pub fn prepare(message: &str) -> Result<EditorHandle, TrunkError> {
         script_path,
         msg_path,
     })
+}
+
+/// Directory of pre-edited interactive-rebase messages, one file per commit,
+/// named by full OID, resolved against the repository's git dir.
+///
+/// The keyed editor script below finds it with `git rev-parse --git-path`, so
+/// this constant is the only place the name is written.
+pub const MESSAGE_DIR: &str = "trunk-rebase-msgs";
+
+/// The editor `git rebase -i` runs for every reword and every run of squashes.
+///
+/// It asks git which todo item it was invoked for — the last line of
+/// `rebase-merge/done` is that item, echoed from the todo we wrote — and applies
+/// the message filed under that commit, if there is one. Nothing here counts
+/// invocations or assumes an order, because git guarantees neither: a run of
+/// squashes opens the editor once, at its last item, and a skipped item opens it
+/// not at all.
+///
+/// The only value substituted in is [`MESSAGE_DIR`], a constant — no path and
+/// nothing a user typed reaches the script, so there is no shell-quoting hazard
+/// here. Every path exits 0: a commit with no filed message keeps whatever
+/// default git prepared.
+const KEYED_REBASE_EDITOR: &str = r#"#!/bin/sh
+DIR=$(git rev-parse --git-path @MESSAGE_DIR@)
+DONE=$(git rev-parse --git-path rebase-merge/done)
+OID=$(tail -n 1 "$DONE" 2>/dev/null | awk '{print $2}')
+if [ -n "$OID" ] && [ -f "$DIR/$OID" ]; then
+  cat "$DIR/$OID" > "$1"
+fi
+exit 0
+"#;
+
+/// Owns the temp script backing one `GIT_EDITOR=<script>` rebase run.
+///
+/// The script is per-invocation and lives at 0755 under `temp_dir()`; the
+/// messages it reads live under the repository's git dir, because a conflicted
+/// rebase outlives the call that started it.
+pub struct KeyedEditor {
+    script_path: PathBuf,
+}
+
+impl KeyedEditor {
+    /// Path callers pass to `Command::env("GIT_EDITOR", _)`.
+    pub fn script_path(&self) -> &Path {
+        &self.script_path
+    }
+}
+
+impl Drop for KeyedEditor {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.script_path);
+    }
+}
+
+/// Write the keyed editor script and hand back a handle that removes it on drop.
+pub fn keyed_rebase_editor() -> Result<KeyedEditor, TrunkError> {
+    let script = KEYED_REBASE_EDITOR.replace("@MESSAGE_DIR@", MESSAGE_DIR);
+    let script_path = write_executable_temp_file("trunk-rebase-editor-", ".sh", script.as_bytes())?;
+    Ok(KeyedEditor { script_path })
 }
 
 /// POSIX-safe single-quoting: wrap in `'…'` and replace embedded `'` with `'\''`.
@@ -200,6 +257,45 @@ mod tests {
         assert!(
             script.contains(&expected_cp),
             "script must contain shell-quoted cp pattern {expected_cp:?} (T-75-T04 mitigation), got: {script:?}",
+        );
+    }
+
+    #[test]
+    fn keyed_editor_script_reads_the_directory_the_rebase_writes() {
+        let editor = keyed_rebase_editor().expect("keyed_rebase_editor() must succeed");
+        let script = fs::read_to_string(editor.script_path()).unwrap();
+
+        assert!(
+            script.contains(MESSAGE_DIR),
+            "the script must look in the directory interactive_rebase files messages in, got: {script:?}",
+        );
+        assert!(
+            !script.contains("@MESSAGE_DIR@"),
+            "placeholder must be substituted, got: {script:?}",
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(editor.script_path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o755, "git has to be able to execute it");
+        }
+    }
+
+    #[test]
+    fn keyed_editor_script_is_removed_when_the_handle_leaves_scope() {
+        let script_path = {
+            let editor = keyed_rebase_editor().expect("keyed_rebase_editor() must succeed");
+            editor.script_path().to_path_buf()
+        };
+
+        assert!(
+            !script_path.exists(),
+            "an early return must not leak an executable script",
         );
     }
 
