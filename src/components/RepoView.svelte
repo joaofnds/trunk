@@ -849,8 +849,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 		rebaseFocusedFileSelected = null;
 		showRebaseEditor = true;
 	} catch (e) {
-		const err = e as { message?: string };
-		showToast(err.message ?? "Failed to load commits for rebase", "error");
+		reportErrorToast(e, "Failed to load commits for rebase");
 	}
 }
 
@@ -907,8 +906,7 @@ async function handleRebaseStart(
 			todoItems,
 		});
 	} catch (e) {
-		const err = e as { message?: string };
-		showToast(err.message ?? "Rebase failed", "error");
+		reportErrorToast(e, "Rebase failed");
 	}
 }
 

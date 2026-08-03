@@ -20,10 +20,10 @@ export async function mergeBranch({
 	onDone?: OnDone;
 }): Promise<void> {
 	try {
-		const result = await safeInvoke<{ kind: string; message?: string }>(
-			"merge_branch_begin",
-			{ path: repoPath, branch },
-		);
+		const result = await safeInvoke<{
+			kind: "ready" | "fast_forwarded" | "conflicts";
+			message?: string;
+		}>("merge_branch_begin", { path: repoPath, branch });
 
 		if (result.kind === "ready") {
 			const msg = await openMessageEditor?.(
@@ -60,23 +60,20 @@ export async function rebaseBranch({
 	}
 }
 
-export async function interactiveRebaseFrom({
+export async function resolveForkPoint({
 	repoPath,
 	branch,
-	onForkPoint,
 }: {
 	repoPath: string;
 	branch: string;
-	onForkPoint: (forkPoint: string) => void;
-}): Promise<void> {
+}): Promise<string | null> {
 	try {
-		const forkPoint = await safeInvoke<string>("get_fork_point", {
+		return await safeInvoke<string>("get_fork_point", {
 			path: repoPath,
 			branch,
 		});
-
-		onForkPoint(forkPoint);
 	} catch (e) {
 		reportErrorToast(e, "Failed to detect fork point");
+		return null;
 	}
 }

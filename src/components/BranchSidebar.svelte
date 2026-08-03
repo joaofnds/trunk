@@ -1,9 +1,9 @@
 <script lang="ts">
 import { Archive, Search } from "@lucide/svelte";
 import {
-	interactiveRebaseFrom,
 	mergeBranch,
 	rebaseBranch,
+	resolveForkPoint,
 } from "../lib/branch-op.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
@@ -413,12 +413,10 @@ function handleRebaseBranch(ontoBranch: string) {
 	return rebaseBranch({ repoPath, ontoBranch, onDone: refreshAfterAction });
 }
 
-function handleInteractiveRebase(branchName: string) {
-	return interactiveRebaseFrom({
-		repoPath,
-		branch: branchName,
-		onForkPoint: (forkPoint) => onopenrebaseeditor?.(forkPoint),
-	});
+async function handleInteractiveRebase(branchName: string) {
+	const forkPoint = await resolveForkPoint({ repoPath, branch: branchName });
+
+	if (forkPoint !== null) onopenrebaseeditor?.(forkPoint);
 }
 
 async function handleDeleteRemoteBranch(fullRefName: string) {

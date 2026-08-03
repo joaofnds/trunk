@@ -21,7 +21,6 @@ import {
 	toggleHunk,
 	toggleLine,
 } from "../lib/merge-parser.js";
-import { showToast } from "../lib/toast.svelte.js";
 import type { MergeSides } from "../lib/types.js";
 
 interface Props {

@@ -13,9 +13,9 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import {
-	interactiveRebaseFrom,
 	mergeBranch,
 	rebaseBranch,
+	resolveForkPoint,
 } from "../lib/branch-op.js";
 import { copySha } from "../lib/clipboard.js";
 import { computeCommitNav } from "../lib/commitNav.js";
@@ -661,12 +661,10 @@ function handleRebaseBranch(ontoBranch: string) {
 	return rebaseBranch({ repoPath, ontoBranch });
 }
 
-function handleInteractiveRebaseBranch(branchName: string) {
-	return interactiveRebaseFrom({
-		repoPath,
-		branch: branchName,
-		onForkPoint: (forkPoint) => onopenrebaseeditor?.(forkPoint),
-	});
+async function handleInteractiveRebaseBranch(branchName: string) {
+	const forkPoint = await resolveForkPoint({ repoPath, branch: branchName });
+
+	if (forkPoint !== null) onopenrebaseeditor?.(forkPoint);
 }
 
 async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {

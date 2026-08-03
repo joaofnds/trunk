@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
+import { safeInvoke } from "../lib/invoke.js";
 import WelcomeScreen from "./WelcomeScreen.svelte";
 
 // Shared Tauri mock (mocks invoke, dialog, clipboard, etc.)
@@ -18,7 +19,8 @@ vi.mock("../lib/store.js", () => ({
 }));
 
 // Mock invoke module — safeInvoke resolves so openPath succeeds
-vi.mock("../lib/invoke.js", () => ({
+vi.mock("../lib/invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("../lib/invoke.js")>()),
 	safeInvoke: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -90,6 +92,29 @@ describe("WelcomeScreen", () => {
 		// openPath is async (calls safeInvoke then onopen)
 		await vi.waitFor(() => {
 			expect(onopen).toHaveBeenCalledWith("/Users/test/code/trunk", "trunk");
+		});
+	});
+
+	it("shows the backend message when opening a repo fails", async () => {
+		const storeModule = await import("../lib/store.js");
+		vi.mocked(storeModule.getRecentRepos).mockResolvedValue([
+			{ name: "trunk", path: "/Users/test/code/trunk" },
+		]);
+		vi.mocked(safeInvoke).mockRejectedValueOnce({
+			code: "git_error",
+			message: "not a git repository",
+		});
+
+		render(WelcomeScreen, { props: { onopen: vi.fn() } });
+		await vi.waitFor(() => {
+			expect(screen.getByText("trunk")).toBeInTheDocument();
+		});
+		await fireEvent.click(
+			screen.getByText("trunk").closest('[role="button"]') as Element,
+		);
+
+		await vi.waitFor(() => {
+			expect(screen.getByText("not a git repository")).toBeInTheDocument();
 		});
 	});
 });

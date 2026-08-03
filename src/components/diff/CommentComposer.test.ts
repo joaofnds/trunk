@@ -8,7 +8,8 @@ import CommentComposer from "./CommentComposer.svelte";
 // Shared Tauri mock (provides plugin-dialog `ask`, etc.)
 import "../../__tests__/helpers/tauri-mock";
 
-vi.mock("../../lib/invoke.js", () => ({
+vi.mock("../../lib/invoke.js", async (importActual) => ({
+	...(await importActual<typeof import("../../lib/invoke.js")>()),
 	safeInvoke: vi.fn().mockResolvedValue(undefined),
 }));
 

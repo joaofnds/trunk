@@ -19,7 +19,6 @@ import {
 	editComment,
 } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
-import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail,
 	CommitNav,

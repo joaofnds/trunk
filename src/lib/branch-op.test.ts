@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	interactiveRebaseFrom,
-	mergeBranch,
-	rebaseBranch,
-} from "./branch-op.js";
+import { mergeBranch, rebaseBranch, resolveForkPoint } from "./branch-op.js";
 import { safeInvoke } from "./invoke.js";
 import { _resetToasts, toasts } from "./toast.svelte.js";
 
@@ -83,9 +79,10 @@ describe("mergeBranch", () => {
 			onDone,
 		});
 
-		expect(mockInvoke.mock.calls.map((c) => c[0])).toEqual([
-			"merge_branch_begin",
-		]);
+		expect(mockInvoke).not.toHaveBeenCalledWith(
+			"merge_continue",
+			expect.anything(),
+		);
 		expect(onDone).not.toHaveBeenCalled();
 	});
 
@@ -113,15 +110,20 @@ describe("mergeBranch", () => {
 });
 
 describe("rebaseBranch", () => {
-	it("sends the repo path and the target branch, then runs onDone", async () => {
-		const onDone = vi.fn();
-
-		await rebaseBranch({ repoPath: "/repo", ontoBranch: "main", onDone });
+	it("sends the repo path and the target branch to rebase_branch", async () => {
+		await rebaseBranch({ repoPath: "/repo", ontoBranch: "main" });
 
 		expect(mockInvoke).toHaveBeenCalledWith("rebase_branch", {
 			path: "/repo",
 			ontoBranch: "main",
 		});
+	});
+
+	it("runs onDone after the rebase", async () => {
+		const onDone = vi.fn();
+
+		await rebaseBranch({ repoPath: "/repo", ontoBranch: "main", onDone });
+
 		expect(onDone).toHaveBeenCalledTimes(1);
 	});
 
@@ -139,38 +141,41 @@ describe("rebaseBranch", () => {
 	});
 });
 
-describe("interactiveRebaseFrom", () => {
-	it("hands the fork point to the editor opener", async () => {
+describe("resolveForkPoint", () => {
+	it("asks for the fork point of the named branch", async () => {
 		mockInvoke.mockResolvedValue("abc123");
-		const onForkPoint = vi.fn();
 
-		await interactiveRebaseFrom({
-			repoPath: "/repo",
-			branch: "topic",
-			onForkPoint,
-		});
+		await resolveForkPoint({ repoPath: "/repo", branch: "topic" });
 
 		expect(mockInvoke).toHaveBeenCalledWith("get_fork_point", {
 			path: "/repo",
 			branch: "topic",
 		});
-		expect(onForkPoint).toHaveBeenCalledWith("abc123");
 	});
 
-	it("reports the failure and opens no editor when the lookup rejects", async () => {
+	it("returns the fork point it found", async () => {
+		mockInvoke.mockResolvedValue("abc123");
+
+		const forkPoint = await resolveForkPoint({
+			repoPath: "/repo",
+			branch: "topic",
+		});
+
+		expect(forkPoint).toBe("abc123");
+	});
+
+	it("reports the failure and returns null when the lookup rejects", async () => {
 		mockInvoke.mockRejectedValue({
 			code: "git_not_found",
 			message: "no fork point",
 		});
-		const onForkPoint = vi.fn();
 
-		await interactiveRebaseFrom({
+		const forkPoint = await resolveForkPoint({
 			repoPath: "/repo",
 			branch: "topic",
-			onForkPoint,
 		});
 
+		expect(forkPoint).toBeNull();
 		expect(errorMessages()).toEqual(["no fork point"]);
-		expect(onForkPoint).not.toHaveBeenCalled();
 	});
 });
