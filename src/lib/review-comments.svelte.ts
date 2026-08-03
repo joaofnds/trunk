@@ -1,7 +1,12 @@
 import { listen } from "@tauri-apps/api/event";
 import { buildCommentCounts } from "./comment-counts.js";
 import { safeInvoke } from "./invoke.js";
-import type { Comment, ReviewSnapshots, SessionStatus } from "./types";
+import type {
+	Comment,
+	ReviewSnapshots,
+	SessionCommit,
+	SessionStatus,
+} from "./types";
 
 /**
  * The single reactive source of truth for review comments, lifted to RepoView
@@ -16,6 +21,8 @@ export interface ReviewCommentsManager {
 	readonly comments: Comment[];
 	readonly snapshots: ReviewSnapshots;
 	readonly active: boolean;
+	/** Oids of the commits in the session — drives the graph's in-session rail. */
+	readonly oids: ReadonlySet<string>;
 	readonly totalCount: number;
 	// Derived comment counts shared by every count badge (commit graph, file
 	// lists, WIP row). Sourced once here so the graph total always equals the
@@ -34,6 +41,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 			index_snapshot: null,
 		} as ReviewSnapshots,
 		active: false,
+		oids: new Set<string>() as ReadonlySet<string>,
 	});
 
 	const totalCount = $derived(state.comments.length);
@@ -43,7 +51,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	// The canonical path the backend reports for this repo. The session-changed
 	// payload is that canonical string, so the listener filters on it. Tracked
 	// separately so the filter can fail-closed while it is still null (a missing
-	// or inactive session is a normal state — mirrors CommitGraph:330).
+	// or inactive session is a normal state).
 	let canonicalPath: string | null = null;
 
 	async function refresh(): Promise<void> {
@@ -53,13 +61,16 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		// aborts the whole update, leaving stale comments/active on screen — so
 		// ending a review would NOT clear inline comments. Settling each lets a
 		// rejection collapse to the correct empty/inactive state instead.
-		const [statusR, snapshotsR, commentsR] = await Promise.allSettled([
-			safeInvoke<SessionStatus>("get_review_session_status", {
-				path: repoPath,
-			}),
-			safeInvoke<ReviewSnapshots>("get_review_snapshots", { path: repoPath }),
-			safeInvoke<Comment[]>("list_session_comments", { path: repoPath }),
-		]);
+		const [statusR, snapshotsR, commentsR, commitsR] = await Promise.allSettled(
+			[
+				safeInvoke<SessionStatus>("get_review_session_status", {
+					path: repoPath,
+				}),
+				safeInvoke<ReviewSnapshots>("get_review_snapshots", { path: repoPath }),
+				safeInvoke<Comment[]>("list_session_comments", { path: repoPath }),
+				safeInvoke<SessionCommit[]>("list_session_commits", { path: repoPath }),
+			],
+		);
 
 		if (statusR.status === "fulfilled" && statusR.value) {
 			canonicalPath = statusR.value.canonical_path;
@@ -77,13 +88,17 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 			commentsR.status === "fulfilled" && Array.isArray(commentsR.value)
 				? commentsR.value
 				: [];
+
+		state.oids =
+			commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
+				? new Set(commitsR.value.map((c) => c.oid))
+				: new Set();
 	}
 
 	// Live coordination: refresh when a session-changed event arrives for this
 	// repo's canonical path. Fail-closed when canonicalPath is null so cross-repo
 	// events during the cold-start window don't trigger a refresh. The `cancelled`
-	// flag disposes a listener the promise delivers after destroy() (mirrors
-	// CommitGraph:1448-1467 / ReviewPanel:444-458).
+	// flag disposes a listener the promise delivers after destroy().
 	let unlisten: (() => void) | undefined;
 	let cancelled = false;
 	listen<string>("session-changed", (event) => {
@@ -105,6 +120,9 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		},
 		get active() {
 			return state.active;
+		},
+		get oids() {
+			return state.oids;
 		},
 		get totalCount() {
 			return totalCount;

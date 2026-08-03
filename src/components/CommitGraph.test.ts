@@ -5,8 +5,6 @@ import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { safeInvoke } from "../lib/invoke.js";
 import { relativeLabel } from "../lib/relative-time.js";
 import { resetCache } from "../lib/text-measure.js";
-import { showToast } from "../lib/toast.svelte.js";
-import type { SessionStatus } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth).
@@ -62,26 +60,15 @@ vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
 }));
 
-// Capture the session-changed handler so tests can simulate cross-tab emits.
-// CommitGraph registers a session-changed and a search-toggle listener; keep them
-// apart by event name. search-toggle is webview-global, so every mounted instance
-// gets one and the fire helper calls them all.
-let sessionChangedHandler: ((event: { payload: string }) => void) | null = null;
+// search-toggle is webview-global, so every mounted instance gets one and the
+// fire helper calls them all.
 let searchToggleHandlers: (() => void)[] = [];
 vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn((event: string, cb: (event: { payload: string }) => void) => {
-		if (event === "session-changed") sessionChangedHandler = cb;
-		if (event === "search-toggle")
-			searchToggleHandlers.push(cb as unknown as () => void);
-		return Promise.resolve(() => {
-			if (event === "session-changed") sessionChangedHandler = null;
-		});
+	listen: vi.fn((event: string, cb: () => void) => {
+		if (event === "search-toggle") searchToggleHandlers.push(cb);
+		return Promise.resolve(() => {});
 	}),
 }));
-
-function fireSessionChanged(payload: string): void {
-	sessionChangedHandler?.({ payload });
-}
 
 function fireSearchToggle(): void {
 	for (const handler of searchToggleHandlers) handler();
@@ -172,16 +159,9 @@ type DispatchOverride = (
 	args?: Record<string, unknown>,
 ) => unknown | undefined;
 function installReads(
-	opts: {
-		commits?: typeof TEST_COMMITS;
-		status?: SessionStatus | null;
-		sessionCommits?: { oid: string }[];
-		override?: DispatchOverride;
-	} = {},
+	opts: { commits?: typeof TEST_COMMITS; override?: DispatchOverride } = {},
 ) {
-	const status = opts.status;
 	const commits = opts.commits ?? TEST_COMMITS;
-	const sessionCommits = opts.sessionCommits ?? [];
 	vi.mocked(safeInvoke).mockReset();
 	vi.mocked(safeInvoke).mockImplementation((cmd: string, args) => {
 		const overridden = opts.override?.(cmd, args);
@@ -193,18 +173,6 @@ function installReads(
 				return Promise.resolve({ commits, max_columns: 1 });
 			case "list_stashes":
 				return Promise.resolve([]);
-			case "get_review_session_status":
-				return status === null
-					? Promise.reject({ code: "no_session", message: "no session" })
-					: Promise.resolve(
-							status ?? {
-								state: "none",
-								file_exists: false,
-								canonical_path: "/repo",
-							},
-						);
-			case "list_session_commits":
-				return Promise.resolve(sessionCommits);
 			default:
 				return Promise.resolve(undefined);
 		}
@@ -217,7 +185,6 @@ async function flush() {
 }
 
 beforeEach(() => {
-	sessionChangedHandler = null;
 	searchToggleHandlers = [];
 	vi.clearAllMocks();
 	menuActions.clear();
@@ -294,148 +261,6 @@ describe("CommitGraph", () => {
 			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("list_stashes", {
 				path: "/test/repo",
 			});
-		});
-	});
-
-	describe("session-changed listener (66/WR-01)", () => {
-		it("fails closed when canonicalPath is null — cross-repo event does not trigger reload", async () => {
-			// status reject => sessionStatus stays null AND canonicalPath stays null.
-			// Today the bug: `if (sessionStatus && …) return` short-circuits to falsy,
-			// so the guard never triggers, and every cross-repo event triggers a reload.
-			// After the fix: `canonicalPath && …` is still null/falsy, but the listener
-			// uses canonicalPath (fail-closed because canonicalPath null means "we don't
-			// know yet — drop everything"). Plan §1 reverses the polarity by requiring
-			// the listener to gate on canonicalPath being known AND matching.
-			installReads({ status: null });
-			render(CommitGraph, {
-				props: {
-					repoPath: "/this/repo",
-					clearRedoStack: vi.fn(),
-					tabActive: true,
-				},
-			});
-			await flush();
-
-			const callsBefore = vi
-				.mocked(safeInvoke)
-				.mock.calls.filter(
-					(c) =>
-						c[0] === "get_review_session_status" ||
-						c[0] === "list_session_commits",
-				).length;
-
-			fireSessionChanged("/some/other/repo");
-			await flush();
-
-			const callsAfter = vi
-				.mocked(safeInvoke)
-				.mock.calls.filter(
-					(c) =>
-						c[0] === "get_review_session_status" ||
-						c[0] === "list_session_commits",
-				).length;
-
-			// After fix: cross-repo event with null canonicalPath must NOT reload.
-			expect(callsAfter).toBe(callsBefore);
-		});
-
-		it("filters events by canonical_path once known — own-repo reloads, other-repo does not", async () => {
-			installReads({
-				status: {
-					state: "active",
-					file_exists: true,
-					canonical_path: "/this/repo",
-				},
-			});
-			render(CommitGraph, {
-				props: {
-					repoPath: "/this/repo",
-					clearRedoStack: vi.fn(),
-					tabActive: true,
-				},
-			});
-			await flush();
-
-			const callsBefore = vi
-				.mocked(safeInvoke)
-				.mock.calls.filter((c) => c[0] === "get_review_session_status").length;
-
-			fireSessionChanged("/other/repo");
-			await flush();
-			expect(
-				vi
-					.mocked(safeInvoke)
-					.mock.calls.filter((c) => c[0] === "get_review_session_status")
-					.length,
-			).toBe(callsBefore);
-
-			fireSessionChanged("/this/repo");
-			await flush();
-			expect(
-				vi
-					.mocked(safeInvoke)
-					.mock.calls.filter((c) => c[0] === "get_review_session_status")
-					.length,
-			).toBeGreaterThan(callsBefore);
-		});
-	});
-
-	describe("reloadSession error branching (66/WR-02)", () => {
-		it("silently empties state on no_session — no toast", async () => {
-			installReads({
-				override: (cmd) =>
-					cmd === "get_review_session_status"
-						? Promise.reject({ code: "no_session", message: "no session" })
-						: undefined,
-			});
-			render(CommitGraph, {
-				props: {
-					repoPath: "/this/repo",
-					clearRedoStack: vi.fn(),
-					tabActive: true,
-				},
-			});
-			await flush();
-			expect(vi.mocked(showToast)).not.toHaveBeenCalled();
-		});
-
-		it("silently empties state on not_open — no toast", async () => {
-			installReads({
-				override: (cmd) =>
-					cmd === "get_review_session_status"
-						? Promise.reject({ code: "not_open", message: "not open" })
-						: undefined,
-			});
-			render(CommitGraph, {
-				props: {
-					repoPath: "/this/repo",
-					clearRedoStack: vi.fn(),
-					tabActive: true,
-				},
-			});
-			await flush();
-			expect(vi.mocked(showToast)).not.toHaveBeenCalled();
-		});
-
-		it("surfaces an error toast on unexpected backend failure", async () => {
-			installReads({
-				override: (cmd) =>
-					cmd === "get_review_session_status"
-						? Promise.reject({ code: "internal", message: "boom" })
-						: undefined,
-			});
-			render(CommitGraph, {
-				props: {
-					repoPath: "/this/repo",
-					clearRedoStack: vi.fn(),
-					tabActive: true,
-				},
-			});
-			await flush();
-			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-				expect.stringMatching(/review/i),
-				"error",
-			);
 		});
 	});
 

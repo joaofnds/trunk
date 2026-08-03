@@ -273,6 +273,18 @@ describe("RepoView", () => {
 		};
 	}
 
+	// The review session has one owner: the comments rune RepoView creates. The
+	// graph reads it rather than fetching a second copy beside it.
+	it("asks for the review session status once per tab", async () => {
+		render(RepoView, { props: baseProps(createMockRemoteState()) });
+		await new Promise((r) => setTimeout(r, 0));
+
+		const statusCalls = mockInvoke.mock.calls.filter(
+			(c) => c[0] === "get_review_session_status",
+		);
+		expect(statusCalls).toHaveLength(1);
+	});
+
 	describe("background fetch", () => {
 		// Long enough that the assertion reads "the interval fires", not "the
 		// interval is 60s" (DEFAULT_FETCH_INTERVAL_MS, src/lib/store.ts).

@@ -5,12 +5,28 @@ import type { Comment } from "./types";
 
 // safeInvoke is a thin wrapper around @tauri-apps/api/core::invoke (src/lib/invoke.ts).
 // Mock the underlying invoke (not safeInvoke) so the TrunkError-parsing path stays
-// live, matching review-session.svelte.test.ts. listen is stubbed to a no-op unlisten
-// so the rune installs no real session-changed subscription under test.
+// live, matching review-session.svelte.test.ts.
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+// Capture the rune's session-changed callback so tests can simulate a cross-tab
+// emit; the real IPC core is undefined under jsdom.
+let sessionChangedHandler: ((event: { payload: string }) => void) | null = null;
 vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn().mockResolvedValue(() => {}),
+	listen: vi.fn((_event: string, cb: (event: { payload: string }) => void) => {
+		sessionChangedHandler = cb;
+		return Promise.resolve(() => {
+			sessionChangedHandler = null;
+		});
+	}),
 }));
+
+function fireSessionChanged(payload: string): void {
+	sessionChangedHandler?.({ payload });
+}
+
+async function flush() {
+	await new Promise((r) => setTimeout(r, 0));
+}
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -46,6 +62,15 @@ function activeSession() {
 				});
 			case "list_session_comments":
 				return Promise.resolve([comment]);
+			case "list_session_commits":
+				return Promise.resolve([
+					{
+						oid: "abc",
+						short_oid: "abc",
+						summary: "a commit under review",
+						is_snapshot: false,
+					},
+				]);
 			default:
 				return Promise.reject(new Error(`unexpected ${cmd}`));
 		}
@@ -69,6 +94,7 @@ function endedSession() {
 					index_snapshot: null,
 				});
 			case "list_session_comments":
+			case "list_session_commits":
 				return Promise.reject(
 					'{"code":"no_session","message":"No active review session for this repository"}',
 				);
@@ -76,6 +102,14 @@ function endedSession() {
 				return Promise.reject(new Error(`unexpected ${cmd}`));
 		}
 	});
+}
+
+// A repo the backend will not answer for: every read rejects, so the rune never
+// learns a canonical path.
+function unreachableRepo() {
+	mockInvoke.mockImplementation(() =>
+		Promise.reject('{"code":"not_open","message":"Repository is not open"}'),
+	);
 }
 
 beforeEach(() => {
@@ -99,6 +133,30 @@ describe("createReviewComments — refresh", () => {
 		m.destroy();
 	});
 
+	it("exposes the oids of the commits under review", async () => {
+		activeSession();
+		const m = createReviewComments("/repo");
+
+		await m.refresh();
+
+		expect([...m.oids]).toEqual(["abc"]);
+
+		m.destroy();
+	});
+
+	it("empties the oids when the session ends", async () => {
+		activeSession();
+		const m = createReviewComments("/repo");
+		await m.refresh();
+
+		endedSession();
+		await m.refresh();
+
+		expect(m.oids.size).toBe(0);
+
+		m.destroy();
+	});
+
 	it("clears stale comments and marks inactive when the session ends", async () => {
 		activeSession();
 		const m = createReviewComments("/repo");
@@ -118,6 +176,52 @@ describe("createReviewComments — refresh", () => {
 			working_tree_snapshot: null,
 			index_snapshot: null,
 		});
+
+		m.destroy();
+	});
+});
+
+describe("createReviewComments — session-changed listener", () => {
+	it("refreshes on an event for its own repo", async () => {
+		activeSession();
+		const m = createReviewComments("/repo");
+		await flush();
+
+		endedSession();
+		fireSessionChanged("/repo");
+		await flush();
+
+		expect(m.active).toBe(false);
+		expect(m.comments).toEqual([]);
+
+		m.destroy();
+	});
+
+	it("ignores an event for another repo", async () => {
+		activeSession();
+		const m = createReviewComments("/repo");
+		await flush();
+
+		endedSession();
+		fireSessionChanged("/some/other/repo");
+		await flush();
+
+		expect(m.active).toBe(true);
+		expect(m.comments).toEqual([comment]);
+
+		m.destroy();
+	});
+
+	it("drops every event while the canonical path is unknown", async () => {
+		unreachableRepo();
+		const m = createReviewComments("/repo");
+		await flush();
+
+		activeSession();
+		fireSessionChanged("/some/other/repo");
+		await flush();
+
+		expect(m.active).toBe(false);
 
 		m.destroy();
 	});
