@@ -179,12 +179,10 @@ function isJumpable(c: Comment): boolean {
 async function reload() {
 	// Track the canonical path so the session-changed listener can filter to this
 	// repo (a missing/inactive session is a normal state — swallow silently).
-	// AWAIT the status so canonicalPath is set BEFORE the listener installed by
-	// the sibling $effect can fire — otherwise a session-changed event arriving
-	// during the cold-start window passes the `canonicalPath && payload !== …`
-	// filter (canonicalPath is still null → falsy → short-circuit fails closed,
-	// the filter never triggers), and the panel reloads for unrelated repos in
-	// a multi-tab session (WR-02).
+	// AWAIT the status before the reads below so canonicalPath is set as early as
+	// possible: the listener fails closed while it is null (WR-01), so every event
+	// arriving in the cold-start window is dropped, this repo's own included.
+	// Widening that window costs reloads the panel should have run (WR-02).
 	try {
 		const status = await safeInvoke<SessionStatus>(
 			"get_review_session_status",
@@ -381,7 +379,7 @@ $effect(() => {
 	let unlisten: (() => void) | undefined;
 	let cancelled = false;
 	listen<string>("session-changed", (event) => {
-		if (canonicalPath && event.payload !== canonicalPath) return;
+		if (!canonicalPath || event.payload !== canonicalPath) return;
 		reload();
 	}).then((fn) => {
 		if (cancelled) fn();

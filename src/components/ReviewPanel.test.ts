@@ -144,6 +144,7 @@ function installReads(opts: {
 	// the listener-triggered second reload reads "active" and skips the resume
 	// branch, keeping the call count at exactly 1.
 	statusAfterResume?: SessionStatus;
+	statusRejection?: unknown;
 	resumeRejection?: unknown;
 	endRejection?: unknown;
 	generateRejection?: unknown;
@@ -169,6 +170,9 @@ function installReads(opts: {
 				}
 				return Promise.resolve(opts.generateDoc ?? "# stub\n");
 			case "get_review_session_status":
+				if (opts.statusRejection !== undefined) {
+					return Promise.reject(opts.statusRejection);
+				}
 				return Promise.resolve(
 					resumed ? (opts.statusAfterResume ?? status) : status,
 				);
@@ -1583,5 +1587,30 @@ describe("multi-tab coordination", () => {
 		expect(vi.mocked(safeInvoke).mock.calls.length).toBe(initialCalls);
 		// And no churn that would clear the rendered comment.
 		expect(screen.getByText("look here")).toBeInTheDocument();
+	});
+
+	it("session-changed is dropped while the canonical path is unknown", async () => {
+		installReads({
+			commits,
+			comments: [lineAnchoredComment("c1", COMMIT_A, "look here")],
+			resolutions: [resolvable("c1")],
+			statusRejection: { code: "not_open", message: "repo not open" },
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		const initialCalls = vi.mocked(safeInvoke).mock.calls.length;
+
+		fireSessionChanged("/some/other/repo");
+		await flush();
+
+		expect(vi.mocked(safeInvoke).mock.calls.length).toBe(initialCalls);
 	});
 });
