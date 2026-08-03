@@ -55,7 +55,6 @@ import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitNav,
 	DiffStat,
-	EdgeType,
 	GraphCommit,
 	GraphResponse,
 	OverlayRefPill,
@@ -65,6 +64,7 @@ import type {
 	StashEntry,
 	WipStats,
 } from "../lib/types.js";
+import { withWipRow } from "../lib/wip-row.js";
 import CommitRow from "./CommitRow.svelte";
 import InputDialog from "./InputDialog.svelte";
 import SearchBar from "./SearchBar.svelte";
@@ -1201,49 +1201,7 @@ async function showHeaderContextMenu(e: MouseEvent) {
 	await menu.popup();
 }
 
-function makeWipItem(msg: string, col: number, colorIdx: number): GraphCommit {
-	return {
-		oid: "__wip__",
-		short_oid: "",
-		summary: msg,
-		body: null,
-		author_name: "",
-		author_email: "",
-		author_timestamp: 0,
-		parent_oids: [],
-		column: col,
-		color_index: colorIdx,
-		edges: [
-			{
-				from_column: col,
-				to_column: col,
-				edge_type: "Straight" as EdgeType,
-				color_index: colorIdx,
-				dashed: false,
-			},
-		],
-		refs: [],
-		is_head: false,
-		is_merge: false,
-		is_branch_tip: false,
-		is_stash: false,
-		in_head_chain: false,
-	};
-}
-
-const displayItems = $derived.by(() => {
-	// Stash commits are now included in the backend graph result with proper lane data.
-	// We only need to prepend the WIP row if there are uncommitted changes.
-	if (wipCount > 0) {
-		// Match WIP's column and color to the topmost head-chain commit —
-		// present even when HEAD is detached (mid-rebase), unlike is_head.
-		const headCommit = commits.find((c) => c.in_head_chain);
-		const col = headCommit?.column ?? 0;
-		const colorIdx = headCommit?.color_index ?? 0;
-		return [makeWipItem(wipMessage, col, colorIdx), ...commits];
-	}
-	return [...commits];
-});
+const displayItems = $derived(withWipRow(commits, wipCount, wipMessage));
 
 // Emit the selected commit's nav context (pager position + topology neighbors)
 // whenever the loaded list, selection, or load-more state changes. Reading
