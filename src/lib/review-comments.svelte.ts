@@ -54,7 +54,15 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	// or inactive session is a normal state).
 	let canonicalPath: string | null = null;
 
+	// Generation guard. Refreshes overlap freely — a session-changed burst, a
+	// resume round-trip landing on a manual refresh — and every write below is a
+	// whole-state replacement, so a slow older read would otherwise install its
+	// snapshot over a newer one. Modelled on BranchSidebar's loadSeq.
+	let loadSeq = 0;
+
 	async function refresh(): Promise<void> {
+		const seq = ++loadSeq;
+
 		// allSettled, not all: list_session_comments rejects with "no_session" once
 		// a review ends (review.rs removes the in-memory session), and get_review_*
 		// can reject when the repo is closing. With Promise.all a single reject
@@ -71,6 +79,8 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 				safeInvoke<SessionCommit[]>("list_session_commits", { path: repoPath }),
 			],
 		);
+
+		if (seq !== loadSeq) return;
 
 		if (statusR.status === "fulfilled" && statusR.value) {
 			canonicalPath = statusR.value.canonical_path;

@@ -226,3 +226,49 @@ describe("createReviewComments — session-changed listener", () => {
 		m.destroy();
 	});
 });
+
+describe("createReviewComments — overlapping refreshes", () => {
+	function deferred<T>() {
+		let resolve!: (value: T) => void;
+		const promise = new Promise<T>((r) => {
+			resolve = r;
+		});
+		return { promise, resolve };
+	}
+
+	it("keeps the newest result when an older refresh resolves last", async () => {
+		const older = deferred<Comment[]>();
+		const newer = deferred<Comment[]>();
+		let commentReads = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			switch (cmd) {
+				case "get_review_session_status":
+					return Promise.resolve({
+						state: "active",
+						file_exists: true,
+						canonical_path: "/repo",
+					});
+				case "get_review_snapshots":
+					return Promise.resolve({
+						working_tree_snapshot: null,
+						index_snapshot: null,
+					});
+				case "list_session_comments":
+					return (commentReads++ === 0 ? older : newer).promise;
+				default:
+					return Promise.resolve([]);
+			}
+		});
+
+		const m = createReviewComments("/repo");
+		const second = m.refresh();
+		newer.resolve([comment]);
+		await second;
+		older.resolve([]);
+		await flush();
+
+		expect(m.comments).toEqual([comment]);
+
+		m.destroy();
+	});
+});
