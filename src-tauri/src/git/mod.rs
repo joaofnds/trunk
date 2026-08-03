@@ -2,6 +2,7 @@ pub mod editor;
 pub mod graph;
 pub mod repository;
 pub mod review;
+pub mod review_range;
 pub mod review_resolution;
 pub mod review_store;
 pub mod status;

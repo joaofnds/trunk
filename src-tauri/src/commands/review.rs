@@ -22,10 +22,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-mod range;
-use range::*;
-
+use crate::git::review_range::{
+    apply_add, apply_remove, compute_range_oids, intersect_graph_order, union_dedup, validate_range,
+};
 use crate::git::review_resolution::{CommentResolution, resolve_all};
+use crate::git::types::SessionCommit;
 
 /// The three review-session states the frontend renders (D-12). Serializes
 /// kebab-case to match the stub strings `active` / `resume-available` / `none`.
@@ -50,22 +51,6 @@ pub struct SessionStatus {
     pub state: SessionState,
     pub file_exists: bool,
     pub canonical_path: String,
-}
-
-/// A single commit in the review session, rendered by the panel (D-05) and
-/// consumed as a membership set by the graph (D-04/D-06). Serialize-default
-/// snake_case matches `GraphCommit`, whose fields it copies 1:1.
-#[derive(Debug, Serialize, Clone)]
-pub struct SessionCommit {
-    pub oid: String,
-    pub short_oid: String,
-    pub summary: String,
-    /// True when this commit is an auto-created review snapshot (working-tree or
-    /// index), not a commit the user hand-picked. The panel hides EMPTY snapshot
-    /// sections (260531-l02d) while keeping empty hand-picked sections (their
-    /// per-commit "Add note" affordance). Set by `list_session_commits`.
-    #[serde(default)]
-    pub is_snapshot: bool,
 }
 
 /// Look the repo up in `RepoState`'s map and canonicalize its `PathBuf`.

@@ -75,6 +75,22 @@ pub struct GraphResult {
     pub max_columns: usize,
 }
 
+/// A single commit in the review session, rendered by the panel (D-05) and
+/// consumed as a membership set by the graph (D-04/D-06). Serialize-default
+/// snake_case matches `GraphCommit`, whose fields it copies 1:1.
+#[derive(Debug, Serialize, Clone)]
+pub struct SessionCommit {
+    pub oid: String,
+    pub short_oid: String,
+    pub summary: String,
+    /// True when this commit is an auto-created review snapshot (working-tree or
+    /// index), not a commit the user hand-picked. The panel hides EMPTY snapshot
+    /// sections (260531-l02d) while keeping empty hand-picked sections (their
+    /// per-commit "Add note" affordance). Set by `list_session_commits`.
+    #[serde(default)]
+    pub is_snapshot: bool,
+}
+
 // Per-commit (or WIP) diff size: insertions/deletions/files for the green-red bar
 // in the graph's Diff column. Write-only DTO (Serialize, no Deserialize) like
 // GraphCommit. Snake_case field names serialize as-is (no rename_all) to match the

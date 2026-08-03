@@ -1,11 +1,11 @@
 //! Selection core (Phase 66, Plan 01): pure, testable range/selection helpers.
 //!
 //! These take a `&git2::Repository` (no Tauri state) so the range/validation
-//! logic is provable against an in-process test repo; the command layer in the
-//! parent module wraps them.
+//! logic is provable against an in-process test repo; `commands/review.rs`
+//! wraps them.
 
-use super::SessionCommit;
 use crate::error::TrunkError;
+use crate::git::types::SessionCommit;
 
 /// Validate that `[base..tip]` is a meaningful inclusive range (SEL-01).
 ///
