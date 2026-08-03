@@ -297,6 +297,13 @@ path, which is safe because a commit cannot be its own parent. A guard here was 
 milestone 2 of the backdated-stash work: it returned an empty `d` and left the row interval
 inverted, so it hid one defect behind another.
 
+That removal puts a floor under `rowHeight`. Below **18**, two hollow tips one row apart
+pull their ends past each other and the segment inverts — measured at `rowHeight 17`, 252 of
+11200 downward cases. `rowHeight` is a measured float from `VirtualList`, and neither
+sub-pixel snapping nor browser zoom takes it near 18; only a smaller
+`DEFAULT_GRAPH_SETTINGS.rowHeight` would. Constrain it where `svgSettings` is assembled in
+`CommitGraph.svelte`, not at a settings page.
+
 Every path also carries `minRow`/`maxRow`: the two rows in ascending order, never child
 then parent. `overlay-visible.ts` culls on that interval, and an inverted pair drops a
 partially-visible connector instead of clipping it.
