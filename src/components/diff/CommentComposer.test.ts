@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../../lib/invoke.js";
+import { _resetToasts, toasts } from "../../lib/toast.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 import CommentComposer from "./CommentComposer.svelte";
 
@@ -11,10 +12,6 @@ import "../../__tests__/helpers/tauri-mock";
 vi.mock("../../lib/invoke.js", async (importActual) => ({
 	...(await importActual<typeof import("../../lib/invoke.js")>()),
 	safeInvoke: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock("../../lib/toast.svelte.js", () => ({
-	showToast: vi.fn(),
 }));
 
 const mockedInvoke = vi.mocked(safeInvoke);
@@ -73,8 +70,9 @@ async function getAskMock() {
 
 describe("CommentComposer", () => {
 	beforeEach(() => {
-		mockedInvoke.mockClear();
+		mockedInvoke.mockReset();
 		mockedInvoke.mockResolvedValue(undefined);
+		_resetToasts();
 	});
 
 	afterEach(() => {
@@ -97,7 +95,11 @@ describe("CommentComposer", () => {
 		expect(screen.getByText("Comments on lines 11-12")).toBeTruthy();
 	});
 
-	it("disables Submit while the textarea is empty or whitespace and enables it once non-empty", async () => {
+	it.each([
+		["an untouched draft", null, true],
+		["a whitespace-only draft", "   ", true],
+		["a non-empty draft", "looks good", false],
+	])("Submit is disabled for %s: %s", async (_name, value, disabled) => {
 		render(CommentComposer, {
 			props: {
 				file: modifiedFile,
@@ -109,20 +111,15 @@ describe("CommentComposer", () => {
 			},
 		});
 
+		if (value !== null) {
+			await fireEvent.input(screen.getByRole("textbox"), { target: { value } });
+			await tick();
+		}
+
 		const submit = screen.getByRole("button", {
 			name: /submit/i,
 		}) as HTMLButtonElement;
-		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-
-		expect(submit.disabled).toBe(true);
-
-		await fireEvent.input(textarea, { target: { value: "   " } });
-		await tick();
-		expect(submit.disabled).toBe(true);
-
-		await fireEvent.input(textarea, { target: { value: "looks good" } });
-		await tick();
-		expect(submit.disabled).toBe(false);
+		expect(submit.disabled).toBe(disabled);
 	});
 
 	it("persists a draft via save_draft_comment after the debounce idle window", async () => {
@@ -205,45 +202,89 @@ describe("CommentComposer", () => {
 		expect(onclose).toHaveBeenCalledTimes(1);
 	});
 
-	it("confirmDiscardIfDirty asks only when text is non-empty; blocks the switch on a false return", async () => {
-		const ask = await getAskMock();
-		ask.mockResolvedValue(false);
+	describe("confirmDiscardIfDirty", () => {
+		function renderComposer() {
+			return render(CommentComposer, {
+				props: {
+					file: modifiedFile,
+					hunkIdx: 0,
+					selectedLineIndices: new Set([1]),
+					commitOid: "abc123",
+					repoPath: "/repo",
+					onclose: () => {},
+				},
+			});
+		}
 
-		const { component } = render(CommentComposer, {
+		async function dirtyTheDraft() {
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "unsaved" },
+			});
+			await tick();
+		}
+
+		it("allows the switch without asking when the draft is untouched", async () => {
+			const ask = await getAskMock();
+			const { component } = renderComposer();
+
+			const allowed = await component.confirmDiscardIfDirty();
+
+			expect(ask).not.toHaveBeenCalled();
+			expect(allowed).toBe(true);
+		});
+
+		it("blocks the switch when the operator declines the discard", async () => {
+			const ask = await getAskMock();
+			ask.mockResolvedValue(false);
+			const { component } = renderComposer();
+			await dirtyTheDraft();
+
+			const allowed = await component.confirmDiscardIfDirty();
+
+			expect(allowed).toBe(false);
+		});
+
+		it("allows the switch when the operator accepts the discard", async () => {
+			const ask = await getAskMock();
+			ask.mockResolvedValue(true);
+			const { component } = renderComposer();
+			await dirtyTheDraft();
+
+			const allowed = await component.confirmDiscardIfDirty();
+
+			expect(allowed).toBe(true);
+		});
+	});
+
+	it("keeps the draft and reports the failure when add_comment rejects", async () => {
+		mockedInvoke.mockImplementation((cmd: string) =>
+			cmd === "add_comment"
+				? Promise.reject({ code: "git_error", message: "backend refused" })
+				: Promise.resolve(undefined),
+		);
+		const onclose = vi.fn();
+		render(CommentComposer, {
 			props: {
 				file: modifiedFile,
 				hunkIdx: 0,
 				selectedLineIndices: new Set([1]),
 				commitOid: "abc123",
 				repoPath: "/repo",
-				onclose: () => {},
+				onclose,
 			},
 		});
 
-		// Empty draft -> no ask, switch allowed.
-		ask.mockClear();
-		const allowedWhenEmpty = await component.confirmDiscardIfDirty();
-		expect(ask).not.toHaveBeenCalled();
-		expect(allowedWhenEmpty).toBe(true);
-
-		// Dirty the draft.
 		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
-		await fireEvent.input(textarea, { target: { value: "unsaved" } });
+		await fireEvent.input(textarea, { target: { value: "worth keeping" } });
+		await tick();
+		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
 		await tick();
 
-		// Non-empty draft + ask returns false -> blocked.
-		ask.mockClear();
-		ask.mockResolvedValue(false);
-		const blocked = await component.confirmDiscardIfDirty();
-		expect(ask).toHaveBeenCalledTimes(1);
-		expect(blocked).toBe(false);
-
-		// Non-empty draft + ask returns true -> allowed.
-		ask.mockClear();
-		ask.mockResolvedValue(true);
-		const allowed = await component.confirmDiscardIfDirty();
-		expect(ask).toHaveBeenCalledTimes(1);
-		expect(allowed).toBe(true);
+		expect(toasts.items.map((t) => [t.message, t.kind])).toEqual([
+			["backend refused", "error"],
+		]);
+		expect(textarea.value).toBe("worth keeping");
+		expect(onclose).not.toHaveBeenCalled();
 	});
 
 	it("uses the injected captured FullFile result for the preview without calling buildDiffAnchor", () => {
