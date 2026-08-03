@@ -8,7 +8,7 @@
 //! All resolution failures are routed INTO the returned markdown (per L-04 +
 //! L-09); the renderer NEVER returns an error.
 
-use crate::commands::review::{OrphanReason, classify_anchor};
+use crate::git::review_resolution::{OrphanReason, classify_anchor};
 use crate::git::types::{Anchor, ReviewSession, Side, Source};
 
 /// Render-only failure kinds. Does NOT cross the IPC wire (the Phase 69

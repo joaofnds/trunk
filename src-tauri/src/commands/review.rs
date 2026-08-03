@@ -25,11 +25,7 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 mod range;
 use range::*;
 
-mod resolution;
-// Re-export so `crate::commands::review::{classify_anchor, OrphanReason}` (used by
-// git/review.rs) and the resolution types/fn keep resolving after the move.
-pub(crate) use resolution::classify_anchor;
-pub use resolution::{CommentResolution, OrphanReason, resolve_all};
+use crate::git::review_resolution::{CommentResolution, resolve_all};
 
 /// The three review-session states the frontend renders (D-12). Serializes
 /// kebab-case to match the stub strings `active` / `resume-available` / `none`.
