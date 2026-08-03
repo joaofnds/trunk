@@ -10,6 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
+import { errorMessage } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -155,15 +156,6 @@ let endConfirming = $state(false);
 // Plain handle, not $state — only used to clear; reactivity is on `endConfirming`.
 let endTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Extract a human-readable message from an unknown catch value. Handles three
-// shapes: native Error (writeText / plugin throws), TrunkError (safeInvoke
-// throws — plain object with .message), and anything else (coerced via String).
-function errorMessage(e: unknown, fallback: string): string {
-	if (e instanceof Error) return e.message;
-	if (isTrunkError(e)) return e.message;
-	return fallback;
-}
-
 function isOrphan(c: Comment): boolean {
 	const r = resolutionById.get(c.id);
 	return r !== undefined && !r.resolvable;
@@ -307,9 +299,7 @@ async function onCopyClick() {
 			copyTimer = null;
 		}, 1500);
 	} catch (e) {
-		// `unknown` in TS strict; narrow rather than cast. Pitfall 1 + CLAUDE.md.
-		const msg = e instanceof Error ? e.message : String(e);
-		showToast(`Failed to copy: ${msg}`, "error");
+		showToast(`Failed to copy: ${errorMessage(e, "unknown error")}`, "error");
 	}
 }
 

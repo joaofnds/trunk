@@ -146,6 +146,7 @@ function installReads(opts: {
 	statusAfterResume?: SessionStatus;
 	resumeRejection?: unknown;
 	endRejection?: unknown;
+	generateRejection?: unknown;
 }) {
 	const status: SessionStatus = opts.status ?? {
 		state: "active",
@@ -163,6 +164,9 @@ function installReads(opts: {
 			case "resolve_session_comments":
 				return Promise.resolve(opts.resolutions ?? []);
 			case "generate_review_doc":
+				if (opts.generateRejection !== undefined) {
+					return Promise.reject(opts.generateRejection);
+				}
 				return Promise.resolve(opts.generateDoc ?? "# stub\n");
 			case "get_review_session_status":
 				return Promise.resolve(
@@ -789,12 +793,15 @@ describe("ReviewPanel", () => {
 			return screen.getByRole("button", { name: /^Cop(y|ied)$/ });
 		}
 
-		function renderWithComment(opts: { generateDoc?: string } = {}) {
+		function renderWithComment(
+			opts: { generateDoc?: string; generateRejection?: unknown } = {},
+		) {
 			installReads({
 				commits,
 				comments: [lineAnchoredComment("c1", COMMIT_A, "look here")],
 				resolutions: [resolvable("c1")],
 				generateDoc: opts.generateDoc ?? "the doc",
+				generateRejection: opts.generateRejection,
 			});
 			render(ReviewPanel, {
 				props: {
@@ -923,6 +930,22 @@ describe("ReviewPanel", () => {
 			expect(
 				screen.queryByRole("button", { name: /Copied/ }),
 			).not.toBeInTheDocument();
+		});
+
+		it("surfaces the message when generate rejects with a TrunkError", async () => {
+			renderWithComment({
+				generateRejection: {
+					code: "no_comments",
+					message: "No comments to include",
+				},
+			});
+			await flushFake();
+			await fireEvent.click(getCopyButton());
+			await flushFake();
+			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+				"Failed to copy: No comments to include",
+				"error",
+			);
 		});
 
 		it("coerces non-Error rejection", async () => {
