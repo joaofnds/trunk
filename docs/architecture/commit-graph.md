@@ -126,9 +126,17 @@ consuming no new lane and no new colour — when all of these hold:
 
 Otherwise it takes a free column and a new colour like any branch tip.
 
+Clause 4's second half looks like it would inline a stash away from column 0, and it does
+not. Clauses 3 and 5 together demand a column that is reserved in `pending_parents` but
+still free in `active_lanes`, and every other site sets those two together — only the
+HEAD-chain pre-reservation (`graph.rs`, "Pre-reserve column 0") leaves a column in that
+state. So every inline lands at column 0, and clause 4 narrows it further to the HEAD tip.
+A stash whose parent sits on a topic branch off the HEAD chain branches right instead,
+taking its own lane and colour (probed 2026-08-03).
+
 Clause 2 exists because the frontend draws its WIP row in the HEAD column whenever the
-worktree is dirty (`CommitGraph.svelte`, `displayItems`), and an inline stash can only ever
-land in that same column — so without it the stash square sits on the WIP line. The cost is
+worktree is dirty (`CommitGraph.svelte`, `displayItems`), and an inline stash lands in that
+same column — so without it the stash square sits on the WIP line. The cost is
 accepted churn: because the inline path consumes neither lane nor colour and stashes are
 placed before branch tips, toggling clean↔dirty can shift an unrelated branch's colour, and
 its column too when that branch sorts between the stash and the stash's parent. Both shapes
@@ -393,6 +401,7 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering |
+| `src-tauri/tests/test_graph.rs` | Owns the graph layout assertions; pins the accepted dirtiness churn |
 
 This table and the `paths:` list in `.claude/rules/commit-graph.md` are the same set — keep
 them in step, or the rule stops firing for a file it governs.

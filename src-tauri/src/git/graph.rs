@@ -177,10 +177,9 @@ pub fn walk_commits(
             // Inline stash placement: if the stash's parent column is free and
             // no intermediate commits will occupy it, place inline (same column
             // as parent) with a straight dashed line — like GitKraken.
-            // Safe when: parent is HEAD tip (no HEAD chain members between stash
-            // and parent) or parent is not in the HEAD chain (no pre-reserved
-            // commits at that column), and the worktree is clean — a dirty
-            // worktree puts the frontend's WIP row in the same column.
+            // Only column 0 is ever reserved-and-free, so the !head_chain arm cannot
+            // fire on its own — see .claude/rules/commit-graph.md before narrowing any
+            // clause. The worktree must be clean: a dirty one puts the WIP row here.
             let can_inline = is_stash
                 && !worktree_dirty
                 && parent_col.is_some()
