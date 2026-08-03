@@ -9,11 +9,16 @@ import {
 	Submenu,
 } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { ask, message } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import { copySha } from "../lib/clipboard.js";
 import { computeCommitNav } from "../lib/commitNav.js";
+import {
+	errorMessage,
+	reportErrorDialog,
+	reportErrorToast,
+} from "../lib/error-report.js";
 import {
 	BADGE_FONT_SIZE,
 	BADGE_HEIGHT,
@@ -26,7 +31,7 @@ import {
 	PILL_HEIGHT,
 	PILL_PADDING_X,
 } from "../lib/graph-constants.js";
-import { isTrunkError, safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { buildOverlayPaths } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
@@ -515,11 +520,7 @@ async function handleCheckoutCommit(commit: GraphCommit) {
 	try {
 		await safeInvoke("checkout_commit", { path: repoPath, oid: commit.oid });
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to checkout commit", {
-			title: "Checkout Error",
-			kind: "error",
-		});
+		await reportErrorDialog(e, "Checkout Error", "Failed to checkout commit");
 	}
 }
 
@@ -537,17 +538,17 @@ function handleCreateBranch(commit: GraphCommit) {
 				});
 				showToast(`Checked out ${values.name}`, "success");
 			} catch (e) {
-				const err = e as TrunkError;
-				if (err.code === "dirty_workdir") {
+				if (isTrunkError(e) && e.code === "dirty_workdir") {
 					showToast(
 						"Branch created (checkout skipped — uncommitted changes)",
 						"success",
 					);
 				} else {
-					await message(err.message ?? "Failed to create branch", {
-						title: "Create Branch Error",
-						kind: "error",
-					});
+					await reportErrorDialog(
+						e,
+						"Create Branch Error",
+						"Failed to create branch",
+					);
 				}
 			}
 		},
@@ -571,11 +572,7 @@ function handleCreateTag(commit: GraphCommit) {
 					message: values.message || "",
 				});
 			} catch (e) {
-				const err = e as TrunkError;
-				await message(err.message ?? "Failed to create tag", {
-					title: "Create Tag Error",
-					kind: "error",
-				});
+				await reportErrorDialog(e, "Create Tag Error", "Failed to create tag");
 			}
 		},
 	};
@@ -586,11 +583,10 @@ async function handleCherryPick(commit: GraphCommit) {
 	try {
 		await safeInvoke("cherry_pick", { path: repoPath, oid: commit.oid });
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(
-			err.message ??
-				"Cherry-pick failed. You may need to resolve conflicts manually.",
-			{ title: "Cherry-pick Error", kind: "error" },
+		await reportErrorDialog(
+			e,
+			"Cherry-pick Error",
+			"Cherry-pick failed. You may need to resolve conflicts manually.",
 		);
 	}
 }
@@ -612,14 +608,10 @@ async function handleRevert(commit: GraphCommit) {
 		if (msg == null) return;
 		await safeInvoke("revert_continue", { path: repoPath, message: msg });
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(
-			err.message ??
-				"Revert failed. You may need to resolve conflicts manually.",
-			{
-				title: "Revert Error",
-				kind: "error",
-			},
+		await reportErrorDialog(
+			e,
+			"Revert Error",
+			"Revert failed. You may need to resolve conflicts manually.",
 		);
 	}
 }
@@ -648,11 +640,7 @@ async function handleReset(
 			mode,
 		});
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Reset failed.", {
-			title: "Reset Error",
-			kind: "error",
-		});
+		await reportErrorDialog(e, "Reset Error", "Reset failed.");
 	}
 }
 
@@ -674,8 +662,7 @@ async function handleMergeBranch(branch: string) {
 		}
 		// No toast on success -- graph refresh via repo-changed event is sufficient
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Merge failed", "error");
+		reportErrorToast(e, "Merge failed");
 	}
 }
 
@@ -684,8 +671,7 @@ async function handleRebaseBranch(ontoBranch: string) {
 		await safeInvoke("rebase_branch", { path: repoPath, ontoBranch });
 		// No toast on success -- graph refresh via repo-changed event is sufficient
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Rebase failed", "error");
+		reportErrorToast(e, "Rebase failed");
 	}
 }
 
@@ -697,8 +683,7 @@ async function handleInteractiveRebaseBranch(branchName: string) {
 		});
 		onopenrebaseeditor?.(forkPoint);
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Failed to detect fork point", "error");
+		reportErrorToast(e, "Failed to detect fork point");
 	}
 }
 
@@ -753,8 +738,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 							targetOid: commit.oid,
 						});
 					} catch (e) {
-						const err = e as TrunkError;
-						showToast(err.message ?? "Fast-forward failed", "error");
+						reportErrorToast(e, "Fast-forward failed");
 					}
 				},
 			}),
@@ -799,8 +783,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 							{ path: repoPath, oid: commit.oid },
 						);
 					} catch (e) {
-						const err = e as TrunkError;
-						showToast(err.message ?? "Failed to update review", "error");
+						reportErrorToast(e, "Failed to update review");
 					}
 				},
 			}),
@@ -826,8 +809,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 								tipOid: commit.oid,
 							});
 						} catch (e) {
-							const err = e as TrunkError;
-							showToast(err.message ?? "Failed to seed range", "error");
+							reportErrorToast(e, "Failed to seed range");
 						} finally {
 							// The gesture is done either way — success or an invalid
 							// range (bad_range / unrelated_history) both clear the base.
@@ -933,11 +915,7 @@ async function handleStashPop(oid: string) {
 	try {
 		await safeInvoke("stash_pop", { path: repoPath, oid });
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to pop stash", {
-			title: "Stash Error",
-			kind: "error",
-		});
+		await reportErrorDialog(e, "Stash Error", "Failed to pop stash");
 	}
 }
 
@@ -945,11 +923,7 @@ async function handleStashApply(oid: string) {
 	try {
 		await safeInvoke("stash_apply", { path: repoPath, oid });
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to apply stash", {
-			title: "Stash Error",
-			kind: "error",
-		});
+		await reportErrorDialog(e, "Stash Error", "Failed to apply stash");
 	}
 }
 
@@ -962,11 +936,7 @@ async function handleStashDrop(commit: GraphCommit) {
 	try {
 		await safeInvoke("stash_drop", { path: repoPath, oid: commit.oid });
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to drop stash", {
-			title: "Stash Error",
-			kind: "error",
-		});
+		await reportErrorDialog(e, "Stash Error", "Failed to drop stash");
 	}
 }
 
@@ -1018,11 +988,11 @@ async function handleDeleteRemoteBranch(branchName: string) {
 		await safeInvoke("delete_remote_branch", { path: repoPath, branchName });
 		showToast(`Deleted remote branch ${branchName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to delete remote branch", {
-			title: "Delete Remote Branch Error",
-			kind: "error",
-		});
+		await reportErrorDialog(
+			e,
+			"Delete Remote Branch Error",
+			"Failed to delete remote branch",
+		);
 	}
 }
 
@@ -1039,11 +1009,11 @@ async function handleDeleteBranch(branchName: string) {
 		await safeInvoke("delete_branch", { path: repoPath, branchName });
 		showToast(`Deleted branch ${branchName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to delete branch", {
-			title: "Delete Branch Error",
-			kind: "error",
-		});
+		await reportErrorDialog(
+			e,
+			"Delete Branch Error",
+			"Failed to delete branch",
+		);
 	}
 }
 
@@ -1070,11 +1040,7 @@ function handleRenameBranch(branchName: string) {
 				});
 				showToast(`Renamed branch to ${newName}`, "success");
 			} catch (e) {
-				const err = e as TrunkError;
-				await message(err.message ?? "Failed to rename branch", {
-					title: "Rename Error",
-					kind: "error",
-				});
+				await reportErrorDialog(e, "Rename Error", "Failed to rename branch");
 			}
 		},
 	};
@@ -1093,11 +1059,7 @@ async function handleDeleteTag(tagName: string) {
 		await safeInvoke("delete_tag", { path: repoPath, tagName });
 		showToast(`Deleted tag ${tagName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		await message(err.message ?? "Failed to delete tag", {
-			title: "Delete Tag Error",
-			kind: "error",
-		});
+		await reportErrorDialog(e, "Delete Tag Error", "Failed to delete tag");
 	}
 }
 
@@ -1156,7 +1118,7 @@ async function handleRefCheckout(e: MouseEvent, ref: RefInfo) {
 		if (ref.refType === "RemoteBranch") await checkoutRemoteBranch(ref);
 		else await checkoutLocalBranch(ref.shortName);
 	} catch (e) {
-		showToast((e as TrunkError).message ?? "Checkout failed", "error");
+		reportErrorToast(e, "Checkout failed");
 	}
 }
 
@@ -1484,8 +1446,7 @@ async function loadMore() {
 		if (response.commits.length < BATCH) hasMore = false;
 		void fetchPageStats(requestedOffset);
 	} catch (e) {
-		const err = e as TrunkError;
-		error = err.message ?? "Failed to load commits";
+		error = errorMessage(e, "Failed to load commits");
 	} finally {
 		loading = false;
 	}
@@ -1548,8 +1509,7 @@ async function refresh() {
 		await loadStashMap();
 	} catch (e) {
 		if (seq !== refreshSeq) return;
-		const err = e as TrunkError;
-		error = err.message ?? "Failed to load commits";
+		error = errorMessage(e, "Failed to load commits");
 		// Keep old commits visible on error -- do NOT clear
 	}
 }
