@@ -1,6 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../lib/invoke.js";
+import {
+	addRecentRepo,
+	getRecentRepos,
+	removeRecentRepo,
+} from "../lib/store.js";
 import WelcomeScreen from "./WelcomeScreen.svelte";
 
 // Shared Tauri mock (mocks invoke, dialog, clipboard, etc.)
@@ -18,13 +23,20 @@ vi.mock("../lib/store.js", () => ({
 	removeRecentRepo: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock invoke module — safeInvoke resolves so openPath succeeds
 vi.mock("../lib/invoke.js", async (importActual) => ({
 	...(await importActual<typeof import("../lib/invoke.js")>()),
-	safeInvoke: vi.fn().mockResolvedValue(undefined),
+	safeInvoke: vi.fn(),
 }));
 
 describe("WelcomeScreen", () => {
+	beforeEach(() => {
+		vi.mocked(safeInvoke).mockReset();
+		vi.mocked(safeInvoke).mockResolvedValue(undefined);
+		vi.mocked(getRecentRepos).mockResolvedValue([]);
+		vi.mocked(addRecentRepo).mockResolvedValue(undefined);
+		vi.mocked(removeRecentRepo).mockResolvedValue(undefined);
+	});
+
 	it("renders 'Open Repository' button", () => {
 		render(WelcomeScreen, {
 			props: { onopen: vi.fn() },
@@ -96,25 +108,23 @@ describe("WelcomeScreen", () => {
 	});
 
 	it("shows the backend message when opening a repo fails", async () => {
-		const storeModule = await import("../lib/store.js");
-		vi.mocked(storeModule.getRecentRepos).mockResolvedValue([
+		vi.mocked(getRecentRepos).mockResolvedValue([
 			{ name: "trunk", path: "/Users/test/code/trunk" },
 		]);
-		vi.mocked(safeInvoke).mockRejectedValueOnce({
-			code: "git_error",
-			message: "not a git repository",
-		});
-
-		render(WelcomeScreen, { props: { onopen: vi.fn() } });
-		await vi.waitFor(() => {
-			expect(screen.getByText("trunk")).toBeInTheDocument();
-		});
-		await fireEvent.click(
-			screen.getByText("trunk").closest('[role="button"]') as Element,
+		// Command-scoped, not mockRejectedValueOnce: a leaked flow must not consume it.
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "open_repo"
+				? Promise.reject({ code: "git_error", message: "not a git repository" })
+				: Promise.resolve(undefined),
 		);
 
-		await vi.waitFor(() => {
-			expect(screen.getByText("not a git repository")).toBeInTheDocument();
-		});
+		render(WelcomeScreen, { props: { onopen: vi.fn() } });
+		const repoButton = (await screen.findByText("trunk")).closest(
+			'[role="button"]',
+		);
+		expect(repoButton).toBeTruthy();
+		await fireEvent.click(repoButton as Element);
+
+		expect(await screen.findByText("not a git repository")).toBeInTheDocument();
 	});
 });

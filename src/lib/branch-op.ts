@@ -20,14 +20,15 @@ export async function mergeBranch({
 	onDone?: OnDone;
 }): Promise<void> {
 	try {
-		const result = await safeInvoke<{
-			kind: "ready" | "fast_forwarded" | "conflicts";
-			message?: string;
-		}>("merge_branch_begin", { path: repoPath, branch });
+		const result = await safeInvoke<
+			| { kind: "ready"; message: string }
+			| { kind: "fast_forwarded" }
+			| { kind: "conflicts" }
+		>("merge_branch_begin", { path: repoPath, branch });
 
 		if (result.kind === "ready") {
 			const msg = await openMessageEditor?.(
-				result.message ?? "",
+				result.message,
 				"Merge commit message",
 			);
 			// Returning without continuing leaves the merge in progress on purpose —

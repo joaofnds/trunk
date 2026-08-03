@@ -663,7 +663,6 @@ function handleRebaseBranch(ontoBranch: string) {
 
 async function handleInteractiveRebaseBranch(branchName: string) {
 	const forkPoint = await resolveForkPoint({ repoPath, branch: branchName });
-
 	if (forkPoint !== null) onopenrebaseeditor?.(forkPoint);
 }
 
