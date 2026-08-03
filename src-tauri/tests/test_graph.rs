@@ -1662,3 +1662,516 @@ fn detached_head_marks_first_parent_chain() {
         "first in_head_chain row should be the chain tip r2"
     );
 }
+
+fn sig_at(secs: i64) -> git2::Signature<'static> {
+    git2::Signature::new("T", "t@t.com", &git2::Time::new(secs, 0)).unwrap()
+}
+
+/// `Add notes` -> `Add app` on main, with a stash on the tip whose committer time predates
+/// both. Mirrors QA fixture 15. The tree is left clean, so the stash is inline-eligible.
+fn backdated_stash_repo() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let mut repo = git2::Repository::init(dir.path()).unwrap();
+    {
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+    }
+    {
+        let notes = raw_commit(
+            &repo,
+            &sig_at(1_700_000_000),
+            "refs/heads/main",
+            "Add notes",
+            "notes.txt",
+            "notes v1",
+            &[],
+        );
+        let notes_c = repo.find_commit(notes).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(1_700_086_400),
+            "refs/heads/main",
+            "Add app",
+            "app.txt",
+            "app v1",
+            &[&notes_c],
+        );
+    }
+    repo.set_head("refs/heads/main").unwrap();
+
+    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stashed").unwrap();
+    repo.stash_save(&sig_at(1_699_913_600), "backdated", None)
+        .unwrap();
+
+    dir
+}
+
+fn row_of(commits: &[trunk_lib::git::types::GraphCommit], summary: &str) -> usize {
+    commits
+        .iter()
+        .position(|c| c.summary == summary)
+        .unwrap_or_else(|| panic!("{summary} not found in {:?}", summaries(commits)))
+}
+
+fn summaries(commits: &[trunk_lib::git::types::GraphCommit]) -> Vec<&str> {
+    commits.iter().map(|c| c.summary.as_str()).collect()
+}
+
+#[test]
+fn backdated_stash_sorts_above_its_parent() {
+    let dir = backdated_stash_repo();
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = &result.commits;
+
+    let stash_row = commits
+        .iter()
+        .position(|c| c.is_stash)
+        .expect("no stash row emitted");
+    let parent_row = row_of(commits, "Add app");
+    assert!(
+        stash_row < parent_row,
+        "stash must sort above its parent, got stash={stash_row} parent={parent_row} in {:?}",
+        summaries(commits)
+    );
+    assert_eq!(
+        commits[stash_row].column, commits[parent_row].column,
+        "a clean worktree should place the stash inline at its parent's column"
+    );
+    assert_eq!(result.max_columns, 1, "inline stash needs no second column");
+    assert!(
+        !commits[parent_row].is_branch_tip,
+        "the stash re-occupies the lane, so its parent is no longer a branch tip"
+    );
+    assert_no_stash_internals(commits);
+}
+
+fn assert_no_stash_internals(commits: &[trunk_lib::git::types::GraphCommit]) {
+    for c in commits {
+        assert!(
+            !c.summary.starts_with("index on ") && !c.summary.starts_with("untracked files on "),
+            "stash internals leaked into the walk: {:?}",
+            summaries(commits)
+        );
+    }
+}
+
+/// The backdated shape with a lightweight tag on the stash commit, so the stash is reachable
+/// from `refs/tags` as well as from `refs/stash`.
+fn tagged_stash_repo() -> tempfile::TempDir {
+    let dir = backdated_stash_repo();
+    {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let stash_oid = repo.refname_to_id("refs/stash").unwrap();
+        let stash_obj = repo.find_object(stash_oid, None).unwrap();
+        repo.tag_lightweight("keep", &stash_obj, false).unwrap();
+    }
+    dir
+}
+
+/// A ref pointing at a stash used to push it into the walk a second time, and the duplicate
+/// row lost its `is_stash` flag to `per_oid_data.remove`, recomputing itself as a merge.
+#[test]
+fn tagged_stash_is_not_duplicated() {
+    let dir = tagged_stash_repo();
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let stash_oid = repo.refname_to_id("refs/stash").unwrap();
+
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = &result.commits;
+
+    let stash_rows: Vec<_> = commits
+        .iter()
+        .filter(|c| c.oid == stash_oid.to_string())
+        .collect();
+    assert_eq!(
+        stash_rows.len(),
+        1,
+        "a tagged stash must occupy exactly one row, got {:?}",
+        summaries(commits)
+    );
+    assert!(
+        stash_rows[0].is_stash,
+        "the surviving row must be the stash"
+    );
+    assert!(
+        !stash_rows[0].is_merge,
+        "a stash's extra parents are internal state, not a merge"
+    );
+    assert_eq!(
+        result.max_columns,
+        1,
+        "one clean lane, got {:?}",
+        summaries(commits)
+    );
+    assert_no_stash_internals(commits);
+}
+
+/// Stash B taken while HEAD is detached on stash A, so `B^ == A`. B is timestamped *before*
+/// A: under a time-ordered merge the newer parent sorts above its child, which is the
+/// inversion the topological walk has to rule out.
+///
+/// The detach is load-bearing. It puts A in the head chain, so A's column is reserved before
+/// B is placed.
+fn stash_on_stash_repo() -> (tempfile::TempDir, git2::Oid, git2::Oid) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut repo = git2::Repository::init(dir.path()).unwrap();
+    {
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+    }
+    {
+        let notes = raw_commit(
+            &repo,
+            &sig_at(1_700_000_000),
+            "refs/heads/main",
+            "Add notes",
+            "notes.txt",
+            "notes v1",
+            &[],
+        );
+        let notes_c = repo.find_commit(notes).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(1_700_086_400),
+            "refs/heads/main",
+            "Add app",
+            "app.txt",
+            "app v1",
+            &[&notes_c],
+        );
+    }
+    repo.set_head("refs/heads/main").unwrap();
+
+    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stash A").unwrap();
+    let a = repo
+        .stash_save(&sig_at(1_700_259_200), "stash A", None)
+        .unwrap();
+
+    {
+        let a_obj = repo.find_object(a, None).unwrap();
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        repo.checkout_tree(&a_obj, Some(checkout.force())).unwrap();
+        repo.set_head_detached(a).unwrap();
+    }
+
+    std::fs::write(dir.path().join("notes.txt"), "notes v3 — stash B").unwrap();
+    let b = repo
+        .stash_save(&sig_at(1_700_172_800), "stash B", None)
+        .unwrap();
+
+    assert_eq!(
+        repo.find_commit(b).unwrap().parent_id(0).unwrap(),
+        a,
+        "fixture is wrong: B's first parent must be stash A"
+    );
+    (dir, a, b)
+}
+
+fn row_of_oid(commits: &[trunk_lib::git::types::GraphCommit], oid: git2::Oid) -> usize {
+    commits
+        .iter()
+        .position(|c| c.oid == oid.to_string())
+        .unwrap_or_else(|| panic!("{oid} not found in {:?}", summaries(commits)))
+}
+
+#[test]
+fn stash_on_stash_chain_orders_child_first() {
+    let (dir, a, b) = stash_on_stash_repo();
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = &result.commits;
+
+    let b_row = row_of_oid(commits, b);
+    let a_row = row_of_oid(commits, a);
+    let base_row = row_of(commits, "Add app");
+    assert!(
+        b_row < a_row && a_row < base_row,
+        "expected B above A above the base commit, got B={b_row} A={a_row} base={base_row} in {:?}",
+        summaries(commits)
+    );
+    assert!(commits[b_row].is_stash, "B must be flagged as a stash");
+    assert!(commits[a_row].is_stash, "A must be flagged as a stash");
+    assert_no_stash_internals(commits);
+}
+
+/// Two stashes on the same parent, both timestamped before it. Returns the newer and the
+/// older stash OID.
+fn two_backdated_stashes_repo() -> (tempfile::TempDir, git2::Oid, git2::Oid) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut repo = git2::Repository::init(dir.path()).unwrap();
+    {
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+    }
+    {
+        let notes = raw_commit(
+            &repo,
+            &sig_at(1_700_000_000),
+            "refs/heads/main",
+            "Add notes",
+            "notes.txt",
+            "notes v1",
+            &[],
+        );
+        let notes_c = repo.find_commit(notes).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(1_700_086_400),
+            "refs/heads/main",
+            "Add app",
+            "app.txt",
+            "app v1",
+            &[&notes_c],
+        );
+    }
+    repo.set_head("refs/heads/main").unwrap();
+
+    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stashed").unwrap();
+    let older = repo
+        .stash_save(&sig_at(1_699_827_200), "older backdated", None)
+        .unwrap();
+
+    std::fs::write(dir.path().join("app.txt"), "app v2 — stashed").unwrap();
+    let newer = repo
+        .stash_save(&sig_at(1_699_913_600), "newer backdated", None)
+        .unwrap();
+
+    (dir, newer, older)
+}
+
+/// The shape QA fixture 07 already documents for two ordinary stashes: the first one placed
+/// takes the parent's lane, the second finds it held and branches one column right. Being
+/// backdated changes nothing about it.
+#[test]
+fn two_backdated_stashes_on_one_parent() {
+    let (dir, newer, older) = two_backdated_stashes_repo();
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = &result.commits;
+
+    let newer_row = row_of_oid(commits, newer);
+    let older_row = row_of_oid(commits, older);
+    let parent_row = row_of(commits, "Add app");
+    assert!(
+        newer_row < parent_row && older_row < parent_row,
+        "both stashes must sort above their parent, got newer={newer_row} older={older_row} parent={parent_row}"
+    );
+    assert_eq!(
+        commits[newer_row].column, commits[parent_row].column,
+        "the newer stash takes its parent's lane"
+    );
+    assert_eq!(
+        commits[older_row].column,
+        commits[parent_row].column + 1,
+        "the older stash finds that lane held and branches one column right"
+    );
+    assert_no_stash_internals(commits);
+}
+
+/// QA fixture 12's shape: the stash's parent is dropped from every ref by `reset --hard`, so
+/// the only thing still pointing at it is the stash itself.
+fn orphan_stash_repo() -> (tempfile::TempDir, git2::Oid) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut repo = git2::Repository::init(dir.path()).unwrap();
+    {
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str("user.name", "T").unwrap();
+        cfg.set_str("user.email", "t@t.com").unwrap();
+    }
+    let notes = {
+        let notes = raw_commit(
+            &repo,
+            &sig_at(1_700_000_000),
+            "refs/heads/main",
+            "Add notes",
+            "notes.txt",
+            "notes v1",
+            &[],
+        );
+        let notes_c = repo.find_commit(notes).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(1_700_086_400),
+            "refs/heads/main",
+            "Add app",
+            "app.txt",
+            "app v1",
+            &[&notes_c],
+        );
+        notes
+    };
+    repo.set_head("refs/heads/main").unwrap();
+
+    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stashed").unwrap();
+    let stash = repo
+        .stash_save(&sig_at(1_700_864_000), "half-finished notes", None)
+        .unwrap();
+
+    {
+        let notes_obj = repo.find_object(notes, None).unwrap();
+        repo.reset(&notes_obj, git2::ResetType::Hard, None).unwrap();
+    }
+
+    (dir, stash)
+}
+
+/// D6: pushing the stash into the walk makes its parent reachable again, so the row comes
+/// back and the dashed connector has something to land on. The cost is that `reset --hard`
+/// no longer visually removes a commit a stash still holds — dropping the stash does.
+#[test]
+fn orphan_stash_shows_its_parent() {
+    let (dir, stash) = orphan_stash_repo();
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+
+    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = &result.commits;
+
+    let stash_row = row_of_oid(commits, stash);
+    let parent_row = row_of(commits, "Add app");
+    assert!(
+        stash_row < parent_row,
+        "the stash must sort above the parent it holds, got stash={stash_row} parent={parent_row}"
+    );
+
+    let stash_col = commits[stash_row].column;
+    assert!(
+        commits[stash_row].edges.iter().any(|e| {
+            matches!(e.edge_type, EdgeType::Straight)
+                && e.from_column == stash_col
+                && e.to_column == stash_col
+                && e.dashed
+        }),
+        "the stash must emit a dashed connector at its own column, edges: {:?}",
+        commits[stash_row].edges
+    );
+}
+
+/// Every shape whose ordering the timestamp merge could invert. D4's invariants are asserted
+/// over these and not over plain linear history, which could never violate them — that is why
+/// the first version of the invariant passed while the walk was broken.
+fn stash_shapes() -> Vec<(&'static str, tempfile::TempDir)> {
+    vec![
+        ("backdated stash", backdated_stash_repo()),
+        ("tagged stash", tagged_stash_repo()),
+        ("stash on stash", stash_on_stash_repo().0),
+        ("two backdated stashes", two_backdated_stashes_repo().0),
+        ("orphan stash", orphan_stash_repo().0),
+    ]
+}
+
+#[test]
+fn first_parent_never_sorts_above_its_child() {
+    for (shape, dir) in stash_shapes() {
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+
+        let row_by_oid: std::collections::HashMap<&str, usize> = commits
+            .iter()
+            .enumerate()
+            .map(|(row, c)| (c.oid.as_str(), row))
+            .collect();
+
+        for (row, c) in commits.iter().enumerate() {
+            let Some(parent) = c.parent_oids.first() else {
+                continue;
+            };
+            let Some(&parent_row) = row_by_oid.get(parent.as_str()) else {
+                continue;
+            };
+            assert!(
+                parent_row > row,
+                "{shape}: {} sits at row {row} but its first parent is at row {parent_row}, in {:?}",
+                c.short_oid,
+                summaries(&commits)
+            );
+        }
+    }
+}
+
+#[test]
+fn no_oid_appears_twice() {
+    for (shape, dir) in stash_shapes() {
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for c in &commits {
+            assert!(
+                seen.insert(c.oid.as_str()),
+                "{shape}: {} appears twice, in {:?}",
+                c.short_oid,
+                summaries(&commits)
+            );
+        }
+    }
+}
+
+fn delete_loose_object(repo_path: &std::path::Path, oid: git2::Oid) {
+    let hex = oid.to_string();
+    let path = repo_path
+        .join(".git/objects")
+        .join(&hex[..2])
+        .join(&hex[2..]);
+    std::fs::remove_file(&path).unwrap_or_else(|e| panic!("removing {}: {e}", path.display()));
+}
+
+/// R3: pushing stashes into the walk newly exposes their objects to it. A corrupt or
+/// manually-pruned object store must cost the graph that one stash, not every row in the repo.
+#[test]
+fn unreadable_stash_commit_is_skipped() {
+    let dir = backdated_stash_repo();
+    let stash_oid = git2::Repository::open(dir.path())
+        .unwrap()
+        .refname_to_id("refs/stash")
+        .unwrap();
+    delete_loose_object(dir.path(), stash_oid);
+
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let result = walk_commits(&mut repo, 0, usize::MAX);
+
+    let commits = result
+        .expect("an unreadable stash commit must not blank the graph")
+        .commits;
+    for summary in ["Add app", "Add notes"] {
+        assert!(
+            commits.iter().any(|c| c.summary == summary),
+            "{summary} should still render, got {:?}",
+            summaries(&commits)
+        );
+    }
+}
+
+/// The same failure one level down, and the one `revwalk.push` cannot catch: the stash commit
+/// itself reads fine, so the push succeeds and the walk only fails when it reaches the
+/// index-tree commit.
+#[test]
+fn unreadable_stash_index_commit_is_skipped() {
+    let dir = backdated_stash_repo();
+    let index_oid = {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let stash_oid = repo.refname_to_id("refs/stash").unwrap();
+        repo.find_commit(stash_oid).unwrap().parent_id(1).unwrap()
+    };
+    delete_loose_object(dir.path(), index_oid);
+
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let result = walk_commits(&mut repo, 0, usize::MAX);
+
+    let commits = result
+        .expect("an unreadable stash index commit must not blank the graph")
+        .commits;
+    for summary in ["Add app", "Add notes"] {
+        assert!(
+            commits.iter().any(|c| c.summary == summary),
+            "{summary} should still render, got {:?}",
+            summaries(&commits)
+        );
+    }
+}

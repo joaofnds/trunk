@@ -68,68 +68,43 @@ pub fn walk_commits(
         stash_oids.push(*oid);
         true
     });
-    // Now look up each stash's first parent (repo is no longer mutably borrowed)
-    let mut stash_entries: Vec<(git2::Oid, Option<git2::Oid>)> = Vec::new();
-    for &s_oid in &stash_oids {
-        let parent = repo
-            .find_commit(s_oid)
-            .ok()
-            .and_then(|c| c.parent_id(0).ok());
-        stash_entries.push((s_oid, parent));
-    }
     let stash_oid_set: HashSet<git2::Oid> = stash_oids.iter().copied().collect();
 
-    // Step 2: Collect all OIDs via revwalk
+    // A stash only joins the walk once every object the walk will reach through it reads
+    // back. Skipping an unreadable one costs that stash its row; letting it through costs
+    // the whole repo its graph, because the walk fails as a unit.
+    //
+    // Its parents 1.. are the index tree, and the untracked tree when it was stashed with
+    // INCLUDE_UNTRACKED. Pushing the stash makes them reachable, so without this set they
+    // enter the walk as rows of their own.
+    let mut walkable_stashes: Vec<git2::Oid> = Vec::new();
+    let mut stash_internals: HashSet<git2::Oid> = HashSet::new();
+    for &s_oid in &stash_oids {
+        let Ok(commit) = repo.find_commit(s_oid) else {
+            continue;
+        };
+
+        let parents: Vec<git2::Oid> = commit.parent_ids().collect();
+        if parents.iter().any(|&p| repo.find_commit(p).is_err()) {
+            continue;
+        }
+
+        stash_internals.extend(parents.iter().skip(1));
+        walkable_stashes.push(s_oid);
+    }
+
+    // Step 2: Collect all OIDs via revwalk. Stashes ride the same walk as the refs, so
+    // TOPOLOGICAL sorting places each one above its parent whatever its committer time says.
     let mut revwalk = repo.revwalk()?;
     revwalk.push_glob("refs/heads")?;
     revwalk.push_glob("refs/remotes")?;
     revwalk.push_glob("refs/tags")?;
+    for &s_oid in &walkable_stashes {
+        revwalk.push(s_oid)?;
+    }
     revwalk.set_sorting(git2::Sort::TOPOLOGICAL | git2::Sort::TIME)?;
-    let base_oids: Vec<git2::Oid> = revwalk.collect::<Result<Vec<_>, _>>()?;
-    let base_oid_set: HashSet<git2::Oid> = base_oids.iter().copied().collect();
-
-    // Step 2b: Merge stashes into the oid list by commit timestamp.
-    //
-    // Gitamine's temporal topological sort treats stashes as regular commits
-    // sorted by their own date. Since stashes are typically the newest commits
-    // (created by a recent `git stash`), they sort near the top of the graph —
-    // processed before other branch tips claim nearby columns.
-    //
-    // Trunk's previous approach interleaved stashes right before their parent,
-    // which placed them deep in the list (after branch tips filled cols 1-N).
-    // By sorting stashes by their own timestamp instead, they land near the top
-    // where nearby columns are still free — producing compact col 1-2 placement
-    // instead of col 20+.
-    let mut stash_with_time: Vec<(git2::Oid, i64)> = stash_entries
-        .iter()
-        .filter_map(|(s_oid, _)| {
-            repo.find_commit(*s_oid)
-                .ok()
-                .map(|c| (*s_oid, c.time().seconds()))
-        })
-        .collect();
-    stash_with_time.sort_by_key(|s| std::cmp::Reverse(s.1)); // newest first
-
-    let mut oids: Vec<git2::Oid> = Vec::with_capacity(base_oids.len() + stash_with_time.len());
-    let mut stash_idx = 0;
-    for &base_oid in &base_oids {
-        // Insert any stashes whose timestamp >= this base_oid's timestamp
-        if stash_idx < stash_with_time.len() {
-            let base_time = repo
-                .find_commit(base_oid)
-                .map(|c| c.time().seconds())
-                .unwrap_or(0);
-            while stash_idx < stash_with_time.len() && stash_with_time[stash_idx].1 >= base_time {
-                oids.push(stash_with_time[stash_idx].0);
-                stash_idx += 1;
-            }
-        }
-        oids.push(base_oid);
-    }
-    // Any remaining stashes (older than all base_oids — rare but possible)
-    for item in stash_with_time.iter().skip(stash_idx) {
-        oids.push(item.0);
-    }
+    let mut oids: Vec<git2::Oid> = revwalk.collect::<Result<Vec<_>, _>>()?;
+    oids.retain(|oid| !stash_internals.contains(oid));
 
     // Step 3: Compute page slice
     let start = offset.min(oids.len());
@@ -337,11 +312,6 @@ pub fn walk_commits(
                             dashed: is_stash,
                         });
                     }
-                } else if is_stash && !base_oid_set.contains(&parent_oid) {
-                    // Orphan stash: parent not reachable from any ref.
-                    // Don't keep the lane alive — the parent will never be processed
-                    // to emit a fork-in and clean up the lane, creating a ghost lane.
-                    // Lane ends here (no Straight edge to parent).
                 } else {
                     // Parent not yet claimed — claim at current column (lane continues).
                     // This applies to both regular commits and stashes with reachable parents.

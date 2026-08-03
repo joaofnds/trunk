@@ -212,8 +212,6 @@ build_14_merge_tip() {
 	stash "$dir" 10 "half-finished notes"
 }
 
-# Known deferred defect: the walk orders stashes by committer time alone, so a
-# stash older than its parent sorts below it.
 build_15_backdated_stash() {
 	local dir
 	dir=$(init_repo 15-backdated-stash)
@@ -268,8 +266,49 @@ build_18_many_files() {
 	echo "content changed" >"$dir/src/file_1.txt"
 }
 
+build_19_two_backdated() {
+	local dir
+	dir=$(init_repo 19-two-backdated)
+	echo "notes v1" >"$dir/notes.txt"
+	commit "$dir" 5 "Add notes"
+	echo "app v1" >"$dir/app.txt"
+	commit "$dir" 6 "Add app"
+	echo "notes v2 — stashed" >"$dir/notes.txt"
+	stash "$dir" 1 "older, dated before its parent"
+	echo "app v2 — also stashed" >"$dir/app.txt"
+	stash "$dir" 2 "newer, dated before its parent"
+}
+
+# Stash B is taken with HEAD detached on stash A, so `B^ == A`, and B is dated
+# *before* A: ordering B first is topology winning over committer time.
+build_20_stash_on_stash() {
+	local dir
+	dir=$(init_repo 20-stash-on-stash)
+	echo "notes v1" >"$dir/notes.txt"
+	commit "$dir" 1 "Add notes"
+	echo "app v1" >"$dir/app.txt"
+	commit "$dir" 2 "Add app"
+	echo "notes v2 — stash A" >"$dir/notes.txt"
+	stash "$dir" 10 "stash A"
+	git -C "$dir" checkout -q --detach 'stash@{0}'
+	echo "notes v3 — stash B" >"$dir/notes.txt"
+	stash "$dir" 8 "stash B"
+}
+
+build_21_tagged_stash() {
+	local dir
+	dir=$(init_repo 21-tagged-stash)
+	echo "notes v1" >"$dir/notes.txt"
+	commit "$dir" 5 "Add notes"
+	echo "app v1" >"$dir/app.txt"
+	commit "$dir" 6 "Add app"
+	echo "notes v2 — stashed" >"$dir/notes.txt"
+	stash "$dir" 1 "stash dated before its parent"
+	git -C "$dir" tag keep refs/stash
+}
+
 # Expected layouts below were read off `walk_commits` against these exact fixtures,
-# not predicted. Regenerate them with the probe described at the bottom of the file.
+# not predicted. Regenerate them with `scripts/qa-stash-probe.sh`.
 write_readme() {
 	cat >"$OUT/README.md" <<'MARKDOWN'
 # Stash-vs-WIP lane placement — QA fixtures
@@ -350,14 +389,37 @@ an oversight. It is nil in single-lane repos, which is the common case.
 - [ ] **11-stash-parent-mid-chain** — a commit was made after the stash, so the
       stash's parent is no longer the tip. It branches right **identically** clean
       and dirty. Toggle `notes.txt` and nothing about the stash may move.
-- [ ] **12-orphan-stash** — the stash's parent is unreachable from any ref. Stash
-      renders as a standalone dashed square at column 1 with **no connector at
-      all**, clean or dirty. No ghost rail hanging off it.
-- [ ] **15-backdated-stash** — **KNOWN DEFERRED DEFECT, not a regression.** The
-      stash's committer date predates its parent's, so it sorts *below* both
-      commits with its dashed line running upward. Tracked in
-      `docs/known-issues/2026-08-02-stash-sorts-below-its-parent-when-backdated.md`.
-      Unaffected by dirtiness. Only report it if the *placement* looks new.
+- [ ] **12-orphan-stash** — `reset --hard` dropped the stash's parent from every
+      ref, but the stash still points at it, so it keeps its row. Stash at column
+      1, straight dashed line down to `Add app` (also column 1, colour 1), and
+      `Add notes` at column 0 forking right into it. Identical clean and dirty.
+      By design: `reset --hard` no longer visually removes a commit a stash holds
+      — dropping the stash is what removes it.
+
+### Ordering — a stash sorts above the commit it was taken on
+
+Every stash below is dated *before* its parent. Ordering is topological, so the
+date gets no vote. A stash drawn *below* its parent is the defect this group
+exists to catch.
+
+- [ ] **15-backdated-stash** — one stash, dated before its parent. Clean: inline
+      at column 0 with a straight dashed line to `Add app`, 1 column total, and
+      `Add app` is **not** a branch tip — the stash re-occupies its lane. Dirty:
+      column 1, colour 1, dashed fork off `Add app`, 2 columns.
+- [ ] **19-two-backdated** — two stashes on one parent, both dated before it.
+      Clean: the **newer** inlines at column 0, the older takes column 1 and
+      colour 1 with a dashed fork off `Add app`. Dirty: columns 1 and 2, two
+      dashed forks. The same shape as 07 — being backdated earns no special rule.
+- [ ] **20-stash-on-stash** — stash B was taken with HEAD detached on stash A, so
+      B's parent *is* A, and B is dated **before** A. Clean: both inline at column
+      0, B above A above `Add app`, dashed throughout, 1 column. Dirty: B moves to
+      column 1 and A keeps column 0. A above B in either state means committer
+      time beat topology.
+- [ ] **21-tagged-stash** — a lightweight tag `keep` points at the stash commit,
+      so it is reachable from `refs/tags` as well as `refs/stash`. Clean: exactly
+      3 rows and 1 column — the stash, `Add app`, `Add notes`. Two rows carrying
+      the same commit, the second drawn as a **merge**, means it entered the walk
+      twice. No `index on main: …` row may appear either.
 
 ### Edge cases
 
@@ -384,10 +446,16 @@ an oversight. It is nil in single-lane repos, which is the common case.
 
 ## Regenerating the expected layouts
 
-The layouts above were read off `walk_commits`, not predicted. To re-derive them
-after a change, open each repo with `git2` and print each row's column, colour,
-`is_stash` and edges — the same shape the integration tests in
-`src-tauri/tests/test_graph.rs` assert on.
+The layouts above were read off `walk_commits`, not predicted. Re-derive them with
+
+```sh
+scripts/qa-stash-probe.sh /tmp/qa-after
+```
+
+which dumps each row's column, colour, flags and edges to one file per repo — the
+same shape the integration tests in `src-tauri/tests/test_graph.rs` assert on.
+Capture a run before a change and one after, then `diff -r` the two directories to
+see exactly which fixtures moved.
 MARKDOWN
 }
 

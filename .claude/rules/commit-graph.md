@@ -14,7 +14,8 @@ paths:
 # Commit Graph Rules
 
 A pipeline of pure transformations: `graph.rs` assigns columns, colours and edges →
-`active-lanes.ts` coalesces edges into rails → `overlay-paths.ts` emits SVG paths →
+`active-lanes.ts` maps commits to overlay nodes and per-parent connections →
+`overlay-paths.ts` emits SVG paths →
 `overlay-visible.ts` culls off-screen paths, dots and pills → `CommitGraph.svelte` renders.
 
 ## Binding rules

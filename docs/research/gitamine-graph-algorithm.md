@@ -15,7 +15,8 @@ Drawing a commit graph on a 2D grid requires two decisions per commit:
 2. **Column (j)**: Which column? → Solved by the lane/placement algorithm
 
 These are independent. Gitamine solves them in two separate phases.
-Trunk conflates them somewhat (stash interleaving affects both).
+Trunk conflates them somewhat: the same revwalk that decides rows also decides the order
+in which the lane algorithm sees commits, and that decides columns.
 
 ---
 
@@ -46,8 +47,12 @@ Properties:
 
 ### Trunk's Equivalent
 
+> **The divergence described below was closed on 2026-08-03.** Trunk pushes stash OIDs
+> into the revwalk itself, so it now does exactly what this section recommends. The
+> comparison is kept as the record of why.
+
 Trunk uses `git2::Revwalk` with `TOPOLOGICAL | TIME` sort flags, which does
-essentially the same thing. The key difference: Trunk then **interleaves
+essentially the same thing. The key difference *was*: Trunk then **interleaved
 stashes before their parent** in a post-processing step, which the sort
 doesn't account for. Gitamine doesn't do this — stashes land wherever the
 topological sort places them (which is always before their parent, since
@@ -57,7 +62,8 @@ children precede parents in topological order).
 
 No fundamental sorting difference. Both produce valid topological orders.
 Trunk's stash interleaving is unnecessary if the sort already places stashes
-before their parents (which topological order guarantees).
+before their parents (which topological order guarantees). Acted on: the
+interleave is gone, and the stashes ride the walk.
 
 ---
 
@@ -87,7 +93,8 @@ Merge children create cross-column edges (curved connections).
 **Notably absent** (vs Trunk):
 - No `pending_parents` — column inheritance is implicit via "replace"
 - No `lane_colors` — color = `column_index % NUM_COLORS` (deterministic)
-- No `stash_lanes` — stashes are just commits with different NodeType
+- No `stash_lanes` — stashes are just commits with different NodeType (Trunk has had none
+  since `4a9f15e` either)
 - No `head_chain` pre-reservation — HEAD just replaces 'index' at col 0
 - No `reserved_cols` — not needed without pending_parents
 
@@ -267,10 +274,10 @@ but also more complex to maintain.
 ## Part 4: Stash Handling — The Critical Comparison
 
 > **STALE as of 2026-08-02.** This part describes Trunk's pre-`b5c1222` stash algorithm.
-> Trunk no longer always branches stashes right: `can_inline` (`graph.rs:209-215`) places a
+> Trunk no longer always branches stashes right: `can_inline` (`graph.rs:184-189`) places a
 > stash at its parent's own column, inheriting its colour, when the worktree is clean and the
 > parent is the HEAD tip. It also no longer tracks `stash_lanes` — the dashed flag rides on
-> the lane slot (`graph.rs:17`). For current behaviour see
+> the lane slot (`graph.rs:18`). For current behaviour see
 > `docs/architecture/commit-graph.md` § "Stash rendering". The gitamine comparison
 > itself is unaffected.
 
@@ -294,14 +301,15 @@ Everything else is handled by general-purpose code:
 
 No special column logic, no dashed edges, no lane tracking, no interleaving.
 
-### Trunk: Six Special Mechanisms
+### Trunk: Three Special Mechanisms
+
+Six, when this comparison was written. Three of them are gone: `stash_by_parent` plus its
+interleaving and the orphan stash guard were deleted on 2026-08-03 when stashes started
+riding the revwalk, and `stash_lanes` went in `4a9f15e`.
 
 1. `stash_oid_set` — identifies stashes
-2. `stash_by_parent` + interleaving — places stashes before parents in oid list
-3. `stash_lanes` — marks columns for dashed edge rendering
-4. Orphan stash guard — prevents ghost lanes for unreachable stash parents
-5. `is_stash` flag on output — affects frontend rendering
-6. Parent filtering in Phase 4 — only tracks first parent
+2. `is_stash` flag on output — affects frontend rendering
+3. Parent filtering in Phase 4 — only tracks first parent
 
 ### How Stashes Place in Gitamine (Traced Example)
 
@@ -380,20 +388,21 @@ Process B: only branchChild is S at col 0 → replace → B at col 0
 | 3 | Free column search | `insertCommit()` — spiral outward from target | Linear scan from col 1, first available |
 | 4 | Forbidden indices | Computed from merge children's occupied columns | Not implemented |
 | 5 | Edge emission | Post-processing from positions | Inline during column layout |
-| 6 | Stash handling | Zero special logic | 6 special mechanisms |
+| 6 | Stash handling | Zero special logic | 3 special mechanisms |
 | 7 | Color strategy | `color = col % N` (deterministic) | `lane_colors` HashMap with counter |
 
 ### Why Stashes End Up Far Right in Trunk
 
-> **STALE as of 2026-08-02.** Two premises below no longer hold: stashes are merged into the
-> walk by committer timestamp, not "interleaved before parent" (`graph.rs:98-127`), and a
-> stash on a clean worktree's HEAD tip is placed inline at column 0 rather than far right
-> (`can_inline`). `5b29894` ("compact stash placement via temporal sort and proximity search")
-> already addressed the far-right complaint this section describes.
+> **STALE as of 2026-08-03.** Two premises below no longer hold: stashes are pushed into the
+> revwalk and ordered topologically, not "interleaved before parent" and not merged by
+> committer timestamp (`graph.rs:96-107`), and a stash on a clean worktree's HEAD tip is
+> placed inline at column 0 rather than far right (`can_inline`). `5b29894` ("compact stash
+> placement via temporal sort and proximity search") already addressed the far-right
+> complaint this section describes.
 
 Root cause chain:
 1. HEAD chain pre-reservation puts ALL HEAD ancestors into `pending_parents[oid] = 0`
-2. Stash is processed (interleaved before parent)
+2. Stash is processed (it sorts above its parent, so it is reached first)
 3. Stash has no `pending_parents` entry → goes to free-column scan
 4. Free-column scan starts at col 1, skips occupied cols (dependabot at 1-19)
 5. Stash lands at col 20+ (first free)
@@ -461,7 +470,10 @@ through the exact same codepath as any other commit. The only stash-specific
 code should be:
 1. Second parent filtering (ignore index/untracked parents)
 2. Visual marker (`is_stash` flag → dashed square + dashed edges)
-3. Orphan stash detection (parent not reachable → standalone dot)
+3. ~~Orphan stash detection (parent not reachable → standalone dot)~~ — **dropped
+   2026-08-03.** Stashes ride the revwalk, so a stash's parent is always in the walk and
+   gets a row of its own; there is no orphan case left to detect. Items 1 and 2 were
+   adopted.
 
 ---
 

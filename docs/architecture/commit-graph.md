@@ -56,15 +56,23 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 
 ### Commit ordering
 
-1. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` with
-   `TOPOLOGICAL | TIME` sort → `base_oids`.
-2. Stash OIDs are collected separately via `repo.stash_foreach()`.
-3. Stashes are sorted **newest committer-time first** and then **merged into `base_oids`
-   by timestamp** (`graph.rs:98-127`) — each stash is inserted ahead of the first base
-   commit whose time it is not older than. This replaced an earlier interleave-before-parent
-   design; a stash is *not* pinned to its parent's row, and one whose committer time
-   predates its parent's will sort below it.
-4. Stashes older than every base commit are appended at the end.
+1. Stash OIDs are collected via `repo.stash_foreach()`. A stash joins the walk only if it
+   and every one of its parents read back from the object store (`graph.rs:73-94`); an
+   unreadable one is skipped, so a corrupt object costs that stash its row instead of
+   failing the walk for the whole repo.
+2. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` **plus every walkable stash
+   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs:96-107`). Git orders the stashes with
+   everything else: `TOPOLOGICAL` puts a commit above its parents unconditionally, and
+   `TIME` only breaks ties between topologically independent commits. So a stash sorts
+   above its parent whatever its committer time says, and a stash whose first parent is
+   another stash falls out of the same rule. There is no separate ordering step for
+   stashes and no `base_oids` list.
+3. Pushing a stash makes its parents 1.. reachable — the index tree, and the untracked
+   tree under `INCLUDE_UNTRACKED`. They are dropped from the collected list, or they would
+   appear as rows of their own.
+4. Because a stash's parent is always in the walk, a stash keeps its connector even when
+   `reset --hard` has dropped that parent from every ref. Dropping the stash is what
+   removes such a commit from the graph.
 5. A page slice `[offset..offset+limit]` is extracted for display, but the **lane
    algorithm runs over ALL oids** for correct lane continuity. Only `per_oid_data`
    for page commits is emitted.
@@ -78,12 +86,12 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 | `lane_colors` | `HashMap<usize, usize>` | Maps column → color index. Set when a branch first enters a column, removed when the branch terminates. |
 | `next_color` | `usize` | Monotonically incrementing color counter. Color 0 is reserved for the HEAD chain. |
 
-`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`graph.rs:17`).
+`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`graph.rs:18`).
 The `bool` is the dashed flag, set by whichever commit takes the lane — `true` for a stash,
 `false` otherwise. There is no separate `stash_lanes` or `reserved_cols` set; `4a9f15e`
 removed the last of them in favour of carrying the flag on the lane.
 
-### HEAD chain pre-reservation (`graph.rs:168-176`)
+### HEAD chain pre-reservation (`graph.rs:131-156`)
 
 Before processing any commit:
 - Walk HEAD's first-parent chain into `head_chain: HashSet<Oid>`.
@@ -106,7 +114,7 @@ else                              → new branch/stash, scan for free col
 ```
 
 **Stashes mostly share the branch-tip codepath, with one placement exception.**
-`can_inline` (`graph.rs:209-215`) puts a stash *inline* — at its parent's own column,
+`can_inline` (`graph.rs:184-189`) puts a stash *inline* — at its parent's own column,
 consuming no new lane and no new colour — when all of these hold:
 
 1. it is a stash;
@@ -151,9 +159,9 @@ For the first parent:
   - Emit Straight edge at `col` (dashed from the lane slot's flag).
   - The parent, when later processed, detects this as a fork-in and emits ForkRight.
 - If parent not in `pending_parents`:
-  - **Orphan stash guard**: if `is_stash` and parent not in `base_oid_set`, lane ends
-    here (don't keep alive — parent will never be processed).
-  - Otherwise: claim it: `active_lanes[col] = Some(parent_oid)`, `pending_parents[parent_oid] = col`.
+  - Claim it: `active_lanes[col] = Some(parent_oid)`, `pending_parents[parent_oid] = col`.
+    This applies to stashes too — pushing them into the revwalk means a stash's parent is
+    always in the walk, so there is no orphan case to special-case.
 
 **Stash-specific**: stashes only have one logical parent (index `0`). Parents 1+ are
 internal git stash bookkeeping (index tree, untracked tree) and are ignored.
@@ -310,7 +318,6 @@ Branch-right (dirty worktree, or any other `can_inline` clause failing):
 1. Stash gets a free column via the standard branch-tip scan and a new colour.
 2. The lane's dashed flag is set to `true`, so edges at that col render dashed.
 3. Stash Phase 4: `active_lanes[stash_col] = Some((parent_oid, true))`, `pending_parents[parent_oid] = stash_col`, emit dashed Straight.
-   - **Orphan stash guard**: if parent not in `base_oid_set`, lane ends here (no Straight, no `pending_parents` claim).
 4. Parent Phase 2: detects fork-in at `stash_col`, emits dashed `ForkRight`.
 5. Parent Phase 2 cleanup: `active_lanes[stash_col] = None`, `lane_colors.remove`.
 
@@ -340,8 +347,8 @@ The lane algorithm has deeply coupled state. Changing any one thing cascades:
 | The dirtiness read | Stash placement, and through it the column and colour of unrelated branches — see `can_inline` in Phase 1 |
 
 **Where the stash-specific code is**: (1) parent filtering (only first parent), (2) the
-lane's dashed flag, (3) orphan stash guard in Phase 4, (4) `is_stash` flag on output,
-(5) the `can_inline` placement exception. What each is *allowed* to do — the rendering
+lane's dashed flag, (3) `is_stash` flag on output, (4) the `can_inline` placement exception,
+(5) the readability pre-flight that keeps an unreadable stash out of the revwalk. What each is *allowed* to do — the rendering
 shape, the dirtiness dependency, the post-processing prohibition — is stated once, in
 `.claude/rules/commit-graph.md`.
 
@@ -366,7 +373,9 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 - `dirtiness_relayouts_unrelated_branches` / `dirtiness_recolors_branches_below_the_stash_parent` — the accepted churn
 - `graph_and_dirty_counts_agree_when_*` — the graph and `get_dirty_counts` never disagree about dirtiness
 - `walk_commits_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it
-- Orphan stash — standalone dot, no connector, no ghost lane
+- `orphan_stash_shows_its_parent` — a parent dropped from every ref still gets a row, and the dashed connector lands on it
+- `first_parent_never_sorts_above_its_child` / `no_oid_appears_twice` — over every stash shape whose ordering committer time could invert
+- `unreadable_stash_commit_is_skipped` / `unreadable_stash_index_commit_is_skipped` — one bad object costs one stash, not the graph
 - WIP + stash coexist — dashed WIP line splits around inline stash nodes
 
 ---
