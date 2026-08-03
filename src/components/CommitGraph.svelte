@@ -37,7 +37,7 @@ import {
 	PILL_PADDING_X,
 } from "../lib/graph-constants.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
-import { buildOverlayPaths } from "../lib/overlay-paths.js";
+import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
 import { WIDEST_LABELS } from "../lib/relative-time.js";
@@ -1255,15 +1255,25 @@ $effect(() => {
 });
 
 const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
-const cx = (col: number) =>
-	col * displaySettings.laneWidth + displaySettings.laneWidth / 2;
-// Use svgRowHeight for Y-coordinates so the SVG overlay stays aligned with
-// the actual DOM row positions at non-100% browser zoom levels.
-const cy = (row: number) => row * svgRowHeight + svgRowHeight / 2;
 
 // SVG-specific display settings — identical to displaySettings except rowHeight
-// uses the measured value so that overlay paths, dots, and pills don't drift.
+// uses the measured value so that overlay paths, dots, and pills don't drift
+// from the DOM rows at non-100% browser zoom levels.
 const svgSettings = $derived({ ...displaySettings, rowHeight: svgRowHeight });
+const geometry = $derived(makePathContext(svgSettings));
+
+// A dot slides along its horizontal line to stay inside the panned viewport
+// (bead-on-a-string). `graphX` is the dot's unscrolled centre — from the node
+// for the dots layer, from the pill for its connector.
+function stickyDotX(graphX: number, colWidth: number, scroll: number): number {
+	return Math.max(
+		displaySettings.laneWidth / 2,
+		Math.min(
+			colWidth - 2 * COLUMN_PADDING_X - displaySettings.dotRadius,
+			graphX - scroll,
+		),
+	);
+}
 
 const graphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
 const paths = $derived.by(() => buildOverlayPaths(graphData, svgSettings));
@@ -1789,7 +1799,7 @@ $effect(() => {
         {@const refOffset = columnVisibility.ref ? columnWidths.ref : 0}
         {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
         {@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
-        {@const scrollX = Math.min(graphScrollX, Math.max(0, naturalGraphWidth - graphColWidth + 2 * COLUMN_PADDING_X))}
+        {@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
         <svg
           class="absolute top-0"
           width={refOffset + Math.max(graphColWidth, naturalGraphWidth)}
@@ -1825,15 +1835,15 @@ $effect(() => {
                Dots clamp to viewport edges (bead-on-a-string effect). -->
           <g class="overlay-dots" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
             {#each visible.dots as node}
-              {@const clampedCx = Math.max(displaySettings.laneWidth / 2, Math.min(graphColWidth - 2 * COLUMN_PADDING_X - displaySettings.dotRadius, cx(node.x) - scrollX))}
+              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
               {#if node.isWip}
-                <circle cx={clampedCx} cy={cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill="none" stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.edgeStroke} stroke-dasharray="3 3" />
               {:else if node.isStash}
                 <rect
                   x={clampedCx - displaySettings.dotRadius}
-                  y={cy(node.y) - displaySettings.dotRadius}
+                  y={geometry.cy(node.y) - displaySettings.dotRadius}
                   width={displaySettings.dotRadius * 2}
                   height={displaySettings.dotRadius * 2}
                   fill="none"
@@ -1841,11 +1851,11 @@ $effect(() => {
                   stroke-width={displaySettings.edgeStroke}
                   stroke-dasharray="3 3" />
               {:else if node.isMerge}
-                <circle cx={clampedCx} cy={cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill="var(--bg-1)" stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.mergeStroke} />
               {:else}
-                <circle cx={clampedCx} cy={cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill={laneColor(node.colorIndex)} />
               {/if}
             {/each}
@@ -1858,7 +1868,7 @@ $effect(() => {
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
-                  {@const stickyDotCx = Math.max(displaySettings.laneWidth / 2, Math.min(graphColWidth - 2 * COLUMN_PADDING_X - displaySettings.dotRadius, pill.dotCx - scrollX))}
+                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
                   {@const connectorEndX = refOffset + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
                   <line
                     x1={pillGroupRightX}

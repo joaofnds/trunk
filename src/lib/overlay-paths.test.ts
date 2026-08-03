@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DOT_RADIUS, LANE_WIDTH, ROW_HEIGHT } from "./graph-constants.js";
-import { buildOverlayPaths } from "./overlay-paths.js";
+import {
+	DEFAULT_GRAPH_SETTINGS,
+	DOT_RADIUS,
+	LANE_WIDTH,
+	ROW_HEIGHT,
+} from "./graph-constants.js";
+import { buildOverlayPaths, makePathContext } from "./overlay-paths.js";
 import type {
 	OverlayConnection,
 	OverlayGraphData,
@@ -587,5 +592,27 @@ describe("buildOverlayPaths", () => {
 				expect(typeof path.d).toBe("string");
 			}
 		});
+	});
+});
+
+describe("makePathContext", () => {
+	it("centers a column in its lane", () => {
+		expect(makePathContext(DEFAULT_GRAPH_SETTINGS).cx(2)).toBe(
+			2 * LANE + LANE / 2,
+		);
+	});
+
+	it("centers a row in its height", () => {
+		expect(makePathContext(DEFAULT_GRAPH_SETTINGS).cy(3)).toBe(
+			3 * ROW + ROW / 2,
+		);
+	});
+
+	// The overlay is placed against the row height VirtualList measured, which at
+	// non-100% zoom is not the CSS constant. Callers pass those settings in.
+	it("takes the row height from the settings it is given", () => {
+		const measured = { ...DEFAULT_GRAPH_SETTINGS, rowHeight: 25.5 };
+
+		expect(makePathContext(measured).cy(4)).toBe(4 * 25.5 + 25.5 / 2);
 	});
 });

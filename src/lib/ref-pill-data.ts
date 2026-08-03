@@ -10,6 +10,7 @@ import {
 	PILL_MARGIN_LEFT,
 	PILL_PADDING_X,
 } from "./graph-constants.js";
+import { makePathContext } from "./overlay-paths.js";
 import { truncateWithEllipsis } from "./text-measure.js";
 import type {
 	GraphCommit,
@@ -80,10 +81,7 @@ export function buildRefPillData(
 	measureFn: (text: string, font: string) => number,
 	settings: GraphDisplaySettings = DEFAULT_GRAPH_SETTINGS,
 ): OverlayRefPill[] {
-	const cx = (col: number): number =>
-		col * settings.laneWidth + settings.laneWidth / 2;
-	const cy = (row: number): number =>
-		row * settings.rowHeight + settings.rowHeight / 2;
+	const { cx, cy } = makePathContext(settings);
 	const pills: OverlayRefPill[] = [];
 
 	for (const node of nodes) {

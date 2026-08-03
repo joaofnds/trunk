@@ -10,7 +10,7 @@ import type {
 // ─── Coordinate context ───────────────────────────────────────────────────────
 
 /** Pre-computed coordinate helpers derived from display settings. */
-interface PathContext {
+export interface PathContext {
 	cx: (col: number) => number;
 	cy: (row: number) => number;
 	/** Fixed corner radius for cubic bezier connections (= laneWidth / 2) */
@@ -18,7 +18,7 @@ interface PathContext {
 	dotRadius: number;
 }
 
-function makePathContext(s: GraphDisplaySettings): PathContext {
+export function makePathContext(s: GraphDisplaySettings): PathContext {
 	const { rowHeight, laneWidth, dotRadius } = s;
 	return {
 		cx: (col) => col * laneWidth + laneWidth / 2,
