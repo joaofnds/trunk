@@ -1,5 +1,10 @@
 <script lang="ts">
 import { Archive, Search } from "@lucide/svelte";
+import {
+	interactiveRebaseFrom,
+	mergeBranch,
+	rebaseBranch,
+} from "../lib/branch-op.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -390,51 +395,30 @@ async function handleDeleteTag(tagName: string) {
 	}
 }
 
-async function handleMergeBranch(branch: string) {
-	try {
-		const result = await safeInvoke<{ kind: string; message?: string }>(
-			"merge_branch_begin",
-			{ path: repoPath, branch },
-		);
-		// fast_forwarded / conflicts open no editor — the begin's repo-changed emit
-		// drives the UI. Only a clean non-ff merge ("ready") needs a commit message.
-		if (result.kind === "ready") {
-			const msg = await onopenmessageeditor?.(
-				result.message ?? "",
-				"Merge commit message",
-			);
-			if (msg == null) return; // cancel/empty leaves the merge in progress (D-02)
-			await safeInvoke("merge_continue", { path: repoPath, message: msg });
-		}
-		// No toast on success -- graph refresh via repo-changed event is sufficient
-		await loadRefs(repoPath);
-		onrefreshed?.();
-	} catch (e) {
-		reportErrorToast(e, "Merge failed");
-	}
+async function refreshAfterAction() {
+	await loadRefs(repoPath);
+	onrefreshed?.();
 }
 
-async function handleRebaseBranch(ontoBranch: string) {
-	try {
-		await safeInvoke("rebase_branch", { path: repoPath, ontoBranch });
-		// No toast on success -- graph refresh via repo-changed event is sufficient
-		await loadRefs(repoPath);
-		onrefreshed?.();
-	} catch (e) {
-		reportErrorToast(e, "Rebase failed");
-	}
+function handleMergeBranch(branch: string) {
+	return mergeBranch({
+		repoPath,
+		branch,
+		openMessageEditor: onopenmessageeditor,
+		onDone: refreshAfterAction,
+	});
 }
 
-async function handleInteractiveRebase(branchName: string) {
-	try {
-		const forkPoint = await safeInvoke<string>("get_fork_point", {
-			path: repoPath,
-			branch: branchName,
-		});
-		onopenrebaseeditor?.(forkPoint);
-	} catch (e) {
-		reportErrorToast(e, "Failed to detect fork point");
-	}
+function handleRebaseBranch(ontoBranch: string) {
+	return rebaseBranch({ repoPath, ontoBranch, onDone: refreshAfterAction });
+}
+
+function handleInteractiveRebase(branchName: string) {
+	return interactiveRebaseFrom({
+		repoPath,
+		branch: branchName,
+		onForkPoint: (forkPoint) => onopenrebaseeditor?.(forkPoint),
+	});
 }
 
 async function handleDeleteRemoteBranch(fullRefName: string) {

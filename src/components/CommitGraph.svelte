@@ -12,6 +12,11 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
+import {
+	interactiveRebaseFrom,
+	mergeBranch,
+	rebaseBranch,
+} from "../lib/branch-op.js";
 import { copySha } from "../lib/clipboard.js";
 import { computeCommitNav } from "../lib/commitNav.js";
 import {
@@ -644,47 +649,24 @@ async function handleReset(
 	}
 }
 
-async function handleMergeBranch(branch: string) {
-	try {
-		const result = await safeInvoke<{ kind: string; message?: string }>(
-			"merge_branch_begin",
-			{ path: repoPath, branch },
-		);
-		// fast_forwarded / conflicts open no editor — the begin's repo-changed emit
-		// drives the UI. Only a clean non-ff merge ("ready") needs a commit message.
-		if (result.kind === "ready") {
-			const msg = await onopenmessageeditor?.(
-				result.message ?? "",
-				"Merge commit message",
-			);
-			if (msg == null) return; // cancel/empty leaves the merge in progress (D-02)
-			await safeInvoke("merge_continue", { path: repoPath, message: msg });
-		}
-		// No toast on success -- graph refresh via repo-changed event is sufficient
-	} catch (e) {
-		reportErrorToast(e, "Merge failed");
-	}
+function handleMergeBranch(branch: string) {
+	return mergeBranch({
+		repoPath,
+		branch,
+		openMessageEditor: onopenmessageeditor,
+	});
 }
 
-async function handleRebaseBranch(ontoBranch: string) {
-	try {
-		await safeInvoke("rebase_branch", { path: repoPath, ontoBranch });
-		// No toast on success -- graph refresh via repo-changed event is sufficient
-	} catch (e) {
-		reportErrorToast(e, "Rebase failed");
-	}
+function handleRebaseBranch(ontoBranch: string) {
+	return rebaseBranch({ repoPath, ontoBranch });
 }
 
-async function handleInteractiveRebaseBranch(branchName: string) {
-	try {
-		const forkPoint = await safeInvoke<string>("get_fork_point", {
-			path: repoPath,
-			branch: branchName,
-		});
-		onopenrebaseeditor?.(forkPoint);
-	} catch (e) {
-		reportErrorToast(e, "Failed to detect fork point");
-	}
+function handleInteractiveRebaseBranch(branchName: string) {
+	return interactiveRebaseFrom({
+		repoPath,
+		branch: branchName,
+		onForkPoint: (forkPoint) => onopenrebaseeditor?.(forkPoint),
+	});
 }
 
 async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
