@@ -7,7 +7,10 @@ rendering.
 ---
 
 The binding constraints on this pipeline live in `.claude/rules/commit-graph.md`. This
-document explains how the algorithm works; it does not restate the rules.
+document explains how the algorithm works, and it paraphrases some of those constraints to
+do so — the marker shapes, the `can_inline` clauses, the accepted dirtiness churn. Where the
+two disagree the rule file wins, and a passage here is never a "stale doc" to bring in line
+with code that broke a rule.
 
 ## Overview: The Pipeline
 
@@ -114,7 +117,7 @@ else                              → new branch/stash, scan for free col
 ```
 
 **Stashes mostly share the branch-tip codepath, with one placement exception.**
-`can_inline` (`graph.rs:184-189`) puts a stash *inline* — at its parent's own column,
+`can_inline` (`graph.rs:183-188`) puts a stash *inline* — at its parent's own column,
 consuming no new lane and no new colour — when all of these hold:
 
 1. it is a stash;
