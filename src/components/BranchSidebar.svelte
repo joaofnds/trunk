@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Archive, Search } from "@lucide/svelte";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { RefsResponse, StashEntry } from "../lib/types.js";
 import BranchRow from "./BranchRow.svelte";
@@ -141,8 +142,7 @@ async function handleCheckout(branchName: string) {
 		onrefreshed?.();
 		showToast(`Checked out ${branchName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		if (err.code === "dirty_workdir") {
+		if (isTrunkError(e) && e.code === "dirty_workdir") {
 			checkoutError = {
 				branch: branchName,
 				message:
@@ -168,7 +168,7 @@ async function handleCheckoutRemoteBranch(fullName: string) {
 		await loadRefs(repoPath);
 		onrefreshed?.();
 	} catch (e) {
-		showToast((e as TrunkError).message ?? "Checkout failed", "error");
+		reportErrorToast(e, "Checkout failed");
 	} finally {
 		checkingOutBranch = null;
 	}
@@ -186,8 +186,7 @@ async function handleCreateBranch() {
 		onrefreshed?.();
 		showToast(`Checked out ${trimmed}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		if (err.code === "dirty_workdir") {
+		if (isTrunkError(e) && e.code === "dirty_workdir") {
 			showToast(
 				"Branch created (checkout skipped — uncommitted changes)",
 				"success",
@@ -197,7 +196,7 @@ async function handleCreateBranch() {
 			await loadRefs(repoPath);
 			onrefreshed?.();
 		} else {
-			createError = err.message;
+			createError = errorMessage(e, "Failed to create branch");
 		}
 	}
 }
@@ -219,11 +218,10 @@ async function handleStashSave() {
 		stashName = "";
 		await loadRefs(repoPath);
 	} catch (e) {
-		const err = e as TrunkError;
-		if (err.code === "nothing_to_stash") {
+		if (isTrunkError(e) && e.code === "nothing_to_stash") {
 			stashCreateError = "Nothing to stash — working tree is clean";
 		} else {
-			stashCreateError = err.message ?? "Failed to create stash";
+			stashCreateError = errorMessage(e, "Failed to create stash");
 		}
 	} finally {
 		stashSaving = false;
@@ -264,10 +262,9 @@ async function handleStashPop(oid: string) {
 		await safeInvoke("stash_pop", { path: repoPath, oid });
 		await loadRefs(repoPath);
 	} catch (e) {
-		const err = e as TrunkError;
 		stashEntryErrors = {
 			...stashEntryErrors,
-			[oid]: err.message ?? "Failed to pop stash",
+			[oid]: errorMessage(e, "Failed to pop stash"),
 		};
 	}
 }
@@ -278,10 +275,9 @@ async function handleStashApply(oid: string) {
 		await safeInvoke("stash_apply", { path: repoPath, oid });
 		await loadRefs(repoPath);
 	} catch (e) {
-		const err = e as TrunkError;
 		stashEntryErrors = {
 			...stashEntryErrors,
-			[oid]: err.message ?? "Failed to apply stash",
+			[oid]: errorMessage(e, "Failed to apply stash"),
 		};
 	}
 }
@@ -298,10 +294,9 @@ async function handleStashDrop(stash: StashEntry) {
 		await safeInvoke("stash_drop", { path: repoPath, oid: stash.oid });
 		await loadRefs(repoPath);
 	} catch (e) {
-		const err = e as TrunkError;
 		stashEntryErrors = {
 			...stashEntryErrors,
-			[stash.oid]: err.message ?? "Failed to drop stash",
+			[stash.oid]: errorMessage(e, "Failed to drop stash"),
 		};
 	}
 }
@@ -340,8 +335,7 @@ async function handleDeleteBranch(branchName: string) {
 		onrefreshed?.();
 		showToast(`Deleted branch ${branchName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Failed to delete branch", "error");
+		reportErrorToast(e, "Failed to delete branch");
 	}
 }
 
@@ -370,8 +364,7 @@ function handleRenameBranch(branchName: string) {
 				onrefreshed?.();
 				showToast(`Renamed branch to ${newName}`, "success");
 			} catch (e) {
-				const err = e as TrunkError;
-				showToast(err.message ?? "Failed to rename branch", "error");
+				reportErrorToast(e, "Failed to rename branch");
 			}
 		},
 	};
@@ -393,8 +386,7 @@ async function handleDeleteTag(tagName: string) {
 		onrefreshed?.();
 		showToast(`Deleted tag ${tagName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Failed to delete tag", "error");
+		reportErrorToast(e, "Failed to delete tag");
 	}
 }
 
@@ -418,8 +410,7 @@ async function handleMergeBranch(branch: string) {
 		await loadRefs(repoPath);
 		onrefreshed?.();
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Merge failed", "error");
+		reportErrorToast(e, "Merge failed");
 	}
 }
 
@@ -430,8 +421,7 @@ async function handleRebaseBranch(ontoBranch: string) {
 		await loadRefs(repoPath);
 		onrefreshed?.();
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Rebase failed", "error");
+		reportErrorToast(e, "Rebase failed");
 	}
 }
 
@@ -443,8 +433,7 @@ async function handleInteractiveRebase(branchName: string) {
 		});
 		onopenrebaseeditor?.(forkPoint);
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Failed to detect fork point", "error");
+		reportErrorToast(e, "Failed to detect fork point");
 	}
 }
 
@@ -464,8 +453,7 @@ async function handleDeleteRemoteBranch(fullRefName: string) {
 		onrefreshed?.();
 		showToast(`Deleted remote branch ${fullRefName}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Failed to delete remote branch", "error");
+		reportErrorToast(e, "Failed to delete remote branch");
 	}
 }
 
