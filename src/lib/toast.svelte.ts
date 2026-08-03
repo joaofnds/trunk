@@ -18,7 +18,6 @@ export const toasts = {
 /** Reset store state — for use in tests only */
 export function _resetToasts(): void {
 	_toasts = [];
-	_nextId = 0;
 }
 
 export function showToast(

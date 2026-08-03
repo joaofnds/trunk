@@ -49,6 +49,17 @@ describe("toast store", () => {
 		expect(toasts.items.find((t) => t.message === "temporary")).toBeUndefined();
 	});
 
+	it("a dismissal pending from before a reset does not remove a later toast", () => {
+		showToast("stale", "success", 3000);
+		vi.advanceTimersByTime(2999);
+
+		_resetToasts();
+		showToast("live", "success", 3000);
+		vi.advanceTimersByTime(1);
+
+		expect(toasts.items.map((t) => t.message)).toEqual(["live"]);
+	});
+
 	// Test E: showToast with kind='error' adds item with kind='error'
 	it("showToast('err', 'error') adds an item with kind='error'", () => {
 		showToast("err", "error");
