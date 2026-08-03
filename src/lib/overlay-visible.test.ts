@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { buildOverlayPaths } from "./overlay-paths.js";
 import { getVisibleOverlayElements } from "./overlay-visible.js";
 import type {
+	OverlayConnection,
 	OverlayNode,
 	OverlayPath,
 	OverlayRefPill,
@@ -106,6 +108,26 @@ describe("getVisibleOverlayElements", () => {
 			];
 			const result = getVisibleOverlayElements(paths, [], 4, 8);
 			expect(result.paths).toHaveLength(3);
+		});
+
+		it("upward connector is kept once its parent row scrolls off the top", () => {
+			const conn: OverlayConnection = {
+				childX: 1,
+				childY: 3,
+				parentX: 0,
+				parentY: 0,
+				colorIndex: 0,
+				dashed: true,
+			};
+			const paths = buildOverlayPaths({
+				nodes: [],
+				connections: [conn],
+				maxColumns: 2,
+			});
+
+			const result = getVisibleOverlayElements(paths, [], 1, 30);
+
+			expect(result.paths).toHaveLength(1);
 		});
 
 		it("out-of-range paths are filtered, in-range are kept", () => {

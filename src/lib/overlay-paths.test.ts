@@ -13,11 +13,38 @@ const ROW = ROW_HEIGHT;
 const R = LANE / 2; // corner radius = laneWidth / 2
 const DOT_R = DOT_RADIUS;
 const DASH_GAP = 3; // matches stroke-dasharray gap
+const KAPPA = (4 * (Math.SQRT2 - 1)) / 3; // bezier quarter-circle constant
 function cx(col: number): number {
 	return col * LANE + LANE / 2;
 }
 function cy(row: number): number {
 	return row * ROW + ROW / 2;
+}
+
+/** Every y-coordinate in a path made of M, V, C and H commands */
+function pathYs(d: string): number[] {
+	const tokens = d.split(" ");
+	const ys: number[] = [];
+	let i = 0;
+	while (i < tokens.length) {
+		const command = tokens[i++];
+		if (command === "M") {
+			i++;
+			ys.push(Number(tokens[i++]));
+		} else if (command === "V") {
+			ys.push(Number(tokens[i++]));
+		} else if (command === "C") {
+			for (let point = 0; point < 3; point++) {
+				i++;
+				ys.push(Number(tokens[i++]));
+			}
+		} else if (command === "H") {
+			i++;
+		} else {
+			throw new Error(`unexpected path command: ${command}`);
+		}
+	}
+	return ys;
 }
 
 /** Factory: minimal OverlayConnection */
@@ -183,21 +210,6 @@ describe("buildOverlayPaths", () => {
 			const nodes = [makeNode({ oid: "tip", x: 0, y: 0, isBranchTip: true })];
 			const result = buildOverlayPaths(makeGraphData([conn], nodes));
 			expect(result[0].d).toBe(`M ${cx(0)} ${cy(0)} V ${cy(2)}`);
-		});
-
-		it("returns empty d when startY >= endY", () => {
-			// Hollow WIP tip at row 0 → parent at row 0 (same row, different node)
-			// This shouldn't happen in practice, but the safety check handles it
-			const conn = makeConn({
-				childX: 0,
-				childY: 0,
-				parentX: 0,
-				parentY: 0,
-				dashed: true,
-			});
-			const nodes = [makeNode({ oid: "wip", x: 0, y: 0, isWip: true })];
-			const result = buildOverlayPaths(makeGraphData([conn], nodes));
-			expect(result[0].d).toBe("");
 		});
 
 		it("in column 2 uses cx(2) for x coordinate", () => {
@@ -382,6 +394,137 @@ describe("buildOverlayPaths", () => {
 		});
 	});
 
+	describe("upward connections (parent above child)", () => {
+		describe("same column", () => {
+			it("runs from the child's top edge to the parent's bottom edge", () => {
+				const conn = makeConn({
+					childX: 0,
+					childY: 2,
+					parentX: 0,
+					parentY: 0,
+					dashed: true,
+				});
+				const nodes = [
+					makeNode({
+						oid: "stash",
+						x: 0,
+						y: 2,
+						isBranchTip: true,
+						isStash: true,
+					}),
+					makeNode({
+						oid: "merge",
+						x: 0,
+						y: 0,
+						isBranchTip: true,
+						isMerge: true,
+					}),
+				];
+
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				expect(result[0].d).toBe(
+					`M ${cx(0)} ${cy(2) - DOT_R - DASH_GAP} V ${cy(0) + DOT_R + DASH_GAP}`,
+				);
+			});
+
+			it("runs to the parent centre when the parent is filled", () => {
+				const conn = makeConn({
+					childX: 0,
+					childY: 2,
+					parentX: 0,
+					parentY: 0,
+					dashed: true,
+				});
+				const nodes = [
+					makeNode({
+						oid: "stash",
+						x: 0,
+						y: 2,
+						isBranchTip: true,
+						isStash: true,
+					}),
+					makeNode({ oid: "parent", x: 0, y: 0 }),
+				];
+
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				expect(result[0].d).toBe(
+					`M ${cx(0)} ${cy(2) - DOT_R - DASH_GAP} V ${cy(0)}`,
+				);
+			});
+		});
+
+		describe("fork", () => {
+			const conn = makeConn({
+				childX: 1,
+				childY: 3,
+				parentX: 0,
+				parentY: 0,
+				dashed: true,
+			});
+			const nodes = [
+				makeNode({
+					oid: "stash",
+					x: 1,
+					y: 3,
+					isBranchTip: true,
+					isStash: true,
+				}),
+				makeNode({ oid: "parent", x: 0, y: 0 }),
+			];
+
+			it("rises from the child's top edge and turns at the parent row", () => {
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				const cp1y = cy(0) + (1 - KAPPA) * R;
+				const cp2x = cx(1) - KAPPA * R;
+				expect(result[0].d).toBe(
+					`M ${cx(1)} ${cy(3) - DOT_R - DASH_GAP} V ${cy(0) + R} ` +
+						`C ${cx(1)} ${cp1y} ${cp2x} ${cy(0)} ${cx(1) - R} ${cy(0)} H ${cx(0)}`,
+				);
+			});
+
+			it("never rises above the parent row", () => {
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				expect(Math.min(...pathYs(result[0].d))).toBe(cy(0));
+			});
+		});
+
+		describe("merge", () => {
+			const conn = makeConn({ childX: 0, childY: 3, parentX: 1, parentY: 0 });
+			const nodes = [
+				makeNode({ oid: "merge", x: 0, y: 3, isMerge: true }),
+				makeNode({
+					oid: "parent",
+					x: 1,
+					y: 0,
+					isBranchTip: true,
+					isMerge: true,
+				}),
+			];
+
+			it("turns its corner above the child row", () => {
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				const cp1x = cx(1) - (1 - KAPPA) * R;
+				const cp2y = cy(3) - KAPPA * R;
+				expect(result[0].d).toBe(
+					`M ${cx(0)} ${cy(3)} H ${cx(1) - R} ` +
+						`C ${cp1x} ${cy(3)} ${cx(1)} ${cp2y} ${cx(1)} ${cy(3) - R} ` +
+						`V ${cy(0) + DOT_R + DASH_GAP}`,
+				);
+			});
+
+			it("never drops below the child row", () => {
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				expect(Math.max(...pathYs(result[0].d))).toBe(cy(3));
+			});
+		});
+	});
+
 	describe("minRow/maxRow metadata", () => {
 		it("same-column: minRow=childY, maxRow=parentY", () => {
 			const conn = makeConn({ childX: 0, childY: 2, parentX: 0, parentY: 5 });
@@ -395,6 +538,36 @@ describe("buildOverlayPaths", () => {
 			const result = buildOverlayPaths(makeGraphData([conn]));
 			expect(result[0].minRow).toBe(3);
 			expect(result[0].maxRow).toBe(7);
+		});
+
+		describe("when the parent sits above the child", () => {
+			it("same-column: minRow=parentY, maxRow=childY", () => {
+				const conn = makeConn({ childX: 0, childY: 3, parentX: 0, parentY: 0 });
+
+				const result = buildOverlayPaths(makeGraphData([conn]));
+
+				expect(result[0].minRow).toBe(0);
+				expect(result[0].maxRow).toBe(3);
+			});
+
+			it("fork: minRow=parentY, maxRow=childY", () => {
+				const conn = makeConn({ childX: 1, childY: 3, parentX: 0, parentY: 0 });
+
+				const result = buildOverlayPaths(makeGraphData([conn]));
+
+				expect(result[0].minRow).toBe(0);
+				expect(result[0].maxRow).toBe(3);
+			});
+
+			it("merge: minRow=parentY, maxRow=childY", () => {
+				const conn = makeConn({ childX: 0, childY: 3, parentX: 1, parentY: 0 });
+				const nodes = [makeNode({ oid: "merge", x: 0, y: 3, isMerge: true })];
+
+				const result = buildOverlayPaths(makeGraphData([conn], nodes));
+
+				expect(result[0].minRow).toBe(0);
+				expect(result[0].maxRow).toBe(3);
+			});
 		});
 	});
 

@@ -62,36 +62,33 @@ function buildPath(
 	const childNode = nodeByPos.get(`${conn.childX},${conn.childY}`);
 	const parentNode = nodeByPos.get(`${conn.parentX},${conn.parentY}`);
 
+	/** Direction of travel from the child row to the parent row */
+	const rowSign = Math.sign(conn.parentY - conn.childY);
+	const minRow = Math.min(conn.childY, conn.parentY);
+	const maxRow = Math.max(conn.childY, conn.parentY);
+
+	// Hollow tips pull their end of the path back to the ring's edge
+	const childStartY = isHollowTip(childNode)
+		? cy(conn.childY) + rowSign * (dotRadius + DASH_GAP)
+		: cy(conn.childY);
+	const parentEndY = isHollowTip(parentNode)
+		? cy(conn.parentY) - rowSign * (dotRadius + DASH_GAP)
+		: cy(conn.parentY);
+
 	if (conn.childX === conn.parentX) {
 		// ── Same column: vertical line ──
 		const col = conn.childX;
-		const startY = isHollowTip(childNode)
-			? cy(conn.childY) + dotRadius + DASH_GAP
-			: cy(conn.childY);
-		const endY = isHollowTip(parentNode)
-			? cy(conn.parentY) - dotRadius - DASH_GAP
-			: cy(conn.parentY);
-
-		if (startY >= endY) {
-			return {
-				d: "",
-				colorIndex: conn.colorIndex,
-				dashed: conn.dashed,
-				minRow: conn.childY,
-				maxRow: conn.parentY,
-			};
-		}
 
 		return {
-			d: `M ${cx(col)} ${startY} V ${endY}`,
+			d: `M ${cx(col)} ${childStartY} V ${parentEndY}`,
 			colorIndex: conn.colorIndex,
 			dashed: conn.dashed,
-			minRow: conn.childY,
-			maxRow: conn.parentY,
+			minRow,
+			maxRow,
 		};
 	} else if (childNode?.isMerge) {
 		// ── Merge: horizontal → bezier curve → vertical ──
-		// Path: H from merge commit to parent's column, curve down, V to parent
+		// Path: H from merge commit to parent's column, curve, V to parent
 		const goingRight = conn.parentX > conn.childX;
 		const hSign = goingRight ? 1 : -1;
 
@@ -100,42 +97,33 @@ function buildPath(
 
 		// Horizontal segment stops R before parent column
 		const hTarget = cx(conn.parentX) - hSign * R;
-		// Corner point: at parent column, R below child row
+		// Corner point: at parent column, R from the child row toward the parent
 		const cornerX = cx(conn.parentX);
-		const cornerY = cy(conn.childY) + R;
-
-		// Vertical end: parent position
-		const endY = isHollowTip(parentNode)
-			? cy(conn.parentY) - dotRadius - DASH_GAP
-			: cy(conn.parentY);
+		const cornerY = cy(conn.childY) + rowSign * R;
 
 		// Bezier control points for 90° quarter-circle
 		const cp1x = cx(conn.parentX) - hSign * (1 - KAPPA) * R;
 		const cp1y = cy(conn.childY);
 		const cp2x = cx(conn.parentX);
-		const cp2y = cy(conn.childY) + KAPPA * R;
+		const cp2y = cy(conn.childY) + rowSign * KAPPA * R;
 
-		const d = `M ${startX} ${startY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${cornerX} ${cornerY} V ${endY}`;
+		const d = `M ${startX} ${startY} H ${hTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${cornerX} ${cornerY} V ${parentEndY}`;
 
 		return {
 			d,
 			colorIndex: conn.colorIndex,
 			dashed: conn.dashed,
-			minRow: conn.childY,
-			maxRow: conn.parentY,
+			minRow,
+			maxRow,
 		};
 	} else {
 		// ── Fork/normal: vertical → bezier curve → horizontal ──
-		// Path: V down child's column to parent's row, curve, H to parent
+		// Path: V along child's column to parent's row, curve, H to parent
 		const goingRight = conn.parentX > conn.childX;
 		const hSign = goingRight ? 1 : -1;
 
-		const startY = isHollowTip(childNode)
-			? cy(conn.childY) + dotRadius + DASH_GAP
-			: cy(conn.childY);
-
-		// Vertical segment stops R above parent row center
-		const vTarget = cy(conn.parentY) - R;
+		// Vertical segment stops R short of parent row center
+		const vTarget = cy(conn.parentY) - rowSign * R;
 		// Corner point: where curve ends, at parent row center in child's column
 		const cornerX = cx(conn.childX);
 		const cornerY = cy(conn.parentY);
@@ -146,21 +134,21 @@ function buildPath(
 
 		// Bezier control points for 90° quarter-circle
 		const cp1x = cx(conn.childX);
-		const cp1y = cornerY - (1 - KAPPA) * R;
+		const cp1y = cornerY - rowSign * (1 - KAPPA) * R;
 		const cp2x = cx(conn.childX) + hSign * KAPPA * R;
 		const cp2y = cornerY;
 
 		// After curve, horizontal target: R into the turn from child's column
 		const hStart = cx(conn.childX) + hSign * R;
 
-		const d = `M ${cornerX} ${startY} V ${vTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${hStart} ${cornerY} H ${endX}`;
+		const d = `M ${cornerX} ${childStartY} V ${vTarget} C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${hStart} ${cornerY} H ${endX}`;
 
 		return {
 			d,
 			colorIndex: conn.colorIndex,
 			dashed: conn.dashed,
-			minRow: conn.childY,
-			maxRow: conn.parentY,
+			minRow,
+			maxRow,
 		};
 	}
 }

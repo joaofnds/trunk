@@ -266,16 +266,25 @@ DASH_GAP = 3                                // matches stroke-dasharray "3 3"
 A hollow tip pulls the path end back by `dotRadius + DASH_GAP` so the stroke stops at
 the ring's edge instead of crossing it.
 
+### Direction of travel
+
+`rowSign = Math.sign(parentY - childY)` is `+1` when the parent sits below the child and
+`-1` when it sits above. Every vertical offset is multiplied by it — the endpoint pull-in,
+the corner, and the bezier control points. The magnitudes (`R`, `dotRadius`, `DASH_GAP`,
+`KAPPA`) never change; only their sign is derived.
+
+Layer 1 orders a stash by the revwalk, so it cannot emit a parent above its child. The sign
+covers the transient case: pagination, and any future ordering change. Do not delete it as
+dead code without reverting that ordering too.
+
 ### Which of three shapes
 
 Decided per connection, in this order:
 
-1. **`childX === parentX` — vertical.** `M cx(col) startY V endY`. If the endpoint
-   pull-in leaves `startY >= endY` (adjacent rows, both hollow tips), the path is
-   emitted with an empty `d` rather than an inverted line.
-2. **`childNode.isMerge` — horizontal, corner down, vertical.**
+1. **`childX === parentX` — vertical.** `M cx(col) startY V endY`.
+2. **`childNode.isMerge` — horizontal, corner, vertical.**
    `M startX startY H hTarget C … cornerX cornerY V endY`. The corner lands in the
-   parent's column, `R` below the child's row.
+   parent's column, `R` from the child's row toward the parent.
 3. **Otherwise (fork) — vertical, corner, horizontal.**
    `M cornerX startY V vTarget C … hStart cornerY H endX`. The corner lands in the
    child's column, at the parent's row.
@@ -283,7 +292,14 @@ Decided per connection, in this order:
 Shapes 2 and 3 both keep a tail past the curve. The choice is the child node's
 `isMerge` flag, not an inspection of what else occupies the target column.
 
-Every path also carries `minRow`/`maxRow`, which is what `overlay-visible.ts` culls on.
+Nothing guards segment length or row order. An equal-row connection emits a degenerate
+path, which is safe because a commit cannot be its own parent. A guard here was removed in
+milestone 2 of the backdated-stash work: it returned an empty `d` and left the row interval
+inverted, so it hid one defect behind another.
+
+Every path also carries `minRow`/`maxRow`: the two rows in ascending order, never child
+then parent. `overlay-visible.ts` culls on that interval, and an inverted pair drops a
+partially-visible connector instead of clipping it.
 
 ---
 
