@@ -37,14 +37,21 @@ function gutterOf(text: string): HTMLElement {
 // opening the comment composer works without an explicit per-test override;
 // everything else resolves to undefined. Tests that exercise the auto-start flow
 // override safeInvoke per case.
-vi.mock("../lib/invoke.js", () => ({
-	safeInvoke: vi.fn((cmd: string) => {
-		if (cmd === "get_review_session_status") {
-			return Promise.resolve({ state: "active", canonical_path: "/repo" });
-		}
-		return Promise.resolve(undefined);
-	}),
-}));
+vi.mock("../lib/invoke.js", async () => {
+	const actual =
+		await vi.importActual<typeof import("../lib/invoke.js")>(
+			"../lib/invoke.js",
+		);
+	return {
+		...actual,
+		safeInvoke: vi.fn((cmd: string) => {
+			if (cmd === "get_review_session_status") {
+				return Promise.resolve({ state: "active", canonical_path: "/repo" });
+			}
+			return Promise.resolve(undefined);
+		}),
+	};
+});
 
 vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
@@ -2126,7 +2133,7 @@ describe("Discard File button", () => {
 		// Command-scoped, not mockImplementationOnce: a leaked flow must not consume it.
 		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
 			cmd === "discard_file"
-				? Promise.reject({ message: "discard exploded" })
+				? Promise.reject({ code: "git_error", message: "discard exploded" })
 				: Promise.resolve(undefined),
 		);
 		const onfileemptied = vi.fn();
