@@ -3,6 +3,7 @@ created: 2026-08-03T00:00:00.000Z
 title: An unreadable-but-present file renders as a whole-file deletion in the markdown diff
 area: backend
 files:
+  - src-tauri/src/git/blob_reader.rs
   - src-tauri/src/commands/markdown.rs
 ---
 
@@ -25,9 +26,10 @@ let target = root
     .map_err(|e| TrunkError::new("not_found", format!("{file_path}: {e}")))?;
 ```
 
-`src-tauri/src/commands/markdown.rs:1181-1184`. `read_side` (`:978-982`) then treats
-`not_found` as "the file is absent at this rev" and returns `Ok(None)`, which the
-block differ renders as the whole file removed.
+`src-tauri/src/git/blob_reader.rs:119-122`. `read_side`
+(`src-tauri/src/commands/markdown.rs:925-928`) then treats `not_found` as "the file is
+absent at this rev" and returns `Ok(None)`, which the block differ renders as the whole
+file removed.
 
 `not_found` is doing two jobs: "git has no such path at this rev", which `read_side`
 is right to swallow, and "the OS refused to resolve this path", which it is not.
@@ -59,3 +61,6 @@ and deferred out of the P3 milestone-1 refactor because fixing it is a behavior 
 **G §C cites `markdown.rs:1174-1177`, which contains no `canonicalize` at all** — those
 lines are the function signature and the bare-repo guard. A probe of exactly the cited
 range records a false negative.
+
+The resolver moved from `commands/markdown.rs` to `git/blob_reader.rs` in `671bd8c`;
+the code above is unchanged by that move, only relocated.
