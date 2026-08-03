@@ -86,7 +86,7 @@ pub(crate) fn fence_language(file_path: &str) -> &'static str {
 
 /// L-06 line-indexing convention: 1-based inclusive bounds over
 /// `str::lines()` semantics, with CRLF→LF normalisation applied to the body
-/// BEFORE slicing. Mirrors `classify_anchor` at `commands/review.rs:358` so a
+/// BEFORE slicing. Mirrors `classify_anchor` in `git/review_resolution.rs` so a
 /// comment that resolves at classification time also resolves at render time —
 /// one convention applies on both sides (capture and render). RESEARCH Item 2
 /// Option (a): `str::lines()` already handles `\r\n` as one boundary, so line
