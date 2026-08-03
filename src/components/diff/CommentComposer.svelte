@@ -1,6 +1,7 @@
 <script lang="ts">
 import { buildDiffAnchor } from "../../lib/diff-anchor.js";
-import { safeInvoke, type TrunkError } from "../../lib/invoke.js";
+import { reportErrorToast } from "../../lib/error-report.js";
+import { safeInvoke } from "../../lib/invoke.js";
 import { showToast } from "../../lib/toast.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 
@@ -87,8 +88,7 @@ async function persistDraft() {
 			anchor: capturedResult.anchor,
 		});
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Save draft failed", "error");
+		reportErrorToast(e, "Save draft failed");
 	}
 }
 
@@ -120,8 +120,7 @@ async function handleSubmit() {
 			cachedExcerpt: capturedResult.cachedExcerpt,
 		});
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Add comment failed", "error");
+		reportErrorToast(e, "Add comment failed");
 		return;
 	} finally {
 		submitting = false;

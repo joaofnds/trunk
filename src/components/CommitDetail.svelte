@@ -11,7 +11,8 @@ import {
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { reportErrorToast } from "../lib/error-report.js";
+import { safeInvoke } from "../lib/invoke.js";
 import {
 	addCommitComment,
 	deleteComment,
@@ -206,10 +207,7 @@ async function ensureActiveSession(): Promise<boolean> {
 		);
 		state = status.state;
 	} catch (e) {
-		showToast(
-			(e as TrunkError).message ?? "Failed to load review session",
-			"error",
-		);
+		reportErrorToast(e, "Failed to load review session");
 		return false;
 	}
 
@@ -223,10 +221,7 @@ async function ensureActiveSession(): Promise<boolean> {
 		await safeInvoke(command, { path: repoPath });
 		return true;
 	} catch (e) {
-		showToast(
-			(e as TrunkError).message ?? "Failed to start review session",
-			"error",
-		);
+		reportErrorToast(e, "Failed to start review session");
 		return false;
 	}
 }
@@ -240,7 +235,7 @@ async function saveNote() {
 		addingNote = false;
 		noteText = "";
 	} catch (e) {
-		showToast((e as TrunkError).message ?? "Failed to add note", "error");
+		reportErrorToast(e, "Failed to add note");
 	} finally {
 		noteSaving = false;
 	}

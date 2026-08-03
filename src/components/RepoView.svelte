@@ -7,7 +7,8 @@ import {
 	type DiffKind,
 	type ViewDescriptor,
 } from "../lib/comment-matching.js";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { reportErrorToast } from "../lib/error-report.js";
+import { safeInvoke } from "../lib/invoke.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
@@ -515,8 +516,7 @@ async function handleFileSelect(
 		stagingDiffFiles = result;
 	} catch (e) {
 		if (gen !== selectGeneration) return;
-		const err = e as TrunkError;
-		showToast(err.message ?? "Failed to load diff", "error");
+		reportErrorToast(e, "Failed to load diff");
 		stagingDiffFiles = [];
 	} finally {
 		if (gen === selectGeneration) {

@@ -1,6 +1,7 @@
 <script lang="ts">
 import { open } from "@tauri-apps/plugin-dialog";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { errorMessage } from "../lib/error-report.js";
+import { safeInvoke } from "../lib/invoke.js";
 import { displayPath } from "../lib/path.js";
 import {
 	addRecentRepo,
@@ -60,8 +61,7 @@ async function openPath(path: string) {
 		recentRepos = await getRecentRepos();
 		onopen(path, name);
 	} catch (e: unknown) {
-		const trunk = e as TrunkError;
-		error = trunk.message ?? "Failed to open repository";
+		error = errorMessage(e, "Failed to open repository");
 	} finally {
 		loading = false;
 	}

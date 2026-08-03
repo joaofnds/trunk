@@ -11,8 +11,7 @@ import {
 	Undo2,
 } from "@lucide/svelte";
 import { emit, listen } from "@tauri-apps/api/event";
-import type { TrunkError } from "../lib/invoke.js";
-import { safeInvoke } from "../lib/invoke.js";
+import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -194,8 +193,7 @@ async function handleBranchCreate(values: Record<string, string>) {
 		await safeInvoke("create_branch", { path: repoPath, name });
 		showToast(`Checked out ${name}`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		if (err.code === "dirty_workdir") {
+		if (isTrunkError(e) && e.code === "dirty_workdir") {
 			showToast(
 				"Branch created (checkout skipped — uncommitted changes)",
 				"success",

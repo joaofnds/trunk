@@ -1,6 +1,7 @@
 <script lang="ts">
 import { GitBranch, GitMerge } from "@lucide/svelte";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { reportErrorToast } from "../lib/error-report.js";
+import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { OperationInfo } from "../lib/types.js";
 
@@ -42,8 +43,7 @@ async function handleContinue() {
 		await safeInvoke(cmd, { path: repoPath });
 		showToast(isMerge ? "Merge completed" : "Rebase continued", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Continue failed", "error");
+		reportErrorToast(e, "Continue failed");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -55,8 +55,7 @@ async function handleSkip() {
 	try {
 		await safeInvoke("rebase_skip", { path: repoPath });
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Skip failed", "error");
+		reportErrorToast(e, "Skip failed");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -83,8 +82,7 @@ async function handleAbort() {
 			"success",
 		);
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Abort failed", "error");
+		reportErrorToast(e, "Abort failed");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -107,8 +105,7 @@ async function handleRevertContinue() {
 		await safeInvoke("revert_continue", { path: repoPath, message: msg });
 		showToast("Revert completed", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Continue failed", "error");
+		reportErrorToast(e, "Continue failed");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -129,8 +126,7 @@ async function handleCherryPickContinue() {
 		await safeInvoke("cherry_pick_continue", { path: repoPath, message: msg });
 		showToast("Cherry-pick completed", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Continue failed", "error");
+		reportErrorToast(e, "Continue failed");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -149,8 +145,7 @@ async function handleCherryPickAbort() {
 		await safeInvoke("cherry_pick_abort", { path: repoPath });
 		showToast("Cherry-pick aborted", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Abort failed", "error");
+		reportErrorToast(e, "Abort failed");
 	} finally {
 		loading = false;
 		onaction?.();
@@ -169,8 +164,7 @@ async function handleRevertAbort() {
 		await safeInvoke("revert_abort", { path: repoPath });
 		showToast("Revert aborted", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Abort failed", "error");
+		reportErrorToast(e, "Abort failed");
 	} finally {
 		loading = false;
 		onaction?.();

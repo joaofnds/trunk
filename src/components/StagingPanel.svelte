@@ -13,7 +13,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { safeInvoke } from "../lib/invoke.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
@@ -280,8 +281,7 @@ async function handleDiscardFile(filePath: string, fileStatus: FileStatusType) {
 		showToast(`Discarded ${filePath}`, "success");
 		await loadStatus();
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Discard failed", "error");
+		reportErrorToast(e, "Discard failed");
 	}
 }
 
@@ -307,8 +307,7 @@ async function handleDiscardDirectory(dirPath: string) {
 		await loadStatus();
 		showToast(`Discarded ${files.length} files in ${dirPath}/`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Discard failed", "error");
+		reportErrorToast(e, "Discard failed");
 	}
 }
 
@@ -482,8 +481,7 @@ async function resolveConflictedFile(
 		onfileadvance?.(filePath, "conflicted");
 		await loadStatus();
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Resolution failed", "error");
+		reportErrorToast(e, "Resolution failed");
 	}
 }
 
@@ -602,8 +600,7 @@ async function handleDiscardAll() {
 		await loadStatus();
 		showToast(`Discarded all changes (${count} files)`, "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Discard all failed", "error");
+		reportErrorToast(e, "Discard all failed");
 	}
 }
 
@@ -633,8 +630,7 @@ async function runMergeContinue() {
 		await safeInvoke("merge_continue", { path: repoPath, message: msg });
 		showToast("Merge completed", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Merge commit failed", "error");
+		reportErrorToast(e, "Merge commit failed");
 	} finally {
 		mergeLoading = false;
 		await loadStatus();
@@ -653,8 +649,7 @@ async function abortMerge() {
 		await safeInvoke("merge_abort", { path: repoPath });
 		showToast("Merge aborted", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Abort failed", "error");
+		reportErrorToast(e, "Abort failed");
 	} finally {
 		mergeLoading = false;
 		await loadStatus();
@@ -675,8 +670,7 @@ async function continueRebase() {
 			message: msg || null,
 		});
 	} catch (e) {
-		const err = e as TrunkError;
-		const msg = err.message ?? "";
+		const msg = errorMessage(e, "");
 		if (
 			msg.toLowerCase().includes("conflict") ||
 			msg.toLowerCase().includes("resolve")
@@ -706,8 +700,7 @@ async function abortRebase() {
 		await safeInvoke("rebase_abort", { path: repoPath });
 		showToast("Rebase aborted", "success");
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Abort failed", "error");
+		reportErrorToast(e, "Abort failed");
 	} finally {
 		rebaseLoading = false;
 		await loadStatus();
@@ -719,8 +712,7 @@ async function skipRebase() {
 	try {
 		await safeInvoke("rebase_skip", { path: repoPath });
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Skip failed", "error");
+		reportErrorToast(e, "Skip failed");
 	} finally {
 		rebaseLoading = false;
 		await loadStatus();

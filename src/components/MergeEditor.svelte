@@ -9,7 +9,8 @@ import {
 	X,
 } from "@lucide/svelte";
 import { tick } from "svelte";
-import { safeInvoke, type TrunkError } from "../lib/invoke.js";
+import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { safeInvoke } from "../lib/invoke.js";
 import {
 	type ConflictRegion,
 	computeOutput,
@@ -396,8 +397,7 @@ async function handleSaveAndResolve() {
 		// File resolved — staging panel updates automatically
 		onresolved();
 	} catch (e) {
-		const err = e as TrunkError;
-		showToast(err.message ?? "Save failed", "error");
+		reportErrorToast(e, "Save failed");
 	} finally {
 		saving = false;
 	}
@@ -552,7 +552,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     ">
       <span style="color: var(--color-diff-delete);">{error}</span>
       <button
-        onclick={() => { loading = true; error = null; safeInvoke<MergeSides>('get_merge_sides', { path: repoPath, filePath }).then((result) => { regions = parseConflictRegions(result.base, result.ours, result.theirs); takenLines = new Set(); manualEdit = false; manualText = ''; focusedConflictIdx = 0; loading = false; }).catch((e) => { error = (e as TrunkError).message ?? 'Failed to load'; loading = false; }); }}
+        onclick={() => { loading = true; error = null; safeInvoke<MergeSides>('get_merge_sides', { path: repoPath, filePath }).then((result) => { regions = parseConflictRegions(result.base, result.ours, result.theirs); takenLines = new Set(); manualEdit = false; manualText = ''; focusedConflictIdx = 0; loading = false; }).catch((e) => { error = errorMessage(e, 'Failed to load'); loading = false; }); }}
         style="
           background: var(--color-surface);
           border: 1px solid var(--color-border);
