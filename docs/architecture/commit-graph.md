@@ -395,7 +395,16 @@ Test commands are in `.claude/rules/commit-graph.md`.
 For visual checks, `just dev` and open a repo with stashes.
 `scripts/qa-stash-fixtures.sh` builds a set of repos covering inline placement, each flavour
 of dirtiness, the multi-stash, orphan, detached-HEAD, merge-tip and bare cases, and both
-accepted-churn shapes, with a per-scenario checklist.
+accepted-churn shapes, with a per-scenario checklist. `scripts/qa-stash-probe.sh` dumps each
+fixture's layout as one text file, so a change to Layer 1 can be diffed against a baseline.
+
+For Layer 3, `scripts/graph-connector-render.ts` writes an SVG of the connector shapes
+`buildPath()` emits — run it before and after a change and open both. It covers the upward
+cases a dev build cannot reach, since Layer 1 orders stashes by the revwalk:
+
+```
+bun run scripts/graph-connector-render.ts > connectors.svg
+```
 
 Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 - `stash_inline_on_head_tip` — clean tree, stash on the HEAD tip: parent's column, parent's colour, dashed Straight, no ForkRight
