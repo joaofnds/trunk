@@ -5,6 +5,7 @@ import type {
 	Comment,
 	ReviewSnapshots,
 	SessionCommit,
+	SessionState,
 	SessionStatus,
 } from "./types";
 
@@ -20,6 +21,7 @@ import type {
 export interface ReviewCommentsManager {
 	readonly comments: Comment[];
 	readonly snapshots: ReviewSnapshots;
+	readonly sessionState: SessionState;
 	readonly active: boolean;
 	/** Oids of the commits in the session — drives the graph's in-session rail. */
 	readonly oids: ReadonlySet<string>;
@@ -40,9 +42,11 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 			working_tree_snapshot: null,
 			index_snapshot: null,
 		} as ReviewSnapshots,
-		active: false,
+		sessionState: "none" as SessionState,
 		oids: new Set<string>() as ReadonlySet<string>,
 	});
+
+	const active = $derived(state.sessionState === "active");
 
 	const totalCount = $derived(state.comments.length);
 
@@ -84,9 +88,9 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 
 		if (statusR.status === "fulfilled" && statusR.value) {
 			canonicalPath = statusR.value.canonical_path;
-			state.active = statusR.value.state === "active";
+			state.sessionState = statusR.value.state;
 		} else {
-			state.active = false;
+			state.sessionState = "none";
 		}
 
 		state.snapshots =
@@ -128,8 +132,11 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		get snapshots() {
 			return state.snapshots;
 		},
+		get sessionState() {
+			return state.sessionState;
+		},
 		get active() {
-			return state.active;
+			return active;
 		},
 		get oids() {
 			return state.oids;

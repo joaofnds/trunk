@@ -104,6 +104,34 @@ function endedSession() {
 	});
 }
 
+// A session saved on disk but not yet in memory: status reports
+// "resume-available" and the list reads reject with no_session until it is
+// promoted.
+function resumableSession() {
+	mockInvoke.mockImplementation((cmd: string) => {
+		switch (cmd) {
+			case "get_review_session_status":
+				return Promise.resolve({
+					state: "resume-available",
+					file_exists: true,
+					canonical_path: "/repo",
+				});
+			case "get_review_snapshots":
+				return Promise.resolve({
+					working_tree_snapshot: null,
+					index_snapshot: null,
+				});
+			case "list_session_comments":
+			case "list_session_commits":
+				return Promise.reject(
+					'{"code":"no_session","message":"No active review session for this repository"}',
+				);
+			default:
+				return Promise.reject(new Error(`unexpected ${cmd}`));
+		}
+	});
+}
+
 // A repo the backend will not answer for: every read rejects, so the rune never
 // learns a canonical path.
 function unreachableRepo() {
@@ -176,6 +204,33 @@ describe("createReviewComments — refresh", () => {
 			working_tree_snapshot: null,
 			index_snapshot: null,
 		});
+
+		m.destroy();
+	});
+
+	it("distinguishes a session saved on disk from no session at all", async () => {
+		resumableSession();
+		const m = createReviewComments("/repo");
+
+		await m.refresh();
+
+		expect(m.sessionState).toBe("resume-available");
+		expect(m.active).toBe(false);
+
+		m.destroy();
+	});
+
+	it("goes dark when the status read fails", async () => {
+		activeSession();
+		const m = createReviewComments("/repo");
+		await m.refresh();
+		expect(m.sessionState).toBe("active");
+
+		unreachableRepo();
+		await m.refresh();
+
+		expect(m.active).toBe(false);
+		expect(m.sessionState).toBe("none");
 
 		m.destroy();
 	});
