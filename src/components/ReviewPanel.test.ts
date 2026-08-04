@@ -1519,6 +1519,62 @@ describe("summary line", () => {
 	});
 });
 
+// The panel is a {#if} sibling of DiffPanel, so every jump from the panel into
+// a diff destroys it. list_session_commits takes its headers from the graph
+// cache, so its answer changes on every commit, amend, rebase and checkout —
+// and the owning rune only refreshes on session-changed, which none of those
+// emit. Coming back has to re-ask.
+describe("remount", () => {
+	it("re-reads the session so a change made while it was gone is on screen", async () => {
+		installReads({
+			commits,
+			comments: [lineAnchoredComment("c1", COMMIT_A, "note")],
+			resolutions: [resolvable("c1")],
+		});
+		const first = render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+		expect(screen.getByText("first commit")).toBeInTheDocument();
+		first.unmount();
+
+		// The user amends the commit while a diff is up: the session still holds
+		// it, but under a new oid and summary.
+		reviewComments.seed({
+			commits: [
+				{
+					oid: COMMIT_B,
+					short_oid: "ccccccc",
+					summary: "amended commit",
+					is_snapshot: false,
+				},
+			],
+		});
+		const refreshesBefore = reviewComments.refreshCount;
+
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("amended commit")).toBeInTheDocument();
+		expect(screen.queryByText("first commit")).toBeNull();
+		expect(reviewComments.refreshCount).toBe(refreshesBefore + 1);
+	});
+});
+
 // Multi-tab coordination (REQ-73-MULTITAB, D-09). Tab A's end_review_session
 // call emits session-changed; the owning rune refreshes and reports the session
 // gone, and this panel follows it to the cold empty state. Filtering the event

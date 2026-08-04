@@ -291,16 +291,26 @@ describe("RepoView", () => {
 	// The review session has one owner: the comments rune RepoView creates. The
 	// graph and the panel read it rather than fetching a second copy beside it,
 	// so the panel has to be on screen for this to mean anything.
-	it("asks for the review session status once per tab", async () => {
+	//
+	// Counting status reads alone cannot say that, because the panel legitimately
+	// asks the owner to refresh when it mounts. What a second owner DOES change is
+	// the balance: it re-fetches the session's status, comments and commits but not
+	// its snapshots, so the four reads stop moving together. One owner fetches them
+	// as a set, always.
+	it("fetches the whole session as a set, so nothing owns a second copy", async () => {
 		render(RepoView, {
 			props: { ...baseProps(createMockRemoteState()), reviewActive: true },
 		});
 		await new Promise((r) => setTimeout(r, 0));
 
-		const statusCalls = mockInvoke.mock.calls.filter(
-			(c) => c[0] === "get_review_session_status",
-		);
-		expect(statusCalls).toHaveLength(1);
+		const timesCalled = (cmd: string) =>
+			mockInvoke.mock.calls.filter((c) => c[0] === cmd).length;
+		const refreshes = timesCalled("get_review_session_status");
+
+		expect(refreshes).toBeGreaterThan(0);
+		expect(timesCalled("get_review_snapshots")).toBe(refreshes);
+		expect(timesCalled("list_session_comments")).toBe(refreshes);
+		expect(timesCalled("list_session_commits")).toBe(refreshes);
 	});
 
 	describe("background fetch", () => {

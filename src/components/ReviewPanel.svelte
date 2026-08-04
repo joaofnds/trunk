@@ -6,6 +6,7 @@
 
 import { Clipboard, MessageSquarePlus, Trash2 } from "@lucide/svelte";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
@@ -323,6 +324,18 @@ async function deleteComment(id: string) {
 		showToast(errorMessage(e, "Failed to delete comment"), "error");
 	}
 }
+
+// The owner only refreshes on session-changed, but list_session_commits takes
+// its group headers from the graph cache, so a commit or amend changes its
+// answer without emitting one. This panel is destroyed on every jump into a
+// diff, so coming back is the moment to re-ask.
+// untrack: refresh() writes the very state the panel renders, and a plain call
+// here would make this effect depend on its own writes (effect_update_depth_-
+// exceeded). The only dependency is the repo.
+$effect(() => {
+	void repoPath;
+	untrack(() => reviewComments.refresh());
+});
 
 // Re-resolve whenever the owner lands a refresh. A counter, not the comments
 // array: array identity happens to change on every refresh today, but nothing
