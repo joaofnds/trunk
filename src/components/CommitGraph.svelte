@@ -18,6 +18,13 @@ import {
 	resolveForkPoint,
 } from "../lib/branch-op.js";
 import { copySha } from "../lib/clipboard.js";
+import {
+	authorContentWidth,
+	dateContentWidth,
+	graphTargetWidth,
+	headerMinWidths,
+	shaContentWidth as shaColumnContentWidth,
+} from "../lib/column-widths.js";
 import { computeCommitNav } from "../lib/commitNav.js";
 import {
 	errorMessage,
@@ -40,7 +47,6 @@ import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
-import { WIDEST_LABELS } from "../lib/relative-time.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import {
 	type ColumnVisibility,
@@ -254,23 +260,7 @@ $effect(() => {
 	if (graphScrollX > maxGraphScrollX) graphScrollX = maxGraphScrollX;
 });
 
-// Font strings for measuring header labels and column content
-const HEADER_FONT = "11px ui-sans-serif, system-ui, sans-serif";
-const AUTHOR_CONTENT_FONT = "12px ui-sans-serif, system-ui, sans-serif";
-const DATE_CONTENT_FONT = "11px ui-sans-serif, system-ui, sans-serif";
-const SHA_CONTENT_FONT = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
-
-// Author cell reserves space for the initials avatar (diameter + gap) before the name.
-const AUTHOR_AVATAR_WIDTH = 18 + 8;
-
-// Minimum column widths = header label text width + column padding (border-box) + breathing room
-const HEADER_PAD = 4 * COLUMN_PADDING_X; // 2× for CSS padding + 2× for breathing room
-const headerMinRef = measureTextWidth("Branch/Tag", HEADER_FONT) + HEADER_PAD;
-const headerMinGraph = measureTextWidth("Graph", HEADER_FONT) + HEADER_PAD;
-const headerMinDiff = measureTextWidth("Diff", HEADER_FONT) + HEADER_PAD;
-const headerMinAuthor = measureTextWidth("Author", HEADER_FONT) + HEADER_PAD;
-const headerMinDate = measureTextWidth("Date", HEADER_FONT) + HEADER_PAD;
-const headerMinSha = measureTextWidth("SHA", HEADER_FONT) + HEADER_PAD;
+const headerMins = headerMinWidths(measureTextWidth);
 
 // Track which columns the user has explicitly resized this session.
 const userResizedColumns = new Set<keyof ColumnWidths>();
@@ -286,36 +276,27 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 		maxDateContentWidth = 0;
 		shaContentWidth = 0;
 	}
-	for (const c of newCommits) {
-		if (c.oid === "__wip__" || c.is_stash) continue;
-		const aw =
-			measureTextWidth(c.author_name, AUTHOR_CONTENT_FONT) +
-			2 * COLUMN_PADDING_X +
-			AUTHOR_AVATAR_WIDTH;
-		if (aw > maxAuthorContentWidth) maxAuthorContentWidth = aw;
+	const pageAuthorWidth = authorContentWidth(newCommits, measureTextWidth);
+	if (pageAuthorWidth > maxAuthorContentWidth) {
+		maxAuthorContentWidth = pageAuthorWidth;
 	}
+
 	if (newCommits.length > 0 && maxDateContentWidth === 0) {
-		maxDateContentWidth =
-			Math.max(
-				...WIDEST_LABELS.map((label) =>
-					measureTextWidth(label, DATE_CONTENT_FONT),
-				),
-			) +
-			2 * COLUMN_PADDING_X;
+		maxDateContentWidth = dateContentWidth(measureTextWidth);
 	}
 	if (newCommits.length > 0 && shaContentWidth === 0) {
-		shaContentWidth =
-			measureTextWidth("0000000", SHA_CONTENT_FONT) + 2 * COLUMN_PADDING_X;
+		shaContentWidth = shaColumnContentWidth(measureTextWidth);
 	}
 }
 
 // Auto-fit column widths to content. Uses untrack on columnWidths reads to avoid
 // infinite reactive loops (each effect writes columnWidths, which would re-trigger others).
 $effect(() => {
-	const cols = maxColumns;
-	const fitWidth =
-		Math.max(cols, 1) * displaySettings.laneWidth + 2 * COLUMN_PADDING_X;
-	const targetWidth = Math.max(fitWidth, headerMinGraph);
+	const targetWidth = graphTargetWidth(
+		maxColumns,
+		displaySettings.laneWidth,
+		headerMins.graph,
+	);
 	const cur = untrack(() => columnWidths);
 	if (!userResizedColumns.has("graph")) {
 		columnWidths = { ...cur, graph: targetWidth };
@@ -327,7 +308,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxAuthorContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.max(w, headerMinAuthor);
+	const targetWidth = Math.max(w, headerMins.author);
 	if (!userResizedColumns.has("author")) {
 		columnWidths = { ...untrack(() => columnWidths), author: targetWidth };
 	}
@@ -336,7 +317,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxDateContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.max(w, headerMinDate);
+	const targetWidth = Math.max(w, headerMins.date);
 	if (!userResizedColumns.has("date")) {
 		columnWidths = { ...untrack(() => columnWidths), date: targetWidth };
 	}
@@ -345,7 +326,7 @@ $effect(() => {
 $effect(() => {
 	const w = shaContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.max(w, headerMinSha);
+	const targetWidth = Math.max(w, headerMins.sha);
 	if (!userResizedColumns.has("sha")) {
 		columnWidths = { ...untrack(() => columnWidths), sha: targetWidth };
 	}
@@ -402,19 +383,11 @@ function startColumnResize(
 	userResizedColumns.add(column);
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
-	const minWidths: Record<keyof ColumnWidths, number> = {
-		ref: headerMinRef,
-		graph: headerMinGraph,
-		diff: headerMinDiff,
-		author: headerMinAuthor,
-		date: headerMinDate,
-		sha: headerMinSha,
-	};
 	const maxWidths: Record<keyof ColumnWidths, number> = {
 		ref: 400,
 		graph: Math.max(
 			naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
-			headerMinGraph,
+			headerMins.graph,
 		),
 		diff: 400,
 		author: 400,
@@ -425,7 +398,7 @@ function startColumnResize(
 	function onMouseMove(ev: MouseEvent) {
 		const delta = (ev.clientX - startX) * (invert ? -1 : 1);
 		const newWidth = Math.max(
-			minWidths[column],
+			headerMins[column],
 			Math.min(maxWidths[column], startWidth + delta),
 		);
 		columnWidths = { ...columnWidths, [column]: newWidth };

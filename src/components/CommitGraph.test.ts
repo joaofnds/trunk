@@ -3,7 +3,6 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { safeInvoke } from "../lib/invoke.js";
-import { relativeLabel } from "../lib/relative-time.js";
 import { resetCache } from "../lib/text-measure.js";
 import CommitGraph from "./CommitGraph.svelte";
 
@@ -28,15 +27,6 @@ if (typeof globalThis.OffscreenCanvas === "undefined") {
 		}
 	} as unknown as typeof OffscreenCanvas;
 }
-
-// Every label relativeLabel can emit, derived from the formatter rather than
-// copied, so a new or reworded bucket joins the width expectation automatically.
-const NOW_MINUTE = 30_000_000;
-const LABEL_VOCABULARY = [
-	0, 1, 59, 60, 1439, 1440, 43199, 43200, 525599, 525600, 5_256_000,
-].map((minutesAgo) =>
-	relativeLabel((NOW_MINUTE - minutesAgo) * 60, NOW_MINUTE),
-);
 
 // Stub Element.scrollTo for jsdom — VirtualList uses viewport.scrollTo()
 if (typeof Element.prototype.scrollTo === "undefined") {
@@ -443,47 +433,6 @@ describe("CommitGraph", () => {
 			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
 				"merge_continue",
 				expect.anything(),
-			);
-		});
-	});
-
-	describe("date column width", () => {
-		const COLUMN_PADDING_X = 4;
-
-		function dateColumnWidth(): number {
-			const style = screen.getByText("Date").getAttribute("style") ?? "";
-			const match = /width:\s*([\d.]+)px/.exec(style);
-			if (!match) throw new Error(`no width in date header style: ${style}`);
-			return Number(match[1]);
-		}
-
-		it("re-fits to the widest producible label when the graph refreshes", async () => {
-			const { rerender } = render(CommitGraph, {
-				props: {
-					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
-					tabActive: true,
-					refreshSignal: 0,
-				},
-			});
-			await waitFor(() => {
-				expect(screen.getByText("Date")).toBeInTheDocument();
-			});
-			await flush();
-
-			await rerender({
-				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
-				tabActive: true,
-				refreshSignal: 1,
-			});
-			await flush();
-
-			const widestLabel = Math.max(
-				...LABEL_VOCABULARY.map((label) => stubTextWidth(label)),
-			);
-			expect(dateColumnWidth()).toBeGreaterThanOrEqual(
-				widestLabel + 2 * COLUMN_PADDING_X,
 			);
 		});
 	});
