@@ -23,7 +23,7 @@ import {
 	dateContentWidth,
 	graphTargetWidth,
 	headerMinWidths,
-	shaContentWidth as shaColumnContentWidth,
+	shaContentWidth,
 } from "../lib/column-widths.js";
 import { computeCommitNav } from "../lib/commitNav.js";
 import {
@@ -268,13 +268,13 @@ const userResizedColumns = new Set<keyof ColumnWidths>();
 // Max content widths for auto-fit (updated when commits load)
 let maxAuthorContentWidth = $state(0);
 let maxDateContentWidth = $state(0);
-let shaContentWidth = $state(0);
+let maxShaContentWidth = $state(0);
 
 function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	if (reset) {
 		maxAuthorContentWidth = 0;
 		maxDateContentWidth = 0;
-		shaContentWidth = 0;
+		maxShaContentWidth = 0;
 	}
 	const pageAuthorWidth = authorContentWidth(newCommits, measureTextWidth);
 	if (pageAuthorWidth > maxAuthorContentWidth) {
@@ -284,8 +284,8 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	if (newCommits.length > 0 && maxDateContentWidth === 0) {
 		maxDateContentWidth = dateContentWidth(measureTextWidth);
 	}
-	if (newCommits.length > 0 && shaContentWidth === 0) {
-		shaContentWidth = shaColumnContentWidth(measureTextWidth);
+	if (newCommits.length > 0 && maxShaContentWidth === 0) {
+		maxShaContentWidth = shaContentWidth(measureTextWidth);
 	}
 }
 
@@ -324,7 +324,7 @@ $effect(() => {
 });
 
 $effect(() => {
-	const w = shaContentWidth;
+	const w = maxShaContentWidth;
 	if (w <= 0) return;
 	const targetWidth = Math.max(w, headerMins.sha);
 	if (!userResizedColumns.has("sha")) {
