@@ -349,6 +349,16 @@ $effect(() => {
 	loadResolutions();
 });
 
+$effect(() => {
+	void reviewComments.revision;
+	const failure = reviewComments.lastError;
+	if (failure === null) return;
+	showToast(
+		`Failed to load review comments: ${failure}. Reload the panel to retry.`,
+		"error",
+	);
+});
+
 // Terminal per mount by construction: a rejected resume leaves sessionState on
 // "resume-available", and re-landing the same string re-runs nothing.
 $effect(() => {

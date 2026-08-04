@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { buildCommentCounts } from "./comment-counts.js";
-import { safeInvoke } from "./invoke.js";
+import { errorMessage } from "./error-report.js";
+import { isTrunkError, safeInvoke } from "./invoke.js";
 import type {
 	Comment,
 	ReviewSnapshots,
@@ -29,6 +30,12 @@ export interface ReviewCommentsManager {
 	readonly oids: ReadonlySet<string>;
 	/** Advances once per refresh that lands its reads, so consumers can follow. */
 	readonly revision: number;
+	/**
+	 * A read failure worth showing, else null. The rune never toasts it — it is
+	 * alive for every open tab, and would announce failures for tabs nobody is
+	 * looking at. Whoever is on screen decides.
+	 */
+	readonly lastError: string | null;
 	readonly totalCount: number;
 	// Derived comment counts shared by every count badge (commit graph, file
 	// lists, WIP row). Sourced once here so the graph total always equals the
@@ -37,6 +44,23 @@ export interface ReviewCommentsManager {
 	readonly countByFile: Map<string, number>;
 	refresh(): Promise<void>;
 	destroy(): void;
+}
+
+// no_session is what every read returns once a review ends, so it is a normal
+// state rather than a failure. Everything else — not_open, spawn_error — is
+// something the user should hear about.
+function firstRealFailure(
+	results: PromiseSettledResult<unknown>[],
+): string | null {
+	for (const result of results) {
+		if (result.status !== "rejected") continue;
+		if (isTrunkError(result.reason) && result.reason.code === "no_session") {
+			continue;
+		}
+		return errorMessage(result.reason, "Failed to read the review session");
+	}
+
+	return null;
 }
 
 export function createReviewComments(repoPath: string): ReviewCommentsManager {
@@ -49,6 +73,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		sessionState: "none" as SessionState,
 		commits: [] as SessionCommit[],
 		revision: 0,
+		lastError: null as string | null,
 	});
 
 	const active = $derived(state.sessionState === "active");
@@ -117,6 +142,13 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 				? commitsR.value
 				: [];
 
+		state.lastError = firstRealFailure([
+			statusR,
+			snapshotsR,
+			commentsR,
+			commitsR,
+		]);
+
 		state.revision += 1;
 	}
 
@@ -157,6 +189,9 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		},
 		get revision() {
 			return state.revision;
+		},
+		get lastError() {
+			return state.lastError;
 		},
 		get totalCount() {
 			return totalCount;

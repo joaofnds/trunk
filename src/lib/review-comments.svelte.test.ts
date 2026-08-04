@@ -266,6 +266,42 @@ describe("createReviewComments — refresh", () => {
 		m.destroy();
 	});
 
+	it("reports a read failure that is not just a missing session", async () => {
+		unreachableRepo();
+		const m = createReviewComments("/repo");
+
+		await m.refresh();
+
+		expect(m.lastError).toBe("Repository is not open");
+
+		m.destroy();
+	});
+
+	it("stays quiet when the only rejection is a missing session", async () => {
+		endedSession();
+		const m = createReviewComments("/repo");
+
+		await m.refresh();
+
+		expect(m.lastError).toBeNull();
+
+		m.destroy();
+	});
+
+	it("clears a read failure once a refresh comes back clean", async () => {
+		unreachableRepo();
+		const m = createReviewComments("/repo");
+		await m.refresh();
+		expect(m.lastError).not.toBeNull();
+
+		activeSession();
+		await m.refresh();
+
+		expect(m.lastError).toBeNull();
+
+		m.destroy();
+	});
+
 	it("goes dark when the status read fails", async () => {
 		activeSession();
 		const m = createReviewComments("/repo");

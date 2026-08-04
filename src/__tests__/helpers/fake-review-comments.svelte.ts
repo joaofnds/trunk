@@ -12,6 +12,7 @@ interface Session {
 	snapshots: ReviewSnapshots;
 	sessionState: SessionState;
 	commits: SessionCommit[];
+	lastError: string | null;
 }
 
 export interface FakeReviewComments extends ReviewCommentsManager {
@@ -31,6 +32,7 @@ function emptySession(): Session {
 		snapshots: { working_tree_snapshot: null, index_snapshot: null },
 		sessionState: "none",
 		commits: [],
+		lastError: null,
 	};
 }
 
@@ -70,6 +72,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 		get revision() {
 			return state.revision;
 		},
+		get lastError() {
+			return state.lastError;
+		},
 		get totalCount() {
 			return state.comments.length;
 		},
@@ -88,6 +93,7 @@ export function createFakeReviewComments(): FakeReviewComments {
 			state.snapshots = seeded.snapshots;
 			state.sessionState = seeded.sessionState;
 			state.commits = seeded.commits;
+			state.lastError = seeded.lastError;
 			state.revision += 1;
 			return Promise.resolve();
 		},

@@ -1556,6 +1556,49 @@ describe("summary line", () => {
 	});
 });
 
+// The panel is the app's only error surface for review reads. The owner is
+// alive for every open tab, so it records the failure and says nothing;
+// whoever is on screen does the telling.
+describe("read failures", () => {
+	it("toasts a read failure the session owner reports", async () => {
+		installReads({ commits, comments: [] });
+		reviewComments.seed({ lastError: "Repository is not open" });
+		await reviewComments.refresh();
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		const errorToasts = vi
+			.mocked(showToast)
+			.mock.calls.filter((c) => c[1] === "error");
+		expect(errorToasts).toHaveLength(1);
+		expect(errorToasts[0][0]).toContain("Repository is not open");
+	});
+
+	it("says nothing when the owner reports no failure", async () => {
+		installReads({ commits, comments: [] });
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(vi.mocked(showToast)).not.toHaveBeenCalled();
+	});
+});
+
 // The panel is a {#if} sibling of DiffPanel, so every jump from the panel into
 // a diff destroys it. list_session_commits takes its headers from the graph
 // cache, so its answer changes on every commit, amend, rebase and checkout —
