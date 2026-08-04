@@ -27,6 +27,8 @@ export interface ReviewCommentsManager {
 	readonly commits: SessionCommit[];
 	/** Oids of the commits in the session — drives the graph's in-session rail. */
 	readonly oids: ReadonlySet<string>;
+	/** Advances once per refresh that lands its reads, so consumers can follow. */
+	readonly revision: number;
 	readonly totalCount: number;
 	// Derived comment counts shared by every count badge (commit graph, file
 	// lists, WIP row). Sourced once here so the graph total always equals the
@@ -46,6 +48,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		} as ReviewSnapshots,
 		sessionState: "none" as SessionState,
 		commits: [] as SessionCommit[],
+		revision: 0,
 	});
 
 	const active = $derived(state.sessionState === "active");
@@ -113,6 +116,8 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 			commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
 				? commitsR.value
 				: [];
+
+		state.revision += 1;
 	}
 
 	// Live coordination: refresh when a session-changed event arrives for this
@@ -149,6 +154,9 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		},
 		get oids() {
 			return oids;
+		},
+		get revision() {
+			return state.revision;
 		},
 		get totalCount() {
 			return totalCount;

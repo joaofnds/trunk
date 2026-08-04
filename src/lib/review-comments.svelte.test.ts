@@ -320,7 +320,9 @@ describe("createReviewComments — overlapping refreshes", () => {
 		return { promise, resolve };
 	}
 
-	it("keeps the newest result when an older refresh resolves last", async () => {
+	// Two refreshes in flight, each blocked on its own list_session_comments:
+	// the first read the rune issues gets `older`, the second gets `newer`.
+	function stagedCommentReads() {
 		const older = deferred<Comment[]>();
 		const newer = deferred<Comment[]>();
 		let commentReads = 0;
@@ -343,6 +345,28 @@ describe("createReviewComments — overlapping refreshes", () => {
 					return Promise.resolve([]);
 			}
 		});
+		return { older, newer };
+	}
+
+	it("advances the revision for a completed refresh but not a superseded one", async () => {
+		const { older, newer } = stagedCommentReads();
+
+		const m = createReviewComments("/repo");
+		const second = m.refresh();
+		newer.resolve([comment]);
+		await second;
+		expect(m.revision).toBe(1);
+
+		older.resolve([]);
+		await flush();
+
+		expect(m.revision).toBe(1);
+
+		m.destroy();
+	});
+
+	it("keeps the newest result when an older refresh resolves last", async () => {
+		const { older, newer } = stagedCommentReads();
 
 		const m = createReviewComments("/repo");
 		const second = m.refresh();
