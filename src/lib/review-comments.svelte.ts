@@ -23,6 +23,8 @@ export interface ReviewCommentsManager {
 	readonly snapshots: ReviewSnapshots;
 	readonly sessionState: SessionState;
 	readonly active: boolean;
+	/** The commits in the session, in the order the backend returned them. */
+	readonly commits: SessionCommit[];
 	/** Oids of the commits in the session — drives the graph's in-session rail. */
 	readonly oids: ReadonlySet<string>;
 	readonly totalCount: number;
@@ -43,10 +45,14 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 			index_snapshot: null,
 		} as ReviewSnapshots,
 		sessionState: "none" as SessionState,
-		oids: new Set<string>() as ReadonlySet<string>,
+		commits: [] as SessionCommit[],
 	});
 
 	const active = $derived(state.sessionState === "active");
+
+	const oids = $derived(
+		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
+	);
 
 	const totalCount = $derived(state.comments.length);
 
@@ -103,10 +109,10 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 				? commentsR.value
 				: [];
 
-		state.oids =
+		state.commits =
 			commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
-				? new Set(commitsR.value.map((c) => c.oid))
-				: new Set();
+				? commitsR.value
+				: [];
 	}
 
 	// Live coordination: refresh when a session-changed event arrives for this
@@ -138,8 +144,11 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		get active() {
 			return active;
 		},
+		get commits() {
+			return state.commits;
+		},
 		get oids() {
-			return state.oids;
+			return oids;
 		},
 		get totalCount() {
 			return totalCount;

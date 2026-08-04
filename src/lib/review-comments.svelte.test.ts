@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createReviewComments } from "./review-comments.svelte.js";
-import type { Comment } from "./types";
+import type { Comment, SessionCommit } from "./types";
 
 // safeInvoke is a thin wrapper around @tauri-apps/api/core::invoke (src/lib/invoke.ts).
 // Mock the underlying invoke (not safeInvoke) so the TrunkError-parsing path stays
@@ -204,6 +204,35 @@ describe("createReviewComments — refresh", () => {
 			working_tree_snapshot: null,
 			index_snapshot: null,
 		});
+
+		m.destroy();
+	});
+
+	it("carries the commits under review in session order", async () => {
+		const underReview: SessionCommit[] = [
+			{
+				oid: "abc",
+				short_oid: "abcdefg",
+				summary: "first commit",
+				is_snapshot: false,
+			},
+			{
+				oid: "def",
+				short_oid: "defabcd",
+				summary: "second commit",
+				is_snapshot: true,
+			},
+		];
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "list_session_commits"
+				? Promise.resolve(underReview)
+				: Promise.resolve(undefined),
+		);
+		const m = createReviewComments("/repo");
+
+		await m.refresh();
+
+		expect(m.commits).toEqual(underReview);
 
 		m.destroy();
 	});
