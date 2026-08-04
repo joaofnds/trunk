@@ -165,7 +165,17 @@ function isJumpable(c: Comment): boolean {
 	return c.anchor !== null && !isOrphan(c);
 }
 
-// Generation guard. Two owners now fetch independently and this is the slow
+// The retry the copy promises is a remount: that is what re-runs both the
+// owner's refresh and the resolutions read below.
+function reportReadFailure(reason: unknown) {
+	const detail = errorMessage(reason, "unknown error");
+	showToast(
+		`Failed to load review comments: ${detail}. Reload the panel to retry.`,
+		"error",
+	);
+}
+
+// Generation guard. The two owners fetch independently, and this is the slow
 // read of the pair — it walks to a blob per comment — so a stale answer would
 // otherwise land on top of a fresh one.
 let loadSeq = 0;
@@ -188,10 +198,7 @@ async function loadResolutions() {
 			resolutions = [];
 			return;
 		}
-		showToast(
-			"Failed to load review comments. Reload the panel to retry.",
-			"error",
-		);
+		reportReadFailure(e);
 	}
 }
 
@@ -333,9 +340,9 @@ async function deleteComment(id: string) {
 // its group headers from the graph cache, so a commit or amend changes its
 // answer without emitting one. This panel is destroyed on every jump into a
 // diff, so coming back is the moment to re-ask.
-// untrack: refresh() writes the very state the panel renders, and a plain call
-// here would make this effect depend on its own writes (effect_update_depth_-
-// exceeded). The only dependency is the repo.
+// untrack: refresh() writes the very state the panel renders, so a plain call
+// would make this effect depend on its own writes and loop. The repo is its
+// only dependency.
 $effect(() => {
 	void repoPath;
 	untrack(() => reviewComments.refresh());
@@ -353,10 +360,7 @@ $effect(() => {
 	void reviewComments.revision;
 	const failure = reviewComments.lastError;
 	if (failure === null) return;
-	showToast(
-		`Failed to load review comments: ${failure}. Reload the panel to retry.`,
-		"error",
-	);
+	reportReadFailure(failure);
 });
 
 // Terminal per mount by construction: a rejected resume leaves sessionState on
