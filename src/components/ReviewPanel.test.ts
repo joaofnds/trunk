@@ -1070,6 +1070,43 @@ describe("cold-boot resume", () => {
 		expect(callArgs("resume_review_session")).toEqual({ path: "/repo" });
 	});
 
+	// emit_session_changed logs and swallows its own failure, so a dropped emit
+	// would otherwise leave an empty panel over a live session with no gesture
+	// that recovers it. The resume has to land its own data.
+	it("renders the promoted session without waiting for an event", async () => {
+		installReads({ status: RESUME_AVAILABLE });
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+			if (cmd === "resume_review_session") {
+				// The backend promotes the session on disk into memory; the next
+				// read is what surfaces it.
+				reviewComments.seed({
+					sessionState: "active",
+					commits,
+					comments: [lineAnchoredComment("c1", COMMIT_A, "resumed note")],
+				});
+				return Promise.resolve(undefined);
+			}
+			if (cmd === "resolve_session_comments") {
+				return Promise.resolve([resolvable("c1")]);
+			}
+			return Promise.resolve(undefined);
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("resumed note")).toBeInTheDocument();
+		expect(screen.getByText("first commit")).toBeInTheDocument();
+		expect(resumeCallCount()).toBe(1);
+	});
+
 	it("skips resume when session is already active", async () => {
 		installReads({
 			commits,

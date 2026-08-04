@@ -203,6 +203,10 @@ async function loadResolutions() {
 async function resumeSession() {
 	try {
 		await safeInvoke("resume_review_session", { path: repoPath });
+		// Resume emits session-changed, but emit_session_changed swallows its own
+		// failure — a dropped emit would strand an empty panel over a live
+		// session. Ask directly rather than trusting the event.
+		await reviewComments.refresh();
 	} catch (e) {
 		// errorMessage extracts e.message (Error or TrunkError); the prefix
 		// is added by template literal so a fallback "Failed to resume review"
