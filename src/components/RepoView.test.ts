@@ -140,6 +140,21 @@ describe("RepoView", () => {
 					});
 				case "list_stashes":
 					return Promise.resolve([]);
+				case "get_review_session_status":
+					return Promise.resolve({
+						state: "active",
+						file_exists: true,
+						canonical_path: "/test/repo",
+					});
+				case "get_review_snapshots":
+					return Promise.resolve({
+						working_tree_snapshot: null,
+						index_snapshot: null,
+					});
+				case "list_session_comments":
+				case "list_session_commits":
+				case "resolve_session_comments":
+					return Promise.resolve([]);
 				default:
 					return Promise.resolve(undefined);
 			}
@@ -274,9 +289,12 @@ describe("RepoView", () => {
 	}
 
 	// The review session has one owner: the comments rune RepoView creates. The
-	// graph reads it rather than fetching a second copy beside it.
+	// graph and the panel read it rather than fetching a second copy beside it,
+	// so the panel has to be on screen for this to mean anything.
 	it("asks for the review session status once per tab", async () => {
-		render(RepoView, { props: baseProps(createMockRemoteState()) });
+		render(RepoView, {
+			props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+		});
 		await new Promise((r) => setTimeout(r, 0));
 
 		const statusCalls = mockInvoke.mock.calls.filter(

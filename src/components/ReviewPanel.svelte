@@ -1,27 +1,19 @@
 <script lang="ts">
-// Phase 69 — the real review panel (replaces the Phase 65 throwaway stub).
 // Renders the accumulated review grouped by commit (D-09), with a per-commit
 // "Add note" affordance (D-02), inline edit (D-10), delete-with-confirm (D-05),
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
 import { Clipboard, MessageSquarePlus, Trash2 } from "@lucide/svelte";
-import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type {
-	Comment,
-	CommentResolution,
-	OrphanReason,
-	SessionCommit,
-	SessionState,
-	SessionStatus,
-} from "../lib/types.js";
+import type { Comment, CommentResolution, OrphanReason } from "../lib/types.js";
 import CommentCard from "./CommentCard.svelte";
 
 interface Props {
@@ -29,6 +21,9 @@ interface Props {
 	// The review-session rune (owned by RepoView, threaded in so the panel can
 	// drive panel-internal swaps and call the Phase 70 Generate IPC via the rune).
 	session: ReviewSessionManager;
+	// The review session itself: lifecycle state, commits and comments. Owned by
+	// RepoView, which outlives this panel — every jump into a diff destroys it.
+	reviewComments: ReviewCommentsManager;
 	// Resolvable-comment jump: the host (RepoView) binds this to the review-session
 	// rune's jumpTo, wiring commit/file selection + scroll-to-range.
 	onJump: (comment: Comment) => void;
@@ -37,12 +32,16 @@ interface Props {
 	onJumpToCommit: (commitOid: string) => void;
 }
 
-let { repoPath, session, onJump, onJumpToCommit }: Props = $props();
+let { repoPath, session, reviewComments, onJump, onJumpToCommit }: Props =
+	$props();
 
-let commits = $state<SessionCommit[]>([]);
-let comments = $state<Comment[]>([]);
+const commits = $derived(reviewComments.commits);
+const comments = $derived(reviewComments.comments);
+const sessionState = $derived(reviewComments.sessionState);
+
+// Orphan resolution stays here: resolve_session_comments walks a blob per
+// comment, and only this panel renders the badge it feeds.
 let resolutions = $state<CommentResolution[]>([]);
-let canonicalPath = $state<string | null>(null);
 
 // Inline add-note composer state. The per-comment edit flow now lives inside
 // CommentCard; the panel only drives the per-commit "Add note" composer, which
@@ -134,17 +133,9 @@ const groups = $derived.by<CommitGroup[]>(() => {
 
 const hasAnyComment = $derived(comments.length > 0);
 
-// Phase 72 — Copy state. Pattern carry-forward from the Phase 71 preview
-// component (being deleted in Plan 04; this is now the canonical home).
 let copied = $state(false);
 // Plain handle, not $state — only used to clear; reactivity is on `copied`.
 let copyTimer: ReturnType<typeof setTimeout> | null = null;
-
-// Phase 73-01 — Lifecycle state mirrored from get_review_session_status.
-// Drives the cold-boot resume branch in reload() and (in Plans 02/03) End-button
-// visibility + empty-state gating. Single source of truth; assigned from
-// status.state inside reload() before the resume branch reads it.
-let sessionState = $state<SessionState>("none");
 
 // Phase 73-02 — End-review two-step confirm. First click flips endConfirming
 // true + arms a 3000ms revert timer; second click within the window invokes
@@ -173,65 +164,17 @@ function isJumpable(c: Comment): boolean {
 	return c.anchor !== null && !isOrphan(c);
 }
 
-// Reads. list_session_commits / list_session_comments / resolve_session_comments
-// all require an active session; a missing session is a normal state, so swallow
-// no_session silently and surface only genuine load failures (UI-SPEC error copy).
-async function reload() {
-	// Track the canonical path so the session-changed listener can filter to this
-	// repo (a missing/inactive session is a normal state — swallow silently).
-	// AWAIT the status before the reads below so canonicalPath is set as early as
-	// possible: the listener fails closed while it is null (WR-01), so every event
-	// arriving in the cold-start window is dropped, this repo's own included.
-	// Widening that window costs reloads the panel should have run (WR-02).
+// resolve_session_comments requires an active session; a missing session is a
+// normal state, so swallow no_session silently and surface only genuine load
+// failures (UI-SPEC error copy).
+async function loadResolutions() {
 	try {
-		const status = await safeInvoke<SessionStatus>(
-			"get_review_session_status",
+		resolutions = await safeInvoke<CommentResolution[]>(
+			"resolve_session_comments",
 			{ path: repoPath },
 		);
-		canonicalPath = status.canonical_path;
-		sessionState = status.state;
-	} catch {
-		// Tolerate — the panel can still try the list reads below; if they fail
-		// with no_session that's handled, otherwise a toast surfaces.
-	}
-
-	// Phase 73-01 (D-01, D-07): cold-boot resume. When the session exists on
-	// disk but not in memory ("resume-available"), promote it before the reads.
-	// Resume emits session-changed; our own listener re-fires reload(), which
-	// then sees status === "active" and SKIPS this branch (recursion-safe by
-	// gating — RESEARCH Pitfall 1). A rejection (e.g. newer_version) surfaces
-	// a toast and falls through to the reads, which then return no_session
-	// and the existing arm renders the cold empty state.
-	if (sessionState === "resume-available") {
-		try {
-			await safeInvoke("resume_review_session", { path: repoPath });
-		} catch (e) {
-			// errorMessage extracts e.message (Error or TrunkError); the prefix
-			// is added by template literal so a fallback "Failed to resume review"
-			// would only fire if the value were neither shape (and the toast then
-			// reads "Failed to resume review: Failed to resume review" which is
-			// awkward — keep `errorMessage`'s fallback as "Failed to resume review"
-			// since the prefix already conveys the action that failed).
-			const msg = errorMessage(e, "unknown error");
-			showToast(`Failed to resume review: ${msg}`, "error");
-		}
-	}
-
-	try {
-		const [nextCommits, nextComments, nextResolutions] = await Promise.all([
-			safeInvoke<SessionCommit[]>("list_session_commits", { path: repoPath }),
-			safeInvoke<Comment[]>("list_session_comments", { path: repoPath }),
-			safeInvoke<CommentResolution[]>("resolve_session_comments", {
-				path: repoPath,
-			}),
-		]);
-		commits = nextCommits;
-		comments = nextComments;
-		resolutions = nextResolutions;
 	} catch (e) {
 		if (isTrunkError(e) && e.code === "no_session") {
-			commits = [];
-			comments = [];
 			resolutions = [];
 			return;
 		}
@@ -239,6 +182,26 @@ async function reload() {
 			"Failed to load review comments. Reload the panel to retry.",
 			"error",
 		);
+	}
+}
+
+// D-01, D-07: cold-boot resume. When the session exists on disk but not in
+// memory ("resume-available"), promote it. The write stays here rather than in
+// the rune: the rune is alive for every open tab, and resuming a corrupt
+// session quarantines the file (review.rs:131-144), which is not something to
+// do behind repo open.
+async function resumeSession() {
+	try {
+		await safeInvoke("resume_review_session", { path: repoPath });
+	} catch (e) {
+		// errorMessage extracts e.message (Error or TrunkError); the prefix
+		// is added by template literal so a fallback "Failed to resume review"
+		// would only fire if the value were neither shape (and the toast then
+		// reads "Failed to resume review: Failed to resume review" which is
+		// awkward — keep `errorMessage`'s fallback as "Failed to resume review"
+		// since the prefix already conveys the action that failed).
+		const msg = errorMessage(e, "unknown error");
+		showToast(`Failed to resume review: ${msg}`, "error");
 	}
 }
 
@@ -322,17 +285,17 @@ async function onEndClick() {
 	}
 	// Second click: clear the auto-revert timer but KEEP endConfirming = true
 	// so the label stays "Click again to confirm" (frozen during await — UI-SPEC
-	// § End button state machine: In-flight row). On success the session-changed
-	// listener round-trip drives reload() → sessionState === "none" → the {#if}
-	// gate hides the entire button. On failure we explicitly revert.
+	// § End button state machine: In-flight row). On success the owner's
+	// session-changed refresh drives sessionState → "none" and the {#if} gate
+	// hides the entire button. On failure we explicitly revert.
 	if (endTimer !== null) {
 		clearTimeout(endTimer);
 		endTimer = null;
 	}
 	try {
 		await safeInvoke("end_review_session", { path: repoPath });
-		// No manual mutation of commits/comments/resolutions (D-08) — the
-		// session-changed listener at the $effect below is the canonical refresh.
+		// No manual clear (D-08) — the owner's session-changed refresh is the
+		// canonical one, and the resolutions effect follows its revision.
 	} catch (e) {
 		endConfirming = false;
 		// Match Plan 73-01's resume-fail shape: errorMessage() extracts only
@@ -352,10 +315,19 @@ async function deleteComment(id: string) {
 	}
 }
 
-// Initial load when the panel mounts / its repo changes.
+// Re-resolve whenever the owner lands a refresh. A counter, not the comments
+// array: array identity happens to change on every refresh today, but nothing
+// pins that, and a deep-equal skip there would silently freeze orphan badges.
 $effect(() => {
-	void repoPath;
-	reload();
+	void reviewComments.revision;
+	loadResolutions();
+});
+
+// Terminal per mount by construction: a rejected resume leaves sessionState on
+// "resume-available", and re-landing the same string re-runs nothing.
+$effect(() => {
+	if (reviewComments.sessionState !== "resume-available") return;
+	resumeSession();
 });
 
 // Phase 73-02 — Timer cleanup on component destroy (RESEARCH Pitfall 3). If
@@ -366,28 +338,6 @@ $effect(() => {
 $effect(() => {
 	return () => {
 		if (endTimer !== null) clearTimeout(endTimer);
-	};
-});
-
-// Live coordination: reload on session-changed for this repo's canonical path.
-// Track cancellation explicitly: if the effect tears down before listen()
-// resolves, the cleanup runs with `unlisten === undefined` and the listener
-// the promise eventually delivers leaks. Each remount adds another leaked
-// listener. Setting `cancelled` lets the .then handler dispose immediately
-// when the listener finally arrives (WR-03).
-$effect(() => {
-	let unlisten: (() => void) | undefined;
-	let cancelled = false;
-	listen<string>("session-changed", (event) => {
-		if (!canonicalPath || event.payload !== canonicalPath) return;
-		reload();
-	}).then((fn) => {
-		if (cancelled) fn();
-		else unlisten = fn;
-	});
-	return () => {
-		cancelled = true;
-		unlisten?.();
 	};
 });
 </script>

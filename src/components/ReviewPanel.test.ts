@@ -2,6 +2,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -17,9 +18,8 @@ import ReviewPanel from "./ReviewPanel.svelte";
 // @tauri-apps/api/event `listen`, etc.).
 import "../__tests__/helpers/tauri-mock";
 
-// Command-aware safeInvoke dispatcher: the panel issues three reads on mount
-// (list_session_commits / list_session_comments / resolve_session_comments) via
-// Promise.all, so a sequential mock would be fragile — route by command name.
+// Command-aware safeInvoke dispatcher: the panel issues one read and several
+// writes, so a sequential mock would be fragile — route by command name.
 vi.mock("../lib/invoke.js", async () => {
 	const actual =
 		await vi.importActual<typeof import("../lib/invoke.js")>(
@@ -35,27 +35,7 @@ vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
 }));
 
-// The panel registers a session-changed listener in an $effect; mock listen so
-// it doesn't reach the real Tauri IPC core (which is undefined under jsdom).
-// Capture the callback so tests can simulate cross-tab `session-changed` emits
-// by calling `fireSessionChanged(path)` below — Plan 73-01 needs this for the
-// cold-boot resume recursion-safety assertion (resume_review_session must fire
-// exactly once across the initial reload + the listener-triggered reload).
-let sessionChangedHandler: ((event: { payload: string }) => void) | null = null;
-vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn((_event: string, cb: (event: { payload: string }) => void) => {
-		sessionChangedHandler = cb;
-		return Promise.resolve(() => {
-			sessionChangedHandler = null;
-		});
-	}),
-}));
-
-function fireSessionChanged(payload: string): void {
-	sessionChangedHandler?.({ payload });
-}
-
-// Phase 72: Copy handler writes to the clipboard via the plugin's writeText.
+// Copy handler writes to the clipboard via the plugin's writeText.
 // Mock the boundary so we can assert on calls and trigger rejections.
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
@@ -125,26 +105,19 @@ function orphan(
 	return { id, resolvable: false, reason };
 }
 
-// Install the dispatcher: reads return the supplied fixtures; writes resolve
-// undefined. Per-test overrides extend `extra`. `generateDoc` routes the Phase
-// 70 generate_review_doc IPC to a fixture string (the safeInvoke wrapper
-// returns it; the panel's rune-call then drives the preview swap).
+// Seed both owners of what the panel shows: the session itself goes into the
+// Fake manager (already refreshed, as RepoView's rune is by the time the panel
+// mounts), and the panel's own resolve_session_comments read plus every write
+// goes through the safeInvoke dispatcher. `generateDoc` routes the
+// generate_review_doc IPC to a fixture string.
 function installReads(opts: {
 	commits?: SessionCommit[];
 	comments?: Comment[];
 	resolutions?: CommentResolution[];
 	generateDoc?: string;
-	// Phase 73-01 — lifecycle dispatch. Default `status` is `active` so the ~50
-	// pre-existing tests stay on the warm path (no cold-boot resume call).
+	// Default `status` is `active` so the pre-existing tests stay on the warm
+	// path (no cold-boot resume call).
 	status?: SessionStatus;
-	// After a successful resume_review_session call, subsequent
-	// get_review_session_status reads return this — models the backend
-	// transitioning "resume-available" -> "active" after a successful resume.
-	// Used by the recursion-safety assertion in describe("cold-boot resume"):
-	// the listener-triggered second reload reads "active" and skips the resume
-	// branch, keeping the call count at exactly 1.
-	statusAfterResume?: SessionStatus;
-	statusRejection?: unknown;
 	resumeRejection?: unknown;
 	endRejection?: unknown;
 	generateRejection?: unknown;
@@ -154,14 +127,16 @@ function installReads(opts: {
 		file_exists: true,
 		canonical_path: "/repo",
 	};
-	let resumed = false;
+	reviewComments.seed({
+		sessionState: status.state,
+		commits: opts.commits ?? [],
+		comments: opts.comments ?? [],
+	});
+	reviewComments.refresh();
+
 	vi.mocked(safeInvoke).mockReset();
 	vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 		switch (cmd) {
-			case "list_session_commits":
-				return Promise.resolve(opts.commits ?? []);
-			case "list_session_comments":
-				return Promise.resolve(opts.comments ?? []);
 			case "resolve_session_comments":
 				return Promise.resolve(opts.resolutions ?? []);
 			case "generate_review_doc":
@@ -169,18 +144,10 @@ function installReads(opts: {
 					return Promise.reject(opts.generateRejection);
 				}
 				return Promise.resolve(opts.generateDoc ?? "# stub\n");
-			case "get_review_session_status":
-				if (opts.statusRejection !== undefined) {
-					return Promise.reject(opts.statusRejection);
-				}
-				return Promise.resolve(
-					resumed ? (opts.statusAfterResume ?? status) : status,
-				);
 			case "resume_review_session":
 				if (opts.resumeRejection !== undefined) {
 					return Promise.reject(opts.resumeRejection);
 				}
-				resumed = true;
 				return Promise.resolve(undefined);
 			case "end_review_session":
 				if (opts.endRejection !== undefined) {
@@ -207,11 +174,34 @@ function callArgs(cmd: string): Record<string, unknown> | undefined {
 	return call?.[1] as Record<string, unknown> | undefined;
 }
 
+// The session owner the panel renders from. One instance for the file, reset
+// per test; `installReads` seeds it alongside the safeInvoke dispatcher.
+const reviewComments = createFakeReviewComments();
+
 beforeEach(() => {
 	vi.clearAllMocks();
+	reviewComments.reset();
 });
 
 describe("ReviewPanel", () => {
+	it("renders the commit groups the session owner reports", async () => {
+		reviewComments.seed({ sessionState: "active", commits });
+		await reviewComments.refresh();
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
+		expect(screen.getByText("bbbbbbb")).toBeInTheDocument();
+	});
+
 	it("groups comments under their commit headers", async () => {
 		installReads({
 			commits,
@@ -225,6 +215,7 @@ describe("ReviewPanel", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -264,6 +255,7 @@ describe("ReviewPanel", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -275,21 +267,19 @@ describe("ReviewPanel", () => {
 		expect(screen.getByText("bbbbbbb")).toBeInTheDocument();
 	});
 
-	it("reads the three session sources on mount", async () => {
+	it("reads the orphan resolutions on mount", async () => {
 		installReads({ commits, comments: [], resolutions: [] });
 		render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
 		});
 		await flush();
-		const cmds = calledCommands();
-		expect(cmds).toContain("list_session_commits");
-		expect(cmds).toContain("list_session_comments");
-		expect(cmds).toContain("resolve_session_comments");
+		expect(calledCommands()).toEqual(["resolve_session_comments"]);
 	});
 
 	it("shows the warm-with-commits empty state when commits exist but no comments", async () => {
@@ -298,6 +288,7 @@ describe("ReviewPanel", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -312,6 +303,7 @@ describe("ReviewPanel", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -336,6 +328,7 @@ describe("ReviewPanel", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -359,6 +352,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -389,6 +383,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -424,6 +419,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -457,6 +453,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -483,6 +480,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -512,6 +510,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -537,6 +536,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -564,6 +564,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump,
 					onJumpToCommit: vi.fn(),
 				},
@@ -587,6 +588,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -612,6 +614,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit,
 				},
@@ -638,6 +641,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -672,6 +676,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -715,6 +720,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -756,6 +762,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -811,6 +818,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -823,6 +831,7 @@ describe("ReviewPanel", () => {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
+					reviewComments,
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
@@ -998,44 +1007,30 @@ describe("cold-boot resume", () => {
 		return calledCommands().filter((c) => c === "resume_review_session").length;
 	}
 
-	it("calls resume_review_session exactly once when status is resume-available", async () => {
+	// Weaker than the test it replaces: the panel no longer round-trips the
+	// status itself, so "does not resume twice" is now a property of the owner
+	// reporting "active" afterwards, pinned in review-comments.svelte.test.ts.
+	// What survives here is that one mount makes one attempt.
+	it("attempts the resume once per mount when the session is resume-available", async () => {
 		installReads({
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			resolutions: [resolvable("c1")],
 			status: RESUME_AVAILABLE,
-			// After a successful resume the backend reports "active"; the
-			// session-changed listener triggers a second reload() which reads
-			// "active" and SKIPS the resume branch — keeping the count at 1.
-			statusAfterResume: ACTIVE,
 		});
 		render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
 		});
 		await flush();
 
-		// Fire the listener-triggered second reload (no ad-hoc mockImplementation;
-		// the dispatcher's `resumed` flag is what gates the post-resume status).
-		fireSessionChanged("/repo");
-		await flush();
-
 		expect(resumeCallCount()).toBe(1);
-
-		// Resume happens BEFORE the parallel reads — assert call order from the
-		// dispatcher's recorded sequence.
-		const order = calledCommands();
-		const resumeIdx = order.indexOf("resume_review_session");
-		const listIdx = order.indexOf("list_session_commits");
-		expect(resumeIdx).toBeGreaterThanOrEqual(0);
-		expect(listIdx).toBeGreaterThan(resumeIdx);
-
-		// Reads ran after resume — the comment text is in the DOM.
-		expect(screen.getByText("x")).toBeInTheDocument();
+		expect(callArgs("resume_review_session")).toEqual({ path: "/repo" });
 	});
 
 	it("skips resume when session is already active", async () => {
@@ -1049,6 +1044,7 @@ describe("cold-boot resume", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1071,6 +1067,7 @@ describe("cold-boot resume", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1078,8 +1075,8 @@ describe("cold-boot resume", () => {
 		await flush();
 
 		expect(resumeCallCount()).toBe(0);
-		// Reads still run; no toast emitted; cold render path.
-		expect(calledCommands()).toContain("list_session_commits");
+		// The resolutions read still runs; no toast emitted; cold render path.
+		expect(calledCommands()).toContain("resolve_session_comments");
 		expect(vi.mocked(showToast)).not.toHaveBeenCalled();
 	});
 
@@ -1095,6 +1092,7 @@ describe("cold-boot resume", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1116,6 +1114,7 @@ describe("cold-boot resume", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1173,6 +1172,7 @@ describe("End review", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1281,6 +1281,7 @@ describe("End review", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1344,6 +1345,7 @@ describe("empty states", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1374,6 +1376,7 @@ describe("empty states", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1403,6 +1406,7 @@ describe("empty states", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1440,6 +1444,7 @@ describe("summary line", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1464,6 +1469,7 @@ describe("summary line", () => {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1476,49 +1482,23 @@ describe("summary line", () => {
 	});
 });
 
-// Phase 73-03 — Multi-tab coordination (REQ-73-MULTITAB, D-09). Tab A's
-// end_review_session call emits a session-changed event; tab B's existing
-// listener at ReviewPanel.svelte:447-461 reloads, sees status='none', and
-// renders the cold empty state. Cross-repo payloads are filtered by the
-// listener's `canonicalPath && payload !== canonicalPath` check — no churn.
-//
-// REAL timers — the listener chain is microtask-driven. The captured
-// `sessionChangedHandler` from the @tauri-apps/api/event mock is the simulator.
+// Multi-tab coordination (REQ-73-MULTITAB, D-09). Tab A's end_review_session
+// call emits session-changed; the owning rune refreshes and reports the session
+// gone, and this panel follows it to the cold empty state. Filtering the event
+// down to this repo is the rune's job now, pinned in
+// review-comments.svelte.test.ts.
 describe("multi-tab coordination", () => {
 	it("End in another tab clears panel", async () => {
-		// Swappable status: dispatcher reads the closure variable on every call,
-		// so post-end mutation flips the next get_review_session_status to 'none'.
-		let currentStatus: SessionStatus = {
-			state: "active",
-			file_exists: true,
-			canonical_path: "/repo",
-		};
-		let currentCommits: SessionCommit[] = commits;
-		let currentComments: Comment[] = [
-			lineAnchoredComment("c1", COMMIT_A, "tab-A note"),
-		];
-		let currentResolutions: CommentResolution[] = [resolvable("c1")];
-
-		vi.mocked(safeInvoke).mockReset();
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
-			switch (cmd) {
-				case "get_review_session_status":
-					return Promise.resolve(currentStatus);
-				case "list_session_commits":
-					return Promise.resolve(currentCommits);
-				case "list_session_comments":
-					return Promise.resolve(currentComments);
-				case "resolve_session_comments":
-					return Promise.resolve(currentResolutions);
-				default:
-					return Promise.resolve(undefined);
-			}
+		installReads({
+			commits,
+			comments: [lineAnchoredComment("c1", COMMIT_A, "tab-A note")],
+			resolutions: [resolvable("c1")],
 		});
-
 		render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
+				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
@@ -1531,19 +1511,10 @@ describe("multi-tab coordination", () => {
 			screen.getByRole("button", { name: /End review/ }),
 		).toBeInTheDocument();
 
-		// Simulate tab A ending the review: backend flips to 'none' and emits
-		// session-changed for this canonical path. Tab B's listener fires
-		// reload(), which re-reads the swapped status + empty arrays.
-		currentStatus = {
-			state: "none",
-			file_exists: false,
-			canonical_path: "/repo",
-		};
-		currentCommits = [];
-		currentComments = [];
-		currentResolutions = [];
-
-		fireSessionChanged("/repo");
+		// Tab A ends the review: the rune's session-changed refresh lands an
+		// empty, inactive session.
+		reviewComments.seed({ sessionState: "none", commits: [], comments: [] });
+		await reviewComments.refresh();
 		await flush();
 
 		// Cold empty state now visible; warm copy and prior comment gone; End
@@ -1552,65 +1523,5 @@ describe("multi-tab coordination", () => {
 		expect(screen.queryByText("tab-A note")).toBeNull();
 		expect(screen.queryByText("Review started.")).toBeNull();
 		expect(screen.queryByRole("button", { name: /End review/ })).toBeNull();
-	});
-
-	it("session-changed for different repo is filtered out", async () => {
-		installReads({
-			commits,
-			comments: [lineAnchoredComment("c1", COMMIT_A, "look here")],
-			resolutions: [resolvable("c1")],
-			status: {
-				state: "active",
-				file_exists: true,
-				canonical_path: "/repo",
-			},
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		// Capture call count AFTER the initial reload has set canonicalPath —
-		// this is the precondition for the listener's payload filter to kick in.
-		const initialCalls = vi.mocked(safeInvoke).mock.calls.length;
-
-		fireSessionChanged("/different-repo");
-		await flush();
-
-		// Listener's `canonicalPath && event.payload !== canonicalPath` filter
-		// short-circuits → reload() never fires → no additional IPC calls.
-		expect(vi.mocked(safeInvoke).mock.calls.length).toBe(initialCalls);
-		// And no churn that would clear the rendered comment.
-		expect(screen.getByText("look here")).toBeInTheDocument();
-	});
-
-	it("session-changed is dropped while the canonical path is unknown", async () => {
-		installReads({
-			commits,
-			comments: [lineAnchoredComment("c1", COMMIT_A, "look here")],
-			resolutions: [resolvable("c1")],
-			statusRejection: { code: "not_open", message: "repo not open" },
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		const initialCalls = vi.mocked(safeInvoke).mock.calls.length;
-
-		fireSessionChanged("/some/other/repo");
-		await flush();
-
-		expect(vi.mocked(safeInvoke).mock.calls.length).toBe(initialCalls);
 	});
 });

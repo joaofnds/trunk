@@ -249,6 +249,23 @@ describe("createReviewComments — refresh", () => {
 		m.destroy();
 	});
 
+	// ReviewPanel resumes a saved session and gates that attempt on
+	// `sessionState === "resume-available"`, so a resume repeating forever is
+	// held off by the rune reporting the promotion — not by the panel.
+	it("reports the session active once a resume has promoted it", async () => {
+		resumableSession();
+		const m = createReviewComments("/repo");
+		await m.refresh();
+		expect(m.sessionState).toBe("resume-available");
+
+		activeSession();
+		await m.refresh();
+
+		expect(m.sessionState).toBe("active");
+
+		m.destroy();
+	});
+
 	it("goes dark when the status read fails", async () => {
 		activeSession();
 		const m = createReviewComments("/repo");

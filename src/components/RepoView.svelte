@@ -1058,7 +1058,7 @@ function startRightResize(e: MouseEvent) {
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
         <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-          <ReviewPanel {repoPath} session={reviewSession} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} />
+          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} />
         </div>
       {:else if showMergeEditor && selectedFile}
         <MergeEditor
