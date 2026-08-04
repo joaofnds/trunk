@@ -603,6 +603,43 @@ describe("ReviewPanel", () => {
 			expect(screen.getByText("stale note")).toBeInTheDocument();
 		});
 
+		// resolve_session_comments walks a blob per comment, so it is the read
+		// most likely to resolve out of order.
+		it("keeps the newest resolutions when an older read resolves last", async () => {
+			const older = Promise.withResolvers<CommentResolution[]>();
+			const newer = Promise.withResolvers<CommentResolution[]>();
+			const staged = [older.promise, newer.promise];
+			installReads({
+				commits,
+				comments: [lineAnchoredComment("c1", COMMIT_A, "stale note")],
+			});
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+				cmd === "resolve_session_comments"
+					? (staged.shift() ?? Promise.resolve([]))
+					: Promise.resolve(undefined),
+			);
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+
+			reviewComments.refresh();
+			await flush();
+			newer.resolve([orphan("c1", "FileGone")]);
+			await flush();
+			older.resolve([resolvable("c1")]);
+			await flush();
+
+			expect(screen.getByText("file gone")).toBeInTheDocument();
+			expect(screen.queryByLabelText("Jump to code")).toBeNull();
+		});
+
 		it("clicking the commit summary calls onJumpToCommit with the full oid", async () => {
 			const onJumpToCommit = vi.fn();
 			installReads({

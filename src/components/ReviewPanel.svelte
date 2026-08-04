@@ -164,16 +164,25 @@ function isJumpable(c: Comment): boolean {
 	return c.anchor !== null && !isOrphan(c);
 }
 
+// Generation guard. Two owners now fetch independently and this is the slow
+// read of the pair — it walks to a blob per comment — so a stale answer would
+// otherwise land on top of a fresh one.
+let loadSeq = 0;
+
 // resolve_session_comments requires an active session; a missing session is a
 // normal state, so swallow no_session silently and surface only genuine load
 // failures (UI-SPEC error copy).
 async function loadResolutions() {
+	const seq = ++loadSeq;
 	try {
-		resolutions = await safeInvoke<CommentResolution[]>(
+		const next = await safeInvoke<CommentResolution[]>(
 			"resolve_session_comments",
 			{ path: repoPath },
 		);
+		if (seq !== loadSeq) return;
+		resolutions = next;
 	} catch (e) {
+		if (seq !== loadSeq) return;
 		if (isTrunkError(e) && e.code === "no_session") {
 			resolutions = [];
 			return;
