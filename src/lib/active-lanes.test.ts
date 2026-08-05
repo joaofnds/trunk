@@ -370,6 +370,29 @@ describe("buildGraphData", () => {
 	});
 
 	describe("stash splitting", () => {
+		it("WIP dashed connection splits around unpulled commits in same column", () => {
+			const commits = [
+				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),
+				makeCommit({ oid: "up2", column: 0, color_index: 0 }),
+				makeCommit({ oid: "up1", column: 0, color_index: 0 }),
+				makeCommit({
+					oid: "head",
+					column: 0,
+					color_index: 0,
+					is_head: true,
+					in_head_chain: true,
+				}),
+			];
+
+			const result = buildGraphData(commits, 1);
+
+			const wipConns = result.connections.filter((c) => c.dashed);
+			expect(wipConns).toHaveLength(3);
+			expect(wipConns[0]).toMatchObject({ childY: 0, parentY: 1 });
+			expect(wipConns[1]).toMatchObject({ childY: 1, parentY: 2 });
+			expect(wipConns[2]).toMatchObject({ childY: 2, parentY: 3 });
+		});
+
 		it("WIP dashed connection splits around stash in same column", () => {
 			const commits = [
 				makeCommit({ oid: "__wip__", column: 0, color_index: 0 }),

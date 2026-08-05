@@ -23,6 +23,10 @@ git repo
   │  Output: GraphCommit[] + max_columns
   │
   ▼
+[TypeScript: wip-row.ts] withWipRow()
+  │  Prepends the WIP row at index 0 while the worktree is dirty.
+  │
+  ▼
 [TypeScript: active-lanes.ts] buildGraphData()
   │  Translates GraphCommit[] → OverlayNode[] + OverlayConnection[],
   │  one connection per loaded parent. No lane state, no coalescing.
@@ -60,11 +64,11 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 ### Commit ordering
 
 1. Stash OIDs are collected via `repo.stash_foreach()`. A stash joins the walk only if it
-   and every one of its parents read back from the object store (`graph.rs:73-94`); an
+   and every one of its parents read back from the object store (`graph.rs:152-165`); an
    unreadable one is skipped, so a corrupt object costs that stash its row instead of
    failing the walk for the whole repo.
 2. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` **plus every walkable stash
-   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs:96-107`). Git orders the stashes with
+   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs:170-178`). Git orders the stashes with
    everything else: `TOPOLOGICAL` puts a commit above its parents unconditionally, and
    `TIME` only breaks ties between topologically independent commits. So a stash sorts
    above its parent whatever its committer time says, and a stash whose first parent is
@@ -87,20 +91,49 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 | `active_lanes` | `Vec<LaneSlot>` | `active_lanes[col] = Some((oid, dashed))` means col is tracking oid's chain (waiting for that commit to be processed). `None` = lane is free. |
 | `pending_parents` | `HashMap<Oid, usize>` | `pending_parents[oid] = col` means a child already reserved column `col` for `oid`. When `oid` is processed in Phase 1, it reads this to get its column. |
 | `lane_colors` | `HashMap<usize, usize>` | Maps column → color index. Set when a branch first enters a column, removed when the branch terminates. |
-| `next_color` | `usize` | Monotonically incrementing color counter. Color 0 is reserved for the HEAD chain. |
+| `next_color` | `usize` | Monotonically incrementing color counter. Color 0 is reserved for HEAD's own first-parent chain. The HEAD lane's upward extension takes a colour of its own unless it is the tracked upstream. |
 
-`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`graph.rs:18`).
+`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`graph.rs:19`).
 The `bool` is the dashed flag, set by whichever commit takes the lane — `true` for a stash,
 `false` otherwise. There is no separate `stash_lanes` or `reserved_cols` set; `4a9f15e`
 removed the last of them in favour of carrying the flag on the lane.
 
-### HEAD chain pre-reservation (`graph.rs:131-156`)
+### HEAD lane pre-reservation
 
 Before processing any commit:
 - Walk HEAD's first-parent chain into `head_chain: HashSet<Oid>`.
+- Compute the **upward extension** via `head_lane_extension`: the commits sitting directly
+  above HEAD's tip on the same first-parent line, newest first.
 - Push `None` onto `active_lanes` → column 0 exists but is free.
-- Set `lane_colors[0] = 0` (HEAD chain always color 0).
-- Insert every head chain member into `pending_parents` pointing at column 0.
+- Set `lane_colors[0] = 0` (HEAD's own chain is always color 0).
+- Insert every head chain member **and every extension member** into `pending_parents`
+  pointing at column 0.
+- When the extension exists and is *not* HEAD's tracked upstream, set `lane_colors[0]` to a
+  fresh colour instead. Processing HEAD's tip flips it back to 0, so lane 0 carries the
+  extension's colour above HEAD and HEAD's colour from HEAD down.
+
+**The extension is why a branch that is only behind renders straight.** Its members reach
+Phase 1 through the `pending_parents` branch and take column 0 verbatim, so Phase 4 emits
+`Straight` edges all the way down to HEAD's tip and no fork is ever produced.
+
+**Which chain wins the extension**, when more than one continues HEAD's tip:
+
+1. HEAD's tracked upstream, when its first-parent path reaches HEAD's tip. This is the only
+   case that keeps HEAD's colour.
+2. Otherwise the first-parent child that the revwalk emitted earliest, walked upward as far
+   as it goes.
+
+Stashes are excluded from **both** candidates. A stash hangs off its parent by first parent
+too and is not a continuation of that branch, so letting one into the lane would steal
+column 0 and bypass `can_inline` entirely. Candidate 1 filters its resolved path, candidate 2
+filters its input set.
+
+`in_head_chain` on the output is **not** widened by any of this. It remains HEAD's own
+first-parent ancestry, because it anchors the WIP row (`wip-row.ts:49`) and the initial
+scroll target (`CommitGraph.svelte`).
+
+The rules this implements come from twelve visual verdicts recorded in
+`.boris/plans/2026-08-04-head-lane-linear-continuation-spec.md` §4.
 
 **Key implication**: `active_lanes[0]` is `None` throughout processing of stash
 commits that come before any HEAD chain commit. The column is logically occupied
@@ -117,23 +150,27 @@ else                              → new branch/stash, scan for free col
 ```
 
 **Stashes mostly share the branch-tip codepath, with one placement exception.**
-`can_inline` (`graph.rs:183-188`) puts a stash *inline* — at its parent's own column,
+`can_inline` (`graph.rs:274-281`) puts a stash *inline* — at its parent's own column,
 consuming no new lane and no new colour — when all of these hold:
 
 1. it is a stash;
 2. **the worktree is clean** (`!worktree_dirty`, read once per walk via
    `git::status::worktree_dirty`);
-3. its first parent already has a column reserved;
-4. that parent is the HEAD tip, or is outside the HEAD chain;
-5. the parent's column is unoccupied in `active_lanes`.
+3. **the HEAD lane has no upward extension** (`head_lane_ext.is_empty()`);
+4. its first parent already has a column reserved;
+5. that parent is the HEAD tip, or is outside the HEAD chain;
+6. the parent's column is unoccupied in `active_lanes`.
 
 Otherwise it takes a free column and a new colour like any branch tip.
 
-Clause 4's second half looks like it would inline a stash away from column 0, and it does
-not. Clauses 3 and 5 together demand a column that is reserved in `pending_parents` but
-still free in `active_lanes`, and every other site sets those two together — only the
-HEAD-chain pre-reservation (`graph.rs`, "Pre-reserve column 0") leaves a column in that
-state. So every inline lands at column 0, and clause 4 narrows it further to the HEAD tip.
+Clause 5's second half looks like it would inline a stash away from column 0, and it does
+not. Clauses 4 and 6 together demand a column that is reserved in `pending_parents` but
+still free in `active_lanes`. **Two** sites leave a column in that state, both at column 0:
+the HEAD-chain pre-reservation and `head_lane_extension` (`graph.rs`, "Pre-reserve column
+0"). Clause 3 excludes the second outright, so whenever an inline happens at all the
+pre-reservation is again the only one, and every inline still lands at column 0. Clause 5
+narrows it further to the HEAD tip. The binding form of this invariant, and what to do when a
+third such site lands, is in `.claude/rules/commit-graph.md`.
 A stash whose parent sits on a topic branch off the HEAD chain branches right instead,
 taking its own lane and colour (probed 2026-08-03).
 
@@ -337,8 +374,8 @@ part of the history DAG.
 ### Stash rendering
 
 The marker shape is fixed by rule (`.claude/rules/commit-graph.md`). Its **placement** takes
-one of two shapes, decided by `can_inline` (see Phase 1 above) — the deciding input is
-worktree dirtiness.
+one of two shapes, decided by `can_inline` (see Phase 1 above). Two inputs decide it:
+worktree dirtiness, and whether the HEAD lane extends upward.
 
 Branch-right (dirty worktree, or any other `can_inline` clause failing):
 
@@ -355,7 +392,7 @@ Branch-right (dirty worktree, or any other `can_inline` clause failing):
 4. Parent Phase 2: detects fork-in at `stash_col`, emits dashed `ForkRight`.
 5. Parent Phase 2 cleanup: `active_lanes[stash_col] = None`, `lane_colors.remove`.
 
-Inline (clean worktree, parent is the HEAD tip and its column is free):
+Inline (clean worktree, no HEAD-lane extension, parent is the HEAD tip and its column is free):
 
 ```
     □          ← stash in the parent's own column, dashed hollow rect
@@ -431,6 +468,7 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
 | `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
+| `src/lib/wip-row.ts` | `withWipRow()` — prepends the WIP row at index 0 while the worktree is dirty |
 | `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, WIP sentinel |
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |

@@ -402,7 +402,9 @@ fn no_ghost_lanes_criss_cross() {
     cfg.set_str("user.name", "T").unwrap();
     cfg.set_str("user.email", "t@t.com").unwrap();
     drop(cfg);
-    let sig = git2::Signature::now("T", "t@t.com").unwrap();
+    // Spaced a second apart: same-second commits sort arbitrarily under
+    // TOPOLOGICAL | TIME, and this test asserts an ordering-sensitive layout.
+    let sig = sig_at(1000);
 
     let root = raw_commit(
         &repo,
@@ -761,13 +763,26 @@ fn freed_column_reuse() {
         &[&merge_a_c],
     );
     let main2_c = repo.find_commit(main2).unwrap();
-    let _bb = raw_commit(
+    let bb = raw_commit(
         &repo,
-        &sig,
+        &sig_at(2000),
         "refs/heads/branch-b",
         "BranchB",
         "b.txt",
         "b",
+        &[&main2_c],
+    );
+    let _bb = bb;
+    // Main-3 keeps BranchB off HEAD's tip. A branch sitting directly on the tip is a
+    // linear continuation of it and takes the HEAD lane, which would leave this test
+    // with no branch to place at all.
+    raw_commit(
+        &repo,
+        &sig_at(3000),
+        "refs/heads/main",
+        "Main-3",
+        "main3.txt",
+        "main3",
         &[&main2_c],
     );
     repo.set_head("refs/heads/main").unwrap();
@@ -833,13 +848,71 @@ fn color_index_head_zero() {
         head.color_index
     );
 
-    for c in commits.iter().filter(|c| c.column == 0) {
+    for c in commits.iter().filter(|c| c.column == 0 && c.in_head_chain) {
         assert_eq!(
             c.color_index, 0,
             "HEAD chain commit {} (col 0) should have color_index 0, got {}",
             c.short_oid, c.color_index
         );
     }
+}
+
+#[test]
+fn head_lane_carries_two_colors_above_a_non_upstream_continuation() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        identity(&repo);
+        let b1 = raw_commit(
+            &repo,
+            &sig_at(1000),
+            "refs/heads/main",
+            "base1",
+            "f.txt",
+            "1",
+            &[],
+        );
+        let b1_c = repo.find_commit(b1).unwrap();
+        let b2 = raw_commit(
+            &repo,
+            &sig_at(2000),
+            "refs/heads/main",
+            "base2",
+            "f.txt",
+            "2",
+            &[&b1_c],
+        );
+        let b2_c = repo.find_commit(b2).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(3000),
+            "refs/heads/later",
+            "later1",
+            "f.txt",
+            "3",
+            &[&b2_c],
+        );
+        checkout_main(&repo);
+    }
+
+    let commits = walk(&dir);
+
+    let lane_zero: Vec<usize> = commits
+        .iter()
+        .filter(|c| c.column == 0)
+        .map(|c| c.color_index)
+        .collect();
+    assert_eq!(lane_zero.len(), 3, "all three rows share lane 0");
+    assert_ne!(
+        row(&commits, "later1").color_index,
+        row(&commits, "base2").color_index,
+        "lane 0 carries two colors: a non-upstream continuation does not inherit HEAD's"
+    );
+    assert_eq!(
+        row(&commits, "base2").color_index,
+        0,
+        "HEAD's own chain keeps color 0"
+    );
 }
 
 #[test]
@@ -2173,5 +2246,385 @@ fn unreadable_stash_index_commit_is_skipped() {
             "{summary} should still render, got {:?}",
             summaries(&commits)
         );
+    }
+}
+
+// --- HEAD lane follows linear continuations -------------------------------
+//
+// Every repo below uses one file, so checking `main` out at the end leaves a
+// clean worktree, and spaces commit timestamps a second apart: same-second
+// commits sort arbitrarily under TOPOLOGICAL | TIME and can render a
+// coincidentally-correct layout.
+
+fn identity(repo: &git2::Repository) {
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("user.name", "T").unwrap();
+    cfg.set_str("user.email", "t@t.com").unwrap();
+}
+
+fn track_origin_main(repo: &git2::Repository) {
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("remote.origin.url", "file:///nonexistent")
+        .unwrap();
+    cfg.set_str("remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+        .unwrap();
+    cfg.set_str("branch.main.remote", "origin").unwrap();
+    cfg.set_str("branch.main.merge", "refs/heads/main").unwrap();
+}
+
+fn checkout_main(repo: &git2::Repository) {
+    repo.set_head("refs/heads/main").unwrap();
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
+        .unwrap();
+}
+
+/// `main` at `base2`, `origin/main` three commits ahead on the same line.
+fn behind_upstream_repo() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    identity(&repo);
+    track_origin_main(&repo);
+
+    let main_ref = "refs/heads/main";
+    let remote_ref = "refs/remotes/origin/main";
+    let b1 = raw_commit(&repo, &sig_at(1000), main_ref, "base1", "f.txt", "1", &[]);
+    let b1_c = repo.find_commit(b1).unwrap();
+    let b2 = raw_commit(
+        &repo,
+        &sig_at(2000),
+        main_ref,
+        "base2",
+        "f.txt",
+        "2",
+        &[&b1_c],
+    );
+    let b2_c = repo.find_commit(b2).unwrap();
+    let u3 = raw_commit(
+        &repo,
+        &sig_at(3000),
+        remote_ref,
+        "up3",
+        "f.txt",
+        "3",
+        &[&b2_c],
+    );
+    let u3_c = repo.find_commit(u3).unwrap();
+    let u4 = raw_commit(
+        &repo,
+        &sig_at(4000),
+        remote_ref,
+        "up4",
+        "f.txt",
+        "4",
+        &[&u3_c],
+    );
+    let u4_c = repo.find_commit(u4).unwrap();
+    raw_commit(
+        &repo,
+        &sig_at(5000),
+        remote_ref,
+        "up5",
+        "f.txt",
+        "5",
+        &[&u4_c],
+    );
+
+    checkout_main(&repo);
+    dir
+}
+
+fn row<'a>(
+    commits: &'a [trunk_lib::git::types::GraphCommit],
+    summary: &str,
+) -> &'a trunk_lib::git::types::GraphCommit {
+    commits
+        .iter()
+        .find(|c| c.summary == summary)
+        .unwrap_or_else(|| panic!("no row {summary} in {:?}", summaries(commits)))
+}
+
+fn walk(dir: &tempfile::TempDir) -> Vec<trunk_lib::git::types::GraphCommit> {
+    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    walk_commits(&mut repo, 0, usize::MAX).unwrap().commits
+}
+
+fn has_fork_right(c: &trunk_lib::git::types::GraphCommit) -> bool {
+    c.edges
+        .iter()
+        .any(|e| matches!(e.edge_type, EdgeType::ForkRight))
+}
+
+#[test]
+fn upstream_chain_shares_the_head_lane() {
+    let dir = behind_upstream_repo();
+
+    let commits = walk(&dir);
+
+    for summary in ["up5", "up4", "up3", "base2", "base1"] {
+        assert_eq!(
+            row(&commits, summary).column,
+            0,
+            "{summary} belongs in the HEAD lane"
+        );
+    }
+}
+
+#[test]
+fn upstream_chain_keeps_the_head_color() {
+    let dir = behind_upstream_repo();
+
+    let commits = walk(&dir);
+
+    let head_color = row(&commits, "base2").color_index;
+    for summary in ["up5", "up4", "up3"] {
+        assert_eq!(
+            row(&commits, summary).color_index,
+            head_color,
+            "{summary} is on main's tracked upstream, so it keeps main's color"
+        );
+    }
+}
+
+#[test]
+fn head_tip_emits_no_fork_into_its_upstream() {
+    let dir = behind_upstream_repo();
+
+    let commits = walk(&dir);
+
+    assert!(
+        !has_fork_right(row(&commits, "base2")),
+        "the DAG is linear here, so no fork belongs at the head tip: {:?}",
+        row(&commits, "base2").edges
+    );
+    for summary in ["up5", "up4", "up3"] {
+        let c = row(&commits, summary);
+        assert!(
+            c.edges.iter().any(|e| e.from_column == 0
+                && e.to_column == 0
+                && matches!(e.edge_type, EdgeType::Straight)),
+            "{summary} needs a straight edge in lane 0, got {:?}",
+            c.edges
+        );
+    }
+}
+
+#[test]
+fn local_descendant_shares_the_lane_in_its_own_color() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        identity(&repo);
+        let b1 = raw_commit(
+            &repo,
+            &sig_at(1000),
+            "refs/heads/main",
+            "base1",
+            "f.txt",
+            "1",
+            &[],
+        );
+        let b1_c = repo.find_commit(b1).unwrap();
+        let b2 = raw_commit(
+            &repo,
+            &sig_at(2000),
+            "refs/heads/main",
+            "base2",
+            "f.txt",
+            "2",
+            &[&b1_c],
+        );
+        let b2_c = repo.find_commit(b2).unwrap();
+        let n1 = raw_commit(
+            &repo,
+            &sig_at(3000),
+            "refs/heads/new",
+            "new1",
+            "f.txt",
+            "3",
+            &[&b2_c],
+        );
+        let n1_c = repo.find_commit(n1).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(4000),
+            "refs/heads/new",
+            "new2",
+            "f.txt",
+            "4",
+            &[&n1_c],
+        );
+        checkout_main(&repo);
+    }
+
+    let commits = walk(&dir);
+
+    for summary in ["new2", "new1", "base2", "base1"] {
+        assert_eq!(
+            row(&commits, summary).column,
+            0,
+            "{summary} shares the lane"
+        );
+    }
+    assert_ne!(
+        row(&commits, "new1").color_index,
+        row(&commits, "base2").color_index,
+        "`new` is not main's tracked upstream, so it takes its own color"
+    );
+    assert!(!has_fork_right(row(&commits, "base2")));
+}
+
+#[test]
+fn upstream_outranks_a_topic_branch_for_the_head_lane() {
+    let dir = behind_upstream_repo();
+    {
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let b2_c = repo
+            .find_reference("refs/heads/main")
+            .unwrap()
+            .peel_to_commit()
+            .unwrap();
+        let t1 = raw_commit_in(
+            &repo,
+            &sig_at(6000),
+            "refs/heads/topic",
+            "topic1",
+            "t.txt",
+            "t1",
+            &[&b2_c],
+        );
+        let t1_c = repo.find_commit(t1).unwrap();
+        raw_commit_in(
+            &repo,
+            &sig_at(7000),
+            "refs/heads/topic",
+            "topic2",
+            "t.txt",
+            "t2",
+            &[&t1_c],
+        );
+        checkout_main(&repo);
+        std::fs::remove_file(dir.path().join("t.txt")).ok();
+    }
+
+    let commits = walk(&dir);
+
+    for summary in ["up5", "up4", "up3"] {
+        assert_eq!(
+            row(&commits, summary).column,
+            0,
+            "the tracked upstream outranks a newer topic branch"
+        );
+    }
+    for summary in ["topic2", "topic1"] {
+        assert_ne!(row(&commits, summary).column, 0, "{summary} branches right");
+    }
+    assert!(
+        has_fork_right(row(&commits, "base2")),
+        "topic forks off the head tip"
+    );
+}
+
+#[test]
+fn diverged_branch_keeps_the_head_lane_and_still_forks() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        identity(&repo);
+        track_origin_main(&repo);
+        let b1 = raw_commit(
+            &repo,
+            &sig_at(1000),
+            "refs/heads/main",
+            "base1",
+            "f.txt",
+            "1",
+            &[],
+        );
+        let b1_c = repo.find_commit(b1).unwrap();
+        let b2 = raw_commit(
+            &repo,
+            &sig_at(2000),
+            "refs/heads/main",
+            "base2",
+            "f.txt",
+            "2",
+            &[&b1_c],
+        );
+        let b2_c = repo.find_commit(b2).unwrap();
+        let u3 = raw_commit(
+            &repo,
+            &sig_at(3000),
+            "refs/remotes/origin/main",
+            "up3",
+            "f.txt",
+            "3",
+            &[&b2_c],
+        );
+        let u3_c = repo.find_commit(u3).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(4000),
+            "refs/remotes/origin/main",
+            "up4",
+            "f.txt",
+            "4",
+            &[&u3_c],
+        );
+        let l5 = raw_commit(
+            &repo,
+            &sig_at(5000),
+            "refs/heads/main",
+            "local5",
+            "f.txt",
+            "5",
+            &[&b2_c],
+        );
+        let l5_c = repo.find_commit(l5).unwrap();
+        raw_commit(
+            &repo,
+            &sig_at(6000),
+            "refs/heads/main",
+            "local6",
+            "f.txt",
+            "6",
+            &[&l5_c],
+        );
+        checkout_main(&repo);
+    }
+
+    let commits = walk(&dir);
+
+    assert_eq!(
+        row(&commits, "local6").column,
+        0,
+        "HEAD keeps the leftmost lane"
+    );
+    assert_eq!(row(&commits, "local5").column, 0);
+    assert_ne!(row(&commits, "up4").column, 0, "a diverged upstream forks");
+    assert!(
+        has_fork_right(row(&commits, "base2")),
+        "the DAG really forks here"
+    );
+}
+
+#[test]
+fn stash_branches_right_when_the_head_lane_extends() {
+    let dir = behind_upstream_repo();
+    {
+        let mut repo = git2::Repository::open(dir.path()).unwrap();
+        std::fs::write(dir.path().join("f.txt"), "half-finished").unwrap();
+        let sig = sig_at(9000);
+        repo.stash_save2(&sig, Some("half-finished"), None).unwrap();
+    }
+
+    let commits = walk(&dir);
+
+    let stash = commits.iter().find(|c| c.is_stash).expect("no stash row");
+    assert_ne!(
+        stash.column, 0,
+        "the unpulled chain owns lane 0, so the stash branches right"
+    );
+    for summary in ["up5", "up4", "up3"] {
+        assert_eq!(row(&commits, summary).column, 0);
     }
 }

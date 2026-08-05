@@ -9,8 +9,9 @@ use std::collections::HashSet;
 /// Inspired by gitamine's `insertCommit` proximity search — keeps branches
 /// compact by placing new lanes near related commits instead of at the first
 /// globally-available slot.
-/// `min_col` prevents placement below a minimum column index (e.g., col 0
-/// is reserved for the HEAD chain).
+/// `min_col` prevents placement below a minimum column index. Column 0 belongs to the HEAD
+/// lane, which `head_lane_extension` may widen past HEAD's own ancestry; anything that lane
+/// does not claim is placed from column 1 up.
 /// Lane slot: (occupant OID, dashed).
 /// The dashed flag is set by the commit that creates/takes over the lane:
 /// stash commits set true (their connection to parent is dashed),
@@ -48,6 +49,77 @@ fn find_free_column_near(active_lanes: &mut Vec<LaneSlot>, target: usize, min_co
         }
     }
     unreachable!("spiral search always terminates by extending active_lanes")
+}
+
+/// The commits sitting directly above `head_tip` on the same first-parent line, newest
+/// first, plus whether that chain is HEAD's tracked upstream.
+///
+/// The HEAD lane owns these as well as HEAD's ancestors, so a branch that is merely behind
+/// renders as the straight line the DAG actually is. When several chains continue `head_tip`
+/// only one can hold the lane: the tracked upstream takes it outright, and otherwise the
+/// revwalk's own order breaks the tie.
+fn head_lane_extension(
+    repo: &git2::Repository,
+    head_tip: git2::Oid,
+    oids: &[git2::Oid],
+    stash_oids: &HashSet<git2::Oid>,
+) -> (Vec<git2::Oid>, bool) {
+    if let Some(upstream) = tracked_upstream_oid(repo)
+        && let Some(path) = first_parent_path_to(repo, upstream, head_tip)
+        && !path.is_empty()
+        && !path.iter().any(|o| stash_oids.contains(o))
+    {
+        return (path, true);
+    }
+
+    // A stash hangs off its parent by first parent too, and it is not a continuation of that
+    // branch — it has its own placement rules and must never take the lane.
+    let mut first_parent_children: HashMap<git2::Oid, Vec<git2::Oid>> = HashMap::new();
+    for &oid in oids.iter().filter(|o| !stash_oids.contains(o)) {
+        if let Ok(commit) = repo.find_commit(oid)
+            && let Ok(parent) = commit.parent_id(0)
+        {
+            first_parent_children.entry(parent).or_default().push(oid);
+        }
+    }
+
+    let mut path = Vec::new();
+    let mut current = head_tip;
+    while let Some(children) = first_parent_children.get(&current) {
+        let Some(&next) = children.first() else { break };
+        path.push(next);
+        current = next;
+    }
+    path.reverse();
+    (path, false)
+}
+
+fn tracked_upstream_oid(repo: &git2::Repository) -> Option<git2::Oid> {
+    let head = repo.head().ok()?;
+    if !head.is_branch() {
+        return None;
+    }
+    let branch = git2::Branch::wrap(head);
+    branch.upstream().ok()?.get().target()
+}
+
+/// The first-parent commits between `from` and `target`, newest first, or `None` when
+/// `from` does not reach `target` by first parent at all.
+fn first_parent_path_to(
+    repo: &git2::Repository,
+    from: git2::Oid,
+    target: git2::Oid,
+) -> Option<Vec<git2::Oid>> {
+    let mut path = Vec::new();
+    let mut current = from;
+    loop {
+        if current == target {
+            return Some(path);
+        }
+        let commit = repo.find_commit(current).ok()?;
+        path.push(current);
+        current = commit.parent_id(0).ok()?;
+    }
 }
 
 pub fn walk_commits(
@@ -125,7 +197,7 @@ pub fn walk_commits(
     let mut max_columns: usize = 0;
 
     // Branch color counter (Fix 4): deterministic per-branch color assignment
-    let mut next_color: usize = 1; // 0 reserved for HEAD chain
+    let mut next_color: usize = 1; // 0 reserved for HEAD's own chain
     let mut lane_colors: HashMap<usize, usize> = HashMap::new();
 
     // Pre-compute HEAD's first-parent chain and tip OID
@@ -145,6 +217,13 @@ pub fn walk_commits(
         }
     }
 
+    // Commits above HEAD's tip on the same first-parent line. They share the HEAD lane, so a
+    // branch that is only behind renders straight instead of forking away from itself.
+    let (head_lane_ext, ext_is_upstream) = match head_tip {
+        Some(tip) => head_lane_extension(repo, tip, &oids, &stash_oid_set),
+        None => (Vec::new(), false),
+    };
+
     // Pre-reserve column 0 for ALL head_chain members via pending_parents.
     if !head_chain.is_empty() {
         active_lanes.push(None);
@@ -152,6 +231,16 @@ pub fn walk_commits(
         lane_colors.insert(0, 0); // HEAD chain always color 0
         for &hc_oid in &head_chain {
             pending_parents.insert(hc_oid, 0);
+        }
+        for &ext_oid in &head_lane_ext {
+            pending_parents.insert(ext_oid, 0);
+        }
+        // Only the tracked upstream is the same line of work as HEAD, so only it keeps HEAD's
+        // colour. Any other continuation holds the lane under a colour of its own, which the
+        // HEAD tip switches back below.
+        if !head_lane_ext.is_empty() && !ext_is_upstream {
+            lane_colors.insert(0, next_color);
+            next_color += 1;
         }
     }
 
@@ -180,8 +269,11 @@ pub fn walk_commits(
             // Only column 0 is ever reserved-and-free, so the !head_chain arm cannot
             // fire on its own — see .claude/rules/commit-graph.md before narrowing any
             // clause. The worktree must be clean: a dirty one puts the WIP row here.
+            // An extending HEAD lane rules inlining out entirely: the unpulled chain already
+            // owns column 0 across the rows between the stash and its parent.
             let can_inline = is_stash
                 && !worktree_dirty
+                && head_lane_ext.is_empty()
                 && parent_col.is_some()
                 && parent_oid.is_some_and(|p| !head_chain.contains(&p) || head_tip == Some(p))
                 && parent_col
@@ -209,6 +301,11 @@ pub fn walk_commits(
             active_lanes.resize(col + 1, None);
         }
         max_columns = max_columns.max(active_lanes.len());
+
+        // The extension's colour ends here: from the HEAD tip down, lane 0 is HEAD's own.
+        if head_tip == Some(oid) {
+            lane_colors.insert(0, 0);
+        }
 
         // Branch tip: no child has set up this lane (active_lanes[col] is None),
         // or this is a root commit (no parents) — root commits always terminate the lane downward.

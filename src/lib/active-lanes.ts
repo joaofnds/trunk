@@ -49,24 +49,26 @@ export function buildGraphData(
 				}
 			}
 
-			// Dashed connections from WIP to HEAD, split around stash rows.
-			// A dirty worktree moves the stash out of the WIP column, so in a settled
-			// frame stashRows is empty. The split guards the unsettled one: on a
-			// clean->dirty edit get_dirty_counts resolves ~40ms before
-			// refresh_commit_graph (RepoView dispatches loadDirtyCounts synchronously
-			// while the graph fetch waits a microtask for CommitGraph's $effect), so
-			// the WIP row is drawn over the previous layout with the stash still inline.
-			// Structural ordering, not a race — the window grows with history size.
+			// Dashed connections from WIP to HEAD, split around every row already
+			// occupying the WIP column, so the dashes never cross a commit dot.
+			// Two shapes land here. A branch behind its upstream puts the unpulled
+			// commits in this column in a settled frame. A stash lands here only in an
+			// unsettled one: on a clean->dirty edit get_dirty_counts resolves ~40ms
+			// before refresh_commit_graph (RepoView dispatches loadDirtyCounts
+			// synchronously while the graph fetch waits a microtask for CommitGraph's
+			// $effect), so the WIP row is drawn over the previous layout with the stash
+			// still inline. Structural ordering, not a race — the window grows with
+			// history size.
 			if (headRow > y) {
 				const wipCol = commit.column;
-				const stashRows: number[] = [];
+				const breakRows: number[] = [];
 				for (let r = y + 1; r < headRow; r++) {
-					if (commits[r].is_stash && commits[r].column === wipCol) {
-						stashRows.push(r);
+					if (commits[r].column === wipCol) {
+						breakRows.push(r);
 					}
 				}
 
-				if (stashRows.length === 0) {
+				if (breakRows.length === 0) {
 					connections.push({
 						childX: wipCol,
 						childY: y,
@@ -76,7 +78,7 @@ export function buildGraphData(
 						dashed: true,
 					});
 				} else {
-					const breakpoints = [y, ...stashRows, headRow];
+					const breakpoints = [y, ...breakRows, headRow];
 					for (let i = 0; i < breakpoints.length - 1; i++) {
 						connections.push({
 							childX: wipCol,

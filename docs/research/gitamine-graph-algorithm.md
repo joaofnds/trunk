@@ -460,8 +460,13 @@ would eliminate the `pending_parents` conflict that causes stash displacement.
 
 However, this is the riskiest change because the HEAD chain pre-reservation
 is foundational to Trunk's current algorithm. It ensures col 0 is always
-the HEAD chain regardless of processing order. Removing it requires careful
+the HEAD lane regardless of processing order. Removing it requires careful
 verification.
+
+Since 2026-08-05 that reservation covers more than HEAD's ancestors: it also
+covers the chain continuing HEAD's tip upward, so a branch that is merely
+behind renders straight. See `head_lane_extension` in `graph.rs` and
+`docs/architecture/commit-graph.md` §"HEAD lane pre-reservation".
 
 ### Concept 6: Simplify Stash Handling (adopt)
 
