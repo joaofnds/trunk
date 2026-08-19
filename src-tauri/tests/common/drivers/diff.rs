@@ -59,16 +59,9 @@ impl TestContext {
         diff::get_commit_detail_inner(self.path(), oid, self.state_map())
     }
 
-    /// Diff with enrichment (syntax + word diff). Use for tests that check spans.
+    /// Diff with enrichment (syntax + word diff). `diff_unstaged_inner` already
+    /// enriches its output, so this is an alias — kept for its ten call sites.
     pub fn diff_unstaged_enriched(&self, file_path: &str) -> Result<Vec<FileDiff>, TrunkError> {
-        let mut diffs = self.diff_unstaged(file_path)?;
-        diff::enrich_file_diffs(&mut diffs);
-        Ok(diffs)
-    }
-
-    pub fn diff_commit_enriched(&self, oid: &str) -> Result<Vec<FileDiff>, TrunkError> {
-        let mut diffs = self.diff_commit(oid)?;
-        diff::enrich_file_diffs(&mut diffs);
-        Ok(diffs)
+        self.diff_unstaged(file_path)
     }
 }

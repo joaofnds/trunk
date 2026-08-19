@@ -377,10 +377,15 @@ fn bench_enrich_new(c: &mut Criterion) {
     )
     .unwrap();
 
+    // Placeholder until diff_unstaged_raw_for_bench returns real sides (task 4):
+    // this still measures enrichment's fixed per-line overhead, just without the
+    // syntax-parsing cost real content adds.
+    let sides = vec![trunk_lib::commands::diff::SideContent::none(); raw.len()];
+
     c.bench_function("enrich_ts_new_perfile", |b| {
         b.iter(|| {
             let mut diffs = raw.clone();
-            trunk_lib::commands::diff::enrich_file_diffs(&mut diffs);
+            trunk_lib::commands::diff::enrich_file_diffs(&mut diffs, &sides);
             diffs
         });
     });

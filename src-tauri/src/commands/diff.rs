@@ -4,7 +4,7 @@ use crate::error::TrunkError;
 use crate::git::syntax;
 use crate::git::types::{
     CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
-    WordSpan,
+    SyntaxToken, WordSpan,
 };
 use crate::state::RepoState;
 use similar::{ChangeTag, TextDiff};
@@ -234,25 +234,160 @@ fn walk_diff(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
     .map_err(TrunkError::from)?;
 
     let mut file_diffs = file_diffs.into_inner();
-    enrich_file_diffs(&mut file_diffs);
+    // Placeholder until real per-side content is wired through (task 4): every
+    // diff produced here is word-emphasis only, no syntax spans, until then.
+    let sides = vec![SideContent::none(); file_diffs.len()];
+    enrich_file_diffs(&mut file_diffs, &sides);
     Ok(file_diffs)
 }
 
+/// Real content of a file's old and new version, keyed by the same index as the
+/// `FileDiff` it enriches. `None` means that side's content could not be resolved
+/// (missing blob, unreadable file, bare repo, binary, or over the highlight cap) —
+/// that side contributes no syntax tokens, but word-diff emphasis is unaffected.
+#[derive(Debug, Default, Clone)]
+pub struct SideContent {
+    pub old: Option<Vec<u8>>,
+    pub new: Option<Vec<u8>>,
+}
+
+impl SideContent {
+    pub fn none() -> Self {
+        Self::default()
+    }
+}
+
+/// Side content beyond this many displayed lines skips syntax highlighting for
+/// that side entirely (word-diff emphasis still applies). Release-mode probe
+/// measurements (`/tmp/hl-probe`, bin `perf`, a 2 399-line Rust file): 32–44 ms
+/// on a quiet machine across six runs in two sessions (~60–75k lines/s), 173–196
+/// ms on a loaded machine during one gate-review run (~14k lines/s). At this cap:
+/// ~85 ms/side quiet, ~360 ms/side loaded, per render, off the UI thread, and
+/// only for hunks past this line.
+const MAX_SYNTAX_HIGHLIGHT_LINE: u32 = 5_000;
+
+/// One line of a side's real file content, with the syntax tokens computed for
+/// it by a highlighter fed every preceding line of that same side.
+struct SideLine {
+    content: String,
+    tokens: Vec<SyntaxToken>,
+}
+
+fn collect_linenos(
+    hunks: &[DiffHunk],
+    pick: impl Fn(&DiffLine) -> Option<u32>,
+) -> std::collections::BTreeSet<u32> {
+    hunks
+        .iter()
+        .flat_map(|h| h.lines.iter())
+        .filter_map(pick)
+        .collect()
+}
+
+/// Parse `bytes` line by line through one highlighter, in order, so parser state
+/// at line N reflects the real content of lines `1..N` — the fix for the
+/// diagnosed defect where a per-hunk highlighter starts fresh mid-construct.
+/// Only lines in `needed` are kept; parsing still walks every line up to the
+/// highest needed one, since that is what makes the kept lines' state correct.
+fn build_side_lines(
+    bytes: &[u8],
+    ext: &str,
+    needed: &std::collections::BTreeSet<u32>,
+) -> HashMap<u32, SideLine> {
+    let mut result = HashMap::new();
+    let Some(&max_line) = needed.iter().max() else {
+        return result;
+    };
+    if max_line > MAX_SYNTAX_HIGHLIGHT_LINE {
+        return result;
+    }
+    let Some(mut hl) = syntax::create_highlighter(ext) else {
+        return result;
+    };
+
+    let text = String::from_utf8_lossy(bytes);
+    for (idx, raw_line) in text.split('\n').enumerate() {
+        let lineno = (idx + 1) as u32;
+        if lineno > max_line {
+            break;
+        }
+        let tokens = syntax::highlight_line_with(&mut hl, raw_line);
+        if needed.contains(&lineno) {
+            result.insert(
+                lineno,
+                SideLine {
+                    content: raw_line.to_string(),
+                    tokens,
+                },
+            );
+        }
+    }
+    result
+}
+
+/// The diff line's content with its one trailing `\n` stripped, so it can be
+/// compared against a side line's content (never newline-terminated).
+fn strip_diff_newline(content: &str) -> &str {
+    content.strip_suffix('\n').unwrap_or(content)
+}
+
+/// Picks the side line a `DiffLine` should take syntax tokens from: its own side
+/// by origin, except a Context line falls back to the old side when the new
+/// side's content is entirely unavailable (§3: a whole-side fallback, not a
+/// per-line one — a per-line miss degrades to no spans via the alignment guard
+/// below, never a fallback).
+fn pick_side_line<'a>(
+    line: &DiffLine,
+    old_lines: Option<&'a HashMap<u32, SideLine>>,
+    new_lines: Option<&'a HashMap<u32, SideLine>>,
+    new_available: bool,
+) -> Option<&'a SideLine> {
+    let lookup = |lines: Option<&'a HashMap<u32, SideLine>>, lineno: Option<u32>| {
+        lineno.and_then(|n| lines.and_then(|m| m.get(&n)))
+    };
+    match line.origin {
+        DiffOrigin::Delete => lookup(old_lines, line.old_lineno),
+        DiffOrigin::Add => lookup(new_lines, line.new_lineno),
+        DiffOrigin::Context => {
+            if new_available {
+                lookup(new_lines, line.new_lineno)
+            } else {
+                lookup(old_lines, line.old_lineno)
+            }
+        }
+    }
+}
+
 /// Enrich file diffs with word-level diff spans and syntax highlighting.
-/// Creates ONE highlighter per file (not per line) for dramatically better performance.
-pub fn enrich_file_diffs(file_diffs: &mut [FileDiff]) {
-    for fd in file_diffs.iter_mut() {
+/// Syntax tokens come from each side's real file content (`sides`, parallel to
+/// `file_diffs`), parsed by its own highlighter — never from the diff line
+/// stream, which is not either file version's real content.
+pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
+    for (fd, side) in file_diffs.iter_mut().zip(sides.iter()) {
         let ext = syntax::extension_from_path(&fd.path);
-        let mut highlighter = syntax::create_highlighter(ext);
+
+        let old_needed = collect_linenos(&fd.hunks, |l| l.old_lineno);
+        let new_needed = collect_linenos(&fd.hunks, |l| l.new_lineno);
+        let old_lines = side
+            .old
+            .as_deref()
+            .map(|bytes| build_side_lines(bytes, ext, &old_needed));
+        let new_lines = side
+            .new
+            .as_deref()
+            .map(|bytes| build_side_lines(bytes, ext, &new_needed));
+        let new_available = side.new.is_some();
+
         for hunk in &mut fd.hunks {
             let word_spans_per_line = compute_word_spans_for_hunk(&hunk.lines);
             for (i, line) in hunk.lines.iter_mut().enumerate() {
                 let ws = &word_spans_per_line[i];
-                let syntax_tokens = if let Some(ref mut hl) = highlighter {
-                    syntax::highlight_line_with(hl, &line.content)
-                } else {
-                    vec![]
-                };
+                let syntax_tokens =
+                    pick_side_line(line, old_lines.as_ref(), new_lines.as_ref(), new_available)
+                        .filter(|sl| sl.content == strip_diff_newline(&line.content))
+                        .map(|sl| sl.tokens.clone())
+                        .unwrap_or_default();
+
                 if !syntax_tokens.is_empty() || !ws.is_empty() {
                     line.spans = syntax::merge_spans(&syntax_tokens, ws, line.content.len() as u32);
                 }
@@ -666,8 +801,9 @@ mod enrich_tests {
                 ],
             }],
         }];
+        let sides = vec![SideContent::none()];
 
-        enrich_file_diffs(&mut file_diffs);
+        enrich_file_diffs(&mut file_diffs, &sides);
 
         let added = &file_diffs[0].hunks[0].lines[1];
         assert!(
@@ -677,6 +813,213 @@ mod enrich_tests {
         assert!(
             added.spans.iter().any(|s| s.emphasized),
             "word-diff emphasis must survive the dropped highlighting"
+        );
+    }
+
+    // Reproduces the diagnosed defect (F1): a hunk starting mid multi-line string.
+    // A fresh per-hunk highlighter parses "FROM t\";" from a default top-level
+    // state and misreads it; seeded with the real preceding file content, the
+    // parser is inside the string where it should be, and resumes as code once
+    // the string actually closes.
+    #[test]
+    fn enrich_highlights_a_hunk_that_starts_mid_string_from_real_side_content() {
+        let new_content = concat!(
+            "fn build_sql() -> String {\n",
+            "    let sql = \"SELECT *\n",
+            "FROM t\";\n",
+            "    let mut stmt = sql;\n",
+            "    stmt\n",
+            "}\n",
+        );
+        let mut file_diffs = vec![FileDiff {
+            path: "example.rs".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ -3,0 +3,2 @@".to_string(),
+                old_start: 3,
+                old_lines: 1,
+                new_start: 3,
+                new_lines: 2,
+                lines: vec![
+                    DiffLine {
+                        origin: DiffOrigin::Context,
+                        content: "FROM t\";\n".to_string(),
+                        old_lineno: Some(3),
+                        new_lineno: Some(3),
+                        spans: vec![],
+                    },
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        content: "    let mut stmt = sql;\n".to_string(),
+                        old_lineno: None,
+                        new_lineno: Some(4),
+                        spans: vec![],
+                    },
+                ],
+            }],
+        }];
+        let sides = vec![SideContent {
+            old: Some(new_content.as_bytes().to_vec()),
+            new: Some(new_content.as_bytes().to_vec()),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let context_line = &file_diffs[0].hunks[0].lines[0];
+        assert!(
+            context_line
+                .spans
+                .iter()
+                .any(|s| s.syntax_class == "syn-string"),
+            "context line inside the real string should carry syn-string, got {:?}",
+            context_line.spans
+        );
+
+        let add_line = &file_diffs[0].hunks[0].lines[1];
+        assert!(
+            add_line
+                .spans
+                .iter()
+                .any(|s| s.syntax_class == "syn-keyword"),
+            "add line after the string closes should carry syn-keyword, got {:?}",
+            add_line.spans
+        );
+    }
+
+    // F3: old and new lines must not share one highlighter. A Delete line that
+    // opens an unclosed block comment must not bleed comment state into the
+    // neighboring Add line — they are parsed by two independent highlighters,
+    // one per side's real content.
+    #[test]
+    fn enrich_does_not_let_a_deleted_comment_opener_corrupt_the_neighboring_add_line() {
+        let old_content = "fn main() {\n    let x = 1; /*\n}\n";
+        let new_content = "fn main() {\n    let y = 2;\n}\n";
+        let mut file_diffs = vec![FileDiff {
+            path: "combo.rs".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ -2 +2 @@".to_string(),
+                old_start: 2,
+                old_lines: 1,
+                new_start: 2,
+                new_lines: 1,
+                lines: vec![
+                    DiffLine {
+                        origin: DiffOrigin::Delete,
+                        content: "    let x = 1; /*\n".to_string(),
+                        old_lineno: Some(2),
+                        new_lineno: None,
+                        spans: vec![],
+                    },
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        content: "    let y = 2;\n".to_string(),
+                        old_lineno: None,
+                        new_lineno: Some(2),
+                        spans: vec![],
+                    },
+                ],
+            }],
+        }];
+        let sides = vec![SideContent {
+            old: Some(old_content.as_bytes().to_vec()),
+            new: Some(new_content.as_bytes().to_vec()),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let add_line = &file_diffs[0].hunks[0].lines[1];
+        assert!(
+            add_line
+                .spans
+                .iter()
+                .any(|s| s.syntax_class == "syn-keyword"),
+            "add line must highlight as code, not inherit the old side's open comment, got {:?}",
+            add_line.spans
+        );
+        assert!(
+            add_line
+                .spans
+                .iter()
+                .all(|s| s.syntax_class != "syn-comment"),
+            "add line must carry no comment spans from the deleted line's neighbor, got {:?}",
+            add_line.spans
+        );
+    }
+
+    // F2: state must not bleed across hunks. The gap between two hunks in this
+    // file opens and closes a multi-line string; the second hunk starts after
+    // the gap closes it, so its line must highlight as code, not string.
+    #[test]
+    fn enrich_does_not_bleed_state_across_the_gap_between_two_hunks() {
+        let content = concat!(
+            "fn main() {\n",       // 1
+            "    let a = 1;\n",    // 2 - hunk 1
+            "    let sql = \"SELECT * FROM t\n", // 3 - gap (opens string)
+            "WHERE x = 1\";\n",    // 4 - gap (closes string)
+            "    let mut z = 9;\n", // 5 - hunk 2
+            "}\n",                 // 6
+        );
+        let mut file_diffs = vec![FileDiff {
+            path: "gap.rs".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![
+                DiffHunk {
+                    header: "@@ -2 +2 @@".to_string(),
+                    old_start: 2,
+                    old_lines: 1,
+                    new_start: 2,
+                    new_lines: 1,
+                    lines: vec![DiffLine {
+                        origin: DiffOrigin::Context,
+                        content: "    let a = 1;\n".to_string(),
+                        old_lineno: Some(2),
+                        new_lineno: Some(2),
+                        spans: vec![],
+                    }],
+                },
+                DiffHunk {
+                    header: "@@ -5 +5 @@".to_string(),
+                    old_start: 5,
+                    old_lines: 1,
+                    new_start: 5,
+                    new_lines: 1,
+                    lines: vec![DiffLine {
+                        origin: DiffOrigin::Context,
+                        content: "    let mut z = 9;\n".to_string(),
+                        old_lineno: Some(5),
+                        new_lineno: Some(5),
+                        spans: vec![],
+                    }],
+                },
+            ],
+        }];
+        let sides = vec![SideContent {
+            old: Some(content.as_bytes().to_vec()),
+            new: Some(content.as_bytes().to_vec()),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let second_hunk_line = &file_diffs[0].hunks[1].lines[0];
+        assert!(
+            second_hunk_line
+                .spans
+                .iter()
+                .any(|s| s.syntax_class == "syn-keyword"),
+            "line after the gap closes the string must highlight as code, got {:?}",
+            second_hunk_line.spans
+        );
+        assert!(
+            second_hunk_line
+                .spans
+                .iter()
+                .all(|s| s.syntax_class != "syn-string"),
+            "line after the gap closes the string must not still read as string, got {:?}",
+            second_hunk_line.spans
         );
     }
 }
