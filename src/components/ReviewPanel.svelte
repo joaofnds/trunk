@@ -602,7 +602,8 @@ $effect(() => {
 
   {#if activeReview}
     <span style="color: var(--color-text-muted); font-size: 11px; padding: 2px 0;">
-      {comments.length} comments · {commits.length} commits
+      {comments.length} {comments.length === 1 ? "comment" : "comments"} · {commits.length}
+      {commits.length === 1 ? "commit" : "commits"}
     </span>
   {/if}
 

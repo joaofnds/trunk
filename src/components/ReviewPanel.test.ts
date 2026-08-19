@@ -233,6 +233,49 @@ describe("ReviewPanel", () => {
 		expect(screen.getByText("note on B")).toBeInTheDocument();
 	});
 
+	it("counts a lone comment and commit in the singular", async () => {
+		installReads({
+			commits: commits.slice(0, 1),
+			comments: [lineAnchoredComment("c1", COMMIT_A, "note on A")],
+			resolutions: [resolvable("c1")],
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("1 comment · 1 commit")).toBeInTheDocument();
+	});
+
+	it("counts several comments and commits in the plural", async () => {
+		installReads({
+			commits,
+			comments: [
+				lineAnchoredComment("c1", COMMIT_A, "note on A"),
+				commitLevelComment("c2", COMMIT_B, "note on B"),
+			],
+			resolutions: [resolvable("c1"), resolvable("c2")],
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("2 comments · 2 commits")).toBeInTheDocument();
+	});
+
 	// 260531-l02d: an auto-added snapshot with no comments is noise — hide it. An empty
 	// hand-picked commit stays so its per-commit "Add note" affordance remains.
 	it("hides empty snapshot sections but keeps empty hand-picked sections", async () => {
