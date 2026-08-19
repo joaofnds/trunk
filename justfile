@@ -103,7 +103,16 @@ graph-fidelity:
 graph-sweep-check:
     python3 scripts/graph-mutation-sweep.py --check
 
-# Measure mutation coverage: apply each anchor, run the four graph suites, restore (15-18 min)
+# Render one fixture's committed export as a viewable SVG (nothing committed)
+graph-svg fixture="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out="$(mktemp -t trunk-graph-XXXXXX).svg"
+    bun run scripts/graph-fixture-render.ts {{quote(fixture)}} > "$out"
+    echo "$out" >&2
+    open "$out"
+
+# Measure mutation coverage: apply each anchor, run the four graph suites, restore (26-32 min)
 graph-sweep *args="--run":
     python3 scripts/graph-mutation-sweep.py {{args}}
 

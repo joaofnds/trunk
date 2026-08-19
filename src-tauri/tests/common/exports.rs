@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use trunk_lib::git::types::GraphResult;
 
 /// One fixture's layout as the app receives it over IPC, plus the `wipCount`
-/// `RepoView` derives alongside it. The TypeScript render snapshots mount the
+/// `RepoView` derives alongside it. The TypeScript render goldens mount the
 /// graph column against these, so their inputs are placements the backend
 /// really produces rather than hand-authored shapes.
 #[derive(serde::Serialize)]

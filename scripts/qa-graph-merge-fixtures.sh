@@ -30,10 +30,14 @@
 # produces no MergeLeft and no ForkLeft edge at all, and never takes the
 # leftward half of find_free_column_near's spiral:
 #
-#   merge edge pointing left (graph.rs:448) ..... 10-merge-parent-left
-#   fork-out edge pointing left (graph.rs:334) .. 11-fork-in-left
-#   leftward spiral search (graph.rs:44-46) ..... 13-freed-column-left
-#   spiral tries right first (graph.rs:35) ...... 14-spiral-right-before-left
+#   merge edge pointing left
+#     (placement.rs, the merge ladder) .......... 10-merge-parent-left
+#   fork-out edge pointing left
+#     (placement.rs, the fork-out ladder) ....... 11-fork-in-left
+#   leftward spiral search
+#     (placement.rs, find_free_column_near) ..... 13-freed-column-left
+#   spiral tries right first
+#     (placement.rs, find_free_column_near) ..... 14-spiral-right-before-left
 set -euo pipefail
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null

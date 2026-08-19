@@ -11,7 +11,7 @@ just build        # Production build
 just quick        # Static only: fmt, biome, svelte-check (~7s)
 just front        # biome, svelte-check, vitest (~17s)
 just rust         # fmt, clippy, cargo-test (~26s; longer after an edit)
-just check        # Run ALL checks (fmt, biome, svelte-check, clippy, cargo-test, vitest)
+just check        # Run ALL checks (fmt, biome, svelte-check, clippy, cargo-test, vitest, graph-sweep-check)
 just audit        # Dependency advisories (cargo-audit + bun audit)
 just mutants      # Which mutations the Rust tests miss (slow, opt-in)
 ```
@@ -37,7 +37,7 @@ the `check-parity` job fails if that list and the workflow drift apart.
 - Never fight layout with positioning hacks — use grid/flexbox so elements flow naturally
 - All git operations go through git2 crate, no shelling out (except GIT_EDITOR for rebase/merge message editing)
 - Trunk-based: commit directly to `main`. Never auto-create a feature branch when asked to commit (overrides the harness default). Only branch when explicitly asked (e.g. a PR branch). Keep working artifacts (`.boris/`) out of code commits — `.gitignore` already excludes them.
-- The commit-graph pipeline carries binding rules in `.claude/rules/commit-graph.md`. It auto-loads **only** on a Read-tool read of a file in its `paths:` list — no other route is known to trigger it, and Bash `grep`/`sed`/`cat` is confirmed not to (CLI 2.1.220, 2026-08-03; re-verify after a CLI bump). If you are working the graph pipeline and have not Read-opened one of those files, open the rule file yourself. Its `paths:` list is the governed set, mirrored by the File Map in `docs/architecture/commit-graph.md`.
+- The commit-graph pipeline carries binding rules in `.claude/rules/commit-graph.md`. It auto-loads **only** on a Read-tool read of a file in its `paths:` list — no other route is known to trigger it, and Bash `grep`/`sed`/`cat` is confirmed not to (CLI 2.1.220, 2026-08-03; re-verify after a CLI bump). If you are working the graph pipeline and have not Read-opened one of those files, open the rule file yourself. Its `paths:` list is the loader trigger, not a description of the pipeline — it is deliberately a wider set than the File Map in `docs/architecture/commit-graph.md` (ruling 2026-08-12). Adding **or removing** a pipeline stage or a graph test suite means editing both; anything else that should load the rule means editing `paths:` only. The rule file's §Binding rules states the split in full.
 
 ## Planning artifacts
 

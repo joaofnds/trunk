@@ -23,7 +23,7 @@ import { buildOverlayPaths } from "../src/lib/overlay-paths.js";
 import type { OverlayConnection, OverlayNode } from "../src/lib/types.js";
 
 /** Mirrors the :root block in src/app.css — the only place these values are authored. */
-const TOKENS = `
+export const TOKENS = `
 	--lane-0: oklch(0.76 0.12 225);
 	--lane-1: oklch(0.76 0.14 55);
 	--lane-2: oklch(0.76 0.14 350);
@@ -320,4 +320,8 @@ ${blocks.join("\n")}
 `;
 }
 
-console.log(render());
+// Guarded because `graph-fixture-render.ts` imports TOKENS from here; without it the import
+// prints this file's whole SVG ahead of the caller's.
+if (import.meta.main) {
+	console.log(render());
+}

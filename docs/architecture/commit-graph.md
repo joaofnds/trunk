@@ -96,7 +96,7 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 | `lane_colors` | `HashMap<usize, usize>` | Maps column → color index. Set when a branch first enters a column, removed when the branch terminates. |
 | `next_color` | `usize` | Monotonically incrementing color counter. Color 0 is reserved for HEAD's own first-parent chain. The HEAD lane's upward extension takes a colour of its own unless it is the tracked upstream. |
 
-`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`placement.rs:18`).
+`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`placement.rs`).
 The `bool` is the dashed flag, set by whichever commit takes the lane — `true` for a stash,
 `false` otherwise. There is no separate `stash_lanes` or `reserved_cols` set; `4a9f15e`
 removed the last of them in favour of carrying the flag on the lane.
@@ -132,7 +132,7 @@ column 0 and bypass `can_inline` entirely. Candidate 1 filters its resolved path
 filters its input set.
 
 `in_head_chain` on the output is **not** widened by any of this. It remains HEAD's own
-first-parent ancestry, because it anchors the WIP row (`wip-row.ts:49`) and the initial
+first-parent ancestry, because it anchors the WIP row (`wip-row.ts`, `withWipRow`) and the initial
 scroll target (`CommitGraph.svelte`).
 
 The rules this implements come from twelve visual verdicts recorded in
@@ -456,8 +456,11 @@ against a committed golden under `src-tauri/tests/goldens/graph/`, plus a JSON e
 The suite builds no git repository. It reads one committed **captured input** per fixture
 from `src-tauri/tests/inputs/`, a `FixtureInput` holding everything `walk_commits` reads
 from a repository plus the `wipCount` the app would pass, and drives `graph_input::layout`
-over it. That is what lets `cargo mutants` run this suite: `Cargo.toml` sits at `src-tauri/`
-and `scripts/` is its sibling, so a copied package tree has no fixture scripts to run.
+over it. That is what makes a mutation cycle cheap enough to run by hand: `just graph-sweep`
+applies one mutation, runs the four graph suites and restores, and no cycle pays for building
+a git repository. `cargo mutants` is not used for this suite — see
+`docs/commit-graph-mutation-ledger.md` for the measurement and why it is a dated audit rather
+than a gate.
 
 **Editing a fixture script therefore changes nothing until someone runs
 `just graph-capture`**, which rebuilds the corpus into a throwaway directory and rewrites
@@ -495,7 +498,9 @@ multi-branch, ordering and column-pressure shapes:
 
 The last four rows exist because the earlier 33-fixture corpus produced no `MergeLeft` and
 no `ForkLeft` edge at all, and never took the spiral's leftward branch. Every mutation of
-those code paths survived the whole suite.
+those code paths survived the whole suite *then*. Milestone 2's widening killed ten of them,
+and the survivor closure behind `docs/commit-graph-mutation-ledger.md` closed the rest —
+each one killed, or carrying a construction proof that it cannot be killed by any input.
 
 Fixtures 13 and 14 look alike and are not interchangeable. Both free column 1 through an
 orphan branch's root, then allocate against a target of column 2. In 13 column 3 is occupied,
@@ -508,7 +513,7 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 - `stash_stays_inline_when_worktree_clean` / `stash_branches_right_when_worktree_dirty` — the paired control for the dirtiness clause
 - `stash_branches_right_when_only_untracked` / `..._only_staged` — pins `include_untracked(true)` and the `INDEX_*` bits
 - `multiple_stashes_on_same_parent` — the newest inlines, the older branches right
-- `stash_branches_right_when_head_chain_occupies_lane` — asserts the branch-right shape; it does not pin the off-chain disjunct (row 11 survived it — see the ledger's AC-7 findings)
+- `stash_branches_right_when_head_chain_occupies_lane` — asserts the branch-right shape; it does not pin the off-chain disjunct (row 11 survived it — see the ledger's AC-7 findings). The disjunct is pinned by `a_stash_below_the_head_tip_branches_out_of_the_head_lane` in `src-tauri/tests/test_placement.rs`, which is what flipped row 11 to `killed`
 - `dirtiness_relayouts_unrelated_branches` / `dirtiness_recolors_branches_below_the_stash_parent` — the accepted churn
 - `graph_and_dirty_counts_agree_when_*` — the graph and `get_dirty_counts` never disagree about dirtiness
 - `walk_commits_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it
@@ -542,6 +547,15 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 | `src-tauri/tests/test_placement.rs` | Pins `assign_lanes()` from literals: the missing-parent contract and the descent rules |
 | `src-tauri/tests/test_graph_input.rs` | Pins `layout()`'s page slice, row hydration and the committed input format |
 | `src-tauri/tests/test_graph_goldens.rs` | Drives the 48 captured inputs against every committed golden and export |
+| `src/components/CommitGraph.render.test.ts` | Pins the rendered SVG against `src/__tests__/goldens/graph-render/`: node shapes, dashed flags, connector geometry |
+| `src/components/CommitGraph.test.ts` | Pins the graph column's component behaviour that no golden covers |
 
-This table and the `paths:` list in `.claude/rules/commit-graph.md` are the same set — keep
-them in step, or the rule stops firing for a file it governs.
+This table and the `paths:` list in `.claude/rules/commit-graph.md` are **no longer the same
+set**, and that is deliberate. This table explains the pipeline: the stages a reader follows the
+data through, plus the suites that pin them. `paths:` decides which files load the rule, so it
+also covers the committed artifacts, the acceptance and capture doors, the test helpers and the
+capture binary, the corpus and sweep scripts, the justfile and the doc mirrors. Adding **or
+removing** a pipeline stage or a graph test suite means editing both. Every other file that
+should load the rule when opened means editing `paths:` only; do not grow this table to match it
+(ruling 2026-08-12). Neither side states an entry count — the counts drift and nothing checks
+them.

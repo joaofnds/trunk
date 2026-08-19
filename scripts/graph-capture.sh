@@ -7,12 +7,12 @@
 # Builds all three fixture corpora into a throwaway directory and writes one
 # `src-tauri/tests/inputs/<corpus>-<name>.json` per repository. The golden suite reads
 # those files, so nothing in `just check` builds a git repository any more — which is
-# what lets `cargo mutants` run the suite at all.
+# what makes a hand-applied mutation cycle cheap enough to sweep (`just graph-sweep`).
 #
 # Then rebuilds the named-rule shapes — the repositories `test_graph.rs`'s placement tests
 # used to build inline — and writes `src-tauri/tests/rule-inputs/<shape>.json`. Those inputs
 # are deliberately outside the golden corpus: they feed hand-asserted rule tests, not
-# snapshots, and `test_graph_goldens.rs` demands a golden and an export for everything in
+# goldens, and `test_graph_goldens.rs` demands a golden and an export for everything in
 # `tests/inputs/`.
 #
 # Rerun this after editing any `scripts/qa-*-fixtures.sh`, or any shape in

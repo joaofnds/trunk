@@ -274,10 +274,10 @@ but also more complex to maintain.
 ## Part 4: Stash Handling — The Critical Comparison
 
 > **STALE as of 2026-08-02.** This part describes Trunk's pre-`b5c1222` stash algorithm.
-> Trunk no longer always branches stashes right: `can_inline` (`placement.rs:263-270`) places a
+> Trunk no longer always branches stashes right: `can_inline` (`placement.rs`) places a
 > stash at its parent's own column, inheriting its colour, when the worktree is clean and the
 > parent is the HEAD tip. It also no longer tracks `stash_lanes` — the dashed flag rides on
-> the lane slot (`placement.rs:18`). For current behaviour see
+> the lane slot (`placement.rs`, `LaneSlot`). For current behaviour see
 > `docs/architecture/commit-graph.md` § "Stash rendering". The gitamine comparison
 > itself is unaffected.
 

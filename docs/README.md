@@ -51,6 +51,8 @@ fixed, one file each. Delete the file when the fix lands. Paid-down and pending 
 | Doc | What it covers |
 |-----|----------------|
 | [macos-e2e-validation.md](macos-e2e-validation.md) | Why the wdio e2e suite cannot run on macOS, and what CI does instead. |
+| [commit-graph-mutation-ledger.md](commit-graph-mutation-ledger.md) | What the commit-graph suite's mutation coverage actually is: every measured site, its verdict, and a construction proof for each survivor that cannot be killed. A dated audit, not a gate — `just graph-sweep` regenerates the table, `just graph-sweep-check` is the alarm that runs in `just check`. |
+| [commit-graph-changelog.md](commit-graph-changelog.md) | Every accepted change to a commit-graph golden, with the reason it was accepted. Written only by `just graph-accept "<reason>"`; a red golden is a suspected defect, so an entry here is the record that someone decided otherwise. |
 
 ## Retired planning tree
 

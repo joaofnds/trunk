@@ -201,8 +201,8 @@
 
 **`GraphCommit` DTO:**
 - Purpose: Complete per-commit graph data crossing the IPC boundary
-- Rust: `src-tauri/src/git/types.rs:52` — owned types only, no git2 lifetimes
-- TypeScript mirror: `src/lib/types.ts:55`
+- Rust: `src-tauri/src/git/types.rs`, `GraphCommit` — owned types only, no git2 lifetimes
+- TypeScript mirror: `src/lib/types.ts`, `GraphCommit`
 - Contains: OID, summary, author, column assignment, color index, edges, ref labels, flags (is_head, is_merge, is_stash)
 
 **`CommitCache`:**

@@ -19,6 +19,32 @@ paths:
   - "src-tauri/tests/test_placement.rs"
   - "src-tauri/tests/test_graph_input.rs"
   - "src-tauri/tests/test_graph_goldens.rs"
+  - "src-tauri/tests/inputs"
+  - "src-tauri/tests/rule-inputs"
+  - "src-tauri/tests/goldens"
+  - "src/__tests__/goldens/graph-render"
+  - "scripts/graph-accept.sh"
+  - "scripts/graph-capture.sh"
+  - "src-tauri/tests/common/goldens.rs"
+  - "src-tauri/tests/common/builder.rs"
+  - "src-tauri/tests/common/rule_inputs.rs"
+  - "src-tauri/tests/common/exports.rs"
+  - "src/__tests__/helpers/graph-render.ts"
+  - "src/components/CommitGraph.render.test.ts"
+  - "scripts/qa-stash-fixtures.sh"
+  - "scripts/qa-graph-lane-fixtures.sh"
+  - "scripts/qa-graph-merge-fixtures.sh"
+  - "src-tauri/examples/graph_capture.rs"
+  - "scripts/graph-mutation-sweep.py"
+  - "scripts/graph-fixture-render.ts"
+  - "scripts/graph-connector-render.ts"
+  - "src/components/CommitGraph.test.ts"
+  - "justfile"
+  - "docs/architecture/commit-graph.md"
+  - "docs/commit-graph-changelog.md"
+  - "docs/commit-graph-mutation-ledger.md"
+  - "docs/research/gitamine-graph-algorithm.md"
+  - "docs/architecture/overview.md"
 ---
 
 # Commit Graph Rules
@@ -39,7 +65,8 @@ text the committed layout text goldens are pinned against.
 
 This file is the binding source for the constraints below. `docs/architecture/overview.md`,
 `docs/architecture/commit-graph.md`, the staleness notes in
-`docs/research/gitamine-graph-algorithm.md`, and `docs/commit-graph-changelog.md` all
+`docs/research/gitamine-graph-algorithm.md`, `docs/commit-graph-changelog.md`, and
+`docs/commit-graph-mutation-ledger.md` all
 paraphrase these rules or cite the pipeline source, often by `file.rs:NN` line number.
 Repoint a stale citation to the file or symbol and drop the line number, so an unrelated edit
 above it cannot silently stale it; a rename still surfaces in the sweep below (ruling
@@ -56,10 +83,23 @@ then mirror the same edit into the changelog.
 - Never post-process the output of one stage to fix something an earlier stage should have
   done — the stages are interdependent and partial fixups desync. Fix the stage that owns the
   data; `docs/architecture/commit-graph.md` has the stage ownership
+- The File Map in `docs/architecture/commit-graph.md` and this file's `paths:` list are
+  deliberately different sets. The File Map explains the pipeline: the stages a reader follows
+  the data through, plus the suites that pin them. `paths:` decides what loads this rule, so it
+  also covers the committed artifacts, the acceptance and capture doors, the test helpers and the
+  capture binary, the corpus and sweep scripts, the justfile and the doc mirrors.
+  **Adding or removing a pipeline stage or a graph test suite means editing both.** Every other
+  file that should load this rule when opened means editing `paths:` only — do not grow the File
+  Map to match it (ruling 2026-08-12, when `paths:` grew past the File Map's file set).
+  `CLAUDE.md` §Rules, the doc's own §File Map, and the memory note
+  `claude_rules_paths_loader.md` (with its `MEMORY.md` index line) all point at this split;
+  amend all four together, and state no entry count in any of them — the counts drift and
+  nothing checks them
 - Where a reference doc under `docs/` disagrees with the pipeline source — `graph.rs`,
-  `placement.rs`, `graph_input.rs`, `status.rs`, `types.rs`, `layout_dump.rs` and the frontend modules in this
-  rule's `paths:` list — or with the graph test suites, the code wins; correct the doc in the
-  same change.
+  `placement.rs`, `graph_input.rs`, `status.rs`, `types.rs`, `layout_dump.rs`, `types.ts`,
+  `wip-row.ts`, `active-lanes.ts`, `overlay-paths.ts`, `overlay-visible.ts`,
+  `graph-constants.ts` and `CommitGraph.svelte` — or with the graph test suites, the code
+  wins; correct the doc in the same change.
   The binding rules in *this* file do not yield that way: code that violates one is a bug in
   the code, not a rule to rewrite. Amend a rule's **substance** only when the user directs it,
   and record the date and the cause inline, as the bullets below do. Appending a dated
@@ -123,7 +163,7 @@ then mirror the same edit into the changelog.
   branches. The churn that is already accepted is pinned by
   `dirtiness_relayouts_unrelated_branches` and
   `dirtiness_recolors_branches_below_the_stash_parent`
-- A red graph golden, export or render snapshot is a suspected defect, never a stale
+- A red graph golden, export or render golden is a suspected defect, never a stale
   artifact. Investigate before regenerating. The one legitimate door is
   `just graph-accept "<reason>"`, which records the reason in
   `docs/commit-graph-changelog.md` — never set `TRUNK_ACCEPT_GRAPH_GOLDENS` by hand, and
@@ -197,6 +237,29 @@ then mirror the same edit into the changelog.
   cannot be captured at all, and same-second commits sort arbitrarily under
   `TOPOLOGICAL | TIME`. `graph_shapes.rs`'s module doc and the "HEAD lane follows linear
   continuations" comment in `test_graph.rs` are this rule's mirrors
+- Changing `placement.rs`, `graph.rs` or `graph_input.rs` re-opens the mutation sweep. `scripts/graph-mutation-sweep.py`
+  carries one exact-string anchor per measured mutation into `placement.rs`, `graph.rs` and
+  `graph_input.rs`, and `just graph-sweep-check` fails inside `just check` the moment one stops
+  matching exactly once. That failure is the alarm working, not a broken script: a measured site
+  was reworded, re-indented, deleted or moved, so the verdict
+  `docs/commit-graph-mutation-ledger.md` records for it no longer describes the code. Re-anchor
+  it, narrowing the anchor if it now matches twice rather than zero times. **Commit the pipeline
+  change before re-running** — the sweep refuses to start while `placement.rs`, `graph.rs` or
+  `graph_input.rs` is dirty, because a stale mutation left in a source would compound into every
+  later cycle. Then re-measure at least the rows you touched with
+  `just graph-sweep --only 11,12`, and splice those rows into the ledger's table in place — that
+  table is otherwise `just graph-sweep`'s stdout pasted unedited, so a partial splice is the one
+  edit it accepts, and a full run supersedes it. When a measured site is genuinely gone, its
+  anchor goes too — only with the user's direction, and only in the same change that moves its
+  row out of the table into the ledger's §"Deleted anchors", naming the commit that removed the
+  site. Never drop the row without recording it there: the sweep cannot report a site it no
+  longer carries, so that section is the verdict's only surviving record. Never delete an anchor
+  to silence the alarm, and never
+  edit a pipeline source to kill a mutant. The alarm and the measurement are different things
+  and only the alarm is in `just check`; the full sweep is 26-32 minutes and stays on demand,
+  which `justfile`'s `graph-sweep` comment restates. (Added 2026-08-12: milestone 4's
+  behaviour-preserving extraction moved every measured site while every golden stayed green,
+  which is the failure this anchor set exists to catch)
 - Tests: `just rust` (Rust — builds every graph suite: `src-tauri/tests/test_graph.rs` owns
   the named-rule assertions — over `tests/rule-inputs/`, plus the repository-built set the
   "Two kinds of test" bullet enumerates — and pins the accepted dirtiness churn, `test_placement.rs`
