@@ -264,4 +264,36 @@ describe("CommitDetail", () => {
 			screen.getByText("This fixes a null pointer issue in the parser."),
 		).toBeInTheDocument();
 	});
+
+	it("makes the commit summary selectable", () => {
+		render(CommitDetailComponent, {
+			props: {
+				commitDetail: detail,
+				fileDiffs,
+				selectedFile: null,
+				onfileselect: vi.fn(),
+				onclose: vi.fn(),
+			},
+		});
+		expect(screen.getByText("fix: null check")).toHaveClass("select-text");
+	});
+
+	it("makes the commit body selectable", () => {
+		const detailWithBody: CommitDetail = {
+			...detail,
+			body: "This fixes a null pointer issue in the parser.",
+		};
+		render(CommitDetailComponent, {
+			props: {
+				commitDetail: detailWithBody,
+				fileDiffs,
+				selectedFile: null,
+				onfileselect: vi.fn(),
+				onclose: vi.fn(),
+			},
+		});
+		expect(
+			screen.getByText("This fixes a null pointer issue in the parser."),
+		).toHaveClass("select-text");
+	});
 });

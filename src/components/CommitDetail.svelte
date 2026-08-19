@@ -288,7 +288,7 @@ async function saveNote() {
       padding: 10px 12px;
       border-bottom: 1px solid var(--color-border);
     ">
-      <div style="
+      <div class="select-text" style="
         font-size: 13px;
         font-weight: 600;
         color: var(--color-text);
@@ -298,7 +298,7 @@ async function saveNote() {
         {commitDetail.summary}
       </div>
       {#if commitDetail.body}
-        <div style="
+        <div class="select-text" style="
           font-size: 12px;
           color: var(--color-text-muted);
           white-space: pre-wrap;
