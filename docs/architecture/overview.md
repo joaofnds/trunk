@@ -78,7 +78,8 @@
 | `commands/operation_state.rs` | `get_operation_state`, `merge_continue/abort`, `rebase_continue/skip/abort`, `merge_branch`, `rebase_branch` | `src-tauri/src/commands/operation_state.rs` |
 | `commands/interactive_rebase.rs` | `get_rebase_todo`, `get_fork_point`, `start_interactive_rebase` | `src-tauri/src/commands/interactive_rebase.rs` |
 | `commands/merge_editor.rs` | `get_merge_sides`, `save_merge_result` | `src-tauri/src/commands/merge_editor.rs` |
-| `git/graph.rs` | `walk_commits()` — lane assignment algorithm, commit ordering, color assignment | `src-tauri/src/git/graph.rs` |
+| `git/graph.rs` | `walk_commits()` — commit ordering, the gather that feeds lane assignment, and page hydration | `src-tauri/src/git/graph.rs` |
+| `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/src/git/placement.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/src/git/repository.rs` |
 | `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/src/git/types.rs` |
 | `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path | `src-tauri/src/state.rs` |
@@ -129,7 +130,7 @@
 **Git Abstraction Layer:**
 - Purpose: All git2-based logic — pure functions operating on `git2::Repository`
 - Location: `src-tauri/src/git/`
-- Contains: `graph.rs` (lane algorithm), `repository.rs` (shared helpers), `types.rs` (DTOs), `syntax.rs` (syntax highlighting)
+- Contains: `graph.rs` (commit walk and hydration), `placement.rs` (the pure lane algorithm), `repository.rs` (shared helpers), `types.rs` (DTOs), `syntax.rs` (syntax highlighting)
 - Depends on: `git2` crate, `syntect` (for syntax highlighting)
 - Used by: `src-tauri/src/commands/`
 

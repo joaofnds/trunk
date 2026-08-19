@@ -2,6 +2,7 @@ pub mod blob_reader;
 pub mod editor;
 pub mod graph;
 pub mod layout_dump;
+pub mod placement;
 pub mod repository;
 pub mod review;
 pub mod review_range;

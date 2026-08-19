@@ -1,6 +1,7 @@
 ---
 paths:
   - "src-tauri/src/git/graph.rs"
+  - "src-tauri/src/git/placement.rs"
   - "src-tauri/src/git/status.rs"
   - "src-tauri/src/git/types.rs"
   - "src/lib/types.ts"
@@ -15,7 +16,9 @@ paths:
 
 # Commit Graph Rules
 
-A pipeline of pure transformations: `graph.rs` assigns columns, colours and edges →
+`graph.rs` reads the repository into plain data and hydrates the page rows from the layout it
+gets back. The stages: `placement.rs` assigns columns, colours and edges — a pure pass, no
+repository →
 `wip-row.ts` prepends the WIP row → `active-lanes.ts` maps commits to overlay nodes and per-parent connections →
 `overlay-paths.ts` emits SVG paths →
 `overlay-visible.ts` culls off-screen paths, dots and pills → `CommitGraph.svelte` renders.
@@ -25,7 +28,8 @@ A pipeline of pure transformations: `graph.rs` assigns columns, colours and edge
 This file is the binding source for the constraints below. `docs/architecture/overview.md`,
 `docs/architecture/commit-graph.md`, and the staleness notes in
 `docs/research/gitamine-graph-algorithm.md` all paraphrase these rules and cite `graph.rs`
-line numbers. Treat every such passage as a mirror to re-check, and read it as explanation of
+or `placement.rs` line numbers. Treat every such passage as a mirror to re-check, and read
+it as explanation of
 a rule stated here, never as a doc that "code wins" may overwrite.
 
 - Never post-process the output of one stage to fix something an earlier stage should have
@@ -60,7 +64,8 @@ a rule stated here, never as a doc that "code wins" may overwrite.
   keeps the stash out of the rows the unpulled chain owns, **and** it is what keeps the
   reserved-and-free invariant below valid. Pinned by
   `stash_branches_right_when_the_head_lane_extends`
-- **Every unpaired `pending_parents.insert`** — one that reserves a column without also
+- **Every unpaired `pending_parents.insert`** (the map is a local of `assign_lanes` in
+  `placement.rs`) — one that reserves a column without also
   occupying it in `active_lanes` — must either be the HEAD-chain pre-reservation or be
   excluded by a `can_inline` clause. Exactly two exist today, both at column 0: the
   `head_chain` pre-reservation and `head_lane_extension`, the second excluded by

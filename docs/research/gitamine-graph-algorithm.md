@@ -3,7 +3,7 @@
 Reference analysis of the "straight branches" commit graph algorithm from
 [pvigier's blog post](https://pvigier.github.io/2019/05/06/commit-graph-drawing-algorithms.html)
 and [gitamine](https://github.com/pvigier/gitamine) implementation. Compared
-against Trunk's current `graph.rs` algorithm to identify structural differences
+against Trunk's current `placement.rs` algorithm to identify structural differences
 and improvement opportunities.
 
 ---
@@ -226,7 +226,7 @@ for each (commitSha, [i0, j0]) in positions:
 Edges are stored in an interval tree for efficient visibility queries during
 rendering. Each edge is simply: start position, end position, type.
 
-### Trunk: Edges Inline During Layout (graph.rs phases 2+4)
+### Trunk: Edges Inline During Layout (placement.rs phases 2+4)
 
 Trunk emits edges AS it computes columns. Each commit row generates:
 - Pass-through edges for all active lanes
@@ -274,10 +274,10 @@ but also more complex to maintain.
 ## Part 4: Stash Handling — The Critical Comparison
 
 > **STALE as of 2026-08-02.** This part describes Trunk's pre-`b5c1222` stash algorithm.
-> Trunk no longer always branches stashes right: `can_inline` (`graph.rs:183-188`) places a
+> Trunk no longer always branches stashes right: `can_inline` (`placement.rs:263-270`) places a
 > stash at its parent's own column, inheriting its colour, when the worktree is clean and the
 > parent is the HEAD tip. It also no longer tracks `stash_lanes` — the dashed flag rides on
-> the lane slot (`graph.rs:18`). For current behaviour see
+> the lane slot (`placement.rs:18`). For current behaviour see
 > `docs/architecture/commit-graph.md` § "Stash rendering". The gitamine comparison
 > itself is unaffected.
 
@@ -395,7 +395,7 @@ Process B: only branchChild is S at col 0 → replace → B at col 0
 
 > **STALE as of 2026-08-03.** Two premises below no longer hold: stashes are pushed into the
 > revwalk and ordered topologically, not "interleaved before parent" and not merged by
-> committer timestamp (`graph.rs:96-107`), and a stash on a clean worktree's HEAD tip is
+> committer timestamp (`graph.rs:95-103`), and a stash on a clean worktree's HEAD tip is
 > placed inline at column 0 rather than far right (`can_inline`). `5b29894` ("compact stash
 > placement via temporal sort and proximity search") already addressed the far-right
 > complaint this section describes.
@@ -448,7 +448,7 @@ topologies. Could be added as a separate improvement.
 
 Separating column assignment from edge emission would reduce coupling and
 make the algorithm easier to modify. However, this is a major refactor of
-graph.rs and the downstream TypeScript layers depend on the current edge
+placement.rs and the downstream TypeScript layers depend on the current edge
 format. Consider for a future cleanup.
 
 ### Concept 5: Eliminate HEAD Chain Pre-Reservation (consider)
@@ -465,7 +465,7 @@ verification.
 
 Since 2026-08-05 that reservation covers more than HEAD's ancestors: it also
 covers the chain continuing HEAD's tip upward, so a branch that is merely
-behind renders straight. See `head_lane_extension` in `graph.rs` and
+behind renders straight. See `head_lane_extension` in `placement.rs` and
 `docs/architecture/commit-graph.md` §"HEAD lane pre-reservation".
 
 ### Concept 6: Simplify Stash Handling (adopt)

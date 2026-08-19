@@ -19,7 +19,8 @@ git repo
   │
   ▼
 [Rust: graph.rs] walk_commits()
-  │  Assigns columns, colors, edge types, dashed flags.
+  │  Reads the repository, then calls placement.rs::assign_lanes(), which
+  │  assigns columns, colors, edge types and dashed flags over plain data.
   │  Output: GraphCommit[] + max_columns
   │
   ▼
@@ -50,7 +51,7 @@ a binding rule, stated once in `.claude/rules/commit-graph.md`.
 
 ---
 
-## Layer 1: Rust Backend (`src-tauri/src/git/graph.rs`)
+## Layer 1: Rust Backend (`src-tauri/src/git/graph.rs`, `src-tauri/src/git/placement.rs`)
 
 ### Entry point
 
@@ -64,11 +65,11 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 ### Commit ordering
 
 1. Stash OIDs are collected via `repo.stash_foreach()`. A stash joins the walk only if it
-   and every one of its parents read back from the object store (`graph.rs:152-165`); an
+   and every one of its parents read back from the object store (`graph.rs:79-91`); an
    unreadable one is skipped, so a corrupt object costs that stash its row instead of
    failing the walk for the whole repo.
 2. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` **plus every walkable stash
-   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs:170-178`). Git orders the stashes with
+   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs:95-103`). Git orders the stashes with
    everything else: `TOPOLOGICAL` puts a commit above its parents unconditionally, and
    `TIME` only breaks ties between topologically independent commits. So a stash sorts
    above its parent whatever its committer time says, and a stash whose first parent is
@@ -93,7 +94,7 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 | `lane_colors` | `HashMap<usize, usize>` | Maps column → color index. Set when a branch first enters a column, removed when the branch terminates. |
 | `next_color` | `usize` | Monotonically incrementing color counter. Color 0 is reserved for HEAD's own first-parent chain. The HEAD lane's upward extension takes a colour of its own unless it is the tracked upstream. |
 
-`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`graph.rs:19`).
+`active_lanes` is a `Vec<LaneSlot>` where `LaneSlot = Option<(Oid, bool)>` (`placement.rs:18`).
 The `bool` is the dashed flag, set by whichever commit takes the lane — `true` for a stash,
 `false` otherwise. There is no separate `stash_lanes` or `reserved_cols` set; `4a9f15e`
 removed the last of them in favour of carrying the flag on the lane.
@@ -150,7 +151,7 @@ else                              → new branch/stash, scan for free col
 ```
 
 **Stashes mostly share the branch-tip codepath, with one placement exception.**
-`can_inline` (`graph.rs:274-281`) puts a stash *inline* — at its parent's own column,
+`can_inline` (`placement.rs:263-270`) puts a stash *inline* — at its parent's own column,
 consuming no new lane and no new colour — when all of these hold:
 
 1. it is a stash;
@@ -166,7 +167,7 @@ Otherwise it takes a free column and a new colour like any branch tip.
 Clause 5's second half looks like it would inline a stash away from column 0, and it does
 not. Clauses 4 and 6 together demand a column that is reserved in `pending_parents` but
 still free in `active_lanes`. **Two** sites leave a column in that state, both at column 0:
-the HEAD-chain pre-reservation and `head_lane_extension` (`graph.rs`, "Pre-reserve column
+the HEAD-chain pre-reservation and `head_lane_extension` (`placement.rs`, "Pre-reserve column
 0"). Clause 3 excludes the second outright, so whenever an inline happens at all the
 pre-reservation is again the only one, and every inline still lands at column 0. Clause 5
 narrows it further to the HEAD tip. The binding form of this invariant, and what to do when a
@@ -502,7 +503,8 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 
 | File | Role |
 |---|---|
-| `src-tauri/src/git/graph.rs` | Rust lane algorithm, all column/color/edge computation |
+| `src-tauri/src/git/graph.rs` | Reads the repository into the algorithm's inputs, then hydrates the page rows |
+| `src-tauri/src/git/placement.rs` | `assign_lanes()` — the pure lane algorithm, all column/color/edge computation |
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
 | `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |

@@ -7,7 +7,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 
 | Doc | What it covers |
 |-----|----------------|
-| [architecture/commit-graph.md](architecture/commit-graph.md) | The graph pipeline end to end: `graph.rs` column and edge assignment, the `active-lanes.ts` overlay translation, SVG path building, and the invariants each layer owns. Read before changing lane assignment, edge emission, or node rendering; the binding rules are in `.claude/rules/commit-graph.md`. |
+| [architecture/commit-graph.md](architecture/commit-graph.md) | The graph pipeline end to end: `placement.rs` column and edge assignment, the `active-lanes.ts` overlay translation, SVG path building, and the invariants each layer owns. Read before changing lane assignment, edge emission, or node rendering; the binding rules are in `.claude/rules/commit-graph.md`. |
 | [architecture/overview.md](architecture/overview.md) | Whole-system map — component tree, Rust command modules, state ownership. A 2026-05-14 snapshot, not kept current. |
 
 ## Decisions
@@ -20,7 +20,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 
 | Doc | What it covers |
 |-----|----------------|
-| [research/gitamine-graph-algorithm.md](research/gitamine-graph-algorithm.md) | The gitamine "straight branches" placement algorithm, compared against Trunk's `graph.rs`. |
+| [research/gitamine-graph-algorithm.md](research/gitamine-graph-algorithm.md) | The gitamine "straight branches" placement algorithm, compared against Trunk's `placement.rs`. |
 
 ## Accessibility
 
