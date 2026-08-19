@@ -359,17 +359,17 @@ export interface Thread {
 	// optional so optimistic/raw shapes elsewhere still type-check. ThreadCard
 	// `{@html}`s it, falling back to escaped raw `text` when absent.
 	text_html?: string;
-	replies: Reply[];
+	replies: readonly Reply[];
 }
 
 // A flat reply under a thread. Mirrors the Rust RenderedReply — no anchor, no
 // state: state lives on the thread, never on a reply.
 export interface Reply {
-	id: string;
-	text: string;
-	text_html: string;
-	channel: Channel;
-	created_at: number;
+	readonly id: string;
+	readonly text: string;
+	readonly text_html: string;
+	readonly channel: Channel;
+	readonly created_at: number;
 }
 
 // The per-repo draft row: the composer's autosave target, with no review

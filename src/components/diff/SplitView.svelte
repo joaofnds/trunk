@@ -11,10 +11,10 @@ import {
 } from "../../lib/diff-utils.js";
 import {
 	addReply,
-	deleteComment,
 	deleteReply,
-	editComment,
+	deleteThread,
 	editReply,
+	editThread,
 	setThreadState,
 } from "../../lib/review-comment-actions.js";
 import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
@@ -477,13 +477,13 @@ function buildSegments(
                 <ThreadCard
                   variant="inline"
                   confirmDelete={false}
-                  {comment}
-                  onedit={(id, text) => editComment(repoPath, id, text)}
-                onreply={(id, text) => addReply(repoPath, id, text)}
-                onstatechange={(id, next) => setThreadState(repoPath, id, next)}
-                onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                ondeletereply={(id) => deleteReply(repoPath, id)}
-                  ondelete={(id) => deleteComment(repoPath, id)}
+                  thread={comment}
+                  onedit={(id, text) => editThread(repoPath, id, text)}
+                  onreplyadd={(id, text) => addReply(repoPath, id, text)}
+                  onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+                  onreplyedit={(id, text) => editReply(repoPath, id, text)}
+                  onreplydelete={(id) => deleteReply(repoPath, id)}
+                  ondelete={(id) => deleteThread(repoPath, id)}
                 />
               {/each}
             </div>

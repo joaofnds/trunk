@@ -11,15 +11,16 @@ import {
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
+import { createDraft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
-	addCommitComment,
+	addCommitThread,
 	addReply,
-	deleteComment,
 	deleteReply,
-	editComment,
+	deleteThread,
 	editReply,
+	editThread,
 	setThreadState,
 } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
@@ -181,28 +182,23 @@ let commitNotes = $derived(
 	),
 );
 
-let addingNote = $state(false);
-let noteText = $state("");
+const draft = createDraft();
 let noteSaving = $state(false);
-const noteValid = $derived(noteText.trim().length > 0);
 
 function openAddNote() {
-	noteText = "";
-	addingNote = true;
+	draft.open();
 }
 
 function cancelAddNote() {
-	addingNote = false;
-	noteText = "";
+	draft.close();
 }
 
 async function saveNote() {
-	if (!noteValid || noteSaving) return;
+	if (!draft.valid || noteSaving) return;
 	noteSaving = true;
 	try {
-		await addCommitComment(repoPath, commitDetail.oid, noteText.trim());
-		addingNote = false;
-		noteText = "";
+		await addCommitThread(repoPath, commitDetail.oid, draft.text.trim());
+		draft.close();
 	} catch (e) {
 		reportErrorToast(e, "Failed to add note");
 	} finally {
@@ -370,7 +366,7 @@ async function saveNote() {
         <span class="commit-notes-title">
           Notes{#if commitNotes.length > 0} ({commitNotes.length}){/if}
         </span>
-        {#if !addingNote}
+        {#if !draft.editing}
           <button
             type="button"
             class="add-note-btn"
@@ -382,10 +378,10 @@ async function saveNote() {
         {/if}
       </div>
 
-      {#if addingNote}
+      {#if draft.editing}
         <div class="add-note-composer">
           <textarea
-            bind:value={noteText}
+            bind:value={draft.text}
             rows="3"
             placeholder="Leave a note on this commit…"
             class="add-note-textarea"
@@ -394,7 +390,7 @@ async function saveNote() {
             <button
               type="button"
               onclick={saveNote}
-              disabled={!noteValid || noteSaving}
+              disabled={!draft.valid || noteSaving}
             >Save</button>
             <button
               type="button"
@@ -409,15 +405,15 @@ async function saveNote() {
           {#each commitNotes as comment (comment.id)}
             <li>
               <ThreadCard
-                {comment}
+                thread={comment}
                 variant="inline"
                 confirmDelete={false}
-                onedit={(id, text) => editComment(repoPath, id, text)}
-                onreply={(id, text) => addReply(repoPath, id, text)}
+                onedit={(id, text) => editThread(repoPath, id, text)}
+                onreplyadd={(id, text) => addReply(repoPath, id, text)}
                 onstatechange={(id, next) => setThreadState(repoPath, id, next)}
                 onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                ondeletereply={(id) => deleteReply(repoPath, id)}
-                ondelete={(id) => deleteComment(repoPath, id)}
+                onreplydelete={(id) => deleteReply(repoPath, id)}
+                ondelete={(id) => deleteThread(repoPath, id)}
               />
             </li>
           {/each}

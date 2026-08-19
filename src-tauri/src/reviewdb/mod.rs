@@ -17,8 +17,10 @@ pub mod snapshots;
 pub mod threads;
 
 use crate::error::TrunkError;
+use crate::review_types::Channel;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Mutex;
 
 const BUSY_TIMEOUT_MS: u32 = 5000;
@@ -177,6 +179,42 @@ pub fn sqlite_error(e: rusqlite::Error) -> TrunkError {
 /// goes through this, so no two tables can disagree on the key.
 pub fn repo_key(repo_path: &Path) -> String {
     repo_path.to_string_lossy().into_owned()
+}
+
+/// The human-only-edit policy shared by `threads::edit` and `replies::edit`:
+/// agent-attributed text is not editable from the UI. `channel` is `None` when
+/// the row itself is missing, in which case `missing` supplies the caller's
+/// own `not_found` error (its message names the row kind, thread or reply).
+pub fn require_human(
+    channel: Option<String>,
+    missing: impl FnOnce() -> TrunkError,
+) -> Result<(), TrunkError> {
+    let Some(channel) = channel else {
+        return Err(missing());
+    };
+    if Channel::from_str(&channel)? != Channel::Human {
+        return Err(TrunkError::new(
+            "not_editable",
+            "agent-attributed text is not editable from the UI",
+        ));
+    }
+    Ok(())
+}
+
+/// The published-is-permanent policy shared by `threads::delete` and
+/// `replies::delete`: a published review's rows are permanent. `noun` names
+/// what's permanent in the error message (`"threads"` / `"replies"`); the
+/// missing-row case is each caller's own idempotent no-op, not this guard's
+/// concern.
+pub fn require_unpublished(published: bool, noun: &str) -> Result<(), TrunkError> {
+    if published {
+        Err(TrunkError::new(
+            "review_published",
+            format!("a published review's {noun} are permanent"),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// Wall-clock seconds, for `created_at` / `updated_at`. Every store function

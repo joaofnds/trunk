@@ -4,6 +4,7 @@
 //! goes through it via `set_state`.
 
 use super::ids::{self, IdKind};
+use super::replies::{self, Reply};
 use super::{anchor, repo_key, sqlite_error};
 use crate::error::TrunkError;
 use crate::git::types::Anchor;
@@ -89,6 +90,27 @@ pub fn list_for_review(conn: &Connection, review_id: &str) -> Result<Vec<Thread>
         .map_err(sqlite_error)?;
 
     rows.into_iter().collect()
+}
+
+/// Each of the review's threads paired with its replies, fetched in one
+/// query. Callers no longer hand-drain the reply map themselves — a call
+/// site that forgot `unwrap_or_default()` on a no-reply thread would panic
+/// or silently drop replies.
+pub fn list_with_replies(
+    conn: &Connection,
+    review_id: &str,
+) -> Result<Vec<(Thread, Vec<Reply>)>, TrunkError> {
+    let threads = list_for_review(conn, review_id)?;
+    let thread_ids: Vec<String> = threads.iter().map(|t| t.id.clone()).collect();
+    let mut replies_by_thread = replies::list_for_threads(conn, &thread_ids)?;
+
+    Ok(threads
+        .into_iter()
+        .map(|t| {
+            let replies = replies_by_thread.remove(&t.id).unwrap_or_default();
+            (t, replies)
+        })
+        .collect())
 }
 
 fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
@@ -210,19 +232,9 @@ pub fn edit(
         .optional()
         .map_err(sqlite_error)?;
 
-    let Some(channel) = channel else {
-        return Err(TrunkError::new(
-            "not_found",
-            format!("no thread with id {id}"),
-        ));
-    };
-
-    if Channel::from_str(&channel)? != Channel::Human {
-        return Err(TrunkError::new(
-            "not_editable",
-            "agent-attributed text is not editable from the UI",
-        ));
-    }
+    super::require_human(channel, || {
+        TrunkError::new("not_found", format!("no thread with id {id}"))
+    })?;
 
     conn.execute(
         "UPDATE threads SET body = ?2, updated_at = ?3 WHERE id = ?1",
@@ -250,16 +262,10 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
         .optional()
         .map_err(sqlite_error)?;
 
-    match published {
-        None => return Ok(()),
-        Some(true) => {
-            return Err(TrunkError::new(
-                "review_published",
-                "a published review's threads are permanent",
-            ));
-        }
-        Some(false) => {}
-    }
+    let Some(published) = published else {
+        return Ok(());
+    };
+    super::require_unpublished(published, "threads")?;
 
     conn.execute("DELETE FROM threads WHERE id = ?1", [id])
         .map_err(sqlite_error)?;

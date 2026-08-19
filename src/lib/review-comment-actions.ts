@@ -15,7 +15,7 @@ import type { Anchor, Draft, ThreadState } from "./types.js";
 // rune's listener round-trips the update. `add_commit_thread` creates the active
 // review when the repo has none, so no caller has to establish one first.
 
-export function editComment(
+export function editThread(
 	repoPath: string,
 	commentId: string,
 	text: string,
@@ -23,14 +23,14 @@ export function editComment(
 	return safeInvoke("edit_thread", { path: repoPath, id: commentId, text });
 }
 
-export function deleteComment(
+export function deleteThread(
 	repoPath: string,
 	commentId: string,
 ): Promise<void> {
 	return safeInvoke("delete_thread", { path: repoPath, id: commentId });
 }
 
-export function addCommitComment(
+export function addCommitThread(
 	repoPath: string,
 	commitOid: string,
 	text: string,

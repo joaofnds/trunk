@@ -1,28 +1,24 @@
 <script lang="ts">
-// Shared GitHub-review-style comment card. One card = one Comment, with an
-// inline edit textarea (save/cancel) and a delete action. Extracted from
-// ReviewPanel so the inline diff/commit-detail surfaces render the exact same
-// card. The card owns its own edit state — a host passes a comment + callbacks
-// and nothing else of the editing flow.
-//
 // The orphan badge, the file-ref jump affordance, and the diff excerpt are
 // panel-context decorations; inline hosts omit the optional props and get a bare
 // card. `variant` swaps width/padding tokens between the panel and inline hosts.
 
+import { createDraft } from "../lib/draft.svelte.js";
 import { externalLinks } from "../lib/external-links.js";
 import type { Thread, ThreadState } from "../lib/types.js";
+import ThreadReplies from "./ThreadReplies.svelte";
 
 interface Props {
-	comment: Thread;
+	thread: Thread;
 	onedit: (id: string, text: string) => void;
 	ondelete: (id: string) => void;
 	// Awaited before the composer/editor clears its draft, so a caller that
 	// reports its own refusal (review-comment-actions.ts) keeps the typed
 	// text on screen until the write settles.
-	onreply: (id: string, text: string) => void | Promise<void>;
+	onreplyadd: (id: string, text: string) => void | Promise<void>;
 	onstatechange: (id: string, next: ThreadState) => void;
 	onreplyedit: (id: string, text: string) => void | Promise<void>;
-	ondeletereply: (id: string) => void;
+	onreplydelete: (id: string) => void;
 	// When true (default) confirm before deleting (mirrors the panel); when false
 	// delete immediately (inline hosts).
 	confirmDelete?: boolean;
@@ -30,20 +26,20 @@ interface Props {
 	// commit-detail hosts — controls width/padding via theme tokens.
 	variant?: "panel" | "inline";
 	// Optional panel-only header decorations. Inline hosts omit these.
-	onjump?: (comment: Thread) => void;
+	onjump?: (thread: Thread) => void;
 	jumpable?: boolean;
 	orphaned?: boolean;
 	orphanLabel?: string | null;
 }
 
 let {
-	comment,
+	thread,
 	onedit,
 	ondelete,
-	onreply,
+	onreplyadd,
 	onstatechange,
 	onreplyedit,
-	ondeletereply,
+	onreplydelete,
 	confirmDelete = true,
 	variant = "panel",
 	onjump,
@@ -52,25 +48,8 @@ let {
 	orphanLabel = null,
 }: Props = $props();
 
-let editing = $state(false);
-let draftText = $state("");
-let replyText = $state("");
-let repliesExpanded = $state(false);
-let editingReplyId = $state<string | null>(null);
-let replyDraftText = $state("");
-
-const draftValid = $derived(draftText.trim().length > 0);
-const replyValid = $derived(replyText.trim().length > 0);
-const replyDraftValid = $derived(replyDraftText.trim().length > 0);
-
-// More than three replies collapse to the last three, with a control that
-// reveals the rest — expand state belongs to the card, never a parent map.
-const hiddenReplyCount = $derived(Math.max(comment.replies.length - 3, 0));
-const visibleReplies = $derived(
-	repliesExpanded || hiddenReplyCount === 0
-		? comment.replies
-		: comment.replies.slice(-3),
-);
+const draft = createDraft();
+const replyDraft = createDraft();
 
 // Parse the comment's cached_excerpt into rendered lines. Diff-source excerpts
 // carry +/-/space prefixes per `prefixLine` in diff-anchor.ts; full-file ones
@@ -105,47 +84,25 @@ function parseExcerpt(
 }
 
 function openEdit() {
-	draftText = comment.text;
-	editing = true;
+	draft.open(thread.text);
 }
 
 function cancelEdit() {
-	editing = false;
-	draftText = "";
+	draft.close();
 }
 
 function saveEdit() {
-	if (!draftValid) return;
-	const text = draftText;
-	editing = false;
-	draftText = "";
-	onedit(comment.id, text);
+	if (!draft.valid) return;
+	const text = draft.text;
+	draft.close();
+	onedit(thread.id, text);
 }
 
 async function submitReply() {
-	if (!replyValid) return;
-	const text = replyText;
-	await onreply(comment.id, text);
-	replyText = "";
-}
-
-function openReplyEdit(replyId: string, text: string) {
-	editingReplyId = replyId;
-	replyDraftText = text;
-}
-
-function cancelReplyEdit() {
-	editingReplyId = null;
-	replyDraftText = "";
-}
-
-async function saveReplyEdit() {
-	if (!replyDraftValid || editingReplyId === null) return;
-	const id = editingReplyId;
-	const text = replyDraftText;
-	await onreplyedit(id, text);
-	editingReplyId = null;
-	replyDraftText = "";
+	if (!replyDraft.valid) return;
+	const text = replyDraft.text;
+	await onreplyadd(thread.id, text);
+	replyDraft.close();
 }
 
 // The UI's slice of the transition matrix (spec §2): `open|addressed ->
@@ -173,7 +130,7 @@ function humanActionsFor(
 	}
 }
 
-const stateActions = $derived(humanActionsFor(comment.state));
+const stateActions = $derived(humanActionsFor(thread.state));
 
 async function confirmedDeletion(
 	prompt: string,
@@ -190,7 +147,7 @@ async function requestDelete() {
 		"Delete comment",
 	);
 	if (!confirmed) return;
-	ondelete(comment.id);
+	ondelete(thread.id);
 }
 
 async function requestDeleteReply(replyId: string) {
@@ -199,48 +156,48 @@ async function requestDeleteReply(replyId: string) {
 		"Delete reply",
 	);
 	if (!confirmed) return;
-	ondeletereply(replyId);
+	onreplydelete(replyId);
 }
 </script>
 
 <div class="comment-card comment-card-{variant}">
   <!-- Header: file ref (jump affordance) + orphan badge + actions -->
   <header class="comment-card-header">
-    {#if comment.anchor !== null}
+    {#if thread.anchor !== null}
       {#if jumpable && onjump}
         <button
           type="button"
           aria-label="Jump to code"
-          onclick={() => onjump?.(comment)}
+          onclick={() => onjump?.(thread)}
           class="jump-ref font-mono comment-card-fileref"
-        >{comment.anchor.file_path}:L{comment.anchor.start_line}-L{comment.anchor.end_line}</button>
+        >{thread.anchor.file_path}:L{thread.anchor.start_line}-L{thread.anchor.end_line}</button>
       {:else}
         <span
           class="font-mono comment-card-fileref"
           class:comment-card-fileref-dim={orphaned}
-        >{comment.anchor.file_path}:L{comment.anchor.start_line}-L{comment.anchor.end_line}</span>
+        >{thread.anchor.file_path}:L{thread.anchor.start_line}-L{thread.anchor.end_line}</span>
       {/if}
     {/if}
     <span class="comment-card-spacer"></span>
     {#if orphanLabel}
       <span class="orphan-badge">{orphanLabel}</span>
     {/if}
-    <span class="comment-card-channel">{comment.channel}</span>
-    <span class="thread-state-chip thread-state-{comment.state}">{comment.state}</span>
+    <span class="comment-card-channel">{thread.channel}</span>
+    <span class="thread-state-chip thread-state-{thread.state}">{thread.state}</span>
     {#each stateActions as action (action.next)}
       <button
         type="button"
         class="card-action"
-        onclick={() => onstatechange(comment.id, action.next)}
+        onclick={() => onstatechange(thread.id, action.next)}
       >{action.label}</button>
     {/each}
-    {#if !editing}
+    {#if !draft.editing}
       <button
         type="button"
         class="card-action"
         onclick={openEdit}
       >Edit</button>
-      {#if !comment.published}
+      {#if !thread.published}
         <button
           type="button"
           class="card-action card-action-danger"
@@ -254,9 +211,9 @@ async function requestDeleteReply(replyId: string) {
        canonical body; render with red/green per-line bg for Diff-source +/-
        lines, plain for full-file content. No syntax highlighting (the project's
        syntect-based path isn't wired into the panel — deferred). -->
-  {#if comment.anchor !== null && comment.cached_excerpt}
+  {#if thread.anchor !== null && thread.cached_excerpt}
     <div class="comment-card-diff">
-      {#each parseExcerpt(comment.cached_excerpt, comment.anchor.source) as line, i (i)}
+      {#each parseExcerpt(thread.cached_excerpt, thread.anchor.source) as line, i (i)}
         <div class="diff-line diff-line-{line.kind}">
           <span class="diff-gutter select-none">{line.gutter}</span>
           <span class="diff-content select-text">{line.content}</span>
@@ -268,9 +225,9 @@ async function requestDeleteReply(replyId: string) {
   <!-- Body: comment text or inline editor (D-10). Comment text stays at full
        --color-text even when orphaned (D-08). -->
   <div class="comment-card-body">
-    {#if editing}
+    {#if draft.editing}
       <textarea
-        bind:value={draftText}
+        bind:value={draft.text}
         rows="3"
         class="card-textarea"
       ></textarea>
@@ -278,82 +235,32 @@ async function requestDeleteReply(replyId: string) {
         <button
           type="button"
           onclick={saveEdit}
-          disabled={!draftValid}
+          disabled={!draft.valid}
         >Save</button>
         <button
           type="button"
           onclick={cancelEdit}
         >Cancel</button>
       </div>
-    {:else if comment.text_html !== undefined}
+    {:else if thread.text_html !== undefined}
       <!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
            (comrak unsafe-off + ammonia); see commands/markdown.rs -->
-      <div class="comment-card-text markdown-body select-text" use:externalLinks>{@html comment.text_html}</div>
+      <div class="comment-card-text markdown-body select-text" use:externalLinks>{@html thread.text_html}</div>
     {:else}
-      <span class="comment-card-text select-text">{comment.text}</span>
+      <span class="comment-card-text select-text">{thread.text}</span>
     {/if}
   </div>
 
-  {#if comment.replies.length > 0}
-    {#if hiddenReplyCount > 0 && !repliesExpanded}
-      <button
-        type="button"
-        class="thread-replies-expand"
-        onclick={() => { repliesExpanded = true; }}
-      >Show {hiddenReplyCount} more {hiddenReplyCount === 1 ? "reply" : "replies"}</button>
-    {/if}
-    <ul class="thread-replies">
-      {#each visibleReplies as reply (reply.id)}
-        <li class="thread-reply">
-          <div class="thread-reply-header">
-            <span class="thread-reply-channel">{reply.channel}</span>
-            {#if reply.channel === "human" && editingReplyId !== reply.id}
-              <button
-                type="button"
-                class="thread-reply-edit-toggle"
-                onclick={() => openReplyEdit(reply.id, reply.text)}
-              >Edit reply</button>
-            {/if}
-            <span class="comment-card-spacer"></span>
-            {#if !comment.published}
-              <button
-                type="button"
-                class="thread-reply-delete"
-                onclick={() => requestDeleteReply(reply.id)}
-              >Delete reply</button>
-            {/if}
-          </div>
-          {#if editingReplyId === reply.id}
-            <textarea
-              bind:value={replyDraftText}
-              rows="2"
-              aria-label="Edit reply"
-              class="card-textarea"
-            ></textarea>
-            <div class="card-editor-actions">
-              <button
-                type="button"
-                onclick={saveReplyEdit}
-                disabled={!replyDraftValid}
-              >Save</button>
-              <button
-                type="button"
-                onclick={cancelReplyEdit}
-              >Cancel</button>
-            </div>
-          {:else}
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
-                 (comrak unsafe-off + ammonia); see commands/markdown.rs -->
-            <div class="thread-reply-text markdown-body select-text" use:externalLinks>{@html reply.text_html}</div>
-          {/if}
-        </li>
-      {/each}
-    </ul>
-  {/if}
+  <ThreadReplies
+    replies={thread.replies}
+    published={thread.published}
+    {onreplyedit}
+    onreplydelete={requestDeleteReply}
+  />
 
   <div class="thread-reply-composer">
     <textarea
-      bind:value={replyText}
+      bind:value={replyDraft.text}
       rows="2"
       placeholder="Reply…"
       aria-label="Reply"
@@ -362,7 +269,7 @@ async function requestDeleteReply(replyId: string) {
     <button
       type="button"
       onclick={submitReply}
-      disabled={!replyValid}
+      disabled={!replyDraft.valid}
     >Reply</button>
   </div>
 </div>
@@ -547,67 +454,6 @@ async function requestDeleteReply(replyId: string) {
   .card-editor-actions button[disabled] {
     cursor: not-allowed;
     opacity: 0.5;
-  }
-
-  /* Expand control for a collapsed reply list. */
-  .thread-replies-expand {
-    align-self: flex-start;
-    margin: 6px 8px 0;
-    background: transparent;
-    color: var(--color-accent);
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font-size: 11px;
-  }
-
-  .thread-replies {
-    list-style: none;
-    margin: 0;
-    padding: 6px 8px 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    border-top: 1px solid var(--color-border);
-  }
-  .thread-reply {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .thread-reply-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .thread-reply-edit-toggle,
-  .thread-reply-delete {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-    font-size: 11px;
-    color: var(--color-text-muted);
-  }
-  .thread-reply-edit-toggle:hover,
-  .thread-reply-edit-toggle:focus-visible,
-  .thread-reply-delete:hover,
-  .thread-reply-delete:focus-visible { color: var(--color-text); }
-  .thread-reply-channel {
-    align-self: flex-start;
-    font-size: 10px;
-    line-height: 1.4;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: var(--color-text-muted);
-    background: var(--color-comment-card-header-bg);
-    border-radius: 4px;
-    padding: 0 6px;
-  }
-  .thread-reply-text {
-    font-size: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
   }
 
   /* Reply composer, always available under a thread's replies. */

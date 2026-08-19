@@ -9,6 +9,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
+import { createDraft } from "../lib/draft.svelte.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
@@ -55,12 +56,11 @@ const activeReview = $derived(
 let resolutions = $state<CommentResolution[]>([]);
 
 // Inline add-note composer state. The per-comment edit flow now lives inside
-// ThreadCard; the panel only drives the per-commit "Add note" composer, which
-// reuses the textarea primitive (draftText) and the trim-empty-disables-Save rule.
+// ThreadCard; the panel only drives the per-commit "Add note" composer, keyed
+// by which commit it's open for (draft.svelte.ts owns the shared text/valid
+// machinery).
 let addNoteForCommit = $state<string | null>(null);
-let draftText = $state("");
-
-const draftValid = $derived(draftText.trim().length > 0);
+const draft = createDraft();
 
 // LOCKED OrphanReason → badge label map (UI-SPEC § Copywriting Contract).
 const ORPHAN_LABEL: Record<OrphanReason, string> = {
@@ -208,17 +208,17 @@ async function loadResolutions() {
 
 function openAddNote(oid: string) {
 	addNoteForCommit = oid;
-	draftText = "";
+	draft.open();
 }
 
 function cancelComposer() {
 	addNoteForCommit = null;
-	draftText = "";
+	draft.close();
 }
 
 async function saveAddNote(oid: string) {
-	if (!draftValid) return;
-	const text = draftText;
+	if (!draft.valid) return;
+	const text = draft.text;
 	cancelComposer();
 	try {
 		await safeInvoke("add_commit_thread", {
@@ -707,7 +707,7 @@ $effect(() => {
           {#if addNoteForCommit === group.oid}
             <div class="flex flex-col" style="gap: 4px; padding: 4px 0;">
               <textarea
-                bind:value={draftText}
+                bind:value={draft.text}
                 rows="3"
                 style="
                   width: 100%;
@@ -725,7 +725,7 @@ $effect(() => {
                 <button
                   type="button"
                   onclick={() => saveAddNote(group.oid)}
-                  disabled={!draftValid}
+                  disabled={!draft.valid}
                   style="
                     background: transparent;
                     color: var(--color-text);
@@ -762,13 +762,13 @@ $effect(() => {
               {#each group.comments as comment (comment.id)}
                 <li>
                   <ThreadCard
-                    {comment}
+                    thread={comment}
                     onedit={(id, text) => saveEdit(id, text)}
                     ondelete={(id) => deleteComment(id)}
-                    onreply={(id, text) => addReply(repoPath, id, text)}
+                    onreplyadd={(id, text) => addReply(repoPath, id, text)}
                     onstatechange={(id, next) => setThreadState(repoPath, id, next)}
                     onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                    ondeletereply={(id) => deleteReply(repoPath, id)}
+                    onreplydelete={(id) => deleteReply(repoPath, id)}
                     confirmDelete={true}
                     variant="panel"
                     onjump={onJump}

@@ -81,19 +81,9 @@ pub fn edit(
         .optional()
         .map_err(sqlite_error)?;
 
-    let Some(channel) = channel else {
-        return Err(TrunkError::new(
-            "not_found",
-            format!("no reply with id {id}"),
-        ));
-    };
-
-    if Channel::from_str(&channel)? != Channel::Human {
-        return Err(TrunkError::new(
-            "not_editable",
-            "agent-attributed text is not editable from the UI",
-        ));
-    }
+    super::require_human(channel, || {
+        TrunkError::new("not_found", format!("no reply with id {id}"))
+    })?;
 
     conn.execute(
         "UPDATE replies SET body = ?2, updated_at = ?3 WHERE id = ?1",
@@ -122,16 +112,10 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
         .optional()
         .map_err(sqlite_error)?;
 
-    match published {
-        None => return Ok(()),
-        Some(true) => {
-            return Err(TrunkError::new(
-                "review_published",
-                "a published review's replies are permanent",
-            ));
-        }
-        Some(false) => {}
-    }
+    let Some(published) = published else {
+        return Ok(());
+    };
+    super::require_unpublished(published, "replies")?;
 
     conn.execute("DELETE FROM replies WHERE id = ?1", [id])
         .map_err(sqlite_error)?;

@@ -229,16 +229,9 @@ pub fn list_threads_inner(
             .map(|r| r.published)
             .unwrap_or(false);
 
-        let threads = threads::list_for_review(conn, &review_id)?;
-        let thread_ids: Vec<String> = threads.iter().map(|t| t.id.clone()).collect();
-        let mut replies_by_thread = replies::list_for_threads(conn, &thread_ids)?;
-
-        Ok(threads
+        Ok(threads::list_with_replies(conn, &review_id)?
             .into_iter()
-            .map(|t| {
-                let replies = replies_by_thread.remove(&t.id).unwrap_or_default();
-                RenderedThread::from_thread(t, replies, published)
-            })
+            .map(|(t, replies)| RenderedThread::from_thread(t, replies, published))
             .collect())
     })
 }
@@ -379,6 +372,11 @@ pub async fn add_reply(
     Ok(())
 }
 
+/// No `_inner` seam here, unlike `add_reply_inner`/`set_thread_state_inner`:
+/// those hardcode `Channel::Human` (a command-layer rule worth testing on its
+/// own), while this command adds no logic beyond the write — `replies::edit`
+/// already does the full refusal check and is exercised directly in
+/// `test_reviewdb.rs`.
 #[tauri::command]
 pub async fn edit_reply(
     path: String,
@@ -401,6 +399,8 @@ pub async fn edit_reply(
     Ok(())
 }
 
+/// No `_inner` seam here either, for the same reason as `edit_reply`:
+/// `replies::delete` carries the whole refusal check and is tested directly.
 #[tauri::command]
 pub async fn delete_reply(
     path: String,
@@ -911,29 +911,25 @@ fn as_comments(threads: Vec<threads::Thread>) -> Vec<crate::git::types::Comment>
 /// The renderer's input shape: each thread with its state and its replies,
 /// each carrying its channel attribution.
 fn as_doc_threads(
-    threads: Vec<threads::Thread>,
-    mut replies_by_thread: HashMap<String, Vec<replies::Reply>>,
+    threads_with_replies: Vec<(threads::Thread, Vec<replies::Reply>)>,
 ) -> Vec<crate::git::review::DocThread> {
-    threads
+    threads_with_replies
         .into_iter()
-        .map(|t| {
-            let replies = replies_by_thread.remove(&t.id).unwrap_or_default();
-            crate::git::review::DocThread {
-                id: t.id,
-                text: t.text,
-                state: t.state,
-                anchor: t.anchor,
-                commit_oid: t.commit_oid,
-                excerpt: t.cached_excerpt,
-                channel: t.channel,
-                replies: replies
-                    .into_iter()
-                    .map(|r| crate::git::review::DocReply {
-                        text: r.text,
-                        channel: r.channel,
-                    })
-                    .collect(),
-            }
+        .map(|(t, replies)| crate::git::review::DocThread {
+            id: t.id,
+            text: t.text,
+            state: t.state,
+            anchor: t.anchor,
+            commit_oid: t.commit_oid,
+            excerpt: t.cached_excerpt,
+            channel: t.channel,
+            replies: replies
+                .into_iter()
+                .map(|r| crate::git::review::DocReply {
+                    text: r.text,
+                    channel: r.channel,
+                })
+                .collect(),
         })
         .collect()
 }
@@ -988,16 +984,14 @@ pub fn generate_review_doc_inner(
         let review = reviews::get(conn, review_id)?.ok_or_else(|| {
             TrunkError::new("not_found", format!("no review with id {review_id}"))
         })?;
-        let threads_list = threads::list_for_review(conn, review_id)?;
-        let thread_ids: Vec<String> = threads_list.iter().map(|t| t.id.clone()).collect();
-        let replies_by_thread = replies::list_for_threads(conn, &thread_ids)?;
+        let threads_with_replies = threads::list_with_replies(conn, review_id)?;
         let snapshots = snapshots::get(conn, canonical)?;
 
         Ok(RenderInput {
             review_id: review.id.clone(),
             title: review.title,
             commits: commits::list(conn, &review.id)?,
-            threads: as_doc_threads(threads_list, replies_by_thread),
+            threads: as_doc_threads(threads_with_replies),
             working_tree_snapshot: snapshots.working_tree_snapshot,
             index_snapshot: snapshots.index_snapshot,
         })
