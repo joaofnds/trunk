@@ -1074,12 +1074,12 @@ mod enrich_tests {
     #[test]
     fn enrich_does_not_bleed_state_across_the_gap_between_two_hunks() {
         let content = concat!(
-            "fn main() {\n",       // 1
-            "    let a = 1;\n",    // 2 - hunk 1
+            "fn main() {\n",                     // 1
+            "    let a = 1;\n",                  // 2 - hunk 1
             "    let sql = \"SELECT * FROM t\n", // 3 - gap (opens string)
-            "WHERE x = 1\";\n",    // 4 - gap (closes string)
-            "    let mut z = 9;\n", // 5 - hunk 2
-            "}\n",                 // 6
+            "WHERE x = 1\";\n",                  // 4 - gap (closes string)
+            "    let mut z = 9;\n",              // 5 - hunk 2
+            "}\n",                               // 6
         );
         let mut file_diffs = vec![FileDiff {
             path: "gap.rs".to_string(),

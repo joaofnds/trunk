@@ -930,7 +930,10 @@ fn commit_diff_highlights_a_hunk_starting_mid_string_from_real_file_content() {
         .find(|l| l.content.contains("let mut stmt"))
         .expect("expected the 'let mut stmt' line in the hunk");
     assert!(
-        let_line.spans.iter().any(|s| s.syntax_class == "syn-keyword"),
+        let_line
+            .spans
+            .iter()
+            .any(|s| s.syntax_class == "syn-keyword"),
         "line after the string closes should carry syn-keyword, got {:?}",
         let_line.spans
     );
@@ -986,7 +989,10 @@ fn unstaged_diff_highlights_a_hunk_starting_mid_string_via_workdir_read() {
         .find(|l| l.content.contains("let mut stmt"))
         .expect("expected the 'let mut stmt' line in the hunk");
     assert!(
-        let_line.spans.iter().any(|s| s.syntax_class == "syn-keyword"),
+        let_line
+            .spans
+            .iter()
+            .any(|s| s.syntax_class == "syn-keyword"),
         "line after the string closes should carry syn-keyword, got {:?}",
         let_line.spans
     );
@@ -1028,7 +1034,10 @@ fn unstaged_diff_highlights_an_untracked_rust_file_with_no_old_side() {
         .find(|l| l.content.contains("let x"))
         .expect("expected the 'let x' line in the hunk");
     assert!(
-        let_line.spans.iter().any(|s| s.syntax_class == "syn-keyword"),
+        let_line
+            .spans
+            .iter()
+            .any(|s| s.syntax_class == "syn-keyword"),
         "untracked Add line should highlight as real code, got {:?}",
         let_line.spans
     );
