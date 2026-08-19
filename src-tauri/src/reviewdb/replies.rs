@@ -1,10 +1,7 @@
-//! Replies: a flat, one-level list of text under a thread, each carrying its
-//! channel attribution. No anchor, no state — state lives on the thread.
-
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
 use crate::error::TrunkError;
-use crate::git::types::Channel;
+use crate::review_types::Channel;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -20,13 +17,34 @@ pub struct Reply {
     pub created_at: i64,
 }
 
+/// Add a reply to a thread. Scoped by `repo_path`, same ownership subquery as
+/// `edit`/`delete`: a `thread_id` belonging to another repo is `not_found`,
+/// never a foreign-key error from an unscoped insert.
 pub fn add(
     conn: &Connection,
+    repo_path: &Path,
     thread_id: &str,
     body: &str,
     channel: Channel,
     now: i64,
 ) -> Result<String, TrunkError> {
+    let owned: Option<String> = conn
+        .query_row(
+            "SELECT id FROM threads
+             WHERE id = ?1 AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?2)",
+            rusqlite::params![thread_id, repo_key(repo_path)],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+
+    if owned.is_none() {
+        return Err(TrunkError::new(
+            "not_found",
+            format!("no thread with id {thread_id}"),
+        ));
+    }
+
     let id = ids::mint_unique(conn, IdKind::Reply)?;
 
     conn.execute(
@@ -70,7 +88,7 @@ pub fn edit(
         ));
     };
 
-    if channel != Channel::Human.as_str() {
+    if Channel::from_str(&channel)? != Channel::Human {
         return Err(TrunkError::new(
             "not_editable",
             "agent-attributed text is not editable from the UI",
@@ -92,7 +110,7 @@ pub fn edit(
 /// before anything is written — same read-then-check shape as
 /// `threads::delete`.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
-    let published: Option<i64> = conn
+    let published: Option<bool> = conn
         .query_row(
             "SELECT r.published FROM replies rep
              JOIN threads t ON t.id = rep.thread_id
@@ -106,13 +124,13 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
 
     match published {
         None => return Ok(()),
-        Some(0) => {}
-        Some(_) => {
+        Some(true) => {
             return Err(TrunkError::new(
                 "review_published",
                 "a published review's replies are permanent",
             ));
         }
+        Some(false) => {}
     }
 
     conn.execute("DELETE FROM replies WHERE id = ?1", [id])
@@ -140,17 +158,13 @@ pub fn list_for_threads(
          WHERE thread_id IN ({placeholders}) ORDER BY created_at, rowid"
     );
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
-    let rows = stmt
-        .query_map(rusqlite::params_from_iter(thread_ids), |row| {
-            Ok(read_reply(row))
-        })
-        .map_err(sqlite_error)?
-        .collect::<Result<Vec<Result<Reply, TrunkError>>, _>>()
+    let mut rows = stmt
+        .query(rusqlite::params_from_iter(thread_ids))
         .map_err(sqlite_error)?;
 
     let mut by_thread: HashMap<String, Vec<Reply>> = HashMap::new();
-    for reply in rows {
-        let reply = reply?;
+    while let Some(row) = rows.next().map_err(sqlite_error)? {
+        let reply = read_reply(row)?;
         by_thread
             .entry(reply.thread_id.clone())
             .or_default()

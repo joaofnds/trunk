@@ -16,9 +16,12 @@ interface Props {
 	comment: Thread;
 	onedit: (id: string, text: string) => void;
 	ondelete: (id: string) => void;
-	onreply: (id: string, text: string) => void;
+	// Awaited before the composer/editor clears its draft, so a caller that
+	// reports its own refusal (review-comment-actions.ts) keeps the typed
+	// text on screen until the write settles.
+	onreply: (id: string, text: string) => void | Promise<void>;
 	onstatechange: (id: string, next: ThreadState) => void;
-	onreplyedit: (id: string, text: string) => void;
+	onreplyedit: (id: string, text: string) => void | Promise<void>;
 	ondeletereply: (id: string) => void;
 	// When true (default) confirm before deleting (mirrors the panel); when false
 	// delete immediately (inline hosts).
@@ -61,8 +64,7 @@ const replyValid = $derived(replyText.trim().length > 0);
 const replyDraftValid = $derived(replyDraftText.trim().length > 0);
 
 // More than three replies collapse to the last three, with a control that
-// reveals the rest — expand state belongs to the card, never a parent map
-// (jsdom can't see a pure-CSS collapse, so this is state, not styling).
+// reveals the rest — expand state belongs to the card, never a parent map.
 const hiddenReplyCount = $derived(Math.max(comment.replies.length - 3, 0));
 const visibleReplies = $derived(
 	repliesExpanded || hiddenReplyCount === 0
@@ -120,11 +122,11 @@ function saveEdit() {
 	onedit(comment.id, text);
 }
 
-function submitReply() {
+async function submitReply() {
 	if (!replyValid) return;
 	const text = replyText;
+	await onreply(comment.id, text);
 	replyText = "";
-	onreply(comment.id, text);
 }
 
 function openReplyEdit(replyId: string, text: string) {
@@ -137,13 +139,13 @@ function cancelReplyEdit() {
 	replyDraftText = "";
 }
 
-function saveReplyEdit() {
+async function saveReplyEdit() {
 	if (!replyDraftValid || editingReplyId === null) return;
 	const id = editingReplyId;
 	const text = replyDraftText;
+	await onreplyedit(id, text);
 	editingReplyId = null;
 	replyDraftText = "";
-	onreplyedit(id, text);
 }
 
 // The UI's slice of the transition matrix (spec §2): `open|addressed ->
@@ -173,16 +175,31 @@ function humanActionsFor(
 
 const stateActions = $derived(humanActionsFor(comment.state));
 
+async function confirmedDeletion(
+	prompt: string,
+	title: string,
+): Promise<boolean> {
+	if (!confirmDelete) return true;
+	const { ask } = await import("@tauri-apps/plugin-dialog");
+	return ask(prompt, { title, kind: "warning" });
+}
+
 async function requestDelete() {
-	if (confirmDelete) {
-		const { ask } = await import("@tauri-apps/plugin-dialog");
-		const confirmed = await ask("Delete this comment? This cannot be undone.", {
-			title: "Delete comment",
-			kind: "warning",
-		});
-		if (!confirmed) return;
-	}
+	const confirmed = await confirmedDeletion(
+		"Delete this comment? This cannot be undone.",
+		"Delete comment",
+	);
+	if (!confirmed) return;
 	ondelete(comment.id);
+}
+
+async function requestDeleteReply(replyId: string) {
+	const confirmed = await confirmedDeletion(
+		"Delete this reply? This cannot be undone.",
+		"Delete reply",
+	);
+	if (!confirmed) return;
+	ondeletereply(replyId);
 }
 </script>
 
@@ -208,6 +225,7 @@ async function requestDelete() {
     {#if orphanLabel}
       <span class="orphan-badge">{orphanLabel}</span>
     {/if}
+    <span class="comment-card-channel">{comment.channel}</span>
     <span class="thread-state-chip thread-state-{comment.state}">{comment.state}</span>
     {#each stateActions as action (action.next)}
       <button
@@ -222,11 +240,13 @@ async function requestDelete() {
         class="card-action"
         onclick={openEdit}
       >Edit</button>
-      <button
-        type="button"
-        class="card-action card-action-danger"
-        onclick={requestDelete}
-      >Delete</button>
+      {#if !comment.published}
+        <button
+          type="button"
+          class="card-action card-action-danger"
+          onclick={requestDelete}
+        >Delete</button>
+      {/if}
     {/if}
   </header>
 
@@ -274,8 +294,6 @@ async function requestDelete() {
     {/if}
   </div>
 
-  <!-- Replies: a flat list under the root, each carrying its channel
-       attribution — the only distinction between a UI and a CLI write. -->
   {#if comment.replies.length > 0}
     {#if hiddenReplyCount > 0 && !repliesExpanded}
       <button
@@ -297,11 +315,13 @@ async function requestDelete() {
               >Edit reply</button>
             {/if}
             <span class="comment-card-spacer"></span>
-            <button
-              type="button"
-              class="thread-reply-edit-toggle"
-              onclick={() => ondeletereply(reply.id)}
-            >Delete reply</button>
+            {#if !comment.published}
+              <button
+                type="button"
+                class="thread-reply-delete"
+                onclick={() => requestDeleteReply(reply.id)}
+              >Delete reply</button>
+            {/if}
           </div>
           {#if editingReplyId === reply.id}
             <textarea
@@ -467,6 +487,20 @@ async function requestDelete() {
     white-space: nowrap;
   }
 
+  /* Root channel chip — mirrors .thread-reply-channel so the root's
+     attribution reads the same as a reply's. */
+  .comment-card-channel {
+    font-size: 10px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--color-text-muted);
+    background: var(--color-muted-bg);
+    border-radius: 4px;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
   /* Thread state chip — color carries no meaning alone; the text is the
      state's own name, so it survives color blindness and grayscale. */
   .thread-state-chip {
@@ -526,8 +560,6 @@ async function requestDelete() {
     font-size: 11px;
   }
 
-  /* Replies: a flat list under the root, each row carrying its channel
-     attribution. */
   .thread-replies {
     list-style: none;
     margin: 0;
@@ -547,7 +579,8 @@ async function requestDelete() {
     align-items: center;
     gap: 6px;
   }
-  .thread-reply-edit-toggle {
+  .thread-reply-edit-toggle,
+  .thread-reply-delete {
     background: transparent;
     border: none;
     cursor: pointer;
@@ -556,7 +589,9 @@ async function requestDelete() {
     color: var(--color-text-muted);
   }
   .thread-reply-edit-toggle:hover,
-  .thread-reply-edit-toggle:focus-visible { color: var(--color-text); }
+  .thread-reply-edit-toggle:focus-visible,
+  .thread-reply-delete:hover,
+  .thread-reply-delete:focus-visible { color: var(--color-text); }
   .thread-reply-channel {
     align-self: flex-start;
     font-size: 10px;

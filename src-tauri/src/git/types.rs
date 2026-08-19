@@ -1,4 +1,3 @@
-use crate::error::TrunkError;
 use serde::{Deserialize, Serialize};
 
 // CRITICAL: All fields use owned types (String, Vec, i64, u32, usize, bool, Option<T>).
@@ -341,81 +340,6 @@ pub struct Anchor {
     pub side: Side,
     pub start_line: u32,
     pub end_line: u32,
-}
-
-/// The thread state matrix's closed set (spec §2). `open` is the default at
-/// creation; `addressed` is the agent's claim, reachable only via `Channel::Agent`;
-/// `done`/`dismissed` are the user's resolutions. Serializes lowercase, matching
-/// the shipped TS union and the store's CHECK constraint — unlike `Side`/`Source`
-/// above, which carry no `rename_all` and must not gain one.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ThreadState {
-    Open,
-    Addressed,
-    Done,
-    Dismissed,
-}
-
-impl ThreadState {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ThreadState::Open => "open",
-            ThreadState::Addressed => "addressed",
-            ThreadState::Done => "done",
-            ThreadState::Dismissed => "dismissed",
-        }
-    }
-}
-
-impl std::str::FromStr for ThreadState {
-    type Err = TrunkError;
-
-    fn from_str(raw: &str) -> Result<Self, TrunkError> {
-        match raw {
-            "open" => Ok(ThreadState::Open),
-            "addressed" => Ok(ThreadState::Addressed),
-            "done" => Ok(ThreadState::Done),
-            "dismissed" => Ok(ThreadState::Dismissed),
-            other => Err(TrunkError::new(
-                "store",
-                format!("corrupt thread row: unknown state {other:?}"),
-            )),
-        }
-    }
-}
-
-/// Who wrote a thread or reply: a UI write records `Human`, a CLI write records
-/// `Agent` — attribution by channel, not by identity (spec §2).
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Channel {
-    Human,
-    Agent,
-}
-
-impl Channel {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Channel::Human => "human",
-            Channel::Agent => "agent",
-        }
-    }
-}
-
-impl std::str::FromStr for Channel {
-    type Err = TrunkError;
-
-    fn from_str(raw: &str) -> Result<Self, TrunkError> {
-        match raw {
-            "human" => Ok(Channel::Human),
-            "agent" => Ok(Channel::Agent),
-            other => Err(TrunkError::new(
-                "store",
-                format!("corrupt thread row: unknown channel {other:?}"),
-            )),
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

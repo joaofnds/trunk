@@ -5,13 +5,6 @@
 //! Every function takes `data_dir: &Path` rather than an `AppHandle` — the same
 //! testability wedge `review_store.rs` documents, and what the CLI needs, since
 //! no `AppHandle` exists before Tauri init.
-//!
-//! **Row-as-wire.** These modules' projections (`Thread`, `Reply`, `Review`, …)
-//! are the wire contract: a command-layer type over one of them exists only
-//! where the wire carries a field the store does not — `RenderedThread` and
-//! `RenderedReply` (`commands/review.rs`) add `text_html`, rendered from the
-//! stored markdown source at list time. Do not invent a second projection for a
-//! shape these rows already carry.
 
 pub mod anchor;
 pub mod commits;

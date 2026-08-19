@@ -16,6 +16,7 @@ export function aThread(overrides: Partial<Thread> = {}): Thread {
 		state: "open",
 		stale: false,
 		channel: "human",
+		published: false,
 		replies: [],
 		...overrides,
 	};

@@ -350,6 +350,11 @@ export interface Thread {
 	state: ThreadState;
 	stale: boolean;
 	channel: Channel;
+	// The owning review's published bit (criterion 12): once true, the store
+	// refuses to delete this thread or its replies, so ThreadCard hides the
+	// Delete / Delete reply controls rather than offer an action that only
+	// fails on the round trip.
+	published: boolean;
 	// Present only on threads returned by `list_threads` (the render batch);
 	// optional so optimistic/raw shapes elsewhere still type-check. ThreadCard
 	// `{@html}`s it, falling back to escaped raw `text` when absent.

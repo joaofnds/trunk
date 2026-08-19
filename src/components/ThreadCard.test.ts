@@ -1,10 +1,25 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import type { Thread } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
+// Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
+import "../__tests__/helpers/tauri-mock";
+
+// The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
+// a plain `fireEvent.click` doesn't wait for that microtask to settle.
+async function flush() {
+	await new Promise((r) => setTimeout(r, 0));
+	await tick();
+}
+
 describe("ThreadCard", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
 	const comment: Thread = aThread({
 		id: "c1",
 		text: "needs a null check here",
@@ -110,6 +125,30 @@ describe("ThreadCard", () => {
 
 		expect(screen.getByText("fixed")).toBeInTheDocument();
 		expect(screen.getByText("agent")).toBeInTheDocument();
+	});
+
+	it("renders the root's own channel attribution in the card header", () => {
+		// A reply's channel chip has always rendered; the root's never did.
+		// Agent-originated roots are spec-deferred (every root is `human` in
+		// practice today), so this overrides the fixture to cover
+		// the gap while it's cheap, ahead of that channel shipping.
+		const agentRoot: Thread = { ...comment, channel: "agent" };
+
+		const { container } = render(ThreadCard, {
+			props: {
+				comment: agentRoot,
+				onedit: () => {},
+				ondelete: () => {},
+				onreply: () => {},
+				onstatechange: () => {},
+				onreplyedit: () => {},
+				ondeletereply: () => {},
+			},
+		});
+
+		const chip = container.querySelector(".comment-card-channel");
+		expect(chip).toBeInTheDocument();
+		expect(chip).toHaveTextContent("agent");
 	});
 
 	it("collapses to the last three replies with an expand control, then shows all on click", async () => {
@@ -289,6 +328,28 @@ describe("ThreadCard", () => {
 		expect(onreplyedit).toHaveBeenCalledWith("r1", "corrected");
 	});
 
+	it("submits the typed reply via onreply and clears the composer", async () => {
+		const onreply = vi.fn();
+		render(ThreadCard, {
+			props: {
+				comment,
+				onedit: () => {},
+				ondelete: () => {},
+				onreply,
+				onstatechange: () => {},
+				onreplyedit: () => {},
+				ondeletereply: () => {},
+			},
+		});
+
+		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+		await fireEvent.input(textarea, { target: { value: "sounds good" } });
+		await fireEvent.click(screen.getByText("Reply"));
+
+		expect(onreply).toHaveBeenCalledWith("c1", "sounds good");
+		expect(textarea.value).toBe("");
+	});
+
 	it("does not offer Edit for an agent reply", () => {
 		const agentReply: Thread = {
 			...comment,
@@ -310,7 +371,9 @@ describe("ThreadCard", () => {
 		expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
 	});
 
-	it("offers Delete for every reply and calls ondeletereply with its id", async () => {
+	it("offers Delete for every reply and calls ondeletereply with its id once confirmed", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockResolvedValue(true);
 		const withReply: Thread = {
 			...comment,
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
@@ -329,7 +392,89 @@ describe("ThreadCard", () => {
 		});
 
 		await fireEvent.click(screen.getByText("Delete reply"));
+		await flush();
 
+		expect(ask).toHaveBeenCalledTimes(1);
 		expect(ondeletereply).toHaveBeenCalledWith("r1");
+	});
+
+	it("does not call ondeletereply when the reply-delete confirmation is cancelled", async () => {
+		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockResolvedValue(false);
+		const withReply: Thread = {
+			...comment,
+			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
+		};
+		const ondeletereply = vi.fn();
+		render(ThreadCard, {
+			props: {
+				comment: withReply,
+				onedit: () => {},
+				ondelete: () => {},
+				onreply: () => {},
+				onstatechange: () => {},
+				onreplyedit: () => {},
+				ondeletereply,
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Delete reply"));
+		await flush();
+
+		expect(ask).toHaveBeenCalledTimes(1);
+		expect(ondeletereply).not.toHaveBeenCalled();
+	});
+
+	// Once the owning review is published, the store refuses to delete a
+	// thread or a reply (criterion 12) — offering the control anyway just
+	// buys a round trip to the same refusal, so it's hidden instead.
+	it("offers Delete for an unpublished thread and hides it once the review is published", async () => {
+		const { rerender } = render(ThreadCard, {
+			props: {
+				comment,
+				onedit: () => {},
+				ondelete: () => {},
+				onreply: () => {},
+				onstatechange: () => {},
+				onreplyedit: () => {},
+				ondeletereply: () => {},
+			},
+		});
+
+		expect(screen.getByText("Delete")).toBeInTheDocument();
+
+		await rerender({
+			comment: { ...comment, published: true },
+			onedit: () => {},
+			ondelete: () => {},
+			onreply: () => {},
+			onstatechange: () => {},
+			onreplyedit: () => {},
+			ondeletereply: () => {},
+		});
+
+		expect(screen.queryByText("Delete")).not.toBeInTheDocument();
+	});
+
+	it("hides Delete reply once the owning review is published", () => {
+		const published: Thread = {
+			...comment,
+			published: true,
+			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
+		};
+
+		render(ThreadCard, {
+			props: {
+				comment: published,
+				onedit: () => {},
+				ondelete: () => {},
+				onreply: () => {},
+				onstatechange: () => {},
+				onreplyedit: () => {},
+				ondeletereply: () => {},
+			},
+		});
+
+		expect(screen.queryByText("Delete reply")).not.toBeInTheDocument();
 	});
 });

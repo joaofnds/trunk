@@ -4,8 +4,11 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::commands::review::{SubmitThreadRequest, list_threads_inner, submit_thread_inner};
-use trunk_lib::git::types::{Anchor, Channel, Side, Source, ThreadState};
+use trunk_lib::commands::review::{
+    SubmitThreadRequest, list_threads_inner, set_thread_state_inner, submit_thread_inner,
+};
+use trunk_lib::git::types::{Anchor, Side, Source};
+use trunk_lib::review_types::{Channel, ThreadState};
 use trunk_lib::reviewdb::{self, reviews::ReviewState};
 
 fn diff_anchor() -> Anchor {
@@ -130,7 +133,9 @@ fn a_reply_survives_a_restart() {
         let store = reviewdb::open(ctx.data_dir()).unwrap();
         let id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
         store
-            .write(|tx| reviewdb::replies::add(tx, &id, "a reply", Channel::Human, 1_001))
+            .write(|tx| {
+                reviewdb::replies::add(tx, &canonical, &id, "a reply", Channel::Human, 1_001)
+            })
             .unwrap();
         id
     };
@@ -214,7 +219,16 @@ fn migrates_v1_to_v2_additively() {
     assert_eq!(reviews.len(), 1, "a v1 review must survive the migration");
 
     let reply_id = store
-        .write(|tx| reviewdb::replies::add(tx, "THREAD01", "a v2 reply", Channel::Human, 1_001))
+        .write(|tx| {
+            reviewdb::replies::add(
+                tx,
+                std::path::Path::new("/repo"),
+                "THREAD01",
+                "a v2 reply",
+                Channel::Human,
+                1_001,
+            )
+        })
         .unwrap();
     let replies = store
         .read(|c| reviewdb::replies::list_for_threads(c, &["THREAD01".to_string()]))
@@ -236,7 +250,9 @@ fn deleting_a_composing_thread_cascades_to_replies() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
     store
-        .write(|tx| reviewdb::replies::add(tx, &thread_id, "a reply", Channel::Human, 1_001))
+        .write(|tx| {
+            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_001)
+        })
         .unwrap();
 
     store
@@ -261,13 +277,36 @@ fn a_ui_reply_is_attributed_human() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
 
-    trunk_lib::commands::review::add_reply_inner(&store, &thread_id, "a reply", 1_001).unwrap();
+    trunk_lib::commands::review::add_reply_inner(&store, &canonical, &thread_id, "a reply", 1_001)
+        .unwrap();
 
     let threads = list_threads_inner(&store, &canonical).unwrap();
     let thread = threads.iter().find(|t| t.id == thread_id).unwrap();
     assert_eq!(thread.replies.len(), 1);
     assert_eq!(thread.replies[0].channel, Channel::Human);
     assert_eq!(thread.replies[0].text, "a reply");
+}
+
+#[test]
+fn a_reply_aimed_at_another_repos_thread_is_refused() {
+    let ctx = TestContext::new_empty();
+    let other = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let other_canonical = other.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let other_thread_id =
+        submit_thread_inner(&store, &other_canonical, submission("root"), 1_000).unwrap();
+
+    let err = trunk_lib::commands::review::add_reply_inner(
+        &store,
+        &canonical,
+        &other_thread_id,
+        "planted",
+        1_001,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, "not_found");
 }
 
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
@@ -467,6 +506,54 @@ fn pruning_one_kind_leaves_the_other_pinned() {
         repo.find_reference(&format!("{prefix}{workdir_oid_1}"))
             .is_err(),
         "the superseded kind's old pin must be pruned",
+    );
+}
+
+#[test]
+fn a_failed_store_write_leaves_the_old_pin_in_place() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let old_oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    // Make the store-side write of the *next* snapshot fail, simulating a
+    // busy-timeout or full-disk failure between the two ref calls — SQLite
+    // fires a BEFORE INSERT trigger even for the ON CONFLICT DO UPDATE path
+    // `snapshots::set` uses, so this blocks both a fresh row and an update.
+    store
+        .write(|tx| {
+            tx.execute(
+                "CREATE TRIGGER fail_snapshot_write BEFORE INSERT ON repo_snapshots
+                 BEGIN SELECT RAISE(ABORT, 'simulated store.write failure'); END",
+                [],
+            )
+            .map_err(reviewdb::sqlite_error)?;
+            Ok(())
+        })
+        .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    let result =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001);
+
+    assert!(
+        result.is_err(),
+        "the simulated store.write failure must propagate",
+    );
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{old_oid}")).is_ok(),
+        "a store.write failure must not leave the old pin unpinned — pruning \
+         must wait until the new oid is durably recorded",
     );
 }
 
@@ -1184,6 +1271,30 @@ fn a_second_addressed_claim_names_the_current_state() {
     );
 }
 
+/// `set_thread_state_inner` is the UI-facing seam and always claims
+/// `Channel::Human` internally (spec §2: the CLI is the only caller allowed to
+/// claim `Channel::Agent`). Open -> Addressed is legal only for `Agent`, so a
+/// UI-driven claim must be refused. If the hardcode is ever loosened to a
+/// permissive channel, this test starts failing.
+#[test]
+fn set_thread_state_inner_refuses_a_ui_driven_addressed_claim() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
+
+    let err = set_thread_state_inner(
+        &store,
+        &canonical,
+        &thread_id,
+        ThreadState::Addressed,
+        1_001,
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, "illegal_transition");
+}
+
 #[test]
 fn the_schema_rejects_a_state_outside_the_set() {
     let ctx = TestContext::new_empty();
@@ -1543,6 +1654,31 @@ fn three_reviews_per_state_coexist() {
 // ── Milestone 2, Task 6: human text is editable anytime, agent text is not ──
 
 #[test]
+fn list_threads_reports_the_owning_reviews_published_bit() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+    let review_id = only_review(&store, &canonical).id;
+
+    let before = list_threads_inner(&store, &canonical).unwrap();
+    assert!(
+        !before.iter().find(|t| t.id == thread_id).unwrap().published,
+        "a composing review's threads report published: false",
+    );
+
+    store
+        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review_id, 1_000))
+        .unwrap();
+
+    let after = list_threads_inner(&store, &canonical).unwrap();
+    assert!(
+        after.iter().find(|t| t.id == thread_id).unwrap().published,
+        "a published review's threads report published: true",
+    );
+}
+
+#[test]
 fn a_published_review_still_accepts_a_reply_and_a_text_edit() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
@@ -1554,7 +1690,9 @@ fn a_published_review_still_accepts_a_reply_and_a_text_edit() {
         .unwrap();
 
     let reply_id = store
-        .write(|tx| reviewdb::replies::add(tx, &thread_id, "a reply", Channel::Human, 1_001))
+        .write(|tx| {
+            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_001)
+        })
         .unwrap();
     store
         .write(|tx| reviewdb::threads::edit(tx, &canonical, &thread_id, "edited root", 1_002))
@@ -1595,7 +1733,16 @@ fn editing_agent_text_from_the_ui_is_refused() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
     let reply_id = store
-        .write(|tx| reviewdb::replies::add(tx, &thread_id, "agent reply", Channel::Agent, 1_001))
+        .write(|tx| {
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "agent reply",
+                Channel::Agent,
+                1_001,
+            )
+        })
         .unwrap();
 
     let err = store
@@ -1646,7 +1793,9 @@ fn deleting_a_published_reply_is_refused() {
     let (ctx, store, _, thread_id) = published_review_with(ThreadState::Open);
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let reply_id = store
-        .write(|tx| reviewdb::replies::add(tx, &thread_id, "a reply", Channel::Human, 1_002))
+        .write(|tx| {
+            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_002)
+        })
         .unwrap();
 
     let err = store
@@ -1671,7 +1820,9 @@ fn deleting_a_composing_reply_removes_it() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
     let reply_id = store
-        .write(|tx| reviewdb::replies::add(tx, &thread_id, "a reply", Channel::Human, 1_001))
+        .write(|tx| {
+            reviewdb::replies::add(tx, &canonical, &thread_id, "a reply", Channel::Human, 1_001)
+        })
         .unwrap();
 
     store

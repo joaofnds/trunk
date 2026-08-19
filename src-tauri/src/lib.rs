@@ -3,6 +3,7 @@ pub mod error;
 pub mod git;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
+pub mod review_types;
 pub mod reviewdb;
 pub mod shell_env;
 pub mod state;

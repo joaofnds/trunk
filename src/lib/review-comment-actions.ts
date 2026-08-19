@@ -1,3 +1,4 @@
+import { reportErrorToast } from "./error-report.js";
 import { safeInvoke } from "./invoke.js";
 import type { Anchor, Draft, ThreadState } from "./types.js";
 
@@ -41,12 +42,29 @@ export function addCommitComment(
 	});
 }
 
+// Unlike the wrappers above, these four catch their own refusal instead of
+// rethrowing: their callers are bare arrow functions at five call sites
+// (ReviewPanel, CommitDetail, and the three diff hosts), none of which await
+// or catch the promise. A published-review refusal, an agent-text edit, or an
+// illegal state transition would otherwise be an unhandled rejection the user
+// never sees.
+async function reportRefusal(action: () => Promise<void>, fallback: string) {
+	try {
+		await action();
+	} catch (e) {
+		reportErrorToast(e, fallback);
+	}
+}
+
 export function addReply(
 	repoPath: string,
 	threadId: string,
 	text: string,
 ): Promise<void> {
-	return safeInvoke("add_reply", { path: repoPath, threadId, text });
+	return reportRefusal(
+		() => safeInvoke("add_reply", { path: repoPath, threadId, text }),
+		"Failed to add reply",
+	);
 }
 
 export function editReply(
@@ -54,11 +72,17 @@ export function editReply(
 	replyId: string,
 	text: string,
 ): Promise<void> {
-	return safeInvoke("edit_reply", { path: repoPath, id: replyId, text });
+	return reportRefusal(
+		() => safeInvoke("edit_reply", { path: repoPath, id: replyId, text }),
+		"Failed to edit reply",
+	);
 }
 
 export function deleteReply(repoPath: string, replyId: string): Promise<void> {
-	return safeInvoke("delete_reply", { path: repoPath, id: replyId });
+	return reportRefusal(
+		() => safeInvoke("delete_reply", { path: repoPath, id: replyId }),
+		"Failed to delete reply",
+	);
 }
 
 export function setThreadState(
@@ -66,7 +90,10 @@ export function setThreadState(
 	id: string,
 	next: ThreadState,
 ): Promise<void> {
-	return safeInvoke("set_thread_state", { path: repoPath, id, next });
+	return reportRefusal(
+		() => safeInvoke("set_thread_state", { path: repoPath, id, next }),
+		"Failed to change thread state",
+	);
 }
 
 /// The draft the composer autosaves into. It has no review foreign key, so it

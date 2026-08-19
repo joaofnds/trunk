@@ -6,7 +6,8 @@
 use super::ids::{self, IdKind};
 use super::{anchor, repo_key, sqlite_error};
 use crate::error::TrunkError;
-use crate::git::types::{Anchor, Channel, ThreadState};
+use crate::git::types::Anchor;
+use crate::review_types::{Channel, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::path::Path;
@@ -187,13 +188,11 @@ pub fn set_state(
     Ok(())
 }
 
-/// Update a thread's text. Human-authored text is editable at any time,
-/// published review included — publication gates deletion, never editing
-/// (criterion 4). Agent-authored text is not editable from the UI: read the
-/// row's channel first and refuse with `not_editable`, distinct from
-/// `not_found`, so an agent-authored id is never indistinguishable from a
-/// missing one. A missing id is `not_found`; edits target by id, never by
-/// list position.
+/// Human-authored text is editable at any time, published review included —
+/// publication gates deletion, never editing (criterion 4). Refusing an
+/// agent-authored edit with `not_editable`, distinct from `not_found`, means
+/// an agent-authored id is never indistinguishable from a missing one. Edits
+/// target by id, never by list position.
 pub fn edit(
     conn: &Connection,
     repo_path: &Path,
@@ -218,7 +217,7 @@ pub fn edit(
         ));
     };
 
-    if channel != Channel::Human.as_str() {
+    if Channel::from_str(&channel)? != Channel::Human {
         return Err(TrunkError::new(
             "not_editable",
             "agent-attributed text is not editable from the UI",
@@ -234,14 +233,13 @@ pub fn edit(
     Ok(())
 }
 
-/// Remove a thread. A missing id is an idempotent no-op, so a double-delete or a
-/// stale id from another window never errors. Publication gates this — not
-/// editing (criterion 12): a published review's threads are permanent, so a
-/// thread belonging to one refuses with `review_published` before anything is
-/// written. Read the owning review's `published` bit first, same read-then-
-/// check shape as `edit`'s channel refusal.
+/// A missing id is an idempotent no-op, so a double-delete or a stale id from
+/// another window never errors. Publication gates this — not editing
+/// (criterion 12): a published review's threads are permanent, and that check
+/// happens before anything is written, same read-then-check shape as `edit`'s
+/// channel refusal.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
-    let published: Option<i64> = conn
+    let published: Option<bool> = conn
         .query_row(
             "SELECT r.published FROM threads t
              JOIN reviews r ON r.id = t.review_id
@@ -254,13 +252,13 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
 
     match published {
         None => return Ok(()),
-        Some(0) => {}
-        Some(_) => {
+        Some(true) => {
             return Err(TrunkError::new(
                 "review_published",
                 "a published review's threads are permanent",
             ));
         }
+        Some(false) => {}
     }
 
     conn.execute("DELETE FROM threads WHERE id = ?1", [id])

@@ -152,7 +152,7 @@ pub struct RenderedReply {
     pub id: String,
     pub text: String,
     pub text_html: String,
-    pub channel: crate::git::types::Channel,
+    pub channel: crate::review_types::Channel,
     pub created_at: i64,
 }
 
@@ -181,15 +181,19 @@ pub struct RenderedThread {
     pub anchor: Option<crate::git::types::Anchor>,
     pub cached_excerpt: Option<String>,
     pub commit_oid: Option<String>,
-    pub state: crate::git::types::ThreadState,
+    pub state: crate::review_types::ThreadState,
     pub stale: bool,
-    pub channel: crate::git::types::Channel,
+    pub channel: crate::review_types::Channel,
+    // The owning review's published bit (criterion 12): once set, the store
+    // refuses to delete this thread or its replies, so the frontend needs it
+    // to gate the Delete/Delete-reply controls it would otherwise offer.
+    pub published: bool,
     pub text_html: String,
     pub replies: Vec<RenderedReply>,
 }
 
 impl RenderedThread {
-    fn from_thread(t: threads::Thread, replies: Vec<replies::Reply>) -> Self {
+    fn from_thread(t: threads::Thread, replies: Vec<replies::Reply>, published: bool) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
         RenderedThread {
             id: t.id,
@@ -201,6 +205,7 @@ impl RenderedThread {
             state: t.state,
             stale: t.stale,
             channel: t.channel,
+            published,
             text_html,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
         }
@@ -218,6 +223,11 @@ pub fn list_threads_inner(
         let Some(review_id) = reviews::active(conn, canonical)? else {
             return Ok(vec![]);
         };
+        // Every thread in this batch belongs to the same active review, so its
+        // published bit is read once rather than per-thread.
+        let published = reviews::get(conn, &review_id)?
+            .map(|r| r.published)
+            .unwrap_or(false);
 
         let threads = threads::list_for_review(conn, &review_id)?;
         let thread_ids: Vec<String> = threads.iter().map(|t| t.id.clone()).collect();
@@ -227,7 +237,7 @@ pub fn list_threads_inner(
             .into_iter()
             .map(|t| {
                 let replies = replies_by_thread.remove(&t.id).unwrap_or_default();
-                RenderedThread::from_thread(t, replies)
+                RenderedThread::from_thread(t, replies, published)
             })
             .collect())
     })
@@ -330,11 +340,21 @@ pub async fn delete_thread(
 /// `Channel::Agent` (spec §2).
 pub fn add_reply_inner(
     store: &Store,
+    repo_path: &Path,
     thread_id: &str,
     text: &str,
     now: i64,
 ) -> Result<String, TrunkError> {
-    store.write(|tx| replies::add(tx, thread_id, text, crate::git::types::Channel::Human, now))
+    store.write(|tx| {
+        replies::add(
+            tx,
+            repo_path,
+            thread_id,
+            text,
+            crate::review_types::Channel::Human,
+            now,
+        )
+    })
 }
 
 #[tauri::command]
@@ -348,9 +368,10 @@ pub async fn add_reply(
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
+    let target = canonical.clone();
     blocking_store(move || {
         let now = crate::reviewdb::now_secs();
-        add_reply_inner(&store, &thread_id, &text, now)
+        add_reply_inner(&store, &target, &thread_id, &text, now)
     })
     .await?;
 
@@ -403,7 +424,7 @@ pub fn set_thread_state_inner(
     store: &Store,
     canonical: &Path,
     id: &str,
-    next: crate::git::types::ThreadState,
+    next: crate::review_types::ThreadState,
     now: i64,
 ) -> Result<(), TrunkError> {
     store.write(|tx| {
@@ -412,7 +433,7 @@ pub fn set_thread_state_inner(
             canonical,
             id,
             next,
-            crate::git::types::Channel::Human,
+            crate::review_types::Channel::Human,
             now,
         )
     })
@@ -422,7 +443,7 @@ pub fn set_thread_state_inner(
 pub async fn set_thread_state(
     path: String,
     id: String,
-    next: crate::git::types::ThreadState,
+    next: crate::review_types::ThreadState,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     app: AppHandle,
@@ -803,15 +824,18 @@ pub fn ensure_review_snapshot_inner(
     };
     let (oid, created) = decide_snapshot(&repo, kind, prior_oid)?;
     keep_snapshot_ref(&repo, oid)?;
-    // A new snapshot supersedes the prior one — prune its pin so gc can
-    // reclaim it (D8). Reuse (created == false) means oid == prior_oid, so
-    // pruning here would delete the ref just pinned above.
-    if created && let Some(old) = prior_oid {
-        prune_snapshot_ref(&repo, old)?;
-    }
 
     let oid = oid.to_string();
     store.write(|tx| snapshots::set(tx, canonical, kind, &oid, now))?;
+
+    // A new snapshot supersedes the prior one — prune its pin so gc can
+    // reclaim it (D8). Reuse (created == false) means oid == prior_oid, so
+    // pruning here would delete the ref just pinned above. Pruning only
+    // after the store write is durable keeps a failed or interrupted write
+    // from leaving the old pin gone while the store still names it.
+    if created && let Some(old) = prior_oid {
+        prune_snapshot_ref(&repo, old)?;
+    }
 
     Ok(oid)
 }
@@ -901,6 +925,7 @@ fn as_doc_threads(
                 anchor: t.anchor,
                 commit_oid: t.commit_oid,
                 excerpt: t.cached_excerpt,
+                channel: t.channel,
                 replies: replies
                     .into_iter()
                     .map(|r| crate::git::review::DocReply {
