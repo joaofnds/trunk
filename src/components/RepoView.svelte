@@ -256,6 +256,10 @@ let selectedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
 let commitFileDiffs = $state<FileDiff[]>([]);
 let selectedCommitFile = $state<string | null>(null);
+// Bumped on every selectCommitIdempotent call so an out-of-order commit-switch
+// response can't clobber a newer one, and a failed switch's catch arm can tell
+// it's still the latest before clearing state.
+let commitSelectGeneration = 0;
 
 // The WIP-inclusive display list + pagination state CommitGraph reports via
 // oncommitschange, cached here so commitNav below can be recomputed on every
@@ -566,6 +570,7 @@ async function selectCommitIdempotent(oid: string) {
 	}
 
 	selectedCommitOid = oid;
+	const gen = ++commitSelectGeneration;
 	// Selecting a commit/ref while the review panel is open swaps the center pane to
 	// the diff so the user sees what they clicked (260531-l02d). showDiff is also what
 	// the jump gesture does, so this is consistent (and harmless when review is off).
@@ -582,6 +587,7 @@ async function selectCommitIdempotent(oid: string) {
 				oid,
 			}),
 		]);
+		if (gen !== commitSelectGeneration) return;
 		commitFileDiffs = files;
 		commitDetail = detail;
 
@@ -601,9 +607,11 @@ async function selectCommitIdempotent(oid: string) {
 			}
 		}
 	} catch {
+		if (gen !== commitSelectGeneration) return;
 		commitFileDiffs = [];
 		commitDetail = null;
 		commitEmpty = false;
+		diffInViewPath = null;
 	}
 }
 
@@ -665,14 +673,20 @@ async function selectCommitFileIdempotent(path: string) {
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (!repoPath || !selectedCommitOid) return;
+	// Captured at fire time: a same-path reopen on a later commit switch can
+	// resolve after this one, and the replacement below is path-keyed only, so
+	// without this a slow response would patch the new commit's entry with the
+	// old commit's hunks.
+	const fireOid = selectedCommitOid;
 	try {
 		const options = buildDiffOptions();
 		const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
 			path: repoPath,
-			oid: selectedCommitOid,
+			oid: fireOid,
 			filePath: path,
 			options,
 		});
+		if (fireOid !== selectedCommitOid) return;
 		// Replace the lightweight entry with the raw diff data
 		commitFileDiffs = commitFileDiffs.map((fd) =>
 			fd.path === path && fileDiffs.length > 0 ? fileDiffs[0] : fd,

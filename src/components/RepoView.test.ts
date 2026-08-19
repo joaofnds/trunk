@@ -438,6 +438,32 @@ describe("RepoView", () => {
 			return { path, status: "Modified", is_binary: false, hunks: [] };
 		}
 
+		function makeFileDiffWithContent(path: string, content: string): FileDiff {
+			return {
+				path,
+				status: "Modified",
+				is_binary: false,
+				hunks: [
+					{
+						header: "@@ -1,1 +1,1 @@",
+						old_start: 1,
+						old_lines: 1,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content,
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+		}
+
 		function makeDetail(
 			oid: string,
 			parentOids: string[] = [],
@@ -754,6 +780,162 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(screen.queryByLabelText("Close commit detail")).toBeFalsy();
+		});
+
+		it("applies only the newest commit's files when responses resolve out of order", async () => {
+			commits = [
+				makeCommit({ oid: "oid-3", summary: "third commit" }),
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-3": [makeFileDiff("f.ts")],
+				"oid-2": [makeFileDiff("x.ts")],
+				"oid-1": [makeFileDiff("y.ts")],
+			};
+			detailByOid = {
+				"oid-3": makeDetail("oid-3", ["oid-2"]),
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			let resolveFiles: ((files: FileDiff[]) => void) | undefined;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "list_commit_files" && a?.oid === "oid-2") {
+					return new Promise((resolve) => {
+						resolveFiles = resolve;
+					});
+				}
+				return base(cmd, args);
+			});
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect((await screen.findAllByText("y.ts")).length).toBeGreaterThan(0);
+
+			resolveFiles?.(filesByOid["oid-2"]);
+			await flush();
+
+			expect(screen.queryAllByText("x.ts")).toHaveLength(0);
+			expect(screen.queryAllByText("y.ts").length).toBeGreaterThan(0);
+			expect(
+				diffCommitFileCalls().some(
+					(c) => (c[1] as Record<string, unknown>).oid === "oid-2",
+				),
+			).toBe(false);
+		});
+
+		it("ignores a stale per-file diff from the previous commit", async () => {
+			commits = [
+				makeCommit({ oid: "oid-3", summary: "third commit" }),
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-3": [makeFileDiff("f.ts")],
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-3": makeDetail("oid-3", ["oid-2"]),
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			let resolveB: ((files: FileDiff[]) => void) | undefined;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "diff_commit_file" && a?.oid === "oid-2") {
+					return new Promise((resolve) => {
+						resolveB = resolve;
+					});
+				}
+				if (cmd === "diff_commit_file" && a?.oid === "oid-1") {
+					return Promise.resolve([
+						makeFileDiffWithContent("f.ts", "C-CONTENT"),
+					]);
+				}
+				return base(cmd, args);
+			});
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect(await screen.findByText("C-CONTENT")).toBeTruthy();
+
+			resolveB?.([makeFileDiffWithContent("f.ts", "B-CONTENT")]);
+			await flush();
+
+			expect(screen.queryByText("B-CONTENT")).toBeFalsy();
+			expect(screen.getByText("C-CONTENT")).toBeTruthy();
+		});
+
+		it("ends the mode when the commit switch fails", async () => {
+			commits = [
+				makeCommit({ oid: "oid-3", summary: "third commit" }),
+				makeCommit({ oid: "oid-2", summary: "second commit (fails)" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-3": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-3": makeDetail("oid-3", ["oid-2"]),
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			expect(diffCommitFileCalls()).toHaveLength(1);
+
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "list_commit_files" && a?.oid === "oid-2") {
+					return Promise.reject("boom");
+				}
+				return base(cmd, args);
+			});
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			// Mode ended: the center pane drops back to the graph.
+			const graphRows = await screen.findAllByTestId("commit-row");
+			expect(graphRows.length).toBeGreaterThan(0);
+
+			await fireEvent.click(graphRows[2]);
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(1);
 		});
 	});
 });
