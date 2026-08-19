@@ -7,6 +7,7 @@ import {
 	type DiffKind,
 	type ViewDescriptor,
 } from "../lib/comment-matching.js";
+import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
@@ -256,6 +257,10 @@ let commitFileDiffs = $state<FileDiff[]>([]);
 let selectedCommitFile = $state<string | null>(null);
 let commitNav = $state<CommitNav | null>(null);
 
+// Diff-in-view navigation (spec 2026-08-18): non-null = mode active. Remembers
+// the path last opened (click or auto-open) so a commit switch can reopen it.
+let diffInViewPath = $state<string | null>(null);
+
 // CommitGraph component ref -- used to call scrollToOid for ref navigation (GRAPH-03)
 let commitGraphRef = $state<{
 	scrollToOid: (oid: string) => Promise<void>;
@@ -285,8 +290,14 @@ const wipStats = $derived<WipStats>({
 	conflicted: dirtyCounts.conflicted,
 });
 
-// Center pane: show DiffPanel when a file is selected (from either source)
-let showDiff = $derived(selectedFile !== null || selectedCommitFile !== null);
+// Center pane: show DiffPanel when a file is selected (from either source),
+// or diff-in-view navigation is active (keeps the pane up during the load gap
+// and for the empty-commit placeholder).
+let showDiff = $derived(
+	selectedFile !== null ||
+		selectedCommitFile !== null ||
+		diffInViewPath !== null,
+);
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 
 // The diffs to display: filtered commit file diff, or staging diff
@@ -554,6 +565,20 @@ async function selectCommitIdempotent(oid: string) {
 		]);
 		commitFileDiffs = files;
 		commitDetail = detail;
+
+		// Diff-in-view navigation: reconcile the remembered path against the new
+		// commit's file list. Lives inline here, never in an $effect — an effect
+		// reading and writing selection state loops (svelte_effect_callback_loop).
+		if (diffInViewPath !== null) {
+			const target = resolveDiffTarget(
+				diffInViewPath,
+				files.map((f) => f.path),
+				treeViewEnabled,
+			);
+			if (target.kind === "file") {
+				await selectCommitFileIdempotent(target.path);
+			}
+		}
 	} catch {
 		commitFileDiffs = [];
 		commitDetail = null;
@@ -614,6 +639,7 @@ async function handleRefNavigate(refNameOrOid: string) {
 async function selectCommitFileIdempotent(path: string) {
 	if (selectedCommitFile === path) return;
 	selectedCommitFile = path;
+	diffInViewPath = path;
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (!repoPath || !selectedCommitOid) return;

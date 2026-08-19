@@ -1,10 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import { render } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeCommit } from "../__tests__/helpers/factories.js";
 import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
+import type {
+	CommitDetail as CommitDetailType,
+	FileDiff,
+} from "../lib/types.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
 
@@ -425,6 +430,144 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(container.textContent).toContain("// WIP");
+		});
+	});
+
+	describe("diff-in-view commit navigation", () => {
+		function makeFileDiff(path: string): FileDiff {
+			return { path, status: "Modified", is_binary: false, hunks: [] };
+		}
+
+		function makeDetail(
+			oid: string,
+			parentOids: string[] = [],
+		): CommitDetailType {
+			return {
+				oid,
+				short_oid: oid.slice(0, 7),
+				summary: `commit ${oid}`,
+				body: null,
+				author_name: "Test",
+				author_email: "test@test.com",
+				author_timestamp: 0,
+				committer_name: "Test",
+				committer_email: "test@test.com",
+				committer_timestamp: 0,
+				parent_oids: parentOids,
+			};
+		}
+
+		let commits: ReturnType<typeof makeCommit>[];
+		let filesByOid: Record<string, FileDiff[]>;
+		let detailByOid: Record<string, CommitDetailType>;
+
+		beforeEach(() => {
+			commits = [];
+			filesByOid = {};
+			detailByOid = {};
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({ commits, max_columns: 1 });
+					case "list_commit_files":
+						return Promise.resolve(filesByOid[a?.oid as string] ?? []);
+					case "get_commit_detail": {
+						const detail = detailByOid[a?.oid as string];
+						return detail
+							? Promise.resolve(detail)
+							: Promise.reject("commit not found");
+					}
+					case "diff_commit_file":
+						return Promise.resolve([makeFileDiff(a?.filePath as string)]);
+					default:
+						return base(cmd, args);
+				}
+			});
+		});
+
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+		}
+
+		async function renderAndGetRows() {
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const rows = await screen.findAllByTestId("commit-row");
+			await flush();
+			return rows;
+		}
+
+		function diffCommitFileCalls() {
+			return mockInvoke.mock.calls.filter((c) => c[0] === "diff_commit_file");
+		}
+
+		it("reopens the viewed file when the pager moves to a commit touching it", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			expect(diffCommitFileCalls()).toHaveLength(1);
+			expect(diffCommitFileCalls()[0][1]).toMatchObject({
+				oid: "oid-2",
+				filePath: "f.ts",
+			});
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(2);
+			expect(diffCommitFileCalls()[1][1]).toMatchObject({
+				oid: "oid-1",
+				filePath: "f.ts",
+			});
+		});
+
+		it("opens the first file when the new commit does not touch the viewed path", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("g.ts")],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(2);
+			expect(diffCommitFileCalls()[1][1]).toMatchObject({
+				oid: "oid-1",
+				filePath: "g.ts",
+			});
 		});
 	});
 });
