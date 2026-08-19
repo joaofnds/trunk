@@ -426,6 +426,8 @@ function clearStagingDiff() {
 
 function clearCommitFileDiff() {
 	selectedCommitFile = null;
+	diffInViewPath = null;
+	commitEmpty = false;
 }
 
 function clearCommit() {
@@ -433,6 +435,8 @@ function clearCommit() {
 	commitDetail = null;
 	commitFileDiffs = [];
 	selectedCommitFile = null;
+	diffInViewPath = null;
+	commitEmpty = false;
 }
 
 // Cached diff options — loaded once on mount, updated via ondiffoptionschange callback.

@@ -652,5 +652,108 @@ describe("RepoView", () => {
 				filePath: "f.ts",
 			});
 		});
+
+		it("does not auto-open after the diff is closed", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			expect(diffCommitFileCalls()).toHaveLength(1);
+
+			await fireEvent.click(await screen.findByLabelText("Close diff"));
+			await flush();
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(1);
+		});
+
+		it("ends the mode when the commit detail closes", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			expect(diffCommitFileCalls()).toHaveLength(1);
+
+			await fireEvent.click(
+				await screen.findByLabelText("Close commit detail"),
+			);
+			await flush();
+
+			const newRows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(newRows[1]);
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(1);
+		});
+
+		it("does not auto-open when no diff was open", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(0);
+		});
+
+		it("re-clicking the selected commit clears the selection", async () => {
+			commits = [makeCommit({ oid: "oid-1", summary: "only commit" })];
+			filesByOid = { "oid-1": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-1": makeDetail("oid-1") };
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			expect(await screen.findByLabelText("Close commit detail")).toBeTruthy();
+
+			await fireEvent.click(rows[0]);
+			await flush();
+
+			expect(screen.queryByLabelText("Close commit detail")).toBeFalsy();
+		});
 	});
 });
