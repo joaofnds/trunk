@@ -233,49 +233,6 @@ describe("ReviewPanel", () => {
 		expect(screen.getByText("note on B")).toBeInTheDocument();
 	});
 
-	it("counts a lone comment and commit in the singular", async () => {
-		installReads({
-			commits: commits.slice(0, 1),
-			comments: [lineAnchoredComment("c1", COMMIT_A, "note on A")],
-			resolutions: [resolvable("c1")],
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(screen.getByText("1 comment · 1 commit")).toBeInTheDocument();
-	});
-
-	it("counts several comments and commits in the plural", async () => {
-		installReads({
-			commits,
-			comments: [
-				lineAnchoredComment("c1", COMMIT_A, "note on A"),
-				commitLevelComment("c2", COMMIT_B, "note on B"),
-			],
-			resolutions: [resolvable("c1"), resolvable("c2")],
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(screen.getByText("2 comments · 2 commits")).toBeInTheDocument();
-	});
-
 	// 260531-l02d: an auto-added snapshot with no comments is noise — hide it. An empty
 	// hand-picked commit stays so its per-commit "Add note" affordance remains.
 	it("hides empty snapshot sections but keeps empty hand-picked sections", async () => {
@@ -543,6 +500,36 @@ describe("ReviewPanel", () => {
 
 			expect(calledCommands()).not.toContain("edit_thread");
 			expect(screen.getByText("original")).toBeInTheDocument();
+		});
+	});
+
+	describe("state change", () => {
+		it("invokes set_thread_state with the id and target state on Mark done", async () => {
+			installReads({
+				commits,
+				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
+				resolutions: [resolvable("c1")],
+			});
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+
+			await fireEvent.click(screen.getByText("Mark done"));
+			await flush();
+
+			expect(calledCommands()).toContain("set_thread_state");
+			expect(callArgs("set_thread_state")).toEqual({
+				path: "/repo",
+				id: "c1",
+				next: "done",
+			});
 		});
 	});
 
@@ -1462,6 +1449,26 @@ describe("empty states", () => {
 // list whenever a review is active; hidden when the repo has none.
 // The middle dot is U+00B7 (literal · character — NOT * or -).
 describe("summary line", () => {
+	it("renders a singular summary line for one comment and one commit", async () => {
+		installReads({
+			commits: commits.slice(0, 1),
+			comments: [lineAnchoredComment("c1", COMMIT_A, "note on A")],
+			resolutions: [resolvable("c1")],
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("1 comment · 1 commit")).toBeInTheDocument();
+	});
+
 	it("renders session summary line when session active", async () => {
 		installReads({
 			commits,

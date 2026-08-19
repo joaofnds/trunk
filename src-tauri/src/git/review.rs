@@ -1364,11 +1364,23 @@ mod tests {
     }
 
     #[test]
-    fn renders_threads_with_states_and_replies() {
+    fn a_commit_level_heading_carries_its_state() {
         let (_dir, repo) = make_repo();
         let b = commit_with_file(&repo, "B", &[], "foo.rs", b"hello\n");
         let mut thread = commit_level_comment("c1", "please review", b);
         thread.state = ThreadState::Addressed;
+        let session = make_session(vec![b.to_string()], vec![thread]);
+
+        let md = render(&session, &repo);
+
+        assert!(md.contains("— addressed"), "got: {md}");
+    }
+
+    #[test]
+    fn replies_render_in_their_stored_order() {
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "foo.rs", b"hello\n");
+        let mut thread = commit_level_comment("c1", "please review", b);
         thread.replies = vec![
             DocReply {
                 text: "HUMAN_REPLY".to_string(),
@@ -1383,11 +1395,6 @@ mod tests {
 
         let md = render(&session, &repo);
 
-        assert!(md.contains("— addressed"), "got: {md}");
-        assert!(md.contains("**Human reply:**"), "got: {md}");
-        assert!(md.contains("HUMAN_REPLY"), "got: {md}");
-        assert!(md.contains("**Agent reply:**"), "got: {md}");
-        assert!(md.contains("AGENT_REPLY"), "got: {md}");
         let human_pos = md.find("HUMAN_REPLY").unwrap();
         let agent_pos = md.find("AGENT_REPLY").unwrap();
         assert!(

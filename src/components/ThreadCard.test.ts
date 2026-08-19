@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import type { ComponentProps } from "svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
@@ -35,8 +36,10 @@ describe("ThreadCard", () => {
 		commit_oid: "abc123",
 	});
 
-	it("keeps the comment body and excerpt code selectable while the gutter stays unselectable", () => {
-		const { container } = render(ThreadCard, {
+	function renderCard(
+		overrides: Partial<ComponentProps<typeof ThreadCard>> = {},
+	) {
+		return render(ThreadCard, {
 			props: {
 				comment,
 				onedit: () => {},
@@ -45,8 +48,13 @@ describe("ThreadCard", () => {
 				onstatechange: () => {},
 				onreplyedit: () => {},
 				ondeletereply: () => {},
+				...overrides,
 			},
 		});
+	}
+
+	it("keeps the comment body and excerpt code selectable while the gutter stays unselectable", () => {
+		const { container } = renderCard();
 
 		expect(screen.getByText(comment.text)).toHaveClass("select-text");
 		expect(screen.getByText("const x = 2;")).toHaveClass("select-text");
@@ -62,17 +70,7 @@ describe("ThreadCard", () => {
 			text: "**bold** body",
 			text_html: "<p><strong>bold</strong> body</p>",
 		};
-		const { container } = render(ThreadCard, {
-			props: {
-				comment: md,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		const { container } = renderCard({ comment: md });
 
 		const body = container.querySelector(".comment-card-text") as HTMLElement;
 		expect(body.querySelector("strong")?.textContent).toBe("bold");
@@ -82,17 +80,7 @@ describe("ThreadCard", () => {
 	});
 
 	it("falls back to raw text when no rendered HTML is present", () => {
-		const { container } = render(ThreadCard, {
-			props: {
-				comment,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		const { container } = renderCard();
 		const body = container.querySelector(".comment-card-text") as HTMLElement;
 		expect(body.tagName).toBe("SPAN");
 		expect(body.textContent).toBe(comment.text);
@@ -111,17 +99,7 @@ describe("ThreadCard", () => {
 			],
 		};
 
-		render(ThreadCard, {
-			props: {
-				comment: withReply,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: withReply });
 
 		expect(screen.getByText("fixed")).toBeInTheDocument();
 		expect(screen.getByText("agent")).toBeInTheDocument();
@@ -134,24 +112,14 @@ describe("ThreadCard", () => {
 		// the gap while it's cheap, ahead of that channel shipping.
 		const agentRoot: Thread = { ...comment, channel: "agent" };
 
-		const { container } = render(ThreadCard, {
-			props: {
-				comment: agentRoot,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		const { container } = renderCard({ comment: agentRoot });
 
 		const chip = container.querySelector(".comment-card-channel");
 		expect(chip).toBeInTheDocument();
 		expect(chip).toHaveTextContent("agent");
 	});
 
-	it("collapses to the last three replies with an expand control, then shows all on click", async () => {
+	it("collapses to the last three replies", () => {
 		const fiveReplies: Thread = {
 			...comment,
 			replies: [1, 2, 3, 4, 5].map((n) =>
@@ -163,23 +131,28 @@ describe("ThreadCard", () => {
 			),
 		};
 
-		render(ThreadCard, {
-			props: {
-				comment: fiveReplies,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: fiveReplies });
 
 		expect(screen.queryByText("reply 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("reply 2")).not.toBeInTheDocument();
 		expect(screen.getByText("reply 3")).toBeInTheDocument();
 		expect(screen.getByText("reply 4")).toBeInTheDocument();
 		expect(screen.getByText("reply 5")).toBeInTheDocument();
+	});
+
+	it("reveals the hidden replies on click", async () => {
+		const fiveReplies: Thread = {
+			...comment,
+			replies: [1, 2, 3, 4, 5].map((n) =>
+				aReply({
+					id: `r${n}`,
+					text: `reply ${n}`,
+					text_html: `<p>reply ${n}</p>`,
+				}),
+			),
+		};
+
+		renderCard({ comment: fiveReplies });
 
 		await fireEvent.click(screen.getByText("Show 2 more replies"));
 
@@ -199,17 +172,7 @@ describe("ThreadCard", () => {
 			),
 		};
 
-		render(ThreadCard, {
-			props: {
-				comment: threeReplies,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: threeReplies });
 
 		expect(screen.getByText("reply 1")).toBeInTheDocument();
 		expect(screen.queryByText(/Show \d+ more/)).not.toBeInTheDocument();
@@ -218,110 +181,87 @@ describe("ThreadCard", () => {
 	it("shows the thread's current state in a chip", () => {
 		const dismissed: Thread = { ...comment, state: "dismissed" };
 
-		render(ThreadCard, {
-			props: {
-				comment: dismissed,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: dismissed });
 
 		expect(screen.getByText("dismissed")).toBeInTheDocument();
 	});
 
-	it("offers done/dismiss for an open thread and calls onstatechange with the target state", async () => {
-		const onstatechange = vi.fn();
-		render(ThreadCard, {
-			props: {
-				comment,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange,
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+	// Edit/Delete render as .card-action too but never vary by state; excluding
+	// them by name (rather than keeping only the labels each row expects)
+	// means a label neither list names still shows up here and fails the
+	// comparison, instead of being silently filtered away.
+	const STATIC_ACTION_LABELS = ["Edit", "Delete"];
 
-		await fireEvent.click(screen.getByText("Mark done"));
-		expect(onstatechange).toHaveBeenCalledWith("c1", "done");
+	it.each([
+		{ state: "open" as const, labels: ["Mark done", "Dismiss"] },
+		{ state: "addressed" as const, labels: ["Mark done", "Dismiss", "Reopen"] },
+		{ state: "done" as const, labels: ["Reopen"] },
+		{ state: "dismissed" as const, labels: ["Reopen"] },
+	])("offers $labels for a $state thread", ({ state, labels }) => {
+		const { container } = renderCard({ comment: { ...comment, state } });
 
-		await fireEvent.click(screen.getByText("Dismiss"));
-		expect(onstatechange).toHaveBeenCalledWith("c1", "dismissed");
+		const actionLabels = Array.from(container.querySelectorAll(".card-action"))
+			.map((b) => b.textContent)
+			.filter((label) => !STATIC_ACTION_LABELS.includes(label ?? ""));
 
-		expect(screen.queryByText("Reopen")).not.toBeInTheDocument();
+		expect(actionLabels).toEqual(labels);
 	});
 
-	it("offers only Reopen for a done thread", async () => {
+	it("calls onstatechange with the target state when Mark done is clicked", async () => {
+		const onstatechange = vi.fn();
+		renderCard({ onstatechange });
+
+		await fireEvent.click(screen.getByText("Mark done"));
+
+		expect(onstatechange).toHaveBeenCalledWith("c1", "done");
+	});
+
+	it("calls onstatechange with the target state when Dismiss is clicked", async () => {
+		const onstatechange = vi.fn();
+		renderCard({ onstatechange });
+
+		await fireEvent.click(screen.getByText("Dismiss"));
+
+		expect(onstatechange).toHaveBeenCalledWith("c1", "dismissed");
+	});
+
+	it("calls onstatechange with the target state when Reopen is clicked", async () => {
 		const done: Thread = { ...comment, state: "done" };
 		const onstatechange = vi.fn();
-		render(ThreadCard, {
-			props: {
-				comment: done,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange,
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
-
-		expect(screen.queryByText("Mark done")).not.toBeInTheDocument();
-		expect(screen.queryByText("Dismiss")).not.toBeInTheDocument();
+		renderCard({ comment: done, onstatechange });
 
 		await fireEvent.click(screen.getByText("Reopen"));
+
 		expect(onstatechange).toHaveBeenCalledWith("c1", "open");
 	});
 
-	it("offers Reopen among the actions for an addressed thread, and never a control that claims addressed", () => {
-		const addressed: Thread = { ...comment, state: "addressed" };
-		render(ThreadCard, {
-			props: {
-				comment: addressed,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+	it("seeds the reply editor with the reply's text", async () => {
+		const humanReply: Thread = {
+			...comment,
+			replies: [aReply({ id: "r1", text: "original", channel: "human" })],
+		};
+		renderCard({ comment: humanReply });
 
-		expect(screen.getByText("Reopen")).toBeInTheDocument();
-		expect(screen.getByText("Mark done")).toBeInTheDocument();
-		expect(screen.getByText("Dismiss")).toBeInTheDocument();
-		const buttonLabels = screen
-			.getAllByRole("button")
-			.map((b) => b.textContent);
-		expect(buttonLabels.some((t) => /address/i.test(t ?? ""))).toBe(false);
+		await fireEvent.click(screen.getByText("Edit reply"));
+
+		const textarea = screen.getByRole("textbox", {
+			name: "Edit reply",
+		}) as HTMLTextAreaElement;
+		expect(textarea.value).toBe("original");
 	});
 
-	it("offers Edit for a human reply and calls onreplyedit with its id and new text", async () => {
+	it("calls onreplyedit with the reply's id and new text", async () => {
 		const humanReply: Thread = {
 			...comment,
 			replies: [aReply({ id: "r1", text: "original", channel: "human" })],
 		};
 		const onreplyedit = vi.fn();
-		render(ThreadCard, {
-			props: {
-				comment: humanReply,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit,
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: humanReply, onreplyedit });
 
 		await fireEvent.click(screen.getByText("Edit reply"));
-		const textarea = screen.getAllByRole("textbox")[0] as HTMLTextAreaElement;
-		expect(textarea.value).toBe("original");
+		const textarea = screen.getByRole("textbox", {
+			name: "Edit reply",
+		}) as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "corrected" } });
 		await fireEvent.click(screen.getByText("Save"));
 
@@ -330,17 +270,7 @@ describe("ThreadCard", () => {
 
 	it("submits the typed reply via onreply and clears the composer", async () => {
 		const onreply = vi.fn();
-		render(ThreadCard, {
-			props: {
-				comment,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply,
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ onreply });
 
 		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "sounds good" } });
@@ -356,17 +286,7 @@ describe("ThreadCard", () => {
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
 
-		render(ThreadCard, {
-			props: {
-				comment: agentReply,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: agentReply });
 
 		expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
 	});
@@ -379,17 +299,7 @@ describe("ThreadCard", () => {
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
 		const ondeletereply = vi.fn();
-		render(ThreadCard, {
-			props: {
-				comment: withReply,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply,
-			},
-		});
+		renderCard({ comment: withReply, ondeletereply });
 
 		await fireEvent.click(screen.getByText("Delete reply"));
 		await flush();
@@ -406,17 +316,7 @@ describe("ThreadCard", () => {
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
 		const ondeletereply = vi.fn();
-		render(ThreadCard, {
-			props: {
-				comment: withReply,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply,
-			},
-		});
+		renderCard({ comment: withReply, ondeletereply });
 
 		await fireEvent.click(screen.getByText("Delete reply"));
 		await flush();
@@ -429,17 +329,7 @@ describe("ThreadCard", () => {
 	// thread or a reply (criterion 12) — offering the control anyway just
 	// buys a round trip to the same refusal, so it's hidden instead.
 	it("offers Delete for an unpublished thread and hides it once the review is published", async () => {
-		const { rerender } = render(ThreadCard, {
-			props: {
-				comment,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		const { rerender } = renderCard();
 
 		expect(screen.getByText("Delete")).toBeInTheDocument();
 
@@ -463,17 +353,7 @@ describe("ThreadCard", () => {
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
 
-		render(ThreadCard, {
-			props: {
-				comment: published,
-				onedit: () => {},
-				ondelete: () => {},
-				onreply: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				ondeletereply: () => {},
-			},
-		});
+		renderCard({ comment: published });
 
 		expect(screen.queryByText("Delete reply")).not.toBeInTheDocument();
 	});

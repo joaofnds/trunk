@@ -327,6 +327,7 @@ async function requestDeleteReply(replyId: string) {
             <textarea
               bind:value={replyDraftText}
               rows="2"
+              aria-label="Edit reply"
               class="card-textarea"
             ></textarea>
             <div class="card-editor-actions">

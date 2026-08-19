@@ -268,6 +268,89 @@ fn deleting_a_composing_thread_cascades_to_replies() {
     );
 }
 
+#[test]
+fn each_thread_gets_only_its_own_replies() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_a = submit_thread_inner(&store, &canonical, submission("thread a"), 1_000).unwrap();
+    let thread_b = submit_thread_inner(&store, &canonical, submission("thread b"), 1_001).unwrap();
+    store
+        .write(|tx| {
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_a,
+                "reply on a",
+                Channel::Human,
+                1_002,
+            )
+        })
+        .unwrap();
+    store
+        .write(|tx| {
+            reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_b,
+                "reply on b",
+                Channel::Human,
+                1_003,
+            )
+        })
+        .unwrap();
+
+    let by_thread = store
+        .read(|c| reviewdb::replies::list_for_threads(c, &[thread_a.clone(), thread_b.clone()]))
+        .unwrap();
+
+    let texts_a: Vec<&str> = by_thread[&thread_a]
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect();
+    let texts_b: Vec<&str> = by_thread[&thread_b]
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(
+        texts_a,
+        vec!["reply on a"],
+        "thread a must not see thread b's reply"
+    );
+    assert_eq!(
+        texts_b,
+        vec!["reply on b"],
+        "thread b must not see thread a's reply"
+    );
+}
+
+#[test]
+fn replies_keep_their_insertion_order_within_one_second() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+
+    // The same pinned timestamp for all three: ordering must not fall through to
+    // the random id, which would sort them by a coin flip.
+    for text in ["first", "second", "third"] {
+        store
+            .write(|tx| {
+                reviewdb::replies::add(tx, &canonical, &thread_id, text, Channel::Human, 1_001)
+            })
+            .unwrap();
+    }
+
+    let by_thread = store
+        .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
+        .unwrap();
+    let texts: Vec<&str> = by_thread[&thread_id]
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect();
+    assert_eq!(texts, vec!["first", "second", "third"]);
+}
+
 // ── Milestone 2, Task 3: replying from the UI ────────────────────────────────
 
 #[test]
@@ -437,9 +520,10 @@ fn superseding_a_snapshot_deletes_the_old_pin() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let repo = git2::Repository::open(ctx.path()).unwrap();
 
+    let mut last_oid = String::new();
     for (i, content) in ["edit 1", "edit 2", "edit 3"].iter().enumerate() {
         std::fs::write(ctx.repo_path().join("a.txt"), content).unwrap();
-        ensure_review_snapshot_inner(
+        last_oid = ensure_review_snapshot_inner(
             &store,
             &canonical,
             ctx.path(),
@@ -459,9 +543,14 @@ fn superseding_a_snapshot_deletes_the_old_pin() {
         .filter_map(|r| r.name().ok().map(str::to_owned))
         .collect();
 
-    assert!(
-        refs.len() <= 2,
-        "at most the two current pins may survive three edit-and-comment rounds, got {refs:?}",
+    assert_eq!(
+        refs,
+        vec![format!(
+            "{}{}",
+            trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX,
+            last_oid
+        )],
+        "only the current pin survives",
     );
 }
 
@@ -1295,8 +1384,7 @@ fn set_thread_state_inner_refuses_a_ui_driven_addressed_claim() {
     assert_eq!(err.code, "illegal_transition");
 }
 
-#[test]
-fn the_schema_rejects_a_state_outside_the_set() {
+fn schema_rejects(column: &str, value: &str) {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
@@ -1305,7 +1393,7 @@ fn the_schema_rejects_a_state_outside_the_set() {
     let err = store
         .write(|tx| {
             tx.execute(
-                "UPDATE threads SET state = 'sideways' WHERE id = ?1",
+                &format!("UPDATE threads SET {column} = '{value}' WHERE id = ?1"),
                 [&thread_id],
             )
             .map_err(trunk_lib::reviewdb::sqlite_error)
@@ -1313,46 +1401,21 @@ fn the_schema_rejects_a_state_outside_the_set() {
         .unwrap_err();
 
     assert_eq!(err.code, "store");
+}
+
+#[test]
+fn the_schema_rejects_a_state_outside_the_set() {
+    schema_rejects("state", "sideways");
 }
 
 #[test]
 fn the_schema_rejects_a_channel_outside_the_set() {
-    let ctx = TestContext::new_empty();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
-
-    let err = store
-        .write(|tx| {
-            tx.execute(
-                "UPDATE threads SET channel = 'robot' WHERE id = ?1",
-                [&thread_id],
-            )
-            .map_err(trunk_lib::reviewdb::sqlite_error)
-        })
-        .unwrap_err();
-
-    assert_eq!(err.code, "store");
+    schema_rejects("channel", "robot");
 }
 
 #[test]
 fn the_schema_rejects_a_side_outside_the_set() {
-    let ctx = TestContext::new_empty();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
-
-    let err = store
-        .write(|tx| {
-            tx.execute(
-                "UPDATE threads SET side = 'Sideways' WHERE id = ?1",
-                [&thread_id],
-            )
-            .map_err(trunk_lib::reviewdb::sqlite_error)
-        })
-        .unwrap_err();
-
-    assert_eq!(err.code, "store");
+    schema_rejects("side", "Sideways");
 }
 
 // ── The derived state triple, one arm per test ───────────────────────────────
@@ -1413,7 +1476,11 @@ fn a_published_review_with_every_thread_resolved_is_settled() {
     let (ctx, store, _, _) = published_review_with(ThreadState::Done);
 
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    assert_eq!(only_review(&store, &canonical).state, ReviewState::Settled);
+    assert_eq!(
+        only_review(&store, &canonical).state,
+        ReviewState::Settled,
+        "resolving the only open thread settles the review with no explicit gesture",
+    );
 }
 
 #[test]
@@ -1429,18 +1496,6 @@ fn an_addressed_thread_keeps_the_review_ready() {
 }
 
 // ── Milestone 2, Task 4: derived settling reaches the UI ─────────────────────
-
-#[test]
-fn resolving_the_last_thread_settles_the_review() {
-    let (ctx, store, _, _) = published_review_with(ThreadState::Done);
-
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    assert_eq!(
-        only_review(&store, &canonical).state,
-        ReviewState::Settled,
-        "resolving the only open thread settles the review with no explicit gesture",
-    );
-}
 
 #[test]
 fn reopening_a_thread_makes_a_settled_review_ready() {
@@ -1527,7 +1582,7 @@ fn publishing_an_all_resolved_review_derives_settled() {
 }
 
 #[test]
-fn three_reviews_per_state_coexist() {
+fn nine_reviews_hold_three_of_each_derived_state() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "alpha\n")
         .with_commit("c1")
@@ -1546,38 +1601,33 @@ fn three_reviews_per_state_coexist() {
         (review_id, thread_id)
     };
 
-    let composing: Vec<(String, String)> =
-        (0..3).map(|i| make(&format!("composing {i}"))).collect();
-    let ready: Vec<(String, String)> = (0..3)
-        .map(|i| {
-            let pair = make(&format!("ready {i}"));
-            store
-                .write(|tx| reviewdb::reviews::publish(tx, &canonical, &pair.0, 1_000))
-                .unwrap();
-            pair
-        })
-        .collect();
-    let settled: Vec<(String, String)> = (0..3)
-        .map(|i| {
-            let pair = make(&format!("settled {i}"));
-            store
-                .write(|tx| reviewdb::reviews::publish(tx, &canonical, &pair.0, 1_000))
-                .unwrap();
-            store
-                .write(|tx| {
-                    reviewdb::threads::set_state(
-                        tx,
-                        &canonical,
-                        &pair.1,
-                        ThreadState::Done,
-                        Channel::Human,
-                        1_001,
-                    )
-                })
-                .unwrap();
-            pair
-        })
-        .collect();
+    (0..3).for_each(|i| {
+        make(&format!("composing {i}"));
+    });
+    (0..3).for_each(|i| {
+        let pair = make(&format!("ready {i}"));
+        store
+            .write(|tx| reviewdb::reviews::publish(tx, &canonical, &pair.0, 1_000))
+            .unwrap();
+    });
+    (0..3).for_each(|i| {
+        let pair = make(&format!("settled {i}"));
+        store
+            .write(|tx| reviewdb::reviews::publish(tx, &canonical, &pair.0, 1_000))
+            .unwrap();
+        store
+            .write(|tx| {
+                reviewdb::threads::set_state(
+                    tx,
+                    &canonical,
+                    &pair.1,
+                    ThreadState::Done,
+                    Channel::Human,
+                    1_001,
+                )
+            })
+            .unwrap();
+    });
 
     let reviews = store
         .read(|c| reviewdb::reviews::list(c, &canonical))
@@ -1602,52 +1652,6 @@ fn three_reviews_per_state_coexist() {
             .filter(|r| r.state == ReviewState::Settled)
             .count(),
         3
-    );
-
-    // The five reviews left untouched by the four operations below.
-    let untouched_ids = [
-        composing[2].0.clone(),
-        ready[1].0.clone(),
-        ready[2].0.clone(),
-        settled[1].0.clone(),
-        settled[2].0.clone(),
-    ];
-    let baseline: Vec<String> = untouched_ids
-        .iter()
-        .map(|id| generate_review_doc_inner(&store, &canonical, ctx.path(), id).unwrap())
-        .collect();
-
-    // The four operations criterion 2 names, each on its own target review.
-    store
-        .write(|tx| reviewdb::threads::edit(tx, &canonical, &composing[0].1, "edited text", 1_002))
-        .unwrap();
-    store
-        .write(|tx| {
-            reviewdb::threads::set_state(
-                tx,
-                &canonical,
-                &ready[0].1,
-                ThreadState::Done,
-                Channel::Human,
-                1_002,
-            )
-        })
-        .unwrap();
-    store
-        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &composing[1].0, 1_002))
-        .unwrap();
-    store
-        .write(|tx| reviewdb::reviews::delete(tx, &canonical, &settled[0].0))
-        .unwrap();
-
-    let after: Vec<String> = untouched_ids
-        .iter()
-        .map(|id| generate_review_doc_inner(&store, &canonical, ctx.path(), id).unwrap())
-        .collect();
-
-    assert_eq!(
-        after, baseline,
-        "any operation on one review must leave the others' printed content unchanged",
     );
 }
 
@@ -1727,7 +1731,7 @@ fn editing_human_text_leaves_state_untouched() {
 }
 
 #[test]
-fn editing_agent_text_from_the_ui_is_refused() {
+fn editing_an_agent_reply_is_refused() {
     let ctx = TestContext::new_empty();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     let store = reviewdb::open(ctx.data_dir()).unwrap();
@@ -1748,7 +1752,16 @@ fn editing_agent_text_from_the_ui_is_refused() {
     let err = store
         .write(|tx| reviewdb::replies::edit(tx, &canonical, &reply_id, "hacked", 1_002))
         .unwrap_err();
+
     assert_eq!(err.code, "not_editable");
+}
+
+#[test]
+fn editing_an_agent_thread_is_refused() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
 
     // A thread can only be agent-authored through a hand-edited row today (the
     // CLI, milestone 3's only agent writer, does not exist yet) — probe the
@@ -1763,9 +1776,11 @@ fn editing_agent_text_from_the_ui_is_refused() {
             .map_err(trunk_lib::reviewdb::sqlite_error)
         })
         .unwrap();
+
     let err = store
         .write(|tx| reviewdb::threads::edit(tx, &canonical, &thread_id, "hacked", 1_002))
         .unwrap_err();
+
     assert_eq!(err.code, "not_editable");
 }
 

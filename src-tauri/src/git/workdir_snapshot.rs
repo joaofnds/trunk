@@ -225,29 +225,53 @@ mod tests {
     // C3: keep_snapshot_ref pins the snapshot under refs/trunk/review-snapshots/ so gc
     // can't prune it; it is idempotent; prune_snapshot_ref removes one specific pin.
     #[test]
-    fn keepalive_ref_pins_snapshot_then_is_pruned() {
+    fn keepalive_ref_pins_the_snapshot_commit() {
         let (dir, repo) = repo_with_initial_commit();
         fs::write(dir.path().join("new.txt"), b"uncommitted\n").unwrap();
         let oid = snapshot_working_tree(&repo).unwrap();
 
         keep_snapshot_ref(&repo, oid).unwrap();
+
         let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
         assert_eq!(
             repo.find_reference(&name).unwrap().target().unwrap(),
             oid,
             "keepalive ref must point at the snapshot commit"
         );
+    }
 
-        // Idempotent: re-pinning a reused snapshot must not error.
+    #[test]
+    fn re_pinning_a_reused_snapshot_is_idempotent() {
+        let (dir, repo) = repo_with_initial_commit();
+        fs::write(dir.path().join("new.txt"), b"uncommitted\n").unwrap();
+        let oid = snapshot_working_tree(&repo).unwrap();
         keep_snapshot_ref(&repo, oid).unwrap();
 
+        keep_snapshot_ref(&repo, oid).unwrap();
+    }
+
+    #[test]
+    fn pruning_removes_the_keepalive_ref() {
+        let (dir, repo) = repo_with_initial_commit();
+        fs::write(dir.path().join("new.txt"), b"uncommitted\n").unwrap();
+        let oid = snapshot_working_tree(&repo).unwrap();
+        keep_snapshot_ref(&repo, oid).unwrap();
+        let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
+
         prune_snapshot_ref(&repo, oid).unwrap();
+
         assert!(
             repo.find_reference(&name).is_err(),
             "prune_snapshot_ref must remove the keepalive ref"
         );
+    }
 
-        // Idempotent: pruning an already-pruned (or never-pinned) oid must not error.
+    #[test]
+    fn pruning_an_unpinned_oid_is_idempotent() {
+        let (dir, repo) = repo_with_initial_commit();
+        fs::write(dir.path().join("new.txt"), b"uncommitted\n").unwrap();
+        let oid = snapshot_working_tree(&repo).unwrap();
+
         prune_snapshot_ref(&repo, oid).unwrap();
     }
 
