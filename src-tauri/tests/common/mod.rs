@@ -8,3 +8,5 @@ pub mod context;
 pub mod drivers;
 pub mod exports;
 pub mod goldens;
+pub mod graph_shapes;
+pub mod rule_inputs;

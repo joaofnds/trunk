@@ -1,0 +1,120 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "0331552574a72c7dfa153761ce90ce4e5d5e0c3c",
+      "7e7cf478f747701e0a85d3a0e128379ac2d97e13",
+      "4aa287e3131c648bef458acc478101163f8617e4",
+      "e18e618c5e04f5f2ede6db049c71dc0d191c2459",
+      "becf1f928708c388bf4f69d76574f2131a2bdbe1",
+      "4ed2e549956681553545d760abda87528c100d40",
+      "40fe452c39377b89487f8353f3ec02e9900f54d4"
+    ],
+    "parents": {
+      "0331552574a72c7dfa153761ce90ce4e5d5e0c3c": [
+        "4aa287e3131c648bef458acc478101163f8617e4"
+      ],
+      "40fe452c39377b89487f8353f3ec02e9900f54d4": [],
+      "4aa287e3131c648bef458acc478101163f8617e4": [
+        "e18e618c5e04f5f2ede6db049c71dc0d191c2459"
+      ],
+      "4ed2e549956681553545d760abda87528c100d40": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ],
+      "7e7cf478f747701e0a85d3a0e128379ac2d97e13": [
+        "4aa287e3131c648bef458acc478101163f8617e4"
+      ],
+      "becf1f928708c388bf4f69d76574f2131a2bdbe1": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ],
+      "e18e618c5e04f5f2ede6db049c71dc0d191c2459": [
+        "4ed2e549956681553545d760abda87528c100d40",
+        "becf1f928708c388bf4f69d76574f2131a2bdbe1"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "0331552574a72c7dfa153761ce90ce4e5d5e0c3c",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "0331552574a72c7dfa153761ce90ce4e5d5e0c3c": {
+        "summary": "Main-3",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 7000
+      },
+      "40fe452c39377b89487f8353f3ec02e9900f54d4": {
+        "summary": "Root",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1000
+      },
+      "4aa287e3131c648bef458acc478101163f8617e4": {
+        "summary": "Main-2",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 5000
+      },
+      "4ed2e549956681553545d760abda87528c100d40": {
+        "summary": "Main-1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 2000
+      },
+      "7e7cf478f747701e0a85d3a0e128379ac2d97e13": {
+        "summary": "BranchB",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 6000
+      },
+      "becf1f928708c388bf4f69d76574f2131a2bdbe1": {
+        "summary": "BranchA",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 3000
+      },
+      "e18e618c5e04f5f2ede6db049c71dc0d191c2459": {
+        "summary": "Merge-A",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 4000
+      }
+    },
+    "refs": {
+      "0331552574a72c7dfa153761ce90ce4e5d5e0c3c": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "7e7cf478f747701e0a85d3a0e128379ac2d97e13": [
+        {
+          "name": "refs/heads/branch-b",
+          "short_name": "branch-b",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "becf1f928708c388bf4f69d76574f2131a2bdbe1": [
+        {
+          "name": "refs/heads/branch-a",
+          "short_name": "branch-a",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

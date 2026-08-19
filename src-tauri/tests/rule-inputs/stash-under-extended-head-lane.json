@@ -1,0 +1,111 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "dcfcfbfe046ecae8b4653194dc0319316c2a92b0",
+      "396103f60665c4f9817bb1b48245000e30cb7deb",
+      "9e5f814c430b63421978a0326722f2dd85094cfe",
+      "1a63b22a61ca9a874228d13bc7141fd48f9a46c7",
+      "a30d188ca76b657370bd9b332acb48bbf6e23cf9",
+      "42437f1965f208d33cf3a8bb7de80bb6f5f34a43"
+    ],
+    "parents": {
+      "1a63b22a61ca9a874228d13bc7141fd48f9a46c7": [
+        "a30d188ca76b657370bd9b332acb48bbf6e23cf9"
+      ],
+      "396103f60665c4f9817bb1b48245000e30cb7deb": [
+        "9e5f814c430b63421978a0326722f2dd85094cfe"
+      ],
+      "42437f1965f208d33cf3a8bb7de80bb6f5f34a43": [],
+      "9e5f814c430b63421978a0326722f2dd85094cfe": [
+        "1a63b22a61ca9a874228d13bc7141fd48f9a46c7"
+      ],
+      "a30d188ca76b657370bd9b332acb48bbf6e23cf9": [
+        "42437f1965f208d33cf3a8bb7de80bb6f5f34a43"
+      ],
+      "dcfcfbfe046ecae8b4653194dc0319316c2a92b0": [
+        "a30d188ca76b657370bd9b332acb48bbf6e23cf9",
+        "3db592aa5371b8054c322e3418c24a9823fddde8"
+      ]
+    },
+    "stashes": [
+      "dcfcfbfe046ecae8b4653194dc0319316c2a92b0"
+    ],
+    "head_tip": "a30d188ca76b657370bd9b332acb48bbf6e23cf9",
+    "tracked_upstream": "396103f60665c4f9817bb1b48245000e30cb7deb",
+    "worktree_dirty": false,
+    "commits": {
+      "1a63b22a61ca9a874228d13bc7141fd48f9a46c7": {
+        "summary": "up3",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 3000
+      },
+      "396103f60665c4f9817bb1b48245000e30cb7deb": {
+        "summary": "up5",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 5000
+      },
+      "42437f1965f208d33cf3a8bb7de80bb6f5f34a43": {
+        "summary": "base1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1000
+      },
+      "9e5f814c430b63421978a0326722f2dd85094cfe": {
+        "summary": "up4",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 4000
+      },
+      "a30d188ca76b657370bd9b332acb48bbf6e23cf9": {
+        "summary": "base2",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 2000
+      },
+      "dcfcfbfe046ecae8b4653194dc0319316c2a92b0": {
+        "summary": "On main: half-finished",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 9000
+      }
+    },
+    "refs": {
+      "396103f60665c4f9817bb1b48245000e30cb7deb": [
+        {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "a30d188ca76b657370bd9b332acb48bbf6e23cf9": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "dcfcfbfe046ecae8b4653194dc0319316c2a92b0": [
+        {
+          "name": "On main: half-finished",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

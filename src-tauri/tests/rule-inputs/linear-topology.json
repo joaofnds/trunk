@@ -1,0 +1,57 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "3bf5115cd21c041c0a0049c566fcbac780432b15",
+      "c49a6bad1842846f10721c53dcd11938c88ca41a",
+      "723e9262c83269320f61121a1f18ab1a2bbfb4a6"
+    ],
+    "parents": {
+      "3bf5115cd21c041c0a0049c566fcbac780432b15": [
+        "c49a6bad1842846f10721c53dcd11938c88ca41a"
+      ],
+      "723e9262c83269320f61121a1f18ab1a2bbfb4a6": [],
+      "c49a6bad1842846f10721c53dcd11938c88ca41a": [
+        "723e9262c83269320f61121a1f18ab1a2bbfb4a6"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "3bf5115cd21c041c0a0049c566fcbac780432b15",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "3bf5115cd21c041c0a0049c566fcbac780432b15": {
+        "summary": "C2",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767398400
+      },
+      "723e9262c83269320f61121a1f18ab1a2bbfb4a6": {
+        "summary": "C0",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767225600
+      },
+      "c49a6bad1842846f10721c53dcd11938c88ca41a": {
+        "summary": "C1",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "3bf5115cd21c041c0a0049c566fcbac780432b15": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

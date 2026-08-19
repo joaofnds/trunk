@@ -1,6 +1,12 @@
 mod common;
 
 use common::context::TestContext;
+use common::graph_shapes::{
+    backdated_stash_repo, behind_upstream_repo, checkout_main, context_at, identity, raw_commit,
+    sig_at, stash_on_tip_with_ignore_repo, tagged_stash_repo, topic_and_stash_repo,
+    track_origin_main, two_backdated_stashes_repo,
+};
+use common::rule_inputs;
 use trunk_lib::git::graph::walk_commits;
 use trunk_lib::git::types::EdgeType;
 
@@ -19,128 +25,14 @@ fn make_merge_test_ctx() -> TestContext {
         .build()
 }
 
-/// Helper: create a repo with 300 linear commits.
-fn make_large_test_ctx() -> TestContext {
-    let mut builder = TestContext::builder();
-    for i in 0..300 {
-        builder.with_file(&format!("file{}.txt", i), &format!("content {}", i));
-        builder.with_commit(&format!("Commit {}", i));
-    }
-    builder.build()
-}
-
-/// Helper: create repo with root -> C1 on main, root -> F1 on feature, merge M.
-fn make_merge_repo_ctx() -> TestContext {
-    let dir = tempfile::tempdir().unwrap();
-    {
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-        drop(cfg);
-        let sig = git2::Signature::now("T", "t@t.com").unwrap();
-
-        let c0 = raw_commit_in(&repo, &sig, "refs/heads/main", "C0", "f0.txt", "f0", &[]);
-        let c0_commit = repo.find_commit(c0).unwrap();
-        let c1 = raw_commit_in(
-            &repo,
-            &sig,
-            "refs/heads/main",
-            "C1",
-            "f1.txt",
-            "f1",
-            &[&c0_commit],
-        );
-        let f1 = raw_commit_in(
-            &repo,
-            &sig,
-            "refs/heads/feature",
-            "F1",
-            "feat.txt",
-            "feat",
-            &[&c0_commit],
-        );
-
-        // M (merge on main: parents C1 + F1)
-        let c1_commit = repo.find_commit(c1).unwrap();
-        let f1_commit = repo.find_commit(f1).unwrap();
-        raw_commit_in(
-            &repo,
-            &sig,
-            "refs/heads/main",
-            "M",
-            "merge.txt",
-            "merge",
-            &[&c1_commit, &f1_commit],
-        );
-        repo.set_head("refs/heads/main").unwrap();
-    }
-
-    let path = dir.path().display().to_string();
-    let mut state_map = std::collections::HashMap::new();
-    state_map.insert(path.clone(), dir.path().to_path_buf());
-    common::context::TestContext::from_parts(dir, path, state_map)
-}
-
-/// Helper: create a commit in a repo, dropping borrows promptly.
-fn raw_commit_in(
-    repo: &git2::Repository,
-    sig: &git2::Signature,
-    refname: &str,
-    msg: &str,
-    file: &str,
-    content: &str,
-    parents: &[&git2::Commit],
-) -> git2::Oid {
-    let dir = repo.workdir().unwrap();
-    std::fs::write(dir.join(file), content).unwrap();
-    let mut idx = repo.index().unwrap();
-    idx.add_path(std::path::Path::new(file)).unwrap();
-    idx.write().unwrap();
-    let tree_oid = idx.write_tree().unwrap();
-    let tree = repo.find_tree(tree_oid).unwrap();
-
-    repo.commit(Some(refname), sig, sig, msg, &tree, parents)
-        .unwrap()
-}
-
-/// Helper: create a commit in a raw repo. Returns the new commit OID.
-fn raw_commit(
-    repo: &git2::Repository,
-    sig: &git2::Signature,
-    refname: &str,
-    msg: &str,
-    file: &str,
-    content: &str,
-    parents: &[&git2::Commit],
-) -> git2::Oid {
-    let dir = repo.workdir().unwrap();
-    std::fs::write(dir.join(file), content).unwrap();
-    let mut idx = repo.index().unwrap();
-    idx.add_path(std::path::Path::new(file)).unwrap();
-    idx.write().unwrap();
-    let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-    repo.commit(Some(refname), sig, sig, msg, &tree, parents)
-        .unwrap()
-}
-
 // ============================================================
 // Tests
 // ============================================================
 
 #[test]
 fn linear_topology() {
-    let ctx = TestContext::builder()
-        .with_file("f0.txt", "f0")
-        .with_commit("C0")
-        .with_file("f1.txt", "f1")
-        .with_commit("C1")
-        .with_file("f2.txt", "f2")
-        .with_commit("C2")
-        .build();
+    let commits = rule_inputs::commits("linear-topology");
 
-    let mut repo = ctx.repo();
-    let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
     assert_eq!(commits.len(), 3);
     for c in &commits {
         assert_eq!(c.column, 0, "expected all commits at column 0");
@@ -185,10 +77,29 @@ fn linear_topology() {
 }
 
 #[test]
+fn walk_first_batch() {
+    let commits = rule_inputs::walk("linear-300-commits", 0, 200).commits;
+
+    assert_eq!(commits.len(), 200);
+}
+
+#[test]
+fn walk_second_batch() {
+    let first = rule_inputs::walk("linear-300-commits", 0, 200).commits;
+    let second = rule_inputs::walk("linear-300-commits", 200, 200).commits;
+
+    assert!(!second.is_empty(), "second batch should not be empty");
+    assert!(second.len() <= 200);
+    assert_ne!(
+        first[0].oid, second[0].oid,
+        "first OID of batch 1 and batch 2 should differ"
+    );
+}
+
+#[test]
 fn merge_commit_edges() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+    let commits = rule_inputs::commits("merge-feature");
+
     let merge = commits
         .iter()
         .find(|c| c.is_merge)
@@ -205,9 +116,8 @@ fn merge_commit_edges() {
 
 #[test]
 fn is_merge_flag() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+    let commits = rule_inputs::commits("merge-feature");
+
     let merge_count = commits.iter().filter(|c| c.is_merge).count();
     let non_merge_count = commits.iter().filter(|c| !c.is_merge).count();
     assert_eq!(merge_count, 1, "expected exactly 1 merge commit");
@@ -215,32 +125,9 @@ fn is_merge_flag() {
 }
 
 #[test]
-fn walk_first_batch() {
-    let ctx = make_large_test_ctx();
-    let mut repo = ctx.repo();
-    let commits = walk_commits(&mut repo, 0, 200).unwrap().commits;
-    assert_eq!(commits.len(), 200);
-}
-
-#[test]
-fn walk_second_batch() {
-    let ctx = make_large_test_ctx();
-    let mut repo = ctx.repo();
-    let first = walk_commits(&mut repo, 0, 200).unwrap().commits;
-    let second = walk_commits(&mut repo, 200, 200).unwrap().commits;
-    assert!(!second.is_empty(), "second batch should not be empty");
-    assert!(second.len() <= 200);
-    assert_ne!(
-        first[0].oid, second[0].oid,
-        "first OID of batch 1 and batch 2 should differ"
-    );
-}
-
-#[test]
 fn merge_has_first_parent_straight() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+    let commits = rule_inputs::commits("merge-feature");
+
     let merge = commits
         .iter()
         .find(|c| c.is_merge)
@@ -256,67 +143,140 @@ fn merge_has_first_parent_straight() {
 }
 
 #[test]
+fn no_ghost_lanes_after_merge() {
+    let commits = rule_inputs::commits("merge-two-parents");
+
+    let feature_col = row(&commits, "F1").column;
+    let c0 = row(&commits, "C0");
+    let ghost_c0 = c0.edges.iter().any(|e| {
+        e.from_column == feature_col
+            && e.to_column == feature_col
+            && matches!(e.edge_type, EdgeType::Straight)
+    });
+    assert!(
+        !ghost_c0,
+        "ghost lane detected at column {} on commit C0, edges: {:?}",
+        feature_col, c0.edges
+    );
+    assert!(
+        feature_col > 0,
+        "feature branch F1 should be at column > 0, got {feature_col}"
+    );
+}
+
+#[test]
+fn no_ghost_lanes_criss_cross() {
+    let commits = rule_inputs::commits("criss-cross-merge");
+
+    let b1_col = row(&commits, "B1").column;
+    let root_found = row(&commits, "Root");
+    let ghost = root_found.edges.iter().any(|e| {
+        e.from_column == b1_col
+            && e.to_column == b1_col
+            && matches!(e.edge_type, EdgeType::Straight)
+    });
+    assert!(
+        !ghost,
+        "ghost lane detected at column {} on Root, edges: {:?}",
+        b1_col, root_found.edges
+    );
+}
+
+#[test]
+fn octopus_merge_compact() {
+    let result = rule_inputs::walk("octopus-three-branches", 0, usize::MAX);
+
+    assert!(
+        result.max_columns <= 5,
+        "octopus merge max_columns {} exceeds 5",
+        result.max_columns
+    );
+}
+
+#[test]
+fn octopus_no_column_zero_theft() {
+    let commits = rule_inputs::commits("octopus-two-branches");
+
+    let octopus = row(&commits, "Octopus");
+    for parent_oid_str in octopus.parent_oids.iter().skip(1) {
+        let parent = commits.iter().find(|c| &c.oid == parent_oid_str);
+        if let Some(p) = parent {
+            assert_ne!(
+                p.column, 0,
+                "secondary parent {} at column 0 (column 0 theft)",
+                p.summary
+            );
+        }
+    }
+}
+
+#[test]
+fn consistent_max_columns() {
+    let result = rule_inputs::walk("merge-feature", 0, usize::MAX);
+
+    assert!(result.max_columns > 0, "max_columns should be > 0");
+    for commit in &result.commits {
+        assert!(
+            commit.column < result.max_columns,
+            "commit {} at column {} >= max_columns {}",
+            commit.short_oid,
+            commit.column,
+            result.max_columns
+        );
+    }
+}
+
+#[test]
+fn color_index_deterministic() {
+    let result1 = rule_inputs::walk("merge-feature", 0, usize::MAX);
+    let result2 = rule_inputs::walk("merge-feature", 0, usize::MAX);
+
+    assert_eq!(result1.commits.len(), result2.commits.len());
+    for (c1, c2) in result1.commits.iter().zip(result2.commits.iter()) {
+        assert_eq!(
+            c1.color_index, c2.color_index,
+            "color_index mismatch for commit {}: {} vs {}",
+            c1.short_oid, c1.color_index, c2.color_index
+        );
+        assert_eq!(c1.edges.len(), c2.edges.len());
+        for (e1, e2) in c1.edges.iter().zip(c2.edges.iter()) {
+            assert_eq!(
+                e1.color_index, e2.color_index,
+                "edge color_index mismatch on commit {}: {} vs {}",
+                c1.short_oid, e1.color_index, e2.color_index
+            );
+        }
+    }
+}
+
+#[test]
+fn color_index_head_zero() {
+    let commits = rule_inputs::commits("merge-feature");
+
+    let head = commits.iter().find(|c| c.is_head).expect("no HEAD commit");
+    assert_eq!(
+        head.color_index, 0,
+        "HEAD commit should have color_index 0, got {}",
+        head.color_index
+    );
+
+    for c in commits.iter().filter(|c| c.column == 0 && c.in_head_chain) {
+        assert_eq!(
+            c.color_index, 0,
+            "HEAD chain commit {} (col 0) should have color_index 0, got {}",
+            c.short_oid, c.color_index
+        );
+    }
+}
+
+#[test]
 fn branch_fork_topology() {
-    // main has C0->C1->C2, topic diverges from C1 with B0
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("user.name", "T").unwrap();
-    cfg.set_str("user.email", "t@t.com").unwrap();
-    drop(cfg);
-    let sig = git2::Signature::now("T", "t@t.com").unwrap();
+    let commits = rule_inputs::commits("branch-fork");
 
-    let c0 = raw_commit(&repo, &sig, "refs/heads/main", "C0", "f0.txt", "f0", &[]);
-    let c0c = repo.find_commit(c0).unwrap();
-    let c1 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "C1",
-        "f1.txt",
-        "f1",
-        &[&c0c],
-    );
-    let c1c = repo.find_commit(c1).unwrap();
-    let _c2 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "C2",
-        "f2.txt",
-        "f2",
-        &[&c1c],
-    );
-    repo.set_head("refs/heads/main").unwrap();
-    let _b0 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/topic",
-        "B0",
-        "b0.txt",
-        "b0",
-        &[&c1c],
-    );
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
-
-    let c2 = commits
-        .iter()
-        .find(|c| c.summary == "C2")
-        .expect("C2 not found");
-    let c1f = commits
-        .iter()
-        .find(|c| c.summary == "C1")
-        .expect("C1 not found");
-    let c0f = commits
-        .iter()
-        .find(|c| c.summary == "C0")
-        .expect("C0 not found");
-    let b0 = commits
-        .iter()
-        .find(|c| c.summary == "B0")
-        .expect("B0 not found");
+    let c2 = row(&commits, "C2");
+    let c1f = row(&commits, "C1");
+    let c0f = row(&commits, "C0");
+    let b0 = row(&commits, "B0");
 
     assert_eq!(c2.column, 0, "C2 (HEAD) should be at column 0");
     assert_eq!(c1f.column, 0, "C1 should be at column 0");
@@ -361,326 +321,10 @@ fn branch_fork_topology() {
 }
 
 #[test]
-fn no_ghost_lanes_after_merge() {
-    let ctx = make_merge_repo_ctx();
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let f1 = commits
-        .iter()
-        .find(|c| c.summary == "F1")
-        .expect("F1 not found");
-    let feature_col = f1.column;
-
-    let c0 = commits
-        .iter()
-        .find(|c| c.summary == "C0")
-        .expect("C0 not found");
-    let ghost_c0 = c0.edges.iter().any(|e| {
-        e.from_column == feature_col
-            && e.to_column == feature_col
-            && matches!(e.edge_type, EdgeType::Straight)
-    });
-    assert!(
-        !ghost_c0,
-        "ghost lane detected at column {} on commit C0, edges: {:?}",
-        feature_col, c0.edges
-    );
-    assert!(
-        feature_col > 0,
-        "feature branch F1 should be at column > 0, got {}",
-        feature_col
-    );
-}
-
-#[test]
-fn no_ghost_lanes_criss_cross() {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("user.name", "T").unwrap();
-    cfg.set_str("user.email", "t@t.com").unwrap();
-    drop(cfg);
-    // Spaced a second apart: same-second commits sort arbitrarily under
-    // TOPOLOGICAL | TIME, and this test asserts an ordering-sensitive layout.
-    let sig = sig_at(1000);
-
-    let root = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Root",
-        "root.txt",
-        "root",
-        &[],
-    );
-    let root_c = repo.find_commit(root).unwrap();
-    let a1 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "A1",
-        "a1.txt",
-        "a1",
-        &[&root_c],
-    );
-    let a1_c = repo.find_commit(a1).unwrap();
-    let b1 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-b",
-        "B1",
-        "b1.txt",
-        "b1",
-        &[&root_c],
-    );
-    let b1_c = repo.find_commit(b1).unwrap();
-
-    // Merge-AB on main
-    std::fs::write(dir.path().join("merge_ab.txt"), "merge_ab").unwrap();
-    let mut idx = repo.index().unwrap();
-    idx.add_path(std::path::Path::new("merge_ab.txt")).unwrap();
-    idx.write().unwrap();
-    let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-    repo.commit(
-        Some("refs/heads/main"),
-        &sig,
-        &sig,
-        "Merge-AB",
-        &tree,
-        &[&a1_c, &b1_c],
-    )
-    .unwrap();
-    repo.set_head("refs/heads/main").unwrap();
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let b1_found = commits
-        .iter()
-        .find(|c| c.summary == "B1")
-        .expect("B1 not found");
-    let b1_col = b1_found.column;
-
-    let root_found = commits
-        .iter()
-        .find(|c| c.summary == "Root")
-        .expect("Root not found");
-    let ghost = root_found.edges.iter().any(|e| {
-        e.from_column == b1_col
-            && e.to_column == b1_col
-            && matches!(e.edge_type, EdgeType::Straight)
-    });
-    assert!(
-        !ghost,
-        "ghost lane detected at column {} on Root, edges: {:?}",
-        b1_col, root_found.edges
-    );
-}
-
-#[test]
-fn octopus_merge_compact() {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("user.name", "T").unwrap();
-    cfg.set_str("user.email", "t@t.com").unwrap();
-    drop(cfg);
-    let sig = git2::Signature::now("T", "t@t.com").unwrap();
-
-    let root = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Root",
-        "root.txt",
-        "root",
-        &[],
-    );
-    let root_c = repo.find_commit(root).unwrap();
-    let main1 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Main-1",
-        "main1.txt",
-        "main1",
-        &[&root_c],
-    );
-    let main1_c = repo.find_commit(main1).unwrap();
-    let ba = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-a",
-        "BA",
-        "a.txt",
-        "a",
-        &[&root_c],
-    );
-    let ba_c = repo.find_commit(ba).unwrap();
-    let bb = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-b",
-        "BB",
-        "b.txt",
-        "b",
-        &[&root_c],
-    );
-    let bb_c = repo.find_commit(bb).unwrap();
-    let bc = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-c",
-        "BC",
-        "c.txt",
-        "c",
-        &[&root_c],
-    );
-    let bc_c = repo.find_commit(bc).unwrap();
-
-    // Octopus merge
-    std::fs::write(dir.path().join("octopus.txt"), "octopus").unwrap();
-    let mut idx = repo.index().unwrap();
-    idx.add_path(std::path::Path::new("octopus.txt")).unwrap();
-    idx.write().unwrap();
-    let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-    repo.commit(
-        Some("refs/heads/main"),
-        &sig,
-        &sig,
-        "Octopus",
-        &tree,
-        &[&main1_c, &ba_c, &bb_c, &bc_c],
-    )
-    .unwrap();
-    repo.set_head("refs/heads/main").unwrap();
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    assert!(
-        result.max_columns <= 5,
-        "octopus merge max_columns {} exceeds 5",
-        result.max_columns
-    );
-}
-
-#[test]
-fn octopus_no_column_zero_theft() {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("user.name", "T").unwrap();
-    cfg.set_str("user.email", "t@t.com").unwrap();
-    drop(cfg);
-    let sig = git2::Signature::now("T", "t@t.com").unwrap();
-
-    let root = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Root",
-        "root.txt",
-        "root",
-        &[],
-    );
-    let root_c = repo.find_commit(root).unwrap();
-    let main1 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Main-1",
-        "main1.txt",
-        "main1",
-        &[&root_c],
-    );
-    let main1_c = repo.find_commit(main1).unwrap();
-    let ba = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-a",
-        "BA",
-        "a.txt",
-        "a",
-        &[&root_c],
-    );
-    let ba_c = repo.find_commit(ba).unwrap();
-    let bb = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-b",
-        "BB",
-        "b.txt",
-        "b",
-        &[&root_c],
-    );
-    let bb_c = repo.find_commit(bb).unwrap();
-
-    // Octopus merge (3 parents)
-    std::fs::write(dir.path().join("octopus.txt"), "octopus").unwrap();
-    let mut idx = repo.index().unwrap();
-    idx.add_path(std::path::Path::new("octopus.txt")).unwrap();
-    idx.write().unwrap();
-    let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-    repo.commit(
-        Some("refs/heads/main"),
-        &sig,
-        &sig,
-        "Octopus",
-        &tree,
-        &[&main1_c, &ba_c, &bb_c],
-    )
-    .unwrap();
-    repo.set_head("refs/heads/main").unwrap();
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let octopus = commits
-        .iter()
-        .find(|c| c.summary == "Octopus")
-        .expect("Octopus not found");
-    for parent_oid_str in octopus.parent_oids.iter().skip(1) {
-        let parent = commits.iter().find(|c| &c.oid == parent_oid_str);
-        if let Some(p) = parent {
-            assert_ne!(
-                p.column, 0,
-                "secondary parent {} at column 0 (column 0 theft)",
-                p.summary
-            );
-        }
-    }
-}
-
-#[test]
-fn consistent_max_columns() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-
-    assert!(result.max_columns > 0, "max_columns should be > 0");
-    for commit in &result.commits {
-        assert!(
-            commit.column < result.max_columns,
-            "commit {} at column {} >= max_columns {}",
-            commit.short_oid,
-            commit.column,
-            result.max_columns
-        );
-    }
-}
-
-#[test]
 fn max_columns_pagination() {
-    let ctx = make_large_test_ctx();
-    let mut repo = ctx.repo();
-
-    let full = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let page1 = walk_commits(&mut repo, 0, 100).unwrap();
-    let page2 = walk_commits(&mut repo, 100, 100).unwrap();
+    let full = rule_inputs::walk("linear-300-commits", 0, usize::MAX);
+    let page1 = rule_inputs::walk("linear-300-commits", 0, 100);
+    let page2 = rule_inputs::walk("linear-300-commits", 100, 100);
 
     assert_eq!(
         full.max_columns, page1.max_columns,
@@ -696,109 +340,10 @@ fn max_columns_pagination() {
 
 #[test]
 fn freed_column_reuse() {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("user.name", "T").unwrap();
-    cfg.set_str("user.email", "t@t.com").unwrap();
-    drop(cfg);
-    let sig = git2::Signature::now("T", "t@t.com").unwrap();
+    let commits = rule_inputs::commits("freed-column-reuse");
 
-    let root = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Root",
-        "root.txt",
-        "root",
-        &[],
-    );
-    let root_c = repo.find_commit(root).unwrap();
-    let main1 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Main-1",
-        "main1.txt",
-        "main1",
-        &[&root_c],
-    );
-    let main1_c = repo.find_commit(main1).unwrap();
-    let ba = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/branch-a",
-        "BranchA",
-        "a.txt",
-        "a",
-        &[&root_c],
-    );
-    let ba_c = repo.find_commit(ba).unwrap();
-
-    // Merge-A
-    std::fs::write(dir.path().join("merge_a.txt"), "merge_a").unwrap();
-    let mut idx = repo.index().unwrap();
-    idx.add_path(std::path::Path::new("merge_a.txt")).unwrap();
-    idx.write().unwrap();
-    let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-    let merge_a = repo
-        .commit(
-            Some("refs/heads/main"),
-            &sig,
-            &sig,
-            "Merge-A",
-            &tree,
-            &[&main1_c, &ba_c],
-        )
-        .unwrap();
-    let merge_a_c = repo.find_commit(merge_a).unwrap();
-
-    let main2 = raw_commit(
-        &repo,
-        &sig,
-        "refs/heads/main",
-        "Main-2",
-        "main2.txt",
-        "main2",
-        &[&merge_a_c],
-    );
-    let main2_c = repo.find_commit(main2).unwrap();
-    let bb = raw_commit(
-        &repo,
-        &sig_at(2000),
-        "refs/heads/branch-b",
-        "BranchB",
-        "b.txt",
-        "b",
-        &[&main2_c],
-    );
-    let _bb = bb;
-    // Main-3 keeps BranchB off HEAD's tip. A branch sitting directly on the tip is a
-    // linear continuation of it and takes the HEAD lane, which would leave this test
-    // with no branch to place at all.
-    raw_commit(
-        &repo,
-        &sig_at(3000),
-        "refs/heads/main",
-        "Main-3",
-        "main3.txt",
-        "main3",
-        &[&main2_c],
-    );
-    repo.set_head("refs/heads/main").unwrap();
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let branch_a = commits
-        .iter()
-        .find(|c| c.summary == "BranchA")
-        .expect("BranchA not found");
-    let branch_b = commits
-        .iter()
-        .find(|c| c.summary == "BranchB")
-        .expect("BranchB not found");
+    let branch_a = row(&commits, "BranchA");
+    let branch_b = row(&commits, "BranchB");
 
     assert!(branch_a.column > 0, "BranchA should be at column > 0");
     assert!(branch_b.column > 0, "BranchB should be at column > 0");
@@ -810,92 +355,8 @@ fn freed_column_reuse() {
 }
 
 #[test]
-fn color_index_deterministic() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let result1 = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let result2 = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-
-    assert_eq!(result1.commits.len(), result2.commits.len());
-    for (c1, c2) in result1.commits.iter().zip(result2.commits.iter()) {
-        assert_eq!(
-            c1.color_index, c2.color_index,
-            "color_index mismatch for commit {}: {} vs {}",
-            c1.short_oid, c1.color_index, c2.color_index
-        );
-        assert_eq!(c1.edges.len(), c2.edges.len());
-        for (e1, e2) in c1.edges.iter().zip(c2.edges.iter()) {
-            assert_eq!(
-                e1.color_index, e2.color_index,
-                "edge color_index mismatch on commit {}: {} vs {}",
-                c1.short_oid, e1.color_index, e2.color_index
-            );
-        }
-    }
-}
-
-#[test]
-fn color_index_head_zero() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let head = commits.iter().find(|c| c.is_head).expect("no HEAD commit");
-    assert_eq!(
-        head.color_index, 0,
-        "HEAD commit should have color_index 0, got {}",
-        head.color_index
-    );
-
-    for c in commits.iter().filter(|c| c.column == 0 && c.in_head_chain) {
-        assert_eq!(
-            c.color_index, 0,
-            "HEAD chain commit {} (col 0) should have color_index 0, got {}",
-            c.short_oid, c.color_index
-        );
-    }
-}
-
-#[test]
 fn head_lane_carries_two_colors_above_a_non_upstream_continuation() {
-    let dir = tempfile::tempdir().unwrap();
-    {
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        identity(&repo);
-        let b1 = raw_commit(
-            &repo,
-            &sig_at(1000),
-            "refs/heads/main",
-            "base1",
-            "f.txt",
-            "1",
-            &[],
-        );
-        let b1_c = repo.find_commit(b1).unwrap();
-        let b2 = raw_commit(
-            &repo,
-            &sig_at(2000),
-            "refs/heads/main",
-            "base2",
-            "f.txt",
-            "2",
-            &[&b1_c],
-        );
-        let b2_c = repo.find_commit(b2).unwrap();
-        raw_commit(
-            &repo,
-            &sig_at(3000),
-            "refs/heads/later",
-            "later1",
-            "f.txt",
-            "3",
-            &[&b2_c],
-        );
-        checkout_main(&repo);
-    }
-
-    let commits = walk(&dir);
+    let commits = rule_inputs::commits("non-upstream-continuation");
 
     let lane_zero: Vec<usize> = commits
         .iter()
@@ -958,24 +419,9 @@ fn ref_label_no_refs_no_panic() {
 
 #[test]
 fn stash_inline_on_head_tip() {
-    let ctx = TestContext::builder()
-        .with_file("f0.txt", "f0")
-        .with_commit("C0")
-        .with_file("f1.txt", "f1")
-        .with_commit("C1")
-        .with_file("f2.txt", "f2")
-        .with_commit("C2")
-        .with_stash(Some("test stash"))
-        .build();
+    let commits = rule_inputs::commits("stash-on-head-tip");
 
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let c2 = commits
-        .iter()
-        .find(|c| c.summary == "C2")
-        .expect("C2 not found");
+    let c2 = row(&commits, "C2");
     assert_eq!(c2.column, 0, "C2 should be at column 0");
 
     let stash = commits
@@ -1039,10 +485,7 @@ fn stash_inline_on_head_tip() {
         c2.edges
     );
 
-    let c1 = commits
-        .iter()
-        .find(|c| c.summary == "C1")
-        .expect("C1 not found");
+    let c1 = row(&commits, "C1");
     for e in &c1.edges {
         assert_eq!(
             e.from_column, 0,
@@ -1054,53 +497,7 @@ fn stash_inline_on_head_tip() {
 
 #[test]
 fn multiple_stashes_on_same_parent() {
-    // Use raw git2 to create exactly C0 -> C1 with 2 stashes on C1 (HEAD).
-    let dir = tempfile::tempdir().unwrap();
-    {
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-        drop(cfg);
-        let sig = git2::Signature::now("T", "t@t.com").unwrap();
-
-        let c0 = raw_commit(&repo, &sig, "refs/heads/main", "C0", "f0.txt", "f0", &[]);
-        let c0c = repo.find_commit(c0).unwrap();
-        let _c1 = raw_commit(
-            &repo,
-            &sig,
-            "refs/heads/main",
-            "C1",
-            "f1.txt",
-            "f1",
-            &[&c0c],
-        );
-        repo.set_head("refs/heads/main").unwrap();
-    }
-
-    // First stash
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    std::fs::write(dir.path().join("s1.txt"), "stash1").unwrap();
-    {
-        let mut idx = repo.index().unwrap();
-        idx.add_path(std::path::Path::new("s1.txt")).unwrap();
-        idx.write().unwrap();
-    }
-    let sig2 = git2::Signature::now("T", "t@t.com").unwrap();
-    repo.stash_save(&sig2, "stash-1", None).unwrap();
-
-    // Second stash
-    std::fs::write(dir.path().join("s2.txt"), "stash2").unwrap();
-    {
-        let mut idx = repo.index().unwrap();
-        idx.add_path(std::path::Path::new("s2.txt")).unwrap();
-        idx.write().unwrap();
-    }
-    let sig3 = git2::Signature::now("T", "t@t.com").unwrap();
-    repo.stash_save(&sig3, "stash-2", None).unwrap();
-
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
+    let commits = rule_inputs::commits("two-stashes-one-parent");
 
     let stashes: Vec<_> = commits.iter().filter(|c| c.is_stash).collect();
     assert_eq!(
@@ -1110,10 +507,7 @@ fn multiple_stashes_on_same_parent() {
         stashes.len()
     );
 
-    let c1 = commits
-        .iter()
-        .find(|c| c.summary == "C1")
-        .expect("C1 not found");
+    let c1 = row(&commits, "C1");
 
     for s in &stashes {
         assert!(s.is_branch_tip, "stash should be branch tip");
@@ -1161,69 +555,12 @@ fn multiple_stashes_on_same_parent() {
 
 #[test]
 fn stash_branches_right_when_head_chain_occupies_lane() {
-    // Stash on a MID-CHAIN HEAD commit (C1) where C2 occupies column 0 between stash and C1.
-    let dir = tempfile::tempdir().unwrap();
+    let commits = rule_inputs::commits("stash-on-mid-chain");
 
-    {
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-        drop(cfg);
-        let sig = git2::Signature::now("T", "t@t.com").unwrap();
-
-        let c0 = raw_commit(&repo, &sig, "refs/heads/main", "C0", "f0.txt", "f0", &[]);
-        let c0c = repo.find_commit(c0).unwrap();
-        let c1 = raw_commit(
-            &repo,
-            &sig,
-            "refs/heads/main",
-            "C1",
-            "f1.txt",
-            "f1",
-            &[&c0c],
-        );
-        let c1c = repo.find_commit(c1).unwrap();
-        let _c2 = raw_commit(
-            &repo,
-            &sig,
-            "refs/heads/main",
-            "C2",
-            "f2.txt",
-            "f2",
-            &[&c1c],
-        );
-        repo.set_head("refs/heads/main").unwrap();
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
-            .unwrap();
-
-        // Detach HEAD at C1 to create a stash whose parent is C1 (mid-chain)
-        repo.set_head_detached(c1).unwrap();
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
-            .unwrap();
-    }
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    std::fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
-    {
-        let mut idx = repo.index().unwrap();
-        idx.add_path(std::path::Path::new("dirty.txt")).unwrap();
-        idx.write().unwrap();
-    }
-    let sig2 = git2::Signature::now("T", "t@t.com").unwrap();
-    let stash_oid = repo.stash_save(&sig2, "test stash on C1", None).unwrap();
-    repo.set_head("refs/heads/main").unwrap();
-
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let c1 = commits
-        .iter()
-        .find(|c| c.summary == "C1")
-        .expect("C1 not found");
+    let c1 = row(&commits, "C1");
     let stash = commits
         .iter()
-        .find(|c| c.oid == stash_oid.to_string())
+        .find(|c| c.is_stash)
         .expect("stash not found");
 
     assert!(
@@ -1247,56 +584,9 @@ fn stash_branches_right_when_head_chain_occupies_lane() {
 
 #[test]
 fn stash_inline_with_topic_branch() {
-    // Stash on HEAD tip with a topic branch from C0 at another column.
-    let dir = tempfile::tempdir().unwrap();
-    {
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-        drop(cfg);
-        let sig = git2::Signature::now("T", "t@t.com").unwrap();
+    let commits = rule_inputs::commits("stash-with-topic-branch");
 
-        let c0 = raw_commit(&repo, &sig, "refs/heads/main", "C0", "f0.txt", "f0", &[]);
-        let c0c = repo.find_commit(c0).unwrap();
-        let _c1 = raw_commit(
-            &repo,
-            &sig,
-            "refs/heads/main",
-            "C1",
-            "f1.txt",
-            "f1",
-            &[&c0c],
-        );
-        repo.set_head("refs/heads/main").unwrap();
-        let _topic = raw_commit(
-            &repo,
-            &sig,
-            "refs/heads/topic",
-            "Topic",
-            "topic.txt",
-            "topic",
-            &[&c0c],
-        );
-    }
-
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-    std::fs::write(dir.path().join("dirty.txt"), "dirty").unwrap();
-    {
-        let mut idx = repo.index().unwrap();
-        idx.add_path(std::path::Path::new("dirty.txt")).unwrap();
-        idx.write().unwrap();
-    }
-    let sig2 = git2::Signature::now("T", "t@t.com").unwrap();
-    repo.stash_save(&sig2, "test stash", None).unwrap();
-
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let c1 = commits
-        .iter()
-        .find(|c| c.summary == "C1")
-        .expect("C1 not found");
+    let c1 = row(&commits, "C1");
     let stash = commits.iter().find(|c| c.is_stash).expect("no stash found");
 
     assert_eq!(
@@ -1316,23 +606,6 @@ fn stash_inline_with_topic_branch() {
     );
 }
 
-/// C0 -> C1 -> C2 -> "Add stash marker" (HEAD tip) with one stash on the marker.
-/// `with_stash` reverts the worktree, so the fixture arrives clean. The committed `.gitignore`
-/// is what lets a test distinguish `dirty_status_options()` from `statuses(None)`.
-fn stash_on_head_tip_ctx() -> TestContext {
-    TestContext::builder()
-        .with_file(".gitignore", "ignored.txt\n")
-        .with_commit("Add ignore rules")
-        .with_file("f0.txt", "f0")
-        .with_commit("C0")
-        .with_file("f1.txt", "f1")
-        .with_commit("C1")
-        .with_file("f2.txt", "f2")
-        .with_commit("C2")
-        .with_stash(Some("test stash"))
-        .build()
-}
-
 fn stash_and_parent(commits: &[trunk_lib::git::types::GraphCommit]) -> (usize, usize) {
     let stash_idx = commits
         .iter()
@@ -1348,15 +621,11 @@ fn stash_and_parent(commits: &[trunk_lib::git::types::GraphCommit]) -> (usize, u
 
 #[test]
 fn stash_branches_right_when_worktree_dirty() {
-    let ctx = stash_on_head_tip_ctx();
-    std::fs::write(ctx.repo_path().join("f2.txt"), "modified").unwrap();
+    let commits = rule_inputs::commits("stash-tip-dirty-tracked");
 
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-
-    let (stash_idx, parent_idx) = stash_and_parent(&result.commits);
-    let stash = &result.commits[stash_idx];
-    let parent = &result.commits[parent_idx];
+    let (stash_idx, parent_idx) = stash_and_parent(&commits);
+    let stash = &commits[stash_idx];
+    let parent = &commits[parent_idx];
     assert_eq!(
         stash.column, 1,
         "dirty worktree should push the stash off the WIP column, got col {}",
@@ -1387,35 +656,22 @@ fn stash_branches_right_when_worktree_dirty() {
 
 #[test]
 fn stash_branches_right_when_only_untracked() {
-    let ctx = stash_on_head_tip_ctx();
-    std::fs::write(ctx.repo_path().join("untracked.txt"), "u").unwrap();
+    let commits = rule_inputs::commits("stash-tip-untracked");
 
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-
-    let (stash_idx, _) = stash_and_parent(&result.commits);
+    let (stash_idx, _) = stash_and_parent(&commits);
     assert_eq!(
-        result.commits[stash_idx].column, 1,
+        commits[stash_idx].column, 1,
         "an untracked file alone is dirty; status options must include untracked"
     );
 }
 
 #[test]
 fn stash_branches_right_when_only_staged() {
-    let ctx = stash_on_head_tip_ctx();
-    std::fs::write(ctx.repo_path().join("staged.txt"), "s").unwrap();
+    let commits = rule_inputs::commits("stash-tip-staged");
 
-    let mut repo = ctx.repo();
-    let mut index = repo.index().unwrap();
-    index.add_path(std::path::Path::new("staged.txt")).unwrap();
-    index.write().unwrap();
-    drop(index);
-
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-
-    let (stash_idx, _) = stash_and_parent(&result.commits);
+    let (stash_idx, _) = stash_and_parent(&commits);
     assert_eq!(
-        result.commits[stash_idx].column, 1,
+        commits[stash_idx].column, 1,
         "a staged-only change is dirty; the mask must include the INDEX_* bits"
     );
 }
@@ -1427,7 +683,7 @@ fn stash_branches_right_when_only_staged() {
 fn assert_readings_agree(dirty_the_tree: impl Fn(&TestContext)) {
     use trunk_lib::commands::staging::get_dirty_counts_inner;
 
-    let ctx = stash_on_head_tip_ctx();
+    let ctx = stash_on_tip_with_ignore_repo();
     dirty_the_tree(&ctx);
 
     let counts = get_dirty_counts_inner(ctx.path(), ctx.state_map()).unwrap();
@@ -1493,63 +749,25 @@ fn walk_commits_on_bare_repo_does_not_error() {
     assert!(result.is_ok(), "bare repo walk failed: {:?}", result.err());
 }
 
-/// `C0 -> C1` on main with `C0 -> T1` on topic, plus one stash on the main tip. Timestamps are
-/// spaced so the `TOPOLOGICAL | TIME` sort is deterministic; `t1_secs` places T1 above or below
-/// C1, which is what decides how far D6's churn reaches. The tree is left clean.
-fn topic_and_stash_repo(t1_secs: i64) -> tempfile::TempDir {
-    let sig_at =
-        |secs: i64| git2::Signature::new("T", "t@t.com", &git2::Time::new(secs, 0)).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    {
-        let mut repo = git2::Repository::init(dir.path()).unwrap();
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-        drop(cfg);
+/// (max_columns, T1's column, T1's color) for one captured topic-and-stash shape.
+fn topic_layout(name: &str) -> (usize, usize, usize) {
+    let result = rule_inputs::walk(name, 0, usize::MAX);
+    let t1 = result
+        .commits
+        .iter()
+        .find(|c| c.summary == "T1")
+        .expect("T1 not found");
 
-        {
-            let c0 = raw_commit(
-                &repo,
-                &sig_at(1000),
-                "refs/heads/main",
-                "C0",
-                "f0.txt",
-                "f0",
-                &[],
-            );
-            let c0c = repo.find_commit(c0).unwrap();
-            raw_commit(
-                &repo,
-                &sig_at(t1_secs),
-                "refs/heads/topic",
-                "T1",
-                "topic.txt",
-                "topic",
-                &[&c0c],
-            );
-            raw_commit(
-                &repo,
-                &sig_at(2000),
-                "refs/heads/main",
-                "C1",
-                "f1.txt",
-                "f1",
-                &[&c0c],
-            );
-        }
-        repo.set_head("refs/heads/main").unwrap();
-
-        std::fs::write(dir.path().join("f1.txt"), "to be stashed").unwrap();
-        repo.stash_save(&sig_at(4000), "test stash", None).unwrap();
-    }
-    dir
+    (result.max_columns, t1.column, t1.color_index)
 }
 
-/// (max_columns, T1's column, T1's color) clean, then with the worktree dirtied.
+/// (max_columns, T1's column, T1's color) clean, then with the worktree dirtied. Built from a
+/// repository rather than a capture: this pair is one of the two tests that still pin the
+/// revwalk's `TOPOLOGICAL | TIME` sort, which a committed capture would freeze.
 fn topic_layout_clean_then_dirty(
-    dir: &tempfile::TempDir,
+    ctx: &TestContext,
 ) -> ((usize, usize, usize), (usize, usize, usize)) {
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let mut repo = ctx.repo();
     let read = |result: &trunk_lib::git::types::GraphResult| {
         let t1 = result
             .commits
@@ -1560,7 +778,7 @@ fn topic_layout_clean_then_dirty(
     };
 
     let clean = read(&walk_commits(&mut repo, 0, usize::MAX).unwrap());
-    std::fs::write(dir.path().join("f1.txt"), "dirty").unwrap();
+    std::fs::write(ctx.repo_path().join("f1.txt"), "dirty").unwrap();
     let dirty = read(&walk_commits(&mut repo, 0, usize::MAX).unwrap());
     (clean, dirty)
 }
@@ -1572,9 +790,9 @@ fn topic_layout_clean_then_dirty(
 /// it cannot change unnoticed.
 #[test]
 fn dirtiness_relayouts_unrelated_branches() {
-    let dir = topic_and_stash_repo(3000);
+    let ctx = topic_and_stash_repo(3000);
 
-    let (clean, dirty) = topic_layout_clean_then_dirty(&dir);
+    let (clean, dirty) = topic_layout_clean_then_dirty(&ctx);
 
     assert_eq!(clean, (2, 1, 1), "clean: (max_columns, T1 col, T1 color)");
     assert_eq!(dirty, (3, 2, 2), "dirty: (max_columns, T1 col, T1 color)");
@@ -1584,9 +802,8 @@ fn dirtiness_relayouts_unrelated_branches() {
 /// finds the stash's lane already released, so it keeps its column and only the colour moves.
 #[test]
 fn dirtiness_recolors_branches_below_the_stash_parent() {
-    let dir = topic_and_stash_repo(1500);
-
-    let (clean, dirty) = topic_layout_clean_then_dirty(&dir);
+    let clean = topic_layout("topic-below-clean");
+    let dirty = topic_layout("topic-below-dirty");
 
     assert_eq!(clean, (2, 1, 1), "clean: (max_columns, T1 col, T1 color)");
     assert_eq!(dirty, (2, 1, 2), "dirty: (max_columns, T1 col, T1 color)");
@@ -1594,14 +811,11 @@ fn dirtiness_recolors_branches_below_the_stash_parent() {
 
 #[test]
 fn stash_stays_inline_when_worktree_clean() {
-    let ctx = stash_on_head_tip_ctx();
+    let commits = rule_inputs::commits("stash-tip-clean");
 
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-
-    let (stash_idx, parent_idx) = stash_and_parent(&result.commits);
-    let stash = &result.commits[stash_idx];
-    let parent = &result.commits[parent_idx];
+    let (stash_idx, parent_idx) = stash_and_parent(&commits);
+    let stash = &commits[stash_idx];
+    let parent = &commits[parent_idx];
     assert_eq!(
         stash.column, 0,
         "clean worktree should keep the stash inline"
@@ -1704,7 +918,8 @@ fn detached_head_marks_first_parent_chain() {
         repo.set_head_detached(a1).unwrap();
     }
 
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let ctx = context_at(dir);
+    let mut repo = ctx.repo();
     let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
     let commits = &result.commits;
 
@@ -1736,50 +951,6 @@ fn detached_head_marks_first_parent_chain() {
     );
 }
 
-fn sig_at(secs: i64) -> git2::Signature<'static> {
-    git2::Signature::new("T", "t@t.com", &git2::Time::new(secs, 0)).unwrap()
-}
-
-/// `Add notes` -> `Add app` on main, with a stash on the tip whose committer time predates
-/// both. Mirrors QA fixture 15. The tree is left clean, so the stash is inline-eligible.
-fn backdated_stash_repo() -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
-    let mut repo = git2::Repository::init(dir.path()).unwrap();
-    {
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-    }
-    {
-        let notes = raw_commit(
-            &repo,
-            &sig_at(1_700_000_000),
-            "refs/heads/main",
-            "Add notes",
-            "notes.txt",
-            "notes v1",
-            &[],
-        );
-        let notes_c = repo.find_commit(notes).unwrap();
-        raw_commit(
-            &repo,
-            &sig_at(1_700_086_400),
-            "refs/heads/main",
-            "Add app",
-            "app.txt",
-            "app v1",
-            &[&notes_c],
-        );
-    }
-    repo.set_head("refs/heads/main").unwrap();
-
-    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stashed").unwrap();
-    repo.stash_save(&sig_at(1_699_913_600), "backdated", None)
-        .unwrap();
-
-    dir
-}
-
 fn row_of(commits: &[trunk_lib::git::types::GraphCommit], summary: &str) -> usize {
     commits
         .iter()
@@ -1793,10 +964,7 @@ fn summaries(commits: &[trunk_lib::git::types::GraphCommit]) -> Vec<&str> {
 
 #[test]
 fn backdated_stash_sorts_above_its_parent() {
-    let dir = backdated_stash_repo();
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
-
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let result = rule_inputs::walk("backdated-stash", 0, usize::MAX);
     let commits = &result.commits;
 
     let stash_row = commits
@@ -1831,25 +999,12 @@ fn assert_no_stash_internals(commits: &[trunk_lib::git::types::GraphCommit]) {
     }
 }
 
-/// The backdated shape with a lightweight tag on the stash commit, so the stash is reachable
-/// from `refs/tags` as well as from `refs/stash`.
-fn tagged_stash_repo() -> tempfile::TempDir {
-    let dir = backdated_stash_repo();
-    {
-        let repo = git2::Repository::open(dir.path()).unwrap();
-        let stash_oid = repo.refname_to_id("refs/stash").unwrap();
-        let stash_obj = repo.find_object(stash_oid, None).unwrap();
-        repo.tag_lightweight("keep", &stash_obj, false).unwrap();
-    }
-    dir
-}
-
 /// A ref pointing at a stash used to push it into the walk a second time, and the duplicate
 /// row lost its `is_stash` flag to `per_oid_data.remove`, recomputing itself as a merge.
 #[test]
 fn tagged_stash_is_not_duplicated() {
-    let dir = tagged_stash_repo();
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let ctx = tagged_stash_repo();
+    let mut repo = ctx.repo();
     let stash_oid = repo.refname_to_id("refs/stash").unwrap();
 
     let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
@@ -1882,140 +1037,21 @@ fn tagged_stash_is_not_duplicated() {
     assert_no_stash_internals(commits);
 }
 
-/// Stash B taken while HEAD is detached on stash A, so `B^ == A`. B is timestamped *before*
-/// A: under a time-ordered merge the newer parent sorts above its child, which is the
-/// inversion the topological walk has to rule out.
-///
-/// The detach is load-bearing. It puts A in the head chain, so A's column is reserved before
-/// B is placed.
-fn stash_on_stash_repo() -> (tempfile::TempDir, git2::Oid, git2::Oid) {
-    let dir = tempfile::tempdir().unwrap();
-    let mut repo = git2::Repository::init(dir.path()).unwrap();
-    {
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-    }
-    {
-        let notes = raw_commit(
-            &repo,
-            &sig_at(1_700_000_000),
-            "refs/heads/main",
-            "Add notes",
-            "notes.txt",
-            "notes v1",
-            &[],
-        );
-        let notes_c = repo.find_commit(notes).unwrap();
-        raw_commit(
-            &repo,
-            &sig_at(1_700_086_400),
-            "refs/heads/main",
-            "Add app",
-            "app.txt",
-            "app v1",
-            &[&notes_c],
-        );
-    }
-    repo.set_head("refs/heads/main").unwrap();
-
-    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stash A").unwrap();
-    let a = repo
-        .stash_save(&sig_at(1_700_259_200), "stash A", None)
-        .unwrap();
-
-    {
-        let a_obj = repo.find_object(a, None).unwrap();
-        let mut checkout = git2::build::CheckoutBuilder::new();
-        repo.checkout_tree(&a_obj, Some(checkout.force())).unwrap();
-        repo.set_head_detached(a).unwrap();
-    }
-
-    std::fs::write(dir.path().join("notes.txt"), "notes v3 — stash B").unwrap();
-    let b = repo
-        .stash_save(&sig_at(1_700_172_800), "stash B", None)
-        .unwrap();
-
-    assert_eq!(
-        repo.find_commit(b).unwrap().parent_id(0).unwrap(),
-        a,
-        "fixture is wrong: B's first parent must be stash A"
-    );
-    (dir, a, b)
-}
-
-fn row_of_oid(commits: &[trunk_lib::git::types::GraphCommit], oid: git2::Oid) -> usize {
-    commits
-        .iter()
-        .position(|c| c.oid == oid.to_string())
-        .unwrap_or_else(|| panic!("{oid} not found in {:?}", summaries(commits)))
-}
-
 #[test]
 fn stash_on_stash_chain_orders_child_first() {
-    let (dir, a, b) = stash_on_stash_repo();
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let commits = rule_inputs::commits("stash-on-stash");
 
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let b_row = row_of_oid(commits, b);
-    let a_row = row_of_oid(commits, a);
-    let base_row = row_of(commits, "Add app");
+    let b_row = row_of(&commits, "On (no branch): stash B");
+    let a_row = row_of(&commits, "On main: stash A");
+    let base_row = row_of(&commits, "Add app");
     assert!(
         b_row < a_row && a_row < base_row,
         "expected B above A above the base commit, got B={b_row} A={a_row} base={base_row} in {:?}",
-        summaries(commits)
+        summaries(&commits)
     );
     assert!(commits[b_row].is_stash, "B must be flagged as a stash");
     assert!(commits[a_row].is_stash, "A must be flagged as a stash");
-    assert_no_stash_internals(commits);
-}
-
-/// Two stashes on the same parent, both timestamped before it. Returns the newer and the
-/// older stash OID.
-fn two_backdated_stashes_repo() -> (tempfile::TempDir, git2::Oid, git2::Oid) {
-    let dir = tempfile::tempdir().unwrap();
-    let mut repo = git2::Repository::init(dir.path()).unwrap();
-    {
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-    }
-    {
-        let notes = raw_commit(
-            &repo,
-            &sig_at(1_700_000_000),
-            "refs/heads/main",
-            "Add notes",
-            "notes.txt",
-            "notes v1",
-            &[],
-        );
-        let notes_c = repo.find_commit(notes).unwrap();
-        raw_commit(
-            &repo,
-            &sig_at(1_700_086_400),
-            "refs/heads/main",
-            "Add app",
-            "app.txt",
-            "app v1",
-            &[&notes_c],
-        );
-    }
-    repo.set_head("refs/heads/main").unwrap();
-
-    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stashed").unwrap();
-    let older = repo
-        .stash_save(&sig_at(1_699_827_200), "older backdated", None)
-        .unwrap();
-
-    std::fs::write(dir.path().join("app.txt"), "app v2 — stashed").unwrap();
-    let newer = repo
-        .stash_save(&sig_at(1_699_913_600), "newer backdated", None)
-        .unwrap();
-
-    (dir, newer, older)
+    assert_no_stash_internals(&commits);
 }
 
 /// The shape QA fixture 07 already documents for two ordinary stashes: the first one placed
@@ -2023,14 +1059,14 @@ fn two_backdated_stashes_repo() -> (tempfile::TempDir, git2::Oid, git2::Oid) {
 /// backdated changes nothing about it.
 #[test]
 fn two_backdated_stashes_on_one_parent() {
-    let (dir, newer, older) = two_backdated_stashes_repo();
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let ctx = two_backdated_stashes_repo();
+    let mut repo = ctx.repo();
 
     let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
     let commits = &result.commits;
 
-    let newer_row = row_of_oid(commits, newer);
-    let older_row = row_of_oid(commits, older);
+    let newer_row = row_of(commits, "On main: newer backdated");
+    let older_row = row_of(commits, "On main: older backdated");
     let parent_row = row_of(commits, "Add app");
     assert!(
         newer_row < parent_row && older_row < parent_row,
@@ -2048,66 +1084,18 @@ fn two_backdated_stashes_on_one_parent() {
     assert_no_stash_internals(commits);
 }
 
-/// QA fixture 12's shape: the stash's parent is dropped from every ref by `reset --hard`, so
-/// the only thing still pointing at it is the stash itself.
-fn orphan_stash_repo() -> (tempfile::TempDir, git2::Oid) {
-    let dir = tempfile::tempdir().unwrap();
-    let mut repo = git2::Repository::init(dir.path()).unwrap();
-    {
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-    }
-    let notes = {
-        let notes = raw_commit(
-            &repo,
-            &sig_at(1_700_000_000),
-            "refs/heads/main",
-            "Add notes",
-            "notes.txt",
-            "notes v1",
-            &[],
-        );
-        let notes_c = repo.find_commit(notes).unwrap();
-        raw_commit(
-            &repo,
-            &sig_at(1_700_086_400),
-            "refs/heads/main",
-            "Add app",
-            "app.txt",
-            "app v1",
-            &[&notes_c],
-        );
-        notes
-    };
-    repo.set_head("refs/heads/main").unwrap();
-
-    std::fs::write(dir.path().join("notes.txt"), "notes v2 — stashed").unwrap();
-    let stash = repo
-        .stash_save(&sig_at(1_700_864_000), "half-finished notes", None)
-        .unwrap();
-
-    {
-        let notes_obj = repo.find_object(notes, None).unwrap();
-        repo.reset(&notes_obj, git2::ResetType::Hard, None).unwrap();
-    }
-
-    (dir, stash)
-}
-
 /// D6: pushing the stash into the walk makes its parent reachable again, so the row comes
 /// back and the dashed connector has something to land on. The cost is that `reset --hard`
 /// no longer visually removes a commit a stash still holds — dropping the stash does.
 #[test]
 fn orphan_stash_shows_its_parent() {
-    let (dir, stash) = orphan_stash_repo();
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let commits = rule_inputs::commits("orphan-stash");
 
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
-    let commits = &result.commits;
-
-    let stash_row = row_of_oid(commits, stash);
-    let parent_row = row_of(commits, "Add app");
+    let stash_row = commits
+        .iter()
+        .position(|c| c.is_stash)
+        .expect("no stash row emitted");
+    let parent_row = row_of(&commits, "Add app");
     assert!(
         stash_row < parent_row,
         "the stash must sort above the parent it holds, got stash={stash_row} parent={parent_row}"
@@ -2126,24 +1114,21 @@ fn orphan_stash_shows_its_parent() {
     );
 }
 
-/// Every shape whose ordering the timestamp merge could invert. D4's invariants are asserted
-/// over these and not over plain linear history, which could never violate them — that is why
-/// the first version of the invariant passed while the walk was broken.
-fn stash_shapes() -> Vec<(&'static str, tempfile::TempDir)> {
-    vec![
-        ("backdated stash", backdated_stash_repo()),
-        ("tagged stash", tagged_stash_repo()),
-        ("stash on stash", stash_on_stash_repo().0),
-        ("two backdated stashes", two_backdated_stashes_repo().0),
-        ("orphan stash", orphan_stash_repo().0),
-    ]
-}
+/// Every captured shape whose ordering the timestamp merge could invert. D4's invariants are
+/// asserted over these and not over plain linear history, which could never violate them —
+/// that is why the first version of the invariant passed while the walk was broken.
+const STASH_SHAPES: [&str; 5] = [
+    "backdated-stash",
+    "tagged-stash",
+    "stash-on-stash",
+    "two-backdated-stashes",
+    "orphan-stash",
+];
 
 #[test]
 fn first_parent_never_sorts_above_its_child() {
-    for (shape, dir) in stash_shapes() {
-        let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+    for shape in STASH_SHAPES {
+        let commits = rule_inputs::commits(shape);
 
         let row_by_oid: std::collections::HashMap<&str, usize> = commits
             .iter()
@@ -2170,9 +1155,8 @@ fn first_parent_never_sorts_above_its_child() {
 
 #[test]
 fn no_oid_appears_twice() {
-    for (shape, dir) in stash_shapes() {
-        let mut repo = git2::Repository::open(dir.path()).unwrap();
-        let commits = walk_commits(&mut repo, 0, usize::MAX).unwrap().commits;
+    for shape in STASH_SHAPES {
+        let commits = rule_inputs::commits(shape);
 
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for c in &commits {
@@ -2199,14 +1183,11 @@ fn delete_loose_object(repo_path: &std::path::Path, oid: git2::Oid) {
 /// manually-pruned object store must cost the graph that one stash, not every row in the repo.
 #[test]
 fn unreadable_stash_commit_is_skipped() {
-    let dir = backdated_stash_repo();
-    let stash_oid = git2::Repository::open(dir.path())
-        .unwrap()
-        .refname_to_id("refs/stash")
-        .unwrap();
-    delete_loose_object(dir.path(), stash_oid);
+    let ctx = backdated_stash_repo();
+    let stash_oid = ctx.repo().refname_to_id("refs/stash").unwrap();
+    delete_loose_object(ctx.repo_path(), stash_oid);
 
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let mut repo = ctx.repo();
     let result = walk_commits(&mut repo, 0, usize::MAX);
 
     let commits = result
@@ -2226,15 +1207,15 @@ fn unreadable_stash_commit_is_skipped() {
 /// index-tree commit.
 #[test]
 fn unreadable_stash_index_commit_is_skipped() {
-    let dir = backdated_stash_repo();
+    let ctx = backdated_stash_repo();
     let index_oid = {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = ctx.repo();
         let stash_oid = repo.refname_to_id("refs/stash").unwrap();
         repo.find_commit(stash_oid).unwrap().parent_id(1).unwrap()
     };
-    delete_loose_object(dir.path(), index_oid);
+    delete_loose_object(ctx.repo_path(), index_oid);
 
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+    let mut repo = ctx.repo();
     let result = walk_commits(&mut repo, 0, usize::MAX);
 
     let commits = result
@@ -2256,83 +1237,6 @@ fn unreadable_stash_index_commit_is_skipped() {
 // commits sort arbitrarily under TOPOLOGICAL | TIME and can render a
 // coincidentally-correct layout.
 
-fn identity(repo: &git2::Repository) {
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("user.name", "T").unwrap();
-    cfg.set_str("user.email", "t@t.com").unwrap();
-}
-
-fn track_origin_main(repo: &git2::Repository) {
-    let mut cfg = repo.config().unwrap();
-    cfg.set_str("remote.origin.url", "file:///nonexistent")
-        .unwrap();
-    cfg.set_str("remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
-        .unwrap();
-    cfg.set_str("branch.main.remote", "origin").unwrap();
-    cfg.set_str("branch.main.merge", "refs/heads/main").unwrap();
-}
-
-fn checkout_main(repo: &git2::Repository) {
-    repo.set_head("refs/heads/main").unwrap();
-    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
-        .unwrap();
-}
-
-/// `main` at `base2`, `origin/main` three commits ahead on the same line.
-fn behind_upstream_repo() -> tempfile::TempDir {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    identity(&repo);
-    track_origin_main(&repo);
-
-    let main_ref = "refs/heads/main";
-    let remote_ref = "refs/remotes/origin/main";
-    let b1 = raw_commit(&repo, &sig_at(1000), main_ref, "base1", "f.txt", "1", &[]);
-    let b1_c = repo.find_commit(b1).unwrap();
-    let b2 = raw_commit(
-        &repo,
-        &sig_at(2000),
-        main_ref,
-        "base2",
-        "f.txt",
-        "2",
-        &[&b1_c],
-    );
-    let b2_c = repo.find_commit(b2).unwrap();
-    let u3 = raw_commit(
-        &repo,
-        &sig_at(3000),
-        remote_ref,
-        "up3",
-        "f.txt",
-        "3",
-        &[&b2_c],
-    );
-    let u3_c = repo.find_commit(u3).unwrap();
-    let u4 = raw_commit(
-        &repo,
-        &sig_at(4000),
-        remote_ref,
-        "up4",
-        "f.txt",
-        "4",
-        &[&u3_c],
-    );
-    let u4_c = repo.find_commit(u4).unwrap();
-    raw_commit(
-        &repo,
-        &sig_at(5000),
-        remote_ref,
-        "up5",
-        "f.txt",
-        "5",
-        &[&u4_c],
-    );
-
-    checkout_main(&repo);
-    dir
-}
-
 fn row<'a>(
     commits: &'a [trunk_lib::git::types::GraphCommit],
     summary: &str,
@@ -2343,8 +1247,8 @@ fn row<'a>(
         .unwrap_or_else(|| panic!("no row {summary} in {:?}", summaries(commits)))
 }
 
-fn walk(dir: &tempfile::TempDir) -> Vec<trunk_lib::git::types::GraphCommit> {
-    let mut repo = git2::Repository::open(dir.path()).unwrap();
+fn walk(ctx: &TestContext) -> Vec<trunk_lib::git::types::GraphCommit> {
+    let mut repo = ctx.repo();
     walk_commits(&mut repo, 0, usize::MAX).unwrap().commits
 }
 
@@ -2356,9 +1260,9 @@ fn has_fork_right(c: &trunk_lib::git::types::GraphCommit) -> bool {
 
 #[test]
 fn upstream_chain_shares_the_head_lane() {
-    let dir = behind_upstream_repo();
+    let ctx = behind_upstream_repo();
 
-    let commits = walk(&dir);
+    let commits = walk(&ctx);
 
     for summary in ["up5", "up4", "up3", "base2", "base1"] {
         assert_eq!(
@@ -2371,9 +1275,9 @@ fn upstream_chain_shares_the_head_lane() {
 
 #[test]
 fn upstream_chain_keeps_the_head_color() {
-    let dir = behind_upstream_repo();
+    let ctx = behind_upstream_repo();
 
-    let commits = walk(&dir);
+    let commits = walk(&ctx);
 
     let head_color = row(&commits, "base2").color_index;
     for summary in ["up5", "up4", "up3"] {
@@ -2387,9 +1291,9 @@ fn upstream_chain_keeps_the_head_color() {
 
 #[test]
 fn head_tip_emits_no_fork_into_its_upstream() {
-    let dir = behind_upstream_repo();
+    let ctx = behind_upstream_repo();
 
-    let commits = walk(&dir);
+    let commits = walk(&ctx);
 
     assert!(
         !has_fork_right(row(&commits, "base2")),
@@ -2456,7 +1360,7 @@ fn local_descendant_shares_the_lane_in_its_own_color() {
         checkout_main(&repo);
     }
 
-    let commits = walk(&dir);
+    let commits = walk(&context_at(dir));
 
     for summary in ["new2", "new1", "base2", "base1"] {
         assert_eq!(
@@ -2475,15 +1379,15 @@ fn local_descendant_shares_the_lane_in_its_own_color() {
 
 #[test]
 fn upstream_outranks_a_topic_branch_for_the_head_lane() {
-    let dir = behind_upstream_repo();
+    let ctx = behind_upstream_repo();
     {
-        let repo = git2::Repository::open(dir.path()).unwrap();
+        let repo = ctx.repo();
         let b2_c = repo
             .find_reference("refs/heads/main")
             .unwrap()
             .peel_to_commit()
             .unwrap();
-        let t1 = raw_commit_in(
+        let t1 = raw_commit(
             &repo,
             &sig_at(6000),
             "refs/heads/topic",
@@ -2493,7 +1397,7 @@ fn upstream_outranks_a_topic_branch_for_the_head_lane() {
             &[&b2_c],
         );
         let t1_c = repo.find_commit(t1).unwrap();
-        raw_commit_in(
+        raw_commit(
             &repo,
             &sig_at(7000),
             "refs/heads/topic",
@@ -2503,10 +1407,10 @@ fn upstream_outranks_a_topic_branch_for_the_head_lane() {
             &[&t1_c],
         );
         checkout_main(&repo);
-        std::fs::remove_file(dir.path().join("t.txt")).ok();
+        std::fs::remove_file(ctx.repo_path().join("t.txt")).ok();
     }
 
-    let commits = walk(&dir);
+    let commits = walk(&ctx);
 
     for summary in ["up5", "up4", "up3"] {
         assert_eq!(
@@ -2592,7 +1496,7 @@ fn diverged_branch_keeps_the_head_lane_and_still_forks() {
         checkout_main(&repo);
     }
 
-    let commits = walk(&dir);
+    let commits = walk(&context_at(dir));
 
     assert_eq!(
         row(&commits, "local6").column,
@@ -2609,15 +1513,7 @@ fn diverged_branch_keeps_the_head_lane_and_still_forks() {
 
 #[test]
 fn stash_branches_right_when_the_head_lane_extends() {
-    let dir = behind_upstream_repo();
-    {
-        let mut repo = git2::Repository::open(dir.path()).unwrap();
-        std::fs::write(dir.path().join("f.txt"), "half-finished").unwrap();
-        let sig = sig_at(9000);
-        repo.stash_save2(&sig, Some("half-finished"), None).unwrap();
-    }
-
-    let commits = walk(&dir);
+    let commits = rule_inputs::commits("stash-under-extended-head-lane");
 
     let stash = commits.iter().find(|c| c.is_stash).expect("no stash row");
     assert_ne!(

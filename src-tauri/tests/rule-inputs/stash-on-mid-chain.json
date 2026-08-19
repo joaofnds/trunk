@@ -1,0 +1,80 @@
+{
+  "wipCount": 1,
+  "capture": {
+    "oids": [
+      "682e2b2e2c46b8e80bfc7dc3f166ba79428e9da2",
+      "cb5de66a4f29498de8df410274285093cb293c12",
+      "3532fb02988e0f6d24f6796426e523f777ac6508",
+      "50ccc8f29f3f95463d55a79c15a103de199ed55d"
+    ],
+    "parents": {
+      "3532fb02988e0f6d24f6796426e523f777ac6508": [
+        "50ccc8f29f3f95463d55a79c15a103de199ed55d"
+      ],
+      "50ccc8f29f3f95463d55a79c15a103de199ed55d": [],
+      "682e2b2e2c46b8e80bfc7dc3f166ba79428e9da2": [
+        "3532fb02988e0f6d24f6796426e523f777ac6508",
+        "6688c3a627fe6c31a9a6049f4775f6de607dd96a"
+      ],
+      "cb5de66a4f29498de8df410274285093cb293c12": [
+        "3532fb02988e0f6d24f6796426e523f777ac6508"
+      ]
+    },
+    "stashes": [
+      "682e2b2e2c46b8e80bfc7dc3f166ba79428e9da2"
+    ],
+    "head_tip": "cb5de66a4f29498de8df410274285093cb293c12",
+    "tracked_upstream": null,
+    "worktree_dirty": true,
+    "commits": {
+      "3532fb02988e0f6d24f6796426e523f777ac6508": {
+        "summary": "C1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 2000
+      },
+      "50ccc8f29f3f95463d55a79c15a103de199ed55d": {
+        "summary": "C0",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1000
+      },
+      "682e2b2e2c46b8e80bfc7dc3f166ba79428e9da2": {
+        "summary": "On (no branch): test stash on C1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 4000
+      },
+      "cb5de66a4f29498de8df410274285093cb293c12": {
+        "summary": "C2",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 3000
+      }
+    },
+    "refs": {
+      "682e2b2e2c46b8e80bfc7dc3f166ba79428e9da2": [
+        {
+          "name": "On (no branch): test stash on C1",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "cb5de66a4f29498de8df410274285093cb293c12": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

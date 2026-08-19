@@ -1,0 +1,89 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "502d8ced90535dcc30753b17a3c345f3ccd1f2c1",
+      "7131701ad4c1ca55e470adfeaae26b70d13a1219",
+      "3532fb02988e0f6d24f6796426e523f777ac6508",
+      "50ccc8f29f3f95463d55a79c15a103de199ed55d"
+    ],
+    "parents": {
+      "3532fb02988e0f6d24f6796426e523f777ac6508": [
+        "50ccc8f29f3f95463d55a79c15a103de199ed55d"
+      ],
+      "502d8ced90535dcc30753b17a3c345f3ccd1f2c1": [
+        "3532fb02988e0f6d24f6796426e523f777ac6508",
+        "137c460bc71c24bd26e1db14edce9f10ccedf8bf"
+      ],
+      "50ccc8f29f3f95463d55a79c15a103de199ed55d": [],
+      "7131701ad4c1ca55e470adfeaae26b70d13a1219": [
+        "50ccc8f29f3f95463d55a79c15a103de199ed55d"
+      ]
+    },
+    "stashes": [
+      "502d8ced90535dcc30753b17a3c345f3ccd1f2c1"
+    ],
+    "head_tip": "3532fb02988e0f6d24f6796426e523f777ac6508",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "3532fb02988e0f6d24f6796426e523f777ac6508": {
+        "summary": "C1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 2000
+      },
+      "502d8ced90535dcc30753b17a3c345f3ccd1f2c1": {
+        "summary": "On main: test stash",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 4000
+      },
+      "50ccc8f29f3f95463d55a79c15a103de199ed55d": {
+        "summary": "C0",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1000
+      },
+      "7131701ad4c1ca55e470adfeaae26b70d13a1219": {
+        "summary": "Topic",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 3000
+      }
+    },
+    "refs": {
+      "3532fb02988e0f6d24f6796426e523f777ac6508": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "502d8ced90535dcc30753b17a3c345f3ccd1f2c1": [
+        {
+          "name": "On main: test stash",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "7131701ad4c1ca55e470adfeaae26b70d13a1219": [
+        {
+          "name": "refs/heads/topic",
+          "short_name": "topic",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

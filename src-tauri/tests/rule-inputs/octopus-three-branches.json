@@ -1,0 +1,120 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "c257e045e2c6d4382ea14b585eda7ead207dde5f",
+      "b5acb397e96d5ed4950915179da0a8d6300feb05",
+      "9aaf211135039abf257e2d1ebcddae9b80ae5c55",
+      "e84888ad669a029bd5adfd2b679bb5960a1a1e33",
+      "4ed2e549956681553545d760abda87528c100d40",
+      "40fe452c39377b89487f8353f3ec02e9900f54d4"
+    ],
+    "parents": {
+      "40fe452c39377b89487f8353f3ec02e9900f54d4": [],
+      "4ed2e549956681553545d760abda87528c100d40": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ],
+      "9aaf211135039abf257e2d1ebcddae9b80ae5c55": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ],
+      "b5acb397e96d5ed4950915179da0a8d6300feb05": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ],
+      "c257e045e2c6d4382ea14b585eda7ead207dde5f": [
+        "4ed2e549956681553545d760abda87528c100d40",
+        "e84888ad669a029bd5adfd2b679bb5960a1a1e33",
+        "9aaf211135039abf257e2d1ebcddae9b80ae5c55",
+        "b5acb397e96d5ed4950915179da0a8d6300feb05"
+      ],
+      "e84888ad669a029bd5adfd2b679bb5960a1a1e33": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "c257e045e2c6d4382ea14b585eda7ead207dde5f",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "40fe452c39377b89487f8353f3ec02e9900f54d4": {
+        "summary": "Root",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1000
+      },
+      "4ed2e549956681553545d760abda87528c100d40": {
+        "summary": "Main-1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 2000
+      },
+      "9aaf211135039abf257e2d1ebcddae9b80ae5c55": {
+        "summary": "BB",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 4000
+      },
+      "b5acb397e96d5ed4950915179da0a8d6300feb05": {
+        "summary": "BC",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 5000
+      },
+      "c257e045e2c6d4382ea14b585eda7ead207dde5f": {
+        "summary": "Octopus",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 6000
+      },
+      "e84888ad669a029bd5adfd2b679bb5960a1a1e33": {
+        "summary": "BA",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 3000
+      }
+    },
+    "refs": {
+      "9aaf211135039abf257e2d1ebcddae9b80ae5c55": [
+        {
+          "name": "refs/heads/branch-b",
+          "short_name": "branch-b",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "b5acb397e96d5ed4950915179da0a8d6300feb05": [
+        {
+          "name": "refs/heads/branch-c",
+          "short_name": "branch-c",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "c257e045e2c6d4382ea14b585eda7ead207dde5f": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "e84888ad669a029bd5adfd2b679bb5960a1a1e33": [
+        {
+          "name": "refs/heads/branch-a",
+          "short_name": "branch-a",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

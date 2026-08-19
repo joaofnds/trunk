@@ -9,8 +9,15 @@
 # those files, so nothing in `just check` builds a git repository any more — which is
 # what lets `cargo mutants` run the suite at all.
 #
-# Rerun this after editing any `scripts/qa-*-fixtures.sh`. Nothing else notices such an
-# edit: the inputs are committed, and the goldens are computed from the inputs.
+# Then rebuilds the named-rule shapes — the repositories `test_graph.rs`'s placement tests
+# used to build inline — and writes `src-tauri/tests/rule-inputs/<shape>.json`. Those inputs
+# are deliberately outside the golden corpus: they feed hand-asserted rule tests, not
+# snapshots, and `test_graph_goldens.rs` demands a golden and an export for everything in
+# `tests/inputs/`.
+#
+# Rerun this after editing any `scripts/qa-*-fixtures.sh`, or any shape in
+# `src-tauri/tests/test_graph_capture.rs`. Nothing else notices such an edit: the inputs are
+# committed, and the goldens are computed from the inputs.
 #
 # This is NOT `graph-accept`. Capturing rewrites the inputs the goldens are computed
 # from, which is upstream of the goldens themselves — so a capture that moves a layout
@@ -62,3 +69,11 @@ for entry in "${CORPORA[@]}"; do
 done
 
 printf 'captured %d fixture inputs into %s\n' "$written" "${OUT#"$ROOT"/}"
+
+# The named-rule shapes are built by `TestContext::builder` and raw git2, not by a fixture
+# script, so a test binary writes them: `tests/common` is not part of the library an example
+# links against.
+"${SCRUB[@]}" TRUNK_CAPTURE_GRAPH_INPUTS=1 cargo test --quiet \
+	--manifest-path "$ROOT/src-tauri/Cargo.toml" --test test_graph_capture -- --ignored >/dev/null
+
+printf 'captured the named-rule inputs into %s\n' "src-tauri/tests/rule-inputs"

@@ -1,0 +1,78 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "6d27822d48246baa96b6b8eb24a418acd9ecc325",
+      "d470169108d174ca5adcf96ef54b323ae0b8575c",
+      "e9c3e619309590348f372d4b0cbde9a0053d815d",
+      "40fe452c39377b89487f8353f3ec02e9900f54d4"
+    ],
+    "parents": {
+      "40fe452c39377b89487f8353f3ec02e9900f54d4": [],
+      "6d27822d48246baa96b6b8eb24a418acd9ecc325": [
+        "e9c3e619309590348f372d4b0cbde9a0053d815d",
+        "d470169108d174ca5adcf96ef54b323ae0b8575c"
+      ],
+      "d470169108d174ca5adcf96ef54b323ae0b8575c": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ],
+      "e9c3e619309590348f372d4b0cbde9a0053d815d": [
+        "40fe452c39377b89487f8353f3ec02e9900f54d4"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "6d27822d48246baa96b6b8eb24a418acd9ecc325",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "40fe452c39377b89487f8353f3ec02e9900f54d4": {
+        "summary": "Root",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1000
+      },
+      "6d27822d48246baa96b6b8eb24a418acd9ecc325": {
+        "summary": "Merge-AB",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 4000
+      },
+      "d470169108d174ca5adcf96ef54b323ae0b8575c": {
+        "summary": "B1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 3000
+      },
+      "e9c3e619309590348f372d4b0cbde9a0053d815d": {
+        "summary": "A1",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 2000
+      }
+    },
+    "refs": {
+      "6d27822d48246baa96b6b8eb24a418acd9ecc325": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "d470169108d174ca5adcf96ef54b323ae0b8575c": [
+        {
+          "name": "refs/heads/branch-b",
+          "short_name": "branch-b",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

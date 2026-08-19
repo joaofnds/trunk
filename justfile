@@ -95,6 +95,10 @@ graph-accept reason="":
 graph-capture:
     scripts/graph-capture.sh
 
+# Prove every captured rule input still equals a fresh capture of its repository (slow)
+graph-fidelity:
+    {{scrubbed_env}} cargo test --manifest-path {{manifest}} --test test_graph_capture -- --ignored
+
 # Verify every recorded mutation anchor still matches its source exactly once (milliseconds)
 graph-sweep-check:
     python3 scripts/graph-mutation-sweep.py --check

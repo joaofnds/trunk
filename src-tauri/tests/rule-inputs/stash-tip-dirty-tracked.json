@@ -1,0 +1,102 @@
+{
+  "wipCount": 1,
+  "capture": {
+    "oids": [
+      "8fcb063679bf9fe79cfa17ffbf4b1647f1550aa2",
+      "d740588fe5990db474f7a4601534887d2d8a634c",
+      "94ddf11be59ab87091526986323a8d65cca98187",
+      "b77de6dd3bbec34d53f7625c0529ee929634bc95",
+      "cb21532609046b694b34df82e1c70bf34c403271",
+      "011127aae5ac50f96a3edb6bd852f8efe1b42d4e"
+    ],
+    "parents": {
+      "011127aae5ac50f96a3edb6bd852f8efe1b42d4e": [],
+      "8fcb063679bf9fe79cfa17ffbf4b1647f1550aa2": [
+        "d740588fe5990db474f7a4601534887d2d8a634c",
+        "3a50995bbbb0db1d45e08f578b0b8024cd1587e9"
+      ],
+      "94ddf11be59ab87091526986323a8d65cca98187": [
+        "b77de6dd3bbec34d53f7625c0529ee929634bc95"
+      ],
+      "b77de6dd3bbec34d53f7625c0529ee929634bc95": [
+        "cb21532609046b694b34df82e1c70bf34c403271"
+      ],
+      "cb21532609046b694b34df82e1c70bf34c403271": [
+        "011127aae5ac50f96a3edb6bd852f8efe1b42d4e"
+      ],
+      "d740588fe5990db474f7a4601534887d2d8a634c": [
+        "94ddf11be59ab87091526986323a8d65cca98187"
+      ]
+    },
+    "stashes": [
+      "8fcb063679bf9fe79cfa17ffbf4b1647f1550aa2"
+    ],
+    "head_tip": "d740588fe5990db474f7a4601534887d2d8a634c",
+    "tracked_upstream": null,
+    "worktree_dirty": true,
+    "commits": {
+      "011127aae5ac50f96a3edb6bd852f8efe1b42d4e": {
+        "summary": "Add ignore rules",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767225600
+      },
+      "8fcb063679bf9fe79cfa17ffbf4b1647f1550aa2": {
+        "summary": "On main: test stash",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767571200
+      },
+      "94ddf11be59ab87091526986323a8d65cca98187": {
+        "summary": "C2",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767484800
+      },
+      "b77de6dd3bbec34d53f7625c0529ee929634bc95": {
+        "summary": "C1",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767398400
+      },
+      "cb21532609046b694b34df82e1c70bf34c403271": {
+        "summary": "C0",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767312000
+      },
+      "d740588fe5990db474f7a4601534887d2d8a634c": {
+        "summary": "Add stash marker",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767571200
+      }
+    },
+    "refs": {
+      "8fcb063679bf9fe79cfa17ffbf4b1647f1550aa2": [
+        {
+          "name": "On main: test stash",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "d740588fe5990db474f7a4601534887d2d8a634c": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

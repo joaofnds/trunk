@@ -1,0 +1,69 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "f520b439c2d4c2222d8918c433fce7ca877edebf",
+      "aef3e78fcad066427a6491d266aa2a55438f62f4",
+      "4a82491830c79fc8567155a10da8bbd942a5a6f6"
+    ],
+    "parents": {
+      "4a82491830c79fc8567155a10da8bbd942a5a6f6": [],
+      "aef3e78fcad066427a6491d266aa2a55438f62f4": [
+        "4a82491830c79fc8567155a10da8bbd942a5a6f6"
+      ],
+      "f520b439c2d4c2222d8918c433fce7ca877edebf": [
+        "aef3e78fcad066427a6491d266aa2a55438f62f4",
+        "01f255c7dd68fd12ba1cd0024264042db4978605"
+      ]
+    },
+    "stashes": [
+      "f520b439c2d4c2222d8918c433fce7ca877edebf"
+    ],
+    "head_tip": "4a82491830c79fc8567155a10da8bbd942a5a6f6",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "4a82491830c79fc8567155a10da8bbd942a5a6f6": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1700000000
+      },
+      "aef3e78fcad066427a6491d266aa2a55438f62f4": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1700086400
+      },
+      "f520b439c2d4c2222d8918c433fce7ca877edebf": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "T",
+        "author_email": "t@t.com",
+        "author_timestamp": 1700864000
+      }
+    },
+    "refs": {
+      "4a82491830c79fc8567155a10da8bbd942a5a6f6": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "f520b439c2d4c2222d8918c433fce7ca877edebf": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

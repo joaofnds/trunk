@@ -1,0 +1,67 @@
+{
+  "wipCount": 1,
+  "capture": {
+    "oids": [
+      "fa6fae3394828a7613c8316f50fed84054f301da",
+      "f049e359a0c6c0ff00f7475d7163b78ab2f99f13",
+      "94e977b303680f30d0f4cdc0eacf7cfcc9020fd6"
+    ],
+    "parents": {
+      "94e977b303680f30d0f4cdc0eacf7cfcc9020fd6": [],
+      "f049e359a0c6c0ff00f7475d7163b78ab2f99f13": [
+        "94e977b303680f30d0f4cdc0eacf7cfcc9020fd6"
+      ],
+      "fa6fae3394828a7613c8316f50fed84054f301da": [
+        "94e977b303680f30d0f4cdc0eacf7cfcc9020fd6",
+        "f049e359a0c6c0ff00f7475d7163b78ab2f99f13"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "fa6fae3394828a7613c8316f50fed84054f301da",
+    "tracked_upstream": null,
+    "worktree_dirty": true,
+    "commits": {
+      "94e977b303680f30d0f4cdc0eacf7cfcc9020fd6": {
+        "summary": "Initial commit",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767225600
+      },
+      "f049e359a0c6c0ff00f7475d7163b78ab2f99f13": {
+        "summary": "Feature commit",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767312000
+      },
+      "fa6fae3394828a7613c8316f50fed84054f301da": {
+        "summary": "Merge branch 'feature'",
+        "body": null,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "author_timestamp": 1767398400
+      }
+    },
+    "refs": {
+      "f049e359a0c6c0ff00f7475d7163b78ab2f99f13": [
+        {
+          "name": "refs/heads/feature",
+          "short_name": "feature",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "fa6fae3394828a7613c8316f50fed84054f301da": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}
