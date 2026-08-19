@@ -162,10 +162,101 @@ fn compute_word_spans_for_hunk(lines: &[DiffLine]) -> Vec<Vec<WordSpan>> {
     word_spans
 }
 
+/// Where `walk_diff` should read a delta's *new*-side content from. The old
+/// side is always ODB-backed (index or a tree); the new side depends on what
+/// the diff is against — workdir-backed diffs (`diff_index_to_workdir`) must
+/// read disk, everything else (tree-to-tree, tree-to-index) is ODB-backed too.
+#[derive(Debug, Clone, Copy)]
+enum NewSideSource {
+    Workdir,
+    Odb,
+}
+
+/// One delta's old/new (oid, path) pair, captured inside a `foreach` file
+/// callback. Delta OIDs populate lazily: `diff.get_delta(i)` read *before* any
+/// `foreach` call reports a zero id for untracked/workdir deltas, while the
+/// same delta inside a file callback carries the real one (probed, git2
+/// 0.21) — so this struct is only ever built from inside a callback.
+struct DeltaSides {
+    old_oid: git2::Oid,
+    new_oid: git2::Oid,
+    new_path: Option<PathBuf>,
+}
+
+/// Run the diff's file callback only, to capture each delta's real oids/path
+/// for `resolve_side_content` — separate from the full walk below so the
+/// bench's raw path can reuse it without touching `walk_diff_raw_for_bench`.
+fn collect_delta_sides(diff: &git2::Diff<'_>) -> Result<Vec<DeltaSides>, TrunkError> {
+    use std::cell::RefCell;
+
+    let sides: RefCell<Vec<DeltaSides>> = RefCell::new(Vec::new());
+    diff.foreach(
+        &mut |delta, _progress| {
+            sides.borrow_mut().push(DeltaSides {
+                old_oid: delta.old_file().id(),
+                new_oid: delta.new_file().id(),
+                new_path: delta.new_file().path().map(|p| p.to_path_buf()),
+            });
+            true
+        },
+        None,
+        None,
+        None,
+    )
+    .map_err(TrunkError::from)?;
+    Ok(sides.into_inner())
+}
+
+/// Resolve one delta's real old/new file content, keyed by the diff's backing
+/// rather than OID zero-ness: workdir-backed deltas — modified and untracked
+/// alike — carry real, non-zero content OIDs that are *not* in the ODB
+/// (probed, git2 0.21), so "zero OID → disk" never fires and `find_blob`
+/// would fail on them. `old_oid`/`new_oid` come straight from the delta, never
+/// derived from `FileDiff.path` (which prefers the new path), so renames
+/// resolve the old side correctly too. Any failure (missing blob, unreadable
+/// file, bare repo) yields `None` for that side.
+fn resolve_side_content(
+    repo: &git2::Repository,
+    delta: &DeltaSides,
+    new_side: NewSideSource,
+) -> SideContent {
+    let old = if delta.old_oid.is_zero() {
+        None
+    } else {
+        repo.find_blob(delta.old_oid)
+            .ok()
+            .map(|b| b.content().to_vec())
+    };
+
+    let new = match new_side {
+        NewSideSource::Workdir => delta
+            .new_path
+            .as_ref()
+            .and_then(|p| repo.workdir().and_then(|wd| std::fs::read(wd.join(p)).ok())),
+        NewSideSource::Odb => {
+            if delta.new_oid.is_zero() {
+                None
+            } else {
+                repo.find_blob(delta.new_oid)
+                    .ok()
+                    .map(|b| b.content().to_vec())
+            }
+        }
+    };
+
+    SideContent { old, new }
+}
+
 /// Collect diff lines from git2 and enrich with syntax highlighting + word-level diff.
 /// Single pass: git2 walk → word diff → syntax → merge spans. Returns complete data.
-fn walk_diff(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
+fn walk_diff(
+    diff: git2::Diff<'_>,
+    repo: &git2::Repository,
+    new_side: NewSideSource,
+) -> Result<Vec<FileDiff>, TrunkError> {
     use std::cell::RefCell;
+
+    let delta_sides = collect_delta_sides(&diff)?;
 
     let file_diffs: RefCell<Vec<FileDiff>> = RefCell::new(Vec::new());
 
@@ -210,12 +301,22 @@ fn walk_diff(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
             true
         }),
         Some(&mut |_delta, _hunk, line| {
-            let origin = match line.origin() {
+            let raw_origin = line.origin();
+            let origin = match raw_origin {
                 '+' => DiffOrigin::Add,
                 '-' => DiffOrigin::Delete,
                 _ => DiffOrigin::Context,
             };
             let content = String::from_utf8_lossy(line.content()).into_owned();
+            // EOFNL markers ('<', '>', '=') carry line numbers too (probed,
+            // git2 0.21), which would paint real-code spans onto them; null
+            // both linenos for any origin the frontend doesn't treat as a
+            // real diff line, so pick_side_line naturally skips them.
+            let (old_lineno, new_lineno) = if matches!(raw_origin, '+' | '-' | ' ') {
+                (line.old_lineno(), line.new_lineno())
+            } else {
+                (None, None)
+            };
             let mut diffs = file_diffs.borrow_mut();
             if let Some(fd) = diffs.last_mut()
                 && let Some(hunk) = fd.hunks.last_mut()
@@ -223,8 +324,8 @@ fn walk_diff(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
                 hunk.lines.push(DiffLine {
                     origin,
                     content,
-                    old_lineno: line.old_lineno(),
-                    new_lineno: line.new_lineno(),
+                    old_lineno,
+                    new_lineno,
                     spans: vec![],
                 });
             }
@@ -234,9 +335,10 @@ fn walk_diff(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
     .map_err(TrunkError::from)?;
 
     let mut file_diffs = file_diffs.into_inner();
-    // Placeholder until real per-side content is wired through (task 4): every
-    // diff produced here is word-emphasis only, no syntax spans, until then.
-    let sides = vec![SideContent::none(); file_diffs.len()];
+    let sides: Vec<SideContent> = delta_sides
+        .iter()
+        .map(|d| resolve_side_content(repo, d, new_side))
+        .collect();
     enrich_file_diffs(&mut file_diffs, &sides);
     Ok(file_diffs)
 }
@@ -467,21 +569,29 @@ pub fn walk_diff_raw_for_bench(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, Tr
     Ok(file_diffs.into_inner())
 }
 
-/// Diff unstaged changes without enrichment — for benchmarking.
+/// Diff unstaged changes without enrichment — for benchmarking. Also resolves
+/// each file's real side content, so the caller can measure `enrich_file_diffs`
+/// against real content without paying side-resolution cost inside `b.iter`.
 #[doc(hidden)]
 pub fn diff_unstaged_raw_for_bench(
     path: &str,
     file_path: &str,
     state_map: &HashMap<String, PathBuf>,
     options: &DiffRequestOptions,
-) -> Result<Vec<FileDiff>, TrunkError> {
+) -> Result<(Vec<FileDiff>, Vec<SideContent>), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = git2::DiffOptions::new();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    walk_diff_raw_for_bench(diff)
+    let delta_sides = collect_delta_sides(&diff)?;
+    let sides: Vec<SideContent> = delta_sides
+        .iter()
+        .map(|d| resolve_side_content(&repo, d, NewSideSource::Workdir))
+        .collect();
+    let file_diffs = walk_diff_raw_for_bench(diff)?;
+    Ok((file_diffs, sides))
 }
 
 pub fn diff_unstaged_inner(
@@ -499,7 +609,7 @@ pub fn diff_unstaged_inner(
     opts.show_untracked_content(true);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    walk_diff(diff)
+    walk_diff(diff, &repo, NewSideSource::Workdir)
 }
 
 pub fn diff_staged_inner(
@@ -519,7 +629,7 @@ pub fn diff_staged_inner(
         let head_tree = repo.head()?.peel_to_tree()?;
         repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut opts))?
     };
-    walk_diff(diff)
+    walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
 pub fn diff_commit_inner(
@@ -541,7 +651,7 @@ pub fn diff_commit_inner(
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    walk_diff(diff)
+    walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
 /// Lightweight commit file listing — returns only metadata (path, status, is_binary),
@@ -616,7 +726,7 @@ pub fn diff_commit_file_inner(
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    walk_diff(diff)
+    walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
 pub fn get_commit_detail_inner(

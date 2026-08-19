@@ -368,19 +368,15 @@ fn bench_enrich_new(c: &mut Criterion) {
     let mut state_map: HashMap<String, PathBuf> = HashMap::new();
     state_map.insert(path.clone(), bench_repo.path.clone());
 
-    // Get raw diffs once
-    let raw = trunk_lib::commands::diff::diff_unstaged_raw_for_bench(
+    // Get raw diffs and their real side content once, outside b.iter, so the
+    // benchmark measures enrich_file_diffs's own cost, not side resolution.
+    let (raw, sides) = trunk_lib::commands::diff::diff_unstaged_raw_for_bench(
         &path,
         "diff-utils.ts",
         &state_map,
         &trunk_lib::git::types::DiffRequestOptions::default(),
     )
     .unwrap();
-
-    // Placeholder until diff_unstaged_raw_for_bench returns real sides (task 4):
-    // this still measures enrichment's fixed per-line overhead, just without the
-    // syntax-parsing cost real content adds.
-    let sides = vec![trunk_lib::commands::diff::SideContent::none(); raw.len()];
 
     c.bench_function("enrich_ts_new_perfile", |b| {
         b.iter(|| {

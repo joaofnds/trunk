@@ -873,3 +873,65 @@ fn diff_commit_respects_context_lines() {
         lines_1
     );
 }
+
+// F1 end-to-end: the default 3-line context window puts the hunk's first
+// (context) line on the closing `";` of a string that opened one line
+// earlier, off-screen. A fresh per-hunk highlighter (the diagnosed defect)
+// misreads that line as top-level code and flips into "inside a string" for
+// everything after; seeded from the real file content it resolves correctly.
+#[test]
+fn commit_diff_highlights_a_hunk_starting_mid_string_from_real_file_content() {
+    let before = concat!(
+        "fn build_sql() -> String {\n", // 1
+        "    let a = 1;\n",             // 2
+        "    let sql = \"SELECT *\n",   // 3 - string opens
+        "FROM t WHERE x = 1\";\n",      // 4 - string closes
+        "    let mut stmt = sql;\n",    // 5
+        "    let unused = 0;\n",        // 6
+        "    stmt\n",                   // 7 - edited below
+        "}\n",                          // 8
+    );
+    let after = before.replace("    stmt\n", "    stmt.clone()\n");
+
+    let ctx = TestContext::builder()
+        .with_file("sql.rs", before)
+        .with_commit("Initial commit")
+        .with_file("sql.rs", &after)
+        .with_commit("Use stmt.clone()")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let file_diffs = ctx.diff_commit(&head_oid).expect("diff_commit failed");
+    assert!(!file_diffs.is_empty(), "expected file diffs");
+    let hunk = &file_diffs[0].hunks[0];
+
+    let first_line = &hunk.lines[0];
+    assert_eq!(
+        first_line.content.trim_end(),
+        "FROM t WHERE x = 1\";",
+        "hunk should start on the string's closing line, got {:?}",
+        first_line.content
+    );
+    assert!(
+        first_line
+            .spans
+            .iter()
+            .any(|s| s.syntax_class == "syn-string"),
+        "hunk's first (context) line, inside the real string, should carry syn-string, got {:?}",
+        first_line.spans
+    );
+
+    let let_line = hunk
+        .lines
+        .iter()
+        .find(|l| l.content.contains("let mut stmt"))
+        .expect("expected the 'let mut stmt' line in the hunk");
+    assert!(
+        let_line.spans.iter().any(|s| s.syntax_class == "syn-keyword"),
+        "line after the string closes should carry syn-keyword, got {:?}",
+        let_line.spans
+    );
+}
