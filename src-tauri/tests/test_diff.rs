@@ -935,3 +935,101 @@ fn commit_diff_highlights_a_hunk_starting_mid_string_from_real_file_content() {
         let_line.spans
     );
 }
+
+// Same F1 scenario as above, but unstaged: the new side is workdir-backed
+// (diff_index_to_workdir), so this exercises the disk-read path in
+// resolve_side_content rather than an ODB blob read.
+#[test]
+fn unstaged_diff_highlights_a_hunk_starting_mid_string_via_workdir_read() {
+    let before = concat!(
+        "fn build_sql() -> String {\n",
+        "    let a = 1;\n",
+        "    let sql = \"SELECT *\n",
+        "FROM t WHERE x = 1\";\n",
+        "    let mut stmt = sql;\n",
+        "    let unused = 0;\n",
+        "    stmt\n",
+        "}\n",
+    );
+    let after = before.replace("    stmt\n", "    stmt.clone()\n");
+
+    let ctx = TestContext::builder()
+        .with_file("sql.rs", before)
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("sql.rs"), &after).unwrap();
+
+    let file_diffs = ctx.diff_unstaged("sql.rs").expect("diff_unstaged failed");
+    assert!(!file_diffs.is_empty(), "expected file diffs");
+    let hunk = &file_diffs[0].hunks[0];
+
+    let first_line = &hunk.lines[0];
+    assert_eq!(
+        first_line.content.trim_end(),
+        "FROM t WHERE x = 1\";",
+        "hunk should start on the string's closing line, got {:?}",
+        first_line.content
+    );
+    assert!(
+        first_line
+            .spans
+            .iter()
+            .any(|s| s.syntax_class == "syn-string"),
+        "hunk's first (context) line, inside the real string, should carry syn-string, got {:?}",
+        first_line.spans
+    );
+
+    let let_line = hunk
+        .lines
+        .iter()
+        .find(|l| l.content.contains("let mut stmt"))
+        .expect("expected the 'let mut stmt' line in the hunk");
+    assert!(
+        let_line.spans.iter().any(|s| s.syntax_class == "syn-keyword"),
+        "line after the string closes should carry syn-keyword, got {:?}",
+        let_line.spans
+    );
+}
+
+// An untracked file has no old side (Delta::Untracked's old oid is zero) and
+// a workdir-backed new side. Its Add lines should still highlight as real
+// Rust code, proving the untracked path resolves new content from disk
+// rather than skipping it because the OID looks like "no content".
+#[test]
+fn unstaged_diff_highlights_an_untracked_rust_file_with_no_old_side() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(
+        ctx.repo_path().join("new_mod.rs"),
+        "fn helper() -> i32 {\n    let x = 1;\n    x\n}\n",
+    )
+    .unwrap();
+
+    let file_diffs = ctx
+        .diff_unstaged("new_mod.rs")
+        .expect("diff_unstaged failed");
+    assert!(!file_diffs.is_empty(), "expected file diffs");
+    let hunk = &file_diffs[0].hunks[0];
+
+    assert!(
+        hunk.lines
+            .iter()
+            .all(|l| !matches!(l.origin, trunk_lib::git::types::DiffOrigin::Delete)),
+        "an untracked file's diff should have no Delete lines"
+    );
+
+    let let_line = hunk
+        .lines
+        .iter()
+        .find(|l| l.content.contains("let x"))
+        .expect("expected the 'let x' line in the hunk");
+    assert!(
+        let_line.spans.iter().any(|s| s.syntax_class == "syn-keyword"),
+        "untracked Add line should highlight as real code, got {:?}",
+        let_line.spans
+    );
+}
