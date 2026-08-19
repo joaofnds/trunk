@@ -1,0 +1,69 @@
+{
+  "wipCount": 1,
+  "capture": {
+    "oids": [
+      "46a7793ad6d40efdf5af3d2556ef43de26281829",
+      "5669165ecff3a9649471301122a21ee73d87d7d8",
+      "41680485b6de8bce3285129b44483ea6dbf790da"
+    ],
+    "parents": {
+      "41680485b6de8bce3285129b44483ea6dbf790da": [],
+      "46a7793ad6d40efdf5af3d2556ef43de26281829": [
+        "5669165ecff3a9649471301122a21ee73d87d7d8",
+        "3fc119f7d30d7cc42c0048310d037b84300acdbd"
+      ],
+      "5669165ecff3a9649471301122a21ee73d87d7d8": [
+        "41680485b6de8bce3285129b44483ea6dbf790da"
+      ]
+    },
+    "stashes": [
+      "46a7793ad6d40efdf5af3d2556ef43de26281829"
+    ],
+    "head_tip": "5669165ecff3a9649471301122a21ee73d87d7d8",
+    "tracked_upstream": null,
+    "worktree_dirty": true,
+    "commits": {
+      "41680485b6de8bce3285129b44483ea6dbf790da": {
+        "summary": "Add 3000 files",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "46a7793ad6d40efdf5af3d2556ef43de26281829": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "5669165ecff3a9649471301122a21ee73d87d7d8": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      }
+    },
+    "refs": {
+      "46a7793ad6d40efdf5af3d2556ef43de26281829": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "5669165ecff3a9649471301122a21ee73d87d7d8": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

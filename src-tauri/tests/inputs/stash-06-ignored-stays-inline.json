@@ -1,0 +1,69 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "379a9721bdbf4c125eb433b984729302b54fd148",
+      "166a0839849b3e96bf591eea63e47f46a269001c",
+      "60f1846afbea919dcaf17e0a0d69d3940611f264"
+    ],
+    "parents": {
+      "166a0839849b3e96bf591eea63e47f46a269001c": [
+        "60f1846afbea919dcaf17e0a0d69d3940611f264"
+      ],
+      "379a9721bdbf4c125eb433b984729302b54fd148": [
+        "166a0839849b3e96bf591eea63e47f46a269001c",
+        "de002da32b00c8e761d6ae0738b90671e0c6ba2d"
+      ],
+      "60f1846afbea919dcaf17e0a0d69d3940611f264": []
+    },
+    "stashes": [
+      "379a9721bdbf4c125eb433b984729302b54fd148"
+    ],
+    "head_tip": "166a0839849b3e96bf591eea63e47f46a269001c",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "166a0839849b3e96bf591eea63e47f46a269001c": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "379a9721bdbf4c125eb433b984729302b54fd148": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "60f1846afbea919dcaf17e0a0d69d3940611f264": {
+        "summary": "Add notes and ignore rules",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "166a0839849b3e96bf591eea63e47f46a269001c": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "379a9721bdbf4c125eb433b984729302b54fd148": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 pub mod blob_reader;
 pub mod editor;
 pub mod graph;
+pub mod graph_input;
 pub mod layout_dump;
 pub mod placement;
 pub mod repository;

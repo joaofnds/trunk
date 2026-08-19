@@ -6,7 +6,8 @@ const UPDATE_VAR: &str = "TRUNK_ACCEPT_GRAPH_GOLDENS";
 
 pub const ACCEPT_HINT: &str = "A red graph golden is a suspected defect, not a stale artifact. \
 Investigate first. If the new layout is genuinely intended, accept it with \
-`just graph-accept \"<reason>\"`, which records the reason in docs/commit-graph-changelog.md.";
+`just graph-accept \"<reason>\"`, which records the reason in docs/commit-graph-changelog.md. \
+Never set TRUNK_ACCEPT_GRAPH_GOLDENS by hand, and accept only at the user's explicit direction.";
 
 pub fn update_requested() -> bool {
     std::env::var_os(UPDATE_VAR).is_some()

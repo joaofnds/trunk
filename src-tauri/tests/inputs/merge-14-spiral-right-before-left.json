@@ -1,0 +1,137 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "56cbe9ec362198193440b55efa17775e98bd1f6f",
+      "64d5ae259bb1dbbf4c1daff70d1d9ac6d8a06cb4",
+      "f0fbd5c7f01cd59bad02e128675d556c9b9d6d59",
+      "0267d57b754c58b0a2929c291efcc586f6f5d906",
+      "6c02a5df2d43694a142682c824d1cf426f84789f",
+      "824d10852c030eaab3c9b0ff4ea02d7eeca85e32",
+      "6154d960e4bd6687272fe818591bdb54c20b9f04",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "0267d57b754c58b0a2929c291efcc586f6f5d906": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "56cbe9ec362198193440b55efa17775e98bd1f6f": [
+        "6c02a5df2d43694a142682c824d1cf426f84789f"
+      ],
+      "6154d960e4bd6687272fe818591bdb54c20b9f04": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "64d5ae259bb1dbbf4c1daff70d1d9ac6d8a06cb4": [
+        "6154d960e4bd6687272fe818591bdb54c20b9f04"
+      ],
+      "6c02a5df2d43694a142682c824d1cf426f84789f": [],
+      "824d10852c030eaab3c9b0ff4ea02d7eeca85e32": [
+        "6154d960e4bd6687272fe818591bdb54c20b9f04"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": [],
+      "f0fbd5c7f01cd59bad02e128675d556c9b9d6d59": [
+        "0267d57b754c58b0a2929c291efcc586f6f5d906"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "f0fbd5c7f01cd59bad02e128675d556c9b9d6d59",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "0267d57b754c58b0a2929c291efcc586f6f5d906": {
+        "summary": "main two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769299200
+      },
+      "56cbe9ec362198193440b55efa17775e98bd1f6f": {
+        "summary": "orphan tip",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769817600
+      },
+      "6154d960e4bd6687272fe818591bdb54c20b9f04": {
+        "summary": "beta bottom",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "64d5ae259bb1dbbf4c1daff70d1d9ac6d8a06cb4": {
+        "summary": "beta top",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769731200
+      },
+      "6c02a5df2d43694a142682c824d1cf426f84789f": {
+        "summary": "orphan root",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "824d10852c030eaab3c9b0ff4ea02d7eeca85e32": {
+        "summary": "delta lands right of beta",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "f0fbd5c7f01cd59bad02e128675d556c9b9d6d59": {
+        "summary": "main three",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769385600
+      }
+    },
+    "refs": {
+      "56cbe9ec362198193440b55efa17775e98bd1f6f": [
+        {
+          "name": "refs/heads/orphan",
+          "short_name": "orphan",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "64d5ae259bb1dbbf4c1daff70d1d9ac6d8a06cb4": [
+        {
+          "name": "refs/heads/beta",
+          "short_name": "beta",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "824d10852c030eaab3c9b0ff4ea02d7eeca85e32": [
+        {
+          "name": "refs/heads/delta",
+          "short_name": "delta",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "f0fbd5c7f01cd59bad02e128675d556c9b9d6d59": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

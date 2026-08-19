@@ -1,0 +1,175 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "9aff311d064d3a1473c7ecbab62e95d76d604ee9",
+      "4afab5a5e03788c75a7bd38d476f8f4c6981896b",
+      "2692bb00eeb8394dc91071f511cf20c33de829c4",
+      "57e2bb1cc04018d55020ff3325a3f7ebef8d8503",
+      "13ec3cf048ec915ddbbf993c2fbaead4fdb74178",
+      "0ebe6c7be963ed89c38bea3330f078cc5f27368b",
+      "6e44ffd750c7c8d6eb1c4a141997f1a3440d77fd",
+      "af1f592a045832b9e4c522459f5e15153acd3633",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "0ebe6c7be963ed89c38bea3330f078cc5f27368b": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "13ec3cf048ec915ddbbf993c2fbaead4fdb74178": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "2692bb00eeb8394dc91071f511cf20c33de829c4": [],
+      "4afab5a5e03788c75a7bd38d476f8f4c6981896b": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "57e2bb1cc04018d55020ff3325a3f7ebef8d8503": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "6e44ffd750c7c8d6eb1c4a141997f1a3440d77fd": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "9aff311d064d3a1473c7ecbab62e95d76d604ee9": [
+        "2692bb00eeb8394dc91071f511cf20c33de829c4"
+      ],
+      "af1f592a045832b9e4c522459f5e15153acd3633": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "4afab5a5e03788c75a7bd38d476f8f4c6981896b",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "0ebe6c7be963ed89c38bea3330f078cc5f27368b": {
+        "summary": "lane three work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768780800
+      },
+      "13ec3cf048ec915ddbbf993c2fbaead4fdb74178": {
+        "summary": "lane two work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768867200
+      },
+      "2692bb00eeb8394dc91071f511cf20c33de829c4": {
+        "summary": "orphan root",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769126400
+      },
+      "4afab5a5e03788c75a7bd38d476f8f4c6981896b": {
+        "summary": "main two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769385600
+      },
+      "57e2bb1cc04018d55020ff3325a3f7ebef8d8503": {
+        "summary": "lane one work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768953600
+      },
+      "6e44ffd750c7c8d6eb1c4a141997f1a3440d77fd": {
+        "summary": "lane four work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768694400
+      },
+      "9aff311d064d3a1473c7ecbab62e95d76d604ee9": {
+        "summary": "orphan tip",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769817600
+      },
+      "af1f592a045832b9e4c522459f5e15153acd3633": {
+        "summary": "lane five work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768608000
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "0ebe6c7be963ed89c38bea3330f078cc5f27368b": [
+        {
+          "name": "refs/heads/lane-three",
+          "short_name": "lane-three",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "13ec3cf048ec915ddbbf993c2fbaead4fdb74178": [
+        {
+          "name": "refs/heads/lane-two",
+          "short_name": "lane-two",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "4afab5a5e03788c75a7bd38d476f8f4c6981896b": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "57e2bb1cc04018d55020ff3325a3f7ebef8d8503": [
+        {
+          "name": "refs/heads/lane-one",
+          "short_name": "lane-one",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "6e44ffd750c7c8d6eb1c4a141997f1a3440d77fd": [
+        {
+          "name": "refs/heads/lane-four",
+          "short_name": "lane-four",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "9aff311d064d3a1473c7ecbab62e95d76d604ee9": [
+        {
+          "name": "refs/heads/orphan",
+          "short_name": "orphan",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "af1f592a045832b9e4c522459f5e15153acd3633": [
+        {
+          "name": "refs/heads/lane-five",
+          "short_name": "lane-five",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "dee21df87cfe55c55dffcf022abbc3d2017b84a5",
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+      "22843f0512d2968ad0203df07492f629916dc0ac"
+    ],
+    "parents": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": [],
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": [
+        "22843f0512d2968ad0203df07492f629916dc0ac"
+      ],
+      "dee21df87cfe55c55dffcf022abbc3d2017b84a5": [
+        "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+        "fb422eb0f50b2c3bcc33247ae2206c30b3c5602e"
+      ]
+    },
+    "stashes": [
+      "dee21df87cfe55c55dffcf022abbc3d2017b84a5"
+    ],
+    "head_tip": "22843f0512d2968ad0203df07492f629916dc0ac",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "dee21df87cfe55c55dffcf022abbc3d2017b84a5": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      }
+    },
+    "refs": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "dee21df87cfe55c55dffcf022abbc3d2017b84a5": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

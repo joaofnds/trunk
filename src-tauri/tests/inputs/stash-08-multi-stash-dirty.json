@@ -1,0 +1,102 @@
+{
+  "wipCount": 1,
+  "capture": {
+    "oids": [
+      "ba03923873d191156e739a36ff6829ec7c32045e",
+      "9cfe194fd0567dcb073af9784ade3ab97bc8446b",
+      "9d75273952501f0f0ceb979779daa846035c4afe",
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+      "22843f0512d2968ad0203df07492f629916dc0ac"
+    ],
+    "parents": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": [],
+      "9cfe194fd0567dcb073af9784ade3ab97bc8446b": [
+        "9d75273952501f0f0ceb979779daa846035c4afe",
+        "e9cd895cc0068da852d2921dec6c1ec723422e89"
+      ],
+      "9d75273952501f0f0ceb979779daa846035c4afe": [
+        "b9ab12be16d14d7e784be8bab5184a32e2c898c2"
+      ],
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": [
+        "22843f0512d2968ad0203df07492f629916dc0ac"
+      ],
+      "ba03923873d191156e739a36ff6829ec7c32045e": [
+        "9d75273952501f0f0ceb979779daa846035c4afe",
+        "db4ab4bf40048ab706ba66df623eb70d9bf49056"
+      ]
+    },
+    "stashes": [
+      "ba03923873d191156e739a36ff6829ec7c32045e",
+      "9cfe194fd0567dcb073af9784ade3ab97bc8446b"
+    ],
+    "head_tip": "9d75273952501f0f0ceb979779daa846035c4afe",
+    "tracked_upstream": null,
+    "worktree_dirty": true,
+    "commits": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "9cfe194fd0567dcb073af9784ade3ab97bc8446b": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "9d75273952501f0f0ceb979779daa846035c4afe": {
+        "summary": "Add lib",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "ba03923873d191156e739a36ff6829ec7c32045e": {
+        "summary": "On main: second stash",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768176000
+      }
+    },
+    "refs": {
+      "9cfe194fd0567dcb073af9784ade3ab97bc8446b": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "9d75273952501f0f0ceb979779daa846035c4afe": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "ba03923873d191156e739a36ff6829ec7c32045e": [
+        {
+          "name": "On main: second stash",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

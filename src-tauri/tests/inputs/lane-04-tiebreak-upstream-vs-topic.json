@@ -1,0 +1,119 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "01f301c978f67da96176336d8f244cc01099e9e6",
+      "9b710837683ab1ba9ac5775ceb119f3f43b81394",
+      "aa10225412498034ed5c870bce16c7c80ea6504b",
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af",
+      "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836",
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af": [
+        "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836"
+      ],
+      "01f301c978f67da96176336d8f244cc01099e9e6": [
+        "9b710837683ab1ba9ac5775ceb119f3f43b81394"
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "9b710837683ab1ba9ac5775ceb119f3f43b81394": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "aa10225412498034ed5c870bce16c7c80ea6504b": [
+        "01db20f5aa96d854af6d57c3d4b9d3123ed256af"
+      ],
+      "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+    "tracked_upstream": "aa10225412498034ed5c870bce16c7c80ea6504b",
+    "worktree_dirty": false,
+    "commits": {
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af": {
+        "summary": "upstream four",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "01f301c978f67da96176336d8f244cc01099e9e6": {
+        "summary": "topic two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767830400
+      },
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": {
+        "summary": "base two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "9b710837683ab1ba9ac5775ceb119f3f43b81394": {
+        "summary": "topic one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000
+      },
+      "aa10225412498034ed5c870bce16c7c80ea6504b": {
+        "summary": "upstream five",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836": {
+        "summary": "upstream three",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "01f301c978f67da96176336d8f244cc01099e9e6": [
+        {
+          "name": "refs/heads/topic",
+          "short_name": "topic",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "aa10225412498034ed5c870bce16c7c80ea6504b": [
+        {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

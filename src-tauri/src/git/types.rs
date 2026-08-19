@@ -22,7 +22,7 @@ pub struct GraphEdge {
     pub dashed: bool,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RefType {
     LocalBranch,
     RemoteBranch,
@@ -30,7 +30,7 @@ pub enum RefType {
     Stash,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RefLabel {
     pub name: String,
     pub short_name: String,

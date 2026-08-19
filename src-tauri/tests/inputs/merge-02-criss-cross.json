@@ -1,0 +1,99 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "829dcb36b875731ecedc5f6e27fbd087e93f885a",
+      "038e39e7334fb66b4328a7030254c4a8f076be53",
+      "b995fab3917d8d2c2a71b7de9e141b8a6162ac5a",
+      "be2e4927ebf88dd1f7e910038777a40d0cfa4c35",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "038e39e7334fb66b4328a7030254c4a8f076be53": [
+        "be2e4927ebf88dd1f7e910038777a40d0cfa4c35",
+        "b995fab3917d8d2c2a71b7de9e141b8a6162ac5a"
+      ],
+      "829dcb36b875731ecedc5f6e27fbd087e93f885a": [
+        "b995fab3917d8d2c2a71b7de9e141b8a6162ac5a",
+        "be2e4927ebf88dd1f7e910038777a40d0cfa4c35"
+      ],
+      "b995fab3917d8d2c2a71b7de9e141b8a6162ac5a": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "be2e4927ebf88dd1f7e910038777a40d0cfa4c35": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "038e39e7334fb66b4328a7030254c4a8f076be53",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "038e39e7334fb66b4328a7030254c4a8f076be53": {
+        "summary": "alpha takes beta",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "829dcb36b875731ecedc5f6e27fbd087e93f885a": {
+        "summary": "beta takes alpha",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "b995fab3917d8d2c2a71b7de9e141b8a6162ac5a": {
+        "summary": "beta one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "be2e4927ebf88dd1f7e910038777a40d0cfa4c35": {
+        "summary": "alpha one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "038e39e7334fb66b4328a7030254c4a8f076be53": [
+        {
+          "name": "refs/heads/alpha",
+          "short_name": "alpha",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "829dcb36b875731ecedc5f6e27fbd087e93f885a": [
+        {
+          "name": "refs/heads/beta",
+          "short_name": "beta",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

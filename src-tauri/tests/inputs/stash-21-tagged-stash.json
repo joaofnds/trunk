@@ -1,0 +1,76 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "2d8371048e5ad1b9ff45585b8552900fe5aab50c",
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+      "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056"
+    ],
+    "parents": {
+      "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056": [],
+      "2d8371048e5ad1b9ff45585b8552900fe5aab50c": [
+        "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+        "c0751e208f24f8a7130ec4c3bf38a6acb95e0826"
+      ],
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c": [
+        "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056"
+      ]
+    },
+    "stashes": [
+      "2d8371048e5ad1b9ff45585b8552900fe5aab50c"
+    ],
+    "head_tip": "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "2d8371048e5ad1b9ff45585b8552900fe5aab50c": {
+        "summary": "On main: stash dated before its parent",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000
+      }
+    },
+    "refs": {
+      "2d8371048e5ad1b9ff45585b8552900fe5aab50c": [
+        {
+          "name": "refs/tags/keep",
+          "short_name": "keep",
+          "ref_type": "Tag",
+          "is_head": false,
+          "color_index": 0
+        },
+        {
+          "name": "On main: stash dated before its parent",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

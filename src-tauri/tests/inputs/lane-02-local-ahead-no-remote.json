@@ -1,0 +1,77 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "669d4d81854453badef68eb5b95d4866ef486947",
+      "c3a8f1b8ec07415e79e48e4c347c459429306041",
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "669d4d81854453badef68eb5b95d4866ef486947": [
+        "c3a8f1b8ec07415e79e48e4c347c459429306041"
+      ],
+      "c3a8f1b8ec07415e79e48e4c347c459429306041": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": {
+        "summary": "base two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "669d4d81854453badef68eb5b95d4866ef486947": {
+        "summary": "new two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "c3a8f1b8ec07415e79e48e4c347c459429306041": {
+        "summary": "new one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        {
+          "name": "refs/heads/old",
+          "short_name": "old",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "669d4d81854453badef68eb5b95d4866ef486947": [
+        {
+          "name": "refs/heads/new",
+          "short_name": "new",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

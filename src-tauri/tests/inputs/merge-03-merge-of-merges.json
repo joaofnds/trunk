@@ -1,0 +1,151 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "c47f755b1881433c25594c0e51d21e4330ef3b37",
+      "9e4e22c51ff84db05f2b462cd73192f9d94c2747",
+      "33d55bcfddfaf7e1d5a20872fa828e865fd21320",
+      "a9fec471955c2007a2458c8946ee4fe31ec7d75c",
+      "1953b4239c00796975c87ef8db8d7a9ef85af030",
+      "15d26a37f442959c878781f6c099c55d0e184c50",
+      "69644c38137e82bd9de7f026424983ecc88f2c5f",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "15d26a37f442959c878781f6c099c55d0e184c50": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "1953b4239c00796975c87ef8db8d7a9ef85af030": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "33d55bcfddfaf7e1d5a20872fa828e865fd21320": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "69644c38137e82bd9de7f026424983ecc88f2c5f": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "9e4e22c51ff84db05f2b462cd73192f9d94c2747": [
+        "33d55bcfddfaf7e1d5a20872fa828e865fd21320",
+        "15d26a37f442959c878781f6c099c55d0e184c50"
+      ],
+      "a9fec471955c2007a2458c8946ee4fe31ec7d75c": [
+        "1953b4239c00796975c87ef8db8d7a9ef85af030",
+        "69644c38137e82bd9de7f026424983ecc88f2c5f"
+      ],
+      "c47f755b1881433c25594c0e51d21e4330ef3b37": [
+        "a9fec471955c2007a2458c8946ee4fe31ec7d75c",
+        "9e4e22c51ff84db05f2b462cd73192f9d94c2747"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "c47f755b1881433c25594c0e51d21e4330ef3b37",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "15d26a37f442959c878781f6c099c55d0e184c50": {
+        "summary": "feed b one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "1953b4239c00796975c87ef8db8d7a9ef85af030": {
+        "summary": "left one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "33d55bcfddfaf7e1d5a20872fa828e865fd21320": {
+        "summary": "right one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000
+      },
+      "69644c38137e82bd9de7f026424983ecc88f2c5f": {
+        "summary": "feed a one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "9e4e22c51ff84db05f2b462cd73192f9d94c2747": {
+        "summary": "right takes feed b",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767830400
+      },
+      "a9fec471955c2007a2458c8946ee4fe31ec7d75c": {
+        "summary": "left takes feed a",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "c47f755b1881433c25594c0e51d21e4330ef3b37": {
+        "summary": "merge of two merges",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767916800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "15d26a37f442959c878781f6c099c55d0e184c50": [
+        {
+          "name": "refs/heads/feed-b",
+          "short_name": "feed-b",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "69644c38137e82bd9de7f026424983ecc88f2c5f": [
+        {
+          "name": "refs/heads/feed-a",
+          "short_name": "feed-a",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "9e4e22c51ff84db05f2b462cd73192f9d94c2747": [
+        {
+          "name": "refs/heads/right",
+          "short_name": "right",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "c47f755b1881433c25594c0e51d21e4330ef3b37": [
+        {
+          "name": "refs/heads/left",
+          "short_name": "left",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

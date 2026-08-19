@@ -91,6 +91,10 @@ mutants *args:
 graph-accept reason="":
     scripts/graph-accept.sh {{quote(reason)}}
 
+# Rebuild the fixture corpus and re-capture the golden suite's committed inputs
+graph-capture:
+    scripts/graph-capture.sh
+
 # ── Benchmarks ───────────────────────────────────────
 
 # Run all benchmarks

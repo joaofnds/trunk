@@ -1,0 +1,100 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "f73d7519044a5cb629c5657beb40c0321981c5df",
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af",
+      "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836",
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af": [
+        "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836"
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": [],
+      "f73d7519044a5cb629c5657beb40c0321981c5df": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+        "3c8d2cd7e5ed836ac1081d15d1c0541cf7e54ad4"
+      ]
+    },
+    "stashes": [
+      "f73d7519044a5cb629c5657beb40c0321981c5df"
+    ],
+    "head_tip": "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+    "tracked_upstream": "01db20f5aa96d854af6d57c3d4b9d3123ed256af",
+    "worktree_dirty": false,
+    "commits": {
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af": {
+        "summary": "upstream four",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": {
+        "summary": "base two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836": {
+        "summary": "upstream three",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "f73d7519044a5cb629c5657beb40c0321981c5df": {
+        "summary": "On main: half-finished work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768003200
+      }
+    },
+    "refs": {
+      "01db20f5aa96d854af6d57c3d4b9d3123ed256af": [
+        {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "f73d7519044a5cb629c5657beb40c0321981c5df": [
+        {
+          "name": "On main: half-finished work",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

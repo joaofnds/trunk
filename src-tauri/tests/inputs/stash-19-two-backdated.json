@@ -1,0 +1,91 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3",
+      "14fef159cbfaf5de90f9f17166ae30ad504ee5fd",
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+      "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056"
+    ],
+    "parents": {
+      "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056": [],
+      "14fef159cbfaf5de90f9f17166ae30ad504ee5fd": [
+        "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+        "c0751e208f24f8a7130ec4c3bf38a6acb95e0826"
+      ],
+      "800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3": [
+        "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+        "9b5f191b70418de7f7e8d8a5c476a03eeaa4468f"
+      ],
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c": [
+        "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056"
+      ]
+    },
+    "stashes": [
+      "800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3",
+      "14fef159cbfaf5de90f9f17166ae30ad504ee5fd"
+    ],
+    "head_tip": "c8259b7bb3051fbec4dac96c7310b5c79c42208c",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "0cecbb8aeaa42c68d8ec42d1656fecad9d5ca056": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "14fef159cbfaf5de90f9f17166ae30ad504ee5fd": {
+        "summary": "On main: older, dated before its parent",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3": {
+        "summary": "On main: newer, dated before its parent",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000
+      }
+    },
+    "refs": {
+      "14fef159cbfaf5de90f9f17166ae30ad504ee5fd": [
+        {
+          "name": "On main: older, dated before its parent",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3": [
+        {
+          "name": "On main: newer, dated before its parent",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "c8259b7bb3051fbec4dac96c7310b5c79c42208c": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

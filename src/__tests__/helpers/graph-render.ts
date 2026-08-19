@@ -314,7 +314,8 @@ const ACCEPT_VAR = "TRUNK_ACCEPT_GRAPH_GOLDENS";
 const ACCEPT_HINT =
 	"A red graph golden is a suspected defect, not a stale artifact. Investigate first. " +
 	'If the new render is genuinely intended, accept it with `just graph-accept "<reason>"`, ' +
-	"which records the reason in docs/commit-graph-changelog.md.";
+	"which records the reason in docs/commit-graph-changelog.md. " +
+	"Never set TRUNK_ACCEPT_GRAPH_GOLDENS by hand, and accept only at the user's explicit direction.";
 
 export function goldenNames(): string[] {
 	return readdirSync(GOLDENS_DIR)

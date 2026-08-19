@@ -1,43 +1,88 @@
 mod common;
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use common::{exports, fixtures, goldens};
-use trunk_lib::git::graph::walk_commits;
+use common::{exports, goldens};
+use trunk_lib::git::graph_input::{self, FixtureInput};
 use trunk_lib::git::layout_dump;
 use trunk_lib::git::types::GraphResult;
 
 /// Fixtures that pin a paginated slice as well as the full walk, and the skip and
-/// limit that cuts a fork and a merge mid-shape. `walk_commits` lays out the whole
+/// limit that cuts a fork and a merge mid-shape. `layout` lays out the whole
 /// graph before paging, so a slice is not the full golden's rows sliced.
 const PAGED: [(&str, usize, usize); 1] = [("merge-12-pagination-boundary", 1, 4)];
 
-fn fixture_path(name: &str) -> PathBuf {
-    fixtures::repositories()
+fn inputs_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inputs")
+}
+
+/// Every committed fixture input, as (name, input), sorted by name. Written by
+/// `just graph-capture`; nothing in the test loop builds a repository.
+fn fixtures() -> Vec<(String, FixtureInput)> {
+    let mut found = Vec::new();
+
+    for entry in std::fs::read_dir(inputs_dir()).expect("read inputs dir") {
+        let path = entry.expect("read input entry").path();
+        let file_name = path
+            .file_name()
+            .expect("input has a name")
+            .to_string_lossy()
+            .into_owned();
+        let Some(name) = file_name.strip_suffix(".json") else {
+            continue;
+        };
+
+        let text = std::fs::read_to_string(&path).expect("read input");
+        let input: FixtureInput =
+            serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {file_name}: {e}"));
+        found.push((name.to_owned(), input));
+    }
+
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+fn fixture(name: &str) -> FixtureInput {
+    fixtures()
         .into_iter()
         .find(|(n, _)| n == name)
         .unwrap_or_else(|| panic!("no fixture named {name}"))
         .1
 }
 
-fn layout_of(name: &str) -> String {
-    let mut repo = git2::Repository::open(fixture_path(name)).expect("open fixture");
-
-    layout_dump::render(&walk_commits(&mut repo, 0, usize::MAX).expect("walk fixture"))
+fn walk(input: &FixtureInput, offset: usize, limit: usize) -> GraphResult {
+    graph_input::layout(&input.capture.to_source(), offset, limit)
 }
 
-/// Walk every fixture and compare one rendering of the result against what is
+fn layout_of(name: &str) -> String {
+    layout_dump::render(&walk(&fixture(name), 0, usize::MAX))
+}
+
+/// The names of the artifacts committed in `dir`, with `suffix` stripped.
+fn committed_names(dir: &Path, suffix: &str) -> BTreeSet<String> {
+    std::fs::read_dir(dir)
+        .expect("read artifact dir")
+        .filter_map(|entry| {
+            let name = entry.expect("read artifact entry").file_name();
+            name.to_string_lossy()
+                .strip_suffix(suffix)
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
+/// Lay every fixture out and compare one rendering of the result against what is
 /// committed, or overwrite it when `just graph-accept` asked for that.
 fn corpus_drift(
     artifact: fn(&str) -> PathBuf,
-    render: impl Fn(&GraphResult, &Path) -> String,
+    render: impl Fn(&GraphResult, usize) -> String,
 ) -> Vec<String> {
     let mut drifted = Vec::new();
 
-    for (name, path) in fixtures::repositories() {
-        let mut repo = git2::Repository::open(&path).expect("open fixture");
-        let result = walk_commits(&mut repo, 0, usize::MAX).expect("walk fixture");
-        let rendered = render(&result, &path);
+    for (name, input) in fixtures() {
+        let result = walk(&input, 0, usize::MAX);
+        let rendered = render(&result, input.wip_count);
         let committed = artifact(&name);
 
         if goldens::update_requested() {
@@ -65,22 +110,6 @@ fn assert_no_drift(artifact: &str, drifted: &[String]) {
 }
 
 #[test]
-fn corpus_holds_fixtures_from_every_script() {
-    let root = fixtures::corpus();
-
-    assert!(
-        root.join("stash/01-clean-inline").is_dir(),
-        "stash corpus missing from {}",
-        root.display()
-    );
-    assert!(
-        root.join("lane/01-behind-only").is_dir(),
-        "lane corpus missing from {}",
-        root.display()
-    );
-}
-
-#[test]
 fn layout_text_keys_rows_by_summary() {
     let text = layout_of("stash-01-clean-inline");
 
@@ -100,8 +129,8 @@ fn layout_text_names_parents_by_summary() {
 
 #[test]
 fn the_export_carries_the_worktree_wip_count() {
-    let dirty = exports::wip_count(&fixture_path("stash-02-dirty-tracked"));
-    let clean = exports::wip_count(&fixture_path("stash-01-clean-inline"));
+    let dirty = fixture("stash-02-dirty-tracked").wip_count;
+    let clean = fixture("stash-01-clean-inline").wip_count;
 
     assert!(dirty > 0, "dirty fixture reported a wip count of {dirty}");
     assert_eq!(clean, 0, "clean fixture reported a wip count of {clean}");
@@ -109,10 +138,19 @@ fn the_export_carries_the_worktree_wip_count() {
 
 #[test]
 fn a_bare_fixture_reports_no_wip_rows() {
-    assert_eq!(
-        exports::wip_count(&fixture_path("stash-16-bare-repo.git")),
-        0
-    );
+    assert_eq!(fixture("stash-16-bare-repo.git").wip_count, 0);
+}
+
+#[test]
+fn every_committed_input_has_a_golden_and_an_export() {
+    let names: BTreeSet<String> = fixtures().into_iter().map(|(name, _)| name).collect();
+    let mut expected_goldens = names.clone();
+    for (name, skip, limit) in PAGED {
+        expected_goldens.insert(format!("{name}.rows-{skip}-{limit}"));
+    }
+
+    assert_eq!(committed_names(&goldens::dir(), ".txt"), expected_goldens);
+    assert_eq!(committed_names(&exports::dir(), ".json"), names);
 }
 
 #[test]
@@ -124,9 +162,7 @@ fn every_fixture_matches_its_committed_layout() {
 
 #[test]
 fn every_fixture_matches_its_committed_export() {
-    let drifted = corpus_drift(exports::path, |result, path| {
-        exports::render(result, exports::wip_count(path))
-    });
+    let drifted = corpus_drift(exports::path, exports::render);
 
     assert_no_drift("export", &drifted);
 }
@@ -134,9 +170,8 @@ fn every_fixture_matches_its_committed_export() {
 #[test]
 fn a_paged_walk_renders_only_the_requested_rows() {
     let (name, skip, limit) = PAGED[0];
-    let mut repo = git2::Repository::open(fixture_path(name)).expect("open fixture");
 
-    let text = layout_dump::render(&walk_commits(&mut repo, skip, limit).expect("walk fixture"));
+    let text = layout_dump::render(&walk(&fixture(name), skip, limit));
 
     assert_eq!(
         text.matches("\nrow ").count(),
@@ -150,9 +185,7 @@ fn every_paged_fixture_matches_its_committed_slice() {
     let mut drifted = Vec::new();
 
     for (name, skip, limit) in PAGED {
-        let mut repo = git2::Repository::open(fixture_path(name)).expect("open fixture");
-        let result = walk_commits(&mut repo, skip, limit).expect("walk fixture");
-        let rendered = layout_dump::render(&result);
+        let rendered = layout_dump::render(&walk(&fixture(name), skip, limit));
         let committed = goldens::path(&format!("{name}.rows-{skip}-{limit}"));
 
         if goldens::update_requested() {
@@ -167,24 +200,4 @@ fn every_paged_fixture_matches_its_committed_slice() {
     }
 
     assert_no_drift("paginated layout", &drifted);
-}
-
-#[test]
-fn rebuilding_the_corpus_reproduces_every_repository() {
-    let rebuilt = tempfile::tempdir().expect("create rebuild dir");
-    fixtures::build_into(rebuilt.path());
-
-    for (name, path) in fixtures::repositories() {
-        let subdir = name.split_once('-').expect("name carries its corpus").0;
-        let twin = rebuilt
-            .path()
-            .join(subdir)
-            .join(path.file_name().expect("fixture has a name"));
-
-        assert_eq!(
-            fixtures::reference_fingerprint(&path),
-            fixtures::reference_fingerprint(&twin),
-            "{name} is not reproducible"
-        );
-    }
 }

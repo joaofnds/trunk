@@ -1,0 +1,77 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "4b5c977a44e2b50c16d6ffec46d3381b2fed25d7",
+      "4e7cd6d4115a259521988d4edb0d65f28a5c4481",
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "4b5c977a44e2b50c16d6ffec46d3381b2fed25d7": [
+        "4e7cd6d4115a259521988d4edb0d65f28a5c4481"
+      ],
+      "4e7cd6d4115a259521988d4edb0d65f28a5c4481": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": {
+        "summary": "base two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "4b5c977a44e2b50c16d6ffec46d3381b2fed25d7": {
+        "summary": "released two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "4e7cd6d4115a259521988d4edb0d65f28a5c4481": {
+        "summary": "released one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "4b5c977a44e2b50c16d6ffec46d3381b2fed25d7": [
+        {
+          "name": "refs/tags/v1.0.0",
+          "short_name": "v1.0.0",
+          "ref_type": "Tag",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

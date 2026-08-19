@@ -18,6 +18,9 @@ if [ -z "$REASON" ]; then
 		first. If the new layout is genuinely intended, say why:
 
 		    just graph-accept "second parent now sorts above the first, per <decision>"
+
+		Never set TRUNK_ACCEPT_GRAPH_GOLDENS by hand, and accept only at the
+		user's explicit direction.
 	MSG
 	exit 1
 fi

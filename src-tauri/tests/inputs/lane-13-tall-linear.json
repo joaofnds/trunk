@@ -1,0 +1,354 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "3f779a2b8c5f647928d79fcec4c34d05112a3ad9",
+      "8f20db646027ce3e2376734b3a89c118d59f9f10",
+      "30ca4d44aca93dd95d7f83ca4f11dc5b72387e08",
+      "74200675514dba7460dcd986ced7ac187d8a2333",
+      "5fb6bae49f10656ca7900111de666ff0dba59aee",
+      "b84f6bf482f89678d151bf8957ca0ae902983809",
+      "983e34255a5c2ade9b7ad5245b7b6471ac58027b",
+      "33c01e26ea182a2fd93e3e9a8bceea8b1dc770b4",
+      "07425f553de8efd0a813b5d702095d128d84fa22",
+      "09360b254ba87557e06350dc65ccc9917f954b8b",
+      "81981cb569ffd06dffce4df79c4d830a92f7ad2a",
+      "0bdceeb42a351c41c072ee5ad1f6aedd273d84a2",
+      "7545c3a8058acdb48bd80f6ffbdd5784a0718714",
+      "1035dbf2f88cb73c8e912d670b21b391efa20759",
+      "4b85af1be80d4ba97656dcd0ea098df446859879",
+      "137ccdb9a2dea8ec1c92831c1aa19aea19a47944",
+      "400478048782faa7d0ab9176407c6786bef7cad9",
+      "91ba1a0fdfad9bddb1c9069dc4d408e4cc06b728",
+      "65e7129c7ad248e3f5fa8b8e5e9f700b42ef6d1b",
+      "b75c50406f7eb07aac565ea603a9aa7c992c43d8",
+      "7ca6bafad6e4d5c35ce8022edb4a7c4dfc049083",
+      "b665064e9573dfc5cb60b523de177ce52025110d",
+      "aebe68ff252f094dff31fc8e8f5ed8569137608c",
+      "0a7227fd8d882ad4347f690f403c9eeae2d37941",
+      "4acfe4b255f1123634c69f6a6b07200e31410971",
+      "58c9e1585766dc5ed7be7ba4a58f584829a1c615",
+      "c1a13cee620d85fd8c7b8eb7c8bd7b28796892cf",
+      "85dbff92429c1b05a764bae86df37a3cdca82007",
+      "d033bf51ef7d4522e8d687812d18b1aeed025e7a",
+      "9b3eb6ea7e7e4b3b8a0dfded9e090a0305be52ac"
+    ],
+    "parents": {
+      "07425f553de8efd0a813b5d702095d128d84fa22": [
+        "09360b254ba87557e06350dc65ccc9917f954b8b"
+      ],
+      "09360b254ba87557e06350dc65ccc9917f954b8b": [
+        "81981cb569ffd06dffce4df79c4d830a92f7ad2a"
+      ],
+      "0a7227fd8d882ad4347f690f403c9eeae2d37941": [
+        "4acfe4b255f1123634c69f6a6b07200e31410971"
+      ],
+      "0bdceeb42a351c41c072ee5ad1f6aedd273d84a2": [
+        "7545c3a8058acdb48bd80f6ffbdd5784a0718714"
+      ],
+      "1035dbf2f88cb73c8e912d670b21b391efa20759": [
+        "4b85af1be80d4ba97656dcd0ea098df446859879"
+      ],
+      "137ccdb9a2dea8ec1c92831c1aa19aea19a47944": [
+        "400478048782faa7d0ab9176407c6786bef7cad9"
+      ],
+      "30ca4d44aca93dd95d7f83ca4f11dc5b72387e08": [
+        "74200675514dba7460dcd986ced7ac187d8a2333"
+      ],
+      "33c01e26ea182a2fd93e3e9a8bceea8b1dc770b4": [
+        "07425f553de8efd0a813b5d702095d128d84fa22"
+      ],
+      "3f779a2b8c5f647928d79fcec4c34d05112a3ad9": [
+        "8f20db646027ce3e2376734b3a89c118d59f9f10"
+      ],
+      "400478048782faa7d0ab9176407c6786bef7cad9": [
+        "91ba1a0fdfad9bddb1c9069dc4d408e4cc06b728"
+      ],
+      "4acfe4b255f1123634c69f6a6b07200e31410971": [
+        "58c9e1585766dc5ed7be7ba4a58f584829a1c615"
+      ],
+      "4b85af1be80d4ba97656dcd0ea098df446859879": [
+        "137ccdb9a2dea8ec1c92831c1aa19aea19a47944"
+      ],
+      "58c9e1585766dc5ed7be7ba4a58f584829a1c615": [
+        "c1a13cee620d85fd8c7b8eb7c8bd7b28796892cf"
+      ],
+      "5fb6bae49f10656ca7900111de666ff0dba59aee": [
+        "b84f6bf482f89678d151bf8957ca0ae902983809"
+      ],
+      "65e7129c7ad248e3f5fa8b8e5e9f700b42ef6d1b": [
+        "b75c50406f7eb07aac565ea603a9aa7c992c43d8"
+      ],
+      "74200675514dba7460dcd986ced7ac187d8a2333": [
+        "5fb6bae49f10656ca7900111de666ff0dba59aee"
+      ],
+      "7545c3a8058acdb48bd80f6ffbdd5784a0718714": [
+        "1035dbf2f88cb73c8e912d670b21b391efa20759"
+      ],
+      "7ca6bafad6e4d5c35ce8022edb4a7c4dfc049083": [
+        "b665064e9573dfc5cb60b523de177ce52025110d"
+      ],
+      "81981cb569ffd06dffce4df79c4d830a92f7ad2a": [
+        "0bdceeb42a351c41c072ee5ad1f6aedd273d84a2"
+      ],
+      "85dbff92429c1b05a764bae86df37a3cdca82007": [
+        "d033bf51ef7d4522e8d687812d18b1aeed025e7a"
+      ],
+      "8f20db646027ce3e2376734b3a89c118d59f9f10": [
+        "30ca4d44aca93dd95d7f83ca4f11dc5b72387e08"
+      ],
+      "91ba1a0fdfad9bddb1c9069dc4d408e4cc06b728": [
+        "65e7129c7ad248e3f5fa8b8e5e9f700b42ef6d1b"
+      ],
+      "983e34255a5c2ade9b7ad5245b7b6471ac58027b": [
+        "33c01e26ea182a2fd93e3e9a8bceea8b1dc770b4"
+      ],
+      "9b3eb6ea7e7e4b3b8a0dfded9e090a0305be52ac": [],
+      "aebe68ff252f094dff31fc8e8f5ed8569137608c": [
+        "0a7227fd8d882ad4347f690f403c9eeae2d37941"
+      ],
+      "b665064e9573dfc5cb60b523de177ce52025110d": [
+        "aebe68ff252f094dff31fc8e8f5ed8569137608c"
+      ],
+      "b75c50406f7eb07aac565ea603a9aa7c992c43d8": [
+        "7ca6bafad6e4d5c35ce8022edb4a7c4dfc049083"
+      ],
+      "b84f6bf482f89678d151bf8957ca0ae902983809": [
+        "983e34255a5c2ade9b7ad5245b7b6471ac58027b"
+      ],
+      "c1a13cee620d85fd8c7b8eb7c8bd7b28796892cf": [
+        "85dbff92429c1b05a764bae86df37a3cdca82007"
+      ],
+      "d033bf51ef7d4522e8d687812d18b1aeed025e7a": [
+        "9b3eb6ea7e7e4b3b8a0dfded9e090a0305be52ac"
+      ]
+    },
+    "stashes": [],
+    "head_tip": "3f779a2b8c5f647928d79fcec4c34d05112a3ad9",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "07425f553de8efd0a813b5d702095d128d84fa22": {
+        "summary": "tall 22",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769126400
+      },
+      "09360b254ba87557e06350dc65ccc9917f954b8b": {
+        "summary": "tall 21",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769040000
+      },
+      "0a7227fd8d882ad4347f690f403c9eeae2d37941": {
+        "summary": "tall 07",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767830400
+      },
+      "0bdceeb42a351c41c072ee5ad1f6aedd273d84a2": {
+        "summary": "tall 19",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768867200
+      },
+      "1035dbf2f88cb73c8e912d670b21b391efa20759": {
+        "summary": "tall 17",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768694400
+      },
+      "137ccdb9a2dea8ec1c92831c1aa19aea19a47944": {
+        "summary": "tall 15",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768521600
+      },
+      "30ca4d44aca93dd95d7f83ca4f11dc5b72387e08": {
+        "summary": "tall 28",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769644800
+      },
+      "33c01e26ea182a2fd93e3e9a8bceea8b1dc770b4": {
+        "summary": "tall 23",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769212800
+      },
+      "3f779a2b8c5f647928d79fcec4c34d05112a3ad9": {
+        "summary": "tall 30",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769817600
+      },
+      "400478048782faa7d0ab9176407c6786bef7cad9": {
+        "summary": "tall 14",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768435200
+      },
+      "4acfe4b255f1123634c69f6a6b07200e31410971": {
+        "summary": "tall 06",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000
+      },
+      "4b85af1be80d4ba97656dcd0ea098df446859879": {
+        "summary": "tall 16",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768608000
+      },
+      "58c9e1585766dc5ed7be7ba4a58f584829a1c615": {
+        "summary": "tall 05",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "5fb6bae49f10656ca7900111de666ff0dba59aee": {
+        "summary": "tall 26",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769472000
+      },
+      "65e7129c7ad248e3f5fa8b8e5e9f700b42ef6d1b": {
+        "summary": "tall 12",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768262400
+      },
+      "74200675514dba7460dcd986ced7ac187d8a2333": {
+        "summary": "tall 27",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769558400
+      },
+      "7545c3a8058acdb48bd80f6ffbdd5784a0718714": {
+        "summary": "tall 18",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768780800
+      },
+      "7ca6bafad6e4d5c35ce8022edb4a7c4dfc049083": {
+        "summary": "tall 10",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "81981cb569ffd06dffce4df79c4d830a92f7ad2a": {
+        "summary": "tall 20",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768953600
+      },
+      "85dbff92429c1b05a764bae86df37a3cdca82007": {
+        "summary": "tall 03",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "8f20db646027ce3e2376734b3a89c118d59f9f10": {
+        "summary": "tall 29",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769731200
+      },
+      "91ba1a0fdfad9bddb1c9069dc4d408e4cc06b728": {
+        "summary": "tall 13",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768348800
+      },
+      "983e34255a5c2ade9b7ad5245b7b6471ac58027b": {
+        "summary": "tall 24",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769299200
+      },
+      "9b3eb6ea7e7e4b3b8a0dfded9e090a0305be52ac": {
+        "summary": "tall 01",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "aebe68ff252f094dff31fc8e8f5ed8569137608c": {
+        "summary": "tall 08",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767916800
+      },
+      "b665064e9573dfc5cb60b523de177ce52025110d": {
+        "summary": "tall 09",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768003200
+      },
+      "b75c50406f7eb07aac565ea603a9aa7c992c43d8": {
+        "summary": "tall 11",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768176000
+      },
+      "b84f6bf482f89678d151bf8957ca0ae902983809": {
+        "summary": "tall 25",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1769385600
+      },
+      "c1a13cee620d85fd8c7b8eb7c8bd7b28796892cf": {
+        "summary": "tall 04",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "d033bf51ef7d4522e8d687812d18b1aeed025e7a": {
+        "summary": "tall 02",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      }
+    },
+    "refs": {
+      "3f779a2b8c5f647928d79fcec4c34d05112a3ad9": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

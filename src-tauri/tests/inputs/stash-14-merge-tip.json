@@ -1,0 +1,101 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "0b6ed9f5881deff91e072b71d2d3e96f009e16d7",
+      "766dbfd0b2185bd691aa111d29e7792459787286",
+      "e9900172efd0f324dea3a1cdbad4eadaeba9b188",
+      "ed21506dac817238b3b83e3f172196f82263280a",
+      "22843f0512d2968ad0203df07492f629916dc0ac"
+    ],
+    "parents": {
+      "0b6ed9f5881deff91e072b71d2d3e96f009e16d7": [
+        "766dbfd0b2185bd691aa111d29e7792459787286",
+        "09e090c557fba9592ad5244f1762b7ae9d29b3cf"
+      ],
+      "22843f0512d2968ad0203df07492f629916dc0ac": [],
+      "766dbfd0b2185bd691aa111d29e7792459787286": [
+        "e9900172efd0f324dea3a1cdbad4eadaeba9b188",
+        "ed21506dac817238b3b83e3f172196f82263280a"
+      ],
+      "e9900172efd0f324dea3a1cdbad4eadaeba9b188": [
+        "22843f0512d2968ad0203df07492f629916dc0ac"
+      ],
+      "ed21506dac817238b3b83e3f172196f82263280a": [
+        "22843f0512d2968ad0203df07492f629916dc0ac"
+      ]
+    },
+    "stashes": [
+      "0b6ed9f5881deff91e072b71d2d3e96f009e16d7"
+    ],
+    "head_tip": "766dbfd0b2185bd691aa111d29e7792459787286",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "0b6ed9f5881deff91e072b71d2d3e96f009e16d7": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "22843f0512d2968ad0203df07492f629916dc0ac": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "766dbfd0b2185bd691aa111d29e7792459787286": {
+        "summary": "Merge branch 'feat'",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "e9900172efd0f324dea3a1cdbad4eadaeba9b188": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "ed21506dac817238b3b83e3f172196f82263280a": {
+        "summary": "Feature work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      }
+    },
+    "refs": {
+      "0b6ed9f5881deff91e072b71d2d3e96f009e16d7": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "766dbfd0b2185bd691aa111d29e7792459787286": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "ed21506dac817238b3b83e3f172196f82263280a": [
+        {
+          "name": "refs/heads/feat",
+          "short_name": "feat",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

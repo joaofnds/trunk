@@ -7,5 +7,4 @@ pub mod builder;
 pub mod context;
 pub mod drivers;
 pub mod exports;
-pub mod fixtures;
 pub mod goldens;

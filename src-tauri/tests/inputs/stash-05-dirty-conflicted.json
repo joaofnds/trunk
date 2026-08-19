@@ -1,0 +1,89 @@
+{
+  "wipCount": 1,
+  "capture": {
+    "oids": [
+      "ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28",
+      "d352d3d5fe3d72ff92561d6d7aee0b69437286e6",
+      "e68b1b45c2983de0bd35d9dc35bcdb4272e104e7",
+      "72c0552e01671186b8c9e2e99e90ee3987948967"
+    ],
+    "parents": {
+      "72c0552e01671186b8c9e2e99e90ee3987948967": [],
+      "d352d3d5fe3d72ff92561d6d7aee0b69437286e6": [
+        "72c0552e01671186b8c9e2e99e90ee3987948967"
+      ],
+      "e68b1b45c2983de0bd35d9dc35bcdb4272e104e7": [
+        "72c0552e01671186b8c9e2e99e90ee3987948967"
+      ],
+      "ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28": [
+        "d352d3d5fe3d72ff92561d6d7aee0b69437286e6",
+        "6efe9c69727c33d528169f12563d0d755b885d2c"
+      ]
+    },
+    "stashes": [
+      "ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28"
+    ],
+    "head_tip": "d352d3d5fe3d72ff92561d6d7aee0b69437286e6",
+    "tracked_upstream": null,
+    "worktree_dirty": true,
+    "commits": {
+      "72c0552e01671186b8c9e2e99e90ee3987948967": {
+        "summary": "Add conflict seed",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "d352d3d5fe3d72ff92561d6d7aee0b69437286e6": {
+        "summary": "Our edit",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e68b1b45c2983de0bd35d9dc35bcdb4272e104e7": {
+        "summary": "Their edit",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28": {
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      }
+    },
+    "refs": {
+      "d352d3d5fe3d72ff92561d6d7aee0b69437286e6": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "e68b1b45c2983de0bd35d9dc35bcdb4272e104e7": [
+        {
+          "name": "refs/heads/other",
+          "short_name": "other",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28": [
+        {
+          "name": "On main: half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

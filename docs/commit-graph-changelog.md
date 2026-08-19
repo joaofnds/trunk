@@ -29,7 +29,7 @@ Changed goldens:
 
 ## 2026-08-05
 
-adds 14-spiral-right-before-left, the only geometry that distinguishes find_free_column_near's rightward step from its leftward one (graph.rs:35). New golden only; no existing layout changed.
+adds 14-spiral-right-before-left, the only geometry that distinguishes find_free_column_near's rightward step from its leftward one (`placement.rs`). New golden only; no existing layout changed.
 
 Changed goldens:
 

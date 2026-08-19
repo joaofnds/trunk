@@ -1,0 +1,91 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "ba1c51a504d02d757a88c5bfa4bffedbd0143222",
+      "53cb71412a131783e82c07954200cc5617171218",
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+      "22843f0512d2968ad0203df07492f629916dc0ac"
+    ],
+    "parents": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": [],
+      "53cb71412a131783e82c07954200cc5617171218": [
+        "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+        "fb422eb0f50b2c3bcc33247ae2206c30b3c5602e"
+      ],
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": [
+        "22843f0512d2968ad0203df07492f629916dc0ac"
+      ],
+      "ba1c51a504d02d757a88c5bfa4bffedbd0143222": [
+        "53cb71412a131783e82c07954200cc5617171218",
+        "dbc51447cc7bfa38c24926742b32d22dabafc21e"
+      ]
+    },
+    "stashes": [
+      "ba1c51a504d02d757a88c5bfa4bffedbd0143222",
+      "53cb71412a131783e82c07954200cc5617171218"
+    ],
+    "head_tip": "53cb71412a131783e82c07954200cc5617171218",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "53cb71412a131783e82c07954200cc5617171218": {
+        "summary": "On main: stash A",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "ba1c51a504d02d757a88c5bfa4bffedbd0143222": {
+        "summary": "On (no branch): stash B",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767916800
+      }
+    },
+    "refs": {
+      "53cb71412a131783e82c07954200cc5617171218": [
+        {
+          "name": "On main: stash A",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "ba1c51a504d02d757a88c5bfa4bffedbd0143222": [
+        {
+          "name": "On (no branch): stash B",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

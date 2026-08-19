@@ -1,0 +1,109 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "67a9bb440f97dcbe038a891b0d04023f038fdcd5",
+      "93ac8eb38be10862a1978d18ecf722d7033256ad",
+      "37f3ae23b501cde326979682a2d92d090d6f3946",
+      "c545078b65e2220669243a1a4246dd40f713c2fe",
+      "321ae8bca8486d7ec83946588a16f16dda4703f9",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "321ae8bca8486d7ec83946588a16f16dda4703f9": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "37f3ae23b501cde326979682a2d92d090d6f3946": [
+        "c545078b65e2220669243a1a4246dd40f713c2fe",
+        "321ae8bca8486d7ec83946588a16f16dda4703f9"
+      ],
+      "67a9bb440f97dcbe038a891b0d04023f038fdcd5": [
+        "93ac8eb38be10862a1978d18ecf722d7033256ad"
+      ],
+      "93ac8eb38be10862a1978d18ecf722d7033256ad": [
+        "37f3ae23b501cde326979682a2d92d090d6f3946"
+      ],
+      "c545078b65e2220669243a1a4246dd40f713c2fe": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "37f3ae23b501cde326979682a2d92d090d6f3946",
+    "tracked_upstream": "67a9bb440f97dcbe038a891b0d04023f038fdcd5",
+    "worktree_dirty": false,
+    "commits": {
+      "321ae8bca8486d7ec83946588a16f16dda4703f9": {
+        "summary": "side one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "37f3ae23b501cde326979682a2d92d090d6f3946": {
+        "summary": "merge side into main",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "67a9bb440f97dcbe038a891b0d04023f038fdcd5": {
+        "summary": "upstream six",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000
+      },
+      "93ac8eb38be10862a1978d18ecf722d7033256ad": {
+        "summary": "upstream five",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600
+      },
+      "c545078b65e2220669243a1a4246dd40f713c2fe": {
+        "summary": "main two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "321ae8bca8486d7ec83946588a16f16dda4703f9": [
+        {
+          "name": "refs/heads/side",
+          "short_name": "side",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "37f3ae23b501cde326979682a2d92d090d6f3946": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ],
+      "67a9bb440f97dcbe038a891b0d04023f038fdcd5": [
+        {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

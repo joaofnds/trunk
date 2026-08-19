@@ -307,7 +307,7 @@ Six, when this comparison was written. Three of them are gone: `stash_by_parent`
 interleaving and the orphan stash guard were deleted on 2026-08-03 when stashes started
 riding the revwalk, and `stash_lanes` went in `4a9f15e`.
 
-1. `stash_oid_set` — identifies stashes
+1. `PlacementInput.stashes` — identifies stashes
 2. `is_stash` flag on output — affects frontend rendering
 3. Parent filtering in Phase 4 — only tracks first parent
 
@@ -395,7 +395,7 @@ Process B: only branchChild is S at col 0 → replace → B at col 0
 
 > **STALE as of 2026-08-03.** Two premises below no longer hold: stashes are pushed into the
 > revwalk and ordered topologically, not "interleaved before parent" and not merged by
-> committer timestamp (`graph.rs:95-103`), and a stash on a clean worktree's HEAD tip is
+> committer timestamp (`graph.rs`, `capture` Step 2), and a stash on a clean worktree's HEAD tip is
 > placed inline at column 0 rather than far right (`can_inline`). `5b29894` ("compact stash
 > placement via temporal sort and proximity search") already addressed the far-right
 > complaint this section describes.

@@ -1,0 +1,84 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "387a82e5d865dd1a24d8e354c090548ec31b16b6",
+      "be36b38ef95415079ec4b08149c3b2f81e15f64e",
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "387a82e5d865dd1a24d8e354c090548ec31b16b6": [
+        "be36b38ef95415079ec4b08149c3b2f81e15f64e"
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "be36b38ef95415079ec4b08149c3b2f81e15f64e": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+    "tracked_upstream": "387a82e5d865dd1a24d8e354c090548ec31b16b6",
+    "worktree_dirty": false,
+    "commits": {
+      "387a82e5d865dd1a24d8e354c090548ec31b16b6": {
+        "summary": "shared four",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": {
+        "summary": "base two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "be36b38ef95415079ec4b08149c3b2f81e15f64e": {
+        "summary": "shared three",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "387a82e5d865dd1a24d8e354c090548ec31b16b6": [
+        {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        },
+        {
+          "name": "refs/remotes/upstream/main",
+          "short_name": "upstream/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

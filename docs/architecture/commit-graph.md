@@ -18,9 +18,9 @@ with code that broke a rule.
 git repo
   │
   ▼
-[Rust: graph.rs] walk_commits()
-  │  Reads the repository, then calls placement.rs::assign_lanes(), which
-  │  assigns columns, colors, edge types and dashed flags over plain data.
+[Rust: graph.rs] walk_commits() = capture() |> graph_input::layout()
+  │  capture() reads the repository into plain data; placement.rs::assign_lanes()
+  │  assigns columns, colors, edge types and dashed flags; graph_input.rs hydrates.
   │  Output: GraphCommit[] + max_columns
   │
   ▼
@@ -46,12 +46,13 @@ git repo
    Renders SVG: dots, paths, pills.
 ```
 
-Each stage is a pure transformation. What you may and may not do across stage boundaries is
+`capture()` is the one stage that reads the repository; every stage after it is a pure
+transformation over plain data. What you may and may not do across stage boundaries is
 a binding rule, stated once in `.claude/rules/commit-graph.md`.
 
 ---
 
-## Layer 1: Rust Backend (`src-tauri/src/git/graph.rs`, `src-tauri/src/git/placement.rs`)
+## Layer 1: Rust Backend (`graph.rs`, `placement.rs`, `graph_input.rs`)
 
 ### Entry point
 
@@ -65,11 +66,11 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
 ### Commit ordering
 
 1. Stash OIDs are collected via `repo.stash_foreach()`. A stash joins the walk only if it
-   and every one of its parents read back from the object store (`graph.rs:79-91`); an
+   and every one of its parents read back from the object store (`graph.rs`, the walkable-stash pre-flight in `capture`); an
    unreadable one is skipped, so a corrupt object costs that stash its row instead of
    failing the walk for the whole repo.
 2. `revwalk` over `refs/heads`, `refs/remotes`, `refs/tags` **plus every walkable stash
-   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs:95-103`). Git orders the stashes with
+   OID**, with `TOPOLOGICAL | TIME` sort (`graph.rs`, `capture` Step 2). Git orders the stashes with
    everything else: `TOPOLOGICAL` puts a commit above its parents unconditionally, and
    `TIME` only breaks ties between topologically independent commits. So a stash sorts
    above its parent whatever its committer time says, and a stash whose first parent is
@@ -82,8 +83,9 @@ Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
    `reset --hard` has dropped that parent from every ref. Dropping the stash is what
    removes such a commit from the graph.
 5. A page slice `[offset..offset+limit]` is extracted for display, but the **lane
-   algorithm runs over ALL oids** for correct lane continuity. Only `per_oid_data`
-   for page commits is emitted.
+   algorithm runs over ALL oids** for correct lane continuity. Only the `Layout.placements`
+   entries for page commits are hydrated. The slice belongs to `graph_input::layout`, the
+   half that sees `offset` and `limit`.
 
 ### Core state (lane algorithm)
 
@@ -446,15 +448,29 @@ bun run scripts/graph-connector-render.ts > connectors.svg
 
 ### Golden corpus
 
-`src-tauri/tests/test_graph_goldens.rs` walks every fixture repository and compares the
-layout against a committed golden under `src-tauri/tests/goldens/graph/`, plus a JSON
-export under `src-tauri/tests/goldens/exports/` that the TypeScript render suite consumes.
-The suite builds the fixtures itself, so no manual step comes first.
+`src-tauri/tests/test_graph_goldens.rs` lays out every fixture and compares the result
+against a committed golden under `src-tauri/tests/goldens/graph/`, plus a JSON export under
+`src-tauri/tests/goldens/exports/` that the TypeScript render suite consumes.
+
+The suite builds no git repository. It reads one committed **captured input** per fixture
+from `src-tauri/tests/inputs/`, a `FixtureInput` holding everything `walk_commits` reads
+from a repository plus the `wipCount` the app would pass, and drives `graph_input::layout`
+over it. That is what lets `cargo mutants` run this suite: `Cargo.toml` sits at `src-tauri/`
+and `scripts/` is its sibling, so a copied package tree has no fixture scripts to run.
+
+**Editing a fixture script therefore changes nothing until someone runs
+`just graph-capture`**, which rebuilds the corpus into a throwaway directory and rewrites
+every input. Two consecutive runs must produce identical files; that reproducibility check
+replaced the one the suite used to make on every run. `graph-capture` is upstream of the
+goldens and is not `graph-accept` — a capture that moves a layout turns the suite red, and
+that redness is the signal.
 
 A red golden is a suspected defect, not a stale artifact. Accept a change only with
 `just graph-accept "<reason>"`, which records the reason in `docs/commit-graph-changelog.md`.
+Never set `TRUNK_ACCEPT_GRAPH_GOLDENS` by hand, and never accept a change without the
+user's explicit direction; `.claude/rules/commit-graph.md` is the binding source.
 
-Three scripts build the corpus. `scripts/qa-graph-merge-fixtures.sh` covers the merge,
+Three scripts build the corpus, offline, behind `just graph-capture`. `scripts/qa-graph-merge-fixtures.sh` covers the merge,
 multi-branch, ordering and column-pressure shapes:
 
 | Shape | Fixture |
@@ -503,8 +519,10 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 
 | File | Role |
 |---|---|
-| `src-tauri/src/git/graph.rs` | Reads the repository into the algorithm's inputs, then hydrates the page rows |
+| `src-tauri/src/git/graph.rs` | `capture()` — every git2 read the pipeline makes, into the algorithm's inputs |
 | `src-tauri/src/git/placement.rs` | `assign_lanes()` — the pure lane algorithm, all column/color/edge computation |
+| `src-tauri/src/git/graph_input.rs` | `GraphSource`, `layout()` and the committed input format the golden suite reads |
+| `src-tauri/src/git/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
 | `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
@@ -515,6 +533,9 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering |
 | `src-tauri/tests/test_graph.rs` | Owns the graph layout assertions; pins the accepted dirtiness churn |
+| `src-tauri/tests/test_placement.rs` | Pins `assign_lanes()` from literals: the missing-parent contract and the descent rules |
+| `src-tauri/tests/test_graph_input.rs` | Pins `layout()`'s page slice, row hydration and the committed input format |
+| `src-tauri/tests/test_graph_goldens.rs` | Drives the 48 captured inputs against every committed golden and export |
 
 This table and the `paths:` list in `.claude/rules/commit-graph.md` are the same set — keep
 them in step, or the rule stops firing for a file it governs.

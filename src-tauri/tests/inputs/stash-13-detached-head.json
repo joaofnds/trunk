@@ -1,0 +1,80 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e",
+      "9d75273952501f0f0ceb979779daa846035c4afe",
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+      "22843f0512d2968ad0203df07492f629916dc0ac"
+    ],
+    "parents": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": [],
+      "9d75273952501f0f0ceb979779daa846035c4afe": [
+        "b9ab12be16d14d7e784be8bab5184a32e2c898c2"
+      ],
+      "b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e": [
+        "9d75273952501f0f0ceb979779daa846035c4afe",
+        "1ca22f566b058675fd271d24d78f42249b1d9fe7"
+      ],
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": [
+        "22843f0512d2968ad0203df07492f629916dc0ac"
+      ]
+    },
+    "stashes": [
+      "b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e"
+    ],
+    "head_tip": "9d75273952501f0f0ceb979779daa846035c4afe",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "22843f0512d2968ad0203df07492f629916dc0ac": {
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      },
+      "9d75273952501f0f0ceb979779daa846035c4afe": {
+        "summary": "Add lib",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e": {
+        "summary": "On (no branch): half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600
+      },
+      "b9ab12be16d14d7e784be8bab5184a32e2c898c2": {
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      }
+    },
+    "refs": {
+      "9d75273952501f0f0ceb979779daa846035c4afe": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ],
+      "b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e": [
+        {
+          "name": "On (no branch): half-finished notes",
+          "short_name": "stash",
+          "ref_type": "Stash",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}

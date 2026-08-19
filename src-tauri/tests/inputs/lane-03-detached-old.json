@@ -1,0 +1,68 @@
+{
+  "wipCount": 0,
+  "capture": {
+    "oids": [
+      "679a80adfff868cba61c6cf9c92748358b6e3ee5",
+      "381af1970604b72aff47cad684b2b596b6384d68",
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
+      "e5f066736304132f17817ed5d57437e27f1f87cb"
+    ],
+    "parents": {
+      "381af1970604b72aff47cad684b2b596b6384d68": [
+        "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72"
+      ],
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": [
+        "e5f066736304132f17817ed5d57437e27f1f87cb"
+      ],
+      "679a80adfff868cba61c6cf9c92748358b6e3ee5": [
+        "381af1970604b72aff47cad684b2b596b6384d68"
+      ],
+      "e5f066736304132f17817ed5d57437e27f1f87cb": []
+    },
+    "stashes": [],
+    "head_tip": "e5f066736304132f17817ed5d57437e27f1f87cb",
+    "tracked_upstream": null,
+    "worktree_dirty": false,
+    "commits": {
+      "381af1970604b72aff47cad684b2b596b6384d68": {
+        "summary": "main three",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800
+      },
+      "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72": {
+        "summary": "base two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400
+      },
+      "679a80adfff868cba61c6cf9c92748358b6e3ee5": {
+        "summary": "main four",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200
+      },
+      "e5f066736304132f17817ed5d57437e27f1f87cb": {
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000
+      }
+    },
+    "refs": {
+      "679a80adfff868cba61c6cf9c92748358b6e3ee5": [
+        {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 0
+        }
+      ]
+    }
+  }
+}
