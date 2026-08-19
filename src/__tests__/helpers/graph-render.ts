@@ -105,10 +105,14 @@ export async function warmGraphComponent(): Promise<void> {
 	await graphComponent();
 }
 
+async function flushRound(): Promise<void> {
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	await tick();
+}
+
 async function flush(): Promise<void> {
 	for (let i = 0; i < 3; i++) {
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await tick();
+		await flushRound();
 	}
 }
 
@@ -146,13 +150,41 @@ export async function mountGraph(
 
 	await flush();
 
-	const layer = container.querySelector(".overlay-dots, .overlay-pills");
-	const svg = layer?.closest("svg");
+	const expectedRows = fixture.layout.commits.length + (wipCount > 0 ? 1 : 0);
+	const svg = await settledOverlay(container, expectedRows);
+
+	return { svg, unmount };
+}
+
+// Under machine load the fixed flush above can return while the overlay is still
+// mid-render; capturing then diffs a truncated SVG against the golden — and in
+// accept mode would commit one. Wait for the row count the mount's own inputs
+// imply, and make a persistent shortfall its own failure.
+const SETTLE_ROUNDS = 25;
+
+async function settledOverlay(
+	container: HTMLElement,
+	expectedRows: number,
+): Promise<SVGSVGElement> {
+	for (let round = 0; round < SETTLE_ROUNDS; round++) {
+		const svg = overlaySvg(container);
+		if (svg && dots(svg).length >= expectedRows) return svg;
+
+		await flushRound();
+	}
+
+	const svg = overlaySvg(container);
 	if (!svg) {
 		throw new Error("no graph overlay <svg> rendered");
 	}
+	throw new Error(
+		`graph overlay truncated: expected ${expectedRows} rows, rendered ${dots(svg).length} after ${SETTLE_ROUNDS} settle rounds`,
+	);
+}
 
-	return { svg: svg as SVGSVGElement, unmount };
+function overlaySvg(container: HTMLElement): SVGSVGElement | null {
+	const layer = container.querySelector(".overlay-dots, .overlay-pills");
+	return layer?.closest("svg") ?? null;
 }
 
 /** One element per rendered row: a circle for a commit, a rect for a stash. */
