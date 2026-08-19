@@ -1,0 +1,36 @@
+max_columns=2
+
+row 0: beta takes alpha
+  col=1 color=1 head=false merge=true tip=true stash=false in_head_chain=false
+  parents: beta one, alpha one
+  refs: refs/heads/beta (LocalBranch color=1 head=false)
+  edge 1->1 Straight color=1 dashed=false
+  edge 1->0 MergeLeft color=0 dashed=false
+
+row 1: alpha takes beta
+  col=0 color=0 head=true merge=true tip=true stash=false in_head_chain=true
+  parents: alpha one, beta one
+  refs: refs/heads/alpha (LocalBranch color=0 head=true)
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+  edge 0->1 MergeRight color=1 dashed=false
+
+row 2: beta one
+  col=1 color=1 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: base one
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+  edge 1->1 Straight color=1 dashed=false
+
+row 3: alpha one
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: base one
+  refs: -
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 4: base one
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: refs/heads/main (LocalBranch color=0 head=false)
+  edge 0->1 ForkRight color=1 dashed=false

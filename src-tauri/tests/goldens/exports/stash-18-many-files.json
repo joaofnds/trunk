@@ -1,0 +1,108 @@
+{
+  "wipCount": 1,
+  "layout": {
+    "commits": [
+      {
+        "oid": "46a7793ad6d40efdf5af3d2556ef43de26281829",
+        "short_oid": "46a7793",
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600,
+        "parent_oids": [
+          "5669165ecff3a9649471301122a21ee73d87d7d8"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": true
+          }
+        ],
+        "refs": [
+          {
+            "name": "On main: half-finished notes",
+            "short_name": "stash",
+            "ref_type": "Stash",
+            "is_head": false,
+            "color_index": 1
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": true,
+        "in_head_chain": false
+      },
+      {
+        "oid": "5669165ecff3a9649471301122a21ee73d87d7d8",
+        "short_oid": "5669165",
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "41680485b6de8bce3285129b44483ea6dbf790da"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 1,
+            "dashed": true
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "41680485b6de8bce3285129b44483ea6dbf790da",
+        "short_oid": "4168048",
+        "summary": "Add 3000 files",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 2
+  }
+}

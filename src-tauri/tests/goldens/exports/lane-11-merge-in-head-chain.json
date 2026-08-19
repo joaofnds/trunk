@@ -1,0 +1,226 @@
+{
+  "wipCount": 0,
+  "layout": {
+    "commits": [
+      {
+        "oid": "67a9bb440f97dcbe038a891b0d04023f038fdcd5",
+        "short_oid": "67a9bb4",
+        "summary": "upstream six",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000,
+        "parent_oids": [
+          "93ac8eb38be10862a1978d18ecf722d7033256ad"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/remotes/origin/main",
+            "short_name": "origin/main",
+            "ref_type": "RemoteBranch",
+            "is_head": false,
+            "color_index": 0
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "93ac8eb38be10862a1978d18ecf722d7033256ad",
+        "short_oid": "93ac8eb",
+        "summary": "upstream five",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600,
+        "parent_oids": [
+          "37f3ae23b501cde326979682a2d92d090d6f3946"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "37f3ae23b501cde326979682a2d92d090d6f3946",
+        "short_oid": "37f3ae2",
+        "summary": "merge side into main",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200,
+        "parent_oids": [
+          "c545078b65e2220669243a1a4246dd40f713c2fe",
+          "321ae8bca8486d7ec83946588a16f16dda4703f9"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "MergeRight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": true,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "c545078b65e2220669243a1a4246dd40f713c2fe",
+        "short_oid": "c545078",
+        "summary": "main two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "321ae8bca8486d7ec83946588a16f16dda4703f9",
+        "short_oid": "321ae8b",
+        "summary": "side one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/side",
+            "short_name": "side",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 1
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
+        "short_oid": "e5f0667",
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 2
+  }
+}

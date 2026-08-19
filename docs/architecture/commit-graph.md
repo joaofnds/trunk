@@ -443,6 +443,44 @@ cases a dev build cannot reach, since Layer 1 orders stashes by the revwalk:
 bun run scripts/graph-connector-render.ts > connectors.svg
 ```
 
+### Golden corpus
+
+`src-tauri/tests/test_graph_goldens.rs` walks every fixture repository and compares the
+layout against a committed golden under `src-tauri/tests/goldens/graph/`, plus a JSON
+export under `src-tauri/tests/goldens/exports/` that the TypeScript render suite consumes.
+The suite builds the fixtures itself, so no manual step comes first.
+
+A red golden is a suspected defect, not a stale artifact. Accept a change only with
+`just graph-accept "<reason>"`, which records the reason in `docs/commit-graph-changelog.md`.
+
+Three scripts build the corpus. `scripts/qa-graph-merge-fixtures.sh` covers the merge,
+multi-branch, ordering and column-pressure shapes:
+
+| Shape | Fixture |
+|---|---|
+| Octopus merge, three or more parents | `01-octopus-merge` |
+| Criss-cross merge | `02-criss-cross` |
+| A merge whose parents are themselves merges | `03-merge-of-merges` |
+| Three or more topic branches contending for lanes | `04-three-topics` |
+| Sequential merges of several branches into one line | `05-sequential-merges` |
+| A merge whose second parent sorts above its first | `06-merge-second-parent-newer` |
+| A fork whose sibling tip sorts older | `07-fork-sibling-older`, against `08-fork-sibling-newer` |
+| Column saturation and freed-column reuse | `09-column-saturation` |
+| A merge edge pointing left | `10-merge-parent-left` |
+| A fork-out edge pointing left | `11-fork-in-left` |
+| A pagination boundary cutting a fork and a merge | `12-pagination-boundary` |
+| The leftward half of `find_free_column_near`'s spiral | `13-freed-column-left` |
+| That spiral trying its right before its left | `14-spiral-right-before-left` |
+
+The last four rows exist because the earlier 33-fixture corpus produced no `MergeLeft` and
+no `ForkLeft` edge at all, and never took the spiral's leftward branch. Every mutation of
+those code paths survived the whole suite.
+
+Fixtures 13 and 14 look alike and are not interchangeable. Both free column 1 through an
+orphan branch's root, then allocate against a target of column 2. In 13 column 3 is occupied,
+so the search falls back leftward to column 1. In 14 nothing holds column 3, so the search
+extends rightward instead. Only the pair distinguishes a rightward step from a leftward one.
+
 Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 - `stash_inline_on_head_tip` — clean tree, stash on the HEAD tip: parent's column, parent's colour, dashed Straight, no ForkRight
 - `stash_inline_with_topic_branch` — inline still holds with another branch present

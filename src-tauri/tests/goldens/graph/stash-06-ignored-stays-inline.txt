@@ -1,0 +1,18 @@
+max_columns=1
+
+row 0: On main: half-finished notes
+  col=0 color=0 head=false merge=false tip=true stash=true in_head_chain=false
+  parents: Add app
+  refs: On main: half-finished notes (Stash color=0 head=false)
+  edge 0->0 Straight color=0 dashed=true
+
+row 1: Add app
+  col=0 color=0 head=true merge=false tip=false stash=false in_head_chain=true
+  parents: Add notes and ignore rules
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 0->0 Straight color=0 dashed=false
+
+row 2: Add notes and ignore rules
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -

@@ -1,0 +1,319 @@
+{
+  "wipCount": 0,
+  "layout": {
+    "commits": [
+      {
+        "oid": "942dcc7091df41ab15565e8608360a68359d3ed9",
+        "short_oid": "942dcc7",
+        "summary": "late tip",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767916800,
+        "parent_oids": [
+          "5c74ff8f79ec243d22c83d80421bff816afdb509"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/late",
+            "short_name": "late",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 1
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "eec4a0bc5ff9106a47afb115cc88a94114817699",
+        "short_oid": "eec4a0b",
+        "summary": "main four",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767830400,
+        "parent_oids": [
+          "71ec07cc0dbe57886569f100e1734a28b5617692"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "71ec07cc0dbe57886569f100e1734a28b5617692",
+        "short_oid": "71ec07c",
+        "summary": "main takes side",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000,
+        "parent_oids": [
+          "5c74ff8f79ec243d22c83d80421bff816afdb509",
+          "db86b16cd36991bbddba1d269692da45d5090244"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 2,
+            "edge_type": "MergeRight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": true,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "5c74ff8f79ec243d22c83d80421bff816afdb509",
+        "short_oid": "5c74ff8",
+        "summary": "main three",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600,
+        "parent_oids": [
+          "a2b4870cc2710b613ef1c15d06edfa3399335545"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "a2b4870cc2710b613ef1c15d06edfa3399335545",
+        "short_oid": "a2b4870",
+        "summary": "main two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "db86b16cd36991bbddba1d269692da45d5090244",
+        "short_oid": "db86b16",
+        "summary": "side two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800,
+        "parent_oids": [
+          "321ae8bca8486d7ec83946588a16f16dda4703f9"
+        ],
+        "column": 2,
+        "color_index": 2,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/side",
+            "short_name": "side",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 2
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "321ae8bca8486d7ec83946588a16f16dda4703f9",
+        "short_oid": "321ae8b",
+        "summary": "side one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 2,
+        "color_index": 2,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
+        "short_oid": "e5f0667",
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 2,
+            "edge_type": "ForkRight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 3
+  }
+}

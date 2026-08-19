@@ -1,0 +1,160 @@
+{
+  "wipCount": 1,
+  "layout": {
+    "commits": [
+      {
+        "oid": "ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28",
+        "short_oid": "ebb498c",
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600,
+        "parent_oids": [
+          "d352d3d5fe3d72ff92561d6d7aee0b69437286e6"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": true
+          }
+        ],
+        "refs": [
+          {
+            "name": "On main: half-finished notes",
+            "short_name": "stash",
+            "ref_type": "Stash",
+            "is_head": false,
+            "color_index": 1
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": true,
+        "in_head_chain": false
+      },
+      {
+        "oid": "d352d3d5fe3d72ff92561d6d7aee0b69437286e6",
+        "short_oid": "d352d3d",
+        "summary": "Our edit",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800,
+        "parent_oids": [
+          "72c0552e01671186b8c9e2e99e90ee3987948967"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 1,
+            "dashed": true
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "e68b1b45c2983de0bd35d9dc35bcdb4272e104e7",
+        "short_oid": "e68b1b4",
+        "summary": "Their edit",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "72c0552e01671186b8c9e2e99e90ee3987948967"
+        ],
+        "column": 1,
+        "color_index": 2,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/other",
+            "short_name": "other",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 2
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "72c0552e01671186b8c9e2e99e90ee3987948967",
+        "short_oid": "72c0552",
+        "summary": "Add conflict seed",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 2
+  }
+}

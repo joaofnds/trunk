@@ -1,0 +1,311 @@
+{
+  "wipCount": 0,
+  "layout": {
+    "commits": [
+      {
+        "oid": "9f9fe0de74ab10be92de2a5b1b72341f00fba87f",
+        "short_oid": "9f9fe0d",
+        "summary": "topic four work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/topic-four",
+            "short_name": "topic-four",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 1
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "482389cb3a6080adc35d7def1f5d361a4314e0a8",
+        "short_oid": "482389c",
+        "summary": "topic three work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 2,
+        "color_index": 2,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/topic-three",
+            "short_name": "topic-three",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 2
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "ac8369d5cd705e331a9a560f4b209a322c0d5c60",
+        "short_oid": "ac8369d",
+        "summary": "topic two work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 3,
+        "color_index": 3,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 3,
+            "to_column": 3,
+            "edge_type": "Straight",
+            "color_index": 3,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/topic-two",
+            "short_name": "topic-two",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 3
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "a79e4854cf8f4311766a1fd2da09231847e5761d",
+        "short_oid": "a79e485",
+        "summary": "topic one work",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 4,
+        "color_index": 4,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 3,
+            "to_column": 3,
+            "edge_type": "Straight",
+            "color_index": 3,
+            "dashed": false
+          },
+          {
+            "from_column": 4,
+            "to_column": 4,
+            "edge_type": "Straight",
+            "color_index": 4,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/topic-one",
+            "short_name": "topic-one",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 4
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "5276637a11b8f49fbd87358b989a3bf71f6dd5e4",
+        "short_oid": "5276637",
+        "summary": "main two",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 3,
+            "to_column": 3,
+            "edge_type": "Straight",
+            "color_index": 3,
+            "dashed": false
+          },
+          {
+            "from_column": 4,
+            "to_column": 4,
+            "edge_type": "Straight",
+            "color_index": 4,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
+        "short_oid": "e5f0667",
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 2,
+            "edge_type": "ForkRight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 3,
+            "edge_type": "ForkRight",
+            "color_index": 3,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 4,
+            "edge_type": "ForkRight",
+            "color_index": 4,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 5
+  }
+}

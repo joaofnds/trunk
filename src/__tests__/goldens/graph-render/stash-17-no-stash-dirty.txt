@@ -1,0 +1,18 @@
+<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
+  <defs>
+    <clipPath id="graph-clip">
+      <rect height="4000" width="16" x="124" y="0">
+  <g clip-path="url(#graph-clip)">
+    <g class="overlay-paths" transform="translate(124, 0)">
+      <path d="M 8 13 V 39" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+  <g class="overlay-dots" transform="translate(124, 0)">
+    <circle cx="8" cy="13" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="39" fill="var(--lane-0)" r="6">
+  <g class="overlay-pills">
+    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="13" y2="13">
+    <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="3">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 8)">
+      <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
+    <foreignObject height="20" width="28" x="22" y="3">
+      <SPAN style="display: block; line-height: 20px; color: var(--lane-0); font-size: 11px; font-family: var(--font-sans); font-weight: 700; white-space: nowrap; overflow: hidden; cursor: pointer;">
+        "main"

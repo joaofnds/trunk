@@ -1,0 +1,34 @@
+max_columns=2
+
+row 0: On main: half-finished notes
+  col=0 color=0 head=false merge=false tip=true stash=true in_head_chain=false
+  parents: Merge branch 'feat'
+  refs: On main: half-finished notes (Stash color=0 head=false)
+  edge 0->0 Straight color=0 dashed=true
+
+row 1: Merge branch 'feat'
+  col=0 color=0 head=true merge=true tip=false stash=false in_head_chain=true
+  parents: Add app, Feature work
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 0->0 Straight color=0 dashed=false
+  edge 0->1 MergeRight color=1 dashed=false
+
+row 2: Add app
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: Add notes
+  refs: -
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: Feature work
+  col=1 color=1 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: Add notes
+  refs: refs/heads/feat (LocalBranch color=1 head=false)
+  edge 0->0 Straight color=0 dashed=false
+  edge 1->1 Straight color=1 dashed=false
+
+row 4: Add notes
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -
+  edge 0->1 ForkRight color=1 dashed=false

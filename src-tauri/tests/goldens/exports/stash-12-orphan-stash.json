@@ -1,0 +1,108 @@
+{
+  "wipCount": 0,
+  "layout": {
+    "commits": [
+      {
+        "oid": "dee21df87cfe55c55dffcf022abbc3d2017b84a5",
+        "short_oid": "dee21df",
+        "summary": "On main: half-finished notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1768089600,
+        "parent_oids": [
+          "b9ab12be16d14d7e784be8bab5184a32e2c898c2"
+        ],
+        "column": 1,
+        "color_index": 2,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": true
+          }
+        ],
+        "refs": [
+          {
+            "name": "On main: half-finished notes",
+            "short_name": "stash",
+            "ref_type": "Stash",
+            "is_head": false,
+            "color_index": 2
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": true,
+        "in_head_chain": false
+      },
+      {
+        "oid": "b9ab12be16d14d7e784be8bab5184a32e2c898c2",
+        "short_oid": "b9ab12b",
+        "summary": "Add app",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "22843f0512d2968ad0203df07492f629916dc0ac"
+        ],
+        "column": 0,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 2,
+            "dashed": true
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "22843f0512d2968ad0203df07492f629916dc0ac",
+        "short_oid": "22843f0",
+        "summary": "Add notes",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 2
+  }
+}

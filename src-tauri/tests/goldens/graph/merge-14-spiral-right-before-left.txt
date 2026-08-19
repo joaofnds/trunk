@@ -1,0 +1,59 @@
+max_columns=4
+
+row 0: orphan tip
+  col=1 color=1 head=false merge=false tip=true stash=false in_head_chain=false
+  parents: orphan root
+  refs: refs/heads/orphan (LocalBranch color=1 head=false)
+  edge 1->1 Straight color=1 dashed=false
+
+row 1: beta top
+  col=2 color=2 head=false merge=false tip=true stash=false in_head_chain=false
+  parents: beta bottom
+  refs: refs/heads/beta (LocalBranch color=2 head=false)
+  edge 1->1 Straight color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+
+row 2: main three
+  col=0 color=0 head=true merge=false tip=true stash=false in_head_chain=true
+  parents: main two
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 1->1 Straight color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: main two
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: base one
+  refs: -
+  edge 1->1 Straight color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 4: orphan root
+  col=1 color=1 head=false merge=false tip=true stash=false in_head_chain=false
+  parents: -
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+
+row 5: delta lands right of beta
+  col=3 color=3 head=false merge=false tip=true stash=false in_head_chain=false
+  parents: beta bottom
+  refs: refs/heads/delta (LocalBranch color=3 head=false)
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 3->3 Straight color=3 dashed=false
+
+row 6: beta bottom
+  col=2 color=2 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: base one
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->3 ForkRight color=3 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+
+row 7: base one
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -
+  edge 0->2 ForkRight color=2 dashed=false

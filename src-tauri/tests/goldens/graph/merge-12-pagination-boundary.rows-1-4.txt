@@ -1,0 +1,31 @@
+max_columns=3
+
+row 0: main four
+  col=0 color=0 head=true merge=false tip=true stash=false in_head_chain=true
+  parents: main takes side
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 1: main takes side
+  col=0 color=0 head=false merge=true tip=false stash=false in_head_chain=true
+  parents: main three, <not-loaded>
+  refs: -
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+  edge 0->2 MergeRight color=2 dashed=false
+
+row 2: main three
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: main two
+  refs: -
+  edge 0->1 ForkRight color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: main two
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: <not-loaded>
+  refs: -
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false

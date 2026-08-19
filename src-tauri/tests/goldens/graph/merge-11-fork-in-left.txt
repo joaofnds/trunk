@@ -1,0 +1,45 @@
+max_columns=3
+
+row 0: alpha two is newest
+  col=1 color=1 head=false merge=false tip=true stash=false in_head_chain=false
+  parents: alpha one
+  refs: refs/heads/alpha (LocalBranch color=1 head=false)
+  edge 1->1 Straight color=1 dashed=false
+
+row 1: main takes shared
+  col=0 color=0 head=true merge=true tip=true stash=false in_head_chain=true
+  parents: main two, shared point
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+  edge 0->2 MergeRight color=2 dashed=false
+
+row 2: main two
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: base one
+  refs: -
+  edge 1->1 Straight color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: alpha one
+  col=1 color=1 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: shared point
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 1->1 Straight color=1 dashed=false
+
+row 4: shared point
+  col=2 color=2 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: base one
+  refs: refs/heads/shared (LocalBranch color=2 head=false)
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->1 ForkLeft color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+
+row 5: base one
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -
+  edge 0->2 ForkRight color=2 dashed=false

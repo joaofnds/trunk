@@ -1,0 +1,57 @@
+max_columns=3
+
+row 0: late tip
+  col=1 color=1 head=false merge=false tip=true stash=false in_head_chain=false
+  parents: main three
+  refs: refs/heads/late (LocalBranch color=1 head=false)
+  edge 1->1 Straight color=1 dashed=false
+
+row 1: main four
+  col=0 color=0 head=true merge=false tip=true stash=false in_head_chain=true
+  parents: main takes side
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 2: main takes side
+  col=0 color=0 head=false merge=true tip=false stash=false in_head_chain=true
+  parents: main three, side two
+  refs: -
+  edge 1->1 Straight color=1 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+  edge 0->2 MergeRight color=2 dashed=false
+
+row 3: main three
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: main two
+  refs: -
+  edge 0->1 ForkRight color=1 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 4: main two
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: base one
+  refs: -
+  edge 2->2 Straight color=2 dashed=false
+  edge 0->0 Straight color=0 dashed=false
+
+row 5: side two
+  col=2 color=2 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: side one
+  refs: refs/heads/side (LocalBranch color=2 head=false)
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+
+row 6: side one
+  col=2 color=2 head=false merge=false tip=false stash=false in_head_chain=false
+  parents: base one
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+  edge 2->2 Straight color=2 dashed=false
+
+row 7: base one
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -
+  edge 0->2 ForkRight color=2 dashed=false

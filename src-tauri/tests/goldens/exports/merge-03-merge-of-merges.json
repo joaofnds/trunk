@@ -1,0 +1,414 @@
+{
+  "wipCount": 0,
+  "layout": {
+    "commits": [
+      {
+        "oid": "c47f755b1881433c25594c0e51d21e4330ef3b37",
+        "short_oid": "c47f755",
+        "summary": "merge of two merges",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767916800,
+        "parent_oids": [
+          "a9fec471955c2007a2458c8946ee4fe31ec7d75c",
+          "9e4e22c51ff84db05f2b462cd73192f9d94c2747"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "MergeRight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/left",
+            "short_name": "left",
+            "ref_type": "LocalBranch",
+            "is_head": true,
+            "color_index": 0
+          }
+        ],
+        "is_head": true,
+        "is_merge": true,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "9e4e22c51ff84db05f2b462cd73192f9d94c2747",
+        "short_oid": "9e4e22c",
+        "summary": "right takes feed b",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767830400,
+        "parent_oids": [
+          "33d55bcfddfaf7e1d5a20872fa828e865fd21320",
+          "15d26a37f442959c878781f6c099c55d0e184c50"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 2,
+            "edge_type": "MergeRight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/right",
+            "short_name": "right",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 1
+          }
+        ],
+        "is_head": false,
+        "is_merge": true,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "33d55bcfddfaf7e1d5a20872fa828e865fd21320",
+        "short_oid": "33d55bc",
+        "summary": "right one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767744000,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 1,
+        "color_index": 1,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "a9fec471955c2007a2458c8946ee4fe31ec7d75c",
+        "short_oid": "a9fec47",
+        "summary": "left takes feed a",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767657600,
+        "parent_oids": [
+          "1953b4239c00796975c87ef8db8d7a9ef85af030",
+          "69644c38137e82bd9de7f026424983ecc88f2c5f"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 3,
+            "edge_type": "MergeRight",
+            "color_index": 3,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": true,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "1953b4239c00796975c87ef8db8d7a9ef85af030",
+        "short_oid": "1953b42",
+        "summary": "left one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767571200,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 3,
+            "to_column": 3,
+            "edge_type": "Straight",
+            "color_index": 3,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          }
+        ],
+        "refs": [],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": true
+      },
+      {
+        "oid": "15d26a37f442959c878781f6c099c55d0e184c50",
+        "short_oid": "15d26a3",
+        "summary": "feed b one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767484800,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 2,
+        "color_index": 2,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 3,
+            "to_column": 3,
+            "edge_type": "Straight",
+            "color_index": 3,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/feed-b",
+            "short_name": "feed-b",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 2
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "69644c38137e82bd9de7f026424983ecc88f2c5f",
+        "short_oid": "69644c3",
+        "summary": "feed a one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767398400,
+        "parent_oids": [
+          "e5f066736304132f17817ed5d57437e27f1f87cb"
+        ],
+        "column": 3,
+        "color_index": 3,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 0,
+            "edge_type": "Straight",
+            "color_index": 0,
+            "dashed": false
+          },
+          {
+            "from_column": 1,
+            "to_column": 1,
+            "edge_type": "Straight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 2,
+            "to_column": 2,
+            "edge_type": "Straight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 3,
+            "to_column": 3,
+            "edge_type": "Straight",
+            "color_index": 3,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/feed-a",
+            "short_name": "feed-a",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 3
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": false,
+        "is_stash": false,
+        "in_head_chain": false
+      },
+      {
+        "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
+        "short_oid": "e5f0667",
+        "summary": "base one",
+        "body": null,
+        "author_name": "QA Fixture",
+        "author_email": "qa@trunk.test",
+        "author_timestamp": 1767312000,
+        "parent_oids": [],
+        "column": 0,
+        "color_index": 0,
+        "edges": [
+          {
+            "from_column": 0,
+            "to_column": 1,
+            "edge_type": "ForkRight",
+            "color_index": 1,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 2,
+            "edge_type": "ForkRight",
+            "color_index": 2,
+            "dashed": false
+          },
+          {
+            "from_column": 0,
+            "to_column": 3,
+            "edge_type": "ForkRight",
+            "color_index": 3,
+            "dashed": false
+          }
+        ],
+        "refs": [
+          {
+            "name": "refs/heads/main",
+            "short_name": "main",
+            "ref_type": "LocalBranch",
+            "is_head": false,
+            "color_index": 0
+          }
+        ],
+        "is_head": false,
+        "is_merge": false,
+        "is_branch_tip": true,
+        "is_stash": false,
+        "in_head_chain": true
+      }
+    ],
+    "max_columns": 4
+  }
+}

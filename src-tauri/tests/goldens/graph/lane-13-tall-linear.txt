@@ -1,0 +1,180 @@
+max_columns=1
+
+row 0: tall 30
+  col=0 color=0 head=true merge=false tip=true stash=false in_head_chain=true
+  parents: tall 29
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 0->0 Straight color=0 dashed=false
+
+row 1: tall 29
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 28
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 2: tall 28
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 27
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: tall 27
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 26
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 4: tall 26
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 25
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 5: tall 25
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 24
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 6: tall 24
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 23
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 7: tall 23
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 22
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 8: tall 22
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 21
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 9: tall 21
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 20
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 10: tall 20
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 19
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 11: tall 19
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 18
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 12: tall 18
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 17
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 13: tall 17
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 16
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 14: tall 16
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 15
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 15: tall 15
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 14
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 16: tall 14
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 13
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 17: tall 13
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 12
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 18: tall 12
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 11
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 19: tall 11
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 10
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 20: tall 10
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 09
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 21: tall 09
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 08
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 22: tall 08
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 07
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 23: tall 07
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 06
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 24: tall 06
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 05
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 25: tall 05
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 04
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 26: tall 04
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 03
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 27: tall 03
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 02
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 28: tall 02
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: tall 01
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 29: tall 01
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -

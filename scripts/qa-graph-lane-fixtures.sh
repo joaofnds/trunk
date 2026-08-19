@@ -274,7 +274,19 @@ build_12() {
 	git -C "$dir" checkout -q --detach main
 }
 
-for n in 01 02 03 04 05 06 07 08 09 10 11 12; do
+# --- 13: a chain taller than jsdom's 22-row virtual-list cap. ---------------
+# Placement here is trivial by design. It exists so the render suite has one
+# fixture whose golden goes red when the viewport height stub is dropped; every
+# other fixture is short enough to render identically truncated or not.
+build_13() {
+	local dir day
+	dir=$(init_repo 13-tall-linear)
+	for day in $(seq 1 30); do
+		commit "$dir" "$day" "tall $(printf '%02d' "$day")"
+	done
+}
+
+for n in 01 02 03 04 05 06 07 08 09 10 11 12 13; do
 	"build_$n"
 	printf '  %s\n' "$OUT"/"$n"-*
 done

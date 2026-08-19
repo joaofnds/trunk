@@ -85,6 +85,12 @@ audit:
 mutants *args:
     cargo mutants --manifest-path {{manifest}} {{args}}
 
+# ── Commit graph goldens ─────────────────────────────
+
+# Accept a changed commit-graph layout, recording why (refuses without a reason)
+graph-accept reason="":
+    scripts/graph-accept.sh {{quote(reason)}}
+
 # ── Benchmarks ───────────────────────────────────────
 
 # Run all benchmarks

@@ -1,0 +1,32 @@
+max_columns=2
+
+row 0: Commit taken after the stash
+  col=0 color=0 head=true merge=false tip=true stash=false in_head_chain=true
+  parents: Add lib
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 0->0 Straight color=0 dashed=false
+
+row 1: On main: half-finished notes
+  col=1 color=1 head=false merge=false tip=true stash=true in_head_chain=false
+  parents: Add lib
+  refs: On main: half-finished notes (Stash color=1 head=false)
+  edge 0->0 Straight color=0 dashed=false
+  edge 1->1 Straight color=1 dashed=true
+
+row 2: Add lib
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: Add app
+  refs: -
+  edge 0->1 ForkRight color=1 dashed=true
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: Add app
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: Add notes
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 4: Add notes
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -
