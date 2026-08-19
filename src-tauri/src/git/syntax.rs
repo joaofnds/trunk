@@ -1,7 +1,7 @@
 use std::sync::LazyLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Color, ThemeSet};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 
 use super::types::{MergedSpan, SyntaxToken, WordSpan};
 
@@ -40,14 +40,24 @@ fn color_to_css_class(color: Color) -> &'static str {
     }
 }
 
-/// Returns true if syntect has a real syntax definition for this extension (not plain text).
-pub fn has_syntax_for_extension(ext: &str) -> bool {
-    if ext.is_empty() {
-        return false;
+/// The grammar this extension highlights with, or `None` when there is none to
+/// use: no syntect definition, plain text, or the refused Markdown grammar.
+fn syntax_for_extension(ext: &str) -> Option<&'static SyntaxReference> {
+    if is_markdown_grammar(ext) {
+        return None;
     }
-    SYNTAX_SET
-        .find_syntax_by_extension(ext)
-        .is_some_and(|s| s.name != "Plain Text")
+    let syntax = SYNTAX_SET.find_syntax_by_extension(ext)?;
+    if syntax.name == "Plain Text" {
+        return None;
+    }
+    Some(syntax)
+}
+
+/// Whether `create_highlighter` would build a highlighter for this extension.
+/// Callers that skip work for unhighlightable paths must agree with it exactly,
+/// so both answer from `syntax_for_extension`.
+pub fn can_highlight_extension(ext: &str) -> bool {
+    syntax_for_extension(ext).is_some()
 }
 
 /// Extract file extension from a path string.
@@ -74,13 +84,7 @@ fn is_markdown_grammar(name: &str) -> bool {
 /// Create a reusable highlighter for a file extension.
 /// Returns None if the extension has no syntax definition (plain text).
 pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
-    if is_markdown_grammar(extension) {
-        return None;
-    }
-    let syntax = SYNTAX_SET.find_syntax_by_extension(extension)?;
-    if syntax.name == "Plain Text" {
-        return None;
-    }
+    let syntax = syntax_for_extension(extension)?;
     let theme = &THEME_SET.themes["base16-ocean.dark"];
     Some(HighlightLines::new(syntax, theme))
 }
@@ -135,7 +139,7 @@ pub fn highlight_line_with(
                 tokens.push(SyntaxToken {
                     start: offset,
                     end,
-                    scope: class.to_string(),
+                    scope: class,
                 });
             }
         }
@@ -192,7 +196,7 @@ pub fn merge_spans(
         let syntax_class = syntax_tokens
             .iter()
             .find(|t| t.start <= start && t.end >= end)
-            .map(|t| t.scope.clone())
+            .map(|t| t.scope.to_owned())
             .unwrap_or_default();
 
         // Find which word span covers this range and is emphasized
@@ -291,12 +295,12 @@ mod tests {
             SyntaxToken {
                 start: 0,
                 end: 2,
-                scope: "syn-keyword".to_string(),
+                scope: "syn-keyword",
             },
             SyntaxToken {
                 start: 3,
                 end: 7,
-                scope: "syn-function".to_string(),
+                scope: "syn-function",
             },
         ];
         let word = vec![];
@@ -315,7 +319,7 @@ mod tests {
         let syntax = vec![SyntaxToken {
             start: 0,
             end: 5,
-            scope: "syn-keyword".to_string(),
+            scope: "syn-keyword",
         }];
         let word = vec![
             WordSpan {
@@ -411,14 +415,14 @@ mod tests {
 
     #[test]
     fn highlight_tsx_produces_tokens() {
-        assert!(has_syntax_for_extension("tsx"));
+        assert!(can_highlight_extension("tsx"));
         let tokens = highlight_line_tokens("export default function App() {}", "tsx");
         assert!(!tokens.is_empty(), "TSX should produce tokens");
     }
 
     #[test]
     fn highlight_svelte_produces_tokens() {
-        assert!(has_syntax_for_extension("svelte"));
+        assert!(can_highlight_extension("svelte"));
         // `#if` is a Svelte block keyword — the real grammar tokenizes it, where
         // the old JS fallback swallowed the whole `{#if …}` into one flat token.
         let tokens = highlight_line_tokens("{#if count > 0}", "svelte");

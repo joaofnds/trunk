@@ -176,7 +176,7 @@ pub struct WordSpan {
 pub struct SyntaxToken {
     pub start: u32,
     pub end: u32,
-    pub scope: String,
+    pub scope: &'static str,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

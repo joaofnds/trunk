@@ -183,28 +183,40 @@ struct DeltaSides {
     new_path: Option<PathBuf>,
 }
 
-/// Run the diff's file callback only, to capture each delta's real oids/path
-/// for `resolve_side_content` — separate from the full walk below so the
-/// bench's raw path can reuse it without touching `walk_diff_raw_for_bench`.
-fn collect_delta_sides(diff: &git2::Diff<'_>) -> Result<Vec<DeltaSides>, TrunkError> {
-    use std::cell::RefCell;
+/// Capture one delta's oids and new path from inside a `foreach` file callback.
+fn delta_sides_of(delta: &git2::DiffDelta<'_>) -> DeltaSides {
+    DeltaSides {
+        old_oid: delta.old_file().id(),
+        new_oid: delta.new_file().id(),
+        new_path: delta.new_file().path().map(|p| p.to_path_buf()),
+    }
+}
 
-    let sides: RefCell<Vec<DeltaSides>> = RefCell::new(Vec::new());
-    diff.foreach(
-        &mut |delta, _progress| {
-            sides.borrow_mut().push(DeltaSides {
-                old_oid: delta.old_file().id(),
-                new_oid: delta.new_file().id(),
-                new_path: delta.new_file().path().map(|p| p.to_path_buf()),
-            });
-            true
-        },
-        None,
-        None,
-        None,
-    )
-    .map_err(TrunkError::from)?;
-    Ok(sides.into_inner())
+/// Resolve the real side content each `FileDiff` needs for highlighting.
+/// A file with no hunks (binary, or nothing displayed) and a path syntect has
+/// no grammar for are both highlighted from neither side, so reading their
+/// blobs would buy nothing: those files resolve to `none()` without touching
+/// the ODB or the disk.
+fn resolve_sides(
+    repo: &git2::Repository,
+    file_diffs: &[FileDiff],
+    delta_sides: &[DeltaSides],
+    new_side: NewSideSource,
+) -> Vec<SideContent> {
+    file_diffs
+        .iter()
+        .zip(delta_sides.iter())
+        .map(|(fd, delta)| {
+            let highlightable = !fd.hunks.is_empty()
+                && syntax::can_highlight_extension(syntax::extension_from_path(&fd.path));
+
+            if highlightable {
+                resolve_side_content(repo, delta, new_side)
+            } else {
+                SideContent::none()
+            }
+        })
+        .collect()
 }
 
 /// Resolve one delta's real old/new file content, keyed by the diff's backing
@@ -256,9 +268,8 @@ fn walk_diff(
 ) -> Result<Vec<FileDiff>, TrunkError> {
     use std::cell::RefCell;
 
-    let delta_sides = collect_delta_sides(&diff)?;
-
     let file_diffs: RefCell<Vec<FileDiff>> = RefCell::new(Vec::new());
+    let delta_sides: RefCell<Vec<DeltaSides>> = RefCell::new(Vec::new());
 
     diff.foreach(
         &mut |delta, _progress| {
@@ -278,6 +289,7 @@ fn walk_diff(
                 git2::Delta::Untracked => DiffStatus::Untracked,
                 _ => DiffStatus::Unknown,
             };
+            delta_sides.borrow_mut().push(delta_sides_of(&delta));
             file_diffs.borrow_mut().push(FileDiff {
                 path,
                 status,
@@ -335,10 +347,8 @@ fn walk_diff(
     .map_err(TrunkError::from)?;
 
     let mut file_diffs = file_diffs.into_inner();
-    let sides: Vec<SideContent> = delta_sides
-        .iter()
-        .map(|d| resolve_side_content(repo, d, new_side))
-        .collect();
+    let sides = resolve_sides(repo, &file_diffs, &delta_sides.into_inner(), new_side);
+
     enrich_file_diffs(&mut file_diffs, &sides);
     Ok(file_diffs)
 }
@@ -370,9 +380,36 @@ const MAX_SYNTAX_HIGHLIGHT_LINE: u32 = 5_000;
 
 /// One line of a side's real file content, with the syntax tokens computed for
 /// it by a highlighter fed every preceding line of that same side.
-struct SideLine {
-    content: String,
+struct SideLine<'a> {
+    content: &'a str,
     tokens: Vec<SyntaxToken>,
+}
+
+/// The side and line number a `DiffLine` takes its syntax tokens from: its own
+/// side by origin, except a Context line falls back to the old side when the new
+/// side's content is entirely unavailable (§3: a whole-side fallback, not a
+/// per-line one — a per-line miss degrades to no spans via the alignment guard
+/// in `enrich_file_diffs`, never a fallback).
+///
+/// Both the needed-line collection and the token lookup answer from this one
+/// rule, so a side is never parsed up to a line nothing will read.
+enum TokenSource {
+    Old(u32),
+    New(u32),
+}
+
+fn token_source(line: &DiffLine, new_available: bool) -> Option<TokenSource> {
+    match line.origin {
+        DiffOrigin::Delete => line.old_lineno.map(TokenSource::Old),
+        DiffOrigin::Add => line.new_lineno.map(TokenSource::New),
+        DiffOrigin::Context => {
+            if new_available {
+                line.new_lineno.map(TokenSource::New)
+            } else {
+                line.old_lineno.map(TokenSource::Old)
+            }
+        }
+    }
 }
 
 fn collect_linenos(
@@ -391,11 +428,11 @@ fn collect_linenos(
 /// diagnosed defect where a per-hunk highlighter starts fresh mid-construct.
 /// Only lines in `needed` are kept; parsing still walks every line up to the
 /// highest needed one, since that is what makes the kept lines' state correct.
-fn build_side_lines(
-    bytes: &[u8],
+fn build_side_lines<'a>(
+    text: &'a str,
     ext: &str,
     needed: &std::collections::BTreeSet<u32>,
-) -> HashMap<u32, SideLine> {
+) -> HashMap<u32, SideLine<'a>> {
     let mut result = HashMap::new();
     let Some(&max_line) = needed.iter().max() else {
         return result;
@@ -407,7 +444,6 @@ fn build_side_lines(
         return result;
     };
 
-    let text = String::from_utf8_lossy(bytes);
     for (idx, raw_line) in text.split('\n').enumerate() {
         let lineno = (idx + 1) as u32;
         if lineno > max_line {
@@ -418,7 +454,7 @@ fn build_side_lines(
             result.insert(
                 lineno,
                 SideLine {
-                    content: raw_line.to_string(),
+                    content: raw_line,
                     tokens,
                 },
             );
@@ -433,31 +469,18 @@ fn strip_diff_newline(content: &str) -> &str {
     content.strip_suffix('\n').unwrap_or(content)
 }
 
-/// Picks the side line a `DiffLine` should take syntax tokens from: its own side
-/// by origin, except a Context line falls back to the old side when the new
-/// side's content is entirely unavailable (§3: a whole-side fallback, not a
-/// per-line one — a per-line miss degrades to no spans via the alignment guard
-/// below, never a fallback).
-fn pick_side_line<'a>(
+/// Picks the side line a `DiffLine` should take syntax tokens from.
+fn pick_side_line<'a, 'b>(
     line: &DiffLine,
-    old_lines: Option<&'a HashMap<u32, SideLine>>,
-    new_lines: Option<&'a HashMap<u32, SideLine>>,
+    old_lines: Option<&'a HashMap<u32, SideLine<'b>>>,
+    new_lines: Option<&'a HashMap<u32, SideLine<'b>>>,
     new_available: bool,
-) -> Option<&'a SideLine> {
-    let lookup = |lines: Option<&'a HashMap<u32, SideLine>>, lineno: Option<u32>| {
-        lineno.and_then(|n| lines.and_then(|m| m.get(&n)))
+) -> Option<&'a SideLine<'b>> {
+    let (lines, lineno) = match token_source(line, new_available)? {
+        TokenSource::Old(n) => (old_lines, n),
+        TokenSource::New(n) => (new_lines, n),
     };
-    match line.origin {
-        DiffOrigin::Delete => lookup(old_lines, line.old_lineno),
-        DiffOrigin::Add => lookup(new_lines, line.new_lineno),
-        DiffOrigin::Context => {
-            if new_available {
-                lookup(new_lines, line.new_lineno)
-            } else {
-                lookup(old_lines, line.old_lineno)
-            }
-        }
-    }
+    lines.and_then(|m| m.get(&lineno))
 }
 
 /// Enrich file diffs with word-level diff spans and syntax highlighting.
@@ -468,17 +491,23 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
     for (fd, side) in file_diffs.iter_mut().zip(sides.iter()) {
         let ext = syntax::extension_from_path(&fd.path);
 
-        let old_needed = collect_linenos(&fd.hunks, |l| l.old_lineno);
-        let new_needed = collect_linenos(&fd.hunks, |l| l.new_lineno);
-        let old_lines = side
-            .old
-            .as_deref()
-            .map(|bytes| build_side_lines(bytes, ext, &old_needed));
-        let new_lines = side
-            .new
-            .as_deref()
-            .map(|bytes| build_side_lines(bytes, ext, &new_needed));
         let new_available = side.new.is_some();
+        let old_needed = collect_linenos(&fd.hunks, |l| match token_source(l, new_available) {
+            Some(TokenSource::Old(n)) => Some(n),
+            _ => None,
+        });
+        let new_needed = collect_linenos(&fd.hunks, |l| match token_source(l, new_available) {
+            Some(TokenSource::New(n)) => Some(n),
+            _ => None,
+        });
+        let old_text = side.old.as_deref().map(String::from_utf8_lossy);
+        let new_text = side.new.as_deref().map(String::from_utf8_lossy);
+        let old_lines = old_text
+            .as_deref()
+            .map(|text| build_side_lines(text, ext, &old_needed));
+        let new_lines = new_text
+            .as_deref()
+            .map(|text| build_side_lines(text, ext, &new_needed));
 
         for hunk in &mut fd.hunks {
             let word_spans_per_line = compute_word_spans_for_hunk(&hunk.lines);
@@ -487,22 +516,24 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
                 let syntax_tokens =
                     pick_side_line(line, old_lines.as_ref(), new_lines.as_ref(), new_available)
                         .filter(|sl| sl.content == strip_diff_newline(&line.content))
-                        .map(|sl| sl.tokens.clone())
+                        .map(|sl| sl.tokens.as_slice())
                         .unwrap_or_default();
 
                 if !syntax_tokens.is_empty() || !ws.is_empty() {
-                    line.spans = syntax::merge_spans(&syntax_tokens, ws, line.content.len() as u32);
+                    line.spans = syntax::merge_spans(syntax_tokens, ws, line.content.len() as u32);
                 }
             }
         }
     }
 }
 
-/// Raw walk without enrichment — exposed for benchmarking only.
-#[doc(hidden)]
-pub fn walk_diff_raw_for_bench(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, TrunkError> {
+/// Raw walk without enrichment — for benchmarking only.
+fn walk_diff_raw_for_bench(
+    diff: git2::Diff<'_>,
+) -> Result<(Vec<FileDiff>, Vec<DeltaSides>), TrunkError> {
     use std::cell::RefCell;
     let file_diffs: RefCell<Vec<FileDiff>> = RefCell::new(Vec::new());
+    let delta_sides: RefCell<Vec<DeltaSides>> = RefCell::new(Vec::new());
     diff.foreach(
         &mut |delta, _progress| {
             let path = delta
@@ -521,6 +552,7 @@ pub fn walk_diff_raw_for_bench(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, Tr
                 git2::Delta::Untracked => DiffStatus::Untracked,
                 _ => DiffStatus::Unknown,
             };
+            delta_sides.borrow_mut().push(delta_sides_of(&delta));
             file_diffs.borrow_mut().push(FileDiff {
                 path,
                 status,
@@ -566,7 +598,7 @@ pub fn walk_diff_raw_for_bench(diff: git2::Diff<'_>) -> Result<Vec<FileDiff>, Tr
         }),
     )
     .map_err(TrunkError::from)?;
-    Ok(file_diffs.into_inner())
+    Ok((file_diffs.into_inner(), delta_sides.into_inner()))
 }
 
 /// Diff unstaged changes without enrichment — for benchmarking. Also resolves
@@ -585,12 +617,8 @@ pub fn diff_unstaged_raw_for_bench(
     opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    let delta_sides = collect_delta_sides(&diff)?;
-    let sides: Vec<SideContent> = delta_sides
-        .iter()
-        .map(|d| resolve_side_content(&repo, d, NewSideSource::Workdir))
-        .collect();
-    let file_diffs = walk_diff_raw_for_bench(diff)?;
+    let (file_diffs, delta_sides) = walk_diff_raw_for_bench(diff)?;
+    let sides = resolve_sides(&repo, &file_diffs, &delta_sides, NewSideSource::Workdir);
     Ok((file_diffs, sides))
 }
 
