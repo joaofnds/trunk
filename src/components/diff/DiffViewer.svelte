@@ -24,6 +24,7 @@ interface Props {
 	commitDetail: CommitDetail | null;
 	selectedPath: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
+	emptyCommit?: boolean;
 	loading: boolean;
 	hunkOperationInFlight: boolean;
 	ignoreWhitespace: boolean;
@@ -84,6 +85,7 @@ let {
 	commitDetail,
 	selectedPath,
 	diffKind,
+	emptyCommit = false,
 	loading,
 	hunkOperationInFlight,
 	ignoreWhitespace,
@@ -128,6 +130,17 @@ let {
       font-size: 13px;
     ">
       Select a file or commit to view its diff
+    </div>
+  {:else if emptyCommit}
+    <div style="
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-text-muted);
+      font-size: 13px;
+    ">
+      Empty commit — no changes
     </div>
   {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath)}
     <RenderedDiff

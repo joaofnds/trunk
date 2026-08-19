@@ -569,5 +569,51 @@ describe("RepoView", () => {
 				filePath: "g.ts",
 			});
 		});
+
+		it("shows the empty-commit placeholder instead of the graph when hopping to an empty commit", async () => {
+			commits = [
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-2": [makeFileDiff("f.ts")],
+				"oid-1": [],
+			};
+			detailByOid = {
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			// Defer oid-1's file list so the load gap between the pager click and the
+			// list landing is observable: the placeholder must stay hidden through it.
+			let resolveFiles: ((files: FileDiff[]) => void) | undefined;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "list_commit_files" && a?.oid === "oid-1") {
+					return new Promise((resolve) => {
+						resolveFiles = resolve;
+					});
+				}
+				return base(cmd, args);
+			});
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+			expect(screen.queryByText(/empty commit/i)).toBeFalsy();
+
+			resolveFiles?.([]);
+			await flush();
+
+			expect(await screen.findByText(/empty commit/i)).toBeTruthy();
+			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
+		});
 	});
 });

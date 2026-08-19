@@ -63,6 +63,7 @@ interface Props {
 	showInlineComments?: boolean;
 	viewComments?: Thread[];
 	refreshToken?: number;
+	emptyCommit?: boolean;
 }
 
 let {
@@ -79,6 +80,7 @@ let {
 	showInlineComments = true,
 	viewComments = [],
 	refreshToken = 0,
+	emptyCommit = false,
 }: Props = $props();
 
 let contentMode = $state<ContentMode>("hunk");
@@ -814,6 +816,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{commitDetail}
 		{selectedPath}
 		{diffKind}
+		{emptyCommit}
 		{loading}
 		{hunkOperationInFlight}
 		{ignoreWhitespace}

@@ -260,6 +260,10 @@ let commitNav = $state<CommitNav | null>(null);
 // Diff-in-view navigation (spec 2026-08-18): non-null = mode active. Remembers
 // the path last opened (click or auto-open) so a commit switch can reopen it.
 let diffInViewPath = $state<string | null>(null);
+// True only right after a reconciliation lands on a commit with zero files.
+// Not derived: it must stay false during the load gap even though
+// commitFileDiffs is momentarily stale/empty.
+let commitEmpty = $state(false);
 
 // CommitGraph component ref -- used to call scrollToOid for ref navigation (GRAPH-03)
 let commitGraphRef = $state<{
@@ -540,6 +544,7 @@ async function selectCommitIdempotent(oid: string) {
 	// Switching to commit view -- close any open staging diff
 	clearStagingDiff();
 	selectedCommitFile = null;
+	commitEmpty = false;
 
 	// Auto-open right pane if collapsed (LAYOUT-01)
 	if (rightPaneCollapsed) {
@@ -577,11 +582,14 @@ async function selectCommitIdempotent(oid: string) {
 			);
 			if (target.kind === "file") {
 				await selectCommitFileIdempotent(target.path);
+			} else {
+				commitEmpty = true;
 			}
 		}
 	} catch {
 		commitFileDiffs = [];
 		commitDetail = null;
+		commitEmpty = false;
 	}
 }
 
@@ -1098,6 +1106,7 @@ function startRightResize(e: MouseEvent) {
           commitDetail={commitDetail}
           selectedPath={selectedDiffPath}
           {diffKind}
+          emptyCommit={commitEmpty}
           {repoPath}
           {showInlineComments}
           {viewComments}
