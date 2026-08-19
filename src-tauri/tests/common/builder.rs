@@ -18,6 +18,18 @@ enum BuildStep {
     Remote { name: String },
 }
 
+/// 2026-01-01T00:00:00Z, the same base `scripts/qa-*-fixtures.sh` pin. Commits are spaced a
+/// day apart because the graph sorts with `TOPOLOGICAL | TIME`: same-second commits sort
+/// arbitrarily and can render a coincidentally-correct layout.
+const FIXTURE_BASE_SECS: i64 = 1_767_225_600;
+const FIXTURE_DAY_SECS: i64 = 86_400;
+
+/// A signature pinned to `secs`, so a rebuild of one shape produces byte-identical history.
+fn pinned_signature(secs: i64) -> git2::Signature<'static> {
+    git2::Signature::new("Test User", "test@example.com", &git2::Time::new(secs, 0))
+        .expect("build a pinned signature")
+}
+
 impl TestContextBuilder {
     pub fn new() -> Self {
         TestContextBuilder { steps: Vec::new() }
@@ -98,6 +110,10 @@ impl TestContextBuilder {
     pub fn build(&mut self) -> TestContext {
         let dir = tempfile::tempdir().expect("failed to create tempdir");
         let mut repo = git2::Repository::init(dir.path()).expect("failed to init repo");
+        // Every commit-producing step takes the next day off this clock. `repo.signature()`
+        // reads the wall clock, which made two builds of one shape produce different OIDs and
+        // left the graph's TOPOLOGICAL | TIME sort resolving by tie-break at machine speed.
+        let mut clock = FIXTURE_BASE_SECS;
 
         // Configure user identity
         let mut cfg = repo.config().expect("failed to get config");
@@ -125,7 +141,8 @@ impl TestContextBuilder {
                 }
 
                 BuildStep::Commit { message } => {
-                    let sig = repo.signature().unwrap();
+                    let sig = pinned_signature(clock);
+                    clock += FIXTURE_DAY_SECS;
                     let mut index = repo.index().unwrap();
 
                     for file in &pending_files {
@@ -158,7 +175,8 @@ impl TestContextBuilder {
                 }
 
                 BuildStep::Merge { branch } => {
-                    let sig = repo.signature().unwrap();
+                    let sig = pinned_signature(clock);
+                    clock += FIXTURE_DAY_SECS;
 
                     // Find the branch tip
                     let branch_ref = repo.find_branch(branch, git2::BranchType::Local).unwrap();
@@ -210,7 +228,8 @@ impl TestContextBuilder {
                 }
 
                 BuildStep::Stash { message } => {
-                    let sig = repo.signature().unwrap();
+                    let sig = pinned_signature(clock);
+                    clock += FIXTURE_DAY_SECS;
 
                     // Need a tracked file that is modified to create a stash
                     let stash_marker = dir.path().join(".stash_marker");

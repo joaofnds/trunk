@@ -37,7 +37,7 @@ front: biome svelte-check vitest
 rust: fmt clippy cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy cargo-test vitest
+check: fmt biome svelte-check clippy cargo-test vitest graph-sweep-check
 
 # Check Rust formatting
 fmt:
@@ -94,6 +94,14 @@ graph-accept reason="":
 # Rebuild the fixture corpus and re-capture the golden suite's committed inputs
 graph-capture:
     scripts/graph-capture.sh
+
+# Verify every recorded mutation anchor still matches its source exactly once (milliseconds)
+graph-sweep-check:
+    python3 scripts/graph-mutation-sweep.py --check
+
+# Measure mutation coverage: apply each anchor, run the four graph suites, restore (15-18 min)
+graph-sweep *args="--run":
+    python3 scripts/graph-mutation-sweep.py {{args}}
 
 # ── Benchmarks ───────────────────────────────────────
 
