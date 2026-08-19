@@ -153,7 +153,7 @@ else                              → new branch/stash, scan for free col
 ```
 
 **Stashes mostly share the branch-tip codepath, with one placement exception.**
-`can_inline` (`placement.rs:263-270`) puts a stash *inline* — at its parent's own column,
+`can_inline` (`placement.rs`) puts a stash *inline* — at its parent's own column,
 consuming no new lane and no new colour — when all of these hold:
 
 1. it is a stash;
@@ -161,13 +161,14 @@ consuming no new lane and no new colour — when all of these hold:
    `git::status::worktree_dirty`);
 3. **the HEAD lane has no upward extension** (`head_lane_ext.is_empty()`);
 4. its first parent already has a column reserved;
-5. that parent is the HEAD tip, or is outside the HEAD chain;
+5. that parent is outside the HEAD chain (`!head_chain.contains(&p)`), or is the HEAD tip
+   (`input.head_tip == Some(p)`);
 6. the parent's column is unoccupied in `active_lanes`.
 
 Otherwise it takes a free column and a new colour like any branch tip.
 
-Clause 5's second half looks like it would inline a stash away from column 0, and it does
-not. Clauses 4 and 6 together demand a column that is reserved in `pending_parents` but
+The off-chain disjunct `!head_chain.contains(&p)` looks like it would inline a stash away
+from column 0, and it does not. Clauses 4 and 6 together demand a column that is reserved in `pending_parents` but
 still free in `active_lanes`. **Two** sites leave a column in that state, both at column 0:
 the HEAD-chain pre-reservation and `head_lane_extension` (`placement.rs`, "Pre-reserve column
 0"). Clause 3 excludes the second outright, so whenever an inline happens at all the
@@ -460,7 +461,10 @@ and `scripts/` is its sibling, so a copied package tree has no fixture scripts t
 
 **Editing a fixture script therefore changes nothing until someone runs
 `just graph-capture`**, which rebuilds the corpus into a throwaway directory and rewrites
-every input. Two consecutive runs must produce identical files; that reproducibility check
+every input. The same recipe then rebuilds the named-rule shapes in
+`src-tauri/tests/common/graph_shapes.rs` and rewrites `src-tauri/tests/rule-inputs/`, which
+the hand-asserted tests in `test_graph.rs` read. `just graph-fidelity` is the check that those
+rule inputs still equal a fresh capture of their repository. Two consecutive runs must produce identical files; that reproducibility check
 replaced the one the suite used to make on every run. `graph-capture` is upstream of the
 goldens and is not `graph-accept` — a capture that moves a layout turns the suite red, and
 that redness is the signal.
@@ -504,7 +508,7 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 - `stash_stays_inline_when_worktree_clean` / `stash_branches_right_when_worktree_dirty` — the paired control for the dirtiness clause
 - `stash_branches_right_when_only_untracked` / `..._only_staged` — pins `include_untracked(true)` and the `INDEX_*` bits
 - `multiple_stashes_on_same_parent` — the newest inlines, the older branches right
-- `stash_branches_right_when_head_chain_occupies_lane` — mid-chain stash branches right, ForkRight on parent
+- `stash_branches_right_when_head_chain_occupies_lane` — asserts the branch-right shape; it does not pin the off-chain disjunct (row 11 survived it — see the ledger's AC-7 findings)
 - `dirtiness_relayouts_unrelated_branches` / `dirtiness_recolors_branches_below_the_stash_parent` — the accepted churn
 - `graph_and_dirty_counts_agree_when_*` — the graph and `get_dirty_counts` never disagree about dirtiness
 - `walk_commits_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it
@@ -532,7 +536,9 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering |
-| `src-tauri/tests/test_graph.rs` | Owns the graph layout assertions; pins the accepted dirtiness churn |
+| `src-tauri/tests/test_graph.rs` | Owns the named-rule layout assertions, read from `tests/rule-inputs/`; the set that still builds a repository is enumerated in `.claude/rules/commit-graph.md`, split into the tests bound to stay and the ones merely not yet migrated |
+| `src-tauri/tests/test_graph_capture.rs` | Captures every named-rule shape into `tests/rule-inputs/`, and holds the fidelity check `just graph-fidelity` runs |
+| `src-tauri/tests/common/graph_shapes.rs` | The one copy of each repository shape, shared by the capture binary and the repository tests that remain |
 | `src-tauri/tests/test_placement.rs` | Pins `assign_lanes()` from literals: the missing-parent contract and the descent rules |
 | `src-tauri/tests/test_graph_input.rs` | Pins `layout()`'s page slice, row hydration and the committed input format |
 | `src-tauri/tests/test_graph_goldens.rs` | Drives the 48 captured inputs against every committed golden and export |

@@ -166,7 +166,7 @@ stops after the first failing binary, and a later suite's failure reads as a pas
 | `head_lane_extension` filters stashes, revwalk arm | `a_stash_never_extends_the_head_lane`, `stash_inline_on_head_tip` | delete `.filter(\|o\| !input.stashes.contains(o))` at `:149` | both red, plus eleven others | keep both |
 | `head_lane_extension` filters stashes, tracked-upstream arm | `a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension` | delete `&& !path.iter().any(\|o\| input.stashes.contains(o))` at `:141` | red, `left: (0, 0) right: (1, 1)` | keep, added by milestone 5 |
 | Dirty path asserts colour as well as column | `dirtiness_relayouts_unrelated_branches`, `dirtiness_recolors_branches_below_the_stash_parent` | `next_color += 1` to `+= 2` at `:283` to `:284` | exactly those two red, plus three golden tests | keep both |
-| Every unpaired `pending_parents.insert` | `a_stash_below_the_head_tip_branches_out_of_the_head_lane` | Appendix A row 11, delete `!` from `can_inline` clause 4 | row 11 flipped from `SURVIVES` to `killed` | keep, added by milestone 5 |
+| Every unpaired `pending_parents.insert` | `a_stash_below_the_head_tip_branches_out_of_the_head_lane` | Appendix A row 11, delete `!` from `can_inline`'s off-chain disjunct | row 11 flipped from `SURVIVES` to `killed` | keep, added by milestone 5 |
 
 ### Two findings this audit produced
 
@@ -184,7 +184,7 @@ Milestone 6 owns the correction to that passage.
 **One test reads as coverage and is not.**
 `stash_branches_right_when_head_chain_occupies_lane` is advertised in
 `docs/architecture/commit-graph.md` as the mid-chain-stash test. Appendix A row 11 survived the
-whole suite twice, so that test does not pin `can_inline` clause 4. The proposed mechanism, still
+whole suite twice, so that test does not pin `can_inline`'s off-chain disjunct. The proposed mechanism, still
 unverified, is that its setup leaves the worktree dirty, which short-circuits an earlier clause.
 
 ## Extraction-introduced sites

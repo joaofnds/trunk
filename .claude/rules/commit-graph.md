@@ -14,6 +14,8 @@ paths:
   - "src/lib/graph-constants.ts"
   - "src/components/CommitGraph.svelte"
   - "src-tauri/tests/test_graph.rs"
+  - "src-tauri/tests/test_graph_capture.rs"
+  - "src-tauri/tests/common/graph_shapes.rs"
   - "src-tauri/tests/test_placement.rs"
   - "src-tauri/tests/test_graph_input.rs"
   - "src-tauri/tests/test_graph_goldens.rs"
@@ -63,7 +65,9 @@ then mirror the same edit into the changelog.
   and record the date and the cause inline, as the bullets below do. Appending a dated
   re-derivation or revalidation note that a bullet itself asks for is not an amendment —
   record it yourself, in the bullet it belongs to
-- After changing the pipeline, or a rule here, grep `docs/`, **this file's own prose and its `paths:`
+- After changing the pipeline, or a rule here, grep `docs/`, `scripts/`, `CLAUDE.md`, the
+  project memory notes under `$CLAUDE_CONFIG_DIR/projects/*/memory/` (index line and note
+  both — they load in every session and nothing else sweeps them), **this file's own prose and its `paths:`
   list, and the comments in the pipeline-source files and the graph test suites** for every symbol and mechanism the change touched, **including the ones it deleted**
   — a deleted mechanism is the one nothing points at any more, so nothing makes it surface.
   Correct every hit in the same change — in `docs/commit-graph-changelog.md`, only the
@@ -92,17 +96,28 @@ then mirror the same edit into the changelog.
   excluded by a `can_inline` clause. Exactly two exist today, both at column 0: the
   `head_chain` pre-reservation and `head_lane_extension`, the second excluded by
   `head_lane_ext.is_empty()`. This is what makes every inline land at column 0, and it is why
-  `!head_chain.contains(&p)` is not an exception to the clause above; the walk-through is in
-  `docs/architecture/commit-graph.md` §"Phase 1". Landing a third insert without a matching
-  exclusion re-opens it — re-derive before you land it, and record the result here
-  (re-derived 2026-08-05, when `head_lane_extension` became the second)
+  the off-chain disjunct `!head_chain.contains(&p)` is not the exception it looks like:
+  `can_inline`'s reserved-and-free clauses (parent's column reserved, and still free in
+  `active_lanes`) demand a column only these two sites produce, so whenever an inline happens
+  the pre-reservation is the only site left. The disjunct is redundant under this
+  invariant and still stays: it is the sweep's row-11 anchor, pinned by
+  `a_stash_below_the_head_tip_branches_out_of_the_head_lane`, and deleting it turns the
+  invariant back into an unmeasured claim. The walk-through is in
+  `docs/architecture/commit-graph.md` §"Phase 1", which enumerates the clauses and quotes this
+  disjunct in full (referent settled 2026-08-11 at the user's direction). Landing a third insert
+  without a matching exclusion re-opens it — re-derive before you land it, and record the
+  result here (re-derived 2026-08-05, when `head_lane_extension` became the second)
 - Never let the HEAD lane's upward extension take a stash. A stash hangs off its parent by
   first parent like any commit, and placing it in the lane would both steal column 0 from the
   branch's real continuation and bypass `can_inline` entirely. `head_lane_extension` filters
   the stash set out of **both** candidates — the tracked-upstream path and the revwalk-order
   continuation. Deleting either filter puts the stash into `pending_parents` at column 0,
-  where it takes the lane in a fresh colour without `can_inline` ever running;
-  `stash_inline_on_head_tip` is what catches it
+  where it takes the lane in a fresh colour without `can_inline` ever running.
+  `stash_inline_on_head_tip` catches the revwalk-order filter only — its shape has no tracked
+  upstream, so it cannot reach the other arm. The tracked-upstream filter is pinned by
+  `a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension` in `test_placement.rs`
+  (corrected 2026-08-11: this bullet claimed one test caught both, and deleting the upstream
+  filter left it green)
 - Any change on the dirty path must assert a **non-stash** branch's column *and* colour in
   `src-tauri/tests/test_graph.rs` — flipping clean↔dirty re-lays-out and re-colours unrelated
   branches. The churn that is already accepted is pinned by
@@ -115,12 +130,14 @@ then mirror the same edit into the changelog.
   never accept a change without the user's explicit direction. Regenerating destroys the only
   evidence these artifacts exist to produce. `just graph-capture` sits upstream of all three,
   rewriting the captured inputs in `src-tauri/tests/inputs/` that the goldens are computed
-  from — it never writes a golden. A capture therefore turns the suite red with no code
+  from, and the named-rule inputs in `src-tauri/tests/rule-inputs/` that `test_graph.rs`
+  reads — it never writes a golden. A capture therefore turns the suite red with no code
   change, and that redness is a suspected defect like any other: investigate the input diff
   before accepting. Whether capture should demand a reason of its own is open; decide it the
   next time a capture turns the suite red, and record the ruling here. The same discipline is
   restated in `scripts/graph-accept.sh`, both `ACCEPT_HINT` strings
-  (`src-tauri/tests/common/goldens.rs`, `src/__tests__/helpers/graph-render.ts`), and
+  (`src-tauri/tests/common/goldens.rs`, `src/__tests__/helpers/graph-render.ts`), `DRIFT_HINT`
+  in `src-tauri/tests/test_graph_capture.rs`, and
   `docs/architecture/commit-graph.md` §"Golden corpus"; `scripts/graph-capture.sh`'s header
   states the upstream half only. When this bullet's substance changes, amend every
   restatement it touches in the same change. (Added 2026-08-07 at the user's direction, and
@@ -128,8 +145,61 @@ then mirror the same edit into the changelog.
   sites named above, but nothing stated the user-direction gate; the nearest policy was
   `docs/architecture/commit-graph.md`, which the "code wins" bullet above subordinates to the
   pipeline source)
+- Every test in `test_graph.rs` outside the repository-built sets (a) and (b) in the
+  "Two kinds of test" bullet below reads a committed capture; it never rebuilds the repository
+  inside the test. Its data comes
+  from `graph::capture` run over a shape in `tests/common/graph_shapes.rs`, or one of the two
+  local shapes in `test_graph_capture.rs`, and committed to `tests/rule-inputs/` — a repository
+  rebuilt
+  in the test body is the executing agent's reconstruction of one, and a wrong reconstruction
+  pins the wrong graph while staying green. **This does not reach `test_placement.rs` or
+  `test_graph_input.rs`**: both drive `assign_lanes` / `layout` from hand-written
+  `PlacementInput` literals by design, where the literal is the unit's input rather than a
+  stand-in for a repository, and is the only way to state an input `capture()` cannot produce
+  — the missing-parent and cycle contracts among them
+- `just graph-fidelity` is the only thing standing behind "a rule input is what the repository
+  produces", and **nothing runs it for you**: the check is `#[ignore]`d and sits in neither
+  `just check` nor CI. Run it in the same change as any edit to a shape in `graph_shapes.rs`,
+  to any shape builder in `test_graph_capture.rs` — `shapes()` and the two local ones — to
+  `TestContext::builder` in `tests/common/builder.rs`, whose pinned clock builds eight of the
+  captured inputs, to `capture` in `graph.rs`, or to the dirtiness definition in `status.rs` — a
+  rule input freezes `worktree_dirty` as a bool
+  (`graph_input.rs`, `CapturedGraph`), so a narrowed predicate leaves the stash-dirtiness tests
+  green on data the repository no longer produces — and after any `just graph-capture`. A drift
+  it reports is a suspected defect, never a stale artifact
+- Two kinds of test in `test_graph.rs` stay repository-built. **(a) Binding** — a test whose
+  subject is git2 itself: the five `graph_and_dirty_counts_agree_when_*` — they read the live
+  `status::worktree_dirty`, which a capture freezes, and are what still catches a narrowed
+  `DIRTY_BITS` (measured 2026-08-11: dropping `STAGED_BITS` failed
+  `graph_and_dirty_counts_agree_when_only_staged` *and*
+  `stash_branches_right_when_only_staged` before the dirtiness migration, and only the first
+  after it — still caught, with the redundancy gone);
+  `walk_commits_on_bare_repo_does_not_error`, the two `unreadable_stash_*`, and
+  `tagged_stash_is_not_duplicated`; plus, measured 2026-08-11, the only two tests in the four
+  suites `just rust` runs (`test_graph.rs`, `test_placement.rs`, `test_graph_input.rs`,
+  `test_graph_goldens.rs`) that fail when the revwalk's `TOPOLOGICAL | TIME` loses `TIME` —
+  `two_backdated_stashes_on_one_parent` and `dirtiness_relayouts_unrelated_branches`. A
+  capture freezes walk order, so migrating either deletes that coverage rather than moving it;
+  re-measure that pair before migrating anything under it, and record the date here and in
+  `topic_layout_clean_then_dirty`'s doc comment in `test_graph.rs`, which states the same
+  count. The sweep
+  cannot stand in for them: its row 7 (`docs/commit-graph-mutation-ledger.md` §"Row 7",
+  `scripts/graph-mutation-sweep.py`) mutates `TOPOLOGICAL | TIME` to `TOPOLOGICAL ^ TIME`,
+  which is the same value — the flags are distinct bits — so it is an equivalent mutant, and
+  nothing in the sweep drops `TIME`. **(b) Not yet migrated, and free to migrate** —
+  `detached_head_marks_first_parent_chain`, and every test under the "HEAD lane follows linear
+  continuations" heading except `stash_branches_right_when_the_head_lane_extends`, which
+  already reads a capture
+- Pin every commit timestamp in a graph shape, spaced, never same-second. `TestContext::builder`
+  pins its own clock (`FIXTURE_BASE_SECS`, day-spaced); a raw-git2 shape must call
+  `graph_shapes::sig_at` with spaced values rather than declare a local signature helper.
+  `git2::Signature::now` is disqualified outright: two builds give different OIDs, so the shape
+  cannot be captured at all, and same-second commits sort arbitrarily under
+  `TOPOLOGICAL | TIME`. `graph_shapes.rs`'s module doc and the "HEAD lane follows linear
+  continuations" comment in `test_graph.rs` are this rule's mirrors
 - Tests: `just rust` (Rust — builds every graph suite: `src-tauri/tests/test_graph.rs` owns
-  the repository-level assertions and pins the accepted dirtiness churn, `test_placement.rs`
+  the named-rule assertions — over `tests/rule-inputs/`, plus the repository-built set the
+  "Two kinds of test" bullet enumerates — and pins the accepted dirtiness churn, `test_placement.rs`
   the pure lane algorithm, `test_graph_input.rs` page hydration, `test_graph_goldens.rs` the
   committed fixture corpus; plain `cargo test --lib` runs none of them, and `just` runs them
   the way CI does), `just front` (TypeScript)

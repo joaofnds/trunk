@@ -10,21 +10,6 @@ use common::rule_inputs;
 use trunk_lib::git::graph::walk_commits;
 use trunk_lib::git::types::EdgeType;
 
-/// Helper: create a merge test repo (main + feature branch + merge commit).
-/// Returns a TestContext.
-fn make_merge_test_ctx() -> TestContext {
-    TestContext::builder()
-        .with_file("README.md", "hello")
-        .with_commit("Initial commit")
-        .with_branch("feature")
-        .checkout("feature")
-        .with_file("feature.txt", "feature work")
-        .with_commit("Feature commit")
-        .checkout("main")
-        .merge("feature")
-        .build()
-}
-
 // ============================================================
 // Tests
 // ============================================================
@@ -378,11 +363,9 @@ fn head_lane_carries_two_colors_above_a_non_upstream_continuation() {
 
 #[test]
 fn ref_label_color_index() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = rule_inputs::commits("merge-feature");
 
-    for commit in &result.commits {
+    for commit in &commits {
         for r in &commit.refs {
             assert_eq!(
                 r.color_index, commit.color_index,
@@ -392,7 +375,7 @@ fn ref_label_color_index() {
         }
     }
 
-    let commits_with_refs = result.commits.iter().filter(|c| !c.refs.is_empty()).count();
+    let commits_with_refs = commits.iter().filter(|c| !c.refs.is_empty()).count();
     assert!(
         commits_with_refs > 0,
         "expected at least one commit with refs"
@@ -401,11 +384,9 @@ fn ref_label_color_index() {
 
 #[test]
 fn ref_label_no_refs_no_panic() {
-    let ctx = make_merge_test_ctx();
-    let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let commits = rule_inputs::commits("merge-feature");
 
-    let no_refs = result.commits.iter().find(|c| c.refs.is_empty());
+    let no_refs = commits.iter().find(|c| c.refs.is_empty());
     assert!(
         no_refs.is_some(),
         "expected at least one commit without refs in test repo"
@@ -763,7 +744,8 @@ fn topic_layout(name: &str) -> (usize, usize, usize) {
 
 /// (max_columns, T1's column, T1's color) clean, then with the worktree dirtied. Built from a
 /// repository rather than a capture: this pair is one of the two tests that still pin the
-/// revwalk's `TOPOLOGICAL | TIME` sort, which a committed capture would freeze.
+/// revwalk's `TOPOLOGICAL | TIME` sort, which a committed capture would freeze (count
+/// re-measured 2026-08-11; `.claude/rules/commit-graph.md` states the same one).
 fn topic_layout_clean_then_dirty(
     ctx: &TestContext,
 ) -> ((usize, usize, usize), (usize, usize, usize)) {
@@ -846,9 +828,6 @@ fn detached_head_marks_first_parent_chain() {
         cfg.set_str("user.name", "T").unwrap();
         cfg.set_str("user.email", "t@t.com").unwrap();
         drop(cfg);
-        let sig_at =
-            |secs: i64| git2::Signature::new("T", "t@t.com", &git2::Time::new(secs, 0)).unwrap();
-
         let remote_ref = "refs/remotes/origin/main";
         let base = raw_commit(&repo, &sig_at(1000), remote_ref, "base", "b.txt", "b", &[]);
         let base_c = repo.find_commit(base).unwrap();

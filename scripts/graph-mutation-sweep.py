@@ -68,7 +68,7 @@ MUTATIONS = [
     (10, P, "assign_lanes/is_merge",
      "let is_merge = !is_stash && commit_parents.len() >= 2;",
      "let is_merge = !is_stash || commit_parents.len() >= 2;"),
-    (11, P, "can_inline clause 4",
+    (11, P, "can_inline off-chain disjunct",
      "|p| !head_chain.contains(&p) || input.head_tip == Some(p)",
      "|p| head_chain.contains(&p) || input.head_tip == Some(p)"),
     (12, P, "inline branch guard",

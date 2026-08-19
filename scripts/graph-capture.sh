@@ -16,8 +16,10 @@
 # `tests/inputs/`.
 #
 # Rerun this after editing any `scripts/qa-*-fixtures.sh`, or any shape in
-# `src-tauri/tests/test_graph_capture.rs`. Nothing else notices such an edit: the inputs are
-# committed, and the goldens are computed from the inputs.
+# `src-tauri/tests/common/graph_shapes.rs` or `src-tauri/tests/test_graph_capture.rs`.
+# Nothing else notices such an edit: the inputs are committed, and the goldens are computed
+# from the inputs. `just graph-fidelity` is the check that a rule input still equals a fresh
+# capture of its repository.
 #
 # This is NOT `graph-accept`. Capturing rewrites the inputs the goldens are computed
 # from, which is upstream of the goldens themselves — so a capture that moves a layout
