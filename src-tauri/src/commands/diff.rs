@@ -769,22 +769,14 @@ mod word_span_tests {
 mod enrich_tests {
     use super::*;
 
-    fn line(origin: DiffOrigin, content: &str) -> DiffLine {
-        DiffLine {
-            origin,
-            content: content.to_string(),
-            old_lineno: None,
-            new_lineno: None,
-            spans: vec![],
-        }
-    }
-
     // A changed markdown line mixing **bold** and `code` is exactly the shape
     // that made syntect's Markdown grammar backtrack. Enrichment must now leave
     // the syntax class empty (grammar never built) while keeping the word-diff
     // emphasis that makes the change legible.
     #[test]
     fn enrich_drops_markdown_syntax_but_keeps_word_emphasis() {
+        let old_content = "the value is plain here\n";
+        let new_content = "the value is **bold** `code` here\n";
         let mut file_diffs = vec![FileDiff {
             path: "notes.md".to_string(),
             status: DiffStatus::Modified,
@@ -796,12 +788,29 @@ mod enrich_tests {
                 new_start: 1,
                 new_lines: 1,
                 lines: vec![
-                    line(DiffOrigin::Delete, "the value is plain here\n"),
-                    line(DiffOrigin::Add, "the value is **bold** `code` here\n"),
+                    DiffLine {
+                        origin: DiffOrigin::Delete,
+                        content: old_content.to_string(),
+                        old_lineno: Some(1),
+                        new_lineno: None,
+                        spans: vec![],
+                    },
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        content: new_content.to_string(),
+                        old_lineno: None,
+                        new_lineno: Some(1),
+                        spans: vec![],
+                    },
                 ],
             }],
         }];
-        let sides = vec![SideContent::none()];
+        // Real, matching side content: proves the empty syntax_class comes from
+        // the Markdown grammar refusal, not from missing/unavailable content.
+        let sides = vec![SideContent {
+            old: Some(old_content.as_bytes().to_vec()),
+            new: Some(new_content.as_bytes().to_vec()),
+        }];
 
         enrich_file_diffs(&mut file_diffs, &sides);
 
@@ -1020,6 +1029,160 @@ mod enrich_tests {
                 .all(|s| s.syntax_class != "syn-string"),
             "line after the gap closes the string must not still read as string, got {:?}",
             second_hunk_line.spans
+        );
+    }
+
+    // Fallback: a side whose content could not be resolved at all (missing blob,
+    // unreadable file, bare repo, binary) contributes no syntax tokens — the
+    // precedent the markdown test already asserts for grammar refusal, pinned
+    // here for the "no content" reason instead.
+    #[test]
+    fn enrich_produces_no_syntax_spans_when_side_content_is_unavailable() {
+        let mut file_diffs = vec![FileDiff {
+            path: "missing.rs".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ -1 +1 @@".to_string(),
+                old_start: 1,
+                old_lines: 1,
+                new_start: 1,
+                new_lines: 1,
+                lines: vec![
+                    DiffLine {
+                        origin: DiffOrigin::Delete,
+                        content: "let x = 1;\n".to_string(),
+                        old_lineno: Some(1),
+                        new_lineno: None,
+                        spans: vec![],
+                    },
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        content: "let y = 2;\n".to_string(),
+                        old_lineno: None,
+                        new_lineno: Some(1),
+                        spans: vec![],
+                    },
+                ],
+            }],
+        }];
+        let sides = vec![SideContent::none()];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        for hunk in &file_diffs[0].hunks {
+            for line in &hunk.lines {
+                assert!(
+                    line.spans.iter().all(|s| s.syntax_class.is_empty()),
+                    "unavailable side content must carry no syntax spans, got {:?}",
+                    line.spans
+                );
+                assert!(
+                    line.spans.iter().any(|s| s.emphasized),
+                    "word-diff emphasis must survive missing side content"
+                );
+            }
+        }
+    }
+
+    // Cap: a side whose last displayed line exceeds the highlight cap skips
+    // syntax entirely for that side. The cap check runs on the referenced line
+    // number alone, so a short real-content fixture is enough to exercise it.
+    #[test]
+    fn enrich_skips_syntax_when_a_sides_last_displayed_line_exceeds_the_cap() {
+        let over_cap = MAX_SYNTAX_HIGHLIGHT_LINE + 1;
+        let mut file_diffs = vec![FileDiff {
+            path: "huge.rs".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ huge @@".to_string(),
+                old_start: 1,
+                old_lines: 0,
+                new_start: over_cap,
+                new_lines: 1,
+                lines: vec![DiffLine {
+                    origin: DiffOrigin::Add,
+                    content: "let x = 1;\n".to_string(),
+                    old_lineno: None,
+                    new_lineno: Some(over_cap),
+                    spans: vec![],
+                }],
+            }],
+        }];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(b"let x = 1;\n".to_vec()),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let add_line = &file_diffs[0].hunks[0].lines[0];
+        assert!(
+            add_line.spans.iter().all(|s| s.syntax_class.is_empty()),
+            "a side past the highlight cap must carry no syntax spans, got {:?}",
+            add_line.spans
+        );
+    }
+
+    // Alignment guard: a side line that disagrees with DiffLine.content (a
+    // filter or TOCTOU drift) loses syntax spans on that line alone — a
+    // correctly aligned neighbor is unaffected, and nothing panics.
+    #[test]
+    fn enrich_drops_syntax_only_on_the_line_that_disagrees_with_side_content() {
+        let new_content = "fn main() {\n    let x = 1;\n    let y = 2;\n}\n";
+        let mut file_diffs = vec![FileDiff {
+            path: "drift.rs".to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ -2,2 +2,2 @@".to_string(),
+                old_start: 2,
+                old_lines: 2,
+                new_start: 2,
+                new_lines: 2,
+                lines: vec![
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        content: "    let x = 1;\n".to_string(),
+                        old_lineno: None,
+                        new_lineno: Some(2),
+                        spans: vec![],
+                    },
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        // Real line 3 is "    let y = 2;\n" — this drifted copy
+                        // simulates a checkin-filter/TOCTOU mismatch.
+                        content: "    let z = 2;\n".to_string(),
+                        old_lineno: None,
+                        new_lineno: Some(3),
+                        spans: vec![],
+                    },
+                ],
+            }],
+        }];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(new_content.as_bytes().to_vec()),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let aligned_line = &file_diffs[0].hunks[0].lines[0];
+        assert!(
+            aligned_line
+                .spans
+                .iter()
+                .any(|s| s.syntax_class == "syn-keyword"),
+            "correctly aligned line must still get syntax spans, got {:?}",
+            aligned_line.spans
+        );
+
+        let drifted_line = &file_diffs[0].hunks[0].lines[1];
+        assert!(
+            drifted_line.spans.iter().all(|s| s.syntax_class.is_empty()),
+            "a line that disagrees with its side content must carry no syntax spans, got {:?}",
+            drifted_line.spans
         );
     }
 }
