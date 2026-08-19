@@ -12,7 +12,7 @@
 		"tauri": "tauri",
 		"test": "vitest run"
 	},
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"dependencies": {
 		"@lucide/svelte": "^1.24.0",
 		"@tauri-apps/api": "^2.11.1",

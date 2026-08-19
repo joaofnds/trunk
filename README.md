@@ -39,4 +39,4 @@ Architecture notes, decision records, and known issues live in [`docs/`](docs/RE
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

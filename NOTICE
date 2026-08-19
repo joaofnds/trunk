@@ -1,0 +1,18 @@
+Trunk
+Copyright 2026 João Fernandes
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full text.
+
+--------------------------------------------------------------------------------
+Third-party notices
+--------------------------------------------------------------------------------
+
+This product statically links libgit2 (https://libgit2.org), which is licensed
+under GPLv2 with a linking exception. The exception permits linking libgit2 into
+software released under any license, including proprietary licenses, provided
+recipients can relink against a modified libgit2.
+
+Remaining bundled dependencies are distributed under permissive licenses (MIT,
+Apache-2.0, BSD, MPL-2.0, Zlib, Unicode-3.0, CC0-1.0). Their texts ship with the
+respective packages listed in src-tauri/Cargo.toml and package.json.
