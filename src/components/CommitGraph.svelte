@@ -25,7 +25,6 @@ import {
 	headerMinWidths,
 	shaContentWidth,
 } from "../lib/column-widths.js";
-import { computeCommitNav } from "../lib/commitNav.js";
 import {
 	errorMessage,
 	reportErrorDialog,
@@ -59,7 +58,6 @@ import {
 import { measureTextWidth } from "../lib/text-measure.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
-	CommitNav,
 	DiffStat,
 	GraphCommit,
 	GraphResponse,
@@ -79,7 +77,11 @@ import VirtualList from "./VirtualList.svelte";
 interface Props {
 	repoPath: string;
 	oncommitselect?: (oid: string) => void;
-	oncommitnavchange?: (nav: CommitNav | null) => void;
+	// Reports the WIP-inclusive display list + pagination state whenever they
+	// change, so the parent can compute commit nav (pager + child chips) itself
+	// via computeCommitNav — independent of whether this component is mounted
+	// (it unmounts for the whole duration of diff-in-view navigation).
+	oncommitschange?: (displayItems: GraphCommit[], hasMore: boolean) => void;
 	wipCount?: number;
 	wipMessage?: string;
 	wipStats?: WipStats;
@@ -104,7 +106,7 @@ interface Props {
 let {
 	repoPath,
 	oncommitselect,
-	oncommitnavchange,
+	oncommitschange,
 	wipCount = 0,
 	wipMessage = "WIP",
 	wipStats,
@@ -1177,13 +1179,11 @@ async function showHeaderContextMenu(e: MouseEvent) {
 
 const displayItems = $derived(withWipRow(commits, wipCount, wipMessage));
 
-// Emit the selected commit's nav context (pager position + topology neighbors)
-// whenever the loaded list, selection, or load-more state changes. Reading
-// `commits` (deeply reactive) covers loadMore extending the tail.
+// Report the display list + pagination state whenever they change (loadMore
+// extending the tail included, since `commits` is deeply reactive), so the
+// parent can derive commit nav itself.
 $effect(() => {
-	oncommitnavchange?.(
-		computeCommitNav(displayItems, selectedCommitOid ?? null, hasMore),
-	);
+	oncommitschange?.(displayItems, hasMore);
 });
 
 const laneColor = (idx: number) => `var(--lane-${idx % 8})`;

@@ -615,5 +615,42 @@ describe("RepoView", () => {
 			expect(await screen.findByText(/empty commit/i)).toBeTruthy();
 			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
 		});
+
+		it("resumes the remembered file after an empty commit", async () => {
+			commits = [
+				makeCommit({ oid: "oid-3", summary: "third commit" }),
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			filesByOid = {
+				"oid-3": [makeFileDiff("f.ts")],
+				"oid-2": [],
+				"oid-1": [makeFileDiff("f.ts")],
+			};
+			detailByOid = {
+				"oid-3": makeDetail("oid-3", ["oid-2"]),
+				"oid-2": makeDetail("oid-2", ["oid-1"]),
+				"oid-1": makeDetail("oid-1"),
+			};
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+			expect(await screen.findByText(/empty commit/i)).toBeTruthy();
+
+			await fireEvent.click(await screen.findByLabelText("Go to older commit"));
+			await flush();
+
+			expect(diffCommitFileCalls()).toHaveLength(2);
+			expect(diffCommitFileCalls()[1][1]).toMatchObject({
+				oid: "oid-1",
+				filePath: "f.ts",
+			});
+		});
 	});
 });

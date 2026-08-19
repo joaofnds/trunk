@@ -7,6 +7,7 @@ import {
 	type DiffKind,
 	type ViewDescriptor,
 } from "../lib/comment-matching.js";
+import { computeCommitNav } from "../lib/commitNav.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -31,9 +32,9 @@ import {
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
-	CommitNav,
 	DiffRequestOptions,
 	FileDiff,
+	GraphCommit,
 	RebaseTodoItem,
 	RefsResponse,
 	Side,
@@ -255,7 +256,16 @@ let selectedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
 let commitFileDiffs = $state<FileDiff[]>([]);
 let selectedCommitFile = $state<string | null>(null);
-let commitNav = $state<CommitNav | null>(null);
+
+// The WIP-inclusive display list + pagination state CommitGraph reports via
+// oncommitschange, cached here so commitNav below can be recomputed on every
+// selectedCommitOid change without requiring CommitGraph to be mounted — it
+// unmounts for the whole duration of diff-in-view navigation (showDiff true).
+let graphDisplayItems = $state<GraphCommit[]>([]);
+let graphHasMore = $state(false);
+let commitNav = $derived(
+	computeCommitNav(graphDisplayItems, selectedCommitOid ?? null, graphHasMore),
+);
 
 // Diff-in-view navigation (spec 2026-08-18): non-null = mode active. Remembers
 // the path last opened (click or auto-open) so a commit switch can reopen it.
@@ -1153,7 +1163,7 @@ function startRightResize(e: MouseEvent) {
             : handleDiffClose}
         />
       {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitnavchange={(nav) => (commitNav = nav)} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {tabActive} {showInlineComments} {reviewComments} />
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {tabActive} {showInlineComments} {reviewComments} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
