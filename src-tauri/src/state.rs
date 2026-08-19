@@ -40,9 +40,22 @@ pub struct CommitStatsCache(
     pub Mutex<HashMap<String, HashMap<String, crate::git::types::DiffStat>>>,
 );
 
-// In-memory cache of the active review session per open repo.
-// Keyed by CANONICAL PathBuf (D-11) — the ONE place keying diverges from the
-// raw-String maps above, so a repo opened via a symlink or alias resumes the
-// SAME session. ReviewSession is owned plain data, satisfying the top-of-file
-// "PathBuf/owned only — git2::Repository is not Sync" constraint.
-pub struct ReviewSessionsState(pub Mutex<HashMap<PathBuf, crate::git::types::ReviewSession>>);
+/// The persistent review store, opened once on first use.
+///
+/// Opening is fallible — a store newer than this build is refused, an unreadable
+/// one is quarantined — and there is no window to report into during `setup()`,
+/// so the open is deferred to the first command that needs it.
+pub struct ReviewStoreState(pub StoreSlot);
+
+/// The store handle, shared so the open can run on the blocking pool rather than
+/// the async runtime.
+#[derive(Default)]
+pub struct StoreSlot(std::sync::Arc<Mutex<Option<std::sync::Arc<crate::reviewdb::Store>>>>);
+
+impl StoreSlot {
+    pub fn clone_handle(
+        &self,
+    ) -> std::sync::Arc<Mutex<Option<std::sync::Arc<crate::reviewdb::Store>>>> {
+        std::sync::Arc::clone(&self.0)
+    }
+}

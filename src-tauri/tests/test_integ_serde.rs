@@ -883,86 +883,45 @@ fn diff_line_serializes_spans_as_array() {
 // the same serde patterns as the tested types (structs with String and
 // Option<String> fields, Vec of structs with String/i64 fields).
 
-// ── ReviewSession schema (Phase 65, keystone data model) ─────────────────────
+// ── Anchor wire shape ────────────────────────────────────────────────────────
 
-use trunk_lib::git::types::{Anchor, Comment, DraftComment, ReviewSession, Side, Source};
+use trunk_lib::git::types::{Anchor, Side, Source};
 
-fn anchored_session() -> ReviewSession {
-    ReviewSession {
-        schema_version: 2,
-        commits: vec!["a".repeat(40), "b".repeat(40)],
-        comments: vec![Comment {
-            id: "comment-1".to_string(),
-            text: "looks good".to_string(),
-            anchor: Some(Anchor {
-                commit_oid: "a".repeat(40),
-                file_path: "src/main.rs".to_string(),
-                source: Source::Diff,
-                side: Side::New,
-                start_line: 10,
-                end_line: 12,
-            }),
-            cached_excerpt: Some("fn main() {}".to_string()),
-            commit_oid: None,
-        }],
-        draft_comment: None,
-        working_tree_snapshot: None,
-        index_snapshot: None,
+fn an_anchor() -> Anchor {
+    Anchor {
+        commit_oid: "a".repeat(40),
+        file_path: "src/main.rs".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 10,
+        end_line: 12,
     }
 }
 
 #[test]
-fn session_serde_shape() {
-    let json =
-        serde_json::to_value(anchored_session()).expect("ReviewSession serialization failed");
+fn anchor_serializes_every_field_in_snake_case() {
+    let json = serde_json::to_value(an_anchor()).expect("Anchor serialization failed");
 
-    // D-04: schema_version is 2 (v2 carries the comment id + commit_oid).
-    assert_eq!(json["schema_version"].as_u64().unwrap(), 2);
+    // The whole shape, not field-by-field: a swapped start_line/end_line or a
+    // file_path carrying the oid survives a set of type checks.
+    assert_eq!(
+        json,
+        serde_json::json!({
+            "commit_oid": "a".repeat(40),
+            "file_path": "src/main.rs",
+            "source": "Diff",
+            "side": "New",
+            "start_line": 10,
+            "end_line": 12,
+        })
+    );
+}
 
-    // Capture-order comment list + commit OIDs.
-    assert!(json["commits"].is_array(), "commits should be an array");
-    assert!(json["comments"].is_array(), "comments should be an array");
-
-    // DP-02: draft_comment serializes as null when None.
-    assert!(
-        json["draft_comment"].is_null(),
-        "draft_comment should be null when None"
-    );
-
-    let anchor = &json["comments"][0]["anchor"];
-
-    // snake_case struct fields all present on the anchor.
-    assert!(
-        anchor["commit_oid"].is_string(),
-        "commit_oid should be a string"
-    );
-    assert!(
-        anchor["file_path"].is_string(),
-        "file_path should be a string"
-    );
-    assert!(anchor["source"].is_string(), "source should be a string");
-    assert!(anchor["side"].is_string(), "side should be a string");
-    assert!(
-        anchor["start_line"].is_number(),
-        "start_line should be a number"
-    );
-    assert!(
-        anchor["end_line"].is_number(),
-        "end_line should be a number"
-    );
-
-    // D-04: comment text + cached_excerpt stored independent of anchor.
-    assert!(
-        json["comments"][0]["text"].is_string(),
-        "comment text should be a string"
-    );
-    let cached = &json["comments"][0]["cached_excerpt"];
-    assert!(
-        cached.is_null() || cached.is_string(),
-        "cached_excerpt should be null or string"
-    );
-
-    // DP / Pitfall 4: enums serialize as PascalCase strings, NOT snake_case.
+/// `reviewdb::anchor` writes these exact strings into the `source` and `side`
+/// columns and matches them back on read, so the enum spelling is a storage
+/// contract, not just a wire one.
+#[test]
+fn source_and_side_serialize_as_pascal_case_strings() {
     assert_eq!(
         serde_json::to_value(Source::Diff).unwrap(),
         serde_json::Value::String("Diff".to_string())
@@ -979,74 +938,27 @@ fn session_serde_shape() {
         serde_json::to_value(Side::New).unwrap(),
         serde_json::Value::String("New".to_string())
     );
+}
 
-    // D-01 migration guardrail: forbidden fields are NEVER present on the anchor.
-    assert!(
-        anchor["hunk_index"].is_null(),
-        "hunk_index must be absent (D-01)"
-    );
-    assert!(
-        anchor["line_index"].is_null(),
-        "line_index must be absent (D-01)"
-    );
-    assert!(
-        anchor["context_lines"].is_null(),
-        "context_lines must be absent (D-01)"
-    );
-    assert!(
-        anchor["ignore_whitespace"].is_null(),
-        "ignore_whitespace must be absent (D-01)"
-    );
+/// Migration guardrail: an anchor names a commit, a file and a line range and
+/// nothing about how the diff was rendered. Re-adding any of these would make an
+/// anchor depend on view settings that change under it.
+#[test]
+fn an_anchor_carries_no_rendering_fields() {
+    let json = serde_json::to_value(an_anchor()).unwrap();
 
-    // D-07: no timestamp/author/severity/status fields anywhere on the comment.
-    let comment = &json["comments"][0];
-    assert!(
-        comment["timestamp"].is_null(),
-        "timestamp must be absent (D-07)"
-    );
-    assert!(comment["author"].is_null(), "author must be absent (D-07)");
-    assert!(
-        comment["severity"].is_null(),
-        "severity must be absent (D-07)"
-    );
-    assert!(comment["status"].is_null(), "status must be absent (D-07)");
+    assert!(json["hunk_index"].is_null());
+    assert!(json["line_index"].is_null());
+    assert!(json["context_lines"].is_null());
+    assert!(json["ignore_whitespace"].is_null());
 }
 
 #[test]
-fn session_round_trips() {
-    let session = anchored_session();
-    let before = serde_json::to_value(&session).expect("serialization failed");
+fn an_anchor_round_trips_through_serde_unchanged() {
+    let before = serde_json::to_value(an_anchor()).unwrap();
 
-    let serialized = serde_json::to_string(&session).expect("to_string failed");
-    let deserialized: ReviewSession = serde_json::from_str(&serialized).expect("from_str failed");
-    let after = serde_json::to_value(&deserialized).expect("re-serialization failed");
+    let serialized = serde_json::to_string(&an_anchor()).unwrap();
+    let deserialized: Anchor = serde_json::from_str(&serialized).unwrap();
 
-    assert_eq!(
-        before, after,
-        "session should round-trip through serde unchanged"
-    );
-}
-
-#[test]
-fn session_serializes_draft_comment_when_present() {
-    let mut session = anchored_session();
-    session.draft_comment = Some(DraftComment {
-        text: "wip note".to_string(),
-        anchor: None,
-    });
-
-    let json = serde_json::to_value(&session).expect("serialization failed");
-
-    assert!(
-        json["draft_comment"].is_object(),
-        "draft_comment should be an object when Some"
-    );
-    assert!(
-        json["draft_comment"]["text"].is_string(),
-        "draft_comment text should be a string"
-    );
-    assert!(
-        json["draft_comment"]["anchor"].is_null(),
-        "draft_comment anchor should be null when None"
-    );
+    assert_eq!(before, serde_json::to_value(&deserialized).unwrap());
 }

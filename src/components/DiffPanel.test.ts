@@ -32,11 +32,8 @@ function gutterOf(text: string): HTMLElement {
 	return grip;
 }
 
-// Mock invoke and toast for hunk staging operations. The default implementation
-// returns an "active" review session for get_review_session_status so that
-// opening the comment composer works without an explicit per-test override;
-// everything else resolves to undefined. Tests that exercise the auto-start flow
-// override safeInvoke per case.
+// Mock invoke and toast for hunk staging operations. Every command resolves to
+// undefined; tests that need a return value override safeInvoke per case.
 vi.mock("../lib/invoke.js", async () => {
 	const actual =
 		await vi.importActual<typeof import("../lib/invoke.js")>(
@@ -44,12 +41,7 @@ vi.mock("../lib/invoke.js", async () => {
 		);
 	return {
 		...actual,
-		safeInvoke: vi.fn((cmd: string) => {
-			if (cmd === "get_review_session_status") {
-				return Promise.resolve({ state: "active", canonical_path: "/repo" });
-			}
-			return Promise.resolve(undefined);
-		}),
+		safeInvoke: vi.fn(() => Promise.resolve(undefined)),
 	};
 });
 
@@ -1822,32 +1814,24 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		);
 	});
 
-	// Auto-start a review session at the comment chokepoint (UAT fix). Override
-	// safeInvoke so get_review_session_status returns the desired state; assert
-	// which lifecycle command (if any) the composer-open path invokes.
-	function mockSessionState(state: "active" | "resume-available" | "none") {
-		// Clear accumulated call history so calledCommands() reflects only this
-		// test, then (re)install the command-aware implementation.
+	// Opening the composer establishes NOTHING. The draft row has no review
+	// foreign key, so autosave always has a home, and the review is created at
+	// SUBMIT — which is what makes a cancelled composer strand nothing
+	// (criterion 3; 260531-l02c's substance kept by D6).
+	function mockStoreCommands() {
 		vi.mocked(safeInvoke).mockClear();
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
-			if (cmd === "get_review_session_status") {
-				return Promise.resolve({ state, canonical_path: "/repo" });
-			}
-			return Promise.resolve(undefined);
-		});
+		vi.mocked(safeInvoke).mockImplementation(() => Promise.resolve(undefined));
 	}
 
 	async function openComposerOnAddLine() {
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
-		// Opening ensures the session (ensureActiveSession) before showing the composer
-		// so the composer's draft-save has a session (260531-l02c). Settle the IPCs.
 		await new Promise((r) => setTimeout(r, 0));
 		await tick();
 	}
 
-	// Submit the open composer and settle the async resolve→snapshot→add_comment chain.
+	// Submit the open composer and settle the async resolve -> snapshot -> add_thread chain.
 	async function submitComposer(note: string) {
 		const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: note } });
@@ -1861,8 +1845,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		return vi.mocked(safeInvoke).mock.calls.map((c) => c[0] as string);
 	}
 
-	it("starts a session on open when none is active, then submit reaches add_comment", async () => {
-		mockSessionState("none");
+	function renderPanel() {
 		render(DiffPanel, {
 			props: {
 				fileDiffs: [testDiff],
@@ -1872,66 +1855,34 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 				repoPath: "/repo",
 			},
 		});
+	}
+
+	it("opening the composer invokes no review-creating command", async () => {
+		mockStoreCommands();
+		renderPanel();
 		await flushPrefs();
 
 		await openComposerOnAddLine();
 
-		// Session starts at OPEN so the composer's draft-save has a session (260531-l02c).
-		expect(calledCommands()).toContain("start_review_session");
-		expect(calledCommands()).not.toContain("resume_review_session");
 		expect(screen.getByRole("textbox")).toBeTruthy();
+		expect(calledCommands()).toEqual(
+			expect.not.arrayContaining([
+				"create_review",
+				"add_thread",
+				"add_commit_thread",
+			]),
+		);
+	});
+
+	it("submitting reaches add_thread, which is what creates the review", async () => {
+		mockStoreCommands();
+		renderPanel();
+		await flushPrefs();
+		await openComposerOnAddLine();
 
 		await submitComposer("first note");
 
-		expect(calledCommands()).toContain("add_comment");
-	});
-
-	it("resumes a saved session on open (resume_review_session, not start) when one is available", async () => {
-		mockSessionState("resume-available");
-		render(DiffPanel, {
-			props: {
-				fileDiffs: [testDiff],
-				commitDetail: nonMergeCommit,
-				onclose: vi.fn(),
-				diffKind: "commit",
-				repoPath: "/repo",
-			},
-		});
-		await flushPrefs();
-
-		await openComposerOnAddLine();
-
-		expect(calledCommands()).toContain("resume_review_session");
-		expect(calledCommands()).not.toContain("start_review_session");
-		expect(screen.getByRole("textbox")).toBeTruthy();
-
-		await submitComposer("a note");
-
-		expect(calledCommands()).toContain("add_comment");
-	});
-
-	it("does not start or resume when a session is already active", async () => {
-		mockSessionState("active");
-		render(DiffPanel, {
-			props: {
-				fileDiffs: [testDiff],
-				commitDetail: nonMergeCommit,
-				onclose: vi.fn(),
-				diffKind: "commit",
-				repoPath: "/repo",
-			},
-		});
-		await flushPrefs();
-
-		await openComposerOnAddLine();
-		expect(screen.getByRole("textbox")).toBeTruthy();
-
-		await submitComposer("a note");
-
-		// Active session: submit neither starts nor resumes, but still writes.
-		expect(calledCommands()).not.toContain("start_review_session");
-		expect(calledCommands()).not.toContain("resume_review_session");
-		expect(calledCommands()).toContain("add_comment");
+		expect(calledCommands()).toContain("add_thread");
 	});
 });
 
@@ -1940,12 +1891,7 @@ describe("Discard File button", () => {
 	// test's safeInvoke override and flakes it under load.
 	afterEach(() => {
 		vi.mocked(safeInvoke).mockReset();
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
-			if (cmd === "get_review_session_status") {
-				return Promise.resolve({ state: "active", canonical_path: "/repo" });
-			}
-			return Promise.resolve(undefined);
-		});
+		vi.mocked(safeInvoke).mockImplementation(() => Promise.resolve(undefined));
 	});
 
 	it("shows the Discard File button for unstaged diffs", async () => {

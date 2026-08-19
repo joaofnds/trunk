@@ -19,20 +19,21 @@ describe("createReviewSession — generate", () => {
 	it("generate returns the markdown string", async () => {
 		mockInvoke.mockResolvedValueOnce("# generated markdown");
 		const m = createReviewSession();
-		const result = await m.generate("/some/path");
+		const result = await m.generate("/some/path", "REVIEW01");
 		expect(mockInvoke).toHaveBeenCalledWith("generate_review_doc", {
 			path: "/some/path",
+			reviewId: "REVIEW01",
 		});
 		expect(result).toBe("# generated markdown");
 	});
 
 	it("generate propagates rejection", async () => {
 		mockInvoke.mockRejectedValueOnce(
-			'{"code":"no_comments","message":"Generate requires at least one comment in the session"}',
+			'{"code":"no_threads","message":"Generate requires at least one thread in the review"}',
 		);
 		const m = createReviewSession();
-		await expect(m.generate("/repo")).rejects.toMatchObject({
-			code: "no_comments",
+		await expect(m.generate("/repo", "REVIEW01")).rejects.toMatchObject({
+			code: "no_threads",
 		});
 	});
 });

@@ -1,27 +1,28 @@
 import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { createReviewComments } from "./review-comments.svelte.js";
-import type { Comment, SessionCommit } from "./types";
+import type { Review, SessionCommit, Thread } from "./types";
 
-// safeInvoke is a thin wrapper around @tauri-apps/api/core::invoke (src/lib/invoke.ts).
-// Mock the underlying invoke (not safeInvoke) so the TrunkError-parsing path stays
-// live, matching review-session.svelte.test.ts.
+// safeInvoke is a thin wrapper around @tauri-apps/api/core::invoke
+// (src/lib/invoke.ts). Mock the underlying invoke (not safeInvoke) so the
+// TrunkError-parsing path stays live.
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-// Capture the rune's session-changed callback so tests can simulate a cross-tab
+// Capture the rune's reviews-changed callback so tests can simulate a cross-tab
 // emit; the real IPC core is undefined under jsdom.
-let sessionChangedHandler: ((event: { payload: string }) => void) | null = null;
+let reviewsChangedHandler: ((event: { payload: string }) => void) | null = null;
 vi.mock("@tauri-apps/api/event", () => ({
 	listen: vi.fn((_event: string, cb: (event: { payload: string }) => void) => {
-		sessionChangedHandler = cb;
+		reviewsChangedHandler = cb;
 		return Promise.resolve(() => {
-			sessionChangedHandler = null;
+			reviewsChangedHandler = null;
 		});
 	}),
 }));
 
-function fireSessionChanged(payload: string): void {
-	sessionChangedHandler?.({ payload });
+function fireReviewsChanged(payload: string): void {
+	reviewsChangedHandler?.({ payload });
 }
 
 async function flush() {
@@ -30,7 +31,7 @@ async function flush() {
 
 const mockInvoke = vi.mocked(invoke);
 
-const comment: Comment = {
+const thread: Thread = aThread({
 	id: "c1",
 	text: "looks good",
 	anchor: {
@@ -41,395 +42,259 @@ const comment: Comment = {
 		start_line: 10,
 		end_line: 10,
 	},
-	cached_excerpt: null,
 	commit_oid: "abc",
+});
+
+const review: Review = {
+	id: "REVIEW01",
+	title: "Review 2026-08-12 · REVIEW01",
+	state: "composing",
+	published: false,
+	thread_count: 1,
+	created_at: 0,
 };
 
-// Active session: one comment, a working-tree snapshot.
-function activeSession() {
+const commits: SessionCommit[] = [
+	{ oid: "abc", short_oid: "abc", summary: "one", is_snapshot: false },
+];
+
+/** A repo with one composing review holding one thread. */
+function aPopulatedStore(overrides: Record<string, unknown> = {}) {
 	mockInvoke.mockImplementation((cmd: string) => {
+		if (cmd in overrides) return Promise.resolve(overrides[cmd]);
 		switch (cmd) {
-			case "get_review_session_status":
-				return Promise.resolve({
-					state: "active",
-					file_exists: true,
-					canonical_path: "/repo",
-				});
+			case "list_reviews":
+				return Promise.resolve([review]);
+			case "get_active_review":
+				return Promise.resolve("REVIEW01");
 			case "get_review_snapshots":
 				return Promise.resolve({
 					working_tree_snapshot: "wt1",
 					index_snapshot: null,
 				});
-			case "list_session_comments":
-				return Promise.resolve([comment]);
+			case "list_threads":
+				return Promise.resolve([thread]);
 			case "list_session_commits":
-				return Promise.resolve([
-					{
-						oid: "abc",
-						short_oid: "abc",
-						summary: "a commit under review",
-						is_snapshot: false,
-					},
-				]);
+				return Promise.resolve(commits);
+			case "canonical_repo_path":
+				return Promise.resolve("/repo");
 			default:
-				return Promise.reject(new Error(`unexpected ${cmd}`));
+				return Promise.resolve(undefined);
 		}
 	});
-}
-
-// After End Review the backend removes the in-memory session, so
-// list_session_comments rejects with no_session and status reports "none".
-function endedSession() {
-	mockInvoke.mockImplementation((cmd: string) => {
-		switch (cmd) {
-			case "get_review_session_status":
-				return Promise.resolve({
-					state: "none",
-					file_exists: false,
-					canonical_path: "/repo",
-				});
-			case "get_review_snapshots":
-				return Promise.resolve({
-					working_tree_snapshot: null,
-					index_snapshot: null,
-				});
-			case "list_session_comments":
-			case "list_session_commits":
-				return Promise.reject(
-					'{"code":"no_session","message":"No active review session for this repository"}',
-				);
-			default:
-				return Promise.reject(new Error(`unexpected ${cmd}`));
-		}
-	});
-}
-
-// A session saved on disk but not yet in memory: status reports
-// "resume-available" and the list reads reject with no_session until it is
-// promoted.
-function resumableSession() {
-	mockInvoke.mockImplementation((cmd: string) => {
-		switch (cmd) {
-			case "get_review_session_status":
-				return Promise.resolve({
-					state: "resume-available",
-					file_exists: true,
-					canonical_path: "/repo",
-				});
-			case "get_review_snapshots":
-				return Promise.resolve({
-					working_tree_snapshot: null,
-					index_snapshot: null,
-				});
-			case "list_session_comments":
-			case "list_session_commits":
-				return Promise.reject(
-					'{"code":"no_session","message":"No active review session for this repository"}',
-				);
-			default:
-				return Promise.reject(new Error(`unexpected ${cmd}`));
-		}
-	});
-}
-
-// A repo the backend will not answer for: every read rejects, so the rune never
-// learns a canonical path.
-function unreachableRepo() {
-	mockInvoke.mockImplementation(() =>
-		Promise.reject('{"code":"not_open","message":"Repository is not open"}'),
-	);
 }
 
 beforeEach(() => {
-	mockInvoke.mockReset();
+	vi.clearAllMocks();
+	reviewsChangedHandler = null;
 });
 
 describe("createReviewComments — refresh", () => {
-	it("populates comments, snapshots and active from a successful refresh", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
+	it("populates threads, reviews, the active pointer and snapshots", async () => {
+		aPopulatedStore();
 
-		await m.refresh();
+		const manager = createReviewComments("/repo");
+		await flush();
 
-		expect(m.comments).toEqual([comment]);
-		expect(m.snapshots).toEqual({
-			working_tree_snapshot: "wt1",
-			index_snapshot: null,
-		});
-		expect(m.active).toBe(true);
-
-		m.destroy();
+		expect(manager.threads).toHaveLength(1);
+		expect(manager.reviews).toHaveLength(1);
+		expect(manager.activeReviewId).toBe("REVIEW01");
+		expect(manager.snapshots.working_tree_snapshot).toBe("wt1");
+		manager.destroy();
 	});
 
-	it("exposes the oids of the commits under review", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
+	it("reports having threads to show, which is what every badge gates on", async () => {
+		aPopulatedStore();
 
-		await m.refresh();
+		const manager = createReviewComments("/repo");
+		await flush();
 
-		expect([...m.oids]).toEqual(["abc"]);
-
-		m.destroy();
+		expect(manager.hasThreads).toBe(true);
+		manager.destroy();
 	});
 
-	it("empties the oids when the session ends", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
-		await m.refresh();
+	it("has nothing to show for a repo with reviews but no threads", async () => {
+		aPopulatedStore({ list_threads: [] });
 
-		endedSession();
-		await m.refresh();
+		const manager = createReviewComments("/repo");
+		await flush();
 
-		expect(m.oids.size).toBe(0);
-
-		m.destroy();
+		expect(manager.hasThreads).toBe(false);
+		expect(manager.reviews).toHaveLength(1);
+		manager.destroy();
 	});
 
-	it("clears stale comments and marks inactive when the session ends", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
-		await m.refresh();
-		expect(m.comments).toHaveLength(1);
-		expect(m.active).toBe(true);
+	it("exposes the oids of the active review's commits", async () => {
+		aPopulatedStore();
 
-		// Regression: a naive Promise.all would let the no_session rejection abort
-		// the whole update, leaving the stale comment (and active=true) on screen,
-		// so inline comments would not vanish on End Review.
-		endedSession();
-		await m.refresh();
+		const manager = createReviewComments("/repo");
+		await flush();
 
-		expect(m.comments).toEqual([]);
-		expect(m.active).toBe(false);
-		expect(m.snapshots).toEqual({
-			working_tree_snapshot: null,
-			index_snapshot: null,
+		expect(manager.oids.has("abc")).toBe(true);
+		manager.destroy();
+	});
+
+	it("empties everything for a repo with no reviews at all", async () => {
+		aPopulatedStore({
+			list_reviews: [],
+			get_active_review: null,
+			list_threads: [],
+			list_session_commits: [],
 		});
 
-		m.destroy();
+		const manager = createReviewComments("/repo");
+		await flush();
+
+		expect(manager.threads).toHaveLength(0);
+		expect(manager.activeReviewId).toBeNull();
+		expect(manager.hasThreads).toBe(false);
+		expect(manager.oids.size).toBe(0);
+		manager.destroy();
 	});
 
-	it("carries the commits under review in session order", async () => {
-		const underReview: SessionCommit[] = [
-			{
-				oid: "abc",
-				short_oid: "abcdefg",
-				summary: "first commit",
-				is_snapshot: false,
-			},
-			{
-				oid: "def",
-				short_oid: "defabcd",
-				summary: "second commit",
-				is_snapshot: true,
-			},
-		];
-		mockInvoke.mockImplementation((cmd: string) =>
-			cmd === "list_session_commits"
-				? Promise.resolve(underReview)
-				: Promise.resolve(undefined),
+	// Scoped by command, never with a bare mockImplementationOnce: the rune also
+	// reads canonical_repo_path, which would consume a one-shot override before
+	// any refresh read saw it.
+	function failing(cmd: string) {
+		aPopulatedStore();
+		const base = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((c, args, options) =>
+			c === cmd
+				? Promise.reject('{"code":"store","message":"database is locked"}')
+				: (base?.(c, args, options) ?? Promise.resolve(undefined)),
 		);
-		const m = createReviewComments("/repo");
+	}
 
-		await m.refresh();
+	it("reports a read failure rather than swallowing it", async () => {
+		failing("list_threads");
 
-		expect(m.commits).toEqual(underReview);
+		const manager = createReviewComments("/repo");
+		await flush();
 
-		m.destroy();
-	});
-
-	it("distinguishes a session saved on disk from no session at all", async () => {
-		resumableSession();
-		const m = createReviewComments("/repo");
-
-		await m.refresh();
-
-		expect(m.sessionState).toBe("resume-available");
-		expect(m.active).toBe(false);
-
-		m.destroy();
-	});
-
-	// ReviewPanel resumes a saved session and gates that attempt on
-	// `sessionState === "resume-available"`, so a resume repeating forever is
-	// held off by the rune reporting the promotion — not by the panel.
-	it("reports the session active once a resume has promoted it", async () => {
-		resumableSession();
-		const m = createReviewComments("/repo");
-		await m.refresh();
-		expect(m.sessionState).toBe("resume-available");
-
-		activeSession();
-		await m.refresh();
-
-		expect(m.sessionState).toBe("active");
-
-		m.destroy();
-	});
-
-	it("reports a read failure that is not just a missing session", async () => {
-		unreachableRepo();
-		const m = createReviewComments("/repo");
-
-		await m.refresh();
-
-		expect(m.lastError).toBe("Repository is not open");
-
-		m.destroy();
-	});
-
-	it("stays quiet when the only rejection is a missing session", async () => {
-		endedSession();
-		const m = createReviewComments("/repo");
-
-		await m.refresh();
-
-		expect(m.lastError).toBeNull();
-
-		m.destroy();
+		expect(manager.lastError).toContain("database is locked");
+		manager.destroy();
 	});
 
 	it("clears a read failure once a refresh comes back clean", async () => {
-		unreachableRepo();
-		const m = createReviewComments("/repo");
-		await m.refresh();
-		expect(m.lastError).not.toBeNull();
+		failing("list_threads");
+		const manager = createReviewComments("/repo");
+		await flush();
+		expect(manager.lastError).not.toBeNull();
 
-		activeSession();
-		await m.refresh();
+		aPopulatedStore();
+		await manager.refresh();
 
-		expect(m.lastError).toBeNull();
-
-		m.destroy();
-	});
-
-	it("goes dark when the status read fails", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
-		await m.refresh();
-		expect(m.sessionState).toBe("active");
-
-		unreachableRepo();
-		await m.refresh();
-
-		expect(m.active).toBe(false);
-		expect(m.sessionState).toBe("none");
-
-		m.destroy();
+		expect(manager.lastError).toBeNull();
+		manager.destroy();
 	});
 });
 
-describe("createReviewComments — session-changed listener", () => {
+describe("createReviewComments — reviews-changed listener", () => {
 	it("refreshes on an event for its own repo", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
+		aPopulatedStore();
+		const manager = createReviewComments("/repo");
+		await flush();
+		const before = manager.revision;
+
+		fireReviewsChanged("/repo");
 		await flush();
 
-		endedSession();
-		fireSessionChanged("/repo");
-		await flush();
-
-		expect(m.active).toBe(false);
-		expect(m.comments).toEqual([]);
-
-		m.destroy();
+		expect(manager.revision).toBeGreaterThan(before);
+		manager.destroy();
 	});
 
 	it("ignores an event for another repo", async () => {
-		activeSession();
-		const m = createReviewComments("/repo");
+		aPopulatedStore();
+		const manager = createReviewComments("/repo");
+		await flush();
+		const before = manager.revision;
+
+		fireReviewsChanged("/somewhere-else");
 		await flush();
 
-		endedSession();
-		fireSessionChanged("/some/other/repo");
-		await flush();
-
-		expect(m.active).toBe(true);
-		expect(m.comments).toEqual([comment]);
-
-		m.destroy();
+		expect(manager.revision).toBe(before);
+		manager.destroy();
 	});
 
-	it("drops every event while the canonical path is unknown", async () => {
-		unreachableRepo();
-		const m = createReviewComments("/repo");
+	it("recovers the filter when a later canonical-path read succeeds", async () => {
+		// One rejection used to disable the listener for the tab's lifetime.
+		aPopulatedStore();
+		let attempts = 0;
+		const base = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((c, args, options) => {
+			if (c === "canonical_repo_path") {
+				attempts += 1;
+				return attempts === 1
+					? Promise.reject('{"code":"io","message":"transient"}')
+					: Promise.resolve("/repo");
+			}
+			return base?.(c, args, options) ?? Promise.resolve(undefined);
+		});
+		const manager = createReviewComments("/repo");
 		await flush();
 
-		activeSession();
-		fireSessionChanged("/some/other/repo");
+		await manager.refresh();
+		const before = manager.revision;
+		fireReviewsChanged("/repo");
 		await flush();
 
-		expect(m.active).toBe(false);
+		expect(manager.revision).toBeGreaterThan(before);
+		manager.destroy();
+	});
 
-		m.destroy();
+	it("drops every event while the canonical path is still unknown", async () => {
+		// The canonical path never resolves, so the filter must fail closed
+		// rather than treat an unknown path as a match.
+		aPopulatedStore({ canonical_repo_path: undefined });
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "canonical_repo_path") return new Promise(() => {});
+			return Promise.resolve(cmd === "list_reviews" ? [review] : []);
+		});
+		const manager = createReviewComments("/repo");
+		await flush();
+		const before = manager.revision;
+
+		fireReviewsChanged("/repo");
+		await flush();
+
+		expect(manager.revision).toBe(before);
+		manager.destroy();
 	});
 });
 
 describe("createReviewComments — overlapping refreshes", () => {
-	function deferred<T>() {
-		let resolve!: (value: T) => void;
-		const promise = new Promise<T>((r) => {
-			resolve = r;
-		});
-		return { promise, resolve };
-	}
-
-	// Two refreshes in flight, each blocked on its own list_session_comments:
-	// the first read the rune issues gets `older`, the second gets `newer`.
-	function stagedCommentReads() {
-		const older = deferred<Comment[]>();
-		const newer = deferred<Comment[]>();
-		let commentReads = 0;
+	it("keeps the newest result when an older refresh resolves last", async () => {
+		// Two refreshes in flight, each blocked on its own list_threads. The
+		// older one resolves last and must not install its snapshot over the
+		// newer one.
+		const gates: ((value: Thread[]) => void)[] = [];
 		mockInvoke.mockImplementation((cmd: string) => {
 			switch (cmd) {
-				case "get_review_session_status":
-					return Promise.resolve({
-						state: "active",
-						file_exists: true,
-						canonical_path: "/repo",
-					});
-				case "get_review_snapshots":
-					return Promise.resolve({
-						working_tree_snapshot: null,
-						index_snapshot: null,
-					});
-				case "list_session_comments":
-					return (commentReads++ === 0 ? older : newer).promise;
+				case "list_reviews":
+					return Promise.resolve([review]);
+				case "get_active_review":
+					return Promise.resolve("REVIEW01");
+				case "list_threads":
+					return new Promise<Thread[]>((resolve) => gates.push(resolve));
+				case "canonical_repo_path":
+					return Promise.resolve("/repo");
 				default:
 					return Promise.resolve([]);
 			}
 		});
-		return { older, newer };
-	}
 
-	it("advances the revision for a completed refresh but not a superseded one", async () => {
-		const { older, newer } = stagedCommentReads();
-
-		const m = createReviewComments("/repo");
-		const second = m.refresh();
-		newer.resolve([comment]);
-		await second;
-		expect(m.revision).toBe(1);
-
-		older.resolve([]);
+		const manager = createReviewComments("/repo");
+		await flush();
+		const second = manager.refresh();
 		await flush();
 
-		expect(m.revision).toBe(1);
-
-		m.destroy();
-	});
-
-	it("keeps the newest result when an older refresh resolves last", async () => {
-		const { older, newer } = stagedCommentReads();
-
-		const m = createReviewComments("/repo");
-		const second = m.refresh();
-		newer.resolve([comment]);
+		// Resolve the NEWER read first, then let the older one land.
+		gates[1]?.([thread]);
 		await second;
-		older.resolve([]);
+		gates[0]?.([]);
 		await flush();
 
-		expect(m.comments).toEqual([comment]);
-
-		m.destroy();
+		expect(manager.threads).toHaveLength(1);
+		manager.destroy();
 	});
 });

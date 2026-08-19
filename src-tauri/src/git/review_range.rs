@@ -67,27 +67,6 @@ pub(crate) fn compute_range_oids(
         .collect()
 }
 
-/// Add `oid` to the selection if absent — idempotent (SEL-02, D-06).
-pub(crate) fn apply_add(commits: &mut Vec<String>, oid: &str) {
-    if !commits.iter().any(|c| c == oid) {
-        commits.push(oid.to_string());
-    }
-}
-
-/// Remove every occurrence of `oid` from the selection; missing is a no-op (SEL-03).
-pub(crate) fn apply_remove(commits: &mut Vec<String>, oid: &str) {
-    commits.retain(|c| c != oid);
-}
-
-/// Union `incoming` into `existing`, preserving hand-picked commits and deduping
-/// (D-03). Store order is irrelevant — `intersect_graph_order` re-imposes graph
-/// order on read, so the set is the only thing that matters here.
-pub(crate) fn union_dedup(existing: &[String], incoming: Vec<String>) -> Vec<String> {
-    let mut set: std::collections::HashSet<String> = existing.iter().cloned().collect();
-    set.extend(incoming);
-    set.into_iter().collect()
-}
-
 /// Order the session set by the full cached graph order, deduped, as the SEL-04
 /// list. OIDs present in the cached `graph` come first in graph order; any
 /// selected OID absent from the graph is appended via `repo.find_commit`, and an
@@ -307,48 +286,6 @@ mod tests {
             !oids.contains(&t.d.to_string()),
             "first-parent ancestor must be excluded"
         );
-    }
-
-    // ── Task 2: Set union / add / remove / dedup ─────────────────────────────
-
-    #[test]
-    fn add_commit_idempotent() {
-        let mut commits = vec!["aaa".to_string()];
-        apply_add(&mut commits, "bbb");
-        assert_eq!(commits, vec!["aaa".to_string(), "bbb".to_string()]);
-        // SEL-02: a second add of the same oid is a no-op (no duplicate).
-        apply_add(&mut commits, "bbb");
-        assert_eq!(commits, vec!["aaa".to_string(), "bbb".to_string()]);
-    }
-
-    #[test]
-    fn remove_commit() {
-        let mut commits = vec!["aaa".to_string(), "bbb".to_string(), "ccc".to_string()];
-        apply_remove(&mut commits, "bbb");
-        assert_eq!(commits, vec!["aaa".to_string(), "ccc".to_string()]);
-        // SEL-03: removing an oid not in the set is a safe no-op.
-        apply_remove(&mut commits, "zzz");
-        assert_eq!(commits, vec!["aaa".to_string(), "ccc".to_string()]);
-    }
-
-    #[test]
-    fn seed_range_unions_dedups() {
-        // D-03: hand-picked commits survive a range seed; the range unions in;
-        // overlapping oids are deduped.
-        let existing = vec!["picked".to_string(), "shared".to_string()];
-        let incoming = vec![
-            "shared".to_string(),
-            "range1".to_string(),
-            "range2".to_string(),
-        ];
-        let result = union_dedup(&existing, incoming);
-        for oid in ["picked", "shared", "range1", "range2"] {
-            assert!(
-                result.contains(&oid.to_string()),
-                "union must contain {oid}"
-            );
-        }
-        assert_eq!(result.len(), 4, "no duplicates after union");
     }
 
     // ── Task 3: Graph-ordered intersection (SEL-04) ──────────────────────────

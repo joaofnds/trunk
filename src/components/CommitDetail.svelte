@@ -15,8 +15,12 @@ import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	addCommitComment,
+	addReply,
 	deleteComment,
+	deleteReply,
 	editComment,
+	editReply,
+	setThreadState,
 } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type {
@@ -25,10 +29,9 @@ import type {
 	FileDiff,
 	FileStatus,
 	FileStatusType,
-	SessionStatus,
 } from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
-import CommentCard from "./CommentCard.svelte";
+import ThreadCard from "./ThreadCard.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
 interface Props {
@@ -68,7 +71,7 @@ let {
 // follow the toggle + an active session; keyed by the commit's own OID so the
 // badge can never disagree with what the diff pane shows for the same file.
 let fileCommentCounts = $derived(
-	showInlineComments && reviewComments?.active
+	showInlineComments && reviewComments?.hasThreads
 		? fileCountsForOid(reviewComments.countByFile, commitDetail.oid)
 		: new Map<string, number>(),
 );
@@ -173,8 +176,8 @@ let totalDels = $derived(countOrigin("Delete"));
 // rune. Whole-commit notes carry no anchor; they belong to the commit by
 // commit_oid (plan §2).
 let commitNotes = $derived(
-	(reviewComments?.comments ?? []).filter(
-		(c) => c.anchor === null && c.commit_oid === commitDetail.oid,
+	(reviewComments?.threads ?? []).filter(
+		(t) => t.anchor === null && t.commit_oid === commitDetail.oid,
 	),
 );
 
@@ -193,43 +196,10 @@ function cancelAddNote() {
 	noteText = "";
 }
 
-// Mirror DiffPanel's ensureActiveSession (DiffPanel.svelte:169-201): adding a
-// commit note must work with no session open, so check status and start/resume
-// before writing. add_commit_comment emits session-changed → the rune refreshes
-// and the new note appears.
-async function ensureActiveSession(): Promise<boolean> {
-	let state: SessionStatus["state"];
-	try {
-		const status = await safeInvoke<SessionStatus>(
-			"get_review_session_status",
-			{ path: repoPath },
-		);
-		state = status.state;
-	} catch (e) {
-		reportErrorToast(e, "Failed to load review session");
-		return false;
-	}
-
-	if (state === "active") return true;
-
-	const command =
-		state === "resume-available"
-			? "resume_review_session"
-			: "start_review_session";
-	try {
-		await safeInvoke(command, { path: repoPath });
-		return true;
-	} catch (e) {
-		reportErrorToast(e, "Failed to start review session");
-		return false;
-	}
-}
-
 async function saveNote() {
 	if (!noteValid || noteSaving) return;
 	noteSaving = true;
 	try {
-		if (!(await ensureActiveSession())) return;
 		await addCommitComment(repoPath, commitDetail.oid, noteText.trim());
 		addingNote = false;
 		noteText = "";
@@ -438,11 +408,15 @@ async function saveNote() {
         <ul class="commit-notes-list">
           {#each commitNotes as comment (comment.id)}
             <li>
-              <CommentCard
+              <ThreadCard
                 {comment}
                 variant="inline"
                 confirmDelete={false}
                 onedit={(id, text) => editComment(repoPath, id, text)}
+                onreply={(id, text) => addReply(repoPath, id, text)}
+                onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+                onreplyedit={(id, text) => editReply(repoPath, id, text)}
+                ondeletereply={(id) => deleteReply(repoPath, id)}
                 ondelete={(id) => deleteComment(repoPath, id)}
               />
             </li>

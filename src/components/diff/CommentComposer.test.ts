@@ -63,6 +63,11 @@ const modifiedFile: FileDiff = {
 	],
 };
 
+async function flush() {
+	await new Promise((r) => setTimeout(r, 0));
+	await tick();
+}
+
 async function getAskMock() {
 	const dialog = await import("@tauri-apps/plugin-dialog");
 	return vi.mocked(dialog.ask);
@@ -77,6 +82,66 @@ describe("CommentComposer", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+	});
+
+	function renderComposer() {
+		return render(CommentComposer, {
+			props: {
+				file: modifiedFile,
+				hunkIdx: 0,
+				selectedLineIndices: new Set([1, 2]),
+				commitOid: "abc123",
+				repoPath: "/repo",
+				onclose: () => {},
+			},
+		});
+	}
+
+	// The draft row has no review foreign key, so it survives a quit without
+	// stranding a review — but only if the composer reads it back on mount.
+	describe("draft restore", () => {
+		function draftOnDisk(text: string) {
+			mockedInvoke.mockImplementation((cmd: string) =>
+				cmd === "get_draft"
+					? Promise.resolve({ text, anchor: null })
+					: Promise.resolve(undefined),
+			);
+		}
+
+		it("restores the autosaved draft into the textarea", async () => {
+			draftOnDisk("half typed, then quit");
+			renderComposer();
+
+			await flush();
+
+			expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+				"half typed, then quit",
+			);
+		});
+
+		it("discards the draft row when the composer is cancelled", async () => {
+			draftOnDisk("abandoned");
+			renderComposer();
+			await flush();
+
+			await fireEvent.click(screen.getByText("Cancel"));
+			await flush();
+
+			expect(mockedInvoke.mock.calls.map((c) => c[0] as string)).toContain(
+				"delete_draft",
+			);
+		});
+
+		it("leaves the textarea empty when the repo has no draft", async () => {
+			mockedInvoke.mockResolvedValue(null);
+			renderComposer();
+
+			await flush();
+
+			expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+				"",
+			);
+		});
 	});
 
 	it("renders a 'Comments on lines N-M' preview matching the collapsed range", () => {
@@ -122,7 +187,7 @@ describe("CommentComposer", () => {
 		expect(submit.disabled).toBe(disabled);
 	});
 
-	it("persists a draft via save_draft_comment after the debounce idle window", async () => {
+	it("persists a draft via save_draft after the debounce idle window", async () => {
 		vi.useFakeTimers();
 		render(CommentComposer, {
 			props: {
@@ -140,14 +205,14 @@ describe("CommentComposer", () => {
 
 		// Before the debounce fires, no draft invoke.
 		expect(
-			mockedInvoke.mock.calls.filter((c) => c[0] === "save_draft_comment"),
+			mockedInvoke.mock.calls.filter((c) => c[0] === "save_draft"),
 		).toHaveLength(0);
 
 		await vi.advanceTimersByTimeAsync(300);
 		await tick();
 
 		const draftCalls = mockedInvoke.mock.calls.filter(
-			(c) => c[0] === "save_draft_comment",
+			(c) => c[0] === "save_draft",
 		);
 		expect(draftCalls).toHaveLength(1);
 		const args = draftCalls[0][1] as {
@@ -161,7 +226,7 @@ describe("CommentComposer", () => {
 		expect(args.anchor.start_line).toBe(11);
 	});
 
-	it("submits via add_comment with the buildDiffAnchor anchor + cachedExcerpt and clears on success", async () => {
+	it("submits via add_thread with the buildDiffAnchor anchor + cachedExcerpt and clears on success", async () => {
 		const onclose = vi.fn();
 		render(CommentComposer, {
 			props: {
@@ -183,7 +248,7 @@ describe("CommentComposer", () => {
 		await tick();
 
 		const addCalls = mockedInvoke.mock.calls.filter(
-			(c) => c[0] === "add_comment",
+			(c) => c[0] === "add_thread",
 		);
 		expect(addCalls).toHaveLength(1);
 		const args = addCalls[0][1] as {
@@ -256,9 +321,9 @@ describe("CommentComposer", () => {
 		});
 	});
 
-	it("keeps the draft and reports the failure when add_comment rejects", async () => {
+	it("keeps the draft and reports the failure when add_thread rejects", async () => {
 		mockedInvoke.mockImplementation((cmd: string) =>
-			cmd === "add_comment"
+			cmd === "add_thread"
 				? Promise.reject({ code: "git_error", message: "backend refused" })
 				: Promise.resolve(undefined),
 		);
@@ -313,7 +378,7 @@ describe("CommentComposer", () => {
 		expect(screen.getByText("Comments on lines 40-42")).toBeTruthy();
 	});
 
-	it("submits via add_comment with the injected FullFile anchor + cachedExcerpt (V7)", async () => {
+	it("submits via add_thread with the injected FullFile anchor + cachedExcerpt (V7)", async () => {
 		const capturedAnchor: Anchor = {
 			commit_oid: "abc123",
 			file_path: "src/main.ts",
@@ -343,7 +408,7 @@ describe("CommentComposer", () => {
 		await tick();
 
 		const addCalls = mockedInvoke.mock.calls.filter(
-			(c) => c[0] === "add_comment",
+			(c) => c[0] === "add_thread",
 		);
 		expect(addCalls).toHaveLength(1);
 		const args = addCalls[0][1] as {
@@ -363,7 +428,7 @@ describe("CommentComposer", () => {
 		expect(onclose).toHaveBeenCalledTimes(1);
 	});
 
-	it("persists a draft via save_draft_comment with the injected anchor on the debounce (V8)", async () => {
+	it("persists a draft via save_draft with the injected anchor on the debounce (V8)", async () => {
 		vi.useFakeTimers();
 		const capturedAnchor: Anchor = {
 			commit_oid: "abc123",
@@ -389,14 +454,14 @@ describe("CommentComposer", () => {
 		await fireEvent.input(textarea, { target: { value: "draft full file" } });
 
 		expect(
-			mockedInvoke.mock.calls.filter((c) => c[0] === "save_draft_comment"),
+			mockedInvoke.mock.calls.filter((c) => c[0] === "save_draft"),
 		).toHaveLength(0);
 
 		await vi.advanceTimersByTimeAsync(300);
 		await tick();
 
 		const draftCalls = mockedInvoke.mock.calls.filter(
-			(c) => c[0] === "save_draft_comment",
+			(c) => c[0] === "save_draft",
 		);
 		expect(draftCalls).toHaveLength(1);
 		const args = draftCalls[0][1] as {
@@ -430,7 +495,7 @@ describe("CommentComposer", () => {
 		await tick();
 
 		const addCalls = mockedInvoke.mock.calls.filter(
-			(c) => c[0] === "add_comment",
+			(c) => c[0] === "add_thread",
 		);
 		expect(addCalls).toHaveLength(1);
 		const args = addCalls[0][1] as { anchor: { side: string } };

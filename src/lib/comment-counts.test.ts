@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	buildCommentCounts,
 	commitOidForComment,
 	fileCountKey,
 	fileCountsForOid,
 } from "./comment-counts.js";
-import type { Anchor, Comment, ReviewSnapshots } from "./types.js";
+import type { Anchor, ReviewSnapshots, Thread } from "./types.js";
 
 const EMPTY_SNAPSHOTS: ReviewSnapshots = {
 	working_tree_snapshot: null,
@@ -23,18 +24,12 @@ function anchor(commitOid: string, filePath: string): Anchor {
 	};
 }
 
-function lineComment(id: string, a: Anchor): Comment {
-	return { id, text: `comment ${id}`, anchor: a, cached_excerpt: null };
+function lineComment(id: string, a: Anchor): Thread {
+	return aThread({ id, text: `comment ${id}`, anchor: a });
 }
 
-function commitNote(id: string, commitOid: string): Comment {
-	return {
-		id,
-		text: `note ${id}`,
-		anchor: null,
-		cached_excerpt: null,
-		commit_oid: commitOid,
-	};
+function commitNote(id: string, commitOid: string): Thread {
+	return aThread({ id, text: `note ${id}`, commit_oid: commitOid });
 }
 
 describe("commitOidForComment", () => {
@@ -49,12 +44,7 @@ describe("commitOidForComment", () => {
 	});
 
 	it("returns empty string for a note with no commit oid", () => {
-		const note: Comment = {
-			id: "n2",
-			text: "orphan note",
-			anchor: null,
-			cached_excerpt: null,
-		};
+		const note = aThread({ id: "n2", text: "orphan note" });
 		expect(commitOidForComment(note)).toBe("");
 	});
 });

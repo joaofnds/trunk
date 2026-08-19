@@ -10,7 +10,7 @@
  * and falls to panel-only by design.
  */
 
-import type { Comment, ReviewSnapshots, Side } from "./types.js";
+import type { ReviewSnapshots, Side, Thread } from "./types.js";
 
 export type DiffKind = "commit" | "unstaged" | "staged" | "conflicted";
 
@@ -28,10 +28,10 @@ export function resolveViewOid(view: ViewDescriptor): string | null {
 }
 
 export function commentsForView(
-	comments: Comment[],
+	comments: Thread[],
 	view: ViewDescriptor,
 	filePath: string,
-): Comment[] {
+): Thread[] {
 	const viewOid = resolveViewOid(view);
 	if (viewOid === null) return [];
 
@@ -44,10 +44,10 @@ export function commentsForView(
 }
 
 export function commentsForLine(
-	viewComments: Comment[],
+	viewComments: Thread[],
 	side: Side,
 	lineno: number | null | undefined,
-): Comment[] {
+): Thread[] {
 	if (lineno === null || lineno === undefined) return [];
 
 	return viewComments.filter(
@@ -59,7 +59,7 @@ export function commentsForLine(
 }
 
 export function spannedByComment(
-	viewComments: Comment[],
+	viewComments: Thread[],
 	side: Side,
 	lineno: number | null | undefined,
 ): boolean {

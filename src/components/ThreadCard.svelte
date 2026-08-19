@@ -10,12 +10,16 @@
 // card. `variant` swaps width/padding tokens between the panel and inline hosts.
 
 import { externalLinks } from "../lib/external-links.js";
-import type { Comment } from "../lib/types.js";
+import type { Thread, ThreadState } from "../lib/types.js";
 
 interface Props {
-	comment: Comment;
+	comment: Thread;
 	onedit: (id: string, text: string) => void;
 	ondelete: (id: string) => void;
+	onreply: (id: string, text: string) => void;
+	onstatechange: (id: string, next: ThreadState) => void;
+	onreplyedit: (id: string, text: string) => void;
+	ondeletereply: (id: string) => void;
 	// When true (default) confirm before deleting (mirrors the panel); when false
 	// delete immediately (inline hosts).
 	confirmDelete?: boolean;
@@ -23,7 +27,7 @@ interface Props {
 	// commit-detail hosts — controls width/padding via theme tokens.
 	variant?: "panel" | "inline";
 	// Optional panel-only header decorations. Inline hosts omit these.
-	onjump?: (comment: Comment) => void;
+	onjump?: (comment: Thread) => void;
 	jumpable?: boolean;
 	orphaned?: boolean;
 	orphanLabel?: string | null;
@@ -33,6 +37,10 @@ let {
 	comment,
 	onedit,
 	ondelete,
+	onreply,
+	onstatechange,
+	onreplyedit,
+	ondeletereply,
 	confirmDelete = true,
 	variant = "panel",
 	onjump,
@@ -43,8 +51,24 @@ let {
 
 let editing = $state(false);
 let draftText = $state("");
+let replyText = $state("");
+let repliesExpanded = $state(false);
+let editingReplyId = $state<string | null>(null);
+let replyDraftText = $state("");
 
 const draftValid = $derived(draftText.trim().length > 0);
+const replyValid = $derived(replyText.trim().length > 0);
+const replyDraftValid = $derived(replyDraftText.trim().length > 0);
+
+// More than three replies collapse to the last three, with a control that
+// reveals the rest — expand state belongs to the card, never a parent map
+// (jsdom can't see a pure-CSS collapse, so this is state, not styling).
+const hiddenReplyCount = $derived(Math.max(comment.replies.length - 3, 0));
+const visibleReplies = $derived(
+	repliesExpanded || hiddenReplyCount === 0
+		? comment.replies
+		: comment.replies.slice(-3),
+);
 
 // Parse the comment's cached_excerpt into rendered lines. Diff-source excerpts
 // carry +/-/space prefixes per `prefixLine` in diff-anchor.ts; full-file ones
@@ -96,6 +120,59 @@ function saveEdit() {
 	onedit(comment.id, text);
 }
 
+function submitReply() {
+	if (!replyValid) return;
+	const text = replyText;
+	replyText = "";
+	onreply(comment.id, text);
+}
+
+function openReplyEdit(replyId: string, text: string) {
+	editingReplyId = replyId;
+	replyDraftText = text;
+}
+
+function cancelReplyEdit() {
+	editingReplyId = null;
+	replyDraftText = "";
+}
+
+function saveReplyEdit() {
+	if (!replyDraftValid || editingReplyId === null) return;
+	const id = editingReplyId;
+	const text = replyDraftText;
+	editingReplyId = null;
+	replyDraftText = "";
+	onreplyedit(id, text);
+}
+
+// The UI's slice of the transition matrix (spec §2): `open|addressed ->
+// done|dismissed`, `addressed -> open`, `done|dismissed -> open`. Nothing
+// here ever offers `addressed` — that is the agent's claim by definition, and
+// no UI control may claim it.
+function humanActionsFor(
+	state: ThreadState,
+): { label: string; next: ThreadState }[] {
+	switch (state) {
+		case "open":
+			return [
+				{ label: "Mark done", next: "done" },
+				{ label: "Dismiss", next: "dismissed" },
+			];
+		case "addressed":
+			return [
+				{ label: "Mark done", next: "done" },
+				{ label: "Dismiss", next: "dismissed" },
+				{ label: "Reopen", next: "open" },
+			];
+		case "done":
+		case "dismissed":
+			return [{ label: "Reopen", next: "open" }];
+	}
+}
+
+const stateActions = $derived(humanActionsFor(comment.state));
+
 async function requestDelete() {
 	if (confirmDelete) {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
@@ -131,6 +208,14 @@ async function requestDelete() {
     {#if orphanLabel}
       <span class="orphan-badge">{orphanLabel}</span>
     {/if}
+    <span class="thread-state-chip thread-state-{comment.state}">{comment.state}</span>
+    {#each stateActions as action (action.next)}
+      <button
+        type="button"
+        class="card-action"
+        onclick={() => onstatechange(comment.id, action.next)}
+      >{action.label}</button>
+    {/each}
     {#if !editing}
       <button
         type="button"
@@ -187,6 +272,77 @@ async function requestDelete() {
     {:else}
       <span class="comment-card-text select-text">{comment.text}</span>
     {/if}
+  </div>
+
+  <!-- Replies: a flat list under the root, each carrying its channel
+       attribution — the only distinction between a UI and a CLI write. -->
+  {#if comment.replies.length > 0}
+    {#if hiddenReplyCount > 0 && !repliesExpanded}
+      <button
+        type="button"
+        class="thread-replies-expand"
+        onclick={() => { repliesExpanded = true; }}
+      >Show {hiddenReplyCount} more {hiddenReplyCount === 1 ? "reply" : "replies"}</button>
+    {/if}
+    <ul class="thread-replies">
+      {#each visibleReplies as reply (reply.id)}
+        <li class="thread-reply">
+          <div class="thread-reply-header">
+            <span class="thread-reply-channel">{reply.channel}</span>
+            {#if reply.channel === "human" && editingReplyId !== reply.id}
+              <button
+                type="button"
+                class="thread-reply-edit-toggle"
+                onclick={() => openReplyEdit(reply.id, reply.text)}
+              >Edit reply</button>
+            {/if}
+            <span class="comment-card-spacer"></span>
+            <button
+              type="button"
+              class="thread-reply-edit-toggle"
+              onclick={() => ondeletereply(reply.id)}
+            >Delete reply</button>
+          </div>
+          {#if editingReplyId === reply.id}
+            <textarea
+              bind:value={replyDraftText}
+              rows="2"
+              class="card-textarea"
+            ></textarea>
+            <div class="card-editor-actions">
+              <button
+                type="button"
+                onclick={saveReplyEdit}
+                disabled={!replyDraftValid}
+              >Save</button>
+              <button
+                type="button"
+                onclick={cancelReplyEdit}
+              >Cancel</button>
+            </div>
+          {:else}
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -- backend-sanitized
+                 (comrak unsafe-off + ammonia); see commands/markdown.rs -->
+            <div class="thread-reply-text markdown-body select-text" use:externalLinks>{@html reply.text_html}</div>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+
+  <div class="thread-reply-composer">
+    <textarea
+      bind:value={replyText}
+      rows="2"
+      placeholder="Reply…"
+      aria-label="Reply"
+      class="card-textarea"
+    ></textarea>
+    <button
+      type="button"
+      onclick={submitReply}
+      disabled={!replyValid}
+    >Reply</button>
   </div>
 </div>
 
@@ -311,6 +467,23 @@ async function requestDelete() {
     white-space: nowrap;
   }
 
+  /* Thread state chip — color carries no meaning alone; the text is the
+     state's own name, so it survives color blindness and grayscale. */
+  .thread-state-chip {
+    font-size: 10px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    border-radius: 4px;
+    padding: 0 6px;
+    white-space: nowrap;
+    background: var(--color-muted-bg);
+  }
+  .thread-state-open { color: var(--color-thread-open); }
+  .thread-state-addressed { color: var(--color-thread-addressed); }
+  .thread-state-done { color: var(--color-thread-done); }
+  .thread-state-dismissed { color: var(--color-thread-dismissed); }
+
   /* Inline editor inside the body. */
   .card-textarea {
     width: 100%;
@@ -337,6 +510,92 @@ async function requestDelete() {
     font-size: 12px;
   }
   .card-editor-actions button[disabled] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  /* Expand control for a collapsed reply list. */
+  .thread-replies-expand {
+    align-self: flex-start;
+    margin: 6px 8px 0;
+    background: transparent;
+    color: var(--color-accent);
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 11px;
+  }
+
+  /* Replies: a flat list under the root, each row carrying its channel
+     attribution. */
+  .thread-replies {
+    list-style: none;
+    margin: 0;
+    padding: 6px 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px solid var(--color-border);
+  }
+  .thread-reply {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .thread-reply-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .thread-reply-edit-toggle {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+  .thread-reply-edit-toggle:hover,
+  .thread-reply-edit-toggle:focus-visible { color: var(--color-text); }
+  .thread-reply-channel {
+    align-self: flex-start;
+    font-size: 10px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--color-text-muted);
+    background: var(--color-comment-card-header-bg);
+    border-radius: 4px;
+    padding: 0 6px;
+  }
+  .thread-reply-text {
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* Reply composer, always available under a thread's replies. */
+  .thread-reply-composer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--color-border);
+  }
+  .thread-reply-composer .card-textarea {
+    font-size: 12px;
+  }
+  .thread-reply-composer button {
+    align-self: flex-end;
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px 8px;
+    font-size: 12px;
+  }
+  .thread-reply-composer button[disabled] {
     cursor: not-allowed;
     opacity: 0.5;
   }

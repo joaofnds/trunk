@@ -129,6 +129,13 @@
 	--color-review-row: var(--color-accent);
 	--color-review-pending-base: var(--color-warning);
 
+	/* Thread state chip (persistent review store, milestone 2) — aliases onto
+	   the already-audited ramp, so no new contrast audit is owed. */
+	--color-thread-open: var(--color-accent);
+	--color-thread-addressed: var(--color-warning);
+	--color-thread-done: var(--color-success);
+	--color-thread-dismissed: var(--color-text-muted);
+
 	/* Diff lines */
 	--color-diff-text: var(--fg-0); /* code content = primary brightness, so
 	   unhighlighted files read as clearly as syntax-colored ones (AAA on every tint) */

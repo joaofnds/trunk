@@ -386,8 +386,34 @@ fn bench_enrich_new(c: &mut Criterion) {
     });
 }
 
+/// The debounced draft autosave, which is the write the `synchronous = NORMAL`
+/// pragma choice trades against. A number here is readable over time; the same
+/// measurement as a threshold in the correctness suite only reports how loaded
+/// the CI runner was.
+fn bench_draft_write(c: &mut Criterion) {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let store = trunk_lib::reviewdb::open(dir.path()).unwrap();
+    let mut n = 0u64;
+
+    c.bench_function("reviewdb_draft_write", |b| {
+        b.iter(|| {
+            n += 1;
+            trunk_lib::commands::review::save_draft_inner(
+                &store,
+                &repo,
+                &format!("keystroke burst {n}"),
+                None,
+                1_000,
+            )
+            .unwrap();
+        });
+    });
+}
+
 criterion_group!(
     benches,
+    bench_draft_write,
     bench_list_refs,
     bench_diff_unstaged,
     bench_diff_code_file,

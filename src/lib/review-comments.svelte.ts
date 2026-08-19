@@ -1,32 +1,31 @@
 import { listen } from "@tauri-apps/api/event";
 import { buildCommentCounts } from "./comment-counts.js";
 import { errorMessage } from "./error-report.js";
-import { isTrunkError, safeInvoke } from "./invoke.js";
-import type {
-	Comment,
-	ReviewSnapshots,
-	SessionCommit,
-	SessionState,
-	SessionStatus,
-} from "./types";
+import { safeInvoke } from "./invoke.js";
+import type { Review, ReviewSnapshots, SessionCommit, Thread } from "./types";
 
 /**
- * The single reactive source of truth for review comments, lifted to RepoView
- * and consumed by every surface (ReviewPanel, DiffPanel/diff views, CommitDetail).
+ * The single reactive source of truth for reviews and their threads, lifted to
+ * RepoView and consumed by every surface (ReviewPanel, DiffPanel/diff views,
+ * CommitDetail).
  *
- * Comments are a property of the code, not of which pane is open, so they live
- * in one place: one `session-changed` subscription, one re-fetch on change.
- * Visibility is gated on `active` (session status === "active"), independent of
- * the center-pane review toggle (see plan §3, §8).
+ * Threads are a property of the code, not of which pane is open, so they live in
+ * one place: one `reviews-changed` subscription, one re-fetch on change. There
+ * is no "session is active" concept any more — a repo either has threads to show
+ * or it does not.
  */
 export interface ReviewCommentsManager {
-	readonly comments: Comment[];
+	/** Threads of the ACTIVE review — the list the panel shows. */
+	readonly threads: Thread[];
+	/** Every review for this repo, with its derived state and thread count. */
+	readonly reviews: Review[];
+	readonly activeReviewId: string | null;
 	readonly snapshots: ReviewSnapshots;
-	readonly sessionState: SessionState;
-	readonly active: boolean;
-	/** The commits in the session, in the order the backend returned them. */
+	/** True when this repo has threads to show. Replaces the session gate. */
+	readonly hasThreads: boolean;
+	/** The commits in the active review, in the order the backend returned them. */
 	readonly commits: SessionCommit[];
-	/** Oids of the commits in the session — drives the graph's in-session rail. */
+	/** Oids of those commits — drives the graph's in-review rail. */
 	readonly oids: ReadonlySet<string>;
 	/** Advances once per refresh that lands its reads, so consumers can follow. */
 	readonly revision: number;
@@ -46,18 +45,12 @@ export interface ReviewCommentsManager {
 	destroy(): void;
 }
 
-// no_session is what every read returns once a review ends, so it is a normal
-// state rather than a failure. Everything else — not_open, spawn_error — is
-// something the user should hear about.
 function firstRealFailure(
 	results: PromiseSettledResult<unknown>[],
 ): string | null {
 	for (const result of results) {
 		if (result.status !== "rejected") continue;
-		if (isTrunkError(result.reason) && result.reason.code === "no_session") {
-			continue;
-		}
-		return errorMessage(result.reason, "Failed to read the review session");
+		return errorMessage(result.reason, "Failed to read the review store");
 	}
 
 	return null;
@@ -65,76 +58,74 @@ function firstRealFailure(
 
 export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	const state = $state({
-		comments: [] as Comment[],
+		threads: [] as Thread[],
+		reviews: [] as Review[],
+		activeReviewId: null as string | null,
 		snapshots: {
 			working_tree_snapshot: null,
 			index_snapshot: null,
 		} as ReviewSnapshots,
-		sessionState: "none" as SessionState,
 		commits: [] as SessionCommit[],
 		revision: 0,
 		lastError: null as string | null,
 	});
 
-	const active = $derived(state.sessionState === "active");
+	const hasThreads = $derived(state.threads.length > 0);
 
 	const oids = $derived(
 		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
 	);
 
-	const totalCount = $derived(state.comments.length);
+	const totalCount = $derived(state.threads.length);
 
-	const counts = $derived(buildCommentCounts(state.comments, state.snapshots));
+	const counts = $derived(buildCommentCounts(state.threads, state.snapshots));
 
-	// The canonical path the backend reports for this repo. The session-changed
+	// The canonical path the backend reports for this repo. The reviews-changed
 	// payload is that canonical string, so the listener filters on it. Tracked
-	// separately so the filter can fail-closed while it is still null (a missing
-	// or inactive session is a normal state).
+	// separately so the filter can fail-closed while it is still null.
 	let canonicalPath: string | null = null;
 
-	// Generation guard. Refreshes overlap freely — a session-changed burst, a
-	// resume round-trip landing on a manual refresh — and every write below is a
-	// whole-state replacement, so a slow older read would otherwise install its
-	// snapshot over a newer one. Modelled on BranchSidebar's loadSeq.
+	// Generation guard. Refreshes overlap freely — a reviews-changed burst
+	// landing on a manual refresh — and every write below is a whole-state
+	// replacement, so a slow older read would otherwise install its snapshot over
+	// a newer one. Modelled on BranchSidebar's loadSeq.
 	let loadSeq = 0;
 
 	async function refresh(): Promise<void> {
 		const seq = ++loadSeq;
+		await learnCanonicalPath();
 
-		// allSettled, not all: list_session_comments rejects with "no_session" once
-		// a review ends (review.rs removes the in-memory session), and get_review_*
-		// can reject when the repo is closing. With Promise.all a single reject
-		// aborts the whole update, leaving stale comments/active on screen — so
-		// ending a review would NOT clear inline comments. Settling each lets a
-		// rejection collapse to the correct empty/inactive state instead.
-		const [statusR, snapshotsR, commentsR, commitsR] = await Promise.allSettled(
-			[
-				safeInvoke<SessionStatus>("get_review_session_status", {
-					path: repoPath,
-				}),
+		// allSettled, not all: a read can reject while the repo is closing, and
+		// with Promise.all one rejection aborts the whole update, leaving stale
+		// threads on screen. Settling each lets a rejection collapse to the
+		// correct empty state instead.
+		const [reviewsR, activeR, snapshotsR, threadsR, commitsR] =
+			await Promise.allSettled([
+				safeInvoke<Review[]>("list_reviews", { path: repoPath }),
+				safeInvoke<string | null>("get_active_review", { path: repoPath }),
 				safeInvoke<ReviewSnapshots>("get_review_snapshots", { path: repoPath }),
-				safeInvoke<Comment[]>("list_session_comments", { path: repoPath }),
+				safeInvoke<Thread[]>("list_threads", { path: repoPath }),
 				safeInvoke<SessionCommit[]>("list_session_commits", { path: repoPath }),
-			],
-		);
+			]);
 
 		if (seq !== loadSeq) return;
 
-		if (statusR.status === "fulfilled" && statusR.value) {
-			canonicalPath = statusR.value.canonical_path;
-			state.sessionState = statusR.value.state;
-		} else {
-			state.sessionState = "none";
-		}
+		state.reviews =
+			reviewsR.status === "fulfilled" && Array.isArray(reviewsR.value)
+				? reviewsR.value
+				: [];
+
+		state.activeReviewId =
+			activeR.status === "fulfilled" ? (activeR.value ?? null) : null;
 
 		state.snapshots =
 			snapshotsR.status === "fulfilled" && snapshotsR.value
 				? snapshotsR.value
 				: { working_tree_snapshot: null, index_snapshot: null };
 
-		state.comments =
-			commentsR.status === "fulfilled" && Array.isArray(commentsR.value)
-				? commentsR.value
+		state.threads =
+			threadsR.status === "fulfilled" && Array.isArray(threadsR.value)
+				? threadsR.value
 				: [];
 
 		state.commits =
@@ -143,22 +134,24 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 				: [];
 
 		state.lastError = firstRealFailure([
-			statusR,
+			reviewsR,
+			activeR,
 			snapshotsR,
-			commentsR,
+			threadsR,
 			commitsR,
 		]);
 
 		state.revision += 1;
 	}
 
-	// Live coordination: refresh when a session-changed event arrives for this
-	// repo's canonical path. Fail-closed when canonicalPath is null so cross-repo
-	// events during the cold-start window don't trigger a refresh. The `cancelled`
-	// flag disposes a listener the promise delivers after destroy().
+	// Live coordination: refresh when a reviews-changed event arrives for this
+	// repo's canonical path. The payload is the canonical path; until one read
+	// has reported it, fail closed so cross-repo events during the cold-start
+	// window don't trigger a refresh. The `cancelled` flag disposes a listener
+	// the promise delivers after destroy().
 	let unlisten: (() => void) | undefined;
 	let cancelled = false;
-	listen<string>("session-changed", (event) => {
+	listen<string>("reviews-changed", (event) => {
 		if (!canonicalPath || event.payload !== canonicalPath) return;
 		refresh().catch(() => {});
 	}).then((fn) => {
@@ -166,20 +159,37 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		else unlisten = fn;
 	});
 
+	// Retried on every refresh, not resolved once: a single rejection would
+	// otherwise leave the filter failing closed for the rest of the tab's life,
+	// so the panel would stop reflecting even its own writes.
+	async function learnCanonicalPath(): Promise<void> {
+		if (canonicalPath !== null) return;
+		try {
+			canonicalPath = await safeInvoke<string>("canonical_repo_path", {
+				path: repoPath,
+			});
+		} catch {
+			// Left null so the next refresh tries again.
+		}
+	}
+
 	refresh().catch(() => {});
 
 	return {
-		get comments() {
-			return state.comments;
+		get threads() {
+			return state.threads;
+		},
+		get reviews() {
+			return state.reviews;
+		},
+		get activeReviewId() {
+			return state.activeReviewId;
 		},
 		get snapshots() {
 			return state.snapshots;
 		},
-		get sessionState() {
-			return state.sessionState;
-		},
-		get active() {
-			return active;
+		get hasThreads() {
+			return hasThreads;
 		},
 		get commits() {
 			return state.commits;

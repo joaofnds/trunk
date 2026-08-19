@@ -10,18 +10,22 @@ import {
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import {
+	addReply,
 	deleteComment,
+	deleteReply,
 	editComment,
+	editReply,
+	setThreadState,
 } from "../../lib/review-comment-actions.js";
 import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
 import type {
-	Comment,
 	ContentMode,
 	DiffLine,
 	DiffOrigin,
 	FileDiff,
+	Thread,
 } from "../../lib/types.js";
-import CommentCard from "../CommentCard.svelte";
+import ThreadCard from "../ThreadCard.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -71,7 +75,7 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	repoPath?: string;
 	showInlineComments?: boolean;
-	viewComments?: Comment[];
+	viewComments?: Thread[];
 }
 
 let {
@@ -201,9 +205,9 @@ const pairedData = $derived(
 // columns join the shared synced set, exactly like the per-hunk columns already do).
 type SplitSegment =
 	| { kind: "run"; rows: PairedRow[] }
-	| { kind: "comments"; comments: Comment[] };
+	| { kind: "comments"; comments: Thread[] };
 
-function rowComments(row: PairedRow, comments: Comment[]): Comment[] {
+function rowComments(row: PairedRow, comments: Thread[]): Thread[] {
 	return [
 		...commentsForLine(comments, "New", row.right?.line.new_lineno ?? null),
 		...commentsForLine(comments, "Old", row.left?.line.old_lineno ?? null),
@@ -212,7 +216,7 @@ function rowComments(row: PairedRow, comments: Comment[]): Comment[] {
 
 function buildSegments(
 	rows: PairedRow[],
-	comments: Comment[],
+	comments: Thread[],
 	show: boolean,
 ): SplitSegment[] {
 	if (!show) return [{ kind: "run", rows }];
@@ -470,11 +474,15 @@ function buildSegments(
           {:else}
             <div class="split-comment-row">
               {#each segment.comments as comment (comment.id)}
-                <CommentCard
+                <ThreadCard
                   variant="inline"
                   confirmDelete={false}
                   {comment}
                   onedit={(id, text) => editComment(repoPath, id, text)}
+                onreply={(id, text) => addReply(repoPath, id, text)}
+                onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+                onreplyedit={(id, text) => editReply(repoPath, id, text)}
+                ondeletereply={(id) => deleteReply(repoPath, id)}
                   ondelete={(id) => deleteComment(repoPath, id)}
                 />
               {/each}

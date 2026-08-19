@@ -1,6 +1,6 @@
 //! Phase 70: pure markdown renderer for review sessions.
 //!
-//! Pure Rust logic: takes `&ReviewSession` + `&git2::Repository`, returns a
+//! Pure Rust logic: takes `&RenderInput` + `&git2::Repository`, returns a
 //! single `String`. No `tauri::*` imports (L-01), no calls into
 //! `crate::git::syntax` (L-10), never panics (L-04).
 //!
@@ -8,25 +8,41 @@
 //! All resolution failures are routed INTO the returned markdown (per L-04 +
 //! L-09); the renderer NEVER returns an error.
 
-use crate::git::review_resolution::{OrphanReason, classify_anchor};
-use crate::git::types::{Anchor, ReviewSession, Side, Source};
+use crate::git::types::{Anchor, Channel, Side, Source, ThreadState};
 
-/// Render-only failure kinds. Does NOT cross the IPC wire (the Phase 69
-/// `OrphanReason` does — never extend it). All variants funnel into either the
-/// resolved per-file section (via a binary-file sentence for `Binary`) or the
-/// unresolvable trailing section (everything else).
-#[derive(Debug)]
-pub(crate) enum ExcerptError {
-    /// `blob.is_binary()` returned true; emit a binary-file sentence INSIDE
-    /// the resolved per-file section (L-05, not the unresolvable section).
-    Binary,
-    /// `classify_anchor` rejected the anchor — wraps the Phase 69 reason.
-    Orphaned(OrphanReason),
-    /// Generic re-resolution failure (git2 error during slicing).
-    ResolutionFailed,
-    /// Diff replay-slice produced an empty body (file unchanged from parent at
-    /// the anchored commit; Pitfall 2).
-    NoHunks,
+/// What the renderer needs from one review. Store-shaped: the command layer
+/// fills it from `reviews`, `threads` and `replies` rows, and milestone 3's
+/// CLI fills it the same way without opening the repository for anything but
+/// excerpts.
+pub struct RenderInput {
+    pub review_id: String,
+    pub title: String,
+    pub commits: Vec<String>,
+    pub threads: Vec<DocThread>,
+    pub working_tree_snapshot: Option<String>,
+    pub index_snapshot: Option<String>,
+}
+
+/// One thread as the renderer wants it — `Doc*`, not `Rendered*`: the IPC
+/// payloads (`commands/review.rs`) already own that prefix, and two
+/// near-identical names in one crate is a defect waiting to happen. Every
+/// excerpt comes from `excerpt`; no repository lookup decides which section a
+/// thread renders in (D8/D13).
+pub struct DocThread {
+    pub id: String,
+    pub text: String,
+    pub state: ThreadState,
+    pub anchor: Option<Anchor>,
+    pub commit_oid: Option<String>,
+    pub excerpt: Option<String>,
+    pub replies: Vec<DocReply>,
+}
+
+/// A thread's reply as the renderer wants it — no anchor, no state: state
+/// lives on the thread.
+pub struct DocReply {
+    pub text: String,
+    pub channel: Channel,
 }
 
 /// Longest run of consecutive backticks in `s`. Linear byte-scan — counter
@@ -84,227 +100,10 @@ pub(crate) fn fence_language(file_path: &str) -> &'static str {
     }
 }
 
-/// L-06 line-indexing convention: 1-based inclusive bounds over
-/// `str::lines()` semantics, with CRLF→LF normalisation applied to the body
-/// BEFORE slicing. Mirrors `classify_anchor` in `git/review_resolution.rs` so a
-/// comment that resolves at classification time also resolves at render time —
-/// one convention applies on both sides (capture and render). RESEARCH Item 2
-/// Option (a): `str::lines()` already handles `\r\n` as one boundary, so line
-/// indices are unchanged; only the bytes inside the fence become LF-only.
-fn slice_lines(content: &str, start_line: u32, end_line: u32) -> Option<String> {
-    if start_line == 0 || end_line < start_line {
-        return None;
-    }
-    let normalised = content.replace("\r\n", "\n");
-    let lines: Vec<&str> = normalised.lines().collect();
-    let line_count = lines.len() as u32;
-    if end_line > line_count {
-        return None;
-    }
-    let start_idx = (start_line - 1) as usize;
-    let end_idx = end_line as usize;
-    Some(lines[start_idx..end_idx].join("\n"))
-}
-
-/// L-02 + L-05 + L-06: re-resolve a `Source::FullFile` excerpt by reading the
-/// blob fresh from git2. Side semantics mirror `classify_anchor`
-/// (`commands/review.rs:339-346`): `New` reads the commit's tree, `Old` reads
-/// the parent's. `blob.is_binary()` short-circuits to `ExcerptError::Binary`
-/// BEFORE any slicing (L-05). Caller MUST have run `classify_anchor` first
-/// (Pitfall 1) — `slice_full_file` does NOT re-gate.
-pub(crate) fn slice_full_file(
-    repo: &git2::Repository,
-    anchor: &Anchor,
-) -> Result<String, ExcerptError> {
-    let oid =
-        git2::Oid::from_str(&anchor.commit_oid).map_err(|_| ExcerptError::ResolutionFailed)?;
-    let commit = repo
-        .find_commit(oid)
-        .map_err(|_| ExcerptError::ResolutionFailed)?;
-    let tree = match anchor.side {
-        Side::New => commit.tree().map_err(|_| ExcerptError::ResolutionFailed)?,
-        Side::Old => commit
-            .parent(0)
-            .map_err(|_| ExcerptError::ResolutionFailed)?
-            .tree()
-            .map_err(|_| ExcerptError::ResolutionFailed)?,
-    };
-    let entry = tree
-        .get_path(std::path::Path::new(&anchor.file_path))
-        .map_err(|_| ExcerptError::ResolutionFailed)?;
-    let blob = repo
-        .find_blob(entry.id())
-        .map_err(|_| ExcerptError::ResolutionFailed)?;
-    if blob.is_binary() {
-        return Err(ExcerptError::Binary);
-    }
-    let content = String::from_utf8_lossy(blob.content()).into_owned();
-    slice_lines(&content, anchor.start_line, anchor.end_line).ok_or(ExcerptError::ResolutionFailed)
-}
-
-/// L-02 + Phase 67 L-03: re-resolve a `Source::Diff` excerpt by replaying
-/// `diff_tree_to_tree(parent, commit)` with `pathspec(file_path)` and keeping
-/// lines whose side-lineno overlaps `[start_line, end_line]`. Lines with no
-/// side-lineno (the opposing-side `-`/`+` rows) are kept per Phase 67 L-03 so
-/// the body matches what the cached_excerpt looked like at capture. Empty
-/// walk → `ExcerptError::NoHunks` (Pitfall 2 — file unchanged from parent at
-/// this commit). Root-commit guard mirrors `commands/diff.rs:410-414`.
-pub(crate) fn slice_diff(repo: &git2::Repository, anchor: &Anchor) -> Result<String, ExcerptError> {
-    let oid =
-        git2::Oid::from_str(&anchor.commit_oid).map_err(|_| ExcerptError::ResolutionFailed)?;
-    let commit = repo
-        .find_commit(oid)
-        .map_err(|_| ExcerptError::ResolutionFailed)?;
-    let commit_tree = commit.tree().map_err(|_| ExcerptError::ResolutionFailed)?;
-
-    let mut opts = git2::DiffOptions::new();
-    opts.pathspec(&anchor.file_path);
-
-    let diff = if commit.parent_count() == 0 {
-        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))
-            .map_err(|_| ExcerptError::ResolutionFailed)?
-    } else {
-        let parent_tree = commit
-            .parent(0)
-            .map_err(|_| ExcerptError::ResolutionFailed)?
-            .tree()
-            .map_err(|_| ExcerptError::ResolutionFailed)?;
-        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))
-            .map_err(|_| ExcerptError::ResolutionFailed)?
-    };
-
-    let side = anchor.side.clone();
-    let start_line = anchor.start_line;
-    let end_line = anchor.end_line;
-
-    // 70/CR-01 fix: walk the diff via `git2::Patch` so each hunk's positional
-    // overlap with `[start_line, end_line]` can gate its opposing-side lines.
-    // `opts.pathspec(&anchor.file_path)` constrains the diff to a single file,
-    // so file index 0 is the only delta — same pattern as
-    // commands/staging.rs:370 / 430 / 481. Pitfall 2: when the pathspec
-    // matches no changed delta (file byte-identical to parent), the diff has
-    // zero deltas and `Patch::from_diff` would error on index 0 — surface as
-    // `NoHunks`, matching the legacy post-loop "empty body" behavior. `None`
-    // covers the binary-or-unchanged single-delta case for parity with
-    // staging.rs.
-    if diff.deltas().len() == 0 {
-        return Err(ExcerptError::NoHunks);
-    }
-    let patch =
-        match git2::Patch::from_diff(&diff, 0).map_err(|_| ExcerptError::ResolutionFailed)? {
-            Some(p) => p,
-            None => return Err(ExcerptError::NoHunks),
-        };
-
-    let mut out = String::new();
-    for h_idx in 0..patch.num_hunks() {
-        let (hunk, _line_count) = patch
-            .hunk(h_idx)
-            .map_err(|_| ExcerptError::ResolutionFailed)?;
-        let (h_start, h_count) = match side {
-            Side::New => (hunk.new_start(), hunk.new_lines()),
-            Side::Old => (hunk.old_start(), hunk.old_lines()),
-        };
-        let h_end = h_start + h_count.saturating_sub(1);
-        let overlaps = h_start <= end_line && h_end >= start_line;
-        let line_count = patch
-            .num_lines_in_hunk(h_idx)
-            .map_err(|_| ExcerptError::ResolutionFailed)?;
-        for l_idx in 0..line_count {
-            let line = patch
-                .line_in_hunk(h_idx, l_idx)
-                .map_err(|_| ExcerptError::ResolutionFailed)?;
-            let lineno = match side {
-                Side::New => line.new_lineno(),
-                Side::Old => line.old_lineno(),
-            };
-            // Lines with a side-lineno: keep if in [start_line, end_line].
-            // Lines WITHOUT one (the opposing-side change row): keep iff
-            // the hunk overlaps the anchor range AND the origin matches the
-            // opposing-direction change marker (Phase 67 L-03 — visually
-            // anchors the range, gated per-hunk to fix 70/CR-01).
-            let in_range = match lineno {
-                Some(n) => n >= start_line && n <= end_line,
-                None => {
-                    overlaps
-                        && matches!(
-                            (side.clone(), line.origin()),
-                            (Side::New, '-') | (Side::Old, '+')
-                        )
-                }
-            };
-            if in_range {
-                let prefix = match line.origin() {
-                    '+' | '-' | ' ' => line.origin(),
-                    _ => ' ',
-                };
-                out.push(prefix);
-                out.push_str(&String::from_utf8_lossy(line.content()));
-            }
-        }
-    }
-
-    if out.is_empty() {
-        Err(ExcerptError::NoHunks)
-    } else {
-        // L-06 second clause: CRLF→LF normalise the body inside the fence.
-        Ok(out.replace("\r\n", "\n"))
-    }
-}
-
-/// Gate-then-resolve dispatch (Pitfall 1): `classify_anchor` is the MANDATORY
-/// first call. On `Ok(())`, dispatch to `slice_full_file` or `slice_diff` by
-/// `anchor.source`. On `Err(reason)`, wrap into `ExcerptError::Orphaned`
-/// WITHOUT entering the slicers — a `Side::Old` anchor on a root commit would
-/// otherwise hit `commit.parent(0)` and surface as `ResolutionFailed`
-/// (wrong: the correct reason is `FileGone`).
-pub(crate) fn try_resolve_excerpt(
-    repo: &git2::Repository,
-    anchor: &Anchor,
-) -> Result<String, ExcerptError> {
-    classify_anchor(anchor, repo).map_err(ExcerptError::Orphaned)?;
-    match anchor.source {
-        Source::FullFile => slice_full_file(repo, anchor),
-        Source::Diff => slice_diff(repo, anchor),
-    }
-}
-
-// ── D-09 human-readable phrases for orphan / render-only failures ──────────
-// Centralised so the SUMMARY can grep for the literal strings and the tests
-// assert on them. Plain prose for the AI consumer per D-09.
-
-fn orphan_phrase(reason: &OrphanReason) -> &'static str {
-    match reason {
-        OrphanReason::CommitGone => "commit no longer exists in the repository",
-        OrphanReason::FileGone => "file no longer exists at this commit/side",
-        OrphanReason::LineOutOfRange => "anchor line range is outside the current file bounds",
-    }
-}
-
-fn excerpt_error_phrase(err: &ExcerptError) -> &'static str {
-    match err {
-        ExcerptError::Orphaned(r) => orphan_phrase(r),
-        ExcerptError::NoHunks => "diff hunk no longer exists at this commit",
-        ExcerptError::ResolutionFailed => "excerpt could not be re-resolved from the repository",
-        // Binary never reaches this path (it routes into the resolved
-        // section's binary-file sentence), but we cover it defensively.
-        ExcerptError::Binary => "binary blob has no text excerpt",
-    }
-}
-
 /// L-04-safe 7-char short SHA: returns at most the first 7 chars, never
 /// panicking on a shorter input. `Option::unwrap_or` is NOT `Result::unwrap`.
 fn short_sha(oid: &str) -> &str {
     oid.get(..7).unwrap_or(oid)
-}
-
-/// 8-char prefix of a comment id, same truncate-or-keep shape as `short_sha`.
-/// Comment ids are v4 UUIDs (`types.rs`); an 8-hex-char prefix has enough
-/// entropy for the id count a single review session carries, and it's what
-/// the reply trailer keys on instead of the full 36-char id or a repeated
-/// heading string.
-fn short_comment_id(id: &str) -> &str {
-    id.get(..8).unwrap_or(id)
 }
 
 /// Best-effort repo name derived from the worktree's directory name, falling
@@ -361,7 +160,7 @@ fn side_label(side: &Side) -> &'static str {
 /// `Some(label)` when `oid_str` is one of the session's synthetic snapshot
 /// commits (working-tree or staged), so callers can render a clear label
 /// instead of the raw epoch-stamped subject those commits carry.
-fn snapshot_label(session: &ReviewSession, oid_str: &str) -> Option<&'static str> {
+fn snapshot_label(session: &RenderInput, oid_str: &str) -> Option<&'static str> {
     if session.working_tree_snapshot.as_deref() == Some(oid_str) {
         Some("(uncommitted changes in the working tree, not a real commit)")
     } else if session.index_snapshot.as_deref() == Some(oid_str) {
@@ -374,7 +173,7 @@ fn snapshot_label(session: &ReviewSession, oid_str: &str) -> Option<&'static str
 /// Commit subject for a `## Commits` bullet or a commit-level heading. A
 /// snapshot commit gets its synthetic label; a resolvable real commit gets
 /// its summary or `(no subject)`; a missing commit says so plainly.
-fn commit_subject(repo: &git2::Repository, session: &ReviewSession, oid_str: &str) -> String {
+fn commit_subject(repo: &git2::Repository, session: &RenderInput, oid_str: &str) -> String {
     if let Some(label) = snapshot_label(session, oid_str) {
         return label.to_string();
     }
@@ -422,13 +221,32 @@ fn emit_reviewer_text(out: &mut String, text: &str) {
     let _ = writeln!(out);
 }
 
+/// Emit a thread's flat reply list, each carrying its channel attribution —
+/// the only distinction between a human reply and an agent's, in the doc as
+/// in the UI.
+fn emit_replies(out: &mut String, replies: &[DocReply]) {
+    use std::fmt::Write;
+    for reply in replies {
+        let label = match reply.channel {
+            Channel::Human => "Human reply",
+            Channel::Agent => "Agent reply",
+        };
+        let _ = writeln!(out, "**{label}:**");
+        out.push_str(&reply.text);
+        if !reply.text.ends_with('\n') {
+            out.push('\n');
+        }
+        let _ = writeln!(out);
+    }
+}
+
 /// The instruction half of the document: what the receiving agent is being
 /// asked to do, where, and what it must not touch. The whole document is the
 /// agent's only prompt — nothing wraps the string on its way to the clipboard.
-fn emit_header(out: &mut String, session: &ReviewSession, repo: &git2::Repository) {
+fn emit_header(out: &mut String, session: &RenderInput, repo: &git2::Repository) {
     use std::fmt::Write;
 
-    let count = session.comments.len();
+    let count = session.threads.len();
     let comment_noun = if count == 1 { "comment" } else { "comments" };
     let line_noun = if count == 1 { "line" } else { "lines" };
 
@@ -438,6 +256,14 @@ fn emit_header(out: &mut String, session: &ReviewSession, repo: &git2::Repositor
         out,
         "# Code review: {}",
         sanitize_heading_text(&repo_name(repo))
+    );
+    let _ = writeln!(out);
+    // The short id is how the user and the CLI address this review.
+    let _ = writeln!(
+        out,
+        "Review `{}` — {}",
+        session.review_id,
+        sanitize_heading_text(&session.title)
     );
     let _ = writeln!(out);
     let _ = writeln!(
@@ -536,93 +362,56 @@ fn emit_header(out: &mut String, session: &ReviewSession, repo: &git2::Repositor
     let _ = writeln!(out);
 }
 
-/// What the `(anchor, classify, slice)` triple resolved to. Keeps the
-/// `render` partitioning code declarative — match on the variant, not on
-/// nested Results.
+/// What kind of target a thread carries. Keeps the `render` partitioning
+/// code declarative — match on the variant, not on nested Options. No
+/// repository lookup decides which variant a thread gets, nor which section
+/// it renders in (D8/D13): an anchored thread's excerpt is whatever the
+/// store has, and a commit-level thread renders in its section whether or
+/// not the commit still exists.
 enum ResolvedComment<'c> {
-    /// anchor + classify Ok + slice Ok → resolvable; carries the excerpt body.
+    /// anchor present — grouped and rendered from the stored row alone.
     Anchored {
-        comment: &'c crate::git::types::Comment,
+        thread: &'c DocThread,
         anchor: &'c Anchor,
-        excerpt: String,
         info: &'static str,
     },
-    /// anchor + classify Ok + slice Binary → resolved, but emits a
-    /// binary-file sentence INSIDE the per-file section.
-    Binary {
-        comment: &'c crate::git::types::Comment,
-        anchor: &'c Anchor,
-    },
-    /// anchor=None, commit_oid present, commit found in repo.
+    /// anchor=None, commit_oid present.
     CommitLevel {
-        comment: &'c crate::git::types::Comment,
+        thread: &'c DocThread,
         commit_oid: String,
     },
-    /// Everything else: anchor=Some + classify/slice failure, anchor=None +
-    /// commit missing-or-None.
-    Unresolvable {
-        comment: &'c crate::git::types::Comment,
-        anchor: Option<&'c Anchor>,
-        phrase: &'static str,
-    },
+    /// anchor=None, commit_oid=None: the thread names no target at all.
+    NoTarget { thread: &'c DocThread },
 }
 
 /// Top-level pure renderer (L-01, L-04, L-09, L-10). Returns a single `String`
 /// containing the full markdown document; never panics. Per D-11, the caller
-/// is responsible for the ≥1 comment gate — render does NOT defend against
-/// zero comments (it just produces a doc with empty sections).
-pub fn render(session: &ReviewSession, repo: &git2::Repository) -> String {
+/// is responsible for the ≥1 thread gate — render does NOT defend against
+/// zero threads (it just produces a doc with empty sections).
+pub fn render(session: &RenderInput, repo: &git2::Repository) -> String {
     use std::fmt::Write;
 
-    // ── 1. Partition comments into three buckets ────────────────────────
+    // ── 1. Partition threads by the shape of their own stored data ──────
     let resolved: Vec<ResolvedComment> = session
-        .comments
+        .threads
         .iter()
-        .map(|comment| match (&comment.anchor, &comment.commit_oid) {
-            (Some(anchor), _) => match try_resolve_excerpt(repo, anchor) {
-                Ok(body) => {
-                    let info: &'static str = match anchor.source {
-                        Source::Diff => "diff",
-                        Source::FullFile => fence_language(&anchor.file_path),
-                    };
-                    ResolvedComment::Anchored {
-                        comment,
-                        anchor,
-                        excerpt: body,
-                        info,
-                    }
-                }
-                Err(ExcerptError::Binary) => ResolvedComment::Binary { comment, anchor },
-                Err(other) => ResolvedComment::Unresolvable {
-                    comment,
-                    anchor: Some(anchor),
-                    phrase: excerpt_error_phrase(&other),
-                },
-            },
-            (None, Some(commit_oid)) => {
-                // Commit-level: resolvable iff the commit exists.
-                let exists = git2::Oid::from_str(commit_oid)
-                    .ok()
-                    .and_then(|oid| repo.find_commit(oid).ok())
-                    .is_some();
-                if exists {
-                    ResolvedComment::CommitLevel {
-                        comment,
-                        commit_oid: commit_oid.clone(),
-                    }
-                } else {
-                    ResolvedComment::Unresolvable {
-                        comment,
-                        anchor: None,
-                        phrase: orphan_phrase(&OrphanReason::CommitGone),
-                    }
+        .map(|thread| match (&thread.anchor, &thread.commit_oid) {
+            (Some(anchor), _) => {
+                let info: &'static str = match anchor.source {
+                    Source::Diff => "diff",
+                    Source::FullFile => fence_language(&anchor.file_path),
+                };
+                ResolvedComment::Anchored {
+                    thread,
+                    anchor,
+                    info,
                 }
             }
-            (None, None) => ResolvedComment::Unresolvable {
-                comment,
-                anchor: None,
-                phrase: "this comment has no file or commit target recorded; answer it from its text alone",
+            (None, Some(commit_oid)) => ResolvedComment::CommitLevel {
+                thread,
+                commit_oid: commit_oid.clone(),
             },
+            (None, None) => ResolvedComment::NoTarget { thread },
         })
         .collect();
 
@@ -646,21 +435,18 @@ pub fn render(session: &ReviewSession, repo: &git2::Repository) -> String {
         let _ = writeln!(out);
     }
 
-    // ── 3. Resolved per-(file, commit) anchored sections (D-04 + D-05 +
-    //     D-06 + L-08 + L-05) ─────────────────────────────────────────────
+    // ── 3. Anchored per-(file, commit) sections (D-04 + D-05 + D-06 +
+    //     L-08 + L-05) ─────────────────────────────────────────────────
     // Group keys: (file_path, commit_oid). We collect references then sort
     // for deterministic output.
     let mut groups: std::collections::BTreeMap<(String, String), Vec<&ResolvedComment>> =
         std::collections::BTreeMap::new();
     for r in &resolved {
-        let key = match r {
-            ResolvedComment::Anchored { anchor, .. } | ResolvedComment::Binary { anchor, .. } => {
-                Some((anchor.file_path.clone(), anchor.commit_oid.clone()))
-            }
-            _ => None,
-        };
-        if let Some(k) = key {
-            groups.entry(k).or_default().push(r);
+        if let ResolvedComment::Anchored { anchor, .. } = r {
+            groups
+                .entry((anchor.file_path.clone(), anchor.commit_oid.clone()))
+                .or_default()
+                .push(r);
         }
     }
 
@@ -676,65 +462,49 @@ pub fn render(session: &ReviewSession, repo: &git2::Repository) -> String {
             );
             let _ = writeln!(out);
 
-            // Sort entries ascending by start_line. Pull start_line out of
-            // each entry's anchor; both variants carry one.
+            // Sort entries ascending by start_line.
             let mut sorted: Vec<&ResolvedComment> = entries.clone();
             sorted.sort_by_key(|r| match r {
-                ResolvedComment::Anchored { anchor, .. }
-                | ResolvedComment::Binary { anchor, .. } => anchor.start_line,
+                ResolvedComment::Anchored { anchor, .. } => anchor.start_line,
                 _ => u32::MAX,
             });
 
             for r in sorted {
-                match r {
-                    ResolvedComment::Anchored {
-                        comment,
-                        anchor,
-                        excerpt,
-                        info,
-                    } => {
+                if let ResolvedComment::Anchored {
+                    thread,
+                    anchor,
+                    info,
+                } = r
+                {
+                    let _ = writeln!(
+                        out,
+                        "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side}) — {state}",
+                        id = thread.id,
+                        file_path = sanitize_heading_text(&anchor.file_path),
+                        start = anchor.start_line,
+                        end = anchor.end_line,
+                        side = side_label(&anchor.side),
+                        state = thread.state.as_str(),
+                    );
+                    let _ = writeln!(out);
+                    if anchor.side == Side::Old {
                         let _ = writeln!(
                             out,
-                            "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side})",
-                            id = short_comment_id(&comment.id),
-                            file_path = sanitize_heading_text(&anchor.file_path),
-                            start = anchor.start_line,
-                            end = anchor.end_line,
-                            side = side_label(&anchor.side),
+                            "This is the code as it stood before {short}; if it is gone from the current file, the comment is about its removal or replacement — answer it, do not restore the old text."
                         );
                         let _ = writeln!(out);
-                        if anchor.side == Side::Old {
-                            let _ = writeln!(
-                                out,
-                                "This is the code as it stood before {short}; if it is gone from the current file, the comment is about its removal or replacement — answer it, do not restore the old text."
-                            );
+                    }
+                    // D-06: excerpt FIRST, comment text after — straight from
+                    // the stored row, never re-resolved from the repository.
+                    match &thread.excerpt {
+                        Some(excerpt) => emit_fence(&mut out, excerpt, info),
+                        None => {
+                            let _ = writeln!(out, "No excerpt was captured for this thread.");
                             let _ = writeln!(out);
                         }
-                        // D-06: excerpt FIRST, comment text after.
-                        emit_fence(&mut out, excerpt, info);
-                        emit_reviewer_text(&mut out, &comment.text);
                     }
-                    ResolvedComment::Binary { comment, anchor } => {
-                        let _ = writeln!(
-                            out,
-                            "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side})",
-                            id = short_comment_id(&comment.id),
-                            file_path = sanitize_heading_text(&anchor.file_path),
-                            start = anchor.start_line,
-                            end = anchor.end_line,
-                            side = side_label(&anchor.side),
-                        );
-                        let _ = writeln!(out);
-                        // L-05: sentence LIVES inside the resolved per-file
-                        // section, NOT the unresolvable section.
-                        let _ = writeln!(
-                            out,
-                            "This file is binary, so there is no excerpt. Answer the comment from its text; do not try to locate a line in the file."
-                        );
-                        let _ = writeln!(out);
-                        emit_reviewer_text(&mut out, &comment.text);
-                    }
-                    _ => {}
+                    emit_reviewer_text(&mut out, &thread.text);
+                    emit_replies(&mut out, &thread.replies);
                 }
             }
         }
@@ -754,87 +524,51 @@ pub fn render(session: &ReviewSession, repo: &git2::Repository) -> String {
         );
         let _ = writeln!(out);
         for r in &commit_levels {
-            if let ResolvedComment::CommitLevel {
-                comment,
-                commit_oid,
-            } = r
-            {
+            if let ResolvedComment::CommitLevel { thread, commit_oid } = r {
                 let short = short_sha(commit_oid);
                 let subject = sanitize_heading_text(&commit_subject(repo, session, commit_oid));
                 let _ = writeln!(
                     out,
-                    "### [{id}] {short} -- {subject}",
-                    id = short_comment_id(&comment.id)
+                    "### [{id}] {short} -- {subject} — {state}",
+                    id = thread.id,
+                    state = thread.state.as_str(),
                 );
                 let _ = writeln!(out);
-                emit_reviewer_text(&mut out, &comment.text);
+                emit_reviewer_text(&mut out, &thread.text);
+                emit_replies(&mut out, &thread.replies);
             }
         }
     }
 
-    // ── 5. Unresolvable section (D-04 trailing slot, D-09 + D-10 + L-09) ─
-    let unresolvables: Vec<&ResolvedComment> = resolved
+    // ── 5. No-target section (D-04 trailing slot) ───────────────────────
+    let no_targets: Vec<&ResolvedComment> = resolved
         .iter()
-        .filter(|r| matches!(r, ResolvedComment::Unresolvable { .. }))
+        .filter(|r| matches!(r, ResolvedComment::NoTarget { .. }))
         .collect();
-    if !unresolvables.is_empty() {
-        let _ = writeln!(out, "## Unresolvable Anchors");
+    if !no_targets.is_empty() {
+        let _ = writeln!(out, "## Comments With No Target");
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "The comments below could not be placed in current code. Where a cached excerpt is shown, use it as the search key against the current file. Where none is shown, answer the comment from its text and the target its heading names, and report it skipped if you cannot. Do not reconstruct deleted code to satisfy an anchor."
+            "The comments below record neither a file nor a commit. Answer each from its text alone."
         );
         let _ = writeln!(out);
-        for r in &unresolvables {
-            if let ResolvedComment::Unresolvable {
-                comment,
-                anchor,
-                phrase,
-            } = r
-            {
-                if let Some(a) = anchor {
-                    let short = short_sha(&a.commit_oid);
-                    let _ = writeln!(
-                        out,
-                        "### [{id}] {path}:L{start}-L{end} ({short}, {side})",
-                        id = short_comment_id(&comment.id),
-                        path = sanitize_heading_text(&a.file_path),
-                        start = a.start_line,
-                        end = a.end_line,
-                        side = side_label(&a.side),
-                    );
-                } else if let Some(commit_oid) = &comment.commit_oid {
-                    let short = short_sha(commit_oid);
-                    let _ = writeln!(
-                        out,
-                        "### [{id}] Commit-level note ({short})",
-                        id = short_comment_id(&comment.id)
-                    );
-                } else {
-                    let _ = writeln!(
-                        out,
-                        "### [{id}] Comment with no anchor",
-                        id = short_comment_id(&comment.id)
-                    );
-                }
+        for r in &no_targets {
+            if let ResolvedComment::NoTarget { thread } = r {
+                let _ = writeln!(
+                    out,
+                    "### [{id}] Comment with no anchor — {state}",
+                    id = thread.id,
+                    state = thread.state.as_str(),
+                );
                 let _ = writeln!(out);
-                let _ = writeln!(out, "{phrase}.");
+                let _ = writeln!(
+                    out,
+                    "this comment has no file or commit target recorded; answer it from its text alone."
+                );
                 let _ = writeln!(out);
-
-                if let (Some(a), Some(cached)) = (anchor, &comment.cached_excerpt) {
-                    let info: &'static str = match a.source {
-                        Source::Diff => "diff",
-                        Source::FullFile => fence_language(&a.file_path),
-                    };
-                    let _ = writeln!(
-                        out,
-                        "Anchor no longer resolves; excerpt is the cached snapshot from attach time."
-                    );
-                    let _ = writeln!(out);
-                    emit_fence(&mut out, cached, info);
-                }
-
-                emit_reviewer_text(&mut out, &comment.text);
+                emit_reviewer_text(&mut out, &thread.text);
+                emit_replies(&mut out, &thread.replies);
             }
         }
     }
@@ -962,213 +696,7 @@ mod tests {
         assert_eq!(fence_length("a\nbbb`````ccc\nd"), 6);
     }
 
-    // ── Task 2: slice_full_file + slice_diff + try_resolve_excerpt ────────
-
-    #[test]
-    fn slice_full_file_returns_requested_range() {
-        let (_dir, repo) = make_repo();
-        let b = commit_with_file(
-            &repo,
-            "B",
-            &[],
-            "foo.rs",
-            b"fn a() {}\nfn b() {}\nfn c() {}\n",
-        );
-        let a = anchor(b, "foo.rs", Source::FullFile, Side::New, 2, 3);
-
-        let body = slice_full_file(&repo, &a).expect("resolvable FullFile slice");
-
-        assert_eq!(body, "fn b() {}\nfn c() {}");
-    }
-
-    #[test]
-    fn slice_full_file_normalizes_crlf() {
-        // L-06: CRLF in the blob collapses to LF inside the fence body.
-        let (_dir, repo) = make_repo();
-        let b = commit_with_file(&repo, "B", &[], "foo.txt", b"a\r\nb\r\nc\r\n");
-        let a = anchor(b, "foo.txt", Source::FullFile, Side::New, 1, 3);
-
-        let body = slice_full_file(&repo, &a).expect("resolvable FullFile slice");
-
-        assert_eq!(body, "a\nb\nc");
-    }
-
-    #[test]
-    fn slice_full_file_returns_binary_for_nul_byte_blob() {
-        // L-05: a blob with a NUL byte → blob.is_binary() == true → Binary
-        // variant. The placeholder is task 3's concern; here we assert the
-        // dispatch ends in Binary, not ResolutionFailed.
-        let (_dir, repo) = make_repo();
-        let b = commit_with_file(&repo, "B", &[], "bin.dat", b"abc\0def\n");
-        let a = anchor(b, "bin.dat", Source::FullFile, Side::New, 1, 1);
-
-        let err = slice_full_file(&repo, &a).expect_err("binary blob must error");
-
-        assert!(
-            matches!(err, ExcerptError::Binary),
-            "expected ExcerptError::Binary, got {err:?}"
-        );
-    }
-
-    #[test]
-    fn slice_full_file_passes_through_non_utf8_bytes_with_lossy_substitution() {
-        // RESEARCH Pitfall 3: Latin-1 bytes (>=0x80) with no NUL pass
-        // is_binary() == false; from_utf8_lossy emits U+FFFD substitutions
-        // rather than erroring. The line stays sliceable.
-        let (_dir, repo) = make_repo();
-        // 0xC3 alone (no follow byte) is invalid UTF-8 but has no NUL.
-        let b = commit_with_file(&repo, "B", &[], "latin1.txt", b"hello \xC3 world\nsecond\n");
-        let a = anchor(b, "latin1.txt", Source::FullFile, Side::New, 1, 1);
-
-        let body = slice_full_file(&repo, &a).expect("lossy UTF-8 still resolves");
-
-        // U+FFFD = "\u{FFFD}" — the lossy substitution char.
-        assert!(
-            body.contains('\u{FFFD}'),
-            "expected lossy substitution char in body, got {body:?}"
-        );
-        assert!(!body.is_empty());
-    }
-
-    #[test]
-    fn slice_diff_returns_requested_range() {
-        // Parent A has foo.rs = "old\n"; commit B has foo.rs = "new\n".
-        // Side::New anchor on line 1 keeps the `+new` line; Phase 67 L-03
-        // keeps the opposing-side `-old` line too.
-        let (_dir, repo) = make_repo();
-        let a = commit_with_file(&repo, "A", &[], "foo.rs", b"old\n");
-        let b = commit_with_file(&repo, "B", &[a], "foo.rs", b"new\n");
-        let an = anchor(b, "foo.rs", Source::Diff, Side::New, 1, 1);
-
-        let body = slice_diff(&repo, &an).expect("resolvable Diff slice");
-
-        assert!(
-            body.contains("+new"),
-            "diff body must contain the +new line, got {body:?}"
-        );
-        assert!(
-            body.contains("-old"),
-            "Phase 67 L-03: opposing-side `-` line must be kept, got {body:?}"
-        );
-    }
-
-    #[test]
-    fn slice_diff_returns_no_hunks_when_file_unchanged() {
-        // Pitfall 2: the file is byte-identical to its parent's version. The
-        // pathspec-filtered diff emits zero hunks → NoHunks (not an empty fence).
-        let (_dir, repo) = make_repo();
-        // Two-file parent so we can keep foo.rs unchanged at the child:
-        let a = commit_with_file(&repo, "A", &[], "foo.rs", b"same\n");
-        // Child B adds an unrelated file; foo.rs is byte-identical to A's.
-        let blob_a = repo.blob(b"same\n").unwrap();
-        let blob_other = repo.blob(b"unrelated\n").unwrap();
-        let mut builder = repo.treebuilder(None).unwrap();
-        builder
-            .insert("foo.rs", blob_a, git2::FileMode::Blob.into())
-            .unwrap();
-        builder
-            .insert("other.rs", blob_other, git2::FileMode::Blob.into())
-            .unwrap();
-        let tree = repo.find_tree(builder.write().unwrap()).unwrap();
-        let parent = repo.find_commit(a).unwrap();
-        let b = repo
-            .commit(None, &sig(), &sig(), "B", &tree, &[&parent])
-            .unwrap();
-        let an = anchor(b, "foo.rs", Source::Diff, Side::New, 1, 1);
-
-        let err = slice_diff(&repo, &an).expect_err("unchanged file must yield NoHunks");
-
-        assert!(
-            matches!(err, ExcerptError::NoHunks),
-            "expected ExcerptError::NoHunks, got {err:?}"
-        );
-    }
-
-    #[test]
-    fn slice_diff_handles_root_commit() {
-        // Root commit R adds foo.rs from nothing. Diff against None (no
-        // parent) per the root-commit guard at commands/diff.rs:410-414.
-        let (_dir, repo) = make_repo();
-        let r = commit_with_file(&repo, "R (root)", &[], "foo.rs", b"hello\n");
-        let an = anchor(r, "foo.rs", Source::Diff, Side::New, 1, 1);
-
-        let body = slice_diff(&repo, &an).expect("root-commit Side::New must resolve");
-
-        assert!(
-            body.contains("+hello"),
-            "root-commit diff body must contain +hello, got {body:?}"
-        );
-    }
-
-    #[test]
-    fn slice_diff_multi_hunk_isolates_opposing_side() {
-        // 70/CR-01 regression: in a multi-hunk file, opposing-side lines (the
-        // `-` rows when side == New, `+` rows when side == Old) from
-        // non-anchored hunks must NOT leak into the excerpt. The pre-fix
-        // line callback kept every opposing-side line regardless of which
-        // hunk it belonged to.
-        //
-        // Parent has 50 lines (`L1_PARENT\n…L50_PARENT\n`). Child edits line 5
-        // AND line 45. With default DiffOptions context (3), changes 40 lines
-        // apart are guaranteed-disjoint hunks. Anchoring at line 45 on
-        // Side::New must keep only the line-45 hunk's content; the line-5
-        // deletion (`L5_PARENT`) must NOT appear.
-        let (_dir, repo) = make_repo();
-
-        let mut parent_body = String::new();
-        for i in 1..=50 {
-            parent_body.push_str(&format!("L{i}_PARENT\n"));
-        }
-        let mut child_body = String::new();
-        for i in 1..=50 {
-            if i == 5 || i == 45 {
-                child_body.push_str(&format!("L{i}_CHILD\n"));
-            } else {
-                child_body.push_str(&format!("L{i}_PARENT\n"));
-            }
-        }
-        let a = commit_with_file(&repo, "A", &[], "foo.rs", parent_body.as_bytes());
-        let b = commit_with_file(&repo, "B", &[a], "foo.rs", child_body.as_bytes());
-        let an = anchor(b, "foo.rs", Source::Diff, Side::New, 45, 45);
-
-        let body = slice_diff(&repo, &an).expect("resolvable multi-hunk Diff slice");
-
-        assert!(
-            body.contains("L45_CHILD"),
-            "anchored hunk's new-side content must be kept, got {body:?}"
-        );
-        assert!(
-            !body.contains("L5_PARENT"),
-            "opposing-side deletion from the line-5 hunk leaked into the line-45 excerpt: {body:?}"
-        );
-        assert!(
-            !body.contains("L5_CHILD"),
-            "addition from the unrelated line-5 hunk leaked into the line-45 excerpt: {body:?}"
-        );
-    }
-
-    #[test]
-    fn try_resolve_excerpt_short_circuits_on_missing_commit() {
-        // classify_anchor must be the first call: a 40-zero OID is unknown
-        // to the repo. The dispatcher returns Orphaned(CommitGone) WITHOUT
-        // entering slice_full_file or slice_diff (Pitfall 1).
-        let (_dir, repo) = make_repo();
-        // Repo has SOMETHING valid so we know it's not a "repo is broken" case.
-        let _b = commit_with_file(&repo, "B", &[], "foo.rs", b"hi\n");
-        let missing_oid = Oid::from_str(&"0".repeat(40)).unwrap();
-        let an = anchor(missing_oid, "foo.rs", Source::FullFile, Side::New, 1, 1);
-
-        let err = try_resolve_excerpt(&repo, &an).expect_err("missing commit must orphan");
-
-        assert!(
-            matches!(err, ExcerptError::Orphaned(OrphanReason::CommitGone)),
-            "expected Orphaned(CommitGone), got {err:?}"
-        );
-    }
-
     // ── Task 3: render() doc assembly (D-03..D-10, 14 goldens) ────────────
-
-    use crate::git::types::{Comment, DraftComment, ReviewSession};
 
     // fixture builder: arg count is intentional
     #[allow(clippy::too_many_arguments)]
@@ -1182,15 +710,17 @@ mod tests {
         start_line: u32,
         end_line: u32,
         cached_excerpt: Option<&str>,
-    ) -> Comment {
-        Comment {
+    ) -> DocThread {
+        DocThread {
             id: id.to_string(),
             text: text.to_string(),
+            state: ThreadState::Open,
             anchor: Some(anchor(
                 commit_oid, file_path, source, side, start_line, end_line,
             )),
-            cached_excerpt: cached_excerpt.map(|s| s.to_string()),
             commit_oid: None,
+            excerpt: cached_excerpt.map(|s| s.to_string()),
+            replies: vec![],
         }
     }
 
@@ -1206,10 +736,11 @@ mod tests {
         start_line: u32,
         end_line: u32,
         cached_excerpt: Option<&str>,
-    ) -> Comment {
-        Comment {
+    ) -> DocThread {
+        DocThread {
             id: id.to_string(),
             text: text.to_string(),
+            state: ThreadState::Open,
             anchor: Some(Anchor {
                 commit_oid: bogus_oid.to_string(),
                 file_path: file_path.to_string(),
@@ -1218,27 +749,30 @@ mod tests {
                 start_line,
                 end_line,
             }),
-            cached_excerpt: cached_excerpt.map(|s| s.to_string()),
             commit_oid: None,
+            excerpt: cached_excerpt.map(|s| s.to_string()),
+            replies: vec![],
         }
     }
 
-    fn commit_level_comment(id: &str, text: &str, commit_oid: Oid) -> Comment {
-        Comment {
+    fn commit_level_comment(id: &str, text: &str, commit_oid: Oid) -> DocThread {
+        DocThread {
             id: id.to_string(),
             text: text.to_string(),
+            state: ThreadState::Open,
             anchor: None,
-            cached_excerpt: None,
             commit_oid: Some(commit_oid.to_string()),
+            excerpt: None,
+            replies: vec![],
         }
     }
 
-    fn make_session(commits: Vec<String>, comments: Vec<Comment>) -> ReviewSession {
-        ReviewSession {
-            schema_version: 2,
+    fn make_session(commits: Vec<String>, threads: Vec<DocThread>) -> RenderInput {
+        RenderInput {
+            review_id: "3F7K2QAB".to_string(),
+            title: "Review 2026-08-12 · 3F7K2QAB".to_string(),
             commits,
-            comments,
-            draft_comment: None::<DraftComment>,
+            threads,
             working_tree_snapshot: None,
             index_snapshot: None,
         }
@@ -1252,8 +786,8 @@ mod tests {
 
     #[test]
     fn render_emits_all_sections_in_d04_order() {
-        // D-04 section order: H1 + framing + refs (top) → resolved per-(file,
-        // commit) → commit-level → unresolvable. All four buckets present.
+        // D-04 section order: H1 + framing + refs (top) → anchored per-(file,
+        // commit) → commit-level → no-target. All four buckets present.
         let (_dir, repo) = make_repo();
         let parent = commit_with_file(&repo, "A", &[], "foo.rs", b"hello\nworld\n");
         let child = commit_with_file(
@@ -1263,11 +797,10 @@ mod tests {
             "foo.rs",
             b"hello\nMARK\n",
         );
-        let bogus = "0".repeat(40);
         let session = make_session(
             vec![parent.to_string(), child.to_string()],
             vec![
-                // (i) resolvable Diff anchor on the change in child
+                // (i) anchored Diff comment
                 line_comment(
                     "d1",
                     "diff comment",
@@ -1277,9 +810,9 @@ mod tests {
                     Side::New,
                     2,
                     2,
-                    None,
+                    Some("+MARK\n"),
                 ),
-                // (ii) resolvable FullFile anchor
+                // (ii) anchored FullFile comment
                 line_comment(
                     "f1",
                     "full file comment",
@@ -1289,22 +822,20 @@ mod tests {
                     Side::New,
                     1,
                     1,
-                    None,
+                    Some("hello\n"),
                 ),
                 // (iii) commit-level comment
                 commit_level_comment("c1", "this commit needs review", child),
-                // (iv) orphan (bogus commit)
-                orphan_line_comment(
-                    "o1",
-                    "orphan comment",
-                    &bogus,
-                    "foo.rs",
-                    Source::Diff,
-                    Side::New,
-                    1,
-                    1,
-                    Some("- old\n+ new\n"),
-                ),
+                // (iv) no target at all
+                DocThread {
+                    id: "nt".to_string(),
+                    text: "no target comment".to_string(),
+                    state: ThreadState::Open,
+                    anchor: None,
+                    commit_oid: None,
+                    excerpt: None,
+                    replies: vec![],
+                },
             ],
         );
 
@@ -1315,15 +846,13 @@ mod tests {
             .find(&short(parent))
             .or_else(|| md.find(&short(child)))
             .expect("refs section contains a short SHA");
-        let resolved_pos = md
-            .find("foo.rs")
-            .expect("resolved per-file section mentions foo.rs");
+        let resolved_pos = md.find("foo.rs").expect("anchored section mentions foo.rs");
         let commit_level_pos = md
             .find("this commit needs review")
             .expect("commit-level section contains its comment text");
-        let unresolvable_pos = md
-            .find("orphan comment")
-            .expect("unresolvable section contains the orphan text");
+        let no_target_pos = md
+            .find("no target comment")
+            .expect("no-target section contains its comment text");
 
         assert!(title_pos < refs_pos, "title before refs: {md}");
         assert!(refs_pos < resolved_pos, "refs before resolved: {md}");
@@ -1332,9 +861,77 @@ mod tests {
             "resolved before commit-level: {md}"
         );
         assert!(
-            commit_level_pos < unresolvable_pos,
-            "commit-level before unresolvable: {md}"
+            commit_level_pos < no_target_pos,
+            "commit-level before no-target: {md}"
         );
+    }
+
+    // ── Milestone 2, Task 9: excerpt flip ──────────────────────────────────
+
+    #[test]
+    fn a_gcd_snapshot_anchor_still_prints_its_excerpt() {
+        // A superseded snapshot commit (or any commit git has since collected)
+        // is not in this repo at all — the anchor is anchored to an oid the
+        // repository has never seen. The excerpt still prints because it
+        // comes straight from the stored row, never from a live lookup.
+        let (_dir, repo) = make_repo();
+        let gcd_oid = "0".repeat(40);
+        let session = make_session(
+            vec![],
+            vec![line_comment(
+                "s1",
+                "please double-check this",
+                git2::Oid::from_str(&gcd_oid).unwrap(),
+                "foo.rs",
+                Source::FullFile,
+                Side::New,
+                1,
+                1,
+                Some("fn gone_from_the_repo() {}\n"),
+            )],
+        );
+
+        let md = render(&session, &repo);
+
+        assert!(md.contains("## Anchored Comments"), "got: {md}");
+        assert!(
+            md.contains("fn gone_from_the_repo() {}"),
+            "the stored excerpt must print even though the commit was never in this repo; got: {md}"
+        );
+    }
+
+    #[test]
+    fn a_commit_note_renders_the_same_whether_or_not_its_commit_exists() {
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "f.rs", b"x\n");
+        let gone = "0".repeat(40);
+
+        let existing = render(
+            &make_session(vec![], vec![commit_level_comment("c1", "note", b)]),
+            &repo,
+        );
+        let missing = render(
+            &make_session(
+                vec![],
+                vec![commit_level_comment(
+                    "c1",
+                    "note",
+                    git2::Oid::from_str(&gone).unwrap(),
+                )],
+            ),
+            &repo,
+        );
+
+        for md in [&existing, &missing] {
+            assert!(
+                md.contains("## Commit-level Comments"),
+                "no repository lookup decides which section a commit-level thread renders in; got: {md}"
+            );
+            assert!(
+                !md.contains("## Comments With No Target"),
+                "a missing commit is not a no-target thread; got: {md}"
+            );
+        }
     }
 
     #[test]
@@ -1353,7 +950,7 @@ mod tests {
                 Side::New,
                 1,
                 1,
-                None,
+                Some("-old\n+new\n"),
             )],
         );
 
@@ -1380,7 +977,7 @@ mod tests {
                 Side::New,
                 1,
                 1,
-                None,
+                Some("fn main() {}\n"),
             )],
         );
 
@@ -1410,7 +1007,7 @@ mod tests {
                 Side::New,
                 1,
                 3,
-                None,
+                Some("line one\nfoo ``` bar\nline three\n"),
             )],
         );
 
@@ -1649,6 +1246,98 @@ mod tests {
         );
     }
 
+    // ── Milestone 2, Task 8: doc renders thread state + replies ───────────
+
+    #[test]
+    fn a_thread_heading_carries_its_state() {
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "foo.rs", b"hello\n");
+        let mut thread = line_comment(
+            "f1",
+            "note",
+            b,
+            "foo.rs",
+            Source::FullFile,
+            Side::New,
+            1,
+            1,
+            None,
+        );
+        thread.state = ThreadState::Done;
+        let session = make_session(vec![b.to_string()], vec![thread]);
+
+        let md = render(&session, &repo);
+
+        let expected = format!("[f1] foo.rs:L1-L1 ({}, after) — done", short(b));
+        assert!(
+            md.contains(&expected),
+            "expected heading naming the thread's state; got: {md}"
+        );
+    }
+
+    #[test]
+    fn a_reply_renders_with_its_channel_attribution() {
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "foo.rs", b"hello\n");
+        let mut thread = line_comment(
+            "f1",
+            "note",
+            b,
+            "foo.rs",
+            Source::FullFile,
+            Side::New,
+            1,
+            1,
+            None,
+        );
+        thread.replies = vec![DocReply {
+            text: "AGENT_REPLY_TEXT".to_string(),
+            channel: Channel::Agent,
+        }];
+        let session = make_session(vec![b.to_string()], vec![thread]);
+
+        let md = render(&session, &repo);
+
+        assert!(
+            md.contains("**Agent reply:**"),
+            "expected the agent-channel label; got: {md}"
+        );
+        assert!(md.contains("AGENT_REPLY_TEXT"), "got: {md}");
+    }
+
+    #[test]
+    fn renders_threads_with_states_and_replies() {
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "foo.rs", b"hello\n");
+        let mut thread = commit_level_comment("c1", "please review", b);
+        thread.state = ThreadState::Addressed;
+        thread.replies = vec![
+            DocReply {
+                text: "HUMAN_REPLY".to_string(),
+                channel: Channel::Human,
+            },
+            DocReply {
+                text: "AGENT_REPLY".to_string(),
+                channel: Channel::Agent,
+            },
+        ];
+        let session = make_session(vec![b.to_string()], vec![thread]);
+
+        let md = render(&session, &repo);
+
+        assert!(md.contains("— addressed"), "got: {md}");
+        assert!(md.contains("**Human reply:**"), "got: {md}");
+        assert!(md.contains("HUMAN_REPLY"), "got: {md}");
+        assert!(md.contains("**Agent reply:**"), "got: {md}");
+        assert!(md.contains("AGENT_REPLY"), "got: {md}");
+        let human_pos = md.find("HUMAN_REPLY").unwrap();
+        let agent_pos = md.find("AGENT_REPLY").unwrap();
+        assert!(
+            human_pos < agent_pos,
+            "replies render in their stored order; got: {md}"
+        );
+    }
+
     #[test]
     fn commit_refs_list_shape() {
         // D-07 + D-08: each session.commits OID renders as a bullet line with
@@ -1702,7 +1391,7 @@ mod tests {
                 Side::New,
                 1,
                 1,
-                None,
+                Some("hello\n"),
             )],
         );
 
@@ -1715,266 +1404,6 @@ mod tests {
         assert!(
             excerpt_pos < comment_pos,
             "D-06: excerpt before comment text; got excerpt@{excerpt_pos} text@{comment_pos} in {md}"
-        );
-    }
-
-    #[test]
-    fn unresolvable_uses_cached_excerpt_fenced_by_source() {
-        // D-10: an orphan with cached_excerpt + Source::Diff fences with ```diff
-        // and the comment block contains "cached" labelling.
-        let (_dir, repo) = make_repo();
-        let _b = commit_with_file(&repo, "B", &[], "foo.rs", b"hi\n");
-        let bogus = "0".repeat(40);
-        let session = make_session(
-            vec![],
-            vec![orphan_line_comment(
-                "o1",
-                "this comment lost its anchor",
-                &bogus,
-                "foo.rs",
-                Source::Diff,
-                Side::New,
-                1,
-                1,
-                Some("- old\n+ new\n"),
-            )],
-        );
-
-        let md = render(&session, &repo);
-
-        assert!(
-            md.contains("```diff"),
-            "D-10: unresolvable Diff orphan uses ```diff fence; got {md}"
-        );
-        assert!(
-            md.contains("cached"),
-            "D-10: cached-at-attach-time label present; got {md}"
-        );
-        assert!(
-            md.contains("+ new"),
-            "cached_excerpt body should be in the fenced block; got {md}"
-        );
-    }
-
-    #[test]
-    fn unresolvable_uses_d09_phrasing() {
-        // D-09 phrasings for CommitGone / FileGone / LineOutOfRange.
-        let (_dir, repo) = make_repo();
-        let b = commit_with_file(&repo, "B", &[], "exists.rs", b"a\nb\nc\n");
-        let bogus = "0".repeat(40);
-        let session = make_session(
-            vec![b.to_string()],
-            vec![
-                orphan_line_comment(
-                    "commit_gone",
-                    "cg",
-                    &bogus,
-                    "exists.rs",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    1,
-                    Some("snap"),
-                ),
-                line_comment(
-                    "file_gone",
-                    "fg",
-                    b,
-                    "missing.rs",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    1,
-                    Some("snap"),
-                ),
-                line_comment(
-                    "line_oob",
-                    "lob",
-                    b,
-                    "exists.rs",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    99,
-                    Some("snap"),
-                ),
-            ],
-        );
-
-        let md = render(&session, &repo);
-
-        assert!(
-            md.contains("commit no longer exists in the repository"),
-            "expected CommitGone phrase in {md}"
-        );
-        assert!(
-            md.contains("file no longer exists at this commit/side"),
-            "expected FileGone phrase in {md}"
-        );
-        assert!(
-            md.contains("anchor line range is outside the current file bounds"),
-            "expected LineOutOfRange phrase in {md}"
-        );
-    }
-
-    #[test]
-    fn binary_blob_uses_placeholder_in_resolved_section() {
-        // L-05: a FullFile anchor on a binary blob renders the placeholder
-        // INSIDE the resolved per-file section (NOT unresolvable).
-        let (_dir, repo) = make_repo();
-        // 4 lines + NUL byte → blob.is_binary() = true.
-        let b = commit_with_file(&repo, "B", &[], "bin.dat", b"a\nb\nc\0d\n");
-        let session = make_session(
-            vec![b.to_string()],
-            vec![line_comment(
-                "bin",
-                "binary anchor",
-                b,
-                "bin.dat",
-                Source::FullFile,
-                Side::New,
-                1,
-                1,
-                None,
-            )],
-        );
-
-        let md = render(&session, &repo);
-
-        assert!(
-            md.contains("This file is binary, so there is no excerpt."),
-            "expected binary sentence in {md}"
-        );
-        // Must appear BEFORE any "unresolvable" heading marker if one exists,
-        // because L-05 routes Binary into the resolved section.
-        let placeholder_pos = md
-            .find("This file is binary, so there is no excerpt.")
-            .unwrap();
-        if let Some(unres_pos) = md.find("Unresolvable") {
-            assert!(
-                placeholder_pos < unres_pos,
-                "binary placeholder must live in the resolved per-file section, not unresolvable"
-            );
-        }
-    }
-
-    #[test]
-    fn renderer_never_panics_on_orphan() {
-        // L-04 + L-09: a session that includes every orphan kind plus a binary
-        // comment renders without panicking; every entry appears in the right
-        // section.
-        let (_dir, repo) = make_repo();
-        let parent = commit_with_file(&repo, "A", &[], "f.rs", b"a\nb\nc\n");
-        let child = commit_with_file(&repo, "B", &[parent], "f.rs", b"a\nb\nC\n");
-        // Make a fresh commit B2 whose foo2.rs is unchanged from parent A2 →
-        // diff replay yields NoHunks.
-        let a2_blob = repo.blob(b"same\n").unwrap();
-        let mut tb_a2 = repo.treebuilder(None).unwrap();
-        tb_a2.insert("foo2.rs", a2_blob, 0o100644).unwrap();
-        let tree_a2 = repo.find_tree(tb_a2.write().unwrap()).unwrap();
-        let a2 = repo
-            .commit(None, &sig(), &sig(), "A2", &tree_a2, &[])
-            .unwrap();
-        // B2 keeps foo2.rs identical but adds an unrelated file.
-        let mut tb_b2 = repo.treebuilder(None).unwrap();
-        tb_b2.insert("foo2.rs", a2_blob, 0o100644).unwrap();
-        tb_b2
-            .insert("unrelated.rs", repo.blob(b"hello\n").unwrap(), 0o100644)
-            .unwrap();
-        let tree_b2 = repo.find_tree(tb_b2.write().unwrap()).unwrap();
-        let parent_a2 = repo.find_commit(a2).unwrap();
-        let b2 = repo
-            .commit(None, &sig(), &sig(), "B2", &tree_b2, &[&parent_a2])
-            .unwrap();
-        // Binary file.
-        let bin_b = commit_with_file(&repo, "BIN", &[], "img.bin", b"a\0b\n");
-
-        let bogus = "0".repeat(40);
-        let session = make_session(
-            vec![
-                parent.to_string(),
-                child.to_string(),
-                a2.to_string(),
-                b2.to_string(),
-                bin_b.to_string(),
-            ],
-            vec![
-                // CommitGone
-                orphan_line_comment(
-                    "cg",
-                    "TXT_CG",
-                    &bogus,
-                    "f.rs",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    1,
-                    Some("cg-snap"),
-                ),
-                // FileGone (file does not exist at this commit)
-                line_comment(
-                    "fg",
-                    "TXT_FG",
-                    child,
-                    "no-such-file.rs",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    1,
-                    Some("fg-snap"),
-                ),
-                // LineOutOfRange
-                line_comment(
-                    "lob",
-                    "TXT_LOB",
-                    child,
-                    "f.rs",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    999,
-                    Some("lob-snap"),
-                ),
-                // NoHunks (Source::Diff on a file unchanged from parent)
-                line_comment(
-                    "nh",
-                    "TXT_NH",
-                    b2,
-                    "foo2.rs",
-                    Source::Diff,
-                    Side::New,
-                    1,
-                    1,
-                    Some("nh-snap"),
-                ),
-                // Binary
-                line_comment(
-                    "bin",
-                    "TXT_BIN",
-                    bin_b,
-                    "img.bin",
-                    Source::FullFile,
-                    Side::New,
-                    1,
-                    1,
-                    None,
-                ),
-            ],
-        );
-
-        // The whole point of L-04 — must not panic.
-        let md = render(&session, &repo);
-
-        // Each comment's text must appear somewhere in the doc.
-        for tag in ["TXT_CG", "TXT_FG", "TXT_LOB", "TXT_NH", "TXT_BIN"] {
-            assert!(md.contains(tag), "expected `{tag}` in render output: {md}");
-        }
-        // Binary lives in the resolved section, the rest in unresolvable.
-        let bin_pos = md.find("TXT_BIN").unwrap();
-        let cg_pos = md.find("TXT_CG").unwrap();
-        assert!(
-            bin_pos < cg_pos,
-            "binary comment must precede orphan section (it's in the resolved area)"
         );
     }
 
@@ -2097,7 +1526,7 @@ mod tests {
 
         assert!(
             md.contains("stripping the leading `+`, `-`, or space first"),
-            "Source::Diff excerpts carry a leading +/-/space (see slice_diff), so a literal \
+            "Source::Diff excerpts carry a leading +/-/space, so a literal \
              search for the excerpt text finds nothing in the file; got: {md}"
         );
         assert!(
@@ -2430,16 +1859,16 @@ mod tests {
     }
 
     #[test]
-    fn binary_comment_delimits_reviewer_text() {
+    fn anchored_comment_with_no_excerpt_delimits_reviewer_text() {
         let (_dir, repo) = make_repo();
-        let b = commit_with_file(&repo, "B", &[], "bin.dat", b"a\nb\nc\0d\n");
+        let b = commit_with_file(&repo, "B", &[], "foo.rs", b"a\nb\n");
         let session = make_session(
             vec![b.to_string()],
             vec![line_comment(
-                "bin",
+                "f1",
                 "REVIEWER_TEXT",
                 b,
-                "bin.dat",
+                "foo.rs",
                 Source::FullFile,
                 Side::New,
                 1,
@@ -2468,30 +1897,6 @@ mod tests {
     }
 
     #[test]
-    fn unresolvable_comment_delimits_reviewer_text() {
-        let (_dir, repo) = make_repo();
-        let bogus = "0".repeat(40);
-        let session = make_session(
-            vec![],
-            vec![orphan_line_comment(
-                "o1",
-                "REVIEWER_TEXT",
-                &bogus,
-                "foo.rs",
-                Source::Diff,
-                Side::New,
-                1,
-                1,
-                None,
-            )],
-        );
-
-        let md = render(&session, &repo);
-
-        assert_reviewer_delimiter_precedes(&md, "REVIEWER_TEXT");
-    }
-
-    #[test]
     fn commit_level_section_explains_how_to_read_it() {
         let (_dir, repo) = make_repo();
         let b = commit_with_file(&repo, "B", &[], "f.rs", b"x\n");
@@ -2511,31 +1916,25 @@ mod tests {
     }
 
     #[test]
-    fn unresolvable_section_explains_its_own_policy() {
-        // The header's only escape hatch ("skip if you cannot find it") is
-        // keyed to a search the agent never performs in this section, so it
-        // needs a section-local rule of its own.
+    fn no_target_section_explains_its_own_policy() {
         let (_dir, repo) = make_repo();
-        let bogus = "0".repeat(40);
         let session = make_session(
             vec![],
-            vec![orphan_line_comment(
-                "o1",
-                "note",
-                &bogus,
-                "foo.rs",
-                Source::Diff,
-                Side::New,
-                1,
-                1,
-                None,
-            )],
+            vec![DocThread {
+                id: "nt".to_string(),
+                text: "note".to_string(),
+                state: ThreadState::Open,
+                anchor: None,
+                commit_oid: None,
+                excerpt: None,
+                replies: vec![],
+            }],
         );
 
         let md = render(&session, &repo);
 
         assert!(
-            md.contains("Do not reconstruct deleted code to satisfy an anchor"),
+            md.contains("The comments below record neither a file nor a commit"),
             "got: {md}"
         );
     }
@@ -2641,12 +2040,14 @@ mod tests {
         let (_dir, repo) = make_repo();
         let session = make_session(
             vec![],
-            vec![Comment {
+            vec![DocThread {
                 id: "no-target".to_string(),
                 text: "orphaned by hand".to_string(),
+                state: ThreadState::Open,
                 anchor: None,
-                cached_excerpt: None,
                 commit_oid: None,
+                excerpt: None,
+                replies: vec![],
             }],
         );
 
@@ -2661,19 +2062,6 @@ mod tests {
             "a never-targeted comment must not claim a commit vanished; got: {md}"
         );
         assert!(md.contains("Comment with no anchor"), "got: {md}");
-    }
-
-    #[test]
-    fn short_comment_id_truncates_to_eight_chars() {
-        assert_eq!(
-            short_comment_id("67491b0a-0bd3-4200-8db1-0f2694b42939"),
-            "67491b0a"
-        );
-    }
-
-    #[test]
-    fn short_comment_id_keeps_a_shorter_id_whole() {
-        assert_eq!(short_comment_id("c1"), "c1");
     }
 
     #[test]
@@ -2704,19 +2092,23 @@ mod tests {
         let session = make_session(
             vec![],
             vec![
-                Comment {
+                DocThread {
                     id: "first".to_string(),
                     text: "a".to_string(),
+                    state: ThreadState::Open,
                     anchor: None,
-                    cached_excerpt: None,
                     commit_oid: None,
+                    excerpt: None,
+                    replies: vec![],
                 },
-                Comment {
+                DocThread {
                     id: "second".to_string(),
                     text: "b".to_string(),
+                    state: ThreadState::Open,
                     anchor: None,
-                    cached_excerpt: None,
                     commit_oid: None,
+                    excerpt: None,
+                    replies: vec![],
                 },
             ],
         );
@@ -2782,30 +2174,6 @@ mod tests {
             "a carriage return embedded in a commit subject must not split off a \
              free-standing forged heading line; got: {md}"
         );
-    }
-
-    #[test]
-    fn unresolvable_heading_discloses_side_too() {
-        let (_dir, repo) = make_repo();
-        let bogus = "0".repeat(40);
-        let session = make_session(
-            vec![],
-            vec![orphan_line_comment(
-                "o1",
-                "note",
-                &bogus,
-                "foo.rs",
-                Source::Diff,
-                Side::Old,
-                1,
-                1,
-                None,
-            )],
-        );
-
-        let md = render(&session, &repo);
-
-        assert!(md.contains(", before)"), "got: {md}");
     }
 
     #[test]

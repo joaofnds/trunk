@@ -1,7 +1,13 @@
 <script lang="ts">
+import { untrack } from "svelte";
 import { buildDiffAnchor } from "../../lib/diff-anchor.js";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
+import {
+	deleteDraft,
+	getDraft,
+	saveDraft,
+} from "../../lib/review-comment-actions.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 
 interface Props {
@@ -37,6 +43,27 @@ let {
 
 let text = $state("");
 let submitting = $state(false);
+
+// Restore the draft this repo autosaved. The row has no review foreign key, so
+// it survives a crash or a quit without stranding a review (D6) — but only if
+// something reads it back, which is what makes the restore real rather than
+// write-only. Runs once per mount, before the user can type: a later arrival
+// must not clobber what they have already written.
+let restored = $state(false);
+$effect(() => {
+	void repoPath;
+	untrack(async () => {
+		try {
+			const draft = await getDraft(repoPath);
+			if (draft !== null && text === "") text = draft.text;
+		} catch {
+			// A missing draft is the normal case; a failed read costs the restore,
+			// never the composer.
+		} finally {
+			restored = true;
+		}
+	});
+});
 
 // Focus the textarea as soon as the composer mounts (it mounts fresh on each open)
 // so the user can type immediately without clicking into it.
@@ -80,12 +107,11 @@ function scheduleDraftSave() {
 }
 
 async function persistDraft() {
+	// Never write before the restore has landed: an empty autosave racing the
+	// read would erase the draft it is about to restore.
+	if (!restored) return;
 	try {
-		await safeInvoke("save_draft_comment", {
-			path: repoPath,
-			text,
-			anchor: capturedResult.anchor,
-		});
+		await saveDraft(repoPath, text, capturedResult.anchor);
 	} catch (e) {
 		reportErrorToast(e, "Save draft failed");
 	}
@@ -112,7 +138,7 @@ async function handleSubmit() {
 			if (oid === null) return;
 			anchor = { ...anchor, commit_oid: oid };
 		}
-		await safeInvoke("add_comment", {
+		await safeInvoke("add_thread", {
 			path: repoPath,
 			text,
 			anchor,
@@ -123,6 +149,22 @@ async function handleSubmit() {
 		return;
 	} finally {
 		submitting = false;
+	}
+	text = "";
+	onclose();
+}
+
+// Cancelling abandons the draft, so the row goes with it — otherwise the next
+// composer reopens with text the user already chose to discard.
+async function handleCancel() {
+	if (draftTimer !== null) {
+		clearTimeout(draftTimer);
+		draftTimer = null;
+	}
+	try {
+		await deleteDraft(repoPath);
+	} catch (e) {
+		reportErrorToast(e, "Discard draft failed");
 	}
 	text = "";
 	onclose();
@@ -153,7 +195,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 		oninput={handleInput}
 	></textarea>
 	<div class="composer-actions">
-		<button class="composer-btn cancel-btn" onclick={onclose}>Cancel</button>
+		<button class="composer-btn cancel-btn" onclick={handleCancel}>Cancel</button>
 		<button
 			class="composer-btn submit-btn"
 			disabled={submitDisabled}

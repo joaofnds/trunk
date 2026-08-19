@@ -1,67 +1,73 @@
 import { buildCommentCounts } from "../../lib/comment-counts.js";
 import type { ReviewCommentsManager } from "../../lib/review-comments.svelte.js";
 import type {
-	Comment,
+	Review,
 	ReviewSnapshots,
 	SessionCommit,
-	SessionState,
+	Thread,
 } from "../../lib/types.js";
 
-interface Session {
-	comments: Comment[];
+interface Store {
+	threads: Thread[];
+	reviews: Review[];
+	activeReviewId: string | null;
 	snapshots: ReviewSnapshots;
-	sessionState: SessionState;
 	commits: SessionCommit[];
 	lastError: string | null;
 }
 
 export interface FakeReviewComments extends ReviewCommentsManager {
 	/**
-	 * Stage the next session. Nothing a consumer can observe changes until
-	 * refresh() runs — the real rune only publishes what a round trip returned,
-	 * so a Fake that published on seed would hide every missing-refresh bug.
+	 * Stage the next store contents. Nothing a consumer can observe changes
+	 * until refresh() runs — the real rune only publishes what a round trip
+	 * returned, so a Fake that published on seed would hide every
+	 * missing-refresh bug.
 	 */
-	seed(next: Partial<Session>): void;
+	seed(next: Partial<Store>): void;
 	reset(): void;
 	readonly refreshCount: number;
 }
 
-function emptySession(): Session {
+function emptyStore(): Store {
 	return {
-		comments: [],
+		threads: [],
+		reviews: [],
+		activeReviewId: null,
 		snapshots: { working_tree_snapshot: null, index_snapshot: null },
-		sessionState: "none",
 		commits: [],
 		lastError: null,
 	};
 }
 
 export function createFakeReviewComments(): FakeReviewComments {
-	let seeded = emptySession();
+	let seeded = emptyStore();
 	let refreshCount = 0;
 
-	const state = $state({ ...emptySession(), revision: 0 });
+	const state = $state({ ...emptyStore(), revision: 0 });
 
-	const active = $derived(state.sessionState === "active");
+	const hasThreads = $derived(state.threads.length > 0);
 
 	const oids = $derived(
 		new Set(state.commits.map((c) => c.oid)) as ReadonlySet<string>,
 	);
 
-	const counts = $derived(buildCommentCounts(state.comments, state.snapshots));
+	const counts = $derived(buildCommentCounts(state.threads, state.snapshots));
 
 	return {
-		get comments() {
-			return state.comments;
+		get threads() {
+			return state.threads;
+		},
+		get reviews() {
+			return state.reviews;
+		},
+		get activeReviewId() {
+			return state.activeReviewId;
 		},
 		get snapshots() {
 			return state.snapshots;
 		},
-		get sessionState() {
-			return state.sessionState;
-		},
-		get active() {
-			return active;
+		get hasThreads() {
+			return hasThreads;
 		},
 		get commits() {
 			return state.commits;
@@ -76,7 +82,7 @@ export function createFakeReviewComments(): FakeReviewComments {
 			return state.lastError;
 		},
 		get totalCount() {
-			return state.comments.length;
+			return state.threads.length;
 		},
 		get countByCommit() {
 			return counts.byCommit;
@@ -89,21 +95,22 @@ export function createFakeReviewComments(): FakeReviewComments {
 		},
 		refresh() {
 			refreshCount += 1;
-			state.comments = seeded.comments;
+			state.threads = seeded.threads;
+			state.reviews = seeded.reviews;
+			state.activeReviewId = seeded.activeReviewId;
 			state.snapshots = seeded.snapshots;
-			state.sessionState = seeded.sessionState;
 			state.commits = seeded.commits;
 			state.lastError = seeded.lastError;
 			state.revision += 1;
 			return Promise.resolve();
 		},
 		destroy() {},
-		seed(next: Partial<Session>) {
+		seed(next: Partial<Store>) {
 			seeded = { ...seeded, ...next };
 		},
 		reset() {
-			seeded = emptySession();
-			Object.assign(state, emptySession(), { revision: 0 });
+			seeded = emptyStore();
+			Object.assign(state, emptyStore(), { revision: 0 });
 			refreshCount = 0;
 		},
 	};

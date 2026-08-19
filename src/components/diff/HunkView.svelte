@@ -8,16 +8,20 @@ import {
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import {
+	addReply,
 	deleteComment,
+	deleteReply,
 	editComment,
+	editReply,
+	setThreadState,
 } from "../../lib/review-comment-actions.js";
 import type {
-	Comment,
 	DiffLine,
 	DiffOrigin,
 	FileDiff,
+	Thread,
 } from "../../lib/types.js";
-import CommentCard from "../CommentCard.svelte";
+import ThreadCard from "../ThreadCard.svelte";
 
 interface Props {
 	fileDiffs: FileDiff[];
@@ -66,7 +70,7 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	repoPath?: string;
 	showInlineComments?: boolean;
-	viewComments?: Comment[];
+	viewComments?: Thread[];
 }
 
 let {
@@ -508,11 +512,15 @@ function gutterWidth(maxNum: number): string {
           {#if lineComments.length > 0}
             <div class="inline-comment-row">
               {#each lineComments as c (c.id)}
-                <CommentCard
+                <ThreadCard
                   variant="inline"
                   confirmDelete={false}
                   comment={c}
                   onedit={(id, text) => editComment(repoPath, id, text)}
+                onreply={(id, text) => addReply(repoPath, id, text)}
+                onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+                onreplyedit={(id, text) => editReply(repoPath, id, text)}
+                ondeletereply={(id) => deleteReply(repoPath, id)}
                   ondelete={(id) => deleteComment(repoPath, id)}
                 />
               {/each}

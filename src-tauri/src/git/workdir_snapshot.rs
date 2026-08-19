@@ -159,21 +159,15 @@ pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), 
     Ok(())
 }
 
-/// Drop all snapshot keepalive refs — called on End Review. Afterward gc may prune the
-/// snapshots, which is correct: the session and its comments are gone.
-pub fn clear_snapshot_refs(repo: &git2::Repository) -> Result<(), TrunkError> {
-    let glob = format!("{SNAPSHOT_REF_PREFIX}*");
-    // Collect names first: the glob iterator borrows `repo`, and deleting inside the
-    // loop also needs `repo`, so the borrow must be released before the deletes.
-    let names: Vec<String> = repo
-        .references_glob(&glob)?
-        .filter_map(|r| r.ok())
-        .filter_map(|r| r.name().ok().map(str::to_owned))
-        .collect();
-    for name in names {
-        if let Ok(mut reference) = repo.find_reference(&name) {
-            let _ = reference.delete();
-        }
+/// Drop the keepalive ref for one specific superseded snapshot oid (D8).
+/// Named pruning, not glob-based: `refs/trunk/review-snapshots/` holds at
+/// most the two CURRENT pins, one per kind, so deleting only the ref this
+/// call names is what leaves a sibling kind's pin untouched. A missing ref
+/// is not an error — pruning is idempotent, same as `keep_snapshot_ref`.
+pub fn prune_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), TrunkError> {
+    let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
+    if let Ok(mut reference) = repo.find_reference(&name) {
+        reference.delete()?;
     }
     Ok(())
 }
@@ -229,9 +223,9 @@ mod tests {
     }
 
     // C3: keep_snapshot_ref pins the snapshot under refs/trunk/review-snapshots/ so gc
-    // can't prune it; it is idempotent; clear_snapshot_refs removes the namespace.
+    // can't prune it; it is idempotent; prune_snapshot_ref removes one specific pin.
     #[test]
-    fn keepalive_ref_pins_snapshot_then_clears() {
+    fn keepalive_ref_pins_snapshot_then_is_pruned() {
         let (dir, repo) = repo_with_initial_commit();
         fs::write(dir.path().join("new.txt"), b"uncommitted\n").unwrap();
         let oid = snapshot_working_tree(&repo).unwrap();
@@ -247,11 +241,14 @@ mod tests {
         // Idempotent: re-pinning a reused snapshot must not error.
         keep_snapshot_ref(&repo, oid).unwrap();
 
-        clear_snapshot_refs(&repo).unwrap();
+        prune_snapshot_ref(&repo, oid).unwrap();
         assert!(
             repo.find_reference(&name).is_err(),
-            "clear_snapshot_refs must remove the keepalive ref"
+            "prune_snapshot_ref must remove the keepalive ref"
         );
+
+        // Idempotent: pruning an already-pruned (or never-pinned) oid must not error.
+        prune_snapshot_ref(&repo, oid).unwrap();
     }
 
     // Test B: a file matching a .gitignore pattern is NOT present in the snapshot.

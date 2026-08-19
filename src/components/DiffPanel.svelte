@@ -30,7 +30,6 @@ import {
 } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
-	Comment,
 	CommitDetail,
 	ContentMode,
 	DiffLine,
@@ -39,8 +38,8 @@ import type {
 	FileDiff,
 	LayoutMode,
 	RenderMode,
-	SessionStatus,
 	Side,
+	Thread,
 } from "../lib/types.js";
 import CommentComposer from "./diff/CommentComposer.svelte";
 import DiffToolbar from "./diff/DiffToolbar.svelte";
@@ -62,7 +61,7 @@ interface Props {
 	ondiffoptionschange?: (options: DiffRequestOptions) => void;
 	loading?: boolean;
 	showInlineComments?: boolean;
-	viewComments?: Comment[];
+	viewComments?: Thread[];
 	refreshToken?: number;
 }
 
@@ -168,46 +167,13 @@ function closeComposer() {
 	clearSelection();
 }
 
-// Auto-start a review session when the user goes to comment with none active.
-// The add_comment / save_draft_comment commands stay dumb writers (L-08); the
-// session is established here at the capture chokepoint so the composer never
-// opens onto a backend that returns no_session. start/resume emit
-// session-changed, so the review panel flips to "active" as visible feedback.
-async function ensureActiveSession(): Promise<boolean> {
-	let state: SessionStatus["state"];
-	try {
-		const status = await safeInvoke<SessionStatus>(
-			"get_review_session_status",
-			{ path: repoPath },
-		);
-		state = status.state;
-	} catch (e) {
-		reportErrorToast(e, "Failed to load review session");
-		return false;
-	}
-
-	if (state === "active") return true;
-
-	const command =
-		state === "resume-available"
-			? "resume_review_session"
-			: "start_review_session";
-	try {
-		await safeInvoke(command, { path: repoPath });
-		return true;
-	} catch (e) {
-		reportErrorToast(e, "Failed to start review session");
-		return false;
-	}
-}
-
 // Open the comment composer SYNCHRONOUSLY. The composer only needs the line range,
 // which comes from the hunk. The EXPENSIVE working-tree snapshot is deferred to
 // submit (resolveCommentCommitOid) — that's what removed the click-to-open lag and
-// the .git write (+ its self-inflicted reload) during compose. The session IS started
-// here, though: it's cheap (a status check, no git hashing) and the composer's
-// draft-save fires on the first keystroke — deferring it left drafts hitting
-// `no_session` (260531-l02c regression).
+// the .git write (+ its self-inflicted reload) during compose. Opening establishes
+// NOTHING: the draft row has no review foreign key, so the composer's first-keystroke
+// autosave always has a home, and the review is created at submit — which is what
+// makes a cancelled composer strand nothing (260531-l02c's substance, kept by D6).
 async function openDiffComposer(
 	fd: FileDiff,
 	hunkIndex: number,
@@ -220,7 +186,6 @@ async function openDiffComposer(
 	// the SAME exported resolveSide buildDiffAnchor uses so guard and anchor agree on
 	// the mixed Add+Delete → New edge case. Commit-mode + staged are NOT guarded
 	// (staged anchors to the index snapshot whose parent is HEAD, so Old resolves too).
-	// Runs BEFORE ensureActiveSession so a guarded-out comment starts no session.
 	if (diffKind === "unstaged") {
 		const hunkLines = fd.hunks[hunkIndex]?.lines ?? [];
 		const selected = Array.from(indices)
@@ -231,9 +196,6 @@ async function openDiffComposer(
 			return;
 		}
 	}
-
-	const ready = await ensureActiveSession();
-	if (!ready) return;
 
 	// commit_oid is filled at submit by resolveCommentCommitOid; the range + excerpt
 	// (all the composer renders) come from the hunk and are stable from this instant.
@@ -252,8 +214,6 @@ async function openDiffComposer(
 //              Old side is HEAD = the index snapshot's parent, so both sides resolve.
 // - commit   → the viewed commit's oid (no snapshot).
 async function resolveCommentCommitOid(): Promise<string | null> {
-	const ready = await ensureActiveSession();
-	if (!ready) return null;
 	if (diffKind === "commit") return commitDetail?.oid ?? "";
 	const kind = diffKind === "staged" ? "index" : "workdir";
 	try {
@@ -287,12 +247,10 @@ async function handleCommentHunk(filePath: string, hunkIndex: number) {
 }
 
 // Full-file analog. NO isMerge guard (merge commits are valid for full-file, L-05),
-// NO Old-side guard (full-file is always New-side, buildFullFileAnchor). Starts the
-// session here (cheap; the draft-save needs it — see openDiffComposer); the EXPENSIVE
-// working-tree snapshot stays deferred to submit (resolveCommentCommitOid).
-async function handleCommentFullFile(filePath: string, indices: Set<number>) {
-	const ready = await ensureActiveSession();
-	if (!ready) return;
+// NO Old-side guard (full-file is always New-side, buildFullFileAnchor). Establishes
+// nothing on open (see openDiffComposer); the EXPENSIVE working-tree snapshot stays
+// deferred to submit (resolveCommentCommitOid).
+function handleCommentFullFile(filePath: string, indices: Set<number>) {
 	fullFileComposerPath = filePath;
 	fullFileSelectedIndices = indices;
 	fullFileComposerOpen = true;

@@ -1,3 +1,4 @@
+use crate::error::TrunkError;
 use serde::{Deserialize, Serialize};
 
 // CRITICAL: All fields use owned types (String, Vec, i64, u32, usize, bool, Option<T>).
@@ -342,6 +343,81 @@ pub struct Anchor {
     pub end_line: u32,
 }
 
+/// The thread state matrix's closed set (spec §2). `open` is the default at
+/// creation; `addressed` is the agent's claim, reachable only via `Channel::Agent`;
+/// `done`/`dismissed` are the user's resolutions. Serializes lowercase, matching
+/// the shipped TS union and the store's CHECK constraint — unlike `Side`/`Source`
+/// above, which carry no `rename_all` and must not gain one.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ThreadState {
+    Open,
+    Addressed,
+    Done,
+    Dismissed,
+}
+
+impl ThreadState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ThreadState::Open => "open",
+            ThreadState::Addressed => "addressed",
+            ThreadState::Done => "done",
+            ThreadState::Dismissed => "dismissed",
+        }
+    }
+}
+
+impl std::str::FromStr for ThreadState {
+    type Err = TrunkError;
+
+    fn from_str(raw: &str) -> Result<Self, TrunkError> {
+        match raw {
+            "open" => Ok(ThreadState::Open),
+            "addressed" => Ok(ThreadState::Addressed),
+            "done" => Ok(ThreadState::Done),
+            "dismissed" => Ok(ThreadState::Dismissed),
+            other => Err(TrunkError::new(
+                "store",
+                format!("corrupt thread row: unknown state {other:?}"),
+            )),
+        }
+    }
+}
+
+/// Who wrote a thread or reply: a UI write records `Human`, a CLI write records
+/// `Agent` — attribution by channel, not by identity (spec §2).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Channel {
+    Human,
+    Agent,
+}
+
+impl Channel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Channel::Human => "human",
+            Channel::Agent => "agent",
+        }
+    }
+}
+
+impl std::str::FromStr for Channel {
+    type Err = TrunkError;
+
+    fn from_str(raw: &str) -> Result<Self, TrunkError> {
+        match raw {
+            "human" => Ok(Channel::Human),
+            "agent" => Ok(Channel::Agent),
+            other => Err(TrunkError::new(
+                "store",
+                format!("corrupt thread row: unknown channel {other:?}"),
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Comment {
     // Stable id generated on write (D-03); edit/delete target by id, never by
@@ -356,76 +432,4 @@ pub struct Comment {
     // Commit-level comment target (D-01, written in Plan 02). A missing field
     // maps to None automatically for Option, so no #[serde(default)] is needed.
     pub commit_oid: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DraftComment {
-    pub text: String,
-    pub anchor: Option<Anchor>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ReviewSession {
-    pub schema_version: u32,
-    pub commits: Vec<String>,
-    pub comments: Vec<Comment>,
-    pub draft_comment: Option<DraftComment>,
-    // The OID of the working-tree snapshot commit currently in `commits`, if any.
-    // Tracking it here makes re-snapshot a REPLACE (remove old, add new) rather
-    // than a stack, and is restart-durable so a resumed session still knows which
-    // commit was the snapshot. Additive + `#[serde(default)]` keeps this
-    // migration-free: `review_store::load_session` gates only on
-    // `schema_version > CURRENT_SCHEMA_VERSION` (= 2) then `from_value` with no
-    // `deny_unknown_fields`, so existing v2 files deserialize the missing field to
-    // `None` and NO schema_version bump is required.
-    #[serde(default)]
-    pub working_tree_snapshot: Option<String>,
-    /// Latest STAGED (index) snapshot commit oid, tracked separately from
-    /// `working_tree_snapshot` so a staged comment dedups against the index tree
-    /// (HEAD→index) while an unstaged comment dedups against the workdir tree. Same
-    /// additive + `#[serde(default)]` migration-free rationale as above.
-    #[serde(default)]
-    pub index_snapshot: Option<String>,
-}
-
-#[cfg(test)]
-mod review_schema_tests {
-    use super::*;
-
-    #[test]
-    fn deserializes_v1_comment_without_id_or_commit_oid() {
-        // A v1 session file predates the v2 fields: the comment JSON has neither
-        // `id` nor `commit_oid`. `#[serde(default)]` on `id` and Option's implicit
-        // default on `commit_oid` must let it deserialize (NOT error) — the
-        // migration-shape-A sentinel is an empty id, backfilled at load time.
-        let v1_json = r#"{ "text": "looks good", "anchor": null, "cached_excerpt": null }"#;
-
-        let comment: Comment = serde_json::from_str(v1_json).expect("v1 comment must deserialize");
-
-        assert_eq!(
-            comment.id, "",
-            "missing id must default to the empty sentinel"
-        );
-        assert_eq!(
-            comment.commit_oid, None,
-            "missing commit_oid must default to None"
-        );
-    }
-
-    #[test]
-    fn round_trips_id_and_commit_oid_unchanged() {
-        let original = Comment {
-            id: "abc-123".to_string(),
-            text: "ship it".to_string(),
-            anchor: None,
-            cached_excerpt: None,
-            commit_oid: Some("deadbeef".to_string()),
-        };
-
-        let json = serde_json::to_string(&original).expect("serialize");
-        let restored: Comment = serde_json::from_str(&json).expect("deserialize");
-
-        assert_eq!(restored.id, "abc-123");
-        assert_eq!(restored.commit_oid, Some("deadbeef".to_string()));
-    }
 }

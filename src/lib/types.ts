@@ -337,17 +337,58 @@ export interface Anchor {
 	end_line: number;
 }
 
-export interface Comment {
+// One anchored root comment plus its flat replies. Mirrors the Rust
+// RenderedThread: the stored row plus its markdown body rendered to sanitized
+// HTML at list time.
+export interface Thread {
 	id: string;
+	review_id: string;
 	text: string;
 	anchor: Anchor | null;
 	cached_excerpt: string | null;
 	commit_oid?: string | null;
-	// Markdown body rendered to sanitized HTML by the backend. Present only on
-	// comments returned by `list_session_comments` (the render batch); optional so
-	// optimistic/raw Comment shapes elsewhere still type-check. CommentCard
+	state: ThreadState;
+	stale: boolean;
+	channel: Channel;
+	// Present only on threads returned by `list_threads` (the render batch);
+	// optional so optimistic/raw shapes elsewhere still type-check. ThreadCard
 	// `{@html}`s it, falling back to escaped raw `text` when absent.
 	text_html?: string;
+	replies: Reply[];
+}
+
+// A flat reply under a thread. Mirrors the Rust RenderedReply — no anchor, no
+// state: state lives on the thread, never on a reply.
+export interface Reply {
+	id: string;
+	text: string;
+	text_html: string;
+	channel: Channel;
+	created_at: number;
+}
+
+// The per-repo draft row: the composer's autosave target, with no review
+// foreign key so a cancelled composer strands nothing.
+export interface Draft {
+	text: string;
+	anchor: Anchor | null;
+}
+
+// The closed sets the store's CHECK constraints enforce. Milestone 2 owns the
+// transitions between them; milestone 1 writes only `open` / `human`.
+export type ThreadState = "open" | "addressed" | "done" | "dismissed";
+export type Channel = "human" | "agent";
+
+// A durable, per-repo collection of threads plus a derived lifecycle state.
+export type ReviewState = "composing" | "ready" | "settled";
+
+export interface Review {
+	id: string;
+	title: string;
+	state: ReviewState;
+	published: boolean;
+	thread_count: number;
+	created_at: number;
 }
 
 // Why a comment cannot be jumped to / no longer resolves against the repo.
@@ -363,31 +404,9 @@ export interface CommentResolution {
 	reason: OrphanReason | null;
 }
 
-export interface DraftComment {
-	text: string;
-	anchor: Anchor | null;
-}
-
-export interface ReviewSession {
-	schema_version: number;
-	commits: string[];
-	comments: Comment[];
-	draft_comment: DraftComment | null;
-}
-
-// Session lifecycle status (mirrors src-tauri/src/commands/review.rs Plan 65-03).
-// SessionState serializes kebab-case (unlike the PascalCase on-disk enums above):
-// it's a transient IPC enum, not part of the persisted schema.
-export type SessionState = "active" | "resume-available" | "none";
-
-export interface SessionStatus {
-	state: SessionState;
-	file_exists: boolean;
-	canonical_path: string;
-}
-
-// Current snapshot OIDs for the active session (mirrors the Rust ReviewSnapshots
-// struct from Plan 65; Serialize snake_case, nullable for Rust Option<String>).
+// Current snapshot OIDs for the repo (mirrors the Rust RepoSnapshots struct;
+// Serialize snake_case, nullable for Rust Option<String>). Per repo, not per
+// review — D8 makes the pins repo-level.
 export interface ReviewSnapshots {
 	working_tree_snapshot: string | null;
 	index_snapshot: string | null;
@@ -402,21 +421,4 @@ export interface SessionCommit {
 	// True for an auto-created review snapshot (working-tree/index), not a
 	// hand-picked commit. The panel hides EMPTY snapshot sections (260531-l02d).
 	is_snapshot: boolean;
-}
-
-// Request DTOs for the comment-capture commands (Plan 67-02 Rust structs use
-// #[serde(rename_all = "camelCase")], so the wire keys are camelCase here while
-// the nested Anchor keeps its frozen snake_case schema). These reuse the existing
-// Anchor type above — do NOT redeclare it.
-export interface AddCommentRequest {
-	path: string;
-	text: string;
-	anchor: Anchor;
-	cachedExcerpt: string;
-}
-
-export interface SaveDraftCommentRequest {
-	path: string;
-	text: string;
-	anchor: Anchor | null;
 }

@@ -29,7 +29,6 @@ import {
 } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
-	Comment,
 	CommitDetail as CommitDetailType,
 	CommitNav,
 	DiffRequestOptions,
@@ -37,6 +36,7 @@ import type {
 	RebaseTodoItem,
 	RefsResponse,
 	Side,
+	Thread,
 	WipStats,
 	WorkingTreeStatus,
 } from "../lib/types.js";
@@ -128,7 +128,7 @@ const reviewSession = createReviewSession();
 
 // The single reactive comments source for this tab (plan §3). Lifted here so
 // ReviewPanel, DiffPanel/diff views, and CommitDetail all read one store with
-// one session-changed subscription. repoPath is stable for this tab's RepoView
+// one reviews-changed subscription. repoPath is stable for this tab's RepoView
 // instance (App keys it by tab.id), so the one-time capture is intentional;
 // the rune owns its own listener teardown via destroy().
 const reviewComments = createReviewComments(untrack(() => repoPath));
@@ -176,7 +176,7 @@ let diffPanelRef = $state<{
 // and CommitDetail clicks (clicking the selected row clears it). The jump
 // gesture must never clear the very target it's about to scroll to, otherwise
 // the panel→diff swap lands on a blank diff with no selection (CR-03 / WR-04).
-function handleReviewJump(comment: Comment) {
+function handleReviewJump(comment: Thread) {
 	reviewSession.jumpTo(comment, {
 		selectCommit: selectCommitIdempotent,
 		selectFile: selectCommitFileIdempotent,
@@ -327,36 +327,31 @@ let viewDescriptor = $derived<ViewDescriptor>({
 });
 
 // Comments matching the file currently shown in DiffPanel. Empty when no file
-// is selected or no session is active.
+// is selected.
 let viewComments = $derived(
 	selectedDiffPath
-		? commentsForView(reviewComments.comments, viewDescriptor, selectedDiffPath)
+		? commentsForView(reviewComments.threads, viewDescriptor, selectedDiffPath)
 		: [],
 );
 
 // Inline-comment badge count for the show-comments toggle: only the comments
 // this toggle governs in the CURRENT view.
-//   no session            → 0 (badge hidden)
 //   a diff open for a file → comments for that view/file
 //   CommitDetail is the active right pane → commit-level notes for its oid
 //   otherwise (commit graph / staging, no file) → 0 (nothing in this view)
 let inlineCommentCount = $derived(
-	!reviewComments.active
-		? 0
-		: showDiff && selectedDiffPath
-			? viewComments.length
-			: selectedCommitOid && commitDetail
-				? reviewComments.comments.filter(
-						(c) => c.anchor === null && c.commit_oid === commitDetail?.oid,
-					).length
-				: 0,
+	showDiff && selectedDiffPath
+		? viewComments.length
+		: selectedCommitOid && commitDetail
+			? reviewComments.threads.filter(
+					(t) => t.anchor === null && t.commit_oid === commitDetail?.oid,
+				).length
+			: 0,
 );
 
-// Total comments in the session, for the Review button badge — independent of
-// which pane the user is looking at. 0 when no session so the badge hides.
-let reviewCommentTotal = $derived(
-	reviewComments.active ? reviewComments.totalCount : 0,
-);
+// Total threads in the active review, for the Review button badge — independent
+// of which pane the user is looking at. 0 with no threads, so the badge hides.
+let reviewCommentTotal = $derived(reviewComments.totalCount);
 
 // Report both counts up through untrack: App's setCommentCounts copies the
 // counts map (`new Map(commentCounts)`) before writing it, so calling the

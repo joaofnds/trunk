@@ -3,12 +3,13 @@ pub mod error;
 pub mod git;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
+pub mod reviewdb;
 pub mod shell_env;
 pub mod state;
 mod storage;
 pub mod watcher;
 
-use state::{CommitCache, CommitStatsCache, RepoState, ReviewSessionsState, RunningOp};
+use state::{CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -124,7 +125,7 @@ pub fn run() {
             // frontend can flip review mode. No keyboard accelerator — user UAT
             // surfaced a clash with launcher-tool shortcuts (Phase 72 gap closure).
             let review_item =
-                MenuItemBuilder::with_id("review-toggle", "Start/End Code Review").build(app)?;
+                MenuItemBuilder::with_id("review-toggle", "Toggle Review Panel").build(app)?;
 
             let app_menu = SubmenuBuilder::new(app, "Trunk")
                 .about(None)
@@ -188,7 +189,7 @@ pub fn run() {
         .manage(CommitStatsCache(Default::default()))
         .manage(RunningOp(Default::default()))
         .manage(WatcherState(Default::default()))
-        .manage(ReviewSessionsState(Default::default()))
+        .manage(ReviewStoreState(Default::default()))
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
         .invoke_handler(tauri::generate_handler![
@@ -242,24 +243,34 @@ pub fn run() {
             commands::stash::stash_pop,
             commands::stash::stash_apply,
             commands::stash::stash_drop,
-            commands::review::start_review_session,
-            commands::review::resume_review_session,
-            commands::review::end_review_session,
-            commands::review::get_review_session_status,
             commands::review::seed_review_range,
             commands::review::add_review_commit,
             commands::review::remove_review_commit,
             commands::review::list_session_commits,
-            commands::review::add_comment,
-            commands::review::save_draft_comment,
-            commands::review::add_commit_comment,
-            commands::review::edit_comment,
-            commands::review::delete_comment,
-            commands::review::list_session_comments,
+            commands::review::add_thread,
+            commands::review::add_commit_thread,
+            commands::review::edit_thread,
+            commands::review::delete_thread,
+            commands::review::add_reply,
+            commands::review::edit_reply,
+            commands::review::delete_reply,
+            commands::review::set_thread_state,
+            commands::review::list_threads,
+            commands::review::list_reviews,
+            commands::review::create_review,
+            commands::review::get_active_review,
+            commands::review::set_active_review,
+            commands::review::rename_review,
+            commands::review::publish_review,
+            commands::review::delete_review,
+            commands::review::save_draft,
+            commands::review::get_draft,
+            commands::review::delete_draft,
             commands::review::get_review_snapshots,
-            commands::review::resolve_session_comments,
+            commands::review::resolve_threads,
             commands::review::generate_review_doc,
             commands::review::ensure_review_snapshot,
+            commands::review::canonical_repo_path,
             commands::commit_actions::checkout_commit,
             commands::commit_actions::create_tag,
             commands::commit_actions::delete_tag,

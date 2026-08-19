@@ -92,7 +92,7 @@ let status = $state<WorkingTreeStatus | null>(null);
 // render via MergeEditor (no inline comments), so resolveViewOid('conflicted')
 // is null → no badges there, matching what their merge view shows.
 let countsEnabled = $derived(
-	showInlineComments && (reviewComments?.active ?? false),
+	showInlineComments && (reviewComments?.hasThreads ?? false),
 );
 
 function sectionCounts(kind: "unstaged" | "staged"): Map<string, number> {

@@ -123,7 +123,7 @@ let {
 // badge's self-hide at 0 also enforces the gate (children stay dumb). The WIP
 // row's oid is the literal "__wip__" key the store folds snapshot counts into.
 function commentCountFor(oid: string): number {
-	if (!showInlineComments || !reviewComments?.active) return 0;
+	if (!showInlineComments || !reviewComments?.hasThreads) return 0;
 	return reviewComments.countByCommit.get(oid) ?? 0;
 }
 
@@ -354,13 +354,14 @@ const searchDimmingActive = $derived(
 	searchOpen && searchQuery.length > 0 && searchResults.length > 0,
 );
 
-// Review selection state (Phase 66). The shared comments rune owns the session:
-// one status fetch, one session-changed subscription, one membership Set for
-// every surface. `active` is the session state, NOT the panel-open flag (A1).
-const sessionActive = $derived(reviewComments?.active ?? false);
-const sessionOids = $derived(reviewComments?.oids ?? EMPTY_OIDS);
+// Review selection state. The shared rune owns the reviews: one reviews-changed
+// subscription, one membership Set for every surface. There is no session state
+// any more — the rail follows the ACTIVE REVIEW's commit set, and the review
+// gestures are always available because a gesture with no active review creates
+// one (this is NOT the panel-open flag, A1).
+const reviewOids = $derived(reviewComments?.oids ?? EMPTY_OIDS);
 // Transient D-01 range base — set by "Set as review base", cleared after the
-// range is added or cancelled (and whenever the session goes inactive).
+// range is added or cancelled, and whenever the active review changes.
 let pendingBase = $state<string | null>(null);
 
 async function loadStashMap() {
@@ -671,16 +672,16 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 	}
 
 	// Review selection items (D-01 range gesture + D-06 Add/Remove toggle).
-	// Injected ONLY when a review session is active (sessionActive, sourced from
-	// get_review_session_status — NOT the panel-open flag, A1). NO `enabled:
-	// !commit.is_merge` gate — merges ARE selectable (D-08), unlike the
-	// Cherry-pick/Revert items below.
+	// Always injected: "Add to review" creates the active review when the repo
+	// has none, the same way a comment submit does, so there is nothing to gate
+	// on. NO `enabled: !commit.is_merge` gate — merges ARE selectable (D-08),
+	// unlike the Cherry-pick/Revert items below.
 	const reviewItems: (
 		| Awaited<ReturnType<typeof MenuItem.new>>
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
 	)[] = [];
-	if (sessionActive) {
-		const inSession = sessionOids.has(commit.oid);
+	{
+		const inSession = reviewOids.has(commit.oid);
 		reviewItems.push(
 			await MenuItem.new({
 				text: inSession ? "Remove from review" : "Add to review",
@@ -1420,9 +1421,11 @@ $effect(() => {
 	diffColumnWasVisible = visible;
 });
 
-// Clear the transient range base whenever the session goes inactive.
+// Clear the transient range base whenever the active review changes — the base
+// names a commit in one review's set and means nothing in another's.
 $effect(() => {
-	if (!sessionActive) pendingBase = null;
+	void reviewComments?.activeReviewId;
+	pendingBase = null;
 });
 
 $effect(() => {
@@ -2004,7 +2007,7 @@ $effect(() => {
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={sessionOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
         {/snippet}
       </VirtualList>
       {/key}

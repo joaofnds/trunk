@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	commentsForLine,
 	commentsForView,
@@ -6,7 +7,7 @@ import {
 	spannedByComment,
 	type ViewDescriptor,
 } from "./comment-matching.js";
-import type { Anchor, Comment, ReviewSnapshots, Side } from "./types.js";
+import type { Anchor, ReviewSnapshots, Side, Thread } from "./types.js";
 
 const EMPTY_SNAPSHOTS: ReviewSnapshots = {
 	working_tree_snapshot: null,
@@ -30,22 +31,12 @@ function anchor(props: {
 	};
 }
 
-function lineComment(id: string, a: Anchor): Comment {
-	return {
-		id,
-		text: `comment ${id}`,
-		anchor: a,
-		cached_excerpt: null,
-	};
+function lineComment(id: string, a: Anchor): Thread {
+	return aThread({ id, text: `comment ${id}`, anchor: a });
 }
 
-function commitNote(id: string): Comment {
-	return {
-		id,
-		text: `note ${id}`,
-		anchor: null,
-		cached_excerpt: null,
-	};
+function commitNote(id: string): Thread {
+	return aThread({ id, text: `note ${id}` });
 }
 
 describe("resolveViewOid", () => {
@@ -304,7 +295,7 @@ describe("commentsForView", () => {
 describe("commentsForLine", () => {
 	const FILE = "src/main.ts";
 
-	function newSingle(id: string, lineno: number): Comment {
+	function newSingle(id: string, lineno: number): Thread {
 		return lineComment(
 			id,
 			anchor({
@@ -383,7 +374,7 @@ describe("commentsForLine", () => {
 describe("spannedByComment", () => {
 	const FILE = "src/main.ts";
 
-	function range(side: Side, startLine: number, endLine: number): Comment[] {
+	function range(side: Side, startLine: number, endLine: number): Thread[] {
 		return [
 			lineComment(
 				"c1",

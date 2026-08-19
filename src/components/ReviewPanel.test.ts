@@ -3,14 +3,15 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
-	Comment,
 	CommentResolution,
+	Review,
 	SessionCommit,
-	SessionStatus,
+	Thread,
 } from "../lib/types.js";
 import ReviewPanel from "./ReviewPanel.svelte";
 
@@ -63,8 +64,8 @@ function lineAnchoredComment(
 	id: string,
 	commitOid: string,
 	text: string,
-): Comment {
-	return {
+): Thread {
+	return aThread({
 		id,
 		text,
 		anchor: {
@@ -76,22 +77,15 @@ function lineAnchoredComment(
 			end_line: 12,
 		},
 		cached_excerpt: "const x = 1;",
-		commit_oid: null,
-	};
+	});
 }
 
 function commitLevelComment(
 	id: string,
 	commitOid: string,
 	text: string,
-): Comment {
-	return {
-		id,
-		text,
-		anchor: null,
-		cached_excerpt: null,
-		commit_oid: commitOid,
-	};
+): Thread {
+	return aThread({ id, text, commit_oid: commitOid });
 }
 
 function resolvable(id: string): CommentResolution {
@@ -105,53 +99,58 @@ function orphan(
 	return { id, resolvable: false, reason };
 }
 
-// Seed both owners of what the panel shows: the session itself goes into the
-// Fake manager (already refreshed, as RepoView's rune is by the time the panel
-// mounts), and the panel's own resolve_session_comments read plus every write
-// goes through the safeInvoke dispatcher. `generateDoc` routes the
+const ACTIVE_REVIEW = "REVIEW01";
+
+function aReview(overrides: Partial<Review> = {}): Review {
+	return {
+		id: ACTIVE_REVIEW,
+		title: "Review 2026-08-12 · REVIEW01",
+		state: "composing",
+		published: false,
+		thread_count: 0,
+		created_at: 0,
+		...overrides,
+	};
+}
+
+// Seed both owners of what the panel shows: the store contents go into the Fake
+// manager (already refreshed, as RepoView's rune is by the time the panel
+// mounts), and the panel's own resolve_threads read plus every write goes
+// through the safeInvoke dispatcher. `generateDoc` routes the
 // generate_review_doc IPC to a fixture string.
 function installReads(opts: {
 	commits?: SessionCommit[];
-	comments?: Comment[];
+	comments?: Thread[];
+	reviews?: Review[];
+	activeReviewId?: string | null;
 	resolutions?: CommentResolution[];
 	generateDoc?: string;
-	// Default `status` is `active` so the pre-existing tests stay on the warm
-	// path (no cold-boot resume call).
-	status?: SessionStatus;
-	resumeRejection?: unknown;
-	endRejection?: unknown;
+	publishRejection?: unknown;
 	generateRejection?: unknown;
 }) {
-	const status: SessionStatus = opts.status ?? {
-		state: "active",
-		file_exists: true,
-		canonical_path: "/repo",
-	};
+	const comments = opts.comments ?? [];
 	reviewComments.seed({
-		sessionState: status.state,
 		commits: opts.commits ?? [],
-		comments: opts.comments ?? [],
+		threads: comments,
+		reviews: opts.reviews ?? [aReview({ thread_count: comments.length })],
+		activeReviewId:
+			opts.activeReviewId === undefined ? ACTIVE_REVIEW : opts.activeReviewId,
 	});
 	reviewComments.refresh();
 
 	vi.mocked(safeInvoke).mockReset();
 	vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
 		switch (cmd) {
-			case "resolve_session_comments":
+			case "resolve_threads":
 				return Promise.resolve(opts.resolutions ?? []);
 			case "generate_review_doc":
 				if (opts.generateRejection !== undefined) {
 					return Promise.reject(opts.generateRejection);
 				}
 				return Promise.resolve(opts.generateDoc ?? "# stub\n");
-			case "resume_review_session":
-				if (opts.resumeRejection !== undefined) {
-					return Promise.reject(opts.resumeRejection);
-				}
-				return Promise.resolve(undefined);
-			case "end_review_session":
-				if (opts.endRejection !== undefined) {
-					return Promise.reject(opts.endRejection);
+			case "publish_review":
+				if (opts.publishRejection !== undefined) {
+					return Promise.reject(opts.publishRejection);
 				}
 				return Promise.resolve(undefined);
 			default:
@@ -185,7 +184,11 @@ beforeEach(() => {
 
 describe("ReviewPanel", () => {
 	it("renders the commit groups the session owner reports", async () => {
-		reviewComments.seed({ sessionState: "active", commits });
+		reviewComments.seed({
+			commits,
+			reviews: [aReview()],
+			activeReviewId: ACTIVE_REVIEW,
+		});
 		await reviewComments.refresh();
 		render(ReviewPanel, {
 			props: {
@@ -279,7 +282,7 @@ describe("ReviewPanel", () => {
 			},
 		});
 		await flush();
-		expect(calledCommands()).toEqual(["resolve_session_comments"]);
+		expect(calledCommands()).toEqual(["resolve_threads"]);
 	});
 
 	it("shows the warm-with-commits empty state when commits exist but no comments", async () => {
@@ -346,7 +349,7 @@ describe("ReviewPanel", () => {
 	});
 
 	describe("add note", () => {
-		it("writes a commit-level comment via add_commit_comment on Save", async () => {
+		it("writes a commit-level comment via add_commit_thread on Save", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			render(ReviewPanel, {
 				props: {
@@ -371,8 +374,8 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Save"));
 			await flush();
 
-			expect(calledCommands()).toContain("add_commit_comment");
-			const args = callArgs("add_commit_comment");
+			expect(calledCommands()).toContain("add_commit_thread");
+			const args = callArgs("add_commit_thread");
 			expect(args?.commitOid).toBe(COMMIT_A);
 			expect(args?.text).toBe("a fresh note");
 		});
@@ -409,7 +412,7 @@ describe("ReviewPanel", () => {
 	});
 
 	describe("inline edit", () => {
-		it("invokes edit_comment with the id and new text on Save", async () => {
+		it("invokes edit_thread with the id and new text on Save", async () => {
 			installReads({
 				commits,
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
@@ -429,7 +432,10 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Edit"));
 			await tick();
 
-			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+			// The card also renders its own reply composer textarea; the edit
+			// textarea is the first — it seeds from the comment's text, the
+			// composer starts empty.
+			const textarea = screen.getAllByRole("textbox")[0] as HTMLTextAreaElement;
 			expect(textarea.value).toBe("original");
 			await fireEvent.input(textarea, { target: { value: "edited text" } });
 			await tick();
@@ -437,8 +443,8 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Save"));
 			await flush();
 
-			expect(calledCommands()).toContain("edit_comment");
-			const args = callArgs("edit_comment");
+			expect(calledCommands()).toContain("edit_thread");
+			const args = callArgs("edit_thread");
 			expect(args?.id).toBe("c1");
 			expect(args?.text).toBe("edited text");
 		});
@@ -463,14 +469,14 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Edit"));
 			await tick();
 
-			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+			const textarea = screen.getAllByRole("textbox")[0] as HTMLTextAreaElement;
 			await fireEvent.input(textarea, { target: { value: "  " } });
 			await tick();
 
 			expect(screen.getByText("Save").closest("button")).toBeDisabled();
 		});
 
-		it("Cancel closes the editor without invoking edit_comment", async () => {
+		it("Cancel closes the editor without invoking edit_thread", async () => {
 			installReads({
 				commits,
 				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
@@ -492,13 +498,13 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Cancel"));
 			await flush();
 
-			expect(calledCommands()).not.toContain("edit_comment");
+			expect(calledCommands()).not.toContain("edit_thread");
 			expect(screen.getByText("original")).toBeInTheDocument();
 		});
 	});
 
 	describe("delete", () => {
-		it("does not invoke delete_comment when the confirm is cancelled", async () => {
+		it("does not invoke delete_thread when the confirm is cancelled", async () => {
 			const { ask } = await import("@tauri-apps/plugin-dialog");
 			vi.mocked(ask).mockResolvedValue(false);
 			installReads({
@@ -521,10 +527,10 @@ describe("ReviewPanel", () => {
 			await flush();
 
 			expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
-			expect(calledCommands()).not.toContain("delete_comment");
+			expect(calledCommands()).not.toContain("delete_thread");
 		});
 
-		it("invokes delete_comment by id when the confirm is accepted", async () => {
+		it("invokes delete_thread by id when the confirm is accepted", async () => {
 			const { ask } = await import("@tauri-apps/plugin-dialog");
 			vi.mocked(ask).mockResolvedValue(true);
 			installReads({
@@ -546,8 +552,8 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Delete"));
 			await flush();
 
-			expect(calledCommands()).toContain("delete_comment");
-			expect(callArgs("delete_comment")?.id).toBe("c1");
+			expect(calledCommands()).toContain("delete_thread");
+			expect(callArgs("delete_thread")?.id).toBe("c1");
 		});
 	});
 
@@ -603,7 +609,7 @@ describe("ReviewPanel", () => {
 			expect(screen.getByText("stale note")).toBeInTheDocument();
 		});
 
-		// resolve_session_comments walks a blob per comment, so it is the read
+		// resolve_threads walks a blob per comment, so it is the read
 		// most likely to resolve out of order.
 		it("keeps the newest resolutions when an older read resolves last", async () => {
 			const older = Promise.withResolvers<CommentResolution[]>();
@@ -614,7 +620,7 @@ describe("ReviewPanel", () => {
 				comments: [lineAnchoredComment("c1", COMMIT_A, "stale note")],
 			});
 			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
-				cmd === "resolve_session_comments"
+				cmd === "resolve_threads"
 					? (staged.shift() ?? Promise.resolve([]))
 					: Promise.resolve(undefined),
 			);
@@ -733,7 +739,7 @@ describe("ReviewPanel", () => {
 		});
 
 		it("classifies diff-source excerpt lines by their +/-/space prefix", async () => {
-			const commentWithDiff: Comment = {
+			const commentWithDiff: Thread = aThread({
 				id: "c1",
 				text: "look at this",
 				anchor: {
@@ -747,7 +753,7 @@ describe("ReviewPanel", () => {
 				cached_excerpt:
 					" const ctx = 0;\n+const added = 1;\n-const removed = 2;",
 				commit_oid: null,
-			};
+			});
 			installReads({
 				commits,
 				comments: [commentWithDiff],
@@ -1012,207 +1018,9 @@ describe("ReviewPanel", () => {
 	});
 });
 
-// Phase 73-01 — cold-boot resume. When the panel mounts on a repo whose review
-// session exists on disk but isn't in memory (status.state === "resume-available"),
-// reload() must call resume_review_session exactly once before the parallel list
-// reads. Active/none paths must skip the resume entirely. Resume rejections (e.g.
-// the newer_version TrunkError from a forward-incompat session file) surface as a
-// toast via errorMessage(); reads still attempt and fall through the existing
-// no_session arm to the cold empty state.
-//
-// REAL timers — the cold-boot reload chain is microtask-driven only. Do NOT
-// promote vi.useFakeTimers() into this describe; the top-of-file `flush()` helper
-// uses setTimeout(0) and deadlocks under fake timers.
-describe("cold-boot resume", () => {
-	const RESUME_AVAILABLE: SessionStatus = {
-		state: "resume-available",
-		file_exists: true,
-		canonical_path: "/repo",
-	};
-	const ACTIVE: SessionStatus = {
-		state: "active",
-		file_exists: true,
-		canonical_path: "/repo",
-	};
-	const NONE: SessionStatus = {
-		state: "none",
-		file_exists: false,
-		canonical_path: "/repo",
-	};
-
-	function resumeCallCount(): number {
-		return calledCommands().filter((c) => c === "resume_review_session").length;
-	}
-
-	// Weaker than the test it replaces: the panel no longer round-trips the
-	// status itself, so "does not resume twice" is now a property of the owner
-	// reporting "active" afterwards, pinned in review-comments.svelte.test.ts.
-	// What survives here is that one mount makes one attempt.
-	it("attempts the resume once per mount when the session is resume-available", async () => {
-		installReads({
-			commits,
-			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
-			resolutions: [resolvable("c1")],
-			status: RESUME_AVAILABLE,
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(resumeCallCount()).toBe(1);
-		expect(callArgs("resume_review_session")).toEqual({ path: "/repo" });
-	});
-
-	// emit_session_changed logs and swallows its own failure, so a dropped emit
-	// would otherwise leave an empty panel over a live session with no gesture
-	// that recovers it. The resume has to land its own data.
-	it("renders the promoted session without waiting for an event", async () => {
-		installReads({ status: RESUME_AVAILABLE });
-		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
-			if (cmd === "resume_review_session") {
-				// The backend promotes the session on disk into memory; the next
-				// read is what surfaces it.
-				reviewComments.seed({
-					sessionState: "active",
-					commits,
-					comments: [lineAnchoredComment("c1", COMMIT_A, "resumed note")],
-				});
-				return Promise.resolve(undefined);
-			}
-			if (cmd === "resolve_session_comments") {
-				return Promise.resolve([resolvable("c1")]);
-			}
-			return Promise.resolve(undefined);
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(screen.getByText("resumed note")).toBeInTheDocument();
-		expect(screen.getByText("first commit")).toBeInTheDocument();
-		expect(resumeCallCount()).toBe(1);
-	});
-
-	it("skips resume when session is already active", async () => {
-		installReads({
-			commits,
-			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
-			resolutions: [resolvable("c1")],
-			status: ACTIVE,
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(resumeCallCount()).toBe(0);
-		// Reads still run.
-		expect(screen.getByText("x")).toBeInTheDocument();
-	});
-
-	it("skips resume when no session exists on disk", async () => {
-		installReads({
-			commits: [],
-			comments: [],
-			resolutions: [],
-			status: NONE,
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(resumeCallCount()).toBe(0);
-		// The resolutions read still runs; no toast emitted; cold render path.
-		expect(calledCommands()).toContain("resolve_session_comments");
-		expect(vi.mocked(showToast)).not.toHaveBeenCalled();
-	});
-
-	it("surfaces newer_version TrunkError rejection as toast", async () => {
-		installReads({
-			status: RESUME_AVAILABLE,
-			resumeRejection: {
-				code: "newer_version",
-				message: "Session file is newer than this build supports",
-			},
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-			"Failed to resume review: Session file is newer than this build supports",
-			"error",
-		);
-	});
-
-	it("surfaces arbitrary IPC failure as toast via errorMessage Error branch", async () => {
-		installReads({
-			status: RESUME_AVAILABLE,
-			resumeRejection: new Error("boom"),
-		});
-		render(ReviewPanel, {
-			props: {
-				repoPath: "/repo",
-				session: createReviewSession(),
-				reviewComments,
-				onJump: vi.fn(),
-				onJumpToCommit: vi.fn(),
-			},
-		});
-		await flush();
-
-		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-			"Failed to resume review: boom",
-			"error",
-		);
-	});
-});
-
-// Phase 73-02 — End-review affordance. Two-step inline confirmation on the panel
-// header: first click flips label to "Click again to confirm" + danger color
-// (3000ms auto-revert with rapid-reclick re-arm); second click within the window
-// invokes end_review_session({ path: repoPath }). Failure path surfaces a toast
-// via errorMessage(); arrays are NOT manually cleared (D-08 — the session-changed
-// listener round-trip is the canonical refresh). Component unmount during the
-// confirming window clears the pending timer ($effect teardown — Pitfall 3).
-//
-// FAKE timers — scoped to THIS describe only. The file-global `flush()` helper
-// uses setTimeout(r, 0) and deadlocks under fake timers (same constraint as
-// describe("Copy") above; the local flushFake is microtask-only).
+// Ending a review publishes it. FAKE timers here, which is why these tests use
+// the local `flushFake` rather than the file-global `flush()` — the latter is
+// setTimeout(0)-based and deadlocks under them.
 describe("End review", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -1236,11 +1044,6 @@ describe("End review", () => {
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			resolutions: [resolvable("c1")],
-			status: {
-				state: "active",
-				file_exists: true,
-				canonical_path: "/repo",
-			},
 		});
 		return render(ReviewPanel, {
 			props: {
@@ -1254,7 +1057,7 @@ describe("End review", () => {
 	}
 
 	function endCallCount(): number {
-		return calledCommands().filter((c) => c === "end_review_session").length;
+		return calledCommands().filter((c) => c === "publish_review").length;
 	}
 
 	function getEndButton() {
@@ -1265,7 +1068,7 @@ describe("End review", () => {
 		});
 	}
 
-	it("first click enters confirming state without invoking end_review_session", async () => {
+	it("first click enters confirming state without invoking publish_review", async () => {
 		renderWithSession();
 		await flushFake();
 
@@ -1276,7 +1079,7 @@ describe("End review", () => {
 		expect(endCallCount()).toBe(0);
 	});
 
-	it("second click invokes end_review_session({ path }) exactly once", async () => {
+	it("second click publishes the active review exactly once", async () => {
 		renderWithSession();
 		await flushFake();
 
@@ -1286,7 +1089,10 @@ describe("End review", () => {
 		await flushFake();
 
 		expect(endCallCount()).toBe(1);
-		expect(callArgs("end_review_session")).toEqual({ path: "/repo" });
+		expect(callArgs("publish_review")).toEqual({
+			path: "/repo",
+			reviewId: ACTIVE_REVIEW,
+		});
 		// Success path: no error toast.
 		const errorCalls = vi
 			.mocked(showToast)
@@ -1319,7 +1125,7 @@ describe("End review", () => {
 		expect(getEndButton()).toHaveTextContent(/Click again to confirm/);
 
 		// Second click at virtual t=2000 — should clear the t=0+3000 revert AND
-		// fire the IPC. Under mocked listen() the post-success session-changed
+		// fire the IPC. Under mocked listen() the post-success reviews-changed
 		// reload never happens, so the button stays in the confirming label —
 		// proving the original revert timer was cancelled.
 		vi.advanceTimersByTime(2000);
@@ -1336,17 +1142,12 @@ describe("End review", () => {
 		expect(getEndButton()).not.toHaveTextContent(/^End review$/);
 	});
 
-	it("surfaces 'Failed to end review: …' toast on end_review_session rejection", async () => {
+	it("surfaces a publish-failure toast when publish_review rejects", async () => {
 		installReads({
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "x")],
 			resolutions: [resolvable("c1")],
-			status: {
-				state: "active",
-				file_exists: true,
-				canonical_path: "/repo",
-			},
-			endRejection: {
+			publishRejection: {
 				code: "no_session",
 				message: "No active review session",
 			},
@@ -1368,7 +1169,7 @@ describe("End review", () => {
 		await flushFake();
 
 		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
-			"Failed to end review: No active review session",
+			"Failed to publish review: No active review session",
 			"error",
 		);
 		expect(endCallCount()).toBe(1);
@@ -1399,21 +1200,147 @@ describe("End review", () => {
 
 // Phase 73-03 — Empty-state branching. Three mutually exclusive empty states
 // gated on the lifecycle rune + groups + comments arity:
-//   sessionState === "none"                          → cold ("No active review")
-//   sessionState !== "none" && groups.length === 0   → warm-no-commits (existing copy preserved)
-//   sessionState !== "none" && !hasAnyComment        → warm-with-commits ("Review started.")
+//   no reviews at all                → cold ("No reviews yet")
+//   a review, no commits, no threads → warm-no-commits (existing copy preserved)
+//   a review with commits, no threads → warm-with-commits ("Review started.")
 // REAL timers — these tests use the file-global `flush()` (setTimeout(r,0) + tick).
+// Criterion 2 (list half) and criterion 3 (one-step switch). The panel shows a
+// review list at the top and, below it, the threads of the ACTIVE review;
+// selecting a row makes it active, which IS the switch.
+describe("review list", () => {
+	const READY: Review = {
+		id: "READYRV1",
+		title: "Auth review",
+		state: "ready",
+		published: true,
+		thread_count: 2,
+		created_at: 0,
+	};
+
+	function renderPanel() {
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+	}
+
+	it("lists reviews with their derived state, short id and title", async () => {
+		installReads({
+			reviews: [aReview(), READY],
+			activeReviewId: ACTIVE_REVIEW,
+		});
+		renderPanel();
+		await flush();
+
+		expect(screen.getByText("Auth review")).toBeInTheDocument();
+		expect(screen.getByText(READY.id)).toBeInTheDocument();
+		expect(screen.getByText(/ready · 2/)).toBeInTheDocument();
+		expect(screen.getByText(/composing · 0/)).toBeInTheDocument();
+	});
+
+	it("marks the active review, and only it, as current", async () => {
+		installReads({
+			reviews: [aReview(), READY],
+			activeReviewId: ACTIVE_REVIEW,
+		});
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+		).toHaveAttribute("aria-current", "true");
+		expect(
+			screen.getByRole("button", { name: `Activate review ${READY.id}` }),
+		).not.toHaveAttribute("aria-current");
+	});
+
+	it("activating a review invokes set_active_review with its id", async () => {
+		installReads({
+			reviews: [aReview(), READY],
+			activeReviewId: ACTIVE_REVIEW,
+		});
+		renderPanel();
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Activate review ${READY.id}` }),
+		);
+		await flush();
+
+		expect(callArgs("set_active_review")).toEqual({
+			path: "/repo",
+			reviewId: READY.id,
+		});
+	});
+
+	it("does not re-activate the review that is already active", async () => {
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel();
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+		);
+		await flush();
+
+		expect(calledCommands()).not.toContain("set_active_review");
+	});
+
+	it("deleting a review takes a second click to confirm", async () => {
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel();
+		await flush();
+
+		const del = screen.getByRole("button", {
+			name: `Delete review ${ACTIVE_REVIEW}`,
+		});
+		await fireEvent.click(del);
+		await flush();
+		expect(calledCommands()).not.toContain("delete_review");
+
+		await fireEvent.click(del);
+		await flush();
+		expect(callArgs("delete_review")).toEqual({
+			path: "/repo",
+			reviewId: ACTIVE_REVIEW,
+		});
+	});
+
+	it("renames a review through the inline title editor", async () => {
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel();
+		await flush();
+
+		await fireEvent.dblClick(
+			screen.getByRole("button", { name: `Activate review ${ACTIVE_REVIEW}` }),
+		);
+		await tick();
+		const input = screen.getByLabelText("Review title") as HTMLInputElement;
+		await fireEvent.input(input, { target: { value: "Renamed" } });
+		await fireEvent.blur(input);
+		await flush();
+
+		expect(callArgs("rename_review")).toEqual({
+			path: "/repo",
+			reviewId: ACTIVE_REVIEW,
+			title: "Renamed",
+		});
+	});
+});
+
 describe("empty states", () => {
-	it("renders cold empty state when no session", async () => {
+	it("renders the cold empty state for a repo with no reviews", async () => {
 		installReads({
 			commits: [],
 			comments: [],
 			resolutions: [],
-			status: {
-				state: "none",
-				file_exists: false,
-				canonical_path: "/repo",
-			},
+			reviews: [],
+			activeReviewId: null,
 		});
 		render(ReviewPanel, {
 			props: {
@@ -1426,9 +1353,11 @@ describe("empty states", () => {
 		});
 		await flush();
 
-		expect(screen.getByText("No active review")).toBeInTheDocument();
+		expect(screen.getByText("No reviews yet")).toBeInTheDocument();
 		expect(
-			screen.getByText("Toggle review mode in the toolbar to start."),
+			screen.getByText(
+				"Comment on a diff line to start one, or create an empty review above.",
+			),
 		).toBeInTheDocument();
 		// Warm copy and prior "No comments yet" must NOT be visible in the cold branch.
 		expect(screen.queryByText("Review started.")).toBeNull();
@@ -1440,11 +1369,6 @@ describe("empty states", () => {
 			commits,
 			comments: [],
 			resolutions: [],
-			status: {
-				state: "active",
-				file_exists: true,
-				canonical_path: "/repo",
-			},
 		});
 		render(ReviewPanel, {
 			props: {
@@ -1470,11 +1394,6 @@ describe("empty states", () => {
 			commits: [],
 			comments: [],
 			resolutions: [],
-			status: {
-				state: "active",
-				file_exists: true,
-				canonical_path: "/repo",
-			},
 		});
 		render(ReviewPanel, {
 			props: {
@@ -1497,7 +1416,7 @@ describe("empty states", () => {
 });
 
 // Phase 73-03 — Session summary caption. `{N} comments · {M} commits` above the
-// list whenever sessionState !== "none"; hidden in the cold branch.
+// list whenever a review is active; hidden when the repo has none.
 // The middle dot is U+00B7 (literal · character — NOT * or -).
 describe("summary line", () => {
 	it("renders session summary line when session active", async () => {
@@ -1508,11 +1427,6 @@ describe("summary line", () => {
 				lineAnchoredComment("c2", COMMIT_A, "y"),
 			],
 			resolutions: [resolvable("c1"), resolvable("c2")],
-			status: {
-				state: "active",
-				file_exists: true,
-				canonical_path: "/repo",
-			},
 		});
 		render(ReviewPanel, {
 			props: {
@@ -1533,11 +1447,8 @@ describe("summary line", () => {
 			commits: [],
 			comments: [],
 			resolutions: [],
-			status: {
-				state: "none",
-				file_exists: false,
-				canonical_path: "/repo",
-			},
+			reviews: [],
+			activeReviewId: null,
 		});
 		render(ReviewPanel, {
 			props: {
@@ -1602,7 +1513,7 @@ describe("read failures", () => {
 // The panel is a {#if} sibling of DiffPanel, so every jump from the panel into
 // a diff destroys it. list_session_commits takes its headers from the graph
 // cache, so its answer changes on every commit, amend, rebase and checkout —
-// and the owning rune only refreshes on session-changed, which none of those
+// and the owning rune only refreshes on reviews-changed, which none of those
 // emit. Coming back has to re-ask.
 describe("remount", () => {
 	it("re-reads the session so a change made while it was gone is on screen", async () => {
@@ -1655,13 +1566,13 @@ describe("remount", () => {
 	});
 });
 
-// Multi-tab coordination (REQ-73-MULTITAB, D-09). Tab A's end_review_session
-// call emits session-changed; the owning rune refreshes and reports the session
-// gone, and this panel follows it to the cold empty state. Filtering the event
-// down to this repo is the rune's job now, pinned in
-// review-comments.svelte.test.ts.
+// Multi-tab coordination. Tab A's delete_review call emits reviews-changed; the
+// owning rune refreshes and reports the review gone, and this panel follows it
+// to the cold empty state. Publishing is NOT this case — publishing deletes
+// nothing, so the panel keeps rendering the review. Filtering the event down to
+// this repo is the rune's job, pinned in review-comments.svelte.test.ts.
 describe("multi-tab coordination", () => {
-	it("End in another tab clears panel", async () => {
+	it("a review deleted in another tab empties the panel", async () => {
 		installReads({
 			commits,
 			comments: [lineAnchoredComment("c1", COMMIT_A, "tab-A note")],
@@ -1684,15 +1595,20 @@ describe("multi-tab coordination", () => {
 			screen.getByRole("button", { name: /End review/ }),
 		).toBeInTheDocument();
 
-		// Tab A ends the review: the rune's session-changed refresh lands an
-		// empty, inactive session.
-		reviewComments.seed({ sessionState: "none", commits: [], comments: [] });
+		// Tab A deletes the review: the rune's reviews-changed refresh lands an
+		// empty store.
+		reviewComments.seed({
+			commits: [],
+			threads: [],
+			reviews: [],
+			activeReviewId: null,
+		});
 		await reviewComments.refresh();
 		await flush();
 
 		// Cold empty state now visible; warm copy and prior comment gone; End
-		// button hidden (sessionState === 'none' → {#if} gate hides it).
-		expect(screen.getByText("No active review")).toBeInTheDocument();
+		// button hidden (no active review → the {#if} gate hides it).
+		expect(screen.getByText("No reviews yet")).toBeInTheDocument();
 		expect(screen.queryByText("tab-A note")).toBeNull();
 		expect(screen.queryByText("Review started.")).toBeNull();
 		expect(screen.queryByRole("button", { name: /End review/ })).toBeNull();

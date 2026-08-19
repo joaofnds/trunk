@@ -4,18 +4,24 @@
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
-import { Clipboard, MessageSquarePlus, Trash2 } from "@lucide/svelte";
+import { Check, Clipboard, MessageSquarePlus, Trash2 } from "@lucide/svelte";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
 import { errorMessage } from "../lib/error-report.js";
-import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { safeInvoke } from "../lib/invoke.js";
+import {
+	addReply,
+	deleteReply,
+	editReply,
+	setThreadState,
+} from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { Comment, CommentResolution, OrphanReason } from "../lib/types.js";
-import CommentCard from "./CommentCard.svelte";
+import type { CommentResolution, OrphanReason, Thread } from "../lib/types.js";
+import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
 	repoPath: string;
@@ -27,7 +33,7 @@ interface Props {
 	reviewComments: ReviewCommentsManager;
 	// Resolvable-comment jump: the host (RepoView) binds this to the review-session
 	// rune's jumpTo, wiring commit/file selection + scroll-to-range.
-	onJump: (comment: Comment) => void;
+	onJump: (comment: Thread) => void;
 	// Commit-header jump: select the commit and scroll the graph to it. Same
 	// gesture as clicking a line ref, but without a file/line — the panel stays.
 	onJumpToCommit: (commitOid: string) => void;
@@ -37,15 +43,19 @@ let { repoPath, session, reviewComments, onJump, onJumpToCommit }: Props =
 	$props();
 
 const commits = $derived(reviewComments.commits);
-const comments = $derived(reviewComments.comments);
-const sessionState = $derived(reviewComments.sessionState);
+const comments = $derived(reviewComments.threads);
+const reviews = $derived(reviewComments.reviews);
+const activeReviewId = $derived(reviewComments.activeReviewId);
+const activeReview = $derived(
+	reviews.find((r) => r.id === activeReviewId) ?? null,
+);
 
-// Orphan resolution stays here: resolve_session_comments walks a blob per
+// Orphan resolution stays here: resolve_threads walks a blob per
 // comment, and only this panel renders the badge it feeds.
 let resolutions = $state<CommentResolution[]>([]);
 
 // Inline add-note composer state. The per-comment edit flow now lives inside
-// CommentCard; the panel only drives the per-commit "Add note" composer, which
+// ThreadCard; the panel only drives the per-commit "Add note" composer, which
 // reuses the textarea primitive (draftText) and the trim-empty-disables-Save rule.
 let addNoteForCommit = $state<string | null>(null);
 let draftText = $state("");
@@ -67,7 +77,7 @@ interface CommitGroup {
 	oid: string;
 	shortOid: string;
 	summary: string;
-	comments: Comment[];
+	comments: Thread[];
 	isSnapshot: boolean;
 }
 
@@ -75,7 +85,7 @@ interface CommitGroup {
 // line-anchored ones — they're notes about the commit as a whole, so they read
 // as the lede. Array.prototype.sort is stable on modern engines, so capture
 // order is preserved within each class.
-function sortGroupComments(list: Comment[]): Comment[] {
+function sortGroupComments(list: Thread[]): Thread[] {
 	return list.slice().sort((a, b) => {
 		if (a.anchor === null && b.anchor !== null) return -1;
 		if (a.anchor !== null && b.anchor === null) return 1;
@@ -89,7 +99,7 @@ function sortGroupComments(list: Comment[]): Comment[] {
 // staged snapshots with no comments) are filtered out as noise; empty hand-picked
 // commit groups stay so their per-commit "Add note" affordance remains (260531-l02d).
 const groups = $derived.by<CommitGroup[]>(() => {
-	const byOid = new Map<string, Comment[]>();
+	const byOid = new Map<string, Thread[]>();
 	for (const c of comments) {
 		const oid = commitOidForComment(c);
 		const list = byOid.get(oid) ?? [];
@@ -140,7 +150,7 @@ let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Phase 73-02 — End-review two-step confirm. First click flips endConfirming
 // true + arms a 3000ms revert timer; second click within the window invokes
-// end_review_session and lets the session-changed listener round-trip drive
+// publish_review and lets the reviews-changed listener round-trip drive
 // the panel back to the cold state (D-08 — no manual array clear). Pattern
 // carry-forward from `copied` / `copyTimer` above; the danger is the timer
 // leak on unmount (RESEARCH Pitfall 3) — see the $effect teardown below.
@@ -148,12 +158,12 @@ let endConfirming = $state(false);
 // Plain handle, not $state — only used to clear; reactivity is on `endConfirming`.
 let endTimer: ReturnType<typeof setTimeout> | null = null;
 
-function isOrphan(c: Comment): boolean {
+function isOrphan(c: Thread): boolean {
 	const r = resolutionById.get(c.id);
 	return r !== undefined && !r.resolvable;
 }
 
-function orphanLabel(c: Comment): string | null {
+function orphanLabel(c: Thread): string | null {
 	const r = resolutionById.get(c.id);
 	if (r === undefined || r.resolvable || r.reason === null) return null;
 	return ORPHAN_LABEL[r.reason];
@@ -161,7 +171,7 @@ function orphanLabel(c: Comment): string | null {
 
 // A line-anchored, resolvable comment is jumpable; commit-level and orphaned
 // comments are not (D-07 / D-08).
-function isJumpable(c: Comment): boolean {
+function isJumpable(c: Thread): boolean {
 	return c.anchor !== null && !isOrphan(c);
 }
 
@@ -180,49 +190,19 @@ function reportReadFailure(reason: unknown) {
 // otherwise land on top of a fresh one.
 let loadSeq = 0;
 
-// resolve_session_comments requires an active session; a missing session is a
-// normal state, so swallow no_session silently and surface only genuine load
-// failures (UI-SPEC error copy).
+// resolve_threads answers for the active review, or with an empty list when the
+// repo has none — a normal state, not a failure.
 async function loadResolutions() {
 	const seq = ++loadSeq;
 	try {
-		const next = await safeInvoke<CommentResolution[]>(
-			"resolve_session_comments",
-			{ path: repoPath },
-		);
+		const next = await safeInvoke<CommentResolution[]>("resolve_threads", {
+			path: repoPath,
+		});
 		if (seq !== loadSeq) return;
 		resolutions = next;
 	} catch (e) {
 		if (seq !== loadSeq) return;
-		if (isTrunkError(e) && e.code === "no_session") {
-			resolutions = [];
-			return;
-		}
 		reportReadFailure(e);
-	}
-}
-
-// D-01, D-07: cold-boot resume. When the session exists on disk but not in
-// memory ("resume-available"), promote it. The write stays here rather than in
-// the rune: the rune is alive for every open tab, and resuming a corrupt
-// session quarantines the file (review.rs:131-144), which is not something to
-// do behind repo open.
-async function resumeSession() {
-	try {
-		await safeInvoke("resume_review_session", { path: repoPath });
-		// Resume emits session-changed, but emit_session_changed swallows its own
-		// failure — a dropped emit would strand an empty panel over a live
-		// session. Ask directly rather than trusting the event.
-		await reviewComments.refresh();
-	} catch (e) {
-		// errorMessage extracts e.message (Error or TrunkError); the prefix
-		// is added by template literal so a fallback "Failed to resume review"
-		// would only fire if the value were neither shape (and the toast then
-		// reads "Failed to resume review: Failed to resume review" which is
-		// awkward — keep `errorMessage`'s fallback as "Failed to resume review"
-		// since the prefix already conveys the action that failed).
-		const msg = errorMessage(e, "unknown error");
-		showToast(`Failed to resume review: ${msg}`, "error");
 	}
 }
 
@@ -241,7 +221,7 @@ async function saveAddNote(oid: string) {
 	const text = draftText;
 	cancelComposer();
 	try {
-		await safeInvoke("add_commit_comment", {
+		await safeInvoke("add_commit_thread", {
 			path: repoPath,
 			commitOid: oid,
 			text,
@@ -253,7 +233,7 @@ async function saveAddNote(oid: string) {
 
 async function saveEdit(id: string, text: string) {
 	try {
-		await safeInvoke("edit_comment", { path: repoPath, id, text });
+		await safeInvoke("edit_thread", { path: repoPath, id, text });
 	} catch (e) {
 		showToast(errorMessage(e, "Failed to edit comment"), "error");
 	}
@@ -269,7 +249,8 @@ async function saveEdit(id: string, text: string) {
 // preview component's Copy handler (now-deleted in Plan 04).
 async function onCopyClick() {
 	try {
-		const md = await session.generate(repoPath);
+		if (!activeReviewId) return;
+		const md = await session.generate(repoPath, activeReviewId);
 		await writeText(md);
 		// Pitfall 2 carry-forward: clear any in-flight revert timer before
 		// scheduling a new one. Rapid re-clicks must extend the affordance,
@@ -285,9 +266,9 @@ async function onCopyClick() {
 	}
 }
 
-// Phase 73-02 — End-review two-step confirm. First click arms the confirming
-// state + 3000ms revert; second click fires the IPC and lets the session-changed
-// listener round-trip drive the panel back to the cold state (D-08).
+// End-review two-step confirm. First click arms the confirming state + 3000ms
+// revert; second click PUBLISHES. Publishing deletes nothing: the review stays
+// listed, its threads stay visible, and the snapshot keepalive refs stay.
 function startEndConfirm() {
 	// clearTimeout-before-setTimeout discipline (Pattern A): rapid re-clicks
 	// extend the confirm window, not race against the previous revert timer.
@@ -304,19 +285,20 @@ async function onEndClick() {
 		startEndConfirm();
 		return;
 	}
-	// Second click: clear the auto-revert timer but KEEP endConfirming = true
-	// so the label stays "Click again to confirm" (frozen during await — UI-SPEC
-	// § End button state machine: In-flight row). On success the owner's
-	// session-changed refresh drives sessionState → "none" and the {#if} gate
-	// hides the entire button. On failure we explicitly revert.
+	// Second click: clear the auto-revert timer but KEEP endConfirming = true so
+	// the label stays "Click again to confirm" (frozen during await). On success
+	// the owner's reviews-changed refresh re-reads the now-published review and
+	// the button's {#if} gate hides it. On failure we explicitly revert.
 	if (endTimer !== null) {
 		clearTimeout(endTimer);
 		endTimer = null;
 	}
+	if (!activeReviewId) return;
 	try {
-		await safeInvoke("end_review_session", { path: repoPath });
-		// No manual clear (D-08) — the owner's session-changed refresh is the
-		// canonical one, and the resolutions effect follows its revision.
+		await safeInvoke("publish_review", {
+			path: repoPath,
+			reviewId: activeReviewId,
+		});
 	} catch (e) {
 		endConfirming = false;
 		// Match Plan 73-01's resume-fail shape: errorMessage() extracts only
@@ -324,19 +306,93 @@ async function onEndClick() {
 		// literal at the call site (RESEARCH §Pattern 2). The errorMessage
 		// fallback fires only when `e` is neither Error nor TrunkError.
 		const msg = errorMessage(e, "unknown error");
-		showToast(`Failed to end review: ${msg}`, "error");
+		showToast(`Failed to publish review: ${msg}`, "error");
 	}
 }
 
 async function deleteComment(id: string) {
 	try {
-		await safeInvoke("delete_comment", { path: repoPath, id });
+		await safeInvoke("delete_thread", { path: repoPath, id });
 	} catch (e) {
 		showToast(errorMessage(e, "Failed to delete comment"), "error");
 	}
 }
 
-// The owner only refreshes on session-changed, but list_session_commits takes
+// ── Review list: switch, rename, delete ─────────────────────────────────────
+
+// Selecting a review in the list makes it active — that IS the one-step switch,
+// so there is no separate "activate" affordance.
+async function activateReview(id: string) {
+	if (id === activeReviewId) return;
+	try {
+		await safeInvoke("set_active_review", { path: repoPath, reviewId: id });
+	} catch (e) {
+		showToast(errorMessage(e, "Failed to switch review"), "error");
+	}
+}
+
+async function startNewReview() {
+	try {
+		await safeInvoke("create_review", { path: repoPath, title: null });
+	} catch (e) {
+		showToast(errorMessage(e, "Failed to create review"), "error");
+	}
+}
+
+let renamingId = $state<string | null>(null);
+let renameText = $state("");
+
+function openRename(id: string, title: string) {
+	renamingId = id;
+	renameText = title;
+}
+
+async function commitRename() {
+	const id = renamingId;
+	const title = renameText.trim();
+	renamingId = null;
+	if (!id || title.length === 0) return;
+	try {
+		await safeInvoke("rename_review", { path: repoPath, reviewId: id, title });
+	} catch (e) {
+		showToast(errorMessage(e, "Failed to rename review"), "error");
+	}
+}
+
+// Deleting a review is destructive in every state, so it takes the same
+// two-step confirm the publish button uses rather than a single click.
+let deleteConfirmingId = $state<string | null>(null);
+let deleteTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function onDeleteReviewClick(id: string) {
+	if (deleteConfirmingId !== id) {
+		if (deleteTimer !== null) clearTimeout(deleteTimer);
+		deleteConfirmingId = id;
+		deleteTimer = setTimeout(() => {
+			deleteConfirmingId = null;
+			deleteTimer = null;
+		}, 3000);
+		return;
+	}
+	if (deleteTimer !== null) {
+		clearTimeout(deleteTimer);
+		deleteTimer = null;
+	}
+	deleteConfirmingId = null;
+	try {
+		await safeInvoke("delete_review", { path: repoPath, reviewId: id });
+	} catch (e) {
+		showToast(errorMessage(e, "Failed to delete review"), "error");
+	}
+}
+
+const REVIEW_STATE_LABEL: Record<string, string> = {
+	composing: "composing",
+	ready: "ready",
+	settled: "settled",
+};
+
+// The owner only refreshes on reviews-changed, but list_session_commits takes
 // its group headers from the graph cache, so a commit or amend changes its
 // answer without emitting one. This panel is destroyed on every jump into a
 // diff, so coming back is the moment to re-ask.
@@ -363,13 +419,6 @@ $effect(() => {
 	reportReadFailure(failure);
 });
 
-// Terminal per mount by construction: a rejected resume leaves sessionState on
-// "resume-available", and re-landing the same string re-runs nothing.
-$effect(() => {
-	if (reviewComments.sessionState !== "resume-available") return;
-	resumeSession();
-});
-
 // Phase 73-02 — Timer cleanup on component destroy (RESEARCH Pitfall 3). If
 // the panel unmounts mid-confirm (e.g. tab close, repo switch), the pending
 // setTimeout would otherwise fire `endConfirming = false` against a torn-down
@@ -378,6 +427,7 @@ $effect(() => {
 $effect(() => {
 	return () => {
 		if (endTimer !== null) clearTimeout(endTimer);
+		if (deleteTimer !== null) clearTimeout(deleteTimer);
 	};
 });
 </script>
@@ -400,16 +450,19 @@ $effect(() => {
     "
   >
     <span class="preview-spacer" style="flex: 1;"></span>
-    {#if sessionState !== "none"}
+    {#if activeReview && !activeReview.published}
       <button
         type="button"
-        class="end-button {endConfirming ? 'confirming' : ''} flex items-center"
+        class="publish-button {endConfirming ? 'confirming' : ''} flex items-center"
         onclick={onEndClick}
-        title={endConfirming
-          ? ""
-          : "End the current review and delete the on-disk session"}
+        disabled={!hasAnyComment}
+        title={hasAnyComment
+          ? endConfirming
+            ? ""
+            : "Publish this review so an agent can read it. Nothing is deleted."
+          : "A review needs at least one comment before it can be published"}
       >
-        <Trash2 size={14} />
+        <Check size={14} />
         <span>{endConfirming ? "Click again to confirm" : "End review"}</span>
       </button>
     {/if}
@@ -442,10 +495,112 @@ $effect(() => {
       line-height: 1.5;
     "
   >
-  <!-- Phase 73-03 — Session summary caption (D-04). Visible whenever a session
-       exists (cold branch hides it); sits ABOVE the empty-state block so the
-       count is the first thing the eye lands on when the body has content. -->
-  {#if sessionState !== "none"}
+  <!-- Review list (criterion 2): every review for this repo with its derived
+       state, short id, thread count and an editable title. Selecting one makes
+       it active, which is also criterion 3's one-step switch. -->
+  <div class="flex flex-col" style="gap: 2px; padding-bottom: 8px;">
+    <div class="flex items-center" style="gap: 8px; padding: 2px 0;">
+      <span style="color: var(--color-text-muted); font-size: 11px; flex: 1;">
+        {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
+      </span>
+      <button type="button" class="copy-button" onclick={startNewReview}>
+        New review
+      </button>
+    </div>
+    <ul class="flex flex-col" style="gap: 2px; list-style: none; margin: 0; padding: 0;">
+      {#each reviews as review (review.id)}
+        <li class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center"
+            style="gap: 8px; padding: 3px 6px; border-radius: 4px;">
+          <span
+            aria-hidden="true"
+            style="width: 6px; flex-shrink: 0; color: var(--color-accent);"
+          >{review.id === activeReviewId ? "\u2022" : ""}</span>
+          {#if renamingId === review.id}
+            <input
+              bind:value={renameText}
+              onblur={commitRename}
+              onkeydown={(e) => {
+                if (e.key === "Enter") commitRename();
+                if (e.key === "Escape") renamingId = null;
+              }}
+              aria-label="Review title"
+              style="
+                flex: 1;
+                background: var(--color-bg);
+                color: var(--color-text);
+                border: 1px solid var(--color-border);
+                border-radius: 4px;
+                padding: 1px 4px;
+                font-size: 12px;
+                font-family: inherit;
+              "
+            />
+          {:else}
+            <button
+              type="button"
+              onclick={() => activateReview(review.id)}
+              ondblclick={() => openRename(review.id, review.title)}
+              title="Click to make active · double-click or F2 to rename"
+              onkeydown={(e) => {
+                if (e.key === "F2") {
+                  e.preventDefault();
+                  openRename(review.id, review.title);
+                }
+              }}
+              aria-label="Activate review {review.id}"
+              aria-current={review.id === activeReviewId ? "true" : undefined}
+              class="overflow-hidden text-ellipsis whitespace-nowrap"
+              style="
+                flex: 1;
+                text-align: left;
+                background: transparent;
+                border: none;
+                padding: 0;
+                cursor: pointer;
+                color: inherit;
+                font-size: 12px;
+                font-family: inherit;
+              "
+            >{review.title}</button>
+          {/if}
+          <button
+            type="button"
+            onclick={() => openRename(review.id, review.title)}
+            aria-label="Rename review {review.id}"
+            title="Rename this review"
+            class="font-mono"
+            style="
+              background: transparent;
+              border: none;
+              padding: 0;
+              cursor: pointer;
+              color: var(--color-text-muted);
+              font-size: 11px;
+              font-family: inherit;
+              flex-shrink: 0;
+            "
+          >{review.id}</button>
+          <span style="color: var(--color-text-muted); font-size: 11px; flex-shrink: 0;">
+            {REVIEW_STATE_LABEL[review.state] ?? review.state} · {review.thread_count}
+          </span>
+          <button
+            type="button"
+            class="end-button {deleteConfirmingId === review.id ? 'confirming' : ''}"
+            onclick={() => onDeleteReviewClick(review.id)}
+            aria-label="Delete review {review.id}"
+            title={deleteConfirmingId === review.id
+              ? "Click again to delete this review and its comments"
+              : "Delete this review"}
+            style="flex-shrink: 0; padding: 0 6px;"
+          >
+            {deleteConfirmingId === review.id ? "Confirm delete" : "Delete review"}
+          </button>
+        </li>
+      {/each}
+    </ul>
+  </div>
+
+  {#if activeReview}
     <span style="color: var(--color-text-muted); font-size: 11px; padding: 2px 0;">
       {comments.length} comments · {commits.length} commits
     </span>
@@ -456,11 +611,11 @@ $effect(() => {
        verbatim) → warm-with-commits-zero-comments (replaces prior "No comments
        yet." copy). The three branches are mutually exclusive; when the user has
        added at least one comment, none render and the list below takes over. -->
-  {#if sessionState === "none"}
+  {#if reviews.length === 0}
     <div class="flex flex-col" style="gap: 4px; padding: 12px;">
-      <span>No active review</span>
+      <span>No reviews yet</span>
       <span style="color: var(--color-text-muted); font-size: 11px;">
-        Toggle review mode in the toolbar to start.
+        Comment on a diff line to start one, or create an empty review above.
       </span>
     </div>
   {:else if commits.length === 0 && !hasAnyComment}
@@ -605,10 +760,14 @@ $effect(() => {
             <ul class="flex flex-col" style="gap: 4px; list-style: none; margin: 0; padding: 0;">
               {#each group.comments as comment (comment.id)}
                 <li>
-                  <CommentCard
+                  <ThreadCard
                     {comment}
                     onedit={(id, text) => saveEdit(id, text)}
                     ondelete={(id) => deleteComment(id)}
+                    onreply={(id, text) => addReply(repoPath, id, text)}
+                    onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+                    onreplyedit={(id, text) => editReply(repoPath, id, text)}
+                    ondeletereply={(id) => deleteReply(repoPath, id)}
                     confirmDelete={true}
                     variant="panel"
                     onjump={onJump}
@@ -659,10 +818,39 @@ $effect(() => {
     opacity: 0.5;
   }
 
-  /* Phase 73-02 End-review button — danger-tinted sibling of .copy-button.
-     Idle: muted text on transparent (visually subordinate to Copy). Confirming:
-     danger-bg + danger-border + on-accent text per UI-SPEC § Interaction States.
-     All colors via existing :root tokens in src/app.css (no hex/rgb literals). */
+  /* Publish button. Deliberately NOT danger-tinted: ending a review deletes
+     nothing, so the icon and colour must not say otherwise. The confirming
+     state uses the accent, which reads as "commit to this" rather than
+     "destroy this". All colours via :root tokens in src/app.css. */
+  .publish-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .publish-button:hover:not(.confirming):not([disabled]),
+  .publish-button:focus-visible:not(.confirming):not([disabled]) {
+    color: var(--color-text);
+    background: var(--color-hover);
+  }
+  .publish-button[disabled] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .publish-button.confirming {
+    color: var(--fg-1);
+    background: var(--color-accent-bg);
+    border: 1px solid var(--color-accent);
+  }
+
+  /* Delete-review button — genuinely destructive, so it keeps the danger tint. */
   .end-button {
     display: inline-flex;
     align-items: center;
@@ -690,5 +878,12 @@ $effect(() => {
   .end-button.confirming:focus-visible {
     background: var(--color-danger-bg-strong);
     border: 1px solid var(--color-danger);
+  }
+
+  .review-row:hover {
+    background: var(--color-hover);
+  }
+  .review-row.active {
+    background: var(--color-selected);
   }
 </style>

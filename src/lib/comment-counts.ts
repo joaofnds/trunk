@@ -6,10 +6,10 @@
  * badges plus its notes, because every number comes from the same projection.
  *
  * No IPC, no Svelte runes, no mutation of inputs — deterministic over
- * hand-buildable `Comment` fixtures.
+ * hand-buildable `Thread` fixtures.
  */
 
-import type { Comment, ReviewSnapshots } from "./types.js";
+import type { ReviewSnapshots, Thread } from "./types.js";
 
 /**
  * The synthetic graph row for uncommitted code has oid "__wip__" — not a
@@ -26,7 +26,7 @@ export interface CommentCounts {
 
 /** The commit a comment is located through: a line comment's anchor, or a
  *  note's own commit_oid. "" for a note with no commit (never keyed into a map). */
-export function commitOidForComment(c: Comment): string {
+export function commitOidForComment(c: Thread): string {
 	if (c.anchor !== null) return c.anchor.commit_oid;
 	return c.commit_oid ?? "";
 }
@@ -37,7 +37,7 @@ export function fileCountKey(commitOid: string, filePath: string): string {
 }
 
 export function buildCommentCounts(
-	comments: Comment[],
+	comments: Thread[],
 	snapshots: ReviewSnapshots,
 ): CommentCounts {
 	const byCommit = new Map<string, number>();

@@ -1,5 +1,5 @@
 import { safeInvoke } from "./invoke.js";
-import type { Comment, Side } from "./types";
+import type { Side, Thread } from "./types";
 
 /**
  * Owns Review-mode center-pane state and the jump action (D-07).
@@ -18,7 +18,7 @@ import type { Comment, Side } from "./types";
 
 export type RightPaneMode = "panel" | "diff";
 
-export interface ReviewSessionState {
+export interface ReviewPaneState {
 	reviewActive: boolean;
 	rightPaneMode: RightPaneMode;
 }
@@ -36,19 +36,19 @@ export interface JumpDeps {
 }
 
 export interface ReviewSessionManager {
-	state: ReviewSessionState;
+	state: ReviewPaneState;
 	setReviewActive(active: boolean): void;
 	showPanel(): void;
 	showDiff(): void;
-	jumpTo(comment: Comment, deps: JumpDeps): Promise<void>;
+	jumpTo(comment: Thread, deps: JumpDeps): Promise<void>;
 	// Phase 72: calls `generate_review_doc` IPC and returns the markdown.
 	// State is untouched; the caller composes the result (e.g. writeText for
 	// clipboard). Rejection propagates verbatim.
-	generate(repoPath: string): Promise<string>;
+	generate(repoPath: string, reviewId: string): Promise<string>;
 }
 
 export function createReviewSession(): ReviewSessionManager {
-	const state: ReviewSessionState = $state({
+	const state: ReviewPaneState = $state({
 		reviewActive: false,
 		rightPaneMode: "panel" as RightPaneMode,
 	});
@@ -63,9 +63,10 @@ export function createReviewSession(): ReviewSessionManager {
 			// freshly-opened panel look inactive.
 			if (active) state.rightPaneMode = "panel";
 		},
-		async generate(repoPath: string): Promise<string> {
+		async generate(repoPath: string, reviewId: string): Promise<string> {
 			return await safeInvoke<string>("generate_review_doc", {
 				path: repoPath,
+				reviewId,
 			});
 		},
 		showPanel() {
@@ -74,7 +75,7 @@ export function createReviewSession(): ReviewSessionManager {
 		showDiff() {
 			state.rightPaneMode = "diff";
 		},
-		async jumpTo(comment: Comment, deps: JumpDeps) {
+		async jumpTo(comment: Thread, deps: JumpDeps) {
 			// Commit-level or orphaned comments have no line anchor and thus no
 			// jump target (D-08) — stay on the panel, navigate nowhere.
 			if (comment.anchor === null) return;

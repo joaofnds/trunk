@@ -140,12 +140,6 @@ describe("RepoView", () => {
 					});
 				case "list_stashes":
 					return Promise.resolve([]);
-				case "get_review_session_status":
-					return Promise.resolve({
-						state: "active",
-						file_exists: true,
-						canonical_path: "/test/repo",
-					});
 				case "get_review_snapshots":
 					return Promise.resolve({
 						working_tree_snapshot: null,
@@ -288,16 +282,15 @@ describe("RepoView", () => {
 		};
 	}
 
-	// The review session has one owner: the comments rune RepoView creates. The
-	// graph and the panel read it rather than fetching a second copy beside it,
-	// so the panel has to be on screen for this to mean anything.
+	// The review store has one owner: the rune RepoView creates. The graph and the
+	// panel read it rather than fetching a second copy beside it, so the panel has
+	// to be on screen for this to mean anything.
 	//
-	// Counting status reads alone cannot say that, because the panel legitimately
-	// asks the owner to refresh when it mounts. What a second owner DOES change is
-	// the balance: it re-fetches the session's status, comments and commits but not
-	// its snapshots, so the four reads stop moving together. One owner fetches them
-	// as a set, always.
-	it("fetches the whole session as a set, so nothing owns a second copy", async () => {
+	// Counting one read alone cannot say that, because the panel legitimately asks
+	// the owner to refresh when it mounts. What a second owner DOES change is the
+	// balance between the reads, so they stop moving together. One owner fetches
+	// them as a set, always.
+	it("fetches the whole store as a set, so nothing owns a second copy", async () => {
 		render(RepoView, {
 			props: { ...baseProps(createMockRemoteState()), reviewActive: true },
 		});
@@ -305,11 +298,15 @@ describe("RepoView", () => {
 
 		const timesCalled = (cmd: string) =>
 			mockInvoke.mock.calls.filter((c) => c[0] === cmd).length;
-		const refreshes = timesCalled("get_review_session_status");
+		const refreshes = timesCalled("list_reviews");
 
-		expect(refreshes).toBeGreaterThan(0);
+		// The absolute count is what distinguishes one owner from two: the five
+		// reads leave in one Promise.allSettled, so a second owner doubles them
+		// all and every equality below still holds.
+		expect(refreshes).toBe(2);
+		expect(timesCalled("get_active_review")).toBe(refreshes);
 		expect(timesCalled("get_review_snapshots")).toBe(refreshes);
-		expect(timesCalled("list_session_comments")).toBe(refreshes);
+		expect(timesCalled("list_threads")).toBe(refreshes);
 		expect(timesCalled("list_session_commits")).toBe(refreshes);
 	});
 

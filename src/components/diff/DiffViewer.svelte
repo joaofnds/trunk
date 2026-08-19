@@ -1,7 +1,6 @@
 <script lang="ts">
 import { isMarkdownPath } from "../../lib/markdown.js";
 import type {
-	Comment,
 	CommitDetail,
 	ContentMode,
 	DiffLine,
@@ -9,6 +8,7 @@ import type {
 	FileDiff,
 	LayoutMode,
 	RenderMode,
+	Thread,
 } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
 import HunkView from "./HunkView.svelte";
@@ -69,7 +69,7 @@ interface Props {
 	commitOid: string;
 	repoPath: string;
 	showInlineComments?: boolean;
-	viewComments?: Comment[];
+	viewComments?: Thread[];
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	refreshToken?: number;
