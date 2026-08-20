@@ -7,8 +7,11 @@ use super::syntax;
 use super::types::SyntaxToken;
 
 /// Starting byte budget for the process-global token cache. Picked without a
-/// real-workload measurement; task 2 records what one real entry costs next to
-/// this constant without changing it.
+/// real-workload measurement. Measured (throwaway probe, not committed): a
+/// 2,801-line synthetic TypeScript file (the bench fixture's shape) costs
+/// ~78.9 bytes/line, ~221 KB for the whole entry — so this budget holds on
+/// the order of 800 files that size. Widening it against a real workload is a
+/// follow-up, not part of this card.
 pub const DEFAULT_TOKEN_CACHE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
 /// Syntax tokens for every side of every diff, keyed by content OID and
@@ -139,5 +142,53 @@ fn evict(inner: &mut TokenCacheInner) {
         if let Some((entry, _)) = inner.entries.remove(&coldest) {
             inner.total_bytes -= entry.byte_size;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_oid(byte: u8) -> Oid {
+        Oid::from_bytes(&[byte; 20]).unwrap()
+    }
+
+    #[test]
+    fn eviction_never_exceeds_the_budget_and_drops_the_coldest_entry_first() {
+        let content = "let x = 1;\n";
+
+        // One entry's real byte size, measured with no budget pressure.
+        let probe = SyntaxTokenCache::new(usize::MAX);
+        probe.tokens_for(test_oid(0), "rs", content, 1);
+        let entry_size = probe.0.lock().unwrap().total_bytes;
+
+        // Room for exactly two entries, never three.
+        let cache = SyntaxTokenCache::new(entry_size * 2);
+
+        cache.tokens_for(test_oid(1), "rs", content, 1);
+        assert!(cache.0.lock().unwrap().total_bytes <= entry_size * 2);
+        cache.tokens_for(test_oid(2), "rs", content, 1);
+        assert!(cache.0.lock().unwrap().total_bytes <= entry_size * 2);
+        cache.tokens_for(test_oid(3), "rs", content, 1);
+        assert!(
+            cache.0.lock().unwrap().total_bytes <= entry_size * 2,
+            "the cache must never exceed its byte budget"
+        );
+
+        let parses_before = cache.parse_count();
+        cache.tokens_for(test_oid(1), "rs", content, 1);
+        assert_eq!(
+            cache.parse_count(),
+            parses_before + 1,
+            "the coldest entry (oid 1) must have been evicted first, forcing a re-parse"
+        );
+
+        let parses_before = cache.parse_count();
+        cache.tokens_for(test_oid(3), "rs", content, 1);
+        assert_eq!(
+            cache.parse_count(),
+            parses_before,
+            "a recently used entry (oid 3) must still be cached"
+        );
     }
 }
