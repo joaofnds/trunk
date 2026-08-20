@@ -1118,3 +1118,74 @@ fn touching_mtime_without_changing_bytes_still_hits_the_cache() {
         "an mtime-only change must still hit the cache, since the content OID is unchanged"
     );
 }
+
+// -- warm_diff tests --
+
+#[test]
+fn diff_commit_file_and_a_cold_baseline_agree_and_the_second_request_hits_the_cache() {
+    let ctx = TestContext::builder()
+        .with_file("main.rs", "fn main() {\n    let x = 1;\n}\n")
+        .with_commit("Initial commit")
+        .with_file("main.rs", "fn main() {\n    let x = 2;\n}\n")
+        .with_commit("Second commit")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    // The warm path: the exact function `warm_diff` calls, its result kept here
+    // only to compare against a cold baseline.
+    let warmed = ctx
+        .diff_commit_file(&head_oid, "main.rs")
+        .expect("warm diff failed");
+    let parses_after_warm = ctx.token_cache().parse_count();
+
+    let cold_cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+        trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+    );
+    let cold_baseline = trunk_lib::commands::diff::diff_commit_file_inner(
+        ctx.path(),
+        &head_oid,
+        "main.rs",
+        ctx.state_map(),
+        &DiffRequestOptions::default(),
+        &cold_cache,
+    )
+    .expect("cold diff failed");
+    assert_eq!(
+        warmed, cold_baseline,
+        "warming must produce the same output a cold parse would"
+    );
+
+    let second = ctx
+        .diff_commit_file(&head_oid, "main.rs")
+        .expect("second diff failed");
+    assert_eq!(warmed, second);
+    assert_eq!(
+        ctx.token_cache().parse_count(),
+        parses_after_warm,
+        "a request for a file warm_diff already populated must hit the cache"
+    );
+}
+
+#[test]
+fn diff_commit_file_error_carries_the_code_and_message_shape_warm_diff_relies_on() {
+    let ctx = TestContext::new_empty();
+    let bogus_oid = "0".repeat(40);
+
+    let err = ctx
+        .diff_commit_file(&bogus_oid, "missing.rs")
+        .expect_err("expected an error for a nonexistent oid");
+
+    let json = err.to_json();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("error must parse as JSON");
+    assert!(
+        parsed.get("code").and_then(|v| v.as_str()).is_some(),
+        "error JSON must carry a string code, got {json}"
+    );
+    assert!(
+        parsed.get("message").and_then(|v| v.as_str()).is_some(),
+        "error JSON must carry a string message, got {json}"
+    );
+}

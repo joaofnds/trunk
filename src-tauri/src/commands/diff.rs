@@ -869,6 +869,30 @@ pub async fn diff_commit_file(
     .map_err(|e| e.to_json())
 }
 
+/// Runs the real commit-file diff path and drops its result before it ever
+/// crosses the IPC boundary, so the cache is the only externally observable
+/// effect. Calls the exact function `diff_commit_file` calls — no second
+/// implementation to drift from it.
+#[tauri::command]
+pub async fn warm_diff(
+    path: String,
+    oid: String,
+    file_path: String,
+    options: DiffRequestOptions,
+    state: State<'_, RepoState>,
+    cache: State<'_, SyntaxTokenCache>,
+) -> Result<(), String> {
+    let state_map = state.0.lock().unwrap().clone();
+    let cache = cache.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options, &cache)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())
+    .map(|_| ())
+}
+
 #[tauri::command]
 pub async fn get_commit_detail(
     path: String,

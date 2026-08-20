@@ -80,6 +80,25 @@ impl TestContext {
         diff::get_commit_detail_inner(self.path(), oid, self.state_map())
     }
 
+    pub fn list_commit_files(&self, oid: &str) -> Result<Vec<FileDiff>, TrunkError> {
+        diff::list_commit_files_inner(self.path(), oid, self.state_map())
+    }
+
+    pub fn diff_commit_file(
+        &self,
+        oid: &str,
+        file_path: &str,
+    ) -> Result<Vec<FileDiff>, TrunkError> {
+        diff::diff_commit_file_inner(
+            self.path(),
+            oid,
+            file_path,
+            self.state_map(),
+            &DiffRequestOptions::default(),
+            self.token_cache(),
+        )
+    }
+
     /// Diff with enrichment (syntax + word diff). `diff_unstaged_inner` already
     /// enriches its output, so this is an alias — kept for its ten call sites.
     pub fn diff_unstaged_enriched(&self, file_path: &str) -> Result<Vec<FileDiff>, TrunkError> {
