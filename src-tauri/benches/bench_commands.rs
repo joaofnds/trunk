@@ -164,11 +164,15 @@ fn bench_diff_unstaged(c: &mut Criterion) {
 
     c.bench_function("diff_unstaged_inner", |b| {
         b.iter(|| {
+            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+            );
             trunk_lib::commands::diff::diff_unstaged_inner(
                 &path,
                 "README.md",
                 &state_map,
                 &trunk_lib::git::types::DiffRequestOptions::default(),
+                &cache,
             )
             .unwrap();
         });
@@ -350,11 +354,15 @@ fn bench_diff_code_file(c: &mut Criterion) {
 
     c.bench_function("diff_ts_full_pipeline", |b| {
         b.iter(|| {
+            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+            );
             trunk_lib::commands::diff::diff_unstaged_inner(
                 &path,
                 "diff-utils.ts",
                 &state_map,
                 &trunk_lib::git::types::DiffRequestOptions::default(),
+                &cache,
             )
             .unwrap()
         });
@@ -381,7 +389,10 @@ fn bench_enrich_new(c: &mut Criterion) {
     c.bench_function("enrich_ts_new_perfile", |b| {
         b.iter(|| {
             let mut diffs = raw.clone();
-            trunk_lib::commands::diff::enrich_file_diffs(&mut diffs, &sides);
+            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+            );
+            trunk_lib::commands::diff::enrich_file_diffs(&mut diffs, &sides, &cache);
             diffs
         });
     });
@@ -507,11 +518,15 @@ fn bench_diff_large_file(c: &mut Criterion) {
 
         group.bench_function(id, |b| {
             b.iter(|| {
+                let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+                    trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+                );
                 trunk_lib::commands::diff::diff_unstaged_inner(
                     &path,
                     "large.ts",
                     &state_map,
                     &trunk_lib::git::types::DiffRequestOptions::default(),
+                    &cache,
                 )
                 .unwrap()
             });

@@ -2,6 +2,7 @@
 
 use crate::error::TrunkError;
 use crate::git::syntax;
+use crate::git::token_cache::SyntaxTokenCache;
 use crate::git::types::{
     CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
     SyntaxToken, WordSpan,
@@ -239,6 +240,7 @@ fn resolve_side_content(
             .ok()
             .map(|b| b.content().to_vec())
     };
+    let old_oid = old.as_ref().map(|_| delta.old_oid);
 
     let new = match new_side {
         NewSideSource::Workdir => delta
@@ -255,8 +257,14 @@ fn resolve_side_content(
             }
         }
     };
+    let new_oid = new.as_ref().map(|_| delta.new_oid);
 
-    SideContent { old, new }
+    SideContent {
+        old,
+        old_oid,
+        new,
+        new_oid,
+    }
 }
 
 /// Collect diff lines from git2 and enrich with syntax highlighting + word-level diff.
@@ -265,6 +273,7 @@ fn walk_diff(
     diff: git2::Diff<'_>,
     repo: &git2::Repository,
     new_side: NewSideSource,
+    cache: &SyntaxTokenCache,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     use std::cell::RefCell;
 
@@ -349,7 +358,7 @@ fn walk_diff(
     let mut file_diffs = file_diffs.into_inner();
     let sides = resolve_sides(repo, &file_diffs, &delta_sides.into_inner(), new_side);
 
-    enrich_file_diffs(&mut file_diffs, &sides);
+    enrich_file_diffs(&mut file_diffs, &sides, cache);
     Ok(file_diffs)
 }
 
@@ -360,7 +369,9 @@ fn walk_diff(
 #[derive(Debug, Default, Clone)]
 pub struct SideContent {
     pub old: Option<Vec<u8>>,
+    pub old_oid: Option<git2::Oid>,
     pub new: Option<Vec<u8>>,
+    pub new_oid: Option<git2::Oid>,
 }
 
 impl SideContent {
@@ -431,6 +442,8 @@ fn collect_linenos(
 fn build_side_lines<'a>(
     text: &'a str,
     ext: &str,
+    oid: git2::Oid,
+    cache: &SyntaxTokenCache,
     needed: &std::collections::BTreeSet<u32>,
 ) -> HashMap<u32, SideLine<'a>> {
     let mut result = HashMap::new();
@@ -440,16 +453,11 @@ fn build_side_lines<'a>(
     if max_line > MAX_SYNTAX_HIGHLIGHT_LINE {
         return result;
     }
-    let Some(mut hl) = syntax::create_highlighter(ext) else {
-        return result;
-    };
 
-    for (idx, raw_line) in text.split('\n').enumerate() {
+    let tokens_by_line = cache.tokens_for(oid, ext, text, max_line);
+
+    for (idx, (raw_line, tokens)) in text.split('\n').zip(tokens_by_line).enumerate() {
         let lineno = (idx + 1) as u32;
-        if lineno > max_line {
-            break;
-        }
-        let tokens = syntax::highlight_line_with(&mut hl, raw_line);
         if needed.contains(&lineno) {
             result.insert(
                 lineno,
@@ -487,7 +495,11 @@ fn pick_side_line<'a, 'b>(
 /// Syntax tokens come from each side's real file content (`sides`, parallel to
 /// `file_diffs`), parsed by its own highlighter — never from the diff line
 /// stream, which is not either file version's real content.
-pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
+pub fn enrich_file_diffs(
+    file_diffs: &mut [FileDiff],
+    sides: &[SideContent],
+    cache: &SyntaxTokenCache,
+) {
     for (fd, side) in file_diffs.iter_mut().zip(sides.iter()) {
         let ext = syntax::extension_from_path(&fd.path);
 
@@ -504,10 +516,12 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
         let new_text = side.new.as_deref().map(String::from_utf8_lossy);
         let old_lines = old_text
             .as_deref()
-            .map(|text| build_side_lines(text, ext, &old_needed));
+            .zip(side.old_oid)
+            .map(|(text, oid)| build_side_lines(text, ext, oid, cache, &old_needed));
         let new_lines = new_text
             .as_deref()
-            .map(|text| build_side_lines(text, ext, &new_needed));
+            .zip(side.new_oid)
+            .map(|(text, oid)| build_side_lines(text, ext, oid, cache, &new_needed));
 
         for hunk in &mut fd.hunks {
             let word_spans_per_line = compute_word_spans_for_hunk(&hunk.lines);
@@ -627,6 +641,7 @@ pub fn diff_unstaged_inner(
     file_path: &str,
     state_map: &HashMap<String, PathBuf>,
     options: &DiffRequestOptions,
+    cache: &SyntaxTokenCache,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = git2::DiffOptions::new();
@@ -637,7 +652,7 @@ pub fn diff_unstaged_inner(
     opts.show_untracked_content(true);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    walk_diff(diff, &repo, NewSideSource::Workdir)
+    walk_diff(diff, &repo, NewSideSource::Workdir, cache)
 }
 
 pub fn diff_staged_inner(
@@ -645,6 +660,7 @@ pub fn diff_staged_inner(
     file_path: &str,
     state_map: &HashMap<String, PathBuf>,
     options: &DiffRequestOptions,
+    cache: &SyntaxTokenCache,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = git2::DiffOptions::new();
@@ -657,7 +673,7 @@ pub fn diff_staged_inner(
         let head_tree = repo.head()?.peel_to_tree()?;
         repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut opts))?
     };
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    walk_diff(diff, &repo, NewSideSource::Odb, cache)
 }
 
 pub fn diff_commit_inner(
@@ -665,6 +681,7 @@ pub fn diff_commit_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
     options: &DiffRequestOptions,
+    cache: &SyntaxTokenCache,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let oid =
@@ -679,7 +696,7 @@ pub fn diff_commit_inner(
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    walk_diff(diff, &repo, NewSideSource::Odb, cache)
 }
 
 /// Lightweight commit file listing — returns only metadata (path, status, is_binary),
@@ -738,6 +755,7 @@ pub fn diff_commit_file_inner(
     file_path: &str,
     state_map: &HashMap<String, PathBuf>,
     options: &DiffRequestOptions,
+    cache: &SyntaxTokenCache,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let oid =
@@ -754,7 +772,7 @@ pub fn diff_commit_file_inner(
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    walk_diff(diff, &repo, NewSideSource::Odb, cache)
 }
 
 pub fn get_commit_detail_inner(
@@ -789,10 +807,12 @@ pub async fn diff_unstaged(
     file_path: String,
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
+    cache: State<'_, SyntaxTokenCache>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.0.lock().unwrap().clone();
+    let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        diff_unstaged_inner(&path, &file_path, &state_map, &options)
+        diff_unstaged_inner(&path, &file_path, &state_map, &options, &cache)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -805,10 +825,12 @@ pub async fn diff_staged(
     file_path: String,
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
+    cache: State<'_, SyntaxTokenCache>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.0.lock().unwrap().clone();
+    let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        diff_staged_inner(&path, &file_path, &state_map, &options)
+        diff_staged_inner(&path, &file_path, &state_map, &options, &cache)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -835,10 +857,12 @@ pub async fn diff_commit_file(
     file_path: String,
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
+    cache: State<'_, SyntaxTokenCache>,
 ) -> Result<Vec<FileDiff>, String> {
     let state_map = state.0.lock().unwrap().clone();
+    let cache = cache.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options)
+        diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options, &cache)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -907,6 +931,14 @@ mod word_span_tests {
 mod enrich_tests {
     use super::*;
 
+    fn fixture_cache() -> SyntaxTokenCache {
+        SyntaxTokenCache::new(1024 * 1024)
+    }
+
+    fn test_oid(byte: u8) -> git2::Oid {
+        git2::Oid::from_bytes(&[byte; 20]).unwrap()
+    }
+
     // A changed markdown line mixing **bold** and `code` is exactly the shape
     // that made syntect's Markdown grammar backtrack. Enrichment must now leave
     // the syntax class empty (grammar never built) while keeping the word-diff
@@ -947,10 +979,12 @@ mod enrich_tests {
         // the Markdown grammar refusal, not from missing/unavailable content.
         let sides = vec![SideContent {
             old: Some(old_content.as_bytes().to_vec()),
+            old_oid: Some(test_oid(1)),
             new: Some(new_content.as_bytes().to_vec()),
+            new_oid: Some(test_oid(2)),
         }];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         let added = &file_diffs[0].hunks[0].lines[1];
         assert!(
@@ -1008,10 +1042,12 @@ mod enrich_tests {
         }];
         let sides = vec![SideContent {
             old: Some(new_content.as_bytes().to_vec()),
+            old_oid: Some(test_oid(3)),
             new: Some(new_content.as_bytes().to_vec()),
+            new_oid: Some(test_oid(3)),
         }];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         let context_line = &file_diffs[0].hunks[0].lines[0];
         assert!(
@@ -1072,10 +1108,12 @@ mod enrich_tests {
         }];
         let sides = vec![SideContent {
             old: Some(old_content.as_bytes().to_vec()),
+            old_oid: Some(test_oid(4)),
             new: Some(new_content.as_bytes().to_vec()),
+            new_oid: Some(test_oid(5)),
         }];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         let add_line = &file_diffs[0].hunks[0].lines[1];
         assert!(
@@ -1146,10 +1184,12 @@ mod enrich_tests {
         }];
         let sides = vec![SideContent {
             old: Some(content.as_bytes().to_vec()),
+            old_oid: Some(test_oid(6)),
             new: Some(content.as_bytes().to_vec()),
+            new_oid: Some(test_oid(6)),
         }];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         let second_hunk_line = &file_diffs[0].hunks[1].lines[0];
         assert!(
@@ -1206,7 +1246,7 @@ mod enrich_tests {
         }];
         let sides = vec![SideContent::none()];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         for hunk in &file_diffs[0].hunks {
             for line in &hunk.lines {
@@ -1250,10 +1290,12 @@ mod enrich_tests {
         }];
         let sides = vec![SideContent {
             old: None,
+            old_oid: None,
             new: Some(b"let x = 1;\n".to_vec()),
+            new_oid: Some(test_oid(7)),
         }];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         let add_line = &file_diffs[0].hunks[0].lines[0];
         assert!(
@@ -1301,10 +1343,12 @@ mod enrich_tests {
         }];
         let sides = vec![SideContent {
             old: None,
+            old_oid: None,
             new: Some(new_content.as_bytes().to_vec()),
+            new_oid: Some(test_oid(8)),
         }];
 
-        enrich_file_diffs(&mut file_diffs, &sides);
+        enrich_file_diffs(&mut file_diffs, &sides, &fixture_cache());
 
         let aligned_line = &file_diffs[0].hunks[0].lines[0];
         assert!(

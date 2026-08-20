@@ -10,6 +10,7 @@ pub mod state;
 mod storage;
 pub mod watcher;
 
+use git::token_cache::{DEFAULT_TOKEN_CACHE_BUDGET_BYTES, SyntaxTokenCache};
 use state::{CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp};
 use tauri::Emitter;
 use tauri::Manager;
@@ -193,6 +194,7 @@ pub fn run() {
         .manage(ReviewStoreState(Default::default()))
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
+        .manage(SyntaxTokenCache::new(DEFAULT_TOKEN_CACHE_BUDGET_BYTES))
         .invoke_handler(tauri::generate_handler![
             set_traffic_light_zoom,
             commands::prefs::prefs_get,

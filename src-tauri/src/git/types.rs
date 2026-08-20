@@ -158,7 +158,7 @@ pub struct WorkingTreeStatus {
     pub conflicted: Vec<FileStatus>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum DiffOrigin {
     Context,
     Add,
@@ -172,14 +172,14 @@ pub struct WordSpan {
     pub emphasized: bool,
 }
 
-#[derive(Debug, Serialize, Clone, Default)]
+#[derive(Debug, Serialize, Clone, Default, PartialEq)]
 pub struct SyntaxToken {
     pub start: u32,
     pub end: u32,
     pub scope: &'static str,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
 pub struct MergedSpan {
     pub start: u32,
     pub end: u32,
@@ -212,7 +212,7 @@ impl Default for DiffRequestOptions {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct DiffLine {
     pub origin: DiffOrigin,
     pub content: String,
@@ -221,7 +221,7 @@ pub struct DiffLine {
     pub spans: Vec<MergedSpan>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct DiffHunk {
     pub header: String,
     pub old_start: u32,
@@ -231,7 +231,7 @@ pub struct DiffHunk {
     pub lines: Vec<DiffLine>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum DiffStatus {
     Added,
     Deleted,
@@ -242,7 +242,7 @@ pub enum DiffStatus {
     Unknown,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct FileDiff {
     pub path: String,
     pub status: DiffStatus,

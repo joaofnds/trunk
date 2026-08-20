@@ -1042,3 +1042,79 @@ fn unstaged_diff_highlights_an_untracked_rust_file_with_no_old_side() {
         let_line.spans
     );
 }
+
+// -- Token cache tests --
+
+#[test]
+fn a_second_view_of_a_modified_tracked_file_parses_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("main.rs", "fn main() {\n    let x = 1;\n}\n")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(
+        ctx.repo_path().join("main.rs"),
+        "fn main() {\n    let x = 2;\n}\n",
+    )
+    .unwrap();
+
+    let first = ctx.diff_unstaged("main.rs").expect("first diff failed");
+    let parses_after_first = ctx.token_cache().parse_count();
+    let second = ctx.diff_unstaged("main.rs").expect("second diff failed");
+
+    assert_eq!(first, second, "cache-hit output must equal the cold parse");
+    assert_eq!(
+        ctx.token_cache().parse_count(),
+        parses_after_first,
+        "a second view of an already-seen diff must do no syntax parsing"
+    );
+}
+
+#[test]
+fn a_second_view_of_an_untracked_file_parses_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(
+        ctx.repo_path().join("new_mod.rs"),
+        "fn helper() -> i32 {\n    let x = 1;\n    x\n}\n",
+    )
+    .unwrap();
+
+    let first = ctx.diff_unstaged("new_mod.rs").expect("first diff failed");
+    let parses_after_first = ctx.token_cache().parse_count();
+    let second = ctx.diff_unstaged("new_mod.rs").expect("second diff failed");
+
+    assert_eq!(first, second, "cache-hit output must equal the cold parse");
+    assert_eq!(
+        ctx.token_cache().parse_count(),
+        parses_after_first,
+        "a second view of an already-seen diff must do no syntax parsing"
+    );
+}
+
+#[test]
+fn touching_mtime_without_changing_bytes_still_hits_the_cache() {
+    let ctx = TestContext::builder()
+        .with_file("main.rs", "fn main() {\n    let x = 1;\n}\n")
+        .with_commit("Initial commit")
+        .build();
+
+    let path = ctx.repo_path().join("main.rs");
+    std::fs::write(&path, "fn main() {\n    let x = 2;\n}\n").unwrap();
+    ctx.diff_unstaged("main.rs").expect("first diff failed");
+    let parses_after_first = ctx.token_cache().parse_count();
+
+    // Rewrite the exact same bytes: the mtime changes, the content OID does not.
+    let content = std::fs::read(&path).unwrap();
+    std::fs::write(&path, &content).unwrap();
+
+    ctx.diff_unstaged("main.rs").expect("second diff failed");
+    assert_eq!(
+        ctx.token_cache().parse_count(),
+        parses_after_first,
+        "an mtime-only change must still hit the cache, since the content OID is unchanged"
+    );
+}

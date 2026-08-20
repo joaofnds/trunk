@@ -10,6 +10,7 @@ impl TestContext {
             file_path,
             self.state_map(),
             &DiffRequestOptions::default(),
+            self.token_cache(),
         )
     }
 
@@ -18,7 +19,13 @@ impl TestContext {
         file_path: &str,
         options: &DiffRequestOptions,
     ) -> Result<Vec<FileDiff>, TrunkError> {
-        diff::diff_unstaged_inner(self.path(), file_path, self.state_map(), options)
+        diff::diff_unstaged_inner(
+            self.path(),
+            file_path,
+            self.state_map(),
+            options,
+            self.token_cache(),
+        )
     }
 
     pub fn diff_staged(&self, file_path: &str) -> Result<Vec<FileDiff>, TrunkError> {
@@ -27,6 +34,7 @@ impl TestContext {
             file_path,
             self.state_map(),
             &DiffRequestOptions::default(),
+            self.token_cache(),
         )
     }
 
@@ -35,7 +43,13 @@ impl TestContext {
         file_path: &str,
         options: &DiffRequestOptions,
     ) -> Result<Vec<FileDiff>, TrunkError> {
-        diff::diff_staged_inner(self.path(), file_path, self.state_map(), options)
+        diff::diff_staged_inner(
+            self.path(),
+            file_path,
+            self.state_map(),
+            options,
+            self.token_cache(),
+        )
     }
 
     pub fn diff_commit(&self, oid: &str) -> Result<Vec<FileDiff>, TrunkError> {
@@ -44,6 +58,7 @@ impl TestContext {
             oid,
             self.state_map(),
             &DiffRequestOptions::default(),
+            self.token_cache(),
         )
     }
 
@@ -52,7 +67,13 @@ impl TestContext {
         oid: &str,
         options: &DiffRequestOptions,
     ) -> Result<Vec<FileDiff>, TrunkError> {
-        diff::diff_commit_inner(self.path(), oid, self.state_map(), options)
+        diff::diff_commit_inner(
+            self.path(),
+            oid,
+            self.state_map(),
+            options,
+            self.token_cache(),
+        )
     }
 
     pub fn get_commit_detail(&self, oid: &str) -> Result<CommitDetail, TrunkError> {

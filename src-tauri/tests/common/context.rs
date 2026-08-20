@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use trunk_lib::git::token_cache::{DEFAULT_TOKEN_CACHE_BUDGET_BYTES, SyntaxTokenCache};
 use trunk_lib::git::types::GraphResult;
 
 pub struct TestContext {
@@ -8,6 +9,7 @@ pub struct TestContext {
     pub(crate) path: String,
     pub(crate) state_map: HashMap<String, PathBuf>,
     pub(crate) cache_map: HashMap<String, GraphResult>,
+    pub(crate) token_cache: SyntaxTokenCache,
 }
 
 impl TestContext {
@@ -38,6 +40,7 @@ impl TestContext {
             path,
             state_map,
             cache_map: HashMap::new(),
+            token_cache: SyntaxTokenCache::new(DEFAULT_TOKEN_CACHE_BUDGET_BYTES),
         }
     }
 
@@ -72,6 +75,13 @@ impl TestContext {
         &mut self.cache_map
     }
 
+    /// The per-context syntax token cache, fresh per `TestContext`, so
+    /// `parse_count()` assertions never race another test's parses
+    /// (`cargo test` runs test functions in parallel by default).
+    pub fn token_cache(&self) -> &SyntaxTokenCache {
+        &self.token_cache
+    }
+
     /// Internal constructor used by the builder
     pub(crate) fn from_parts(
         dir: tempfile::TempDir,
@@ -85,6 +95,7 @@ impl TestContext {
             path,
             state_map,
             cache_map: HashMap::new(),
+            token_cache: SyntaxTokenCache::new(DEFAULT_TOKEN_CACHE_BUDGET_BYTES),
         }
     }
 }
