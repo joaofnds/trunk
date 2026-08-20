@@ -412,12 +412,122 @@ fn bench_draft_write(c: &mut Criterion) {
     });
 }
 
+/// Blocks of uniform TypeScript, sized so the file lands near 3,000 lines --
+/// comfortably under `MAX_SYNTAX_HIGHLIGHT_LINE`, so the fixture measures
+/// highlighting rather than the cap that skips it.
+const LARGE_FILE_BLOCKS: usize = 375;
+const EARLY_CHANGED_BLOCK: usize = 1;
+const LATE_CHANGED_BLOCK: usize = LARGE_FILE_BLOCKS - 2;
+
+/// The large file's two versions, differing only in one line of `changed_block`.
+/// `None` yields the committed version.
+fn large_typescript_file(changed_block: Option<usize>) -> String {
+    let mut lines = vec![
+        "import type { FileDiff } from \"../lib/types\";".to_string(),
+        String::new(),
+    ];
+
+    for block in 0..LARGE_FILE_BLOCKS {
+        let total = if changed_block == Some(block) {
+            format!("    let total = {block} * 2;")
+        } else {
+            format!("    let total = {block};")
+        };
+
+        lines.push(format!(
+            "export function computeStat{block}(diffs: FileDiff[]): number {{"
+        ));
+        lines.push(total);
+        lines.push("    for (const fd of diffs) {".to_string());
+        lines.push("        total += fd.hunks.length;".to_string());
+        lines.push("    }".to_string());
+        lines.push("    return total;".to_string());
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
+/// A repo whose only unstaged change is one line of a ~3,000-line file. Each
+/// side's highlighter walks every line from 1 up to that one, so how deep the
+/// change sits is what the fixture varies -- the diff itself stays the same size.
+fn make_repo_with_large_file_change(changed_block: usize) -> BenchRepo {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
+
+    std::fs::write(dir.path().join("large.ts"), large_typescript_file(None)).unwrap();
+
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("large.ts")).unwrap();
+    index.write().unwrap();
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    repo.commit(
+        Some("refs/heads/main"),
+        &sig,
+        &sig,
+        "Initial commit",
+        &tree,
+        &[],
+    )
+    .unwrap();
+
+    std::fs::write(
+        dir.path().join("large.ts"),
+        large_typescript_file(Some(changed_block)),
+    )
+    .unwrap();
+
+    BenchRepo {
+        path: dir.path().to_path_buf(),
+        _dir: dir,
+    }
+}
+
+static REPO_LARGE_EARLY: OnceLock<BenchRepo> = OnceLock::new();
+static REPO_LARGE_LATE: OnceLock<BenchRepo> = OnceLock::new();
+
+/// The full pipeline over a one-line change in a large file. Pairs an early
+/// change against a late one: the gap between them is what the per-side design
+/// charges for the distance from the top of the file.
+fn bench_diff_large_file(c: &mut Criterion) {
+    let early =
+        REPO_LARGE_EARLY.get_or_init(|| make_repo_with_large_file_change(EARLY_CHANGED_BLOCK));
+    let late = REPO_LARGE_LATE.get_or_init(|| make_repo_with_large_file_change(LATE_CHANGED_BLOCK));
+
+    let mut group = c.benchmark_group("diff_ts_large_file");
+    group.sample_size(20);
+
+    for (id, bench_repo) in [("early_change", early), ("late_change", late)] {
+        let path = bench_repo.path.display().to_string();
+        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
+        state_map.insert(path.clone(), bench_repo.path.clone());
+
+        group.bench_function(id, |b| {
+            b.iter(|| {
+                trunk_lib::commands::diff::diff_unstaged_inner(
+                    &path,
+                    "large.ts",
+                    &state_map,
+                    &trunk_lib::git::types::DiffRequestOptions::default(),
+                )
+                .unwrap()
+            });
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_draft_write,
     bench_list_refs,
     bench_diff_unstaged,
     bench_diff_code_file,
+    bench_diff_large_file,
     bench_enrich_new,
     bench_get_status,
     bench_stage_hunk
