@@ -261,6 +261,10 @@ let selectedCommitFile = $state<string | null>(null);
 // it's still the latest before clearing state.
 let commitSelectGeneration = 0;
 
+// Starting value, not tuned against a real workload -- widening it is a
+// follow-up once warming has run in practice, not part of this change.
+const PREFETCH_BUDGET_BYTES = 2_000_000;
+
 // The WIP-inclusive display list + pagination state CommitGraph reports via
 // oncommitschange, cached here so commitNav below can be recomputed on every
 // selectedCommitOid change without requiring CommitGraph to be mounted — it
@@ -553,6 +557,34 @@ async function handleFileSelect(
 	}
 }
 
+// Warms the syntax-token cache for a commit's files, one at a time, stopping
+// the moment the selection moves on (gen mismatch) or the source-byte budget
+// runs out. Calls the same warm_diff command for every file, awaiting each
+// before firing the next, so at most one parse ever runs concurrently.
+async function warmCommitFiles(oid: string, files: FileDiff[], gen: number) {
+	if (!repoPath) return;
+	const options = buildDiffOptions();
+	let bytesSoFar = 0;
+	for (const file of files) {
+		if (gen !== commitSelectGeneration) return;
+		if (file.is_binary) continue;
+		const size = file.size_bytes ?? 0;
+		if (bytesSoFar + size > PREFETCH_BUDGET_BYTES) return;
+		bytesSoFar += size;
+		try {
+			await safeInvoke<void>("warm_diff", {
+				path: repoPath,
+				oid,
+				filePath: file.path,
+				options,
+			});
+		} catch {
+			// Best-effort: a failed warm just leaves this file's cache cold
+			// until it's actually opened.
+		}
+	}
+}
+
 // Idempotent selection — never clears, never toggles. Loads commit detail
 // for `oid` (or no-ops if already selected with detail loaded). This is the
 // seam the review-panel jump binds to (CR-03): the jump gesture must never
@@ -590,6 +622,10 @@ async function selectCommitIdempotent(oid: string) {
 		if (gen !== commitSelectGeneration) return;
 		commitFileDiffs = files;
 		commitDetail = detail;
+
+		// Fired, not awaited: warming uses idle time while the user looks at the
+		// file list, so it must never block commit selection itself.
+		warmCommitFiles(oid, files, gen);
 
 		// Diff-in-view navigation: reconcile the remembered path against the new
 		// commit's file list. Lives inline here, never in an $effect — an effect
