@@ -194,8 +194,13 @@ pub fn diff_markdown_blocks(
         line_diff_ops(&before_text, &after_text)
     };
     let (before_lines, after_lines) = dirty_lines(&ops);
-    let (before_dirty, before_dropped) = dirty_blocks(&before, &before_lines, &before_text);
-    let (after_dirty, after_dropped) = dirty_blocks(&after, &after_lines, &after_text);
+    let (mut before_dirty, before_dropped) = dirty_blocks(&before, &before_lines, &before_text);
+    let (mut after_dirty, after_dropped) = dirty_blocks(&after, &after_lines, &after_text);
+    propagate_dirty(
+        &mut before_dirty,
+        &mut after_dirty,
+        &counterpart_pairs(&ops, &before, &after),
+    );
 
     let rows = emit_rows(
         &before,
@@ -270,6 +275,78 @@ fn dirty_lines(ops: &[similar::DiffOp]) -> (HashSet<u32>, HashSet<u32>) {
     (before_lines, after_lines)
 }
 
+/// The block whose sourcepos span contains `line`, if any. Blocks are disjoint
+/// and in document order, so the only candidate is the last one starting at or
+/// before it — a binary search, never a scan (a root-commit view asks this of
+/// every line in the file).
+fn block_at(blocks: &[Block], line: u32) -> Option<usize> {
+    let next = blocks.partition_point(|b| b.start_line <= line);
+    (next > 0 && line <= blocks[next - 1].end_line).then(|| next - 1)
+}
+
+/// Which before block each after block is the same block as, read off the line
+/// diff's own `Equal` ops: two blocks are counterparts when some line pair the
+/// diff called equal falls inside both. Not a 1:1 map — a shifted boundary pairs
+/// one block against two on the other side, which is the merge/split case the
+/// walk already demotes. A block the diff never called equal to anything (a
+/// wholly new or wholly deleted block) appears in no pair, which is what keeps
+/// `emit_rows`' one-sided advance correct for it.
+fn counterpart_pairs(
+    ops: &[similar::DiffOp],
+    before: &[Block],
+    after: &[Block],
+) -> Vec<(usize, usize)> {
+    let mut pairs = Vec::new();
+    for op in ops {
+        let similar::DiffOp::Equal {
+            old_index,
+            new_index,
+            len,
+        } = *op
+        else {
+            continue;
+        };
+
+        for k in 0..len {
+            let before_line = (old_index + 1 + k) as u32;
+            let after_line = (new_index + 1 + k) as u32;
+            if let (Some(bi), Some(ai)) =
+                (block_at(before, before_line), block_at(after, after_line))
+            {
+                pairs.push((bi, ai));
+            }
+        }
+    }
+
+    pairs.sort_unstable();
+    pairs.dedup();
+    pairs
+}
+
+/// Dirty both ends of every counterpart pair. `emit_rows` walks the two sides
+/// with one cursor each and advances a side alone when its block is dirty, so an
+/// edit dirty on one side only leaves the cursors a block apart for the rest of
+/// the document and no later pair can anchor. Iterating to a fixpoint matters
+/// because a boundary shift chains pairs together; the cap turns a pair list
+/// that somehow never settles into a bounded no-op rather than a hang. Flags are
+/// only ever set, so `dirty_blocks`' orphan marking survives untouched.
+fn propagate_dirty(before_dirty: &mut [bool], after_dirty: &mut [bool], pairs: &[(usize, usize)]) {
+    for _ in 0..=pairs.len() {
+        let mut spread = false;
+        for &(bi, ai) in pairs {
+            if before_dirty[bi] != after_dirty[ai] {
+                before_dirty[bi] = true;
+                after_dirty[ai] = true;
+                spread = true;
+            }
+        }
+
+        if !spread {
+            return;
+        }
+    }
+}
+
 /// Which blocks a side's dirty lines touch: a block is dirty iff its sourcepos
 /// span intersects the dirty set. Dirty lines outside every span (blank lines
 /// between blocks, link-reference definitions, suppressed front matter) are
@@ -287,17 +364,16 @@ fn dirty_blocks(blocks: &[Block], dirty: &HashSet<u32>, text: &str) -> (Vec<bool
     let mut dropped_edit = false;
     let lines: Vec<&str> = text.lines().collect();
     for &line in dirty {
-        // Blocks are disjoint and in document order: the block containing `line`
-        // can only be the last one starting at or before it, and `next` is also
-        // the "nearest following block" the orphan rule wants — one search, not
-        // two linear scans (a root-commit view marks every line dirty).
-        let next = blocks.partition_point(|b| b.start_line <= line);
-        if next > 0 && line <= blocks[next - 1].end_line {
+        if block_at(blocks, line).is_some() {
             continue;
         }
         if lines[line as usize - 1].trim().is_empty() {
             continue;
         }
+
+        // The orphan rule's "nearest following block": the same partition point
+        // `block_at` just rejected, now read as the block after the gap.
+        let next = blocks.partition_point(|b| b.start_line <= line);
         match flags.get_mut(next) {
             Some(flag) => *flag = true,
             None => match flags.last_mut() {
@@ -1507,6 +1583,25 @@ mod tests {
         diff_md(before, after).rows
     }
 
+    fn blocks_of(markdown: &str) -> Vec<Block> {
+        extract_blocks(markdown, "/r", "d.md", &RevSpec::Head)
+    }
+
+    /// One letter per row in reading order — Unchanged, Added, Removed, Changed.
+    /// The alignment rules are about which row kind lands where, so the sequence
+    /// is the whole assertion and spelling out four fields per row buries it.
+    fn row_kinds(before: &str, after: &str) -> String {
+        diff_rows(before, after)
+            .iter()
+            .map(|r| match r {
+                DiffRow::Unchanged { .. } => 'U',
+                DiffRow::Added { .. } => 'A',
+                DiffRow::Removed { .. } => 'R',
+                DiffRow::Changed { .. } => 'C',
+            })
+            .collect()
+    }
+
     /// Independent oracle for "the fragment's tags nest correctly" — deliberately
     /// not `html_token_merge`'s own self-check, so a merge test never certifies
     /// balance with the same code it is exercising.
@@ -2355,6 +2450,56 @@ mod tests {
             panic!("{rows:?}");
         };
         assert_eq!((*after_start, *after_end), (3, 3), "{rows:?}");
+    }
+
+    #[test]
+    fn a_block_edited_on_one_side_only_is_still_its_counterpart_on_the_other() {
+        // The insert lands inside the list, so the before side has no dirty line
+        // at all and only the equal lines can say the two lists are the same
+        // block. Every block pairs with its opposite number, edited one included.
+        let before = "# Title\n\npara\n\n- one\n- two\n\ntail";
+        let after = "# Title\n\npara\n\n- one\n- inserted\n- two\n\ntail";
+
+        let pairs = counterpart_pairs(
+            &line_diff_ops(before, after),
+            &blocks_of(before),
+            &blocks_of(after),
+        );
+
+        assert_eq!(pairs, vec![(0, 0), (1, 1), (2, 2), (3, 3)], "{pairs:?}");
+    }
+
+    #[test]
+    fn a_wholly_new_block_has_no_counterpart() {
+        // C4: the one-sided advance in emit_rows exists for this shape, so the
+        // new block must stay unpaired or propagation would dirty a clean before
+        // block and re-break the walk.
+        let before = "# Title\n\npara\n\ntail";
+        let after = "# Title\n\npara\n\nnew para\n\ntail";
+
+        let pairs = counterpart_pairs(
+            &line_diff_ops(before, after),
+            &blocks_of(before),
+            &blocks_of(after),
+        );
+
+        assert_eq!(pairs, vec![(0, 0), (1, 1), (2, 3)], "{pairs:?}");
+    }
+
+    #[test]
+    fn a_line_inserted_inside_a_block_leaves_the_following_block_unchanged() {
+        let before = "# Title\n\npara\n\n- one\n- two\n\ntail";
+        let after = "# Title\n\npara\n\n- one\n- inserted\n- two\n\ntail";
+
+        assert_eq!(row_kinds(before, after), "UUCU");
+    }
+
+    #[test]
+    fn a_line_deleted_inside_a_block_leaves_the_following_block_unchanged() {
+        let before = "# Title\n\npara\n\n- one\n- doomed\n- two\n\ntail";
+        let after = "# Title\n\npara\n\n- one\n- two\n\ntail";
+
+        assert_eq!(row_kinds(before, after), "UUCU");
     }
 
     #[test]
