@@ -1160,5 +1160,57 @@ describe("RepoView", () => {
 				filePath: "f.ts",
 			});
 		});
+
+		it("never runs two commits' warm loops concurrently", async () => {
+			commits = [
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+				makeCommit({ oid: "oid-2", summary: "second commit" }),
+			];
+			filesByOid = {
+				"oid-1": [makeFileDiff("a.ts", 100)],
+				"oid-2": [makeFileDiff("b.ts", 100)],
+			};
+			detailByOid = {
+				"oid-1": makeDetail("oid-1"),
+				"oid-2": makeDetail("oid-2"),
+			};
+
+			let inFlight = 0;
+			let maxInFlight = 0;
+			let resolveFirst: (() => void) | undefined;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "warm_diff") {
+					inFlight++;
+					maxInFlight = Math.max(maxInFlight, inFlight);
+					const a = args as Record<string, unknown> | undefined;
+					return new Promise<void>((resolve) => {
+						const done = () => {
+							inFlight--;
+							resolve();
+						};
+						if (a?.oid === "oid-1") {
+							resolveFirst = done;
+						} else {
+							done();
+						}
+					});
+				}
+				return base(cmd, args);
+			});
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(rows[1]);
+			await flush();
+
+			resolveFirst?.();
+			await flush();
+			await flush();
+
+			expect(maxInFlight).toBeLessThanOrEqual(1);
+		});
 	});
 });

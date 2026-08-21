@@ -265,6 +265,11 @@ let commitSelectGeneration = 0;
 // follow-up once warming has run in practice, not part of this change.
 const PREFETCH_BUDGET_BYTES = 2_000_000;
 
+// Serializes every warm loop across selections. Without it the gen check
+// inside warmCommitFiles stops only a stale loop's next iteration, leaving a
+// warm_diff in flight — and a new commit's first call — to run beside it.
+let warmChain: Promise<void> = Promise.resolve();
+
 // The WIP-inclusive display list + pagination state CommitGraph reports via
 // oncommitschange, cached here so commitNav below can be recomputed on every
 // selectedCommitOid change without requiring CommitGraph to be mounted — it
@@ -624,8 +629,9 @@ async function selectCommitIdempotent(oid: string) {
 		commitDetail = detail;
 
 		// Fired, not awaited: warming uses idle time while the user looks at the
-		// file list, so it must never block commit selection itself.
-		warmCommitFiles(oid, files, gen);
+		// file list, so it must never block commit selection itself. Chained
+		// onto warmChain, not called directly: see warmChain's comment.
+		warmChain = warmChain.then(() => warmCommitFiles(oid, files, gen));
 
 		// Diff-in-view navigation: reconcile the remembered path against the new
 		// commit's file list. Lives inline here, never in an $effect — an effect
