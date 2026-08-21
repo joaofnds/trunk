@@ -1102,7 +1102,7 @@ describe("RepoView", () => {
 			expect(warmDiffCalls()).toHaveLength(1);
 		});
 
-		it("stops the warm walk once the cumulative byte budget is spent", async () => {
+		it("skips a file that would exceed the byte budget and warms the rest", async () => {
 			commits = [makeCommit({ oid: "oid-1", summary: "first commit" })];
 			filesByOid = {
 				"oid-1": [
@@ -1120,7 +1120,7 @@ describe("RepoView", () => {
 
 			expect(
 				warmDiffCalls().map((c) => (c[1] as Record<string, unknown>).filePath),
-			).toEqual(["a.ts"]);
+			).toEqual(["a.ts", "c.ts"]);
 		});
 
 		it("reopens the viewed file across a commit switch while warm_diff for it never resolves", async () => {

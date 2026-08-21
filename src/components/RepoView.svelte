@@ -574,7 +574,7 @@ async function warmCommitFiles(oid: string, files: FileDiff[], gen: number) {
 		if (gen !== commitSelectGeneration) return;
 		if (file.is_binary) continue;
 		const size = file.size_bytes ?? 0;
-		if (bytesSoFar + size > PREFETCH_BUDGET_BYTES) return;
+		if (bytesSoFar + size > PREFETCH_BUDGET_BYTES) continue;
 		bytesSoFar += size;
 		try {
 			await safeInvoke<void>("warm_diff", {
