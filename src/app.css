@@ -571,6 +571,15 @@ textarea::placeholder {
 	background: var(--color-diff-delete-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
+/* A Changed pair whose leaves are tinted keeps the rail and drops the wash, so
+   the changed item is the only highlighted thing instead of a brighter patch
+   inside a fully painted block. Two classes beat the single-class rule above on
+   specificity, so background alone is overridden and box-shadow is left alone —
+   colour is still not the sole carrier of the before/after distinction. */
+.rendered-block.md-added.no-wash,
+.rendered-block.md-removed.no-wash {
+	background: var(--bg-0);
+}
 /* A tinted list item carries NO rail of its own — its Changed-pair wrapper
    always paints the block-level rail (RenderedDiff cell tints), so an item
    rail reads as a duplicate edge; like a tinted table row, the item pinpoint

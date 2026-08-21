@@ -112,6 +112,88 @@ describe("RenderedDiff", () => {
 		expect(blocks[4].textContent).toContain("new");
 	});
 
+	it("drops the block wash only from a changed row whose leaves are tinted (inline)", async () => {
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: '<ul><li class="md-removed">one</li><li>two</li></ul>',
+				afterHtml: '<ul><li class="md-added">uno</li><li>two</li></ul>',
+				hasTints: true,
+				afterStart: 1,
+				afterEnd: 2,
+			},
+			{
+				kind: "changed",
+				beforeHtml: "<pre>before fence</pre>",
+				afterHtml: "<pre>after fence</pre>",
+				afterStart: 4,
+				afterEnd: 4,
+			},
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+
+		const { container } = render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "inline" },
+		});
+		await screen.findByText("uno");
+
+		// The tinted <li> already points at the change, so its two copies keep the
+		// rail and lose the background; a row with nothing to point at keeps both,
+		// or it would render as two identical untinted copies.
+		const washes = [...container.querySelectorAll(".rendered-block")].map(
+			(b) => [
+				b.classList.contains("md-removed") || b.classList.contains("md-added"),
+				b.classList.contains("no-wash"),
+			],
+		);
+		expect(washes).toEqual([
+			[true, true],
+			[true, true],
+			[true, false],
+			[true, false],
+		]);
+	});
+
+	it("drops the block wash only from a changed row whose leaves are tinted (split)", async () => {
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: '<ul><li class="md-removed">one</li></ul>',
+				afterHtml: '<ul><li class="md-added">uno</li></ul>',
+				hasTints: true,
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			{
+				kind: "changed",
+				beforeHtml: "<pre>before fence</pre>",
+				afterHtml: "<pre>after fence</pre>",
+				afterStart: 3,
+				afterEnd: 3,
+			},
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+
+		const { container } = render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "split" },
+		});
+		await screen.findByText("uno");
+
+		const washes = [...container.querySelectorAll(".rendered-block")].map(
+			(b) => [
+				b.classList.contains("md-removed") || b.classList.contains("md-added"),
+				b.classList.contains("no-wash"),
+			],
+		);
+		// Column-major: both left cells, then both right cells.
+		expect(washes).toEqual([
+			[true, true],
+			[true, false],
+			[true, true],
+			[true, false],
+		]);
+	});
+
 	it("stacks all rows of a run inside exactly two synced column scrollers (split)", async () => {
 		const rows: DiffRow[] = [
 			{ kind: "unchanged", html: "<p>same</p>", afterStart: 1, afterEnd: 1 },

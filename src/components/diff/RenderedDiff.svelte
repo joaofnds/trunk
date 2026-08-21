@@ -294,7 +294,13 @@ const projected = $derived.by((): ProjectedRow[] => {
 // changed row's FIRST block carries its changeIndex — a two-block changed row
 // registers exactly one jump target.
 type InlineItem =
-	| { type: "block"; tint: Tint; html: string; changeIndex: number | null }
+	| {
+			type: "block";
+			tint: Tint;
+			html: string;
+			changeIndex: number | null;
+			wash: boolean;
+	  }
 	| { type: "sep"; count: number };
 
 const inlineItems = $derived.by((): InlineItem[] =>
@@ -304,23 +310,54 @@ const inlineItems = $derived.by((): InlineItem[] =>
 		const changeIndex = p.changeIndex;
 		if (r.kind === "unchanged")
 			return [
-				{ type: "block", tint: "unchanged", html: r.html, changeIndex: null },
+				{
+					type: "block",
+					tint: "unchanged",
+					html: r.html,
+					changeIndex: null,
+					wash: true,
+				},
 			];
 		if (r.kind === "added")
-			return [{ type: "block", tint: "added", html: r.html, changeIndex }];
+			return [
+				{ type: "block", tint: "added", html: r.html, changeIndex, wash: true },
+			];
 		if (r.kind === "removed")
-			return [{ type: "block", tint: "removed", html: r.html, changeIndex }];
+			return [
+				{
+					type: "block",
+					tint: "removed",
+					html: r.html,
+					changeIndex,
+					wash: true,
+				},
+			];
 		// changed with a word-level merge (single-leaf): ONE block, no wrapper tint —
 		// the inline md-word-* del/ins marks inside wordHtml carry the signal.
 		if (r.wordHtml)
 			return [
-				{ type: "block", tint: "unchanged", html: r.wordHtml, changeIndex },
+				{
+					type: "block",
+					tint: "unchanged",
+					html: r.wordHtml,
+					changeIndex,
+					wash: true,
+				},
 			];
 		// changed without a merge (container / code / dense rewrite): mirror Source —
-		// the removed before-block, then the added after-block.
+		// the removed before-block, then the added after-block. A row whose leaves
+		// are tinted already points at the change, so it keeps the rail and drops
+		// the background; one with nothing to point at needs the full wash.
+		const wash = !r.hasTints;
 		return [
-			{ type: "block", tint: "removed", html: r.beforeHtml, changeIndex },
-			{ type: "block", tint: "added", html: r.afterHtml, changeIndex: null },
+			{ type: "block", tint: "removed", html: r.beforeHtml, changeIndex, wash },
+			{
+				type: "block",
+				tint: "added",
+				html: r.afterHtml,
+				changeIndex: null,
+				wash,
+			},
 		];
 	}),
 );
@@ -329,7 +366,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 // that side has no block). Rows group into RUNS between separators; each run
 // renders as ONE column pair (Source's d1c299f model — scroll containers at the
 // column level, never per row, so short rows pan with the run's shared plane).
-type SplitCell = { tint: Tint; html: string } | null;
+type SplitCell = { tint: Tint; html: string; wash: boolean } | null;
 type SplitRow = {
 	left: SplitCell;
 	right: SplitCell;
@@ -342,23 +379,29 @@ type SplitSegment =
 function toSplitRow(r: DiffRow, changeIndex: number | null): SplitRow {
 	if (r.kind === "unchanged")
 		return {
-			left: { tint: "unchanged", html: r.html },
-			right: { tint: "unchanged", html: r.html },
+			left: { tint: "unchanged", html: r.html, wash: true },
+			right: { tint: "unchanged", html: r.html, wash: true },
 			changeIndex,
 		};
 	if (r.kind === "added")
-		return { left: null, right: { tint: "added", html: r.html }, changeIndex };
+		return {
+			left: null,
+			right: { tint: "added", html: r.html, wash: true },
+			changeIndex,
+		};
 	if (r.kind === "removed")
 		return {
-			left: { tint: "removed", html: r.html },
+			left: { tint: "removed", html: r.html, wash: true },
 			right: null,
 			changeIndex,
 		};
 	// changed: whole before(red) on the left, after(green) on the right — split
-	// stays block-level (word-level lives in the inline view).
+	// stays block-level (word-level lives in the inline view). The wash goes only
+	// where the leaf tints already mark what changed.
+	const wash = !r.hasTints;
 	return {
-		left: { tint: "removed", html: r.beforeHtml },
-		right: { tint: "added", html: r.afterHtml },
+		left: { tint: "removed", html: r.beforeHtml, wash },
+		right: { tint: "added", html: r.afterHtml, wash },
 		changeIndex,
 	};
 }
@@ -446,14 +489,22 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 }
 </script>
 
-{#snippet block(tint: Tint, html: string, changeIndex: number | null = null)}
+{#snippet block(
+  tint: Tint,
+  html: string,
+  changeIndex: number | null = null,
+  wash = true
+)}
   <!-- Tint (bg + rail) on the outer wrapper; the prose lives in an inner
        .markdown-body so the height equalizer can observe natural content
-       height while the wrapper flex-stretches to the row height. -->
+       height while the wrapper flex-stretches to the row height. `no-wash`
+       keeps the rail and drops the background, for a row whose own leaf tints
+       already mark the change. -->
   <div
     class="rendered-block"
     class:md-added={tint === "added"}
     class:md-removed={tint === "removed"}
+    class:no-wash={!wash}
     use:externalLinks
     use:registerChange={changeIndex}
   ><div class="markdown-body">{@html html}</div></div>
@@ -474,7 +525,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
 )}
   {#if c}
     <div class="split-cell" data-side={side}>
-      {@render block(c.tint, c.html, changeIndex)}
+      {@render block(c.tint, c.html, changeIndex, c.wash)}
     </div>
   {:else}
     <div class="split-cell rendered-phantom" data-side={side}></div>
@@ -561,7 +612,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
         {#if item.type === "sep"}
           {@render separator(item.count)}
         {:else}
-          {@render block(item.tint, item.html, item.changeIndex)}
+          {@render block(item.tint, item.html, item.changeIndex, item.wash)}
         {/if}
       {/each}
     {/if}
