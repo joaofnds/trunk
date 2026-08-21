@@ -533,6 +533,32 @@ fn bench_diff_large_file(c: &mut Criterion) {
         });
     }
 
+    // A late change once its content is already cached -- the property the
+    // cache exists for: this should read on the order of early_change, not
+    // late_change.
+    {
+        let path = late.path.display().to_string();
+        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
+        state_map.insert(path.clone(), late.path.clone());
+        let options = trunk_lib::git::types::DiffRequestOptions::default();
+        let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+            trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+        );
+        trunk_lib::commands::diff::diff_unstaged_inner(
+            &path, "large.ts", &state_map, &options, &cache,
+        )
+        .unwrap();
+
+        group.bench_function("cache_hit", |b| {
+            b.iter(|| {
+                trunk_lib::commands::diff::diff_unstaged_inner(
+                    &path, "large.ts", &state_map, &options, &cache,
+                )
+                .unwrap()
+            });
+        });
+    }
+
     group.finish();
 }
 
