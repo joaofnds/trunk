@@ -1591,8 +1591,11 @@ mod tests {
     /// The alignment rules are about which row kind lands where, so the sequence
     /// is the whole assertion and spelling out four fields per row buries it.
     fn row_kinds(before: &str, after: &str) -> String {
-        diff_rows(before, after)
-            .iter()
+        kinds(&diff_rows(before, after))
+    }
+
+    fn kinds(rows: &[DiffRow]) -> String {
+        rows.iter()
             .map(|r| match r {
                 DiffRow::Unchanged { .. } => 'U',
                 DiffRow::Added { .. } => 'A',
@@ -2562,6 +2565,21 @@ mod tests {
         let after = "para1\npara2 edited\n\npara3";
 
         assert_eq!(row_kinds(before, after), "CRU");
+    }
+
+    #[test]
+    fn ignore_whitespace_pairs_blocks_by_the_lines_that_same_diff_called_equal() {
+        // Under -w the list's only line is equal on both sides, so it is the only
+        // thing that can pair the two list blocks — and it is equal ONLY once the
+        // whitespace is stripped. Pairing from a second diff of the original text
+        // would find no equal line inside the list, leave the before block clean,
+        // and the cascade would be back.
+        let before = "# Title\n\npara\n\n- one\n\ntail";
+        let after = "# Title\n\npara\n\n-   one\n- two\n\ntail";
+
+        let diff = diff_md_ws(before, after, true);
+
+        assert_eq!(kinds(&diff.rows), "UUCU");
     }
 
     #[test]
