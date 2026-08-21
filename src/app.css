@@ -20,6 +20,9 @@
 	--bg-selected: oklch(0.22 0.01 260);
 	--line: oklch(0.22 0.004 260);
 	--line-strong: oklch(0.3 0.006 260);
+	/* Scrollbar thumb — non-text UI chrome, so WCAG 1.4.11's 3:1 applies rather
+	   than the AAA text bar: 3.77:1 on bg-0, 3.74:1 on bg-1. */
+	--color-scrollbar-thumb: oklch(0.52 0.006 260);
 
 	/* ── Text ramp ──
 	   fg-0/1/2/3 all carry real informational text, so each clears WCAG AAA
@@ -286,6 +289,49 @@ body {
 	margin: 0;
 	-webkit-user-select: none;
 	user-select: none;
+}
+
+/* WKWebView paints no visible native scrollbar here — neither the overlay bar
+   nor the classic one macOS's "Show scrollbars: Always" asks for; both reserve
+   layout width and draw nothing. So every scroller needs an explicit thumb.
+
+   The thumb is transparent until src/lib/scrollbar-activity.ts sets
+   --scrollbar-thumb on a scroller that is actually scrolling, so a pane at rest
+   shows nothing. That reveal cannot be expressed in CSS: WebKit resolves these
+   pseudo-element rules once and never re-matches them when the owner's class or
+   :hover state changes, which is why an earlier `:hover::-webkit-scrollbar-thumb`
+   attempt fired only when something else happened to invalidate the scrollbar.
+   A custom property is the one channel that reaches a live scrollbar.
+
+   Vertical axis only. `.split-column` and `.tab-bar` already hide their
+   horizontal bars by design, and the diff pane pans horizontally in unified
+   mode, so a horizontal bar would cost 11px of height in the app's busiest
+   view for an affordance nothing else in the diff area offers. Give the
+   horizontal bar a height to turn it on everywhere. */
+@property --scrollbar-thumb {
+	syntax: "<color>";
+	inherits: true;
+	initial-value: transparent;
+}
+
+::-webkit-scrollbar {
+	width: 11px;
+	height: 0;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--scrollbar-thumb);
+	border: 3px solid transparent;
+	background-clip: content-box;
+	border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-corner {
+	background: transparent;
 }
 
 /* Placeholders render at full token contrast, not the UA's ~0.54-opacity
