@@ -69,7 +69,7 @@
 | `commands/repo.rs` | `open_repo`, `close_repo`, `force_close_repo` — loads cache, starts watcher | `src-tauri/src/commands/repo.rs` |
 | `commands/history.rs` | `get_commit_graph`, `refresh_commit_graph`, `search_commits` — reads from `CommitCache` | `src-tauri/src/commands/history.rs` |
 | `commands/staging.rs` | Full staging surface: status, stage/unstage/discard file/hunk/lines | `src-tauri/src/commands/staging.rs` |
-| `commands/diff.rs` | `diff_unstaged`, `diff_staged`, `diff_commit`, `diff_commit_file`, `list_commit_files`, `get_commit_detail` | `src-tauri/src/commands/diff.rs` |
+| `commands/diff.rs` | `diff_unstaged`, `diff_staged`, `diff_commit`, `diff_commit_file`, `list_commit_files`, `get_commit_detail`, `warm_diff` — highlighting is served from a token cache keyed by content OID and grammar, warmed ahead of the user by `warm_diff` | `src-tauri/src/commands/diff.rs` |
 | `commands/branches.rs` | `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `delete_branch`, `rename_branch` | `src-tauri/src/commands/branches.rs` |
 | `commands/remote.rs` | `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op` — subprocess with progress streaming | `src-tauri/src/commands/remote.rs` |
 | `commands/commit.rs` | `create_commit`, `amend_commit`, `get_head_commit_message` | `src-tauri/src/commands/commit.rs` |
@@ -242,7 +242,7 @@
 - `branches`: `list_refs`, `resolve_ref`, `checkout_branch`, `fast_forward_to`, `create_branch`, `delete_branch`, `rename_branch`
 - `staging`: `get_dirty_counts`, `get_status`, `stage_file`, `unstage_file`, `stage_files`, `unstage_files`, `stage_all`, `unstage_all`, `discard_file`, `discard_all`, `stage_hunk`, `unstage_hunk`, `discard_hunk`, `stage_lines`, `unstage_lines`, `discard_lines`
 - `commit`: `create_commit`, `amend_commit`, `get_head_commit_message`
-- `diff`: `diff_unstaged`, `diff_staged`, `diff_commit`, `list_commit_files`, `diff_commit_file`, `get_commit_detail`
+- `diff`: `diff_unstaged`, `diff_staged`, `diff_commit`, `list_commit_files`, `diff_commit_file`, `get_commit_detail`, `warm_diff`
 - `stash`: `list_stashes`, `stash_save`, `stash_pop`, `stash_apply`, `stash_drop`
 - `commit_actions`: `checkout_commit`, `create_tag`, `delete_tag`, `cherry_pick`, `revert_commit`, `reset_to_commit`, `undo_commit`, `redo_commit`, `check_undo_available`
 - `remote`: `git_fetch`, `git_fetch_background`, `git_pull`, `git_push`, `delete_remote_branch`, `cancel_remote_op`
