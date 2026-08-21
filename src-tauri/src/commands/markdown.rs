@@ -2486,20 +2486,54 @@ mod tests {
         assert_eq!(pairs, vec![(0, 0), (1, 1), (2, 3)], "{pairs:?}");
     }
 
-    #[test]
-    fn a_line_inserted_inside_a_block_leaves_the_following_block_unchanged() {
-        let before = "# Title\n\npara\n\n- one\n- two\n\ntail";
-        let after = "# Title\n\npara\n\n- one\n- inserted\n- two\n\ntail";
+    // A one-sided intra-block edit — every changed line on one side, none on the
+    // other — is the shape that desynced the walk. Six cases: insert and delete,
+    // each at the head, middle and end of a container. The end position is the
+    // one that refuted marking the before block from the insertion point's
+    // position: appending a bullet lands between the list and the following
+    // blank line, strictly inside no block at all.
+    const LIST_DOC: &str = "# Title\n\npara\n\n- one\n- two\n\ntail";
 
-        assert_eq!(row_kinds(before, after), "UUCU");
+    #[test]
+    fn an_insert_at_the_head_of_a_container_leaves_the_following_block_unchanged() {
+        let after = "# Title\n\npara\n\n- prepended\n- one\n- two\n\ntail";
+
+        assert_eq!(row_kinds(LIST_DOC, after), "UUCU");
     }
 
     #[test]
-    fn a_line_deleted_inside_a_block_leaves_the_following_block_unchanged() {
-        let before = "# Title\n\npara\n\n- one\n- doomed\n- two\n\ntail";
-        let after = "# Title\n\npara\n\n- one\n- two\n\ntail";
+    fn an_insert_in_the_middle_of_a_container_leaves_the_following_block_unchanged() {
+        let after = "# Title\n\npara\n\n- one\n- inserted\n- two\n\ntail";
 
-        assert_eq!(row_kinds(before, after), "UUCU");
+        assert_eq!(row_kinds(LIST_DOC, after), "UUCU");
+    }
+
+    #[test]
+    fn an_insert_at_the_end_of_a_container_leaves_the_following_block_unchanged() {
+        let after = "# Title\n\npara\n\n- one\n- two\n- appended\n\ntail";
+
+        assert_eq!(row_kinds(LIST_DOC, after), "UUCU");
+    }
+
+    #[test]
+    fn a_delete_at_the_head_of_a_container_leaves_the_following_block_unchanged() {
+        let before = "# Title\n\npara\n\n- doomed\n- one\n- two\n\ntail";
+
+        assert_eq!(row_kinds(before, LIST_DOC), "UUCU");
+    }
+
+    #[test]
+    fn a_delete_in_the_middle_of_a_container_leaves_the_following_block_unchanged() {
+        let before = "# Title\n\npara\n\n- one\n- doomed\n- two\n\ntail";
+
+        assert_eq!(row_kinds(before, LIST_DOC), "UUCU");
+    }
+
+    #[test]
+    fn a_delete_at_the_end_of_a_container_leaves_the_following_block_unchanged() {
+        let before = "# Title\n\npara\n\n- one\n- two\n- doomed\n\ntail";
+
+        assert_eq!(row_kinds(before, LIST_DOC), "UUCU");
     }
 
     #[test]
