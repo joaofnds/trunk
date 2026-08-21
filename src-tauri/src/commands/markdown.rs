@@ -185,14 +185,15 @@ pub fn diff_markdown_blocks(
     let before = extract_blocks(&before_text, repo_path, file_path, before_rev);
     let after = extract_blocks(&after_text, repo_path, file_path, after_rev);
 
-    let (before_lines, after_lines) = if ignore_whitespace {
-        dirty_lines(
+    let ops = if ignore_whitespace {
+        line_diff_ops(
             &strip_line_whitespace(&before_text),
             &strip_line_whitespace(&after_text),
         )
     } else {
-        dirty_lines(&before_text, &after_text)
+        line_diff_ops(&before_text, &after_text)
     };
+    let (before_lines, after_lines) = dirty_lines(&ops);
     let (before_dirty, before_dropped) = dirty_blocks(&before, &before_lines, &before_text);
     let (after_dirty, after_dropped) = dirty_blocks(&after, &after_lines, &after_text);
 
@@ -227,13 +228,22 @@ fn strip_line_whitespace(text: &str) -> String {
         .join("\n")
 }
 
+/// The one line diff a direction gets. Both the dirty flags and the counterpart
+/// pairs read these ops, so they cannot disagree about which lines are equal —
+/// under `ignore_whitespace` the caller passes the whitespace-stripped texts,
+/// and a second diff of the originals would answer that question differently.
+fn line_diff_ops(before_text: &str, after_text: &str) -> Vec<similar::DiffOp> {
+    similar::TextDiff::from_lines(before_text, after_text)
+        .ops()
+        .to_vec()
+}
+
 /// The 1-based line numbers the plain-text line diff marks changed on each side:
 /// Delete lines on before, Insert lines on after, Replace on both.
-fn dirty_lines(before_text: &str, after_text: &str) -> (HashSet<u32>, HashSet<u32>) {
-    let diff = similar::TextDiff::from_lines(before_text, after_text);
+fn dirty_lines(ops: &[similar::DiffOp]) -> (HashSet<u32>, HashSet<u32>) {
     let mut before_lines = HashSet::new();
     let mut after_lines = HashSet::new();
-    for op in diff.ops() {
+    for op in ops {
         match *op {
             similar::DiffOp::Equal { .. } => {}
             similar::DiffOp::Delete {
