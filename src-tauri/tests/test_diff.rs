@@ -1189,3 +1189,56 @@ fn diff_commit_file_error_carries_the_code_and_message_shape_warm_diff_relies_on
         "error JSON must carry a string message, got {json}"
     );
 }
+
+// -- list_commit_files size hint tests --
+
+#[test]
+fn list_commit_files_reports_the_modified_files_new_byte_size() {
+    let new_content = "fn main() {\n    let x = 2;\n}\n";
+    let ctx = TestContext::builder()
+        .with_file("main.rs", "fn main() {\n    let x = 1;\n}\n")
+        .with_commit("Initial commit")
+        .with_file("main.rs", new_content)
+        .with_commit("Second commit")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let files = ctx
+        .list_commit_files(&head_oid)
+        .expect("list_commit_files failed");
+    let fd = files
+        .iter()
+        .find(|f| f.path == "main.rs")
+        .expect("expected main.rs in the file list");
+
+    assert_eq!(
+        fd.size_bytes,
+        Some(new_content.len() as u64),
+        "size_bytes must match the new side's real byte length"
+    );
+}
+
+#[test]
+fn diff_commit_file_never_reports_a_size_hint() {
+    let ctx = TestContext::builder()
+        .with_file("main.rs", "fn main() {\n    let x = 1;\n}\n")
+        .with_commit("Initial commit")
+        .with_file("main.rs", "fn main() {\n    let x = 2;\n}\n")
+        .with_commit("Second commit")
+        .build();
+
+    let repo = ctx.repo();
+    let head_oid = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let files = ctx
+        .diff_commit_file(&head_oid, "main.rs")
+        .expect("diff_commit_file failed");
+    assert_eq!(
+        files[0].size_bytes, None,
+        "a path that already resolved real content has no need for the size hint"
+    );
+}

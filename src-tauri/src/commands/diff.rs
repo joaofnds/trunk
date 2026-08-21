@@ -304,6 +304,7 @@ fn walk_diff(
                 status,
                 is_binary,
                 hunks: Vec::new(),
+                size_bytes: None,
             });
             true
         },
@@ -572,6 +573,7 @@ fn walk_diff_raw_for_bench(
                 status,
                 is_binary,
                 hunks: Vec::new(),
+                size_bytes: None,
             });
             true
         },
@@ -719,6 +721,7 @@ pub fn list_commit_files_inner(
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut { opts }))?
     };
 
+    let odb = repo.odb()?;
     let mut file_diffs = Vec::new();
     for delta_idx in 0..diff.deltas().len() {
         let delta = diff.get_delta(delta_idx).unwrap();
@@ -738,11 +741,25 @@ pub fn list_commit_files_inner(
             git2::Delta::Untracked => DiffStatus::Untracked,
             _ => DiffStatus::Unknown,
         };
+        // `DiffFile::size()` is only populated once a patch is generated (probed,
+        // git2 0.21: 0 for every delta of a plain tree-to-tree diff) — the odb
+        // header lookup is the metadata-only path: no blob content is read.
+        let blob_oid = if !delta.new_file().id().is_zero() {
+            Some(delta.new_file().id())
+        } else if !delta.old_file().id().is_zero() {
+            Some(delta.old_file().id())
+        } else {
+            None
+        };
+        let size_bytes = blob_oid
+            .and_then(|oid| odb.read_header(oid).ok())
+            .map(|(size, _)| size as u64);
         file_diffs.push(FileDiff {
             path: file_path,
             status,
             is_binary,
             hunks: Vec::new(),
+            size_bytes,
         });
     }
     Ok(file_diffs)
@@ -974,6 +991,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "notes.md".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![DiffHunk {
                 header: "@@ -1 +1 @@".to_string(),
@@ -1039,6 +1057,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "example.rs".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![DiffHunk {
                 header: "@@ -3,0 +3,2 @@".to_string(),
@@ -1105,6 +1124,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "combo.rs".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![DiffHunk {
                 header: "@@ -2 +2 @@".to_string(),
@@ -1174,6 +1194,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "gap.rs".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![
                 DiffHunk {
@@ -1243,6 +1264,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "missing.rs".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![DiffHunk {
                 header: "@@ -1 +1 @@".to_string(),
@@ -1296,6 +1318,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "huge.rs".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![DiffHunk {
                 header: "@@ huge @@".to_string(),
@@ -1338,6 +1361,7 @@ mod enrich_tests {
         let mut file_diffs = vec![FileDiff {
             path: "drift.rs".to_string(),
             status: DiffStatus::Modified,
+            size_bytes: None,
             is_binary: false,
             hunks: vec![DiffHunk {
                 header: "@@ -2,2 +2,2 @@".to_string(),

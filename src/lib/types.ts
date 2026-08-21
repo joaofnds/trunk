@@ -193,6 +193,7 @@ export interface FileDiff {
 	status: DiffStatus;
 	is_binary: boolean;
 	hunks: DiffHunk[];
+	size_bytes?: number;
 }
 
 export interface DiffRequestOptions {

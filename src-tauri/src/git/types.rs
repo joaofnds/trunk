@@ -248,6 +248,11 @@ pub struct FileDiff {
     pub status: DiffStatus,
     pub is_binary: bool,
     pub hunks: Vec<DiffHunk>,
+    /// Source byte size, populated only by `list_commit_files` as a cheap
+    /// budget signal for the frontend's warm-cache prefetch walk. Every path
+    /// that already resolved real content has no need for the hint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
