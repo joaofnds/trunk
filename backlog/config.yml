@@ -7,7 +7,7 @@ definition_of_done: ["just check passes — the full gate, not a narrower tier",
 date_format: yyyy-mm-dd
 max_column_width: 20
 default_editor: "nvim"
-auto_open_browser: false
+auto_open_browser: true
 default_port: 54321
 remote_operations: false
 auto_commit: false
