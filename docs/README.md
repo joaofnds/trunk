@@ -21,6 +21,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 
 | Doc | What it covers |
 |-----|----------------|
+| [research/large-file-diff-rendering.md](research/large-file-diff-rendering.md) | How VS Code, Zed, JetBrains, Sublime Merge, GitHub Desktop, GitHub, GitLab, Gerrit, delta and difftastic keep large-file diffs fast: thresholds, virtualization granularity, off-thread parsing and cancellation. Records which techniques depend on the diff being read-only, and which trunk tried, measured or declined. |
 | [research/gitamine-graph-algorithm.md](research/gitamine-graph-algorithm.md) | The gitamine "straight branches" placement algorithm, compared against Trunk's `placement.rs`. |
 
 ## Accessibility
