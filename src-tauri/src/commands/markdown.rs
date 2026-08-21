@@ -2537,6 +2537,34 @@ mod tests {
     }
 
     #[test]
+    fn a_wholly_new_block_still_yields_one_added_row_and_the_walk_re_anchors() {
+        let before = "# Title\n\npara\n\ntail";
+        let after = "# Title\n\npara\n\nnew para\n\ntail";
+
+        assert_eq!(row_kinds(before, after), "UUAU");
+    }
+
+    #[test]
+    fn a_wholly_deleted_block_still_yields_one_removed_row_and_the_walk_re_anchors() {
+        let before = "# Title\n\npara\n\ndoomed para\n\ntail";
+        let after = "# Title\n\npara\n\ntail";
+
+        assert_eq!(row_kinds(before, after), "UURU");
+    }
+
+    #[test]
+    fn a_merge_carrying_a_one_sided_edit_does_not_cascade_past_the_merged_block() {
+        // Deleting the blank line merges para1 and para2 into one after-side
+        // block AND edits it, so the boundary shift and the propagation act on
+        // the same region. The merge keeps its demotion to Changed + Removed;
+        // what must not happen is para3 riding along.
+        let before = "para1\n\npara2\n\npara3";
+        let after = "para1\npara2 edited\n\npara3";
+
+        assert_eq!(row_kinds(before, after), "CRU");
+    }
+
+    #[test]
     fn cr_only_line_endings_render_without_panic() {
         // comrak counts a lone \r as a line ending; str::lines() does not — an
         // unnormalized CR-only doc panics the source slice in extract_blocks.
