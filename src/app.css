@@ -303,11 +303,15 @@ body {
    attempt fired only when something else happened to invalidate the scrollbar.
    A custom property is the one channel that reaches a live scrollbar.
 
-   Vertical axis only. `.split-column` and `.tab-bar` already hide their
-   horizontal bars by design, and the diff pane pans horizontally in unified
-   mode, so a horizontal bar would cost 11px of height in the app's busiest
-   view for an affordance nothing else in the diff area offers. Give the
-   horizontal bar a height to turn it on everywhere. */
+   Vertical axis only, and the zero height is load-bearing. `overflow-y: scroll`
+   forces the used `overflow-x` to `auto`, so VirtualList's viewport scrolls
+   horizontally whenever the commit-graph overlay SVG is wider than the pane.
+   Give the horizontal bar a height and it takes 11px off that viewport's
+   clientHeight while its content stays pinned to the container height, which
+   manufactures 11px of vertical range and paints a full-height thumb on a list
+   with nothing to scroll (measured: clientHeight 733 -> 722, scrollHeight 733).
+   Turning the horizontal bar on means giving `.virtual-list-viewport`
+   `overflow-x: hidden` first. */
 @property --scrollbar-thumb {
 	syntax: "<color>";
 	inherits: true;
