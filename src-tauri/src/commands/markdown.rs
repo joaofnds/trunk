@@ -107,9 +107,20 @@ pub enum DiffRow {
         after_html: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         word_html: Option<String>,
+        /// Whether the fragments already point at what changed, so the frontend
+        /// can drop the block-level wash and let the tinted leaf carry the
+        /// highlight alone. False on every row shape that has nothing to point
+        /// at — code blocks, guard-rejected rewrites, a markup-only container
+        /// edit — which must keep the wash or render as two identical copies.
+        #[serde(skip_serializing_if = "is_false")]
+        has_tints: bool,
         after_start: u32,
         after_end: u32,
     },
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// A rendered-markdown diff crossing IPC: the aligned rows plus whether the
@@ -495,6 +506,7 @@ fn flush_runs(
                 before_html: cf.before_html,
                 after_html: cf.after_html,
                 word_html: cf.word_html,
+                has_tints: cf.has_tints,
                 after_start: a.start_line,
                 after_end: a.end_line,
             });
@@ -891,6 +903,7 @@ struct ChangedFragments {
     before_html: String,
     after_html: String,
     word_html: Option<String>,
+    has_tints: bool,
 }
 
 fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
@@ -904,6 +917,7 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
             before_html: before.html.clone(),
             after_html: after.html.clone(),
             word_html,
+            has_tints: false,
         };
     }
     let before_sigs: Vec<String> = before.leaves.iter().map(|l| l.signature.clone()).collect();
@@ -947,6 +961,7 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
         before_html: sanitize_html(&tint_leaves(&before.sourcepos_html, &before_tints)),
         after_html: sanitize_html(&tint_leaves(&after.sourcepos_html, &after_tints)),
         word_html: None,
+        has_tints: !before_tints.is_empty() || !after_tints.is_empty(),
     }
 }
 
@@ -2580,6 +2595,48 @@ mod tests {
         let diff = diff_md_ws(before, after, true);
 
         assert_eq!(kinds(&diff.rows), "UUCU");
+    }
+
+    /// `has_tints` off the first `Changed` row — the flag the frontend reads to
+    /// decide whether the row already points at what changed.
+    fn first_changed_has_tints(before: &str, after: &str) -> bool {
+        let rows = diff_rows(before, after);
+        rows.iter()
+            .find_map(|r| match r {
+                DiffRow::Changed { has_tints, .. } => Some(*has_tints),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("expected a Changed row: {rows:?}"))
+    }
+
+    #[test]
+    fn a_changed_container_with_a_tinted_leaf_reports_has_tints() {
+        assert!(first_changed_has_tints("- one item", "- one ITEM"));
+    }
+
+    #[test]
+    fn a_markup_only_container_edit_reports_no_tints() {
+        // The leaf signature is the whitespace-normalised TEXT, so dropping the
+        // emphasis leaves it equal and the inner diff finds nothing to tint —
+        // the row is still Changed, and it has nothing to point at.
+        assert!(!first_changed_has_tints("- **bold** item", "- bold item"));
+    }
+
+    #[test]
+    fn a_changed_code_block_reports_no_tints() {
+        assert!(!first_changed_has_tints(
+            "```rust\nlet x = 1;\n```",
+            "```rust\nlet x = 2;\n```"
+        ));
+    }
+
+    #[test]
+    fn has_tints_reaches_the_wire_only_when_a_tint_landed() {
+        let tinted = serde_json::to_string(&diff_rows("- one item", "- one ITEM")).unwrap();
+        let untinted = serde_json::to_string(&diff_rows("- **bold** item", "- bold item")).unwrap();
+
+        assert!(tinted.contains(r#""hasTints":true"#), "{tinted}");
+        assert!(!untinted.contains(r#""hasTints""#), "{untinted}");
     }
 
     #[test]

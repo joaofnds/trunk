@@ -78,6 +78,11 @@ export type DiffRow =
 			beforeHtml: string;
 			afterHtml: string;
 			wordHtml?: string;
+			// Whether the fragments already point at what changed. True lets the
+			// renderer drop the block-level wash so the tinted leaf carries the
+			// highlight alone; absent (false) means the row has nothing to point
+			// at and must keep the wash, or it renders as two identical copies.
+			hasTints?: boolean;
 			afterStart: number;
 			afterEnd: number;
 	  };
