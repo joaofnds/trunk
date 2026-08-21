@@ -39,6 +39,11 @@ struct TokenCacheInner {
     parse_count: usize,
 }
 
+fn bump_stamp(inner: &mut TokenCacheInner) -> u64 {
+    inner.clock += 1;
+    inner.clock
+}
+
 fn entry_bytes(tokens: &[Vec<SyntaxToken>]) -> usize {
     tokens
         .iter()
@@ -84,8 +89,7 @@ impl SyntaxTokenCache {
 
         {
             let mut inner = self.0.lock().unwrap();
-            inner.clock += 1;
-            let stamp = inner.clock;
+            let stamp = bump_stamp(&mut inner);
             if let Some((entry, access)) = inner.entries.get_mut(&key)
                 && entry.tokens.len() >= max_line as usize
             {
@@ -108,8 +112,7 @@ impl SyntaxTokenCache {
         let byte_size = entry_bytes(&tokens);
         let mut inner = self.0.lock().unwrap();
         inner.parse_count += 1;
-        inner.clock += 1;
-        let stamp = inner.clock;
+        let stamp = bump_stamp(&mut inner);
         if let Some((old, _)) = inner.entries.remove(&key) {
             inner.total_bytes -= old.byte_size;
         }
