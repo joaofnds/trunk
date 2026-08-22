@@ -241,6 +241,8 @@ let selectedFile = $state<{
 	path: string;
 	kind: "unstaged" | "staged" | "conflicted";
 } | null>(null);
+// Replace this array wholesale: $state.raw ignores an in-place mutation, so a
+// push here updates nothing on screen.
 let stagingDiffFiles = $state.raw<FileDiff[]>([]);
 let stagingDiffLoading = $state(false);
 let selectGeneration = 0;
@@ -254,6 +256,8 @@ let stagingPanelRef = $state<StagingPanel | null>(null);
 // Commit selection (from CommitGraph)
 let selectedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
+// Replace this array wholesale: $state.raw ignores an in-place mutation, so a
+// push here updates nothing on screen.
 let commitFileDiffs = $state.raw<FileDiff[]>([]);
 let selectedCommitFile = $state<string | null>(null);
 // Bumped on every selectCommitIdempotent call so an out-of-order commit-switch
@@ -300,6 +304,8 @@ let rebaseBaseOid = $state("");
 let rebaseBranchName = $state("");
 let rebaseBaseName = $state("");
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
+// Replace this array wholesale: $state.raw ignores an in-place mutation, so a
+// push here updates nothing on screen.
 let rebaseFocusedFileDiffs = $state.raw<FileDiff[]>([]);
 let rebaseFocusedFileSelected = $state<string | null>(null);
 let rebaseDiffFile = $state<string | null>(null);
