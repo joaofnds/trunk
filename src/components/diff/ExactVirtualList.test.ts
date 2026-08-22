@@ -13,17 +13,21 @@ const renderItem = createRawSnippet<[number, number]>(() => ({
 	render: () => `<div class="row"></div>`,
 }));
 
-function mountList(count: number) {
+function mountList(count: number, rowHeight: number = ROW_HEIGHT) {
 	stubLayout({ width: 800, height: VIEWPORT_HEIGHT });
 
 	return render(ExactVirtualList, {
 		props: {
 			items: Array.from({ length: count }, (_, index) => index),
-			heights: Array.from({ length: count }, () => ROW_HEIGHT),
+			heights: Array.from({ length: count }, () => rowHeight),
 			contentWidth: "1000px",
 			renderItem,
 		},
 	});
+}
+
+function viewportOf(container: Element): HTMLElement {
+	return container.querySelector(".exact-virtual-viewport") as HTMLElement;
 }
 
 describe("ExactVirtualList", () => {
@@ -51,9 +55,7 @@ describe("ExactVirtualList", () => {
 
 	it("offsets the mounted rows by the first one's top", async () => {
 		const { container } = mountList(5000);
-		const viewport = container.querySelector(
-			".exact-virtual-viewport",
-		) as HTMLElement;
+		const viewport = viewportOf(container);
 
 		viewport.scrollTop = 100 * ROW_HEIGHT;
 		viewport.dispatchEvent(new Event("scroll"));
@@ -65,5 +67,41 @@ describe("ExactVirtualList", () => {
 		expect(rows?.getAttribute("style")).toContain(
 			`translateY(${firstRow * ROW_HEIGHT}px)`,
 		);
+	});
+});
+
+describe("scrollToIndex", () => {
+	it("puts the requested row's top at the top of the viewport", () => {
+		const { container, component } = mountList(5000);
+
+		component.scrollToIndex(300);
+
+		expect(viewportOf(container).scrollTop).toBe(300 * ROW_HEIGHT);
+	});
+
+	it("clamps past the end of the list", () => {
+		const { container, component } = mountList(10);
+
+		component.scrollToIndex(999);
+
+		expect(viewportOf(container).scrollTop).toBe(9 * ROW_HEIGHT);
+	});
+});
+
+describe("anchorTo", () => {
+	it("restores a row to the top after every height has changed", async () => {
+		const { container, component, rerender } = mountList(5000);
+		component.scrollToIndex(300);
+
+		const anchor = component.topIndex();
+		await rerender({
+			items: Array.from({ length: 5000 }, (_, index) => index),
+			heights: Array.from({ length: 5000 }, () => ROW_HEIGHT * 2),
+			contentWidth: "1000px",
+			renderItem,
+		});
+		component.anchorTo(anchor);
+
+		expect(viewportOf(container).scrollTop).toBe(300 * ROW_HEIGHT * 2);
 	});
 });
