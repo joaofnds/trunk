@@ -91,8 +91,10 @@ let list = $state<{
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
 
 const model = $derived(
-	measure("diff.buildRows", () =>
-		buildInlineRows(fileDiffs, {
+	measure("diff.buildRows", (observation) => {
+		observation.attr("lines", countLines(fileDiffs));
+
+		return buildInlineRows(fileDiffs, {
 			content: "full",
 			comments: viewComments,
 			showInlineComments,
@@ -100,8 +102,8 @@ const model = $derived(
 			fileHeaders: false,
 			tabSize: TAB_SIZE,
 			invisibles: showInvisibles,
-		}),
-	),
+		});
+	}),
 );
 
 // A proportional font makes column arithmetic meaningless, so wrapping is
@@ -136,9 +138,18 @@ const heights = $derived.by(() => {
 	const measured = metrics;
 	if (!ready || !measured) return [];
 
-	return measure("diff.rowHeights", () =>
-		rowHeights(model, measured, availableColumns, wrapActive, probedHeights),
-	);
+	return measure("diff.rowHeights", (observation) => {
+		observation.attr("rows", model.rows.length);
+		observation.attr("wrap", String(wrapActive));
+
+		return rowHeights(
+			model,
+			measured,
+			availableColumns,
+			wrapActive,
+			probedHeights,
+		);
+	});
 });
 
 // Computed, never measured: a virtual list never has the widest row mounted, so
@@ -202,6 +213,14 @@ $effect(() => {
 		probedHeights = measured;
 	}
 });
+
+function countLines(diffs: FileDiff[]): number {
+	let total = 0;
+	for (const fd of diffs) {
+		for (const hunk of fd.hunks) total += hunk.lines.length;
+	}
+	return total;
+}
 
 function computeSpan(anchor: number | null, focus: number | null): Set<number> {
 	if (anchor === null || focus === null) return new Set();

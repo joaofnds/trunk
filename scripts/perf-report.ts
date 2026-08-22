@@ -32,6 +32,16 @@ function ms(value: number): string {
 	return value.toFixed(1);
 }
 
+/** The dimensions of one measurement, which is what turns "this was slow" into
+ *  "this was slow on that input". */
+function describe(attrs: PerfSample["attrs"]): string {
+	if (!attrs) return "";
+
+	return Object.entries(attrs)
+		.map(([key, value]) => `${key}=${value}`)
+		.join(" ");
+}
+
 function table(rows: string[][]): string {
 	const widths = rows[0].map((_, column) =>
 		Math.max(...rows.map((row) => row[column].length)),
@@ -113,12 +123,13 @@ if (over !== null) {
 	);
 	console.log(
 		table([
-			["operation", "kind", "ms", "at"],
+			["operation", "kind", "ms", "at", "attributes"],
 			...worst.map((sample) => [
 				sample.name,
 				sample.kind,
 				ms(sample.ms),
 				new Date(sample.at).toISOString().slice(11, 23),
+				describe(sample.attrs),
 			]),
 		]),
 	);

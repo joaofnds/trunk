@@ -711,6 +711,14 @@ async function handleRefNavigate(refNameOrOid: string) {
 	await commitGraphRef?.scrollToOid(oid);
 }
 
+function countDiffLines(fileDiffs: FileDiff[]): number {
+	let total = 0;
+	for (const fd of fileDiffs) {
+		for (const hunk of fd.hunks) total += hunk.lines.length;
+	}
+	return total;
+}
+
 // Idempotent file selection — never clears, never toggles. Loads the diff
 // for `path` (or no-ops if already loaded). This is the seam the rune binds
 // to (WR-04): the jump gesture must never clear the file it's about to scroll
@@ -728,7 +736,9 @@ async function selectCommitFileIdempotent(path: string) {
 	// old commit's hunks.
 	const fireOid = selectedCommitOid;
 	try {
-		await span("diff.openCommitFile", async () => {
+		await span("diff.openCommitFile", async (observation) => {
+			observation.attr("path", path);
+
 			const options = buildDiffOptions();
 			const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
 				path: repoPath,
@@ -736,6 +746,10 @@ async function selectCommitFileIdempotent(path: string) {
 				filePath: path,
 				options,
 			});
+
+			observation.attr("lines", countDiffLines(fileDiffs));
+			observation.attr("fullFile", String(options.showFullFile));
+
 			if (fireOid !== selectedCommitOid) return;
 			// Replace the lightweight entry with the raw diff data
 			commitFileDiffs = commitFileDiffs.map((fd) =>

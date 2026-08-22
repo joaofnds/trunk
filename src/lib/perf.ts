@@ -11,12 +11,24 @@
 
 export type SampleKind = "span" | "frame-gap";
 
+/** Dimensions of one measurement: the file it was about, how many rows it
+ *  built. A duration alone says which operation is slow and never on what
+ *  input. */
+export type Attrs = Record<string, string | number>;
+
 export interface PerfSample {
 	name: string;
 	ms: number;
 	kind: SampleKind;
 	/** Wall clock at the end of the measurement, for correlating with a session. */
 	at: number;
+	attrs?: Attrs;
+}
+
+/** Handed to a span's body so it can name what the measurement was about,
+ *  including facts only known once the work is done. */
+export interface Observation {
+	attr(key: string, value: string | number): void;
 }
 
 export interface PerfSink {
@@ -64,8 +76,8 @@ export function disablePerf(): void {
 	openSpans = [];
 }
 
-export function record(name: string, ms: number): void {
-	push({ name, ms, kind: "span", at: Date.now() });
+export function record(name: string, ms: number, attrs?: Attrs): void {
+	push({ name, ms, kind: "span", at: Date.now(), ...(attrs && { attrs }) });
 }
 
 /** A frame gap belongs to whatever the app was doing when it stalled, so it is
@@ -83,32 +95,37 @@ export function recordFrameGap(ms: number): void {
 
 /** The synchronous half of `span`, for a computation that has to return its
  *  value directly — a derived value, a render pass. */
-export function measure<T>(name: string, fn: () => T): T {
-	if (sink === null) return fn();
+export function measure<T>(
+	name: string,
+	fn: (observation: Observation) => T,
+): T {
+	if (sink === null) return fn(NO_OBSERVATION);
 
+	const collected: Attrs = {};
 	const started = clock();
 	openSpans.push(name);
 	try {
-		return fn();
+		return fn(collector(collected));
 	} finally {
 		openSpans.pop();
-		record(name, clock() - started);
+		record(name, clock() - started, bagOrNothing(collected));
 	}
 }
 
 export async function span<T>(
 	name: string,
-	fn: () => T | Promise<T>,
+	fn: (observation: Observation) => T | Promise<T>,
 ): Promise<T> {
-	if (sink === null) return await fn();
+	if (sink === null) return await fn(NO_OBSERVATION);
 
+	const collected: Attrs = {};
 	const started = clock();
 	openSpans.push(name);
 	try {
-		return await fn();
+		return await fn(collector(collected));
 	} finally {
 		openSpans.pop();
-		record(name, clock() - started);
+		record(name, clock() - started, bagOrNothing(collected));
 	}
 }
 
@@ -120,6 +137,20 @@ export async function flushPerf(): Promise<void> {
 	buffer = [];
 
 	await target.write(batch.map((sample) => JSON.stringify(sample)));
+}
+
+const NO_OBSERVATION: Observation = { attr: () => {} };
+
+function collector(into: Attrs): Observation {
+	return {
+		attr(key, value) {
+			into[key] = value;
+		},
+	};
+}
+
+function bagOrNothing(collected: Attrs): Attrs | undefined {
+	return Object.keys(collected).length > 0 ? collected : undefined;
 }
 
 function push(sample: PerfSample): void {

@@ -3,6 +3,12 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import {
+	disablePerf,
+	enablePerf,
+	flushPerf,
+	type PerfSink,
+} from "../lib/perf.js";
+import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
@@ -486,11 +492,15 @@ describe("RepoView", () => {
 		let commits: ReturnType<typeof makeCommit>[];
 		let filesByOid: Record<string, FileDiff[]>;
 		let detailByOid: Record<string, CommitDetailType>;
+		// What `diff_commit_file` answers with. Hunkless by default, so a case
+		// that cares about the diff's size says so.
+		let diffFor: (path: string) => FileDiff;
 
 		beforeEach(() => {
 			commits = [];
 			filesByOid = {};
 			detailByOid = {};
+			diffFor = makeFileDiff;
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
 			mockInvoke.mockImplementation((cmd, args) => {
@@ -507,7 +517,7 @@ describe("RepoView", () => {
 							: Promise.reject("commit not found");
 					}
 					case "diff_commit_file":
-						return Promise.resolve([makeFileDiff(a?.filePath as string)]);
+						return Promise.resolve([diffFor(a?.filePath as string)]);
 					default:
 						return base(cmd, args);
 				}
@@ -528,6 +538,39 @@ describe("RepoView", () => {
 		function diffCommitFileCalls() {
 			return mockInvoke.mock.calls.filter((c) => c[0] === "diff_commit_file");
 		}
+
+		it("reports opening a commit file diff as a named observation", async () => {
+			const observed: {
+				name: string;
+				attrs?: Record<string, string | number>;
+			}[] = [];
+			const sink: PerfSink = {
+				async write(lines) {
+					for (const line of lines) observed.push(JSON.parse(line));
+				},
+			};
+			enablePerf({ sink, frames: false });
+
+			commits = [makeCommit({ oid: "oid-2", summary: "second commit" })];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2") };
+			diffFor = (path) => makeFileDiffWithContent(path, "added");
+
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]);
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			await flushPerf();
+			disablePerf();
+
+			const open = observed.find((s) => s.name === "diff.openCommitFile");
+			expect(open?.attrs).toEqual({
+				path: "f.ts",
+				lines: 1,
+				fullFile: "false",
+			});
+		});
 
 		it("reopens the viewed file when the pager moves to a commit touching it", async () => {
 			commits = [

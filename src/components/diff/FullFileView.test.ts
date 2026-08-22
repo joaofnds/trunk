@@ -7,6 +7,12 @@ import {
 	stubLayout,
 } from "../../__tests__/helpers/layout-stub";
 import { aThread } from "../../__tests__/helpers/thread-fixture";
+import {
+	disablePerf,
+	enablePerf,
+	flushPerf,
+	type PerfSink,
+} from "../../lib/perf.js";
 import type { FileDiff } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
 
@@ -431,6 +437,27 @@ describe("FullFileView", () => {
 		expect(content.getAttribute("style")).toContain("height: 990px");
 
 		vi.unstubAllGlobals();
+	});
+
+	it("reports the row build and the height build as named observations", async () => {
+		const observed: {
+			name: string;
+			attrs?: Record<string, string | number>;
+		}[] = [];
+		const sink: PerfSink = {
+			async write(lines) {
+				for (const line of lines) observed.push(JSON.parse(line));
+			},
+		};
+		enablePerf({ sink, frames: false });
+
+		render(FullFileView, { props: defaultProps() });
+		await flushPerf();
+		disablePerf();
+
+		const byName = new Map(observed.map((s) => [s.name, s.attrs]));
+		expect(byName.get("diff.buildRows")).toEqual({ lines: 5 });
+		expect(byName.get("diff.rowHeights")).toEqual({ rows: 5, wrap: "false" });
 	});
 
 	it("keeps the Comment affordance outside the scrolling list", async () => {

@@ -22,7 +22,13 @@ class FakeSink implements PerfSink {
 		return this.raw().map(({ at: _at, ...rest }) => rest);
 	}
 
-	raw(): { name: string; ms: number; kind: string; at: number }[] {
+	raw(): {
+		name: string;
+		ms: number;
+		kind: string;
+		at: number;
+		attrs?: Record<string, string | number>;
+	}[] {
 		return this.batches.flat().map((line) => JSON.parse(line));
 	}
 }
@@ -173,6 +179,76 @@ describe("perf", () => {
 			ms: 90,
 			kind: "frame-gap",
 		});
+	});
+
+	it("carries the attributes a span recorded against it", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+
+		await span("diff.openCommitFile", (observation) => {
+			observation.attr("path", "src/huge.ts");
+			observation.attr("lines", 89_999);
+		});
+		await flushPerf();
+
+		expect(sink.raw()[0].attrs).toEqual({
+			path: "src/huge.ts",
+			lines: 89_999,
+		});
+	});
+
+	it("keeps the attributes of a span that threw", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+
+		await expect(
+			span("diff.openCommitFile", (observation) => {
+				observation.attr("path", "src/huge.ts");
+				throw new Error("boom");
+			}),
+		).rejects.toThrow("boom");
+		await flushPerf();
+
+		expect(sink.raw()[0].attrs).toEqual({ path: "src/huge.ts" });
+	});
+
+	it("carries the attributes a synchronous measure recorded", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+
+		measure("diff.buildRows", (observation) => observation.attr("rows", 12));
+		await flushPerf();
+
+		expect(sink.raw()[0].attrs).toEqual({ rows: 12 });
+	});
+
+	it("leaves a sample with no attributes free of an empty bag", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+
+		measure("diff.buildRows", () => "rows");
+		await flushPerf();
+
+		expect("attrs" in sink.raw()[0]).toBe(false);
+	});
+
+	it("takes attributes on a directly recorded duration", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+
+		record("diff.render", 4, { rows: 25 });
+		await flushPerf();
+
+		expect(sink.raw()[0].attrs).toEqual({ rows: 25 });
+	});
+
+	it("accepts an attribute while instrumentation is off", () => {
+		expect(
+			measure("diff.buildRows", (observation) => {
+				observation.attr("rows", 12);
+				return "rows";
+			}),
+		).toBe("rows");
 	});
 
 	it("stamps every sample with the wall clock", async () => {

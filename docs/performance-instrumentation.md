@@ -49,6 +49,22 @@ A frame gap is filed under the innermost span open when it happened, which is wh
 overlap across an `await` attribute to the most recently opened one: an approximation in the
 *name*, never in the timing.
 
+## Attributes
+
+A duration says which operation is slow and never on what input. A span's body is handed an
+observation it can annotate, including with facts only known once the work is done:
+
+```ts
+await span("diff.openCommitFile", async (observation) => {
+  observation.attr("path", path);
+  const diffs = await fetch(...);
+  observation.attr("lines", countLines(diffs));
+});
+```
+
+Attributes show up beside each sample in the over-threshold listing, which is what turns
+"`diff.openCommitFile` p95 is 300ms" into "300ms on an 89,999-line file".
+
 ## Percentiles
 
 Nearest rank, no interpolation, so every number reported is a duration the app actually
@@ -65,6 +81,14 @@ With instrumentation off, `record`, `measure` and `span` cost one boolean check 
 else, and no IPC is issued. The Rust command is inert outside a debug build as well, so the
 release build does not depend on the frontend gate alone. It takes no path argument: the
 destination is fixed, so nothing on the frontend can direct a write elsewhere.
+
+## Every instrumentation site has a test
+
+Instrumentation rots silently: a wrapper dropped during an unrelated edit costs an operation
+in the report and breaks nothing. Each site is therefore pinned by a test that asserts the
+observation fires with its attributes — `RepoView.test.ts` for `diff.openCommitFile`,
+`FullFileView.test.ts` for `diff.buildRows` and `diff.rowHeights`. Add one alongside any new
+span.
 
 ## Adding a span
 
