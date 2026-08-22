@@ -172,6 +172,19 @@ describe("FullFileView", () => {
 		expect(affordance.disabled).toBe(false);
 	});
 
+	it("keeps the Comment affordance outside the scrolling list", async () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		await fireEvent.click(gutterGrip("added one"));
+		await tick();
+
+		const affordance = screen.getByRole("button", { name: /comment \(1\)/i });
+		const row = container.querySelector(".diff-line");
+
+		expect(row?.closest(".exact-virtual-viewport")).toBeTruthy();
+		expect(affordance.closest(".exact-virtual-viewport")).toBeNull();
+	});
+
 	it("mounts a bounded number of rows for a file far larger than the viewport", () => {
 		const lines = Array.from({ length: 5000 }, (_, index) => ({
 			origin: "Context" as const,
