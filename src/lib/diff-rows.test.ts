@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { type BuildOptions, buildInlineRows } from "./diff-rows.js";
-import type { DiffHunk, DiffLine, DiffOrigin, FileDiff } from "./types.js";
+import type {
+	DiffHunk,
+	DiffLine,
+	DiffOrigin,
+	FileDiff,
+	Side,
+	Thread,
+} from "./types.js";
 
 function line(
 	origin: DiffOrigin,
@@ -30,6 +37,33 @@ function hunk(header: string, lines: DiffLine[]): DiffHunk {
 
 function file(path: string, hunks: DiffHunk[], isBinary = false): FileDiff {
 	return { path, status: "Modified", is_binary: isBinary, hunks };
+}
+
+function thread(
+	id: string,
+	side: Side,
+	startLine: number,
+	endLine: number,
+): Thread {
+	return {
+		id,
+		review_id: "review-1",
+		text: id,
+		anchor: {
+			commit_oid: "oid",
+			file_path: "src/main.ts",
+			source: "FullFile",
+			side,
+			start_line: startLine,
+			end_line: endLine,
+		},
+		cached_excerpt: null,
+		state: "open",
+		stale: false,
+		channel: "human",
+		published: false,
+		replies: [],
+	};
 }
 
 const fullMode: BuildOptions = {
@@ -85,6 +119,86 @@ describe("buildInlineRows", () => {
 			"hunk-header",
 			"line",
 		]);
+	});
+
+	it("emits a comment row directly after the line its thread anchors to", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"line",
+			"line",
+			"comment",
+			"line",
+		]);
+	});
+
+	it("holds every thread anchored to the same line in one comment row", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2), thread("t2", "New", 2, 2)],
+		});
+
+		const comment = model.rows.find((row) => row.kind === "comment");
+
+		expect(comment?.kind === "comment" && comment.threads.map((t) => t.id)).toEqual([
+			"t1",
+			"t2",
+		]);
+	});
+
+	it("anchors the comment row to its line's indices", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		const comment = model.rows.find((row) => row.kind === "comment");
+
+		expect(
+			comment?.kind === "comment" && [
+				comment.hunkIdx,
+				comment.lineIdx,
+				comment.flatIdx,
+			],
+		).toEqual([0, 1, 1]);
+	});
+
+	it("omits comment rows when inline comments are hidden", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			showInlineComments: false,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
+	});
+
+	it("marks a line spanned when a comment's range covers it", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 1, 2)],
+		});
+
+		const spanned = model.rows
+			.filter((row) => row.kind === "line")
+			.map((row) => row.spanned);
+
+		expect(spanned).toEqual([true, true, false]);
+	});
+
+	it("leaves lines unspanned when inline comments are hidden", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			showInlineComments: false,
+			comments: [thread("t1", "New", 1, 2)],
+		});
+
+		expect(
+			model.rows.every((row) => row.kind !== "line" || !row.spanned),
+		).toBe(true);
 	});
 
 	it("keeps the flat index continuous across a hunk header", () => {

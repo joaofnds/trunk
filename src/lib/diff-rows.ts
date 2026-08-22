@@ -5,6 +5,7 @@
  * reports a zero-height viewport and truncates silently.
  */
 
+import { commentsForLine, spannedByComment } from "./comment-matching.js";
 import type { ContentMode, DiffLine, FileDiff, Thread } from "./types.js";
 
 export type DiffRow =
@@ -75,12 +76,41 @@ export function buildInlineRows(
 					lineIdx,
 					flatIdx,
 					line,
-					spanned: false,
+					spanned: opts.showInlineComments && isSpanned(line, opts.comments),
 				});
+
+				const threads = opts.showInlineComments
+					? threadsOn(line, opts.comments)
+					: [];
+				if (threads.length > 0) {
+					rows.push({
+						kind: "comment",
+						path: fd.path,
+						hunkIdx,
+						lineIdx,
+						flatIdx,
+						threads,
+					});
+				}
+
 				flatIdx++;
 			}
 		}
 	}
 
 	return { rows, gutterChars: 0, columns: [] };
+}
+
+function threadsOn(line: DiffLine, comments: Thread[]): Thread[] {
+	return [
+		...commentsForLine(comments, "New", line.new_lineno),
+		...commentsForLine(comments, "Old", line.old_lineno),
+	];
+}
+
+function isSpanned(line: DiffLine, comments: Thread[]): boolean {
+	return (
+		spannedByComment(comments, "New", line.new_lineno) ||
+		spannedByComment(comments, "Old", line.old_lineno)
+	);
 }
