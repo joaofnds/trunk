@@ -136,11 +136,13 @@ const heights = $derived(
 );
 
 // Computed, never measured: a virtual list never has the widest row mounted, so
-// measuring one would make the extent jump while scrolling (invariant 2).
+// measuring one would make the extent jump while scrolling (invariant 2). In
+// pixels rather than `ch`, because the content div sits outside the rows and
+// would resolve `ch` against the app font instead of the diff row's.
 const contentWidth = $derived(
-	wrapActive
+	wrapActive || !metrics
 		? "100%"
-		: `calc(${2 * model.gutterChars + (model.columns[0] ?? 0)}ch + ${ROW_CHROME_PX}px)`,
+		: `${(2 * model.gutterChars + (model.columns[0] ?? 0)) * metrics.charWidthPx + ROW_CHROME_PX}px`,
 );
 
 const affordanceVisible = $derived(

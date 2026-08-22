@@ -213,11 +213,10 @@ describe("FullFileView", () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
 		// Three gutter columns for line 13 plus one, twice, and 14 columns for
-		// "context before"; 35px of padding, border and gutter gaps.
+		// "context before", at the measured 9px per column, plus 35px of padding,
+		// border and gutter gaps.
 		const content = container.querySelector(".exact-virtual-content");
-		expect(content?.getAttribute("style")).toContain(
-			"width: calc(20ch + 35px)",
-		);
+		expect(content?.getAttribute("style")).toContain("width: 215px");
 	});
 
 	it("gives the content the pane's own width when rows wrap", () => {
