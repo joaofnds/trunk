@@ -53,6 +53,23 @@ export interface BuildOptions {
 	invisibles: boolean;
 }
 
+/** Heights the fixed row shapes declare rather than discover. Each row's own
+ *  CSS sets its height from the matching custom property below, so the height
+ *  function and the rendered row cannot disagree: a toolbar change that alters
+ *  a row's height has to change this number. */
+export const FIXED_ROW_HEIGHTS = {
+	fileHeader: 26,
+	hunkHeader: 28,
+	binary: 32,
+} as const;
+
+/** The custom properties the rows read, declared from the same numbers. */
+export const FIXED_ROW_HEIGHT_VARS = [
+	`--diff-file-header-height: ${FIXED_ROW_HEIGHTS.fileHeader}px`,
+	`--diff-hunk-header-height: ${FIXED_ROW_HEIGHTS.hunkHeader}px`,
+	`--diff-binary-row-height: ${FIXED_ROW_HEIGHTS.binary}px`,
+].join("; ");
+
 export function buildInlineRows(
 	fileDiffs: FileDiff[],
 	opts: BuildOptions,
@@ -187,7 +204,10 @@ function heightOf(
 		);
 	}
 
-	throw new Error(`no declared height for a ${row.kind} row`);
+	if (row.kind === "file-header") return FIXED_ROW_HEIGHTS.fileHeader;
+	if (row.kind === "hunk-header") return FIXED_ROW_HEIGHTS.hunkHeader;
+
+	return FIXED_ROW_HEIGHTS.binary;
 }
 
 function probedHeight(probed: Map<string, number>, threadId: string): number {

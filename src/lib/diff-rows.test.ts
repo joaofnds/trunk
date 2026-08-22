@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type BuildOptions, buildInlineRows, rowHeights } from "./diff-rows.js";
+import {
+	type BuildOptions,
+	buildInlineRows,
+	FIXED_ROW_HEIGHTS,
+	rowHeights,
+} from "./diff-rows.js";
 import type {
 	DiffHunk,
 	DiffLine,
@@ -372,5 +377,33 @@ describe("rowHeights", () => {
 		expect(() => rowHeights(model, metrics, 80, false, new Map())).toThrow(
 			/t1/,
 		);
+	});
+
+	it("takes each fixed row shape's height from its declared token", () => {
+		const binary = file("assets/logo.png", [], true);
+		const model = buildInlineRows([binary, twoHunks], {
+			...fullMode,
+			content: "hunk",
+			fileHeaders: true,
+		});
+
+		const heights = rowHeights(model, metrics, 80, false, new Map());
+
+		expect(heights.slice(0, 3)).toEqual([
+			FIXED_ROW_HEIGHTS.fileHeader,
+			FIXED_ROW_HEIGHTS.binary,
+			FIXED_ROW_HEIGHTS.fileHeader,
+		]);
+	});
+
+	it("needs nothing probed for a hunk header", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			content: "hunk",
+		});
+
+		const heights = rowHeights(model, metrics, 80, false, new Map());
+
+		expect(heights[0]).toBe(FIXED_ROW_HEIGHTS.hunkHeader);
 	});
 });
