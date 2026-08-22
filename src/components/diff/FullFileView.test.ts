@@ -248,6 +248,26 @@ describe("FullFileView", () => {
 		expect(row?.getAttribute("style")).toContain("white-space: pre;");
 	});
 
+	it("breaks a wrapped row at the column limit rather than at a space", () => {
+		const { container } = render(FullFileView, {
+			props: defaultProps({ wordWrap: true }),
+		});
+
+		const row = container.querySelector(".diff-line:not(.metrics-probe)");
+		const style = row?.getAttribute("style") ?? "";
+
+		expect(style).toContain("white-space: pre-wrap;");
+		expect(style).toContain("word-break: break-all;");
+	});
+
+	it("leaves word breaking alone when rows do not wrap", () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		const row = container.querySelector(".diff-line:not(.metrics-probe)");
+
+		expect(row?.getAttribute("style")).toContain("word-break: normal;");
+	});
+
 	it("keeps the Comment affordance outside the scrolling list", async () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 

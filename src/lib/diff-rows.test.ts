@@ -5,6 +5,7 @@ import {
 	FIXED_ROW_HEIGHTS,
 	rowHeights,
 } from "./diff-rows.js";
+import { displayColumns } from "./display-columns.js";
 import type {
 	DiffHunk,
 	DiffLine,
@@ -395,6 +396,34 @@ describe("rowHeights", () => {
 			FIXED_ROW_HEIGHTS.fileHeader,
 		]);
 	});
+
+	it.each([false, true])(
+		"never predicts a wrapped row shorter than its columns need, invisibles %s",
+		(invisibles) => {
+			const awkward = file("src/awkward.ts", [
+				hunk("@@ -1,5 +1,5 @@", [
+					line("Context", "\tindented", 1, 1),
+					line("Context", "trailing   ", 2, 2),
+					line("Context", "x".repeat(120), 3, 3),
+					line("Context", "", 4, 4),
+					line("Context", "\t\tdeep\tnested", 5, 5),
+				]),
+			]);
+			const model = buildInlineRows([awkward], { ...fullMode, invisibles });
+
+			const heights = rowHeights(model, metrics, 10, true, new Map());
+
+			for (const [index, row] of model.rows.entries()) {
+				if (row.kind !== "line") continue;
+				const needed =
+					Math.max(
+						1,
+						Math.ceil(displayColumns(row.line.content, 4, invisibles) / 10),
+					) * metrics.lineHeightPx;
+				expect(heights[index]).toBeGreaterThanOrEqual(needed);
+			}
+		},
+	);
 
 	it("needs nothing probed for a hunk header", () => {
 		const model = buildInlineRows([twoHunks], {
