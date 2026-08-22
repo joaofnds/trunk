@@ -197,6 +197,8 @@ pub fn run() {
         .manage(SyntaxTokenCache::new(DEFAULT_TOKEN_CACHE_BUDGET_BYTES))
         .invoke_handler(tauri::generate_handler![
             set_traffic_light_zoom,
+            commands::perf::perf_append,
+            commands::perf::perf_reset,
             commands::prefs::prefs_get,
             commands::prefs::prefs_set,
             commands::repo::open_repo,

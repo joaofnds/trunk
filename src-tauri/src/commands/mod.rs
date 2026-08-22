@@ -68,6 +68,7 @@ pub mod interactive_rebase;
 pub mod markdown;
 pub mod merge_editor;
 pub mod operation_state;
+pub mod perf;
 pub mod prefs;
 pub mod remote;
 pub mod repo;
