@@ -10,6 +10,7 @@ import {
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
+import { measure } from "../../lib/perf.js";
 import {
 	addReply,
 	deleteReply,
@@ -90,15 +91,17 @@ let list = $state<{
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
 
 const model = $derived(
-	buildInlineRows(fileDiffs, {
-		content: "full",
-		comments: viewComments,
-		showInlineComments,
-		collapsed: new Set<string>(),
-		fileHeaders: false,
-		tabSize: TAB_SIZE,
-		invisibles: showInvisibles,
-	}),
+	measure("diff.buildRows", () =>
+		buildInlineRows(fileDiffs, {
+			content: "full",
+			comments: viewComments,
+			showInlineComments,
+			collapsed: new Set<string>(),
+			fileHeaders: false,
+			tabSize: TAB_SIZE,
+			invisibles: showInvisibles,
+		}),
+	),
 );
 
 // A proportional font makes column arithmetic meaningless, so wrapping is
@@ -129,11 +132,14 @@ const ready = $derived(
 		(!wrapActive || availableColumns > 0),
 );
 
-const heights = $derived(
-	ready && metrics
-		? rowHeights(model, metrics, availableColumns, wrapActive, probedHeights)
-		: [],
-);
+const heights = $derived.by(() => {
+	const measured = metrics;
+	if (!ready || !measured) return [];
+
+	return measure("diff.rowHeights", () =>
+		rowHeights(model, measured, availableColumns, wrapActive, probedHeights),
+	);
+});
 
 // Computed, never measured: a virtual list never has the widest row mounted, so
 // measuring one would make the extent jump while scrolling (invariant 2). In

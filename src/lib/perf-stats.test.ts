@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarize } from "./perf-stats.js";
+import { groupSamples, summarize } from "./perf-stats.js";
 
 describe("summarize", () => {
 	it("counts the samples and reports their mean and extremes", () => {
@@ -44,5 +44,37 @@ describe("summarize", () => {
 
 	it("refuses an empty sample set rather than reporting zeroes", () => {
 		expect(() => summarize([])).toThrow(/no samples/);
+	});
+});
+
+describe("groupSamples", () => {
+	const samples = [
+		{ name: "invoke:diff", ms: 100, kind: "span" as const, at: 1 },
+		{ name: "invoke:diff", ms: 200, kind: "span" as const, at: 2 },
+		{ name: "invoke:status", ms: 10, kind: "span" as const, at: 3 },
+		{ name: "invoke:diff", ms: 50, kind: "frame-gap" as const, at: 4 },
+	];
+
+	it("keeps a name's spans and frame gaps apart", () => {
+		const groups = groupSamples(samples);
+
+		expect(groups.map((g) => `${g.kind}:${g.name}`)).toEqual([
+			"span:invoke:diff",
+			"frame-gap:invoke:diff",
+			"span:invoke:status",
+		]);
+	});
+
+	it("orders by total time spent rather than by sample count", () => {
+		const groups = groupSamples(samples);
+
+		expect(groups.map((g) => g.total)).toEqual([300, 50, 10]);
+	});
+
+	it("summarizes each group", () => {
+		const groups = groupSamples(samples);
+
+		expect(groups[0].summary.count).toBe(2);
+		expect(groups[0].summary.max).toBe(200);
 	});
 });

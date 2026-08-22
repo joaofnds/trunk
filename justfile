@@ -17,6 +17,14 @@ default:
 dev:
     bun run tauri dev -c tauri.dev.conf.json
 
+# Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
+perf:
+    VITE_PERF=1 bun run tauri dev -c tauri.dev.conf.json
+
+# Per-operation timing distributions from the last `just perf` session (`just perf-report 100` also lists each sample at or over 100ms)
+perf-report over="":
+    bun run scripts/perf-report.ts {{ if over == "" { "" } else { "--over " + over } }}
+
 # Production build
 build:
     bun run tauri build

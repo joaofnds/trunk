@@ -11,6 +11,7 @@ import { computeCommitNav } from "../lib/commitNav.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
@@ -727,18 +728,20 @@ async function selectCommitFileIdempotent(path: string) {
 	// old commit's hunks.
 	const fireOid = selectedCommitOid;
 	try {
-		const options = buildDiffOptions();
-		const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-			path: repoPath,
-			oid: fireOid,
-			filePath: path,
-			options,
+		await span("diff.openCommitFile", async () => {
+			const options = buildDiffOptions();
+			const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
+				path: repoPath,
+				oid: fireOid,
+				filePath: path,
+				options,
+			});
+			if (fireOid !== selectedCommitOid) return;
+			// Replace the lightweight entry with the raw diff data
+			commitFileDiffs = commitFileDiffs.map((fd) =>
+				fd.path === path && fileDiffs.length > 0 ? fileDiffs[0] : fd,
+			);
 		});
-		if (fireOid !== selectedCommitOid) return;
-		// Replace the lightweight entry with the raw diff data
-		commitFileDiffs = commitFileDiffs.map((fd) =>
-			fd.path === path && fileDiffs.length > 0 ? fileDiffs[0] : fd,
-		);
 	} catch {
 		// Keep the lightweight entry — DiffPanel will show empty diff
 	}

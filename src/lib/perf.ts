@@ -81,6 +81,21 @@ export function recordFrameGap(ms: number): void {
 	});
 }
 
+/** The synchronous half of `span`, for a computation that has to return its
+ *  value directly — a derived value, a render pass. */
+export function measure<T>(name: string, fn: () => T): T {
+	if (sink === null) return fn();
+
+	const started = clock();
+	openSpans.push(name);
+	try {
+		return fn();
+	} finally {
+		openSpans.pop();
+		record(name, clock() - started);
+	}
+}
+
 export async function span<T>(
 	name: string,
 	fn: () => T | Promise<T>,

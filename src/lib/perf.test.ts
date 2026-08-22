@@ -3,6 +3,7 @@ import {
 	disablePerf,
 	enablePerf,
 	flushPerf,
+	measure,
 	type PerfSink,
 	record,
 	recordFrameGap,
@@ -135,6 +136,43 @@ describe("perf", () => {
 		await flushPerf();
 
 		expect(sink.samples().length).toBe(1);
+	});
+
+	it("times a synchronous measure against the injected clock", async () => {
+		const sink = new FakeSink();
+		const clock = fakeClock();
+		enablePerf({ sink, now: clock.now, frames: false });
+
+		const value = measure("build-rows", () => {
+			clock.advance(14);
+			return "rows";
+		});
+		await flushPerf();
+
+		expect(value).toBe("rows");
+		expect(sink.samples()[0]).toEqual({
+			name: "build-rows",
+			ms: 14,
+			kind: "span",
+		});
+	});
+
+	it("returns a measured value untouched while instrumentation is off", () => {
+		expect(measure("build-rows", () => "rows")).toBe("rows");
+	});
+
+	it("attributes a frame gap to an open synchronous measure", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+
+		measure("build-rows", () => recordFrameGap(90));
+		await flushPerf();
+
+		expect(sink.samples()[0]).toEqual({
+			name: "build-rows",
+			ms: 90,
+			kind: "frame-gap",
+		});
 	});
 
 	it("stamps every sample with the wall clock", async () => {
