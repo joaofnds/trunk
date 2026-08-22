@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { span } from "./perf.js";
 
 // Tauri IPC errors arrive as raw strings, not Error objects.
 // catch(e) { e.message } returns undefined — this wrapper fixes that.
@@ -21,15 +22,19 @@ export function isTrunkError(e: unknown): e is TrunkError {
 	);
 }
 
+// Every frontend->backend operation goes through here, so timing this one
+// function covers all of them without touching a call site.
 export async function safeInvoke<T>(
 	cmd: string,
 	args?: Record<string, unknown>,
 ): Promise<T> {
-	try {
-		return await invoke<T>(cmd, args);
-	} catch (e: unknown) {
-		throw asTrunkError(e);
-	}
+	return await span(`invoke:${cmd}`, async () => {
+		try {
+			return await invoke<T>(cmd, args);
+		} catch (e: unknown) {
+			throw asTrunkError(e);
+		}
+	});
 }
 
 function asTrunkError(e: unknown): TrunkError {

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "./invoke.js";
+import { disablePerf, enablePerf, flushPerf, type PerfSink } from "./perf.js";
 
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: vi.fn(),
@@ -69,5 +70,53 @@ describe("safeInvoke", () => {
 		mockInvoke.mockResolvedValueOnce("ok");
 		await safeInvoke("my_cmd", { key: "val" });
 		expect(mockInvoke).toHaveBeenCalledWith("my_cmd", { key: "val" });
+	});
+});
+
+class FakeSink implements PerfSink {
+	readonly lines: string[] = [];
+
+	async write(lines: string[]): Promise<void> {
+		this.lines.push(...lines);
+	}
+
+	names(): string[] {
+		return this.lines.map((line) => JSON.parse(line).name);
+	}
+}
+
+describe("safeInvoke instrumentation", () => {
+	afterEach(disablePerf);
+
+	it("times every command under its own name, with no edit at the call site", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+		mockInvoke.mockResolvedValueOnce(undefined);
+
+		await safeInvoke("diff_commit_file");
+		await flushPerf();
+
+		expect(sink.names()).toEqual(["invoke:diff_commit_file"]);
+	});
+
+	it("times a command that failed, so a slow error is not invisible", async () => {
+		const sink = new FakeSink();
+		enablePerf({ sink, frames: false });
+		mockInvoke.mockRejectedValueOnce("boom");
+
+		await expect(safeInvoke("diff_commit_file")).rejects.toBeTruthy();
+		await flushPerf();
+
+		expect(sink.names()).toEqual(["invoke:diff_commit_file"]);
+	});
+
+	it("records nothing while instrumentation is off", async () => {
+		const sink = new FakeSink();
+		mockInvoke.mockResolvedValueOnce(undefined);
+
+		await safeInvoke("diff_commit_file");
+		await flushPerf();
+
+		expect(sink.lines.length).toBe(0);
 	});
 });
