@@ -337,6 +337,54 @@ describe("FullFileView", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("spans a selection across rows that were unmounted while scrolling", async () => {
+		const oncommentfullfile = vi.fn();
+		const lines = Array.from({ length: 3000 }, (_, index) => ({
+			origin: "Context" as const,
+			content: `line ${index}`,
+			old_lineno: index + 1,
+			new_lineno: index + 1,
+			spans: [],
+		}));
+		const long: FileDiff = {
+			path: "src/long.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,3000 +1,3000 @@",
+					old_start: 1,
+					old_lines: 3000,
+					new_start: 1,
+					new_lines: 3000,
+					lines,
+				},
+			],
+		};
+		const { container } = render(FullFileView, {
+			props: defaultProps({ fileDiffs: [long], oncommentfullfile }),
+		});
+
+		await fireEvent.click(gutterGrip("line 10"));
+		await tick();
+
+		const viewport = container.querySelector(
+			".exact-virtual-viewport",
+		) as HTMLElement;
+		viewport.scrollTop = 2500 * 18;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+		expect(screen.queryAllByText("line 10").length).toBe(0);
+
+		await fireEvent.click(gutterGrip("line 2500"), { shiftKey: true });
+		await tick();
+		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
+
+		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
+		expect(indices.size).toBe(2491);
+		expect(indices.has(10) && indices.has(2500)).toBe(true);
+	});
+
 	it("keeps the Comment affordance outside the scrolling list", async () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
