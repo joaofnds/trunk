@@ -268,6 +268,75 @@ describe("FullFileView", () => {
 		expect(row?.getAttribute("style")).toContain("word-break: normal;");
 	});
 
+	it("recomputes wrapped heights and holds the reader's place when the pane narrows", async () => {
+		// jsdom's ResizeObserver is a no-op, so the pane never reports a new width.
+		// This fake hands the test the callback the component registered.
+		const resizes: (() => void)[] = [];
+		vi.stubGlobal(
+			"ResizeObserver",
+			class {
+				constructor(callback: () => void) {
+					resizes.push(callback);
+				}
+				observe() {}
+				unobserve() {}
+				disconnect() {}
+			},
+		);
+		stubLayout({ width: 900, height: 400 });
+		const wide: FileDiff = {
+			path: "src/wide.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,10 +1,10 @@",
+					old_start: 1,
+					old_lines: 10,
+					new_start: 1,
+					new_lines: 10,
+					lines: Array.from({ length: 10 }, (_, index) => ({
+						origin: "Context" as const,
+						content: "x".repeat(180),
+						old_lineno: index + 1,
+						new_lineno: index + 1,
+						spans: [],
+					})),
+				},
+			],
+		};
+
+		const { container } = render(FullFileView, {
+			props: defaultProps({ fileDiffs: [wide], wordWrap: true }),
+		});
+		const viewport = container.querySelector(
+			".exact-virtual-viewport",
+		) as HTMLElement;
+		const content = container.querySelector(
+			".exact-virtual-content",
+		) as HTMLElement;
+
+		// 9px per character over a 900px pane leaves 90 columns, so 180 columns is
+		// two 18px lines; row 5 therefore starts at 180px.
+		expect(content.getAttribute("style")).toContain("height: 360px");
+		viewport.scrollTop = 180;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+
+		setLayout(container.querySelector(".list-area") as HTMLElement, {
+			width: 450,
+		});
+		for (const resize of resizes) resize();
+		await tick();
+		await tick();
+
+		// 40 columns now, so 180 columns is five lines and row 5 starts at 450px.
+		expect(content.getAttribute("style")).toContain("height: 900px");
+		expect(viewport.scrollTop).toBe(450);
+
+		vi.unstubAllGlobals();
+	});
+
 	it("keeps the Comment affordance outside the scrolling list", async () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
