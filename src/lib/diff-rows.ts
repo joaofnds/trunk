@@ -56,6 +56,18 @@ export function buildInlineRows(
 	const rows: DiffRow[] = [];
 
 	for (const fd of fileDiffs) {
+		const collapsed = opts.collapsed.has(fd.path);
+
+		if (opts.fileHeaders) {
+			rows.push({ kind: "file-header", path: fd.path, collapsed });
+		}
+		if (collapsed) continue;
+
+		if (fd.is_binary) {
+			rows.push({ kind: "binary", path: fd.path });
+			continue;
+		}
+
 		let flatIdx = 0;
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {

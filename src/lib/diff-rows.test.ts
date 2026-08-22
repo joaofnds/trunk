@@ -201,6 +201,59 @@ describe("buildInlineRows", () => {
 		).toBe(true);
 	});
 
+	it("emits a header row and a binary row, and no line rows, for a binary file", () => {
+		const binary = file("assets/logo.png", [], true);
+
+		const model = buildInlineRows([binary], { ...fullMode, fileHeaders: true });
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"file-header",
+			"binary",
+		]);
+	});
+
+	it("emits only the header row for a collapsed file", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			fileHeaders: true,
+			collapsed: new Set(["src/main.ts"]),
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual(["file-header"]);
+	});
+
+	it("marks the header row of a collapsed file collapsed", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			fileHeaders: true,
+			collapsed: new Set(["src/main.ts"]),
+		});
+
+		const header = model.rows[0];
+
+		expect(header.kind === "file-header" && header.collapsed).toBe(true);
+	});
+
+	it("omits the header row for a view that shows no file header", () => {
+		const model = buildInlineRows([twoHunks], fullMode);
+
+		expect(model.rows.some((row) => row.kind === "file-header")).toBe(false);
+	});
+
+	it("restarts the flat index at each file", () => {
+		const second = file("src/other.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "only", 1, 1)]),
+		]);
+
+		const model = buildInlineRows([twoHunks, second], fullMode);
+
+		const flat = model.rows
+			.filter((row) => row.kind === "line")
+			.map((row) => row.flatIdx);
+
+		expect(flat).toEqual([0, 1, 2, 0]);
+	});
+
 	it("keeps the flat index continuous across a hunk header", () => {
 		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
 
