@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import {
+	restoreLayout,
+	setLayout,
+	stubLayout,
+} from "../../__tests__/helpers/layout-stub";
+import { aThread } from "../../__tests__/helpers/thread-fixture";
 import type { FileDiff } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
 
@@ -170,6 +175,38 @@ describe("FullFileView", () => {
 		}) as HTMLButtonElement;
 		expect(affordance).toBeTruthy();
 		expect(affordance.disabled).toBe(false);
+	});
+
+	it("withholds the list until every comment row has a measured height", async () => {
+		// Every element measures zero, so the hidden comment probe cannot report a
+		// height — the case invariant 8 exists for.
+		stubLayout({ width: 900, height: 0 });
+		const commented = aThread({
+			id: "t1",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+		const props = defaultProps({ viewComments: [commented] });
+		const { container, rerender } = render(FullFileView, { props });
+
+		expect(container.querySelectorAll(".exact-virtual-viewport").length).toBe(
+			0,
+		);
+
+		for (const probe of container.querySelectorAll("[data-thread-id]")) {
+			setLayout(probe, { height: 80 });
+		}
+		await rerender(props);
+
+		expect(container.querySelectorAll(".exact-virtual-viewport").length).toBe(
+			1,
+		);
 	});
 
 	it("keeps the Comment affordance outside the scrolling list", async () => {

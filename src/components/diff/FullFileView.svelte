@@ -177,7 +177,10 @@ $effect(() => {
 		"[data-thread-id]",
 	)) {
 		const id = row.dataset.threadId;
-		if (id) measured.set(id, row.offsetHeight);
+		const height = row.offsetHeight;
+		// A zero here is an unmeasured row, not a row of no height. Recording it
+		// would be the substituted default invariant 8 forbids.
+		if (id && height > 0) measured.set(id, height);
 	}
 
 	if (wanted.every((thread) => measured.has(thread.id))) {
