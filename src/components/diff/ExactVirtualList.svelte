@@ -1,5 +1,5 @@
 <script lang="ts" generics="TItem">
-import { type Snippet, onMount } from "svelte";
+import { onMount, type Snippet } from "svelte";
 import { buildOffsets, windowFor } from "../../lib/virtual-window.js";
 
 interface Props {
