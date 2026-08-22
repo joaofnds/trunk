@@ -241,7 +241,7 @@ let selectedFile = $state<{
 	path: string;
 	kind: "unstaged" | "staged" | "conflicted";
 } | null>(null);
-let stagingDiffFiles = $state<FileDiff[]>([]);
+let stagingDiffFiles = $state.raw<FileDiff[]>([]);
 let stagingDiffLoading = $state(false);
 let selectGeneration = 0;
 // Bumped on every debounced repo-changed so the rendered-markdown preview
@@ -254,7 +254,7 @@ let stagingPanelRef = $state<StagingPanel | null>(null);
 // Commit selection (from CommitGraph)
 let selectedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
-let commitFileDiffs = $state<FileDiff[]>([]);
+let commitFileDiffs = $state.raw<FileDiff[]>([]);
 let selectedCommitFile = $state<string | null>(null);
 // Bumped on every selectCommitIdempotent call so an out-of-order commit-switch
 // response can't clobber a newer one, and a failed switch's catch arm can tell
@@ -300,7 +300,7 @@ let rebaseBaseOid = $state("");
 let rebaseBranchName = $state("");
 let rebaseBaseName = $state("");
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
-let rebaseFocusedFileDiffs = $state<FileDiff[]>([]);
+let rebaseFocusedFileDiffs = $state.raw<FileDiff[]>([]);
 let rebaseFocusedFileSelected = $state<string | null>(null);
 let rebaseDiffFile = $state<string | null>(null);
 
