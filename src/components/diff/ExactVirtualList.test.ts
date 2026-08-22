@@ -53,6 +53,14 @@ describe("ExactVirtualList", () => {
 		);
 	});
 
+	it("stretches the rows container to the full content width", () => {
+		const { container } = mountList(5000);
+
+		const rows = container.querySelector(".exact-virtual-rows");
+
+		expect(rows?.getAttribute("style")).toContain("min-width: 100%");
+	});
+
 	it("offsets the mounted rows by the first one's top", async () => {
 		const { container } = mountList(5000);
 		const viewport = viewportOf(container);

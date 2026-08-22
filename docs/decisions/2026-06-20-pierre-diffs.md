@@ -274,6 +274,16 @@ Token-level evidence (Shiki tokenizer, scripts at
 
 ### M3 — Large-file performance: DECISIVE gap; trunk does NOT virtualize its diff
 
+> **Partly superseded, 2026-08-22 (TRUNK-27 milestone 1).** `FullFileView` now
+> renders through `ExactVirtualList`, which mounts only the rows covering the
+> viewport plus one screen of runway either way. Row heights are computed from a
+> display-column count rather than measured, so the window is a prefix sum and
+> two binary searches and no row is ever measured after mount. `HunkView` and
+> `SplitView` still render every line and are milestones 2 and 3. Measured on an
+> 89,999-line file: mount is flat in file size, and the DOM holds hundreds of
+> nodes rather than hundreds of thousands. Everything below describes the state
+> before that change.
+
 - Trunk's `HunkView` / `SplitView` / `FullFileView` render **every** line into the
   DOM (`HunkView.svelte:446 {#each hunk.lines}`, etc.); grep for
   `IntersectionObserver|scrollTop|overscan|renderRange` across all four diff files
