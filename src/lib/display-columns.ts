@@ -32,6 +32,12 @@ const WIDE_RANGES: readonly (readonly [number, number])[] = [
 	[0x30000, 0x3fffd],
 ];
 
+const TAB = 9;
+const LEAD_SURROGATE_START = 0xd800;
+const LEAD_SURROGATE_END = 0xdbff;
+const TRAIL_SURROGATE_START = 0xdc00;
+const TRAIL_SURROGATE_END = 0xdfff;
+
 /** Columns the text occupies when laid out from column 0. */
 export function displayColumns(
 	text: string,
@@ -40,8 +46,20 @@ export function displayColumns(
 ): number {
 	let columns = 0;
 
-	for (const char of text) {
-		columns += advance(char, columns, tabSize, invisibles);
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+
+		if (code === TAB) {
+			columns += invisibles ? 1 : tabSize - (columns % tabSize);
+			continue;
+		}
+		if (code < 0x300) {
+			columns++;
+			continue;
+		}
+
+		columns += wideWidthAt(text, i);
+		if (pairsWith(code, text.charCodeAt(i + 1))) i++;
 	}
 
 	return columns;
@@ -59,38 +77,57 @@ export function columnsUpTo(
 	let columns = 0;
 	let units = 0;
 
-	for (const char of text) {
-		const width = advance(char, columns, tabSize, invisibles);
+	for (let i = 0; i < text.length; i++) {
+		const code = text.charCodeAt(i);
+		const pair = pairsWith(code, text.charCodeAt(i + 1));
+		const width = widthOf(text, i, code, columns, tabSize, invisibles);
 		if (columns + width > limit) return units;
 
 		columns += width;
-		units += char.length;
+		units += pair ? 2 : 1;
+		if (pair) i++;
 	}
 
 	return units;
 }
 
-function advance(
-	char: string,
+/** The width rule, in one place. `displayColumns` inlines its fast path in the
+ *  loop instead of calling this: over a 90,000-line file the extra read per
+ *  character is measurable, and that pass runs on every rebuild. */
+function widthOf(
+	text: string,
+	index: number,
+	code: number,
 	atColumn: number,
 	tabSize: number,
 	invisibles: boolean,
 ): number {
-	if (char === "\t") {
+	if (code === TAB) {
 		if (invisibles) return 1;
 		return tabSize - (atColumn % tabSize);
 	}
+	if (code < 0x300) return 1;
 
-	return charColumns(char);
+	return wideWidthAt(text, index);
 }
 
-function charColumns(char: string): number {
-	const codePoint = char.codePointAt(0) ?? 0;
-	if (codePoint < 0x300) return 1;
-
-	if (COMBINING.test(char)) return 0;
+/** Only reached at or above U+0300, so the string allocation it costs is paid
+ *  on the rare character rather than on every one. */
+function wideWidthAt(text: string, index: number): number {
+	const codePoint = text.codePointAt(index) ?? 0;
+	if (COMBINING.test(String.fromCodePoint(codePoint))) return 0;
 
 	return isWide(codePoint) ? 2 : 1;
+}
+
+/** True only for a well-formed pair: a lone lead surrogate is one unit. */
+function pairsWith(code: number, next: number): boolean {
+	return (
+		code >= LEAD_SURROGATE_START &&
+		code <= LEAD_SURROGATE_END &&
+		next >= TRAIL_SURROGATE_START &&
+		next <= TRAIL_SURROGATE_END
+	);
 }
 
 function isWide(codePoint: number): boolean {
