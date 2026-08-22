@@ -254,6 +254,55 @@ describe("buildInlineRows", () => {
 		expect(flat).toEqual([0, 1, 2, 0]);
 	});
 
+	it("reports the widest line's display columns", () => {
+		const wide = file("src/main.ts", [
+			hunk("@@ -1,2 +1,2 @@", [
+				line("Context", "short", 1, 1),
+				line("Context", "a much longer line", 2, 2),
+			]),
+		]);
+
+		const model = buildInlineRows([wide], fullMode);
+
+		expect(model.columns).toEqual(["a much longer line".length]);
+	});
+
+	it("counts a tab to its stop when measuring the widest line", () => {
+		const tabbed = file("src/main.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "\tx", 1, 1)]),
+		]);
+
+		const model = buildInlineRows([tabbed], fullMode);
+
+		expect(model.columns).toEqual([5]);
+	});
+
+	it("counts a tab as one cell for the widest line when invisibles are shown", () => {
+		const tabbed = file("src/main.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "\tx", 1, 1)]),
+		]);
+
+		const model = buildInlineRows([tabbed], { ...fullMode, invisibles: true });
+
+		expect(model.columns).toEqual([2]);
+	});
+
+	it("sizes the gutter to the largest line number's digits plus one", () => {
+		const deep = file("src/main.ts", [
+			hunk("@@ -998,1 +1000,1 @@", [line("Context", "x", 998, 1000)]),
+		]);
+
+		const model = buildInlineRows([deep], fullMode);
+
+		expect(model.gutterChars).toBe(5);
+	});
+
+	it("sizes the gutter for a file with no lines at all", () => {
+		const model = buildInlineRows([file("assets/logo.png", [], true)], fullMode);
+
+		expect(model.gutterChars).toBe(2);
+	});
+
 	it("keeps the flat index continuous across a hunk header", () => {
 		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
 

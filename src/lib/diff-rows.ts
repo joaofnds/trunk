@@ -6,6 +6,7 @@
  */
 
 import { commentsForLine, spannedByComment } from "./comment-matching.js";
+import { displayColumns } from "./display-columns.js";
 import type { ContentMode, DiffLine, FileDiff, Thread } from "./types.js";
 
 export type DiffRow =
@@ -54,6 +55,8 @@ export function buildInlineRows(
 	opts: BuildOptions,
 ): DiffRowModel {
 	const rows: DiffRow[] = [];
+	let widest = 0;
+	let maxLineNumber = 0;
 
 	for (const fd of fileDiffs) {
 		const collapsed = opts.collapsed.has(fd.path);
@@ -81,6 +84,16 @@ export function buildInlineRows(
 			}
 
 			for (const [lineIdx, line] of hunk.lines.entries()) {
+				widest = Math.max(
+					widest,
+					displayColumns(line.content, opts.tabSize, opts.invisibles),
+				);
+				maxLineNumber = Math.max(
+					maxLineNumber,
+					line.old_lineno ?? 0,
+					line.new_lineno ?? 0,
+				);
+
 				rows.push({
 					kind: "line",
 					path: fd.path,
@@ -110,7 +123,11 @@ export function buildInlineRows(
 		}
 	}
 
-	return { rows, gutterChars: 0, columns: [] };
+	return {
+		rows,
+		gutterChars: String(maxLineNumber).length + 1,
+		columns: [widest],
+	};
 }
 
 function threadsOn(line: DiffLine, comments: Thread[]): Thread[] {
