@@ -35,6 +35,12 @@ after touching a color token.
 | [accessibility/contrast-re-audit-2026-06-22.md](accessibility/contrast-re-audit-2026-06-22.md) | The authoritative pass — every surface re-derived against live source, with the fixes that landed. |
 | [accessibility/contrast-audit-2026-06-22.md](accessibility/contrast-audit-2026-06-22.md) | The first pass. Superseded on the numbers, kept for its method write-up. |
 
+## Performance
+
+| Doc | What it covers |
+|-----|----------------|
+| [performance-instrumentation.md](performance-instrumentation.md) | The standing measurement tooling: `just perf` and `just perf-report`, what is instrumented automatically (every Tauri command, frame gaps) and how to add a named span, why percentiles are nearest-rank, and why the gate is an env var rather than `import.meta.env.DEV`. Read before measuring anything. |
+
 ## Known issues
 
 [known-issues/](known-issues/) holds open bugs that are reproduced and understood but not yet
