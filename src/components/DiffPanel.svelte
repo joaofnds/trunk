@@ -92,6 +92,14 @@ let showInvisibles = $state(false);
 let wordWrap = $state(false);
 let hunkOperationInFlight = $state(false);
 
+// The seven values above start at defaults the persisted preferences then
+// replace a microtask later. Rendering a diff view against those defaults picks
+// the wrong view for one frame, and inline+hunk against a full-file payload —
+// what a reopened large file hands us, since the fetched diff outlives the
+// close — builds every one of its lines synchronously. The pane stays empty
+// until the real modes arrive.
+let prefsLoaded = $state(false);
+
 let focusedHunkIndex = $state(0);
 let hunkElements = $state<Record<string, HTMLDivElement>>({});
 
@@ -294,8 +302,13 @@ $effect(() => {
 			showInvisibles = si;
 			wordWrap = ww;
 			renderMode = rm;
+			prefsLoaded = true;
 		})
-		.catch(() => {});
+		.catch(() => {
+			// A store that cannot be read leaves every option at its default, and
+			// RepoView's own read failed the same way, so the payload matches them.
+			prefsLoaded = true;
+		});
 });
 
 function currentDiffOptions(
@@ -807,6 +820,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		oncommentfile={handleCommentFile}
 		onclose={onclose}
 	/>
+	{#if prefsLoaded}
 	<DiffViewer
 		{contentMode}
 		{contextLines}
@@ -848,6 +862,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		oncommentfullfile={handleCommentFullFile}
 		bind:fullFileView
 	/>
+	{/if}
 	{#if composerOpen && diffCaptured}
 		<CommentComposer
 			bind:this={composer}

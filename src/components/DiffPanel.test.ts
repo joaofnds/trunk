@@ -884,6 +884,65 @@ describe("VIEW-04: Full file view", () => {
 	});
 });
 
+describe("VIEW-04: reopening a large file", () => {
+	beforeEach(() => stubLayout({ width: 900, height: 400 }));
+	afterEach(restoreLayout);
+
+	// Closing the diff leaves the fetched payload in RepoView's commitFileDiffs,
+	// so a reopen mounts DiffPanel against the whole file. The persisted mode
+	// arrives a microtask later, so the first frame renders whatever the
+	// optimistic default routes to — and against a full-file payload that frame
+	// is the freeze this milestone exists to remove.
+	it("mounts no rows before the persisted diff mode has resolved", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
+			Promise.resolve("full"),
+		);
+		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("inline"),
+		);
+		const bigFile: FileDiff = {
+			path: "src/huge.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,5000 +1,5000 @@",
+					old_start: 1,
+					old_lines: 5000,
+					new_start: 1,
+					new_lines: 5000,
+					lines: Array.from({ length: 5000 }, (_, index) => ({
+						origin: "Context" as const,
+						content: `line ${index}`,
+						old_lineno: index + 1,
+						new_lineno: index + 1,
+						spans: [],
+					})),
+				},
+			],
+		};
+
+		const { container } = render(DiffPanel, {
+			props: {
+				fileDiffs: [bigFile],
+				commitDetail: null,
+				onclose: vi.fn(),
+			},
+		});
+
+		expect(container.querySelectorAll(".diff-line").length).toBe(0);
+
+		await flushPrefs();
+
+		expect(container.querySelectorAll(".diff-line").length).toBeLessThan(200);
+
+		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
+			Promise.resolve("hunk"),
+		);
+	});
+});
+
 // ---- WHSP-02: Staging disabled when whitespace ignore active ----
 
 describe("WHSP-02: Staging disabled when whitespace ignore active", () => {
