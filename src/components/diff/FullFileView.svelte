@@ -173,6 +173,12 @@ $effect(() => {
 	const wanted = threadsToProbe;
 	if (!container || wanted.length === 0) return;
 
+	// Lay the probe out at the width the real rows occupy, and re-measure
+	// whenever that width changes: a ThreadCard reflows, so a height taken at
+	// another width is not this row's height (P-2's re-probe triggers).
+	container.style.width = contentWidth;
+	container.style.minWidth = `${paneWidthPx}px`;
+
 	const measured = new Map<string, number>();
 	for (const row of container.querySelectorAll<HTMLElement>(
 		"[data-thread-id]",
@@ -337,7 +343,7 @@ function lineColor(): string {
     ></div>
 
     {#if threadsToProbe.length > 0}
-      <div class="comment-probe" bind:this={commentProbe} style="width: {contentWidth};">
+      <div class="comment-probe" bind:this={commentProbe}>
         {#each threadsToProbe as c (c.id)}
           <div class="comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
         {/each}
@@ -372,10 +378,6 @@ function lineColor(): string {
     pointer-events: none;
     z-index: -1;
   }
-  .comment-probe {
-    min-width: 100%;
-  }
-
   .binary-row {
     height: var(--diff-binary-row-height);
     box-sizing: border-box;

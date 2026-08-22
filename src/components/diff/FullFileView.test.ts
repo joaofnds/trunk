@@ -385,6 +385,55 @@ describe("FullFileView", () => {
 		expect(indices.has(10) && indices.has(2500)).toBe(true);
 	});
 
+	it("re-measures comment rows when the pane width changes", async () => {
+		const resizes: (() => void)[] = [];
+		vi.stubGlobal(
+			"ResizeObserver",
+			class {
+				constructor(callback: () => void) {
+					resizes.push(callback);
+				}
+				observe() {}
+				unobserve() {}
+				disconnect() {}
+			},
+		);
+		const commented = aThread({
+			id: "t1",
+			anchor: {
+				commit_oid: "abc123",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 11,
+				end_line: 11,
+			},
+		});
+		const { container } = render(FullFileView, {
+			props: defaultProps({ viewComments: [commented] }),
+		});
+		const content = container.querySelector(
+			".exact-virtual-content",
+		) as HTMLElement;
+		const before = content.getAttribute("style") ?? "";
+
+		// A narrower pane reflows the card taller; the stale height would leave
+		// the rows below it overlapping.
+		for (const probe of container.querySelectorAll("[data-thread-id]")) {
+			setLayout(probe, { height: 900 });
+		}
+		setLayout(container.querySelector(".list-area") as HTMLElement, {
+			width: 450,
+		});
+		for (const resize of resizes) resize();
+		await tick();
+
+		expect(before).toContain("height: 490px");
+		expect(content.getAttribute("style")).toContain("height: 990px");
+
+		vi.unstubAllGlobals();
+	});
+
 	it("keeps the Comment affordance outside the scrolling list", async () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
