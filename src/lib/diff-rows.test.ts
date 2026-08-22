@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type BuildOptions, buildInlineRows } from "./diff-rows.js";
+import { type BuildOptions, buildInlineRows, rowHeights } from "./diff-rows.js";
 import type {
 	DiffHunk,
 	DiffLine,
@@ -88,11 +88,7 @@ describe("buildInlineRows", () => {
 	it("flattens every hunk's lines into one row per line in full mode", () => {
 		const model = buildInlineRows([twoHunks], fullMode);
 
-		expect(model.rows.map((row) => row.kind)).toEqual([
-			"line",
-			"line",
-			"line",
-		]);
+		expect(model.rows.map((row) => row.kind)).toEqual(["line", "line", "line"]);
 	});
 
 	it("carries the hunk index, the in-hunk line index and the flat index", () => {
@@ -143,10 +139,9 @@ describe("buildInlineRows", () => {
 
 		const comment = model.rows.find((row) => row.kind === "comment");
 
-		expect(comment?.kind === "comment" && comment.threads.map((t) => t.id)).toEqual([
-			"t1",
-			"t2",
-		]);
+		expect(
+			comment?.kind === "comment" && comment.threads.map((t) => t.id),
+		).toEqual(["t1", "t2"]);
 	});
 
 	it("anchors the comment row to its line's indices", () => {
@@ -196,9 +191,9 @@ describe("buildInlineRows", () => {
 			comments: [thread("t1", "New", 1, 2)],
 		});
 
-		expect(
-			model.rows.every((row) => row.kind !== "line" || !row.spanned),
-		).toBe(true);
+		expect(model.rows.every((row) => row.kind !== "line" || !row.spanned)).toBe(
+			true,
+		);
 	});
 
 	it("emits a header row and a binary row, and no line rows, for a binary file", () => {
@@ -298,7 +293,10 @@ describe("buildInlineRows", () => {
 	});
 
 	it("sizes the gutter for a file with no lines at all", () => {
-		const model = buildInlineRows([file("assets/logo.png", [], true)], fullMode);
+		const model = buildInlineRows(
+			[file("assets/logo.png", [], true)],
+			fullMode,
+		);
 
 		expect(model.gutterChars).toBe(2);
 	});
@@ -311,5 +309,68 @@ describe("buildInlineRows", () => {
 			.map((row) => row.flatIdx);
 
 		expect(flat).toEqual([0, 1, 2]);
+	});
+});
+
+const metrics = { charWidthPx: 8, lineHeightPx: 18, monospace: true };
+
+describe("rowHeights", () => {
+	it("returns one height per row", () => {
+		const model = buildInlineRows([twoHunks], fullMode);
+
+		expect(rowHeights(model, metrics, 80, false, new Map())).toHaveLength(3);
+	});
+
+	it("gives every line one line height when wrap is off", () => {
+		const long = file("src/main.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "x".repeat(200), 1, 1)]),
+		]);
+		const model = buildInlineRows([long], fullMode);
+
+		expect(rowHeights(model, metrics, 10, false, new Map())).toEqual([18]);
+	});
+
+	it("gives a wrapped line one line height per visual line", () => {
+		const long = file("src/main.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "x".repeat(25), 1, 1)]),
+		]);
+		const model = buildInlineRows([long], fullMode);
+
+		expect(rowHeights(model, metrics, 10, true, new Map())).toEqual([54]);
+	});
+
+	it("counts a wrapped line's tab to its stop", () => {
+		const tabbed = file("src/main.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "\t\t\t", 1, 1)]),
+		]);
+		const model = buildInlineRows([tabbed], fullMode);
+
+		expect(rowHeights(model, metrics, 4, true, new Map())).toEqual([54]);
+	});
+
+	it("sums the probed heights of a comment row's threads", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2), thread("t2", "New", 2, 2)],
+		});
+		const probed = new Map([
+			["t1", 60],
+			["t2", 40],
+		]);
+
+		expect(rowHeights(model, metrics, 80, false, probed)).toEqual([
+			18, 18, 100, 18,
+		]);
+	});
+
+	it("throws rather than guess when a comment row's thread was never probed", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect(() => rowHeights(model, metrics, 80, false, new Map())).toThrow(
+			/t1/,
+		);
 	});
 });

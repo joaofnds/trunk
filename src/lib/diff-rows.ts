@@ -7,6 +7,7 @@
 
 import { commentsForLine, spannedByComment } from "./comment-matching.js";
 import { displayColumns } from "./display-columns.js";
+import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
 import type { ContentMode, DiffLine, FileDiff, Thread } from "./types.js";
 
 export type DiffRow =
@@ -20,6 +21,8 @@ export type DiffRow =
 			lineIdx: number;
 			flatIdx: number;
 			line: DiffLine;
+			/** Display columns the content occupies, from the same pass. */
+			columns: number;
 			spanned: boolean;
 	  }
 	| {
@@ -84,10 +87,13 @@ export function buildInlineRows(
 			}
 
 			for (const [lineIdx, line] of hunk.lines.entries()) {
-				widest = Math.max(
-					widest,
-					displayColumns(line.content, opts.tabSize, opts.invisibles),
+				const columns = displayColumns(
+					line.content,
+					opts.tabSize,
+					opts.invisibles,
 				);
+
+				widest = Math.max(widest, columns);
 				maxLineNumber = Math.max(
 					maxLineNumber,
 					line.old_lineno ?? 0,
@@ -101,6 +107,7 @@ export function buildInlineRows(
 					lineIdx,
 					flatIdx,
 					line,
+					columns,
 					spanned: opts.showInlineComments && isSpanned(line, opts.comments),
 				});
 
@@ -142,4 +149,52 @@ function isSpanned(line: DiffLine, comments: Thread[]): boolean {
 		spannedByComment(comments, "New", line.new_lineno) ||
 		spannedByComment(comments, "Old", line.old_lineno)
 	);
+}
+
+/** One exact height per row, in row order. Nothing here measures: a line's
+ *  height comes from its column count, a comment row's from the heights the
+ *  view probed before it rendered the list. A row with neither refuses rather
+ *  than substituting a default, which is what makes the offsets a prefix sum
+ *  the list never has to correct. */
+export function rowHeights(
+	model: DiffRowModel,
+	metrics: RowMetrics,
+	availableColumns: number,
+	wrap: boolean,
+	probed: Map<string, number>,
+): number[] {
+	return model.rows.map((row) =>
+		heightOf(row, metrics, availableColumns, wrap, probed),
+	);
+}
+
+function heightOf(
+	row: DiffRow,
+	metrics: RowMetrics,
+	availableColumns: number,
+	wrap: boolean,
+	probed: Map<string, number>,
+): number {
+	if (row.kind === "line") {
+		if (!wrap) return metrics.lineHeightPx;
+		return rowHeightFor(row.columns, availableColumns, metrics);
+	}
+
+	if (row.kind === "comment") {
+		return row.threads.reduce(
+			(total, thread) => total + probedHeight(probed, thread.id),
+			0,
+		);
+	}
+
+	throw new Error(`no declared height for a ${row.kind} row`);
+}
+
+function probedHeight(probed: Map<string, number>, threadId: string): number {
+	const height = probed.get(threadId);
+	if (height === undefined) {
+		throw new Error(`comment thread ${threadId} was never probed`);
+	}
+
+	return height;
 }
