@@ -117,9 +117,21 @@ let {
 	fullFileView = $bindable(null),
 	refreshToken = 0,
 }: Props = $props();
+
+const renderedMarkdown = $derived(
+	renderMode === "rendered" &&
+		selectedPath !== null &&
+		isMarkdownPath(selectedPath),
+);
+
+// A virtualized view owns its own scroller. Leaving this wrapper scrolling too
+// would give the wheel two places to go on the same axis.
+const virtualized = $derived(
+	!renderedMarkdown && layoutMode === "inline" && contentMode === "full",
+);
 </script>
 
-<div style="flex: 1; overflow: auto; min-height: 0; container-type: inline-size; overscroll-behavior-x: none;">
+<div style="flex: 1; overflow: {virtualized ? 'hidden' : 'auto'}; min-height: 0; position: relative; container-type: inline-size; overscroll-behavior-x: none;">
   {#if fileDiffs.length === 0 && commitDetail === null && !loading}
     <div style="
       flex: 1;

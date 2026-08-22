@@ -1,8 +1,14 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import type { FileDiff } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
+
+// jsdom reports a zero-height viewport, which renders no rows at all through a
+// virtual list. Every case here needs a pane with a real box.
+beforeEach(() => stubLayout({ width: 900, height: 400 }));
+afterEach(restoreLayout);
 
 // FullFileView renders the flat full-file line list and owns net-new contiguous
 // click + shift-click selection state. It never calls IPC — it only bubbles the
@@ -164,6 +170,37 @@ describe("FullFileView", () => {
 		}) as HTMLButtonElement;
 		expect(affordance).toBeTruthy();
 		expect(affordance.disabled).toBe(false);
+	});
+
+	it("mounts a bounded number of rows for a file far larger than the viewport", () => {
+		const lines = Array.from({ length: 5000 }, (_, index) => ({
+			origin: "Context" as const,
+			content: `line ${index}`,
+			old_lineno: index + 1,
+			new_lineno: index + 1,
+			spans: [],
+		}));
+		const huge: FileDiff = {
+			path: "src/huge.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,5000 +1,5000 @@",
+					old_start: 1,
+					old_lines: 5000,
+					new_start: 1,
+					new_lines: 5000,
+					lines,
+				},
+			],
+		};
+
+		const { container } = render(FullFileView, {
+			props: defaultProps({ fileDiffs: [huge] }),
+		});
+
+		expect(container.querySelectorAll(".diff-line").length).toBeLessThan(200);
 	});
 
 	it("WHSP: with invisibles on, the selectable text is the real whitespace and the glyph is presentational", () => {

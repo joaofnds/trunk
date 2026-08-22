@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import {
 	pairLines,
 	splitInvisibles,
@@ -801,6 +802,11 @@ describe("diff-utils", () => {
 // ---- VIEW-04: Full file view ----
 
 describe("VIEW-04: Full file view", () => {
+	// Full-file mode renders through a virtual list, which mounts no rows at all
+	// against jsdom's zero-height viewport.
+	beforeEach(() => stubLayout({ width: 900, height: 400 }));
+	afterEach(restoreLayout);
+
 	it("renders all lines as continuous document without hunk headers", async () => {
 		const storeMock = await import("../lib/store.js");
 		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>

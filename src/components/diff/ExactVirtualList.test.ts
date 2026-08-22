@@ -9,7 +9,7 @@ const VIEWPORT_HEIGHT = 200;
 
 afterEach(restoreLayout);
 
-const renderItem = createRawSnippet<[number, number]>(() => ({
+const renderItem = createRawSnippet<[unknown, number]>(() => ({
 	render: () => `<div class="row"></div>`,
 }));
 

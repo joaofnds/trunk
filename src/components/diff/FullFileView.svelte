@@ -1,8 +1,11 @@
 <script lang="ts">
+import { onMount, tick } from "svelte";
 import {
-	commentsForLine,
-	spannedByComment,
-} from "../../lib/comment-matching.js";
+	buildInlineRows,
+	type DiffRow,
+	FIXED_ROW_HEIGHT_VARS,
+	rowHeights,
+} from "../../lib/diff-rows.js";
 import {
 	splitInvisibles,
 	trailingWhitespaceStart,
@@ -15,8 +18,14 @@ import {
 	editThread,
 	setThreadState,
 } from "../../lib/review-comment-actions.js";
+import {
+	availableCharsFor,
+	measureRowMetrics,
+	type RowMetrics,
+} from "../../lib/row-metrics.js";
 import type { DiffLine, FileDiff, Thread } from "../../lib/types.js";
 import ThreadCard from "../ThreadCard.svelte";
+import ExactVirtualList from "./ExactVirtualList.svelte";
 
 interface Props {
 	fileDiffs: FileDiff[];
@@ -46,6 +55,16 @@ let {
 	viewComments = [],
 }: Props = $props();
 
+// Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
+// columns — unless invisibles are on, where .invisible-char collapses it to one.
+const TAB_SIZE = 4;
+
+// Horizontal room a row spends on something other than columns: 8px padding
+// each side, the 3px change-indicator border, and the 8px gap after each of the
+// two gutters. Erring high shortens the wrap point, which over-predicts a
+// wrapped row's height — the safe direction.
+const ROW_CHROME_PX = 35;
+
 // Net-new contiguous selection state (D-01): a click sets a single-line anchor;
 // shift-click extends the focus, and the selected span is the inclusive range
 // anchorIndex..focusIndex over the active file's flat line list. Only new-side
@@ -55,8 +74,116 @@ let selectedPath = $state<string | null>(null);
 let anchorIndex = $state<number | null>(null);
 let focusIndex = $state<number | null>(null);
 
+let pane = $state<HTMLDivElement | null>(null);
+let metricsProbe = $state<HTMLDivElement | null>(null);
+let commentProbe = $state<HTMLDivElement | null>(null);
+let metrics = $state<RowMetrics | null>(null);
+let paneWidthPx = $state(0);
+let probedHeights = $state(new Map<string, number>());
+let list = $state<{
+	topIndex: () => number;
+	anchorTo: (index: number) => void;
+} | null>(null);
+
 // The contiguous span as flat indices into the active file's line list.
 const selectedIndices = $derived(computeSpan(anchorIndex, focusIndex));
+
+const model = $derived(
+	buildInlineRows(fileDiffs, {
+		content: "full",
+		comments: viewComments,
+		showInlineComments,
+		collapsed: new Set<string>(),
+		fileHeaders: false,
+		tabSize: TAB_SIZE,
+		invisibles: showInvisibles,
+	}),
+);
+
+// A proportional font makes column arithmetic meaningless, so wrapping is
+// refused rather than rendered at a height nothing can derive (P-8).
+const wrapActive = $derived(wordWrap && (metrics?.monospace ?? false));
+
+const availableColumns = $derived(
+	metrics
+		? availableCharsFor(
+				paneWidthPx,
+				2 * model.gutterChars,
+				ROW_CHROME_PX,
+				metrics,
+			)
+		: 0,
+);
+
+const threadsToProbe = $derived(
+	model.rows.flatMap((row) => (row.kind === "comment" ? row.threads : [])),
+);
+
+// Invariant 8: withhold the list until every input exists, rather than render
+// against a default height and correct it afterwards.
+const ready = $derived(
+	metrics !== null &&
+		paneWidthPx > 0 &&
+		threadsToProbe.every((thread) => probedHeights.has(thread.id)) &&
+		(!wrapActive || availableColumns > 0),
+);
+
+const heights = $derived(
+	ready && metrics
+		? rowHeights(model, metrics, availableColumns, wrapActive, probedHeights)
+		: [],
+);
+
+// Computed, never measured: a virtual list never has the widest row mounted, so
+// measuring one would make the extent jump while scrolling (invariant 2).
+const contentWidth = $derived(
+	wrapActive
+		? "100%"
+		: `calc(${2 * model.gutterChars + (model.columns[0] ?? 0)}ch + ${ROW_CHROME_PX}px)`,
+);
+
+const affordanceVisible = $derived(
+	(diffKind === "commit" || diffKind === "unstaged") &&
+		selectedPath !== null &&
+		selectedIndices.size > 0,
+);
+
+onMount(() => {
+	if (metricsProbe) metrics = measureRowMetrics(metricsProbe);
+
+	const el = pane;
+	if (!el) return;
+
+	paneWidthPx = el.clientWidth;
+
+	const observer = new ResizeObserver(() => {
+		const anchor = list?.topIndex() ?? 0;
+		paneWidthPx = el.clientWidth;
+
+		if (wrapActive) tick().then(() => list?.anchorTo(anchor));
+	});
+	observer.observe(el);
+
+	return () => observer.disconnect();
+});
+
+$effect(() => {
+	const container = commentProbe;
+	const wanted = threadsToProbe;
+	if (!container || wanted.length === 0) return;
+
+	const measured = new Map<string, number>();
+	for (const row of container.querySelectorAll<HTMLElement>(
+		"[data-thread-id]",
+	)) {
+		const id = row.dataset.threadId;
+		if (id) measured.set(id, row.offsetHeight);
+	}
+
+	if (wanted.every((thread) => measured.has(thread.id))) {
+		probedHeights = measured;
+	}
+});
 
 function computeSpan(anchor: number | null, focus: number | null): Set<number> {
 	if (anchor === null || focus === null) return new Set();
@@ -69,13 +196,13 @@ function computeSpan(anchor: number | null, focus: number | null): Set<number> {
 
 function selectLine(
 	path: string,
-	lines: DiffLine[],
+	line: DiffLine,
 	index: number,
 	shift: boolean,
 ) {
 	// D-02: only new-side lines are valid selection endpoints. A click on a Delete
 	// line (new_lineno === null) is a no-op.
-	if (lines[index].new_lineno === null) return;
+	if (line.new_lineno === null) return;
 
 	if (shift && selectedPath === path && anchorIndex !== null) {
 		focusIndex = index;
@@ -109,115 +236,153 @@ function lineBackground(origin: string, isSelected: boolean): string {
 function lineColor(): string {
 	return "var(--color-diff-text)";
 }
-
-function maxLineNumber(fd: FileDiff): number {
-	let max = 0;
-	for (const hunk of fd.hunks) {
-		for (const line of hunk.lines) {
-			if (line.old_lineno !== null && line.old_lineno > max)
-				max = line.old_lineno;
-			if (line.new_lineno !== null && line.new_lineno > max)
-				max = line.new_lineno;
-		}
-	}
-	return max;
-}
-
-function gutterWidth(maxNum: number): string {
-	const digits = Math.max(String(maxNum).length, 1);
-	return `${digits + 1}ch`;
-}
 </script>
 
-{#each fileDiffs as fd (fd.path)}
-  {@const gutterW = gutterWidth(maxLineNumber(fd))}
-  {@const allLines = fd.hunks.flatMap(h => h.lines)}
-  {@const fileSelected = selectedPath === fd.path && selectedIndices.size > 0}
-  <div style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};">
-    {#if fd.is_binary}
-      <div style="
-        padding: 8px;
-        color: var(--color-text-muted);
+{#snippet threadCard(c: Thread)}
+  <ThreadCard
+    variant="inline"
+    confirmDelete={false}
+    thread={c}
+    onedit={(id, text) => editThread(repoPath, id, text)}
+    onreplyadd={(id, text) => addReply(repoPath, id, text)}
+    onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+    onreplyedit={(id, text) => editReply(repoPath, id, text)}
+    onreplydelete={(id) => deleteReply(repoPath, id)}
+    ondelete={(id) => deleteThread(repoPath, id)}
+  />
+{/snippet}
+
+{#snippet diffRow(item: DiffRow, _index: number)}
+  {#if item.kind === "line"}
+    {@const line = item.line}
+    {@const isSelectable = line.new_lineno !== null}
+    {@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
+    {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
+    {@const gutterW = `${model.gutterChars}ch`}
+    <div
+      class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
+      style="
+        font-family: monospace;
         font-size: 12px;
-      ">
-        Binary file — no diff available
+        line-height: 18px;
+        padding: 0 8px;
+        white-space: {wrapActive ? 'pre-wrap' : 'pre'};
+        word-break: {wrapActive ? 'break-all' : 'normal'};
+        background: {lineBackground(line.origin, isSelected)};
+        color: {lineColor()};
+        display: flex;
+        align-items: flex-start;
+      "
+    ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
+        class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
+        style="user-select: none; -webkit-user-select: none;"
+        role={isSelectable ? 'button' : undefined}
+        tabindex={isSelectable ? 0 : undefined}
+        onmousedown={(e) => { if (isSelectable && e.shiftKey) e.preventDefault(); }}
+        onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
+        onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
+      ><span class="gutter-num" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
+  {:else if item.kind === "comment"}
+    {#each item.threads as c (c.id)}
+      <div class="comment-row">{@render threadCard(c)}</div>
+    {/each}
+  {:else if item.kind === "binary"}
+    <div class="binary-row">Binary file — no diff available</div>
+  {/if}
+{/snippet}
+
+<div class="full-file" style="{FIXED_ROW_HEIGHT_VARS}">
+  {#if affordanceVisible}
+    <!-- Full-file Comment affordance (L-05: no isMerge disable). Appears for
+         commit diffs and unstaged working-tree diffs (260531-k4j) once a
+         selection exists. Lives outside the list because it follows the live
+         selection, which the row model must not take as an input. -->
+    <div style="display: flex; justify-content: flex-end; padding: 4px 8px; flex: 0 0 auto;">
+      <button
+        style="
+          background: var(--color-accent-bg, var(--color-surface));
+          border: 1px solid var(--color-border);
+          border-radius: 3px;
+          color: var(--color-accent);
+          font-size: 11px;
+          font-family: var(--font-sans, sans-serif);
+          padding: 2px 8px;
+          cursor: pointer;
+          white-space: nowrap;
+        "
+        onclick={() => selectedPath && oncommentfullfile(selectedPath, selectedIndices)}
+      >
+        Comment ({selectedIndices.size})
+      </button>
+    </div>
+  {/if}
+
+  <div class="list-area" bind:this={pane}>
+    {#if ready}
+      <ExactVirtualList
+        bind:this={list}
+        items={model.rows}
+        {heights}
+        {contentWidth}
+        renderItem={diffRow}
+      />
+    {/if}
+
+    <div
+      class="diff-line metrics-probe"
+      bind:this={metricsProbe}
+      style="font-family: monospace; font-size: 12px; line-height: 18px;"
+    ></div>
+
+    {#if threadsToProbe.length > 0}
+      <div class="comment-probe" bind:this={commentProbe} style="width: {contentWidth};">
+        {#each threadsToProbe as c (c.id)}
+          <div class="comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
+        {/each}
       </div>
-    {:else}
-      <!-- Full-file Comment affordance (L-05: no isMerge disable). Appears for
-           commit diffs and unstaged working-tree diffs (260531-k4j) once a
-           selection exists. Full-file is always New-side (buildFullFileAnchor) so
-           no Old-side guard is needed for the unstaged case. -->
-      {#if (diffKind === 'commit' || diffKind === 'unstaged') && fileSelected}
-        <div style="display: flex; justify-content: flex-end; padding: 4px 8px;">
-          <button
-            style="
-              background: var(--color-accent-bg, var(--color-surface));
-              border: 1px solid var(--color-border);
-              border-radius: 3px;
-              color: var(--color-accent);
-              font-size: 11px;
-              font-family: var(--font-sans, sans-serif);
-              padding: 2px 8px;
-              cursor: pointer;
-              white-space: nowrap;
-            "
-            onclick={() => oncommentfullfile(fd.path, selectedIndices)}
-          >
-            Comment ({selectedIndices.size})
-          </button>
-        </div>
-      {/if}
-      {#each allLines as line, lineIdx}
-        {@const isSelectable = line.new_lineno !== null}
-        {@const isSelected = selectedPath === fd.path && selectedIndices.has(lineIdx)}
-        {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-        {@const lineComments = showInlineComments ? [...commentsForLine(viewComments, 'New', line.new_lineno), ...commentsForLine(viewComments, 'Old', line.old_lineno)] : []}
-        {@const spanned = showInlineComments && (spannedByComment(viewComments, 'New', line.new_lineno) || spannedByComment(viewComments, 'Old', line.old_lineno))}
-        <div
-          class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{spanned ? ' diff-line-commented' : ''}"
-          style="
-            font-family: monospace;
-            font-size: 12px;
-            line-height: 1.5;
-            padding: 0 8px;
-            white-space: {wordWrap ? 'pre-wrap' : 'pre'};
-            background: {lineBackground(line.origin, isSelected)};
-            color: {lineColor()};
-            display: flex;
-            align-items: flex-start;
-          "
-        ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
-            class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
-            style="user-select: none; -webkit-user-select: none;"
-            role={isSelectable ? 'button' : undefined}
-            tabindex={isSelectable ? 0 : undefined}
-            onmousedown={(e) => { if (isSelectable && e.shiftKey) e.preventDefault(); }}
-            onclick={(e) => isSelectable && selectLine(fd.path, allLines, lineIdx, e.shiftKey)}
-            onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(fd.path, allLines, lineIdx, e.shiftKey); } }}
-          ><span class="gutter-num" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
-        {#if showInlineComments}
-          {#each lineComments as c (c.id)}
-            <div class="comment-row">
-              <ThreadCard
-                variant="inline"
-                confirmDelete={false}
-                thread={c}
-                onedit={(id, text) => editThread(repoPath, id, text)}
-                onreplyadd={(id, text) => addReply(repoPath, id, text)}
-                onstatechange={(id, next) => setThreadState(repoPath, id, next)}
-                onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                onreplydelete={(id) => deleteReply(repoPath, id)}
-                ondelete={(id) => deleteThread(repoPath, id)}
-              />
-            </div>
-          {/each}
-        {/if}
-      {/each}
     {/if}
   </div>
-{/each}
+</div>
 
 <style>
+  .full-file {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .list-area {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Both probes are laid out at the row's real width so their measurements are
+     the ones the rendered rows will produce, and neither is visible or
+     hit-testable. */
+  .metrics-probe,
+  .comment-probe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: -1;
+  }
+  .comment-probe {
+    min-width: 100%;
+  }
+
+  .binary-row {
+    height: var(--diff-binary-row-height);
+    box-sizing: border-box;
+    padding: 8px;
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 16px;
+  }
+
   .word-add {
     background-color: var(--color-diff-word-add-bg);
     border-radius: 2px;
