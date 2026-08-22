@@ -10,7 +10,9 @@ import {
 	TextWrap,
 	UnfoldVertical,
 } from "@lucide/svelte";
+import { onMount } from "svelte";
 import { isMarkdownPath } from "../../lib/markdown.js";
+import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
 import type { ContentMode, LayoutMode, RenderMode } from "../../lib/types.js";
 
 interface Props {
@@ -64,6 +66,17 @@ let {
 // Rendered prose collapses whitespace by nature, so the invisibles toggle
 // cannot mean anything while the preview is the active view (renderMode only
 // takes effect for markdown files — DiffViewer's routing gate).
+// Wrapped-row heights are derived from a column count, which only describes the
+// layout when every glyph advances the same width. A toggle that reads as on
+// while its effect is off is a lie the UI tells, so the toggle goes away
+// instead (P-8).
+let fontProbe = $state<HTMLSpanElement | null>(null);
+let fixedPitch = $state(true);
+
+onMount(() => {
+	if (fontProbe) fixedPitch = measureRowMetrics(fontProbe).monospace;
+});
+
 const renderedActive = $derived(
 	renderMode === "rendered" &&
 		selectedPath !== null &&
@@ -137,11 +150,15 @@ const renderedActive = $derived(
   <button
     class="toggle-btn"
     class:active={wordWrap}
-    title="Toggle word wrap"
+    disabled={!fixedPitch}
+    title={fixedPitch
+      ? "Toggle word wrap"
+      : "Word wrap needs a fixed-pitch diff font"}
     onclick={() => onwordwrapchange(!wordWrap)}
   >
     <TextWrap size={14} />
   </button>
+  <span class="font-probe" bind:this={fontProbe} style="{DIFF_ROW_FONT};"></span>
 
   <!-- One-click whole-file Comment (260531-l02e/l02f): comments every change in the
        file in one click. Available for every diff kind — commit diffs as well as the
@@ -205,6 +222,12 @@ const renderedActive = $derived(
 </div>
 
 <style>
+  .font-probe {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .toolbar {
     height: 32px;
     border-bottom: 1px solid var(--color-border);

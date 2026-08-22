@@ -16,14 +16,24 @@ export interface LayoutBox {
 	left: number;
 }
 
+export interface LayoutStubOptions extends Partial<LayoutBox> {
+	/** Per-element box, for a test that needs one element to measure
+	 *  differently from another without holding a reference to it — a probe
+	 *  span created and thrown away inside the code under test, say. */
+	measure?: (el: Element) => Partial<LayoutBox> | undefined;
+}
+
 const EMPTY: LayoutBox = { width: 0, height: 0, top: 0, left: 0 };
 
 const overrides = new WeakMap<Element, Partial<LayoutBox>>();
 let fallback: LayoutBox = EMPTY;
+let measure: LayoutStubOptions["measure"];
 let uninstall: (() => void) | null = null;
 
-export function stubLayout(defaults: Partial<LayoutBox> = {}): void {
+export function stubLayout(options: LayoutStubOptions = {}): void {
+	const { measure: measureOption, ...defaults } = options;
 	fallback = { ...EMPTY, ...defaults };
+	measure = measureOption;
 	if (uninstall) return;
 
 	const savedClientWidth = descriptor(HTMLElement.prototype, "clientWidth");
@@ -62,10 +72,11 @@ export function restoreLayout(): void {
 	uninstall?.();
 	uninstall = null;
 	fallback = EMPTY;
+	measure = undefined;
 }
 
 function boxFor(el: Element): LayoutBox {
-	return { ...fallback, ...overrides.get(el) };
+	return { ...fallback, ...measure?.(el), ...overrides.get(el) };
 }
 
 function defineGetter(name: string, read: (box: LayoutBox) => number): void {

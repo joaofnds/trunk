@@ -20,6 +20,7 @@ import {
 } from "../../lib/review-comment-actions.js";
 import {
 	availableCharsFor,
+	DIFF_ROW_FONT,
 	measureRowMetrics,
 	type RowMetrics,
 } from "../../lib/row-metrics.js";
@@ -265,9 +266,7 @@ function lineColor(): string {
     <div
       class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
       style="
-        font-family: monospace;
-        font-size: 12px;
-        line-height: 18px;
+        {DIFF_ROW_FONT};
         padding: 0 8px;
         white-space: {wrapActive ? 'pre-wrap' : 'pre'};
         word-break: {wrapActive ? 'break-all' : 'normal'};
@@ -334,7 +333,7 @@ function lineColor(): string {
     <div
       class="diff-line metrics-probe"
       bind:this={metricsProbe}
-      style="font-family: monospace; font-size: 12px; line-height: 18px;"
+      style="{DIFF_ROW_FONT};"
     ></div>
 
     {#if threadsToProbe.length > 0}

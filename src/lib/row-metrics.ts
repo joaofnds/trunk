@@ -6,6 +6,14 @@ export interface RowMetrics {
 
 const PROBE_RUN = 100;
 
+/** The diff row's own font, in one place: the rows render with it, and every
+ *  probe that measures it has to carry the same declaration or it measures a
+ *  different font. Line height is stated in px rather than as a multiple
+ *  because `getComputedStyle` resolves the multiple in a browser and returns it
+ *  raw elsewhere, which silently turns 1.5 into 1.5px. */
+export const DIFF_ROW_FONT =
+	"font-family: monospace; font-size: 12px; line-height: 18px";
+
 /** Reads the metrics a wrapped row's height depends on from an element already
  *  carrying the row's own styles, so a change to the diff font, size or line
  *  spacing is picked up rather than baked in. `monospace` is false when the

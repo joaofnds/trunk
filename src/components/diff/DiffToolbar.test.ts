@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/svelte";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import DiffToolbar from "./DiffToolbar.svelte";
 
 const baseProps = {
@@ -73,5 +74,38 @@ describe("DiffToolbar invisibles toggle", () => {
 		});
 		const btn = screen.getByTitle("Show invisible characters");
 		expect(btn).toBeEnabled();
+	});
+});
+
+describe("DiffToolbar word wrap toggle", () => {
+	afterEach(restoreLayout);
+
+	it("offers word wrap when the diff font is fixed-pitch", () => {
+		stubLayout({ width: 900, height: 400 });
+
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "src/main.rs" },
+		});
+
+		const toggle = screen.getByTitle("Toggle word wrap") as HTMLButtonElement;
+		expect(toggle.disabled).toBe(false);
+	});
+
+	it("disables the toggle with an explanation when the font is not fixed-pitch", () => {
+		stubLayout({
+			width: 900,
+			height: 400,
+			measure: (el) =>
+				el.textContent?.startsWith("W") ? { width: 1200 } : undefined,
+		});
+
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "src/main.rs" },
+		});
+
+		const toggle = screen.getByTitle(
+			"Word wrap needs a fixed-pitch diff font",
+		) as HTMLButtonElement;
+		expect(toggle.disabled).toBe(true);
 	});
 });

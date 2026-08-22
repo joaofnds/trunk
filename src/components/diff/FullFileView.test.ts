@@ -229,6 +229,25 @@ describe("FullFileView", () => {
 		expect(content?.getAttribute("style")).toContain("width: 100%");
 	});
 
+	it("renders rows unwrapped when the diff font is not fixed-pitch", () => {
+		// measureRowMetrics compares a run of "i" against a run of "W"; different
+		// widths mean the font advances per glyph, so column arithmetic — and with
+		// it every wrapped row's height — stops being derivable.
+		stubLayout({
+			width: 900,
+			height: 400,
+			measure: (el) =>
+				el.textContent?.startsWith("W") ? { width: 1200 } : undefined,
+		});
+
+		const { container } = render(FullFileView, {
+			props: defaultProps({ wordWrap: true }),
+		});
+
+		const row = container.querySelector(".diff-line:not(.metrics-probe)");
+		expect(row?.getAttribute("style")).toContain("white-space: pre;");
+	});
+
 	it("keeps the Comment affordance outside the scrolling list", async () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
