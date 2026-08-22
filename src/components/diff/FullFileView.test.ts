@@ -209,6 +209,26 @@ describe("FullFileView", () => {
 		);
 	});
 
+	it("sizes the content from the column arithmetic plus the row chrome", () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		// Three gutter columns for line 13 plus one, twice, and 14 columns for
+		// "context before"; 35px of padding, border and gutter gaps.
+		const content = container.querySelector(".exact-virtual-content");
+		expect(content?.getAttribute("style")).toContain(
+			"width: calc(20ch + 35px)",
+		);
+	});
+
+	it("gives the content the pane's own width when rows wrap", () => {
+		const { container } = render(FullFileView, {
+			props: defaultProps({ wordWrap: true }),
+		});
+
+		const content = container.querySelector(".exact-virtual-content");
+		expect(content?.getAttribute("style")).toContain("width: 100%");
+	});
+
 	it("keeps the Comment affordance outside the scrolling list", async () => {
 		const { container } = render(FullFileView, { props: defaultProps() });
 
