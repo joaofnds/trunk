@@ -5,9 +5,12 @@ describe("displayColumns", () => {
 	it.each([
 		["\t", 4],
 		["abcde\t", 8],
-	])("advances %j to the next tab stop, reaching column %i", (text, columns) => {
-		expect(displayColumns(text, 4, false)).toBe(columns);
-	});
+	])(
+		"advances %j to the next tab stop, reaching column %i",
+		(text, columns) => {
+			expect(displayColumns(text, 4, false)).toBe(columns);
+		},
+	);
 
 	it("counts a tab as one cell when invisibles are shown", () => {
 		expect(displayColumns("\t", 4, true)).toBe(1);
