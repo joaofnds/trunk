@@ -195,26 +195,31 @@ pub fn start_interactive_rebase_blocking(
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
 
-    // 6. Handle result
-    if !output.status.success() {
+    // 6. Classify by the stop marker git writes, not by its stderr prose.
+    //    A refused todo also leaves `rebase-merge` behind, having applied nothing,
+    //    so the directory alone would report a refusal as a benign pause.
+    let mut repo = git2::Repository::open(path_buf)?;
+    let rebase_dir = repo.path().join("rebase-merge");
+    let stopped_at_a_commit = rebase_dir.join("stopped-sha").exists();
+
+    if !output.status.success() && !stopped_at_a_commit {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        // Conflicts leave the repo in rebase-in-progress state — that's expected
-        if !stderr.to_lowercase().contains("conflict")
-            && !stderr.to_lowercase().contains("could not apply")
-        {
-            return Err(TrunkError::new("rebase_error", stderr));
-        }
+        return Err(TrunkError::new("rebase_error", stderr));
     }
 
-    let mut repo = git2::Repository::open(path_buf)?;
-    let rebase_still_running = repo.path().join("rebase-merge").exists();
-    if !rebase_still_running {
+    if !rebase_dir.exists() {
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
     let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
 
-    Ok((graph, RebaseStartResult::Completed))
+    let outcome = if stopped_at_a_commit {
+        RebaseStartResult::Stopped
+    } else {
+        RebaseStartResult::Completed
+    };
+
+    Ok((graph, outcome))
 }
 
 /// Which commit gets which pre-edited message.
