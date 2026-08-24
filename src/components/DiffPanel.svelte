@@ -5,6 +5,7 @@ import {
 	hunkSelectableIndices,
 	resolveSide,
 } from "../lib/diff-anchor.js";
+import type { DiffNav } from "../lib/diff-nav.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import {
 	buildFullFileAnchor,
@@ -101,6 +102,10 @@ let hunkOperationInFlight = $state(false);
 let prefsLoaded = $state(false);
 
 let focusedHunkIndex = $state(0);
+// Two navigation paths, because only some views are virtualized. A virtualized
+// view publishes a handle and owns the scroll; RenderedDiff and SplitView still
+// bind one element per hunk, and navigation goes through those.
+let diffNav = $state<DiffNav | null>(null);
 let hunkElements = $state<Record<string, HTMLDivElement>>({});
 
 let selectedHunkKey = $state<string | null>(null);
@@ -367,6 +372,13 @@ function clearSelection() {
 }
 
 function scrollToHunk(index: number) {
+	if (diffNav) {
+		if (index < 0 || index >= diffNav.hunkCount()) return;
+		focusedHunkIndex = index;
+		diffNav.scrollToHunk(index);
+		return;
+	}
+
 	const keys = Object.keys(hunkElements);
 	if (index < 0 || index >= keys.length) return;
 	focusedHunkIndex = index;
@@ -376,37 +388,71 @@ function scrollToHunk(index: number) {
 	setTimeout(() => el?.classList.remove("hunk-highlight"), 600);
 }
 
-// Jump-to-range (Phase 69 / D-07): scroll to and transiently highlight the hunk
-// that contains a comment's anchored line range. The review panel jump resolves
-// to a single rendered file; we locate the hunk whose old/new-line span covers
-// `startLine`, branching on `side` because an Old-side anchor's line number is
-// a parent-tree coordinate and a New-side anchor's is a commit-tree coordinate.
-// In hunk view the hunk wrapper is the scroll target. This is best-effort —
-// if the line isn't currently rendered (e.g. full-file mode or no matching
-// hunk), it falls back to the first hunk so the file is at least brought into
-// view rather than leaving the user stranded.
+// The hunk whose old- or new-side span covers `startLine`, branching on `side`
+// because an Old-side anchor's line number is a parent-tree coordinate and a
+// New-side anchor's is a commit-tree coordinate.
+function hunkContaining(
+	startLine: number,
+	side: Side,
+): { path: string; hunkIdx: number; lines: DiffLine[] } | null {
+	for (const fd of fileDiffs) {
+		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
+			const start = side === "Old" ? hunk.old_start : hunk.new_start;
+			const count = side === "Old" ? hunk.old_lines : hunk.new_lines;
+
+			if (startLine >= start && startLine <= start + count - 1) {
+				return { path: fd.path, hunkIdx, lines: hunk.lines };
+			}
+		}
+	}
+
+	return null;
+}
+
+// The review panel anchors a comment to a line NUMBER; the row model is keyed by
+// the line's index inside its hunk, and nothing else in the codebase maps one to
+// the other. A number the hunk does not carry on the requested side reports -1,
+// which the view reads as "scroll to the hunk" — the element path's behavior.
+function lineIndexIn(lines: DiffLine[], startLine: number, side: Side): number {
+	return lines.findIndex(
+		(line) => (side === "Old" ? line.old_lineno : line.new_lineno) === startLine,
+	);
+}
+
+// Jump-to-range (Phase 69 / D-07): scroll to and transiently highlight a
+// comment's anchored line. Best-effort — a line that is not rendered at all
+// falls back to the first hunk, so the file is at least brought into view
+// rather than leaving the user stranded.
 export function scrollToLine(
 	startLine: number,
 	_endLine: number,
 	side: Side = "New",
 ) {
+	const target = hunkContaining(startLine, side);
+
+	if (diffNav) {
+		const ordinal = target
+			? diffNav.ordinalOf(target.path, target.hunkIdx)
+			: -1;
+		if (!target || ordinal < 0) {
+			scrollToHunk(0);
+			return;
+		}
+
+		focusedHunkIndex = ordinal;
+		diffNav.scrollToLine(
+			target.path,
+			target.hunkIdx,
+			lineIndexIn(target.lines, startLine, side),
+		);
+		return;
+	}
+
 	const keys = Object.keys(hunkElements);
 	if (keys.length === 0) return;
-	let targetKey: string | null = null;
-	for (const fd of fileDiffs) {
-		for (let hunkIdx = 0; hunkIdx < fd.hunks.length; hunkIdx++) {
-			const hunk = fd.hunks[hunkIdx];
-			const start = side === "Old" ? hunk.old_start : hunk.new_start;
-			const lines = side === "Old" ? hunk.old_lines : hunk.new_lines;
-			const end = start + lines - 1;
-			if (startLine >= start && startLine <= end) {
-				targetKey = `${fd.path}-${hunkIdx}`;
-				break;
-			}
-		}
-		if (targetKey !== null) break;
-	}
-	const index = targetKey !== null ? keys.indexOf(targetKey) : 0;
+	const index = target
+		? keys.indexOf(`${target.path}-${target.hunkIdx}`)
+		: 0;
 	scrollToHunk(index >= 0 ? index : 0);
 }
 
@@ -842,6 +888,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{isMerge}
 		{collapsedFiles}
 		{hunkElements}
+		bind:diffNav
 		onfilecollapsetoggle={toggleFileCollapsed}
 		onlineclick={handleLineClick}
 		onlinemousedown={handleLineMouseDown}

@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { DiffNav } from "../../lib/diff-nav.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import type {
 	CommitDetail,
@@ -73,6 +74,8 @@ interface Props {
 	viewComments?: Thread[];
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
+	/** Set by the mounted virtualized view, null when none is. */
+	diffNav?: DiffNav | null;
 	refreshToken?: number;
 }
 
@@ -115,6 +118,7 @@ let {
 	viewComments = [],
 	oncommentfullfile,
 	fullFileView = $bindable(null),
+	diffNav = $bindable(null),
 	refreshToken = 0,
 }: Props = $props();
 
@@ -173,6 +177,7 @@ const virtualized = $derived(
     />
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView
+      bind:this={diffNav}
       {fileDiffs}
       {selectedPath}
       {diffKind}

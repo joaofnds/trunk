@@ -5,6 +5,7 @@ import {
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	rowHeights,
+	rowIndexForLine,
 } from "../../lib/diff-rows.js";
 import {
 	splitInvisibles,
@@ -123,6 +124,8 @@ const TAB_SIZE = 4;
 // wrapped row's height — the safe direction.
 const ROW_CHROME_PX = 35;
 
+const FLASH_MS = 600;
+
 const stagingDisabled = $derived(hunkOperationInFlight || ignoreWhitespace);
 const stagingDisabledTitle = $derived(
 	ignoreWhitespace
@@ -139,7 +142,14 @@ let probedHeights = $state(new Map<string, number>());
 let list = $state<{
 	topIndex: () => number;
 	anchorTo: (index: number) => void;
+	scrollToIndex: (index: number) => void;
 } | null>(null);
+
+// The flashed hunk's identity, not a class on an element: the element a jump
+// targets may not be mounted when the jump happens, and will be replaced by
+// another row's node as the reader scrolls away.
+let flashedHunkKey = $state<string | null>(null);
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
 const model = $derived(
 	measure("diff.buildRows", (observation) => {
@@ -231,7 +241,10 @@ onMount(() => {
 	});
 	observer.observe(el);
 
-	return () => observer.disconnect();
+	return () => {
+		observer.disconnect();
+		if (flashTimer) clearTimeout(flashTimer);
+	};
 });
 
 $effect(() => {
@@ -267,6 +280,53 @@ function countLines(diffs: FileDiff[]): number {
 		for (const hunk of fd.hunks) total += hunk.lines.length;
 	}
 	return total;
+}
+
+/** How many hunks `[` and `]` step through. */
+export function hunkCount(): number {
+	return model.hunkNav.length;
+}
+
+/** Where a hunk sits in that sequence, or -1 when it is not rendered at all —
+ *  a collapsed file's hunks are absent. */
+export function ordinalOf(path: string, hunkIdx: number): number {
+	return model.hunkNav.findIndex(
+		(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
+	);
+}
+
+export function scrollToHunk(ordinal: number): void {
+	const nav = model.hunkNav[ordinal];
+	if (!nav) return;
+
+	list?.scrollToIndex(nav.rowIndex);
+	flash(`${nav.path}-${nav.hunkIdx}`);
+}
+
+/** Scrolls to one line's own row. A line the model does not carry — an Old-side
+ *  number with no new-side row, or a collapsed file — falls back to the hunk,
+ *  which is where the element-based path landed for every jump. */
+export function scrollToLine(
+	path: string,
+	hunkIdx: number,
+	lineIdx: number,
+): void {
+	const rowIndex = rowIndexForLine(model, path, hunkIdx, lineIdx);
+	if (rowIndex < 0) {
+		scrollToHunk(ordinalOf(path, hunkIdx));
+		return;
+	}
+
+	list?.scrollToIndex(rowIndex);
+	flash(`${path}-${hunkIdx}`);
+}
+
+function flash(hunkKey: string): void {
+	if (flashTimer) clearTimeout(flashTimer);
+	flashedHunkKey = hunkKey;
+	flashTimer = setTimeout(() => {
+		flashedHunkKey = null;
+	}, FLASH_MS);
 }
 
 function lineBackground(origin: string, isSelected: boolean = false): string {
@@ -339,7 +399,7 @@ function lineColor(): string {
          a scoped rule would leave the staging surface's horizontal stickiness
          with nothing pinning it. -->
     <div
-      class="hunk-toolbar"
+      class="hunk-toolbar{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
       style="position: sticky; left: 0; width: 100cqi;"
     >
       <span class="hunk-header-text">{item.header}</span>

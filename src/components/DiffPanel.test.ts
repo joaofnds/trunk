@@ -2318,3 +2318,258 @@ describe("Discard File button", () => {
 		});
 	});
 });
+
+// ---- Hunk navigation over a virtualized view ----
+
+describe("DiffPanel hunk navigation", () => {
+	// Rows in hunk mode, with their offsets: header(28) alpha(18) beta(18)
+	// header(28) gamma(18) delta(18) epsilon(18) — so the second hunk's header
+	// starts at 64 and its lines at 92, 110 and 128.
+	const navDiff: FileDiff = {
+		path: "src/main.ts",
+		status: "Modified",
+		is_binary: false,
+		hunks: [
+			{
+				header: "@@ -1,2 +1,2 @@",
+				old_start: 1,
+				old_lines: 2,
+				new_start: 1,
+				new_lines: 2,
+				lines: [
+					{
+						origin: "Context",
+						content: "alpha",
+						old_lineno: 1,
+						new_lineno: 1,
+						spans: [],
+					},
+					{
+						origin: "Context",
+						content: "beta",
+						old_lineno: 2,
+						new_lineno: 2,
+						spans: [],
+					},
+				],
+			},
+			{
+				// The old side declares one more line than the hunk carries, which
+				// is the shape a jump to an unrepresented line number takes.
+				header: "@@ -10,3 +10,2 @@",
+				old_start: 10,
+				old_lines: 3,
+				new_start: 10,
+				new_lines: 2,
+				lines: [
+					{
+						origin: "Context",
+						content: "gamma",
+						old_lineno: 10,
+						new_lineno: 10,
+						spans: [],
+					},
+					{
+						origin: "Delete",
+						content: "delta",
+						old_lineno: 11,
+						new_lineno: null,
+						spans: [],
+					},
+					{
+						origin: "Add",
+						content: "epsilon",
+						old_lineno: null,
+						new_lineno: 11,
+						spans: [],
+					},
+				],
+			},
+		],
+	};
+
+	function renderNav() {
+		const result = render(DiffPanel, {
+			props: {
+				fileDiffs: [navDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		return { ...result, ready: flushPrefs() };
+	}
+
+	function viewportOf(container: Element): HTMLElement {
+		return container.querySelector(".exact-virtual-viewport") as HTMLElement;
+	}
+
+	it("scrolls the list to the next hunk's row on ]", async () => {
+		const { container, ready } = renderNav();
+		await ready;
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(64);
+	});
+
+	it("scrolls back to the previous hunk's row on [", async () => {
+		const { container, ready } = renderNav();
+		await ready;
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+		await fireEvent.keyDown(window, { key: "[" });
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(0);
+	});
+
+	it("stays put on ] once the last hunk is focused", async () => {
+		const { container, ready } = renderNav();
+		await ready;
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(64);
+	});
+
+	it("scrolls to the anchored new-side line's own row, not to its hunk header", async () => {
+		const { container, component, ready } = renderNav();
+		await ready;
+
+		component.scrollToLine(11, 11, "New");
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(128);
+	});
+
+	it("resolves an old-side anchor against the old line numbers", async () => {
+		const { container, component, ready } = renderNav();
+		await ready;
+
+		component.scrollToLine(11, 11, "Old");
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(110);
+	});
+
+	it("falls back to the hunk's own row for a line number the hunk does not carry", async () => {
+		const { container, component, ready } = renderNav();
+		await ready;
+
+		component.scrollToLine(12, 12, "Old");
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(64);
+	});
+
+	it("falls back to the first hunk when no hunk covers the line", async () => {
+		const { container, component, ready } = renderNav();
+		await ready;
+
+		await fireEvent.keyDown(window, { key: "]" });
+		await tick();
+		component.scrollToLine(900, 900, "New");
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(0);
+	});
+
+	// RenderedDiff is not virtualized: it registers one element per changed row
+	// into the host's record, and three of its own cases pin that. Navigation has
+	// to keep reaching it, because a virtualized view publishes a handle and this
+	// one publishes nothing.
+	it("navigates through the element record when rendered markdown is showing", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+			Promise.resolve("rendered"),
+		);
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "render_markdown_diff"
+				? Promise.resolve({
+						rows: [
+							{
+								kind: "changed",
+								beforeHtml: "<p>was</p>",
+								afterHtml: "<p>now</p>",
+								wordHtml: "<p>now</p>",
+								afterStart: 1,
+								afterEnd: 1,
+							},
+							{
+								kind: "changed",
+								beforeHtml: "<p>also was</p>",
+								afterHtml: "<p>also now</p>",
+								wordHtml: "<p>also now</p>",
+								afterStart: 2,
+								afterEnd: 2,
+							},
+						],
+						whitespaceOnly: false,
+					})
+				: Promise.resolve(undefined),
+		);
+		const scrolled = vi.fn();
+		const original = Element.prototype.scrollIntoView;
+		Element.prototype.scrollIntoView = scrolled;
+
+		try {
+			render(DiffPanel, {
+				props: {
+					fileDiffs: [navDiff],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "unstaged",
+					repoPath: "/repo",
+					selectedPath: "README.md",
+				},
+			});
+			await flushPrefs();
+			await screen.findByText("now");
+
+			await fireEvent.keyDown(window, { key: "]" });
+			await tick();
+
+			expect(scrolled).toHaveBeenCalled();
+		} finally {
+			Element.prototype.scrollIntoView = original;
+			vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+				Promise.resolve("source"),
+			);
+		}
+	});
+
+	it("flashes the target hunk's header row and clears it when the flash ends", async () => {
+		const { ready } = renderNav();
+		await ready;
+
+		vi.useFakeTimers();
+		try {
+			await fireEvent.keyDown(window, { key: "]" });
+			await tick();
+
+			const toolbar = screen
+				.getByText("@@ -10,3 +10,2 @@")
+				.closest(".hunk-toolbar");
+			expect(toolbar?.className).toContain("hunk-highlight");
+
+			vi.advanceTimersByTime(600);
+			await tick();
+
+			expect(
+				screen
+					.getByText("@@ -10,3 +10,2 @@")
+					.closest(".hunk-toolbar")?.className,
+			).not.toContain("hunk-highlight");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});
