@@ -1,7 +1,7 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::commands::interactive_rebase::RebaseTodoAction;
+use trunk_lib::commands::interactive_rebase::{RebaseStartResult, RebaseTodoAction};
 
 /// Helper to create a repo with 3 linear commits and return the OIDs.
 fn make_three_commit_ctx() -> (TestContext, Vec<git2::Oid>) {
@@ -430,5 +430,53 @@ fn an_inclusive_rebase_with_no_edits_leaves_history_untouched() {
     assert!(
         !ctx.repo().path().join("rebase-merge").exists(),
         "an unedited rebase must not leave one in progress"
+    );
+}
+
+#[test]
+fn an_inclusive_rebase_from_the_root_reorders_the_root_commit() {
+    let (ctx, oids) = four_commit_ctx();
+    let listing = ctx.get_rebase_todo(&oids[0].to_string(), true).unwrap();
+
+    ctx.start_interactive_rebase(
+        listing.base_oid.as_deref(),
+        &[
+            todo(oids[1], "pick", None),
+            todo(oids[0], "pick", None),
+            todo(oids[2], "pick", None),
+            todo(oids[3], "pick", None),
+        ],
+    )
+    .expect("a rebase from the root should apply");
+
+    assert_eq!(summaries_newest_first(&ctx), vec!["C4", "C3", "C1", "C2"]);
+    assert!(
+        !ctx.repo().path().join("rebase-merge").exists(),
+        "the rebase should have run to completion"
+    );
+}
+
+#[test]
+fn a_rebase_that_stops_reports_the_stop_not_a_completion() {
+    // Every commit rewrites the same file, so omitting one makes the next conflict.
+    let ctx = TestContext::builder()
+        .with_file("g.txt", "one\n")
+        .with_commit("G1 commit")
+        .with_file("g.txt", "two\n")
+        .with_commit("G2 commit")
+        .with_file("g.txt", "three\n")
+        .with_commit("G3 commit")
+        .build();
+    without_commit_signing(&ctx);
+    let oids = oids_oldest_first(&ctx);
+
+    let (_, outcome) = ctx
+        .start_interactive_rebase(Some(&oids[0].to_string()), &[todo(oids[2], "pick", None)])
+        .expect("a stopped rebase reports the pause, not an error");
+
+    assert_eq!(outcome, RebaseStartResult::Stopped);
+    assert!(
+        ctx.repo().path().join("rebase-merge/stopped-sha").exists(),
+        "git should have stopped at a commit"
     );
 }
