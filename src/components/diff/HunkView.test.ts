@@ -2,6 +2,12 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import {
+	disablePerf,
+	enablePerf,
+	flushPerf,
+	type PerfSink,
+} from "../../lib/perf.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import HunkView from "./HunkView.svelte";
 
@@ -124,6 +130,27 @@ describe("HunkView", () => {
 			2500,
 			"Add",
 		]);
+	});
+
+	it("reports the row build and the height build as named observations", async () => {
+		const observed: {
+			name: string;
+			attrs?: Record<string, string | number>;
+		}[] = [];
+		const sink: PerfSink = {
+			async write(lines) {
+				for (const line of lines) observed.push(JSON.parse(line));
+			},
+		};
+		enablePerf({ sink, frames: false });
+
+		render(HunkView, { props: defaultProps() });
+		await flushPerf();
+		disablePerf();
+
+		const byName = new Map(observed.map((s) => [s.name, s.attrs]));
+		expect(byName.get("diff.buildRows")).toEqual({ lines: 2 });
+		expect(byName.get("diff.rowHeights")).toEqual({ rows: 3, wrap: "false" });
 	});
 
 	it("mounts a bounded number of rows for a hunk far larger than the viewport", () => {

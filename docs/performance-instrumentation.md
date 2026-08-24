@@ -86,9 +86,9 @@ destination is fixed, so nothing on the frontend can direct a write elsewhere.
 
 Instrumentation rots silently: a wrapper dropped during an unrelated edit costs an operation
 in the report and breaks nothing. Each site is therefore pinned by a test that asserts the
-observation fires with its attributes — `RepoView.test.ts` for `diff.openCommitFile`,
-`FullFileView.test.ts` for `diff.buildRows` and `diff.rowHeights`. Add one alongside any new
-span.
+observation fires with its attributes — `RepoView.test.ts` for `diff.openCommitFile`, and
+`FullFileView.test.ts` plus `HunkView.test.ts` for `diff.buildRows` and `diff.rowHeights`,
+which both views record. Add one alongside any new span.
 
 ## Adding a span
 
