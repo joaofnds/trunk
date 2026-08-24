@@ -1323,7 +1323,11 @@ describe("RepoView", () => {
 										},
 									],
 								}),
-								makeCommit({ oid: CLICKED_OID, summary: "clicked commit" }),
+								makeCommit({
+									oid: CLICKED_OID,
+									summary: "clicked commit",
+									in_head_chain: true,
+								}),
 							],
 							max_columns: 1,
 						});

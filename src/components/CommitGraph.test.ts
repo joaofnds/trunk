@@ -1,3 +1,4 @@
+import { MenuItem } from "@tauri-apps/api/menu";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -278,6 +279,47 @@ describe("CommitGraph", () => {
 			await fireEvent.contextMenu(rows[rowIndex]);
 			await flush();
 		}
+
+		function menuItemOptions(text: string): { enabled?: boolean } {
+			const call = vi
+				.mocked(MenuItem.new)
+				.mock.calls.find((c) => (c[0] as { text: string }).text === text);
+			if (!call) throw new Error(`no menu item created for "${text}"`);
+			return call[0] as { enabled?: boolean };
+		}
+
+		async function openTheMenuOnACommit(inHeadChain: boolean) {
+			installReads({
+				commits: [
+					HEAD_COMMIT,
+					makeCommit({
+						oid: "ddd444ddd444ddd4ddd444ddd444ddd4ddd444dd",
+						summary: "older commit",
+						in_head_chain: inHeadChain,
+					}),
+				],
+			});
+			render(CommitGraph, {
+				props: {
+					repoPath: "/test/repo",
+					clearRedoStack: vi.fn(),
+					tabActive: true,
+				},
+			});
+			await openContextMenu(1);
+		}
+
+		it("offers an interactive rebase on a commit in HEAD's history", async () => {
+			await openTheMenuOnACommit(true);
+
+			expect(menuItemOptions("Interactive Rebase...").enabled).toBe(true);
+		});
+
+		it("refuses an interactive rebase on a commit outside HEAD's history", async () => {
+			await openTheMenuOnACommit(false);
+
+			expect(menuItemOptions("Interactive Rebase...").enabled).toBe(false);
+		});
 
 		it("revert: begin -> editor -> revert_continue with edited message", async () => {
 			const onopenmessageeditor = vi.fn().mockResolvedValue("edited revert");
