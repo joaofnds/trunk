@@ -170,6 +170,32 @@ export function buildInlineRows(
 	};
 }
 
+/** The row rendering one line of one hunk, or -1 when the model carries no such
+ *  row — a collapsed file has none. The scan starts at the hunk and stops at the
+ *  line, so it costs the hunk's length rather than the file's: a per-line lookup
+ *  table would be rebuilt on every stage and unstage, which is the surface's
+ *  primary gesture, to save one lookup per keypress. */
+export function rowIndexForLine(
+	model: DiffRowModel,
+	path: string,
+	hunkIdx: number,
+	lineIdx: number,
+): number {
+	const nav = model.hunkNav.find(
+		(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
+	);
+	if (!nav) return -1;
+
+	for (let index = nav.rowIndex; index < model.rows.length; index++) {
+		const row = model.rows[index];
+		if (row.kind === "file-header" || row.kind === "binary") break;
+		if (row.path !== path || row.hunkIdx !== hunkIdx) break;
+		if (row.kind === "line" && row.lineIdx === lineIdx) return index;
+	}
+
+	return -1;
+}
+
 function threadsOn(line: DiffLine, comments: Thread[]): Thread[] {
 	return [
 		...commentsForLine(comments, "New", line.new_lineno),

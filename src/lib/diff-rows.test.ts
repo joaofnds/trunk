@@ -4,6 +4,7 @@ import {
 	buildInlineRows,
 	FIXED_ROW_HEIGHTS,
 	rowHeights,
+	rowIndexForLine,
 } from "./diff-rows.js";
 import { displayColumns } from "./display-columns.js";
 import type {
@@ -350,6 +351,48 @@ describe("buildInlineRows", () => {
 			.map((row) => row.flatIdx);
 
 		expect(flat).toEqual([0, 1, 2]);
+	});
+});
+
+describe("rowIndexForLine", () => {
+	it("finds a line's row past the comment rows its hunk carries before it", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			content: "hunk",
+			comments: [thread("t1", "New", 1, 1)],
+		});
+
+		const index = rowIndexForLine(model, "src/main.ts", 0, 1);
+
+		const row = model.rows[index];
+		expect(row.kind === "line" && row.lineIdx).toBe(1);
+		expect(model.rows[index - 1].kind).toBe("comment");
+	});
+
+	it("resolves a line in a later file rather than the same hunk index in an earlier one", () => {
+		const second = file("src/other.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "only", 1, 1)]),
+		]);
+
+		const model = buildInlineRows([twoHunks, second], {
+			...fullMode,
+			content: "hunk",
+		});
+
+		const index = rowIndexForLine(model, "src/other.ts", 0, 0);
+
+		const row = model.rows[index];
+		expect(row.kind === "line" && row.path).toBe("src/other.ts");
+	});
+
+	it("reports no row for a line the model never rendered", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			content: "hunk",
+			collapsed: new Set(["src/main.ts"]),
+		});
+
+		expect(rowIndexForLine(model, "src/main.ts", 0, 0)).toBe(-1);
 	});
 });
 
