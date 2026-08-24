@@ -415,7 +415,8 @@ function hunkContaining(
 // which the view reads as "scroll to the hunk" — the element path's behavior.
 function lineIndexIn(lines: DiffLine[], startLine: number, side: Side): number {
 	return lines.findIndex(
-		(line) => (side === "Old" ? line.old_lineno : line.new_lineno) === startLine,
+		(line) =>
+			(side === "Old" ? line.old_lineno : line.new_lineno) === startLine,
 	);
 }
 
@@ -450,9 +451,7 @@ export function scrollToLine(
 
 	const keys = Object.keys(hunkElements);
 	if (keys.length === 0) return;
-	const index = target
-		? keys.indexOf(`${target.path}-${target.hunkIdx}`)
-		: 0;
+	const index = target ? keys.indexOf(`${target.path}-${target.hunkIdx}`) : 0;
 	scrollToHunk(index >= 0 ? index : 0);
 }
 

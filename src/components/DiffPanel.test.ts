@@ -808,7 +808,6 @@ describe("diff-utils", () => {
 // ---- VIEW-04: Full file view ----
 
 describe("VIEW-04: Full file view", () => {
-
 	it("renders all lines as continuous document without hunk headers", async () => {
 		const storeMock = await import("../lib/store.js");
 		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
@@ -887,7 +886,6 @@ describe("VIEW-04: Full file view", () => {
 });
 
 describe("VIEW-04: reopening a large file", () => {
-
 	// Closing the diff leaves the fetched payload in RepoView's commitFileDiffs,
 	// so a reopen mounts DiffPanel against the whole file. The persisted mode
 	// arrives a microtask later, so the first frame renders whatever the
@@ -2564,9 +2562,8 @@ describe("DiffPanel hunk navigation", () => {
 			await tick();
 
 			expect(
-				screen
-					.getByText("@@ -10,3 +10,2 @@")
-					.closest(".hunk-toolbar")?.className,
+				screen.getByText("@@ -10,3 +10,2 @@").closest(".hunk-toolbar")
+					?.className,
 			).not.toContain("hunk-highlight");
 		} finally {
 			vi.useRealTimers();

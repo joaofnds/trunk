@@ -113,12 +113,12 @@ function createMockUndoRedo(): UndoRedoManager {
 }
 
 describe("RepoView", () => {
-	// The diff views render through a virtual list, which mounts no rows at all
-	// against jsdom's zero-height viewport.
-	beforeEach(() => stubLayout({ width: 900, height: 400 }));
 	afterEach(restoreLayout);
 
 	beforeEach(() => {
+		// The diff views render through a virtual list, which mounts no rows at
+		// all against jsdom's zero-height viewport.
+		stubLayout({ width: 900, height: 400 });
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
 			switch (cmd) {
