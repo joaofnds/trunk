@@ -927,28 +927,33 @@ async function handleOpenMessageEditor(
 	return (await messageEditorRef?.open(defaultValue)) ?? null;
 }
 
-async function resolveBaseName(base: string | null): Promise<string> {
-	if (base === null) return "root";
+async function branchNameAt(oid: string): Promise<string | null> {
 	try {
 		const refs = await safeInvoke<RefsResponse>("list_refs", {
 			path: repoPath,
 		});
-		const allBranches = [...refs.local, ...refs.remote];
-		for (const b of allBranches) {
+		for (const b of [...refs.local, ...refs.remote]) {
 			try {
 				const branchOid = await safeInvoke<string>("resolve_ref", {
 					path: repoPath,
 					refName: b.name,
 				});
-				if (branchOid === base) return b.name;
+				if (branchOid === oid) return b.name;
 			} catch {
 				// ref resolution failed -- skip
 			}
 		}
-		return base.slice(0, 7);
 	} catch {
-		return base.slice(0, 7);
+		// listing refs failed -- no name to offer
 	}
+
+	return null;
+}
+
+async function resolveBaseName(base: string | null): Promise<string> {
+	if (base === null) return "root";
+
+	return (await branchNameAt(base)) ?? base.slice(0, 7);
 }
 
 async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
