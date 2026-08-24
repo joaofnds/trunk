@@ -102,7 +102,7 @@ fn a_squash_without_a_message_does_not_steal_the_next_rewords_message() {
     let (ctx, oids) = five_commit_ctx();
 
     ctx.start_interactive_rebase(
-        &oids[0].to_string(),
+        Some(&oids[0].to_string()),
         &[
             todo(oids[1], "pick", None),
             todo(oids[2], "squash", None),
@@ -128,7 +128,7 @@ fn a_squash_run_does_not_leave_a_message_behind_for_a_later_reword() {
     let (ctx, oids) = five_commit_ctx();
 
     ctx.start_interactive_rebase(
-        &oids[0].to_string(),
+        Some(&oids[0].to_string()),
         &[
             todo(oids[1], "pick", None),
             todo(oids[2], "squash", Some("Combined A")),
@@ -167,7 +167,7 @@ fn a_message_survives_a_conflict_and_lands_when_the_rebase_continues() {
 
     // G2 is dropped, so G3 cannot apply cleanly.
     ctx.start_interactive_rebase(
-        &oids[0].to_string(),
+        Some(&oids[0].to_string()),
         &[
             todo(oids[2], "pick", None),
             todo(oids[3], "reword", Some("Reworded after the conflict")),
@@ -214,7 +214,7 @@ fn a_skipped_commit_does_not_hand_its_message_to_another_commit() {
     let oids = oids_oldest_first(&ctx);
 
     ctx.start_interactive_rebase(
-        &oids[0].to_string(),
+        Some(&oids[0].to_string()),
         &[
             todo(oids[1], "pick", None),
             todo(oids[3], "reword", Some("Reworded fourth")),
@@ -240,7 +240,7 @@ fn a_squash_with_no_message_anywhere_keeps_gits_combined_default() {
     let (ctx, oids) = five_commit_ctx();
 
     ctx.start_interactive_rebase(
-        &oids[0].to_string(),
+        Some(&oids[0].to_string()),
         &[todo(oids[1], "pick", None), todo(oids[2], "squash", None)],
     )
     .expect("rebase should complete");
@@ -355,5 +355,57 @@ fn an_inclusive_todo_resolves_its_base_to_the_clicked_commits_parent() {
     assert_eq!(
         todo.items.iter().map(|i| i.summary.as_str()).collect::<Vec<_>>(),
         vec!["Second commit", "Third commit"]
+    );
+}
+
+#[test]
+fn an_inclusive_todo_at_the_root_commit_has_no_base() {
+    let (ctx, oids) = make_three_commit_ctx();
+
+    let todo = ctx.get_rebase_todo(&oids[0].to_string(), true).unwrap();
+
+    assert_eq!(todo.base_oid, None);
+    assert_eq!(
+        todo.items.iter().map(|i| i.summary.as_str()).collect::<Vec<_>>(),
+        vec!["Initial commit", "Second commit", "Third commit"]
+    );
+}
+
+/// Four commits, each touching its own file, so any order applies cleanly.
+fn four_commit_ctx() -> (TestContext, Vec<git2::Oid>) {
+    let ctx = TestContext::builder()
+        .with_file("c1.txt", "one")
+        .with_commit("C1")
+        .with_file("c2.txt", "two")
+        .with_commit("C2")
+        .with_file("c3.txt", "three")
+        .with_commit("C3")
+        .with_file("c4.txt", "four")
+        .with_commit("C4")
+        .build();
+    without_commit_signing(&ctx);
+    let oids = oids_oldest_first(&ctx);
+    (ctx, oids)
+}
+
+#[test]
+fn an_inclusive_rebase_applies_a_reordered_base_commit() {
+    let (ctx, oids) = four_commit_ctx();
+    let listing = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+
+    ctx.start_interactive_rebase(
+        listing.base_oid.as_deref(),
+        &[
+            todo(oids[2], "pick", None),
+            todo(oids[3], "pick", None),
+            todo(oids[1], "pick", None),
+        ],
+    )
+    .expect("the reordered list should apply");
+
+    assert_eq!(summaries_newest_first(&ctx), vec!["C2", "C4", "C3", "C1"]);
+    assert!(
+        !ctx.repo().path().join("rebase-merge").exists(),
+        "the rebase should have run to completion"
     );
 }

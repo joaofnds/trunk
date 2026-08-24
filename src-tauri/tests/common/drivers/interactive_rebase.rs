@@ -1,5 +1,7 @@
 use crate::common::context::TestContext;
-use trunk_lib::commands::interactive_rebase::{self, RebaseTodo, RebaseTodoAction};
+use trunk_lib::commands::interactive_rebase::{
+    self, RebaseStartResult, RebaseTodo, RebaseTodoAction,
+};
 use trunk_lib::error::TrunkError;
 use trunk_lib::git::types::GraphResult;
 
@@ -25,9 +27,9 @@ impl TestContext {
     /// when this returns, as it does in `start_interactive_rebase`.
     pub fn start_interactive_rebase(
         &self,
-        base_oid: &str,
+        base_oid: Option<&str>,
         todo_items: &[RebaseTodoAction],
-    ) -> Result<GraphResult, TrunkError> {
+    ) -> Result<(GraphResult, RebaseStartResult), TrunkError> {
         let session = tempfile::tempdir().expect("failed to create rebase session dir");
         interactive_rebase::start_interactive_rebase_blocking(
             self.path(),

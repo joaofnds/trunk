@@ -107,13 +107,23 @@ pub fn get_fork_point_inner(
     Ok(oid)
 }
 
+/// How a started rebase ended. `Stopped` is a pause the staging panel's banner
+/// owns, not a failure, so it stays on the `Ok` path and keeps the graph insert
+/// and the `repo-changed` emit the conflict-resolution UI needs.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RebaseStartResult {
+    Completed,
+    Stopped,
+}
+
 pub fn start_interactive_rebase_blocking(
     path: &str,
-    base_oid: &str,
+    base_oid: Option<&str>,
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
     state_map: &HashMap<String, PathBuf>,
-) -> Result<crate::git::types::GraphResult, TrunkError> {
+) -> Result<(crate::git::types::GraphResult, RebaseStartResult), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
@@ -170,8 +180,14 @@ pub fn start_interactive_rebase_blocking(
     let editor = crate::git::editor::keyed_rebase_editor()?;
 
     // 5. Run git rebase -i (blocking — waits for completion)
+    let mut args = vec!["rebase", "-i"];
+    match base_oid {
+        Some(base) => args.extend(["--", base]),
+        None => args.push("--root"),
+    }
+
     let output = std::process::Command::new("git")
-        .args(["rebase", "-i", "--", base_oid])
+        .args(&args)
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .env("GIT_SEQUENCE_EDITOR", seq_editor_path.to_str().unwrap())
@@ -196,7 +212,9 @@ pub fn start_interactive_rebase_blocking(
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+
+    Ok((graph, RebaseStartResult::Completed))
 }
 
 /// Which commit gets which pre-edited message.
@@ -290,22 +308,22 @@ fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
 #[tauri::command]
 pub async fn start_interactive_rebase(
     path: String,
-    base_oid: String,
+    base_oid: Option<String>,
     todo_items: Vec<RebaseTodoAction>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     app: AppHandle,
-) -> Result<(), String> {
+) -> Result<RebaseStartResult, String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     let session = new_session_dir().map_err(|e| e.to_json())?;
     let session_dir = session.path().to_path_buf();
 
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+    let (graph_result, outcome) = tauri::async_runtime::spawn_blocking(move || {
         start_interactive_rebase_blocking(
             &path_clone,
-            &base_oid,
+            base_oid.as_deref(),
             &todo_items,
             &session_dir,
             &state_map,
@@ -317,7 +335,7 @@ pub async fn start_interactive_rebase(
 
     cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
-    Ok(())
+    Ok(outcome)
 }
 
 #[cfg(test)]
