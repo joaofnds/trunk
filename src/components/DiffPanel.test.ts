@@ -1746,6 +1746,64 @@ describe("DiffPanel drag-to-select", () => {
 		expect(selectedCount()).toBe(0);
 	});
 
+	it("paints a range whose anchor row was unmounted while scrolling", async () => {
+		const lines = Array.from({ length: 3000 }, (_, index) => ({
+			origin: "Add" as const,
+			content: `line ${index}`,
+			old_lineno: null,
+			new_lineno: index + 1,
+			spans: [],
+		}));
+		const long: FileDiff = {
+			path: "src/long.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,3000 +1,3000 @@",
+					old_start: 1,
+					old_lines: 3000,
+					new_start: 1,
+					new_lines: 3000,
+					lines,
+				},
+			],
+		};
+		const { container } = render(DiffPanel, {
+			props: {
+				fileDiffs: [long],
+				commitDetail: nonMergeCommit,
+				onclose: vi.fn(),
+				diffKind: "commit",
+				repoPath: "/repo",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.mouseDown(gutterOf("line 10"));
+		await tick();
+
+		const viewport = container.querySelector(
+			".exact-virtual-viewport",
+		) as HTMLElement;
+		viewport.scrollTop = 2500 * 18;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+		expect(screen.queryAllByText("line 10").length).toBe(0);
+
+		await fireEvent.mouseEnter(lineDiv("line 2500"), { buttons: 1 });
+		await tick();
+
+		// The toolbar carrying the readout is itself a row, and a hunk this long
+		// scrolls it out of the window — as it did before the list, since it was
+		// only ever horizontally sticky. Scroll back to read the count.
+		viewport.scrollTop = 0;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+
+		expect(selectedCount()).toBe(2491);
+	});
+
 	it("does not arm a selection when the press lands on code content", async () => {
 		await renderCommit();
 

@@ -97,6 +97,35 @@ function scrollTo(container: Element, top: number): void {
 }
 
 describe("HunkView", () => {
+	it("reports the row a gutter press landed on after the reader scrolled to it", async () => {
+		const onlinemousedown = vi.fn();
+		const lines = contextLines(3000).map((line, index) =>
+			index === 2500 ? { ...line, origin: "Add" as const } : line,
+		);
+		const { container } = render(HunkView, {
+			props: defaultProps({
+				fileDiffs: [fileOf("src/long.ts", lines)],
+				onlinemousedown,
+			}),
+		});
+
+		scrollTo(container, 2500 * 18);
+		await tick();
+
+		const grip = screen
+			.getByText("line 2501")
+			.closest(".diff-line")
+			?.querySelector(".gutter-grip") as HTMLElement;
+		await fireEvent.mouseDown(grip);
+
+		expect(onlinemousedown.mock.calls[0].slice(0, 4)).toEqual([
+			"src/long.ts",
+			0,
+			2500,
+			"Add",
+		]);
+	});
+
 	it("mounts a bounded number of rows for a hunk far larger than the viewport", () => {
 		const { container } = render(HunkView, {
 			props: defaultProps({
