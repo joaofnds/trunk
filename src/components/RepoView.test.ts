@@ -17,6 +17,7 @@ import type {
 	CommitDetail as CommitDetailType,
 	FileDiff,
 } from "../lib/types.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
 
@@ -1297,7 +1298,10 @@ describe("RepoView", () => {
 			};
 		}
 
-		function stubRebaseTodo(baseOid: string | null) {
+		function stubRebaseTodo(
+			baseOid: string | null,
+			startResult: { kind: string } = { kind: "completed" },
+		) {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
 			mockInvoke.mockImplementation((cmd, args) => {
@@ -1323,6 +1327,8 @@ describe("RepoView", () => {
 							],
 							max_columns: 1,
 						});
+					case "start_interactive_rebase":
+						return Promise.resolve(startResult);
 					case "get_rebase_todo":
 						return Promise.resolve({
 							base_oid: baseOid,
@@ -1341,6 +1347,8 @@ describe("RepoView", () => {
 			await new Promise((r) => setTimeout(r, 0));
 		}
 
+		beforeEach(_resetToasts);
+
 		async function openTheEditorOnTheClickedCommit() {
 			render(RepoView, { props: baseProps(createMockRemoteState()) });
 			const rows = await screen.findAllByTestId("commit-row");
@@ -1349,6 +1357,29 @@ describe("RepoView", () => {
 			await getMenuAction("Interactive Rebase...")();
 			await flush();
 		}
+
+		it("raises a toast when the rebase stops", async () => {
+			stubRebaseTodo(PARENT_OID, { kind: "stopped" });
+
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(await screen.findByText("Start Rebase"));
+			await flush();
+
+			expect(toasts.items).toContainEqual(
+				expect.objectContaining({
+					message: "Rebase stopped — resolve it in the staging panel",
+					kind: "error",
+				}),
+			);
+		});
+
+		it("labels a root-based rebase as onto root", async () => {
+			stubRebaseTodo(null);
+
+			await openTheEditorOnTheClickedCommit();
+
+			expect(await screen.findByText("root")).toBeTruthy();
+		});
 
 		it("starts the rebase at the base the backend resolved, not the clicked commit", async () => {
 			stubRebaseTodo(PARENT_OID);

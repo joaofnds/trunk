@@ -1023,11 +1023,13 @@ async function handleRebaseStart(
 	const baseOid = rebaseBaseOid;
 	handleRebaseEditorClose();
 	try {
-		await safeInvoke("start_interactive_rebase", {
-			path: repoPath,
-			baseOid,
-			todoItems,
-		});
+		const result = await safeInvoke<{ kind: "completed" | "stopped" }>(
+			"start_interactive_rebase",
+			{ path: repoPath, baseOid, todoItems },
+		);
+		if (result.kind === "stopped") {
+			showToast("Rebase stopped — resolve it in the staging panel", "error");
+		}
 	} catch (e) {
 		reportErrorToast(e, "Rebase failed");
 	}
