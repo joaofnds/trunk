@@ -307,6 +307,41 @@ describe("buildInlineRows", () => {
 		expect(model.gutterChars).toBe(2);
 	});
 
+	it("lists every hunk once in document order, carrying its file path", () => {
+		const second = file("src/other.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "only", 1, 1)]),
+		]);
+
+		const model = buildInlineRows([twoHunks, second], {
+			...fullMode,
+			content: "hunk",
+		});
+
+		expect(model.hunkNav.map((nav) => [nav.path, nav.hunkIdx])).toEqual([
+			["src/main.ts", 0],
+			["src/main.ts", 1],
+			["src/other.ts", 0],
+		]);
+	});
+
+	it("points each hunk at its header row in hunk mode", () => {
+		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		const kinds = model.hunkNav.map((nav) => model.rows[nav.rowIndex].kind);
+
+		expect(kinds).toEqual(["hunk-header", "hunk-header"]);
+		expect(model.hunkNav.map((nav) => nav.rowIndex)).toEqual([0, 3]);
+	});
+
+	it("points each hunk at its first line row in full mode", () => {
+		const model = buildInlineRows([twoHunks], fullMode);
+
+		const kinds = model.hunkNav.map((nav) => model.rows[nav.rowIndex].kind);
+
+		expect(kinds).toEqual(["line", "line"]);
+		expect(model.hunkNav.map((nav) => nav.rowIndex)).toEqual([0, 2]);
+	});
+
 	it("keeps the flat index continuous across a hunk header", () => {
 		const model = buildInlineRows([twoHunks], { ...fullMode, content: "hunk" });
 

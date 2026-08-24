@@ -34,8 +34,20 @@ export type DiffRow =
 			threads: Thread[];
 	  };
 
+/** One hunk's place in the rendered document. The sequence is an ordinal one,
+ *  not a per-file index: `[` and `]` step through every hunk of every rendered
+ *  file in order, so a hunk-indexed array would collide across files. */
+export interface HunkNavEntry {
+	path: string;
+	hunkIdx: number;
+	/** The hunk's header row in hunk mode, its first line row in full mode. */
+	rowIndex: number;
+}
+
 export interface DiffRowModel {
 	rows: DiffRow[];
+	/** Every rendered hunk, in document order. */
+	hunkNav: HunkNavEntry[];
 	/** Digits of the largest line number, plus one. */
 	gutterChars: number;
 	/** Widest content per column, in display columns. */
@@ -75,6 +87,7 @@ export function buildInlineRows(
 	opts: BuildOptions,
 ): DiffRowModel {
 	const rows: DiffRow[] = [];
+	const hunkNav: HunkNavEntry[] = [];
 	let widest = 0;
 	let maxLineNumber = 0;
 
@@ -94,6 +107,8 @@ export function buildInlineRows(
 		let flatIdx = 0;
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
+			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
+
 			if (opts.content === "hunk") {
 				rows.push({
 					kind: "hunk-header",
@@ -149,6 +164,7 @@ export function buildInlineRows(
 
 	return {
 		rows,
+		hunkNav,
 		gutterChars: String(maxLineNumber).length + 1,
 		columns: [widest],
 	};
