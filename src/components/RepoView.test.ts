@@ -73,13 +73,32 @@ vi.mock("@tauri-apps/api/window", () => ({
 	}),
 }));
 
+// Capture every menu item's { text -> action }: firing the captured callback IS
+// the user picking that entry, and it is the only way a Tauri context menu is
+// reachable in jsdom.
+const menuActions = new Map<string, () => unknown>();
+function getMenuAction(text: string): () => unknown {
+	const action = menuActions.get(text);
+	if (!action) {
+		throw new Error(
+			`no menu action captured for "${text}"; captured: ${[...menuActions.keys()].join(", ")}`,
+		);
+	}
+	return action;
+}
+
 vi.mock("@tauri-apps/api/menu", () => ({
 	Menu: {
 		new: vi.fn().mockResolvedValue({
 			popup: vi.fn().mockResolvedValue(undefined),
 		}),
 	},
-	MenuItem: { new: vi.fn().mockResolvedValue({}) },
+	MenuItem: {
+		new: vi.fn((opts: { text: string; action?: () => unknown }) => {
+			if (opts.action) menuActions.set(opts.text, opts.action);
+			return Promise.resolve({});
+		}),
+	},
 	CheckMenuItem: { new: vi.fn().mockResolvedValue({}) },
 	PredefinedMenuItem: { new: vi.fn().mockResolvedValue({}) },
 	Submenu: { new: vi.fn().mockResolvedValue({}) },
@@ -119,6 +138,7 @@ describe("RepoView", () => {
 		// The diff views render through a virtual list, which mounts no rows at
 		// all against jsdom's zero-height viewport.
 		stubLayout({ width: 900, height: 400 });
+		menuActions.clear();
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
 			switch (cmd) {
@@ -1260,6 +1280,101 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(maxInFlight).toBeLessThanOrEqual(1);
+		});
+	});
+	describe("interactive rebase from a commit's context menu", () => {
+		const HEAD_OID = "aaa1111aaa1111aaa1111aaa1111aaa1111aaa11";
+		const CLICKED_OID = "bbb2222bbb2222bbb2222bbb2222bbb2222bbb22";
+		const PARENT_OID = "ccc3333ccc3333ccc3333ccc3333ccc3333ccc33";
+
+		function todoItem(oid: string, summary: string) {
+			return {
+				oid,
+				short_oid: oid.slice(0, 7),
+				summary,
+				author_name: "Test",
+				author_timestamp: 0,
+			};
+		}
+
+		function stubRebaseTodo(baseOid: string | null) {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({
+							commits: [
+								makeCommit({
+									oid: HEAD_OID,
+									summary: "head commit",
+									is_head: true,
+									refs: [
+										{
+											name: "refs/heads/main",
+											short_name: "main",
+											ref_type: "LocalBranch",
+											is_head: true,
+											color_index: 0,
+										},
+									],
+								}),
+								makeCommit({ oid: CLICKED_OID, summary: "clicked commit" }),
+							],
+							max_columns: 1,
+						});
+					case "get_rebase_todo":
+						return Promise.resolve({
+							base_oid: baseOid,
+							items: [
+								todoItem(CLICKED_OID, "clicked commit"),
+								todoItem(HEAD_OID, "head commit"),
+							],
+						});
+					default:
+						return base(cmd, args);
+				}
+			});
+		}
+
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+		}
+
+		async function openTheEditorOnTheClickedCommit() {
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.contextMenu(rows[1]);
+			await flush();
+			await getMenuAction("Interactive Rebase...")();
+			await flush();
+		}
+
+		it("starts the rebase at the base the backend resolved, not the clicked commit", async () => {
+			stubRebaseTodo(PARENT_OID);
+
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(await screen.findByText("Start Rebase"));
+			await flush();
+
+			expect(mockInvoke).toHaveBeenCalledWith("start_interactive_rebase", {
+				path: "/test/repo",
+				baseOid: PARENT_OID,
+				todoItems: [
+					{
+						oid: CLICKED_OID,
+						action: "pick",
+						summary: "clicked commit",
+						newMessage: null,
+					},
+					{
+						oid: HEAD_OID,
+						action: "pick",
+						summary: "head commit",
+						newMessage: null,
+					},
+				],
+			});
 		});
 	});
 });

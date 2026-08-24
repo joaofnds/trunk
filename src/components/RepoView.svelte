@@ -36,6 +36,7 @@ import type {
 	DiffRequestOptions,
 	FileDiff,
 	GraphCommit,
+	RebaseTodo,
 	RebaseTodoItem,
 	RefsResponse,
 	Side,
@@ -301,7 +302,7 @@ let commitGraphRef = $state<{
 // Rebase editor state
 let showRebaseEditor = $state(false);
 let rebaseEditorCommits = $state<RebaseTodoItem[]>([]);
-let rebaseBaseOid = $state("");
+let rebaseBaseOid = $state<string | null>(null);
 let rebaseBranchName = $state("");
 let rebaseBaseName = $state("");
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
@@ -926,43 +927,43 @@ async function handleOpenMessageEditor(
 	return (await messageEditorRef?.open(defaultValue)) ?? null;
 }
 
+async function resolveBaseName(base: string | null): Promise<string> {
+	if (base === null) return "root";
+	try {
+		const refs = await safeInvoke<RefsResponse>("list_refs", {
+			path: repoPath,
+		});
+		const allBranches = [...refs.local, ...refs.remote];
+		for (const b of allBranches) {
+			try {
+				const branchOid = await safeInvoke<string>("resolve_ref", {
+					path: repoPath,
+					refName: b.name,
+				});
+				if (branchOid === base) return b.name;
+			} catch {
+				// ref resolution failed -- skip
+			}
+		}
+		return base.slice(0, 7);
+	} catch {
+		return base.slice(0, 7);
+	}
+}
+
 async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 	if (!repoPath) return;
 	try {
-		const todoItems = await safeInvoke<RebaseTodoItem[]>("get_rebase_todo", {
+		const todo = await safeInvoke<RebaseTodo>("get_rebase_todo", {
 			path: repoPath,
 			baseOid,
 			inclusive,
 		});
-		if (todoItems.length === 0) return;
-		rebaseEditorCommits = todoItems;
-		rebaseBaseOid = baseOid;
+		if (todo.items.length === 0) return;
+		rebaseEditorCommits = todo.items;
+		rebaseBaseOid = todo.base_oid;
 		rebaseBranchName = headBranch ?? "HEAD";
-		// Resolve base name: use short ref if possible
-		try {
-			const refs = await safeInvoke<RefsResponse>("list_refs", {
-				path: repoPath,
-			});
-			const allBranches = [...refs.local, ...refs.remote];
-			let foundName: string | null = null;
-			for (const b of allBranches) {
-				try {
-					const branchOid = await safeInvoke<string>("resolve_ref", {
-						path: repoPath,
-						refName: b.name,
-					});
-					if (branchOid === baseOid) {
-						foundName = b.name;
-						break;
-					}
-				} catch {
-					// ref resolution failed -- skip
-				}
-			}
-			rebaseBaseName = foundName ?? baseOid.slice(0, 7);
-		} catch {
-			rebaseBaseName = baseOid.slice(0, 7);
-		}
+		rebaseBaseName = await resolveBaseName(todo.base_oid);
 		// Clear any open diffs/selections before showing editor
 		clearStagingDiff();
 		clearCommit();
@@ -978,7 +979,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 function handleRebaseEditorClose() {
 	showRebaseEditor = false;
 	rebaseEditorCommits = [];
-	rebaseBaseOid = "";
+	rebaseBaseOid = null;
 	rebaseBranchName = "";
 	rebaseBaseName = "";
 	rebaseFocusedCommitDetail = null;

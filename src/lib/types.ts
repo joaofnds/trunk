@@ -323,6 +323,14 @@ export interface RebaseTodoItem {
 	author_timestamp: number;
 }
 
+// Mirrors src-tauri/src/commands/interactive_rebase.rs RebaseTodo. A null
+// base_oid means the listing starts at the repository root, which rebases
+// from --root.
+export interface RebaseTodo {
+	base_oid: string | null;
+	items: RebaseTodoItem[];
+}
+
 // Review session schema (mirrors src-tauri/src/git/types.rs Phase 65 keystone)
 // String-for-string with the Rust on-wire shape: PascalCase enum strings,
 // snake_case fields, nullable optionals for Rust Option<T>.
