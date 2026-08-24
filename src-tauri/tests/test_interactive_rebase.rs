@@ -257,7 +257,7 @@ fn get_rebase_todo_returns_commits_oldest_first() {
     let (ctx, oids) = make_three_commit_ctx();
     let base_oid = oids[0].to_string();
 
-    let items = ctx.get_rebase_todo(&base_oid, false).unwrap();
+    let items = ctx.get_rebase_todo(&base_oid, false).unwrap().items;
 
     assert_eq!(items.len(), 2, "Should return 2 commits (excluding base)");
     assert_eq!(
@@ -275,7 +275,7 @@ fn get_rebase_todo_inclusive_includes_base_commit() {
     let (ctx, oids) = make_three_commit_ctx();
     let base_oid = oids[1].to_string(); // Second commit
 
-    let items = ctx.get_rebase_todo(&base_oid, true).unwrap();
+    let items = ctx.get_rebase_todo(&base_oid, true).unwrap().items;
 
     assert_eq!(items.len(), 2, "Should return 2 commits (including base)");
     assert_eq!(
@@ -290,7 +290,7 @@ fn get_rebase_todo_returns_empty_when_base_equals_head() {
     let (ctx, oids) = make_three_commit_ctx();
     let base_oid = oids[2].to_string(); // HEAD commit as base
 
-    let items = ctx.get_rebase_todo(&base_oid, false).unwrap();
+    let items = ctx.get_rebase_todo(&base_oid, false).unwrap().items;
 
     assert_eq!(
         items.len(),
@@ -304,7 +304,7 @@ fn get_rebase_todo_item_has_correct_fields() {
     let (ctx, oids) = make_three_commit_ctx();
     let base_oid = oids[0].to_string();
 
-    let items = ctx.get_rebase_todo(&base_oid, false).unwrap();
+    let items = ctx.get_rebase_todo(&base_oid, false).unwrap().items;
 
     let item = &items[0];
     assert_eq!(
@@ -342,5 +342,18 @@ fn get_fork_point_returns_merge_base() {
         result,
         oids[0].to_string(),
         "Fork point should be the initial commit (merge-base of feature and HEAD)"
+    );
+}
+
+#[test]
+fn an_inclusive_todo_resolves_its_base_to_the_clicked_commits_parent() {
+    let (ctx, oids) = make_three_commit_ctx();
+
+    let todo = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+
+    assert_eq!(todo.base_oid, Some(oids[0].to_string()));
+    assert_eq!(
+        todo.items.iter().map(|i| i.summary.as_str()).collect::<Vec<_>>(),
+        vec!["Second commit", "Third commit"]
     );
 }

@@ -2,7 +2,7 @@ use crate::error::TrunkError;
 use crate::git::{graph, types::RebaseTodoItem};
 use crate::shell_env;
 use crate::state::{CommitCache, RepoState};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
@@ -16,12 +16,21 @@ pub struct RebaseTodoAction {
     pub new_message: Option<String>,
 }
 
+/// The listing and the base it was built from, so a rebase started from this
+/// listing cannot pick the commit it replays onto. `base_oid` is `None` when the
+/// clicked commit is the repository root, which rebases from `--root`.
+#[derive(Debug, Serialize)]
+pub struct RebaseTodo {
+    pub base_oid: Option<String>,
+    pub items: Vec<RebaseTodoItem>,
+}
+
 pub fn get_rebase_todo_inner(
     path: &str,
     base_oid: &str,
     inclusive: bool,
     state_map: &HashMap<String, PathBuf>,
-) -> Result<Vec<RebaseTodoItem>, TrunkError> {
+) -> Result<RebaseTodo, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     let base =
@@ -33,17 +42,19 @@ pub fn get_rebase_todo_inner(
         .map_err(TrunkError::from)?;
     revwalk.push_head().map_err(TrunkError::from)?;
 
-    if inclusive {
+    let resolved_base = if inclusive {
         let commit = repo.find_commit(base).map_err(TrunkError::from)?;
-        if commit.parent_count() > 0 {
-            revwalk
-                .hide(commit.parent_id(0).map_err(TrunkError::from)?)
-                .map_err(TrunkError::from)?;
+        if commit.parent_count() == 0 {
+            None
+        } else {
+            let parent = commit.parent_id(0).map_err(TrunkError::from)?;
+            revwalk.hide(parent).map_err(TrunkError::from)?;
+            Some(parent)
         }
-        // Root commit: don't hide anything — all commits included
     } else {
         revwalk.hide(base).map_err(TrunkError::from)?;
-    }
+        Some(base)
+    };
 
     let mut items: Vec<RebaseTodoItem> = Vec::new();
     for oid_result in revwalk {
@@ -67,7 +78,10 @@ pub fn get_rebase_todo_inner(
     // Revwalk returns newest-first; rebase todo needs oldest-first
     items.reverse();
 
-    Ok(items)
+    Ok(RebaseTodo {
+        base_oid: resolved_base.map(|oid| oid.to_string()),
+        items,
+    })
 }
 
 pub fn get_fork_point_inner(
@@ -234,7 +248,7 @@ pub async fn get_rebase_todo(
     base_oid: String,
     inclusive: Option<bool>,
     state: State<'_, RepoState>,
-) -> Result<Vec<RebaseTodoItem>, String> {
+) -> Result<RebaseTodo, String> {
     let state_map = state.0.lock().unwrap().clone();
     let incl = inclusive.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {

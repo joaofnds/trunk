@@ -1,14 +1,14 @@
 use crate::common::context::TestContext;
-use trunk_lib::commands::interactive_rebase::{self, RebaseTodoAction};
+use trunk_lib::commands::interactive_rebase::{self, RebaseTodo, RebaseTodoAction};
 use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::{GraphResult, RebaseTodoItem};
+use trunk_lib::git::types::GraphResult;
 
 impl TestContext {
     pub fn get_rebase_todo(
         &self,
         base_oid: &str,
         inclusive: bool,
-    ) -> Result<Vec<RebaseTodoItem>, TrunkError> {
+    ) -> Result<RebaseTodo, TrunkError> {
         interactive_rebase::get_rebase_todo_inner(
             self.path(),
             base_oid,
