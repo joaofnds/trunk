@@ -1,0 +1,109 @@
+import { fireEvent, render, screen } from "@testing-library/svelte";
+import { tick } from "svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import type { DiffLine, FileDiff } from "../../lib/types.js";
+import HunkView from "./HunkView.svelte";
+
+// jsdom reports a zero-height viewport, which renders no rows at all through a
+// virtual list. Every case here needs a pane with a real box.
+beforeEach(() => stubLayout({ width: 900, height: 400 }));
+afterEach(restoreLayout);
+
+function contextLines(count: number, from = 1): DiffLine[] {
+	return Array.from({ length: count }, (_, index) => ({
+		origin: "Context" as const,
+		content: `line ${from + index}`,
+		old_lineno: from + index,
+		new_lineno: from + index,
+		spans: [],
+	}));
+}
+
+function fileOf(path: string, lines: DiffLine[]): FileDiff {
+	return {
+		path,
+		status: "Modified",
+		is_binary: false,
+		hunks: [
+			{
+				header: `@@ -1,${lines.length} +1,${lines.length} @@`,
+				old_start: 1,
+				old_lines: lines.length,
+				new_start: 1,
+				new_lines: lines.length,
+				lines,
+			},
+		],
+	};
+}
+
+const oneHunk = fileOf("src/main.ts", [
+	{
+		origin: "Context",
+		content: "context before",
+		old_lineno: 10,
+		new_lineno: 10,
+		spans: [],
+	},
+	{
+		origin: "Add",
+		content: "added one",
+		old_lineno: null,
+		new_lineno: 11,
+		spans: [],
+	},
+]);
+
+function defaultProps(overrides: Record<string, unknown> = {}) {
+	return {
+		fileDiffs: [oneHunk],
+		selectedPath: "src/main.ts",
+		diffKind: "unstaged" as const,
+		hunkOperationInFlight: false,
+		ignoreWhitespace: false,
+		showInvisibles: false,
+		wordWrap: false,
+		selectedHunkKey: null,
+		selectedLineIndices: new Set<number>(),
+		selectedCount: 0,
+		isMerge: false,
+		collapsedFiles: new Set<string>(),
+		onfilecollapsetoggle: vi.fn(),
+		onlineclick: vi.fn(),
+		onlinemousedown: vi.fn(),
+		onlineenter: vi.fn(),
+		onstagehunk: vi.fn(),
+		onunstagehunk: vi.fn(),
+		ondiscardhunk: vi.fn(),
+		onstagelines: vi.fn(),
+		onunstagelines: vi.fn(),
+		ondiscardlines: vi.fn(),
+		oncommentlines: vi.fn(),
+		oncommenthunk: vi.fn(),
+		repoPath: "/repo",
+		showInlineComments: true,
+		viewComments: [],
+		...overrides,
+	};
+}
+
+function scrollTo(container: Element, top: number): void {
+	const viewport = container.querySelector(
+		".exact-virtual-viewport",
+	) as HTMLElement;
+	viewport.scrollTop = top;
+	viewport.dispatchEvent(new Event("scroll"));
+}
+
+describe("HunkView", () => {
+	it("mounts a bounded number of rows for a hunk far larger than the viewport", () => {
+		const { container } = render(HunkView, {
+			props: defaultProps({
+				fileDiffs: [fileOf("src/huge.ts", contextLines(5000))],
+			}),
+		});
+
+		expect(container.querySelectorAll(".diff-line").length).toBeLessThan(200);
+	});
+});

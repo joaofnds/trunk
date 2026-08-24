@@ -14,6 +14,12 @@ import DiffPanel from "./DiffPanel.svelte";
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
 
+// Both inline views render through a virtual list, which mounts no rows at all
+// against jsdom's zero-height viewport. The box is wide enough for the widest
+// fixture line and tall enough that a two-hunk file mounts both toolbars.
+beforeEach(() => stubLayout({ width: 900, height: 400 }));
+afterEach(restoreLayout);
+
 // Helper: flush microtasks (Promise.resolve in store mocks) + Svelte update queue
 // Needed because DiffPanel loads preferences via $effect Promise.all which resolves
 // asynchronously. This ensures the component has processed the loaded values.
@@ -802,10 +808,6 @@ describe("diff-utils", () => {
 // ---- VIEW-04: Full file view ----
 
 describe("VIEW-04: Full file view", () => {
-	// Full-file mode renders through a virtual list, which mounts no rows at all
-	// against jsdom's zero-height viewport.
-	beforeEach(() => stubLayout({ width: 900, height: 400 }));
-	afterEach(restoreLayout);
 
 	it("renders all lines as continuous document without hunk headers", async () => {
 		const storeMock = await import("../lib/store.js");
@@ -885,8 +887,6 @@ describe("VIEW-04: Full file view", () => {
 });
 
 describe("VIEW-04: reopening a large file", () => {
-	beforeEach(() => stubLayout({ width: 900, height: 400 }));
-	afterEach(restoreLayout);
 
 	// Closing the diff leaves the fetched payload in RepoView's commitFileDiffs,
 	// so a reopen mounts DiffPanel against the whole file. The persisted mode
@@ -1537,22 +1537,20 @@ describe("VIEW-05: Staging in split view", () => {
 	// - Diff line backgrounds extend the full content width (no gaps on short lines)
 
 	describe("diff scroll layout", () => {
-		function findAncestorWithOverflow(el: Element): HTMLElement | null {
+		// A virtualized view scrolls inside its own viewport, so the wrapper above
+		// it no longer scrolls. What still has to sit above every row is the
+		// container-query context the toolbar's `100cqi` width resolves against.
+		function findContainerContext(el: Element): HTMLElement | null {
 			let current = el.parentElement;
 			while (current) {
 				const style = current.getAttribute("style") || "";
-				if (
-					style.includes("overflow: auto") ||
-					style.includes("overflow:auto")
-				) {
-					return current;
-				}
+				if (style.includes("container-type: inline-size")) return current;
 				current = current.parentElement;
 			}
 			return null;
 		}
 
-		it("scroll container establishes container query context for sticky sizing", async () => {
+		it("a container query context sits above every row, so sticky sizing resolves", async () => {
 			const { container } = render(DiffPanel, {
 				props: {
 					fileDiffs: [testDiff],
@@ -1563,10 +1561,9 @@ describe("VIEW-05: Staging in split view", () => {
 			await flushPrefs();
 			const line = container.querySelector(".diff-line");
 			expect(line).toBeTruthy();
-			const scrollContainer = findAncestorWithOverflow(line as Element);
-			expect(scrollContainer).toBeTruthy();
-			const style = scrollContainer?.getAttribute("style") ?? "";
-			expect(style).toContain("container-type: inline-size");
+			const context = findContainerContext(line as Element);
+			expect(context).toBeTruthy();
+			const style = context?.getAttribute("style") ?? "";
 			expect(style).toContain("overscroll-behavior-x: none");
 		});
 

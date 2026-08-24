@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit } from "../__tests__/helpers/factories.js";
+import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import {
 	disablePerf,
 	enablePerf,
@@ -112,6 +113,11 @@ function createMockUndoRedo(): UndoRedoManager {
 }
 
 describe("RepoView", () => {
+	// The diff views render through a virtual list, which mounts no rows at all
+	// against jsdom's zero-height viewport.
+	beforeEach(() => stubLayout({ width: 900, height: 400 }));
+	afterEach(restoreLayout);
+
 	beforeEach(() => {
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {

@@ -127,7 +127,9 @@ const renderedMarkdown = $derived(
 // A virtualized view owns its own scroller. Leaving this wrapper scrolling too
 // would give the wheel two places to go on the same axis.
 const virtualized = $derived(
-	!renderedMarkdown && layoutMode === "inline" && contentMode === "full",
+	!renderedMarkdown &&
+		layoutMode === "inline" &&
+		(contentMode === "full" || contentMode === "hunk"),
 );
 </script>
 
@@ -183,7 +185,6 @@ const virtualized = $derived(
       {selectedCount}
       {isMerge}
       {collapsedFiles}
-      {hunkElements}
       {onfilecollapsetoggle}
       {onlineclick}
       {onlinemousedown}
