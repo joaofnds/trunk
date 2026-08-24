@@ -76,6 +76,11 @@ let selectedPath = $state<string | null>(null);
 let anchorIndex = $state<number | null>(null);
 let focusIndex = $state<number | null>(null);
 
+// A press arms the span and holds it open; the pointer crossing another row
+// carries the focus with it. Not a second selection model — a drag is the
+// contiguous span with a moving endpoint, which is what shift-click already is.
+let dragging = false;
+
 let pane = $state<HTMLDivElement | null>(null);
 let metricsProbe = $state<HTMLDivElement | null>(null);
 let commentProbe = $state<HTMLDivElement | null>(null);
@@ -188,6 +193,15 @@ onMount(() => {
 });
 
 $effect(() => {
+	const stopDrag = () => {
+		dragging = false;
+	};
+
+	window.addEventListener("mouseup", stopDrag);
+	return () => window.removeEventListener("mouseup", stopDrag);
+});
+
+$effect(() => {
 	const container = commentProbe;
 	const wanted = threadsToProbe;
 	if (!container || wanted.length === 0) return;
@@ -251,6 +265,38 @@ function selectLine(
 	focusIndex = index;
 }
 
+function startDrag(path: string, line: DiffLine, index: number, e: MouseEvent) {
+	// Suppress the webview's own text selection for the whole gesture: a drag
+	// crosses gutters and code spans that are otherwise user-selectable, and
+	// without this the browser paints its selection over ours.
+	e.preventDefault();
+
+	selectLine(path, line, index, e.shiftKey);
+	dragging = true;
+}
+
+// The e.buttons guard makes a stuck `dragging` flag inert: with no button held
+// there is no gesture to continue, whatever the flag says.
+function extendDrag(
+	path: string,
+	line: DiffLine,
+	index: number,
+	e: MouseEvent,
+) {
+	if (!dragging) return;
+
+	if (e.buttons !== 1) {
+		dragging = false;
+		return;
+	}
+
+	// D-02 again: a Delete line is not a valid endpoint, so the span stops at
+	// the last new-side row the pointer crossed rather than snapping to it.
+	if (path !== selectedPath || line.new_lineno === null) return;
+
+	focusIndex = index;
+}
+
 // Called by the DiffPanel host (via bind:this) on mode/layout toggle and Escape
 // so the selection never goes stale.
 export function clearSelection() {
@@ -296,6 +342,9 @@ function lineColor(): string {
     {@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
     {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
     {@const gutterW = `${model.gutterChars}ch`}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- mouseenter only continues an in-progress gutter drag; the row itself is
+         not a control. -->
     <div
       class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
       style="
@@ -308,12 +357,13 @@ function lineColor(): string {
         display: flex;
         align-items: flex-start;
       "
+      onmouseenter={(e) => extendDrag(item.path, line, item.flatIdx, e)}
     ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
         class="gutter-grip{isSelectable ? ' gutter-selectable' : ''}"
         style="user-select: none; -webkit-user-select: none;"
         role={isSelectable ? 'button' : undefined}
         tabindex={isSelectable ? 0 : undefined}
-        onmousedown={(e) => { if (isSelectable && e.shiftKey) e.preventDefault(); }}
+        onmousedown={(e) => isSelectable && startDrag(item.path, line, item.flatIdx, e)}
         onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
         onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
       ><span class="gutter-num" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>

@@ -102,6 +102,14 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 
 // Selection now arms from the line-number gutter grip (which carries
 // role="button"), not the code content. Query the grip via the line's content.
+// mouseenter does not bubble, so fire it on the row div that carries the
+// handler, not the content span getByText returns.
+function lineRow(text: string): HTMLElement {
+	const row = screen.getByText(text).closest(".diff-line");
+	if (!row) throw new Error(`no diff line for "${text}"`);
+	return row as HTMLElement;
+}
+
 function gutterGrip(text: string): HTMLElement {
 	const grip = screen
 		.getByText(text)
@@ -153,6 +161,63 @@ describe("FullFileView", () => {
 		// Indices are the flat line-list positions of the contiguous span (1..4).
 		const sorted = Array.from(indices as Set<number>).sort((a, b) => a - b);
 		expect(sorted).toEqual([1, 2, 3, 4]);
+	});
+
+	it("selects the span between the pressed row and the row the pointer reaches", async () => {
+		const oncommentfullfile = vi.fn();
+		const { container } = render(FullFileView, {
+			props: defaultProps({ oncommentfullfile }),
+		});
+
+		await fireEvent.mouseDown(gutterGrip("added one"));
+		await tick();
+		await fireEvent.mouseEnter(lineRow("added three"), {
+			buttons: 1,
+		});
+		await tick();
+		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
+
+		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
+		expect(Array.from(indices).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+	});
+
+	it("leaves the span alone when the pointer crosses a row with no button held", async () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		await fireEvent.mouseDown(gutterGrip("added one"));
+		await tick();
+		await fireEvent.mouseEnter(lineRow("added three"), {
+			buttons: 0,
+		});
+		await tick();
+
+		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+	});
+
+	it("stops extending the span once the button is released", async () => {
+		const { container } = render(FullFileView, { props: defaultProps() });
+
+		await fireEvent.mouseDown(gutterGrip("added one"));
+		await tick();
+		await fireEvent.mouseUp(window);
+		await fireEvent.mouseEnter(lineRow("added three"), {
+			buttons: 1,
+		});
+		await tick();
+
+		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+	});
+
+	it("keeps the webview from starting its own text selection on a gutter press", async () => {
+		render(FullFileView, { props: defaultProps() });
+
+		const press = new MouseEvent("mousedown", {
+			bubbles: true,
+			cancelable: true,
+		});
+		gutterGrip("added one").dispatchEvent(press);
+
+		expect(press.defaultPrevented).toBe(true);
 	});
 
 	it("V6/D-02: a Delete line (new_lineno=null) is not selectable and not an endpoint", async () => {
@@ -382,6 +447,56 @@ describe("FullFileView", () => {
 		expect(screen.queryAllByText("line 10").length).toBe(0);
 
 		await fireEvent.click(gutterGrip("line 2500"), { shiftKey: true });
+		await tick();
+		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
+
+		const indices = oncommentfullfile.mock.calls[0][1] as Set<number>;
+		expect(indices.size).toBe(2491);
+		expect(indices.has(10) && indices.has(2500)).toBe(true);
+	});
+
+	it("drags a span across rows the list never mounted", async () => {
+		const oncommentfullfile = vi.fn();
+		const lines = Array.from({ length: 3000 }, (_, index) => ({
+			origin: "Add" as const,
+			content: `line ${index}`,
+			old_lineno: null,
+			new_lineno: index + 1,
+			spans: [],
+		}));
+		const long: FileDiff = {
+			path: "src/long.ts",
+			status: "Modified",
+			is_binary: false,
+			hunks: [
+				{
+					header: "@@ -1,3000 +1,3000 @@",
+					old_start: 1,
+					old_lines: 3000,
+					new_start: 1,
+					new_lines: 3000,
+					lines,
+				},
+			],
+		};
+		const { container } = render(FullFileView, {
+			props: defaultProps({ fileDiffs: [long], oncommentfullfile }),
+		});
+
+		await fireEvent.mouseDown(gutterGrip("line 10"));
+		await tick();
+
+		const viewport = container.querySelector(
+			".exact-virtual-viewport",
+		) as HTMLElement;
+		viewport.scrollTop = 2500 * 18;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+		expect(screen.queryAllByText("line 10").length).toBe(0);
+
+		await fireEvent.mouseEnter(lineRow("line 2500"), {
+			buttons: 1,
+		});
 		await tick();
 		await fireEvent.click(screen.getByRole("button", { name: /comment/i }));
 
