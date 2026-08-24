@@ -409,3 +409,26 @@ fn an_inclusive_rebase_applies_a_reordered_base_commit() {
         "the rebase should have run to completion"
     );
 }
+
+#[test]
+fn an_inclusive_rebase_with_no_edits_leaves_history_untouched() {
+    let (ctx, oids) = four_commit_ctx();
+    let listing = ctx.get_rebase_todo(&oids[1].to_string(), true).unwrap();
+    let before = oids_oldest_first(&ctx);
+
+    ctx.start_interactive_rebase(
+        listing.base_oid.as_deref(),
+        &[
+            todo(oids[1], "pick", None),
+            todo(oids[2], "pick", None),
+            todo(oids[3], "pick", None),
+        ],
+    )
+    .expect("an unedited list should apply");
+
+    assert_eq!(oids_oldest_first(&ctx), before);
+    assert!(
+        !ctx.repo().path().join("rebase-merge").exists(),
+        "an unedited rebase must not leave one in progress"
+    );
+}
