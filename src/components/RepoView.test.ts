@@ -13,11 +13,11 @@ import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
+import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
 	FileDiff,
 } from "../lib/types.js";
-import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import RepoView from "./RepoView.svelte";
 

@@ -353,7 +353,10 @@ fn an_inclusive_todo_resolves_its_base_to_the_clicked_commits_parent() {
 
     assert_eq!(todo.base_oid, Some(oids[0].to_string()));
     assert_eq!(
-        todo.items.iter().map(|i| i.summary.as_str()).collect::<Vec<_>>(),
+        todo.items
+            .iter()
+            .map(|i| i.summary.as_str())
+            .collect::<Vec<_>>(),
         vec!["Second commit", "Third commit"]
     );
 }
@@ -366,7 +369,10 @@ fn an_inclusive_todo_at_the_root_commit_has_no_base() {
 
     assert_eq!(todo.base_oid, None);
     assert_eq!(
-        todo.items.iter().map(|i| i.summary.as_str()).collect::<Vec<_>>(),
+        todo.items
+            .iter()
+            .map(|i| i.summary.as_str())
+            .collect::<Vec<_>>(),
         vec!["Initial commit", "Second commit", "Third commit"]
     );
 }
@@ -487,7 +493,7 @@ fn a_failure_that_leaves_no_rebase_in_progress_is_an_error() {
 
     let err = ctx
         .start_interactive_rebase(
-            Some(&git2::Oid::zero().to_string()),
+            Some(&git2::Oid::ZERO_SHA1.to_string()),
             &[todo(oids[1], "pick", None)],
         )
         .expect_err("git refusing the base must not read as a completed rebase");

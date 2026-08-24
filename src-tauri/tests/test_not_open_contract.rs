@@ -94,7 +94,7 @@ not_open_contract! {
     undo_commit_reports_not_open_for_an_unregistered_repo =>
         undo_commit_inner;
     start_interactive_rebase_reports_not_open_for_an_unregistered_repo =>
-        |path, state| start_interactive_rebase_blocking(path, "HEAD", &[], Path::new("/tmp"), state);
+        |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state);
 }
 
 #[test]
