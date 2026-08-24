@@ -480,3 +480,21 @@ fn a_rebase_that_stops_reports_the_stop_not_a_completion() {
         "git should have stopped at a commit"
     );
 }
+
+#[test]
+fn a_failure_that_leaves_no_rebase_in_progress_is_an_error() {
+    let (ctx, oids) = four_commit_ctx();
+
+    let err = ctx
+        .start_interactive_rebase(
+            Some(&git2::Oid::zero().to_string()),
+            &[todo(oids[1], "pick", None)],
+        )
+        .expect_err("git refusing the base must not read as a completed rebase");
+
+    assert_eq!(err.code, "rebase_error");
+    assert!(
+        !ctx.repo().path().join("rebase-merge").exists(),
+        "nothing should be left in progress"
+    );
+}
