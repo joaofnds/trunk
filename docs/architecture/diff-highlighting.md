@@ -1,8 +1,8 @@
 # Diff syntax highlighting: the cost model
 
 What highlighting a diff actually costs, which guards bound it, and which optimisations were
-measured and rejected. Read this before changing anything in `src-tauri/src/git/syntax.rs`,
-`src-tauri/src/git/token_cache.rs`, or the enrichment path in `src-tauri/src/commands/diff.rs`.
+measured and rejected. Read this before changing anything in `src-tauri/src/git/syntax.rs` or
+the enrichment path in `src-tauri/src/commands/diff.rs`.
 
 ## The shape of the work
 
@@ -12,28 +12,78 @@ theme, feeds it one line at a time, and maps each resulting foreground colour to
 by exact RGB match in `color_to_css_class`. The frontend receives spans with class names and
 does no parsing of its own.
 
-The decisive property is that **syntect's parser is a sequential state machine**. Line N's
-parse state is the output of line N-1, so there is no way to start cold in the middle of a
-file. Highlighting the deepest displayed line means parsing every line above it.
+syntect's parser is a sequential state machine: line N's parse state is the output of line
+N-1. What that state actually depends on, though, is the nearest enclosing construct, not the
+top of the file. So the highlighter starts a fixed number of lines above the first line the
+diff needs rather than at line 1, and the lines it walks to get there are parsed for their
+state and dropped.
 
-That single fact produces the cost curve everything else here exists to manage.
+Measured against 205 of this repo's own `.ts` and `.rs` files, 6,794 lines sampled: **0.059%
+of lines differ from a full parse from line 1** at a 250-line window, against 6.359% with no
+lookback at all. A difference is wrong colours on one line inside a long construct. Never a
+crash, and never wrong content.
+
+That corpus has no minified JavaScript, no very long string literals or block comments, and no
+other pathological shapes. A user's repository can differ more often. The window size is the
+only mitigation, and 250 was chosen over 100 for exactly that margin.
+
+## The cost model, in line-parses
+
+Write `max` and `min` for the deepest and shallowest line a side's diff needs, and
+`start = max(1, min - 250)`. Lines parsed per side is `max - start + 1`.
+
+**The win is per-span, not per-file.** A narrow hunk anywhere in a file costs its span plus
+250 lines, wherever it sits. A file whose hunks run from line 3 to line 40,000 has `start` at
+1 and a 40,000-line span, which is over the cap and skipped, exactly as before. A file whose
+hunks span 4,000 lines parses 4,000 lines per side, not 251.
+
+Two baselines, because they differ:
+
+- **Cold open**, nothing parsed yet. Before, each side parsed `max`. Now each parses
+  `max - start + 1`. Never worse, often far better.
+- **Edit-save loop**, the file being edited. Before, the committed side hit a content-OID
+  token cache and only the working-tree side parsed, so the cost was one parse of `max`. There
+  is no cache now, so both sides parse: `2·(max - start + 1)`. **Better only when
+  `2·(max - start + 1) < max`**, which is any narrow span, and worse whenever `start` lands at
+  1.
+
+Three consequences follow, and all three are real:
+
+1. **Saving is about 2x slower wherever the needed span reaches the top of the file.** Two
+   3,000-line parses against one. Sub-millisecond when the span is small; 127 ms against 63 ms
+   on a 3,000-line file with a full-width span.
+2. **Full-file view pays that on every save.** `apply_request_options` sets `context_lines` to
+   100,000 when `show_full_file` is set, so every line becomes a Context line with a line
+   number, the needed set is 1..N, and `start` is 1. It is a persisted preference, so a user
+   parked in that mode pays it until they leave it.
+3. **Highlighting now depends on the view mode for files over the cap.** A tracked file over
+   5,000 lines with one narrow deep hunk is highlighted in hunk mode and unhighlighted in
+   full-file view. Before this change neither mode highlighted it. A per-hunk window — several
+   windows per side rather than one — would remove consequences 1 and 3 and shrink 2; it was
+   considered and left unbuilt.
 
 ## Measured costs
 
 All numbers from `src-tauri/benches/bench_commands.rs`, `diff_ts_large_file` group, on a
-3,002-line TypeScript file whose only change is one line. Measured 2026-08-22 with the load
-average under 3. Benchmarks on this path are load-sensitive, so check `uptime` reads below 4
-before trusting a run.
+3,002-line TypeScript file. Benchmarks on this path are load-sensitive, so check `uptime` reads
+below 4 before trusting a run: the before column was measured 2026-08-25 at load 2.14, the
+after column 2026-08-26 at load 2.64. Both ran the same suite, the before column against the
+unchanged pipeline.
 
-| Case | Time | What it is |
-|---|---|---|
-| `early_change` | 1.3563 ms | The changed line sits near the top, so the parse stops early |
-| `late_change` | 130.42 ms | The same one-line change near the bottom, so the parse walks the whole file |
-| `cache_hit` | 837.15 µs | Either of the above, served from the token cache |
+| Case | Before | After | What it is |
+|---|---|---|---|
+| `early_change` | 1.2465 ms | 1.2558 ms | One changed line near the top |
+| `late_change` | 123.58 ms | 11.292 ms | The same one-line change near the bottom |
+| `edit_save_loop` | 63.085 ms | 11.459 ms | A late change rewritten every iteration, as a save does |
+| `edit_save_wide_span` | 63.222 ms | 126.89 ms | The same loop with hunks at both ends of the file |
+| `cache_hit` | 816.63 µs | — | Deleted with the cache it measured |
 
-**A late change costs 96 times an early one** when it has to be parsed. This is not a function
-of diff size. The diff is identical in both cases. It is a function of how deep the change
-sits, which is why the cache below is the fix rather than any amount of tuning.
+`edit_save_wide_span` is consequence 1 with a number on it. `late_change` and `edit_save_loop`
+now agree, because a narrow hunk costs the same wherever it sits.
+
+Repeat views of one diff got slower too: 816.63 µs from the cache before, about 11.5 ms now.
+Below perception, and the reason the cache was not worth its 197 lines plus the warming
+machinery around it.
 
 ### Where the time goes inside one parse
 
@@ -46,7 +96,7 @@ Measured separately on the same fixture, splitting a cold highlight into its hal
 | Our shipped path, including `SyntaxToken` building | 62.677 ms |
 
 **Parsing is 96% of the cost. Theme matching and token building together are 4.1%.** If you
-are looking for a win, it is in avoiding parses, not in making the work downstream of them
+are looking for a win, it is in parsing fewer lines, not in making the work downstream of them
 cheaper. See the rejected optimisation below, which learned this the expensive way.
 
 ## The guards
@@ -54,9 +104,12 @@ cheaper. See the rejected optimisation below, which learned this the expensive w
 Three bounds keep pathological input off this path. Removing any of them needs a measurement,
 not an argument.
 
-**A 5,000-line cap.** `MAX_SYNTAX_HIGHLIGHT_LINE` in `commands/diff.rs` returns an empty
-result before the cache is consulted when the deepest needed line exceeds it. Files with
-changes below line 5,000 are served without highlighting rather than slowly.
+**A 5,000-line parse cap.** `MAX_SYNTAX_PARSE_LINES` in `commands/diff.rs` returns an empty
+result for a side whose window would run longer than that: `max - start + 1 > 5000`. The bound
+is on lines parsed, not on how deep the deepest one sits, which is what lets a narrow hunk past
+line 5,000 be highlighted while a 90,000-line added file is still skipped. An added file's
+diff is one hunk whose every line is an Add carrying a line number, so its needed set is 1..N
+and its window is the whole file; full-file view reaches the same set by a different route.
 
 **The Markdown grammar is refused outright.** syntect's Markdown grammar catastrophically
 backtracks on lines mixing bold and inline code, up to about 250 ms for a single line.
@@ -67,52 +120,26 @@ rendered-view set.
 **Word-level spans skip large blocks.** `compute_word_spans_for_hunk` gives up on blocks over
 40 paired lines.
 
-## The token cache
-
-`SyntaxTokenCache` holds per-line tokens keyed by `(content OID, extension)`.
-
-**It needs no invalidation, and must never grow any.** A git OID is content identity, so a hit
-is correct by construction. This holds for the working-tree side too, which carries a
-content-addressed OID like any other. There is no mtime check, no staleness check, and no
-generation counter anywhere in this cache. Adding one would mean someone misunderstood why it
-is safe.
-
-The cache is bounded by a byte budget, 64 MB by default, and evicts the coldest entry when the
-budget is exceeded. Because the 5,000-line cap sits in front of it, no single entry can be
-unbounded.
-
-**One known inefficiency, deliberate.** An entry parsed less deep than a later request needs is
-replaced by a fresh parse from line 1. syntect's `ParseState` implements `Clone`, and syntect's
-own documentation describes caching it every thousand lines or so to resume a parse from the
-nearest checkpoint instead of restarting. We do not do this. It would remove the re-parse when
-an entry has to grow deeper, and it cannot make a first parse cheaper. Nobody has measured
-whether entries actually grow often enough to be worth it.
-
-## Warming
-
-Selecting a commit walks its file list and calls `warm_diff` once per file, one at a time,
-fired and not awaited so it never blocks selection. `warm_diff` runs the identical
-`diff_commit_file_inner` function that `diff_commit_file` runs and throws the result away, so
-warming can never drift from the real diff path. It stops when the selection moves and skips
-files that would push it past a 2 MB budget, skipping rather than stopping so one huge file
-does not starve the rest.
-
-A module-level promise chain in `RepoView.svelte` serialises warm loops across selections. The
-generation counter alone is not enough: it stops a stale loop at its next iteration, but not
-the call already in flight, and not a new commit's loop racing to start beside it. Both were
-measured happening, with two commits parsing the same file at once while the user waited on a
-third.
-
 ## Rejected: skipping the theme layer for undisplayed prefix lines
 
-Parsing to reach line 3,000 means running theme matching on 3,000 lines when the diff might
+Walking to line 3,000 means running theme matching on the lines in between when the diff might
 display forty of them. Skipping the theme layer for the lines nobody sees looks like an obvious
 win, and the plan of record estimated it at about a quarter of every cold parse.
 
 **Measured, it is 4.1%**, and that is a ceiling the change could not reach, since it saves only
-on the prefix. It was rejected in favour of leaving `easy::HighlightLines` alone, on a code
-path whose last three defects were all state-handling bugs. Do not re-propose it without a
-measurement that contradicts the table above.
+on lines the window walks past. It was rejected in favour of leaving `easy::HighlightLines`
+alone, on a code path whose last three defects were all state-handling bugs. Do not re-propose
+it without a measurement that contradicts the table above.
+
+## Rejected: caching parser state instead of tokens
+
+syntect's own documentation describes snapshotting `ParseState` every thousand lines or so and
+resuming from the nearest checkpoint. It does not compile here: `ParseState.stack` holds
+`StateLevel.captures`, which holds an `onig::Region` wrapping raw pointers, and onig declares
+`Send` for `Regex` only. Every diff command runs inside `tauri::async_runtime::spawn_blocking`,
+so consecutive requests land on different pool threads. Reaching a comparable win that way
+would mean a dedicated long-lived highlighting thread owning the state, with a channel protocol
+and a shutdown path; the bounded window reaches it by deletion instead.
 
 ## What this pipeline is not responsible for
 
