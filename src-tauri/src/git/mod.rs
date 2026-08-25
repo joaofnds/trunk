@@ -10,6 +10,5 @@ pub mod review_range;
 pub mod review_resolution;
 pub mod status;
 pub mod syntax;
-pub mod token_cache;
 pub mod types;
 pub mod workdir_snapshot;

@@ -169,15 +169,11 @@ fn bench_ipc_diff_unstaged(c: &mut Criterion) {
     // Measure: diff_unstaged_inner (compute) + serde_json::to_string (serialize)
     group.bench_function("diff_unstaged", |b| {
         b.iter(|| {
-            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-            );
             let result = trunk_lib::commands::diff::diff_unstaged_inner(
                 &path,
                 "file0.txt",
                 &state_map,
                 &trunk_lib::git::types::DiffRequestOptions::default(),
-                &cache,
             )
             .unwrap();
             serde_json::to_string(&result).unwrap()

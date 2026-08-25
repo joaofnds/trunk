@@ -164,15 +164,11 @@ fn bench_diff_unstaged(c: &mut Criterion) {
 
     c.bench_function("diff_unstaged_inner", |b| {
         b.iter(|| {
-            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-            );
             trunk_lib::commands::diff::diff_unstaged_inner(
                 &path,
                 "README.md",
                 &state_map,
                 &trunk_lib::git::types::DiffRequestOptions::default(),
-                &cache,
             )
             .unwrap();
         });
@@ -354,15 +350,11 @@ fn bench_diff_code_file(c: &mut Criterion) {
 
     c.bench_function("diff_ts_full_pipeline", |b| {
         b.iter(|| {
-            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-            );
             trunk_lib::commands::diff::diff_unstaged_inner(
                 &path,
                 "diff-utils.ts",
                 &state_map,
                 &trunk_lib::git::types::DiffRequestOptions::default(),
-                &cache,
             )
             .unwrap()
         });
@@ -389,10 +381,7 @@ fn bench_enrich_new(c: &mut Criterion) {
     c.bench_function("enrich_ts_new_perfile", |b| {
         b.iter(|| {
             let mut diffs = raw.clone();
-            let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-                trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-            );
-            trunk_lib::commands::diff::enrich_file_diffs(&mut diffs, &sides, &cache);
+            trunk_lib::commands::diff::enrich_file_diffs(&mut diffs, &sides);
             diffs
         });
     });
@@ -546,51 +535,20 @@ fn bench_diff_large_file(c: &mut Criterion) {
 
         group.bench_function(id, |b| {
             b.iter(|| {
-                let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-                    trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-                );
                 trunk_lib::commands::diff::diff_unstaged_inner(
                     &path,
                     "large.ts",
                     &state_map,
                     &trunk_lib::git::types::DiffRequestOptions::default(),
-                    &cache,
                 )
                 .unwrap()
             });
         });
     }
 
-    // A late change once its content is already cached -- the property the
-    // cache exists for: this should read on the order of early_change, not
-    // late_change.
-    {
-        let path = late.path.display().to_string();
-        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-        state_map.insert(path.clone(), late.path.clone());
-        let options = trunk_lib::git::types::DiffRequestOptions::default();
-        let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-            trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-        );
-        trunk_lib::commands::diff::diff_unstaged_inner(
-            &path, "large.ts", &state_map, &options, &cache,
-        )
-        .unwrap();
-
-        group.bench_function("cache_hit", |b| {
-            b.iter(|| {
-                trunk_lib::commands::diff::diff_unstaged_inner(
-                    &path, "large.ts", &state_map, &options, &cache,
-                )
-                .unwrap()
-            });
-        });
-    }
-
-    // The user's edit-save loop: a warm cache the committed side hits, and a
-    // working-tree side rewritten every iteration, so its content OID is new
-    // every time and it can never hit. `edit_save_wide_span` changes both ends
-    // of the file, so the needed lines span it top to bottom.
+    // The user's edit-save loop: the working-tree side rewritten every
+    // iteration, which is what a save produces. `edit_save_wide_span` changes
+    // both ends of the file, so the needed lines span it top to bottom.
     let edit_save = REPO_EDIT_SAVE.get_or_init(make_repo_with_committed_large_file);
     let edit_save_wide = REPO_EDIT_SAVE_WIDE.get_or_init(make_repo_with_committed_large_file);
 
@@ -607,9 +565,6 @@ fn bench_diff_large_file(c: &mut Criterion) {
         let mut state_map: HashMap<String, PathBuf> = HashMap::new();
         state_map.insert(path.clone(), bench_repo.path.clone());
         let options = trunk_lib::git::types::DiffRequestOptions::default();
-        let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
-            trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
-        );
         let mut nonce = 0usize;
 
         group.bench_function(id, |b| {
@@ -618,7 +573,7 @@ fn bench_diff_large_file(c: &mut Criterion) {
                 std::fs::write(&file, large_typescript_file_variant(changed_blocks, nonce))
                     .unwrap();
                 trunk_lib::commands::diff::diff_unstaged_inner(
-                    &path, "large.ts", &state_map, &options, &cache,
+                    &path, "large.ts", &state_map, &options,
                 )
                 .unwrap()
             });
