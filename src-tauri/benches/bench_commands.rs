@@ -615,7 +615,8 @@ fn bench_diff_large_file(c: &mut Criterion) {
         group.bench_function(id, |b| {
             b.iter(|| {
                 nonce += 1;
-                std::fs::write(&file, large_typescript_file_variant(changed_blocks, nonce)).unwrap();
+                std::fs::write(&file, large_typescript_file_variant(changed_blocks, nonce))
+                    .unwrap();
                 trunk_lib::commands::diff::diff_unstaged_inner(
                     &path, "large.ts", &state_map, &options, &cache,
                 )
