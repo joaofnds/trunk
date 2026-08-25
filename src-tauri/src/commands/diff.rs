@@ -355,8 +355,10 @@ fn walk_diff(
 
 /// Real content of a file's old and new version, keyed by the same index as the
 /// `FileDiff` it enriches. `None` means that side's content could not be resolved
-/// (missing blob, unreadable file, bare repo, binary, or over the highlight cap) —
-/// that side contributes no syntax tokens, but word-diff emphasis is unaffected.
+/// (missing blob, unreadable file, bare repo, or binary) — that side contributes
+/// no syntax tokens, but word-diff emphasis is unaffected. A side whose window
+/// runs past `MAX_SYNTAX_PARSE_LINES` resolves its content and then yields no
+/// tokens, which is the same outcome by a different route.
 #[derive(Debug, Default, Clone)]
 pub struct SideContent {
     pub old: Option<Vec<u8>>,
@@ -369,14 +371,16 @@ impl SideContent {
     }
 }
 
-/// Side content beyond this many displayed lines skips syntax highlighting for
-/// that side entirely (word-diff emphasis still applies). Release-mode probe
-/// measurements (`/tmp/hl-probe`, bin `perf`, a 2 399-line Rust file): 32–44 ms
-/// on a quiet machine across six runs in two sessions (~60–75k lines/s), 173–196
-/// ms on a loaded machine during one gate-review run (~14k lines/s). At this cap:
-/// ~85 ms/side quiet, ~360 ms/side loaded, per render, off the UI thread, and
-/// only for hunks past this line.
-const MAX_SYNTAX_HIGHLIGHT_LINE: u32 = 5_000;
+/// A side whose window would run longer than this skips syntax highlighting
+/// entirely (word-diff emphasis still applies). The bound is on lines parsed,
+/// not on how deep the deepest one sits: a narrow hunk anywhere in a file costs
+/// its span plus the lookback, while an added file or a full-file view needs
+/// every line and its window is the whole file. Release-mode probe measurements
+/// (`/tmp/hl-probe`, bin `perf`, a 2 399-line Rust file): 32–44 ms on a quiet
+/// machine across six runs in two sessions (~60–75k lines/s), 173–196 ms on a
+/// loaded machine during one gate-review run (~14k lines/s). At this cap:
+/// ~85 ms/side quiet, ~360 ms/side loaded, per render, off the UI thread.
+const MAX_SYNTAX_PARSE_LINES: u32 = 5_000;
 
 /// One line of a side's real file content, with the syntax tokens computed for
 /// it by a highlighter fed every preceding line of that same side.
@@ -444,7 +448,7 @@ fn build_side_lines<'a>(
     };
 
     let start = min_line.saturating_sub(SYNTAX_LOOKBACK_LINES).max(1);
-    if max_line > MAX_SYNTAX_HIGHLIGHT_LINE {
+    if max_line - start + 1 > MAX_SYNTAX_PARSE_LINES {
         return result;
     }
     let Some(mut highlighter) = syntax::create_highlighter(ext) else {
@@ -1290,46 +1294,6 @@ mod enrich_tests {
         }
     }
 
-    // Cap: a side whose last displayed line exceeds the highlight cap skips
-    // syntax entirely for that side. The cap check runs on the referenced line
-    // number alone, so a short real-content fixture is enough to exercise it.
-    #[test]
-    fn enrich_skips_syntax_when_a_sides_last_displayed_line_exceeds_the_cap() {
-        let over_cap = MAX_SYNTAX_HIGHLIGHT_LINE + 1;
-        let mut file_diffs = vec![FileDiff {
-            path: "huge.rs".to_string(),
-            status: DiffStatus::Modified,
-            is_binary: false,
-            hunks: vec![DiffHunk {
-                header: "@@ huge @@".to_string(),
-                old_start: 1,
-                old_lines: 0,
-                new_start: over_cap,
-                new_lines: 1,
-                lines: vec![DiffLine {
-                    origin: DiffOrigin::Add,
-                    content: "let x = 1;\n".to_string(),
-                    old_lineno: None,
-                    new_lineno: Some(over_cap),
-                    spans: vec![],
-                }],
-            }],
-        }];
-        let sides = vec![SideContent {
-            old: None,
-            new: Some(b"let x = 1;\n".to_vec()),
-        }];
-
-        enrich_file_diffs(&mut file_diffs, &sides);
-
-        let add_line = &file_diffs[0].hunks[0].lines[0];
-        assert!(
-            add_line.spans.iter().all(|s| s.syntax_class.is_empty()),
-            "a side past the highlight cap must carry no syntax spans, got {:?}",
-            add_line.spans
-        );
-    }
-
     // Alignment guard: a side line that disagrees with DiffLine.content (a
     // filter or TOCTOU drift) loses syntax spans on that line alone — a
     // correctly aligned neighbor is unaffected, and nothing panics.
@@ -1474,6 +1438,68 @@ mod enrich_tests {
             syntax_classes(added).contains(&"syn-keyword"),
             "the new side must be parsed from its own needed minimum, got {:?}",
             added.spans
+        );
+    }
+
+    // The cap bounds how many lines a side parses, not how deep the deepest one
+    // sits, so one narrow hunk past the old 5,000-line limit is highlighted
+    // where it used to be served plain.
+    #[test]
+    fn a_narrow_change_far_below_the_old_cap_is_still_highlighted() {
+        let mut file_diffs = vec![rust_file_diff(vec![one_line_hunk(
+            DiffOrigin::Add,
+            6_000,
+            LET_LINE,
+        )])];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(6_200, &[])),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let line = &file_diffs[0].hunks[0].lines[0];
+        assert!(
+            syntax_classes(line).contains(&"syn-keyword"),
+            "a narrow change past the old cap must be highlighted, got {:?}",
+            line.spans
+        );
+    }
+
+    // The other direction, and the reason the cap survives at all: an added
+    // file and a full-file view both need every line, so the window is the
+    // whole file and the parse it would cost is the one the cap refuses.
+    #[test]
+    fn a_side_whose_needed_lines_span_more_than_the_parse_cap_skips_syntax() {
+        let lines: Vec<DiffLine> = (1..=6_000)
+            .map(|lineno| DiffLine {
+                origin: DiffOrigin::Add,
+                content: format!("{LET_LINE}\n"),
+                old_lineno: None,
+                new_lineno: Some(lineno),
+                spans: vec![],
+            })
+            .collect();
+        let mut file_diffs = vec![rust_file_diff(vec![DiffHunk {
+            header: "@@ -0,0 +1,6000 @@".to_string(),
+            old_start: 0,
+            old_lines: 0,
+            new_start: 1,
+            new_lines: 6_000,
+            lines,
+        }])];
+        let sides = vec![SideContent {
+            old: None,
+            new: Some(rust_side(6_000, &[])),
+        }];
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let deepest = file_diffs[0].hunks[0].lines.last().unwrap();
+        assert!(
+            syntax_classes(deepest).is_empty(),
+            "a side spanning more than the cap must carry no syntax spans, got {:?}",
+            deepest.spans
         );
     }
 }

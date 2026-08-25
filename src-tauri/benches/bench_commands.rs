@@ -413,8 +413,9 @@ fn bench_draft_write(c: &mut Criterion) {
 }
 
 /// Blocks of uniform TypeScript, sized so the file lands near 3,000 lines --
-/// comfortably under `MAX_SYNTAX_HIGHLIGHT_LINE`, so the fixture measures
-/// highlighting rather than the cap that skips it.
+/// comfortably under `MAX_SYNTAX_PARSE_LINES` even when a fixture's needed
+/// lines span the whole file, so every case measures highlighting rather than
+/// the cap that skips it.
 const LARGE_FILE_BLOCKS: usize = 375;
 const EARLY_CHANGED_BLOCK: usize = 1;
 const LATE_CHANGED_BLOCK: usize = LARGE_FILE_BLOCKS - 2;
