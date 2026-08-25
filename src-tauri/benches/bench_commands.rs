@@ -430,25 +430,19 @@ const LARGE_FILE_BLOCKS: usize = 375;
 const EARLY_CHANGED_BLOCK: usize = 1;
 const LATE_CHANGED_BLOCK: usize = LARGE_FILE_BLOCKS - 2;
 
-/// The large file's two versions, differing only in one line of `changed_block`.
-/// `None` yields the committed version.
-fn large_typescript_file(changed_block: Option<usize>) -> String {
+/// The uniform blocks, with `total_line` deciding each block's `total` statement --
+/// which is the only line any version of this file varies.
+fn large_typescript_file_with(total_line: impl Fn(usize) -> String) -> String {
     let mut lines = vec![
         "import type { FileDiff } from \"../lib/types\";".to_string(),
         String::new(),
     ];
 
     for block in 0..LARGE_FILE_BLOCKS {
-        let total = if changed_block == Some(block) {
-            format!("    let total = {block} * 2;")
-        } else {
-            format!("    let total = {block};")
-        };
-
         lines.push(format!(
             "export function computeStat{block}(diffs: FileDiff[]): number {{"
         ));
-        lines.push(total);
+        lines.push(total_line(block));
         lines.push("    for (const fd of diffs) {".to_string());
         lines.push("        total += fd.hunks.length;".to_string());
         lines.push("    }".to_string());
@@ -460,10 +454,33 @@ fn large_typescript_file(changed_block: Option<usize>) -> String {
     lines.join("\n")
 }
 
-/// A repo whose only unstaged change is one line of a ~3,000-line file. Each
-/// side's highlighter walks every line from 1 up to that one, so how deep the
-/// change sits is what the fixture varies -- the diff itself stays the same size.
-fn make_repo_with_large_file_change(changed_block: usize) -> BenchRepo {
+/// The large file's two versions, differing only in one line of `changed_block`.
+/// `None` yields the committed version.
+fn large_typescript_file(changed_block: Option<usize>) -> String {
+    large_typescript_file_with(|block| {
+        if changed_block == Some(block) {
+            format!("    let total = {block} * 2;")
+        } else {
+            format!("    let total = {block};")
+        }
+    })
+}
+
+/// The same file with any number of changed blocks, and `nonce` in every changed
+/// line so two rewrites never produce the same bytes -- which is what gives the
+/// working-tree side a fresh content OID on each save.
+fn large_typescript_file_variant(changed_blocks: &[usize], nonce: usize) -> String {
+    large_typescript_file_with(|block| {
+        if changed_blocks.contains(&block) {
+            format!("    let total = {block} * 2 + {nonce};")
+        } else {
+            format!("    let total = {block};")
+        }
+    })
+}
+
+/// A repo with the ~3,000-line file committed and the working tree matching it.
+fn make_repo_with_committed_large_file() -> BenchRepo {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
@@ -485,20 +502,31 @@ fn make_repo_with_large_file_change(changed_block: usize) -> BenchRepo {
     )
     .unwrap();
 
-    std::fs::write(
-        dir.path().join("large.ts"),
-        large_typescript_file(Some(changed_block)),
-    )
-    .unwrap();
-
     BenchRepo {
         path: dir.path().to_path_buf(),
         _dir: dir,
     }
 }
 
+/// A repo whose only unstaged change is one line of a ~3,000-line file. Each
+/// side's highlighter walks every line from 1 up to that one, so how deep the
+/// change sits is what the fixture varies -- the diff itself stays the same size.
+fn make_repo_with_large_file_change(changed_block: usize) -> BenchRepo {
+    let bench_repo = make_repo_with_committed_large_file();
+
+    std::fs::write(
+        bench_repo.path.join("large.ts"),
+        large_typescript_file(Some(changed_block)),
+    )
+    .unwrap();
+
+    bench_repo
+}
+
 static REPO_LARGE_EARLY: OnceLock<BenchRepo> = OnceLock::new();
 static REPO_LARGE_LATE: OnceLock<BenchRepo> = OnceLock::new();
+static REPO_EDIT_SAVE: OnceLock<BenchRepo> = OnceLock::new();
+static REPO_EDIT_SAVE_WIDE: OnceLock<BenchRepo> = OnceLock::new();
 
 /// The full pipeline over a one-line change in a large file. Pairs an early
 /// change against a late one: the gap between them is what the per-side design
@@ -551,6 +579,43 @@ fn bench_diff_large_file(c: &mut Criterion) {
 
         group.bench_function("cache_hit", |b| {
             b.iter(|| {
+                trunk_lib::commands::diff::diff_unstaged_inner(
+                    &path, "large.ts", &state_map, &options, &cache,
+                )
+                .unwrap()
+            });
+        });
+    }
+
+    // The user's edit-save loop: a warm cache the committed side hits, and a
+    // working-tree side rewritten every iteration, so its content OID is new
+    // every time and it can never hit. `edit_save_wide_span` changes both ends
+    // of the file, so the needed lines span it top to bottom.
+    let edit_save = REPO_EDIT_SAVE.get_or_init(make_repo_with_committed_large_file);
+    let edit_save_wide = REPO_EDIT_SAVE_WIDE.get_or_init(make_repo_with_committed_large_file);
+
+    for (id, changed_blocks, bench_repo) in [
+        ("edit_save_loop", &[LATE_CHANGED_BLOCK][..], edit_save),
+        (
+            "edit_save_wide_span",
+            &[EARLY_CHANGED_BLOCK, LATE_CHANGED_BLOCK][..],
+            edit_save_wide,
+        ),
+    ] {
+        let path = bench_repo.path.display().to_string();
+        let file = bench_repo.path.join("large.ts");
+        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
+        state_map.insert(path.clone(), bench_repo.path.clone());
+        let options = trunk_lib::git::types::DiffRequestOptions::default();
+        let cache = trunk_lib::git::token_cache::SyntaxTokenCache::new(
+            trunk_lib::git::token_cache::DEFAULT_TOKEN_CACHE_BUDGET_BYTES,
+        );
+        let mut nonce = 0usize;
+
+        group.bench_function(id, |b| {
+            b.iter(|| {
+                nonce += 1;
+                std::fs::write(&file, large_typescript_file_variant(changed_blocks, nonce)).unwrap();
                 trunk_lib::commands::diff::diff_unstaged_inner(
                     &path, "large.ts", &state_map, &options, &cache,
                 )
