@@ -1,0 +1,98 @@
+# The application harness
+
+A test drives the real Svelte component tree in a headless DOM, `invoke` reaches the real
+`#[tauri::command]` functions, and those run against a real git repository on disk. No Tauri
+IPC mock sits anywhere in the path.
+
+```bash
+just app-test
+```
+
+The recipe builds `src-tauri/examples/app_host` and runs `vitest.app.config.ts` over
+`tests/app/`. It is deliberately not part of `just check` yet, and not inside the `vitest`
+recipe: `just front` and `just quick` are the tiers run most, and neither should wait on a
+Rust artifact.
+
+## How it fits together
+
+```
+tests/app/*.test.ts          the tests
+  └─ harness/index.ts        setup() / teardown()
+       ├─ harness/host-client.ts   one host process per test, newline-delimited JSON
+       ├─ harness/internals.ts     window.__TAURI_INTERNALS__, the invoke router
+       ├─ harness/dom.ts           the jsdom polyfills
+       ├─ fakes/                   window, webview, path
+       └─ drivers/                 repo, branches, staging, events
+```
+
+`setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
+and mounts the same root `src/main.ts` mounts with the same two side effects. `teardown()`
+unmounts, reaps the process and removes its tempdir.
+
+**The host** (`src-tauri/examples/app_host.rs`) builds the real application on
+`tauri::test::MockRuntime` from `trunk_lib::configure`, with the real capability set from
+`trunk_lib::context()`. It answers five verbs on stdin: `seedRepo`, `invoke`, `emit`,
+`watcherCount` and `shutdown`. One host process is one application is one test, and each gets
+a fresh tempdir `HOME`, so every managed state and the resolved `app_data_dir` isolate without
+a reset step — and writing to the installed app's data directory is structurally impossible.
+
+**The seam is the global, never a module.** `@tauri-apps/api` reaches the runtime only through
+`window.__TAURI_INTERNALS__`. Installing that before the root mounts means no `vi.mock`, no
+hoisting, and nothing in `tests/app/harness/`, `tests/app/drivers/` or `tests/app/fakes/`
+imports vitest — which is what makes the harness usable from another runner. A test asserts
+that by inspection.
+
+**Trunk's commands and the two event-registration commands go to the host.** The ACL check,
+the event id allocation and the Rust registration are all real. Only the delivery hop is the
+harness's: Tauri delivers an event by evaluating a script this side cannot observe, so the host
+mirrors each emit onto stdout and the harness dispatches from its own id map.
+
+**Every other `plugin:` command goes to its Fake**, and one with no Fake and no host route
+throws naming itself. That branch is load-bearing: nine commands answered `undefined` over the
+old mocked transport with nothing noticing.
+
+## What it does not cover
+
+The filesystem watcher is off — `WatcherState::disabled()`, so `open_repo` runs unchanged while
+no watch is created — and `driver.events.externalChange(path)` fires the identical
+`app.emit("repo-changed", path)` call `watcher.rs:24` makes. What that gives up is one link:
+whether the watcher itself fires.
+
+The macOS traffic-light reposition is off too, through `TrafficLights::disabled()`.
+`WebviewWindow::ns_window()` under `MockRuntime` is built from a dangling `NSView*`, so asking
+for the native window there segfaults the process. The command still runs; only the AppKit call
+is skipped.
+
+A headless DOM cannot observe layout and paint, scroll and virtualization, WKWebView-specific
+rendering, native OS chrome, or real pointer gestures. Those still need a human or a render
+golden. In particular jsdom lays nothing out, so `harness/dom.ts` stubs a 4000 px viewport —
+without it the commit graph renders 22 rows however tall the fixture is, coherently and wrongly.
+
+## Writing a test
+
+```ts
+const app = await setup({ repo: { steps: [
+  { step: "file", path: "a.txt", content: "one" },
+  { step: "commit", message: "First" },
+] } });
+
+await app.repo.open();
+
+expect(app.repo.commitRows()).toEqual(["First"]);
+```
+
+The spec's steps map onto `TestContextBuilder` in `src-tauri/tests/common/builder.rs`; add a
+variant on both sides to reach a shape it cannot build yet. Commits are day-spaced unless a
+step pins `at`, because the graph sorts `TOPOLOGICAL | TIME` and same-second commits sort
+arbitrarily.
+
+Assert post-event state with `waitFor` rather than sleeping out the 200 ms `repo-changed`
+debounce. `driver.settle()` is the fallback for a negative assertion — "nothing else
+refetched" — which has no state to wait for, and it costs the whole quiet window.
+
+## Budget
+
+The suite runs in 6.4-6.7 s against a 10 s ceiling, with the host binary already built. A
+scenario that boots the application and reads the graph costs 130-150 ms, one that waits out
+the debounce 275 ms, and a full stage-and-commit workflow about 500 ms. A test file costs about
+0.2 s of vite transform, so file count is a budget term, not a filing preference.
