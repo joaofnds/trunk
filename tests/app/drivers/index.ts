@@ -17,6 +17,8 @@ import { StagingDriver } from "./staging.js";
  */
 const QUIET_MS = 250;
 
+const TOAST = '[role="status"]';
+
 export interface Fakes {
 	window: FakeWindow;
 	webview: FakeWebview;
@@ -55,6 +57,13 @@ export class AppDriver {
 		this.window = fakes.window;
 		this.webview = fakes.webview;
 		this.path = fakes.path;
+	}
+
+	/** Everything the application is telling the user right now, oldest first. */
+	toasts(): string[] {
+		const showing = document.querySelectorAll<HTMLElement>(TOAST);
+
+		return [...showing].map((toast) => toast.textContent?.trim() ?? "");
 	}
 
 	/** Every command the harness routed, in the order it saw them. */

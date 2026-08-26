@@ -17,6 +17,23 @@ const FOUR_COMMITS: RepoSpec = {
 	],
 };
 
+/** doc-17's `conflict` shape: every commit rewrites the same file, so dropping
+ *  one leaves the next with nothing to apply onto. */
+const ONE_REWRITTEN_FILE: RepoSpec = {
+	steps: [
+		{ step: "file", path: "g.txt", content: "one" },
+		{ step: "commit", message: "G-one" },
+		{ step: "file", path: "g.txt", content: "two" },
+		{ step: "commit", message: "G-two" },
+		{ step: "file", path: "g.txt", content: "three" },
+		{ step: "commit", message: "G-three" },
+		{ step: "file", path: "g.txt", content: "four" },
+		{ step: "commit", message: "G-four" },
+	],
+};
+
+const REBASE_STOPPED = "Rebase stopped — resolve it in the staging panel";
+
 describe("an interactive rebase", () => {
 	afterEach(teardown);
 
@@ -71,4 +88,25 @@ describe("an interactive rebase", () => {
 		).resolves.toEqual(["C4", "C3", "C1", "C2"]);
 		expect(app.staging.banner()).toBeNull();
 	});
+
+	it("says so when a dropped commit leaves the next one unappliable", async () => {
+		const app = await setup({ repo: ONE_REWRITTEN_FILE });
+		await app.repo.open();
+		await app.repo.contextMenu("G-two");
+		app.contextMenu.choose("Interactive Rebase...");
+
+		await app.rebaseEditor.setAction(1, "drop");
+		await app.rebaseEditor.start();
+
+		await expect(
+			waitFor("the rebase-stopped toast", () => {
+				const showing = app.toasts();
+				return showing.length > 0 ? showing : null;
+			}),
+		).resolves.toEqual([REBASE_STOPPED]);
+		await expect(
+			waitFor("the rebase banner", () => app.staging.banner()),
+		).resolves.toEqual(["Continue Rebase", "Skip", "Abort Rebase"]);
+	});
+
 });
