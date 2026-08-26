@@ -84,7 +84,7 @@
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/src/git/repository.rs` |
 | `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/src/git/types.rs` |
 | `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path | `src-tauri/src/state.rs` |
-| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events | `src-tauri/src/watcher.rs` |
+| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
 
@@ -139,7 +139,7 @@
 - Purpose: Cross-command shared state, Tauri-managed singletons
 - Location: `src-tauri/src/state.rs`, `src-tauri/src/watcher.rs`
 - Contains: `RepoState` (path registry), `CommitCache` (full graph per repo), `RunningOp` (PID for cancel), `WatcherState` (fs watchers)
-- All state is `Mutex<HashMap<String, T>>` keyed by repo path string
+- All state is `Mutex<HashMap<String, T>>` keyed by repo path string. `WatcherState` wraps that map beside an `enabled` flag: `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
 - Used by: All command modules via `State<'_, T>` injection
 
 ## Data Flow
@@ -225,7 +225,7 @@
 
 **Rust binary:**
 - Location: `src-tauri/src/main.rs` (4 lines) — delegates to `trunk_lib::run()`
-- Actual startup: `src-tauri/src/lib.rs:14` — `tauri::Builder::default()` with plugins, managed state, and the `invoke_handler` table of all 47 commands
+- Actual startup: `src-tauri/src/lib.rs:69` — `run()` hands `tauri::Builder::default()` plus `tauri_plugin_single_instance` to `configure<R>` (`lib.rs:88`), which adds every other plugin, the managed state and the `invoke_handler` table of all 115 commands, then calls `.run(generate_context!())`. `configure` is generic over the runtime so a test host can build the same application on `tauri::test::MockRuntime`
 
 **Frontend HTML:**
 - Location: `index.html` — loads `src/main.ts`
@@ -255,7 +255,7 @@
 - **Threading:** Tauri uses tokio async runtime. All git2 calls run in `spawn_blocking` because git2 is synchronous. Remote ops use `tokio::process::Command` for async subprocess with stderr streaming.
 - **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh `Repository` handle. Constraint is documented in `src-tauri/src/state.rs:5`.
 - **No git shelling out for local ops:** All local git operations (stage, commit, checkout, etc.) use git2 API. Only remote ops (fetch/pull/push/delete-remote-branch, rebase/merge message editing) shell out — documented in `CLAUDE.md`.
-- **Global state:** `RepoState`, `CommitCache`, `RunningOp`, `WatcherState` are module-level singletons managed by Tauri. All are `Mutex<HashMap<String, T>>` keyed by repo path string.
+- **Global state:** `RepoState`, `CommitCache`, `RunningOp`, `WatcherState` are module-level singletons managed by Tauri, each holding a `Mutex<HashMap<String, T>>` keyed by repo path string. `WatcherState` is the one with a second field, `enabled`, and it is passed into `configure` rather than constructed there, because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` uses `/usr/libexec/path_helper` to resolve full system PATH for git subprocess calls — required because GUI apps inherit a minimal launchd PATH.
 - **Multi-tab:** All backend state is keyed by repo path string. Multiple tabs can have the same or different repos open simultaneously. Per-tab frontend state (`RemoteState`, `UndoRedoManager`) is created in `App.svelte` via factory functions and passed as props.
