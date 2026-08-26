@@ -45,7 +45,11 @@ fn watcher_emits_event_on_file_write() {
 
     // Verify watcher is registered
     assert!(
-        watcher_state.0.lock().unwrap().contains_key(&path_str),
+        watcher_state
+            .watchers
+            .lock()
+            .unwrap()
+            .contains_key(&path_str),
         "watcher should be registered in state after start_watcher"
     );
 
@@ -65,7 +69,11 @@ fn watcher_emits_event_on_file_write() {
              Falling back to WatcherState registration check."
         );
         assert!(
-            watcher_state.0.lock().unwrap().contains_key(&path_str),
+            watcher_state
+                .watchers
+                .lock()
+                .unwrap()
+                .contains_key(&path_str),
             "watcher should still be registered after file change (fallback assertion)"
         );
     }
@@ -87,7 +95,11 @@ fn watcher_stop_removes_watcher() {
 
     // Verify watcher is registered
     assert!(
-        watcher_state.0.lock().unwrap().contains_key(&path_str),
+        watcher_state
+            .watchers
+            .lock()
+            .unwrap()
+            .contains_key(&path_str),
         "watcher should be registered after start_watcher"
     );
 
@@ -96,7 +108,11 @@ fn watcher_stop_removes_watcher() {
 
     // Verify watcher is removed
     assert!(
-        !watcher_state.0.lock().unwrap().contains_key(&path_str),
+        !watcher_state
+            .watchers
+            .lock()
+            .unwrap()
+            .contains_key(&path_str),
         "watcher should be removed after stop_watcher"
     );
 }
@@ -125,7 +141,7 @@ fn watcher_multiple_repos_independent() {
 
     // Verify both are registered
     {
-        let map = watcher_state.0.lock().unwrap();
+        let map = watcher_state.watchers.lock().unwrap();
         assert!(
             map.contains_key(&path_str1),
             "repo1 watcher should be registered"
@@ -142,7 +158,7 @@ fn watcher_multiple_repos_independent() {
 
     // Verify repo1's watcher is gone, repo2's still active
     {
-        let map = watcher_state.0.lock().unwrap();
+        let map = watcher_state.watchers.lock().unwrap();
         assert!(
             !map.contains_key(&path_str1),
             "repo1 watcher should be removed after stop"
@@ -190,7 +206,11 @@ fn watcher_debounces_rapid_changes() {
     // Whether or not MockRuntime delivers events, the watcher should still be
     // registered and functional (debouncer didn't crash from rapid changes)
     assert!(
-        watcher_state.0.lock().unwrap().contains_key(&path_str),
+        watcher_state
+            .watchers
+            .lock()
+            .unwrap()
+            .contains_key(&path_str),
         "watcher should still be registered after rapid changes (debouncer should not crash)"
     );
 
@@ -202,4 +222,23 @@ fn watcher_debounces_rapid_changes() {
              Debouncer is confirmed functional via WatcherState registration check."
         );
     }
+}
+
+// -- Test 5: A disabled watcher state registers nothing --
+
+#[test]
+fn a_disabled_watcher_state_registers_no_watcher() {
+    let app = tauri::test::mock_app();
+    let handle = app.handle().clone();
+
+    let dir = tempfile::tempdir().unwrap();
+    git2::Repository::init(dir.path()).unwrap();
+    let watcher_state = WatcherState::disabled();
+
+    start_watcher(dir.path().to_path_buf(), handle, &watcher_state);
+
+    assert!(
+        watcher_state.watchers.lock().unwrap().is_empty(),
+        "a disabled watcher state should register no watcher"
+    );
 }

@@ -7,15 +7,36 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime};
 
 pub type WatcherMap = HashMap<String, Debouncer<RecommendedWatcher>>;
-pub struct WatcherState(pub Mutex<WatcherMap>);
+pub struct WatcherState {
+    pub watchers: Mutex<WatcherMap>,
+    pub enabled: bool,
+}
 
 impl Default for WatcherState {
     fn default() -> Self {
-        WatcherState(Mutex::new(HashMap::new()))
+        WatcherState {
+            watchers: Mutex::new(HashMap::new()),
+            enabled: true,
+        }
+    }
+}
+
+impl WatcherState {
+    /// A state that refuses to watch. The application test harness manages one of
+    /// these, so `open_repo` runs unchanged while no filesystem watch is created.
+    pub fn disabled() -> Self {
+        WatcherState {
+            enabled: false,
+            ..Default::default()
+        }
     }
 }
 
 pub fn start_watcher<R: Runtime>(path: PathBuf, app: AppHandle<R>, state: &WatcherState) {
+    if !state.enabled {
+        return;
+    }
+
     let path_clone = path.clone();
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
@@ -33,12 +54,12 @@ pub fn start_watcher<R: Runtime>(path: PathBuf, app: AppHandle<R>, state: &Watch
         .expect("failed to watch path");
 
     state
-        .0
+        .watchers
         .lock()
         .unwrap()
         .insert(path.to_string_lossy().to_string(), debouncer);
 }
 
 pub fn stop_watcher(path: &str, state: &WatcherState) {
-    state.0.lock().unwrap().remove(path);
+    state.watchers.lock().unwrap().remove(path);
 }

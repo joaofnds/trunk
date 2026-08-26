@@ -10,6 +10,7 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder};
 use tauri::webview::InvokeRequest;
 use trunk_lib::state::RepoState;
+use trunk_lib::watcher::WatcherState;
 
 /// Invariant 2: `http://tauri.localhost` is refused by the real capability set, and
 /// the refusal reads like a missing plugin.
@@ -45,7 +46,7 @@ fn the_real_handler_list_registers_on_a_mock_runtime() {
         .with_commit("Initial commit")
         .build();
 
-    let app = trunk_lib::configure(mock_builder())
+    let app = trunk_lib::configure(mock_builder(), WatcherState::disabled())
         .build(tauri::generate_context!("tauri.conf.json"))
         .expect("build the app on MockRuntime");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())

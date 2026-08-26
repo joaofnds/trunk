@@ -74,6 +74,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         })),
+        WatcherState::default(),
     )
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
@@ -84,7 +85,10 @@ pub fn run() {
 /// menu setup, every managed state and the command list. The test host builds the
 /// same application on `MockRuntime`, and single-instance stays out because it
 /// binds a per-identifier socket that parallel hosts would fight over.
-pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+pub fn configure<R: tauri::Runtime>(
+    builder: tauri::Builder<R>,
+    watcher: WatcherState,
+) -> tauri::Builder<R> {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -201,7 +205,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(CommitCache(Default::default()))
         .manage(CommitStatsCache(Default::default()))
         .manage(RunningOp(Default::default()))
-        .manage(WatcherState(Default::default()))
+        .manage(watcher)
         .manage(ReviewStoreState(Default::default()))
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
