@@ -10,7 +10,8 @@
 		"check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
 		"check:watch": "svelte-check --tsconfig ./tsconfig.json --watch",
 		"tauri": "tauri",
-		"test": "vitest run"
+		"test": "vitest run",
+		"test:app": "vitest run --config vitest.app.config.ts"
 	},
 	"license": "Apache-2.0",
 	"dependencies": {

@@ -4,6 +4,7 @@
 		"includes": [
 			"src/**",
 			"scripts/**/*.ts",
+			"tests/**",
 			"*.ts",
 			"*.js",
 			"*.json",

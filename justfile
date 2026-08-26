@@ -81,6 +81,11 @@ vitest:
 vitest-cov:
     bun run test -- --coverage.enabled
 
+# Drive the assembled app headlessly: the real Svelte tree against a real Rust backend
+app-test:
+    cargo build --manifest-path {{manifest}} --example app_host
+    TRUNK_APP_HOST="${CARGO_TARGET_DIR:-{{justfile_directory()}}/src-tauri/target}/debug/examples/app_host" bun run test:app
+
 # ── Audits (not part of `check`) ─────────────────────
 
 # Scan dependencies for known advisories (needs: cargo install cargo-audit)

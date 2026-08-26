@@ -24,7 +24,12 @@
 			"$lib/*": ["./src/lib/*"]
 		}
 	},
-	"include": ["src/**/*.ts", "src/**/*.svelte", "scripts/**/*.ts"],
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.svelte",
+		"scripts/**/*.ts",
+		"tests/**/*.ts"
+	],
 	"exclude": [
 		"node_modules",
 		"build",
