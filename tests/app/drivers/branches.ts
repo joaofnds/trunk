@@ -1,3 +1,4 @@
+import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
 import { firstMatching } from "./dom.js";
 
@@ -6,6 +7,21 @@ const BRANCH_ROW = '[data-testid="branch-row"]';
 /** The branch sidebar, in the gestures it offers: a double-click checks a
  *  branch out, and a refusal shows under the row it was aimed at. */
 export class BranchesDriver {
+	constructor(private readonly menu: FakeMenu) {}
+
+	/** Right-clicks a branch, returning once the menu it opens is on screen. */
+	async contextMenu(name: string): Promise<void> {
+		const row = await waitFor(`the ${name} branch row`, () => branchRow(name));
+
+		row
+			.querySelector('[role="button"]')
+			?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+
+		await waitFor(`the context menu on ${name}`, () =>
+			this.menu.items().length > 0 ? true : null,
+		);
+	}
+
 	async checkout(name: string): Promise<void> {
 		const row = await waitFor(`the ${name} branch row`, () => branchRow(name));
 		const target = row.querySelector('[role="button"]');

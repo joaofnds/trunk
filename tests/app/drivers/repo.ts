@@ -55,6 +55,14 @@ export class RepoDriver {
 		return [...shas].map((sha) => sha.textContent?.trim() ?? "");
 	}
 
+	/** The short hash the graph shows for one commit. */
+	shaOf(summary: string): string {
+		const at = this.commitRows().indexOf(summary);
+		if (at === -1) throw new Error(`the graph is not showing ${summary}`);
+
+		return this.commitShas()[at];
+	}
+
 	private rows(): HTMLElement[] {
 		return [...document.querySelectorAll<HTMLElement>(COMMIT_SUMMARY)];
 	}

@@ -49,7 +49,7 @@ export class AppDriver {
 	) {
 		this.home = host.home;
 		this.repo = new RepoDriver(repoPath, fakes.menu);
-		this.branches = new BranchesDriver();
+		this.branches = new BranchesDriver(fakes.menu);
 		this.staging = new StagingDriver();
 		this.rebaseEditor = new RebaseEditorDriver();
 		this.events = new EventsDriver(host);

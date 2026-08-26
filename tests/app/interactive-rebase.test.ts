@@ -32,6 +32,26 @@ const ONE_REWRITTEN_FILE: RepoSpec = {
 	],
 };
 
+/** doc-17's `fork` shape: `feature` leaves `main` at `C2` and `main` carries on,
+ *  so the two branches share a fork point no ref sits on. */
+const FORKED: RepoSpec = {
+	steps: [
+		{ step: "file", path: "c1.txt", content: "1" },
+		{ step: "commit", message: "C1" },
+		{ step: "file", path: "c2.txt", content: "2" },
+		{ step: "commit", message: "C2" },
+		{ step: "branch", name: "feature" },
+		{ step: "checkout", name: "feature" },
+		{ step: "file", path: "f1.txt", content: "f" },
+		{ step: "commit", message: "F1" },
+		{ step: "checkout", name: "main" },
+		{ step: "file", path: "c3.txt", content: "3" },
+		{ step: "commit", message: "C3" },
+		{ step: "file", path: "c4.txt", content: "4" },
+		{ step: "commit", message: "C4" },
+	],
+};
+
 const REBASE_STOPPED = "Rebase stopped — resolve it in the staging panel";
 
 describe("an interactive rebase", () => {
@@ -109,4 +129,17 @@ describe("an interactive rebase", () => {
 		).resolves.toEqual(["Continue Rebase", "Skip", "Abort Rebase"]);
 	});
 
+	it("lists what a branch is ahead of its fork point by", async () => {
+		const app = await setup({ repo: FORKED });
+		await app.repo.open();
+		const forkPoint = app.repo.shaOf("C2");
+		await app.branches.contextMenu("feature");
+
+		app.contextMenu.choose("Interactive Rebase feature...");
+
+		await expect(app.rebaseEditor.rows()).resolves.toEqual(["C4", "C3"]);
+		await expect(app.rebaseEditor.toolbarLabel()).resolves.toBe(
+			`Rebasing main onto ${forkPoint}`,
+		);
+	});
 });
