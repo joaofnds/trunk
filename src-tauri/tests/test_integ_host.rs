@@ -28,11 +28,7 @@ fn request(cmd: &str, args: Value) -> InvokeRequest {
     }
 }
 
-fn invoke(
-    webview: &tauri::WebviewWindow<MockRuntime>,
-    cmd: &str,
-    args: Value,
-) -> Result<Value, Value> {
+fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Result<Value, Value> {
     get_ipc_response(webview, request(cmd, args)).map(|body| {
         body.deserialize::<Value>()
             .expect("deserialize the response")
