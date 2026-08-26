@@ -1,4 +1,5 @@
 import { waitFor } from "../harness/wait.js";
+import { firstMatching } from "./dom.js";
 
 const RECENT_ENTRY = '[role="button"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
@@ -34,9 +35,5 @@ export class RepoDriver {
 }
 
 function recentEntry(path: string): HTMLElement | null {
-	const entries = document.querySelectorAll<HTMLElement>(RECENT_ENTRY);
-	for (const entry of entries) {
-		if (entry.textContent?.includes(path)) return entry;
-	}
-	return null;
+	return firstMatching(RECENT_ENTRY, (text) => text.includes(path));
 }

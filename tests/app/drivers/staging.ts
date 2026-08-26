@@ -1,10 +1,11 @@
 import { waitFor } from "../harness/wait.js";
+import { firstMatching } from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
 const SUBJECT = '[data-testid="commit-form-subject"]';
 const SUBMIT = '[data-testid="commit-form-submit"]';
-const WIP_OID_TEXT = "// WIP";
+const WIP_PLACEHOLDER = "// WIP";
 
 /** The working-tree view: what the graph's top row opens onto, and the commit
  *  the user builds there. */
@@ -50,9 +51,5 @@ function stageAllButton(): HTMLElement | null {
 }
 
 function workingTreeRow(): HTMLElement | null {
-	const rows = document.querySelectorAll<HTMLElement>(COMMIT_ROW);
-	for (const row of rows) {
-		if (row.textContent?.includes(WIP_OID_TEXT)) return row;
-	}
-	return null;
+	return firstMatching(COMMIT_ROW, (text) => text.includes(WIP_PLACEHOLDER));
 }

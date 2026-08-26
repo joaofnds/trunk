@@ -3,7 +3,7 @@ import type { FakeWebview } from "../fakes/webview.js";
 import type { FakeWindow } from "../fakes/window.js";
 import type { HostClient } from "../harness/host-client.js";
 import type { InvokeRecord, TauriInternals } from "../harness/internals.js";
-import { delay } from "../harness/wait.js";
+import { waitFor } from "../harness/wait.js";
 import { BranchesDriver } from "./branches.js";
 import { EventsDriver } from "./events.js";
 import { RepoDriver } from "./repo.js";
@@ -14,8 +14,6 @@ import { StagingDriver } from "./staging.js";
  * and touches nothing until it fires, so the quiet window has to outlast it.
  */
 const QUIET_MS = 250;
-const POLL_MS = 5;
-const TIMEOUT_MS = 5_000;
 
 export interface Fakes {
 	window: FakeWindow;
@@ -64,13 +62,9 @@ export class AppDriver {
 	 * for a negative — "nothing else refetched" — which has no state to wait for.
 	 */
 	async settle(): Promise<void> {
-		const deadline = Date.now() + TIMEOUT_MS;
-
-		while (true) {
+		await waitFor("a quiet window", () => {
 			const quiet = performance.now() - this.host.lastInvokeStartedAt;
-			if (this.host.pendingInvokes === 0 && quiet > QUIET_MS) return;
-			if (Date.now() > deadline) throw new Error("timed out settling");
-			await delay(POLL_MS);
-		}
+			return this.host.pendingInvokes === 0 && quiet > QUIET_MS ? true : null;
+		});
 	}
 }

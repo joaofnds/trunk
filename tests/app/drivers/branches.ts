@@ -1,4 +1,5 @@
 import { waitFor } from "../harness/wait.js";
+import { firstMatching } from "./dom.js";
 
 const BRANCH_ROW = '[data-testid="branch-row"]';
 
@@ -21,9 +22,5 @@ export class BranchesDriver {
 }
 
 function branchRow(name: string): HTMLElement | null {
-	const rows = document.querySelectorAll<HTMLElement>(BRANCH_ROW);
-	for (const row of rows) {
-		if (row.textContent?.trim().startsWith(name)) return row;
-	}
-	return null;
+	return firstMatching(BRANCH_ROW, (text) => text.startsWith(name));
 }
