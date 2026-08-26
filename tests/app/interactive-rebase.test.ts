@@ -24,7 +24,7 @@ describe("an interactive rebase", () => {
 		const app = await setup({ repo: FOUR_COMMITS });
 		await app.repo.open();
 		await app.repo.contextMenu("C2");
-		await app.contextMenu.choose("Interactive Rebase...");
+		app.contextMenu.choose("Interactive Rebase...");
 
 		await app.rebaseEditor.move(2, 0);
 		await app.rebaseEditor.start();
@@ -35,6 +35,20 @@ describe("an interactive rebase", () => {
 				return rows[0] === "C2" ? rows : null;
 			}),
 		).resolves.toEqual(["C2", "C4", "C3", "C1"]);
+		expect(app.staging.banner()).toBeNull();
+	});
+
+	it("leaves every commit's hash alone when the plan is unchanged", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+		const before = app.repo.commitShas();
+		await app.repo.contextMenu("C2");
+		app.contextMenu.choose("Interactive Rebase...");
+
+		await app.rebaseEditor.start();
+		await app.settle();
+
+		expect(app.repo.commitShas()).toEqual(before);
 		expect(app.staging.banner()).toBeNull();
 	});
 });

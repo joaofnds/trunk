@@ -5,6 +5,7 @@ import { firstMatching } from "./dom.js";
 const RECENT_ENTRY = '[role="button"]';
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
+const COMMIT_SHA = '[title="Copy SHA"]';
 
 /**
  * The repository surface, in gestures rather than transport. The harness seeds
@@ -43,6 +44,15 @@ export class RepoDriver {
 	/** Every commit summary the graph is showing, top row first. */
 	commitRows(): string[] {
 		return this.rows().map((row) => row.textContent?.trim() ?? "");
+	}
+
+	/** The short hash the graph shows for each commit, top row first. */
+	commitShas(): string[] {
+		const shas = document.querySelectorAll<HTMLElement>(
+			`${COMMIT_ROW} ${COMMIT_SHA}`,
+		);
+
+		return [...shas].map((sha) => sha.textContent?.trim() ?? "");
 	}
 
 	private rows(): HTMLElement[] {
