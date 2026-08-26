@@ -140,3 +140,41 @@ fn set_traffic_light_zoom_survives_a_window_with_no_native_chrome() {
 
     assert_eq!(response, Ok(Value::Null));
 }
+
+/// `create_commit` inserts the rebuilt graph into `CommitCache` at
+/// `commit.rs:109`, outside the blocking `_inner`, and `get_commit_graph` reads
+/// only that cache. Reading the graph straight after the commit, with no
+/// `repo-changed` refresh in between, is the one place the insert is the only
+/// thing that could have delivered the new row.
+#[test]
+fn create_commit_puts_its_own_commit_in_the_graph_cache() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit_at("First", 1_700_000_000)
+        .build();
+    std::fs::write(ctx.repo_path().join("b.txt"), "b").expect("write an untracked file");
+    let (_app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
+    invoke(&webview, "stage_all", json!({ "path": ctx.path() })).expect("stage everything");
+
+    invoke(
+        &webview,
+        "create_commit",
+        json!({ "path": ctx.path(), "subject": "Add b", "body": null }),
+    )
+    .expect("commit the staged change");
+
+    let graph = invoke(
+        &webview,
+        "get_commit_graph",
+        json!({ "path": ctx.path(), "offset": 0 }),
+    )
+    .expect("read the graph");
+    let summaries: Vec<&str> = graph["commits"]
+        .as_array()
+        .expect("commits is an array")
+        .iter()
+        .map(|commit| commit["summary"].as_str().expect("a summary"))
+        .collect();
+    assert_eq!(summaries, vec!["Add b", "First"]);
+}
