@@ -76,15 +76,19 @@ pub fn run() {
         })),
         WatcherState::default(),
     )
+    .plugin(tauri_plugin_clipboard_manager::init())
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
 
-/// The whole application except the runtime it runs on and
-/// `tauri_plugin_single_instance`: plugins, the asset protocol, the window and
-/// menu setup, every managed state and the command list. The test host builds the
-/// same application on `MockRuntime`, and single-instance stays out because it
-/// binds a per-identifier socket that parallel hosts would fight over.
+/// The whole application except the runtime it runs on and two plugins: plugins,
+/// the asset protocol, the window and menu setup, every managed state and the
+/// command list. The test host builds the same application on `MockRuntime`.
+///
+/// `tauri_plugin_single_instance` stays out because it binds a per-identifier
+/// socket that parallel hosts would fight over. `tauri_plugin_clipboard_manager`
+/// stays out because its `setup` calls `arboard::Clipboard::new()` from inside
+/// `Builder::build()`, which costs 9-17 s per process outside a bundled app.
 pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     watcher: WatcherState,
@@ -94,7 +98,6 @@ pub fn configure<R: tauri::Runtime>(
         .plugin(tauri_plugin_opener::init())
         .plugin(navigation_guard())
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        .plugin(tauri_plugin_clipboard_manager::init())
         .register_uri_scheme_protocol("trunk-asset", |ctx, request| {
             let uri = request.uri().to_string();
             match commands::markdown::resolve_trunk_asset(ctx.app_handle(), &uri) {

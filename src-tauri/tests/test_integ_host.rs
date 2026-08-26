@@ -111,3 +111,17 @@ fn oldest_commit_oid(ctx: &TestContext) -> String {
 
     walk.last().unwrap().unwrap().to_string()
 }
+
+/// The harness fakes the clipboard on the JavaScript side (doc-20 §Scope), and the
+/// plugin's `setup` calls `arboard::Clipboard::new()` inside `Builder::build()`,
+/// which costs 9-17 s per process. `run()` adds it; `configure` must not.
+#[test]
+fn the_host_carries_no_clipboard_plugin() {
+    let (app, _webview) = boot(WatcherState::disabled());
+
+    assert!(
+        app.try_state::<tauri_plugin_clipboard_manager::Clipboard<MockRuntime>>()
+            .is_none(),
+        "configure should leave the clipboard plugin to run()"
+    );
+}
