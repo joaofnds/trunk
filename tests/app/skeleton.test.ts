@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { afterEach, describe, expect, it } from "vitest";
+import type { AppDriver } from "./drivers/index.js";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
@@ -45,6 +46,11 @@ const ONE_COMMIT: RepoSpec = {
 		{ step: "commit", message: "First" },
 	],
 };
+
+function refreshes(app: AppDriver): number {
+	return app.invokes().filter(({ cmd }) => cmd === "refresh_commit_graph")
+		.length;
+}
 
 describe("the application", () => {
 	afterEach(teardown);
@@ -135,6 +141,17 @@ describe("the application", () => {
 				return rows.includes("Add b") ? rows : null;
 			}),
 		).resolves.toEqual(["Add b", "First"]);
+	});
+
+	it("ignores a change to a repository it does not have open", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+		const before = refreshes(app);
+
+		await app.events.externalChange("/somewhere/else");
+		await app.settle();
+
+		expect(refreshes(app)).toBe(before);
 	});
 
 	it("holds no filesystem watch", async () => {
