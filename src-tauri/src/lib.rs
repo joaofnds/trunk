@@ -67,13 +67,25 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    configure(
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-        }))
+        })),
+    )
+    .run(tauri::generate_context!())
+    .expect("error while running tauri application");
+}
+
+/// The whole application except the runtime it runs on and
+/// `tauri_plugin_single_instance`: plugins, the asset protocol, the window and
+/// menu setup, every managed state and the command list. The test host builds the
+/// same application on `MockRuntime`, and single-instance stays out because it
+/// binds a per-identifier socket that parallel hosts would fight over.
+pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(navigation_guard())
@@ -310,6 +322,4 @@ pub fn run() {
             commands::interactive_rebase::get_fork_point,
             commands::interactive_rebase::start_interactive_rebase,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
