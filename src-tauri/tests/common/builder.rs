@@ -8,7 +8,7 @@ pub struct TestContextBuilder {
 enum BuildStep {
     WriteFile { path: String, content: Vec<u8> },
     WriteBinaryFile { path: String, content: Vec<u8> },
-    Commit { message: String },
+    Commit { message: String, secs: Option<i64> },
     Branch { name: String },
     Checkout { name: String },
     Merge { branch: String },
@@ -54,6 +54,17 @@ impl TestContextBuilder {
     pub fn with_commit(&mut self, message: &str) -> &mut Self {
         self.steps.push(BuildStep::Commit {
             message: message.to_string(),
+            secs: None,
+        });
+        self
+    }
+
+    /// A commit at the timestamp the caller names, leaving the day-spacing clock
+    /// `with_commit` reads exactly where it was.
+    pub fn with_commit_at(&mut self, message: &str, secs: i64) -> &mut Self {
+        self.steps.push(BuildStep::Commit {
+            message: message.to_string(),
+            secs: Some(secs),
         });
         self
     }
@@ -140,9 +151,15 @@ impl TestContextBuilder {
                     pending_files.push(path.clone());
                 }
 
-                BuildStep::Commit { message } => {
-                    let sig = pinned_signature(clock);
-                    clock += FIXTURE_DAY_SECS;
+                BuildStep::Commit { message, secs } => {
+                    let sig = match secs {
+                        Some(secs) => pinned_signature(*secs),
+                        None => {
+                            let sig = pinned_signature(clock);
+                            clock += FIXTURE_DAY_SECS;
+                            sig
+                        }
+                    };
                     let mut index = repo.index().unwrap();
 
                     for file in &pending_files {
