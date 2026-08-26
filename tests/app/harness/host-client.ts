@@ -35,6 +35,14 @@ export class HostClient {
 	private lastStartedAt = 0;
 	private stderr = "";
 	private exited: string | null = null;
+	private closing = false;
+
+	/** Invariant 7: a crashed test that skips `teardown` must not leave a host
+	 *  process holding a tempdir. */
+	private readonly reap = () => {
+		this.child.kill("SIGKILL");
+		rmSync(this.home, { recursive: true, force: true });
+	};
 
 	private constructor(
 		child: ChildProcess,
@@ -97,27 +105,41 @@ export class HostClient {
 	 * tempdir open, so this runs even when the process is already gone.
 	 */
 	async shutdown(): Promise<void> {
+		if (this.closing) return;
+		this.closing = true;
+
 		if (!this.exited) {
-			await this.request({ verb: "shutdown" }).catch(() => {});
+			this.send({ id: this.nextId++, verb: "shutdown" });
 			await this.reaped();
 		}
 		this.child.kill("SIGKILL");
+		process.off("exit", this.reap);
 		rmSync(this.home, { recursive: true, force: true });
 	}
 
+	/**
+	 * Unmounting the application destroys effects, and their `plugin:event|unlisten`
+	 * calls land in microtasks after `teardown` has moved on. A closing client has
+	 * nothing left to unregister, so those resolve quietly rather than writing down
+	 * a pipe nobody is reading.
+	 */
 	private request(body: Record<string, unknown>): Promise<unknown> {
-		if (this.exited) {
-			return Promise.reject(new Error(this.exited));
-		}
+		if (this.closing || this.exited) return Promise.resolve(null);
 
 		const id = this.nextId++;
 		return new Promise((resolve, reject) => {
 			this.pending.set(id, { resolve, reject });
-			this.child.stdin?.write(`${JSON.stringify({ id, ...body })}\n`);
+			this.send({ id, ...body });
 		});
 	}
 
+	private send(line: Record<string, unknown>): void {
+		this.child.stdin?.write(`${JSON.stringify(line)}\n`);
+	}
+
 	private listen(): Promise<void> {
+		process.on("exit", this.reap);
+		this.child.stdin?.on("error", () => {});
 		this.child.stderr?.on("data", (chunk: Buffer) => {
 			this.stderr += chunk.toString();
 		});
@@ -127,13 +149,15 @@ export class HostClient {
 			lines.on("line", (line) => {
 				if (this.dispatch(JSON.parse(line))) resolve();
 			});
-			this.child.on("exit", (code) => {
-				this.exited = `the host exited with code ${code}\n${this.stderr}`;
+			this.child.on("exit", (code, signal) => {
+				this.exited = `the host exited with code ${code}, signal ${signal}\n${this.stderr}`;
+				const failure = new Error(this.exited);
 				for (const [, waiter] of this.pending) {
-					waiter.reject(new Error(this.exited));
+					if (this.closing) waiter.resolve(null);
+					else waiter.reject(failure);
 				}
 				this.pending.clear();
-				reject(new Error(this.exited));
+				reject(failure);
 			});
 		});
 
