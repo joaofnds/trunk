@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RefsResponse } from "../../src/lib/types.js";
 import { HostClient } from "./harness/host-client.js";
@@ -24,4 +25,26 @@ describe("host client", () => {
 
 		expect(refs.local.map((branch) => branch.name)).toEqual(["main"]);
 	});
+
+	it("writes preferences under its temporary home", async () => {
+		host = await HostClient.spawn();
+
+		await host.invoke("prefs_set", { key: "zoom_level", value: 1.25 });
+
+		expect(filesUnder(host.home)).toContain("trunk-prefs.json");
+	});
+
+	it("removes the temporary home on shutdown", async () => {
+		const spawned = await HostClient.spawn();
+
+		await spawned.shutdown();
+
+		expect(existsSync(spawned.home)).toBe(false);
+	});
 });
+
+function filesUnder(root: string): string[] {
+	return readdirSync(root, { recursive: true, withFileTypes: true })
+		.filter((entry) => entry.isFile())
+		.map((entry) => entry.name);
+}
