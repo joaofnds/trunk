@@ -65,6 +65,15 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+/// The application's real `Context`: the config, the bundled assets and the
+/// capability set from `capabilities/default.json`. The macro behind it defines
+/// `__EMBED_INFO_PLIST`, which a binary can carry only once, so a second
+/// expansion anywhere in a link unit fails; the test host takes the context from
+/// here instead.
+pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     configure(
@@ -77,7 +86,7 @@ pub fn run() {
         WatcherState::default(),
     )
     .plugin(tauri_plugin_clipboard_manager::init())
-    .run(tauri::generate_context!())
+    .run(context())
     .expect("error while running tauri application");
 }
 

@@ -36,10 +36,11 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
 }
 
 /// The real application on `MockRuntime`, with the real capability set: the host
-/// builds what `run()` builds, minus single-instance and the runtime.
+/// builds what `run()` builds, minus the runtime and the two plugins `configure`
+/// leaves to `run()`.
 fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
     let app = trunk_lib::configure(mock_builder(), watcher)
-        .build(tauri::generate_context!("tauri.conf.json"))
+        .build(trunk_lib::context())
         .expect("build the app on MockRuntime");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
