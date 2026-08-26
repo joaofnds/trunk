@@ -19,7 +19,7 @@ use watcher::WatcherState;
 /// Report the current webview zoom so the macOS traffic lights (fixed on-screen
 /// size) stay centered in the zoom-scaled top bar.
 #[tauri::command]
-fn set_traffic_light_zoom(window: tauri::WebviewWindow, zoom: f64) {
+fn set_traffic_light_zoom<R: tauri::Runtime>(window: tauri::WebviewWindow<R>, zoom: f64) {
     #[cfg(target_os = "macos")]
     {
         macos_traffic_lights::set_zoom(zoom);

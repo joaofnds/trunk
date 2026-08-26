@@ -163,12 +163,12 @@ async fn refresh_graph<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn git_fetch(
+pub async fn git_fetch<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_buf = crate::commands::repo_path_from_state(&path, &state_map)
@@ -194,12 +194,12 @@ pub async fn git_fetch(
 /// (rebase/merge/cherry-pick/revert) or another remote op is already running,
 /// and swallows any error so the UI never surfaces a popup or toast.
 #[tauri::command]
-pub async fn git_fetch_background(
+pub async fn git_fetch_background<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let Some(path_buf) = state_map.get(&path).cloned() else {
@@ -256,13 +256,13 @@ pub async fn get_push_target(
 }
 
 #[tauri::command]
-pub async fn git_pull(
+pub async fn git_pull<R: Runtime>(
     path: String,
     strategy: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     git_pull_inner(
@@ -318,12 +318,12 @@ pub async fn git_pull_inner<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn git_push(
+pub async fn git_push<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     git_push_inner(&path, &state_map, &cache, &running.0, &app)
@@ -395,14 +395,14 @@ pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkE
 }
 
 #[tauri::command]
-pub async fn git_push_force(
+pub async fn git_push_force<R: Runtime>(
     path: String,
     remote: String,
     branch: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     git_push_force_inner(
@@ -472,13 +472,13 @@ pub async fn git_push_force_inner<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn delete_remote_branch(
+pub async fn delete_remote_branch<R: Runtime>(
     path: String,
     branch_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_buf = crate::commands::repo_path_from_state(&path, &state_map)

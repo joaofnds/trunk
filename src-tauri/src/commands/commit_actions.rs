@@ -7,7 +7,7 @@ use crate::shell_env;
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a clean two-step revert begin. The async wrapper emits
 /// `repo-changed` (REVERT_HEAD is set before the editor opens), so a later
@@ -268,13 +268,13 @@ pub fn reset_to_commit_inner(
 }
 
 #[tauri::command]
-pub async fn reset_to_commit(
+pub async fn reset_to_commit<R: Runtime>(
     path: String,
     oid: String,
     mode: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -291,12 +291,12 @@ pub async fn reset_to_commit(
 }
 
 #[tauri::command]
-pub async fn checkout_commit(
+pub async fn checkout_commit<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -313,14 +313,14 @@ pub async fn checkout_commit(
 }
 
 #[tauri::command]
-pub async fn create_tag(
+pub async fn create_tag<R: Runtime>(
     path: String,
     oid: String,
     tag_name: String,
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -337,12 +337,12 @@ pub async fn create_tag(
 }
 
 #[tauri::command]
-pub async fn delete_tag(
+pub async fn delete_tag<R: Runtime>(
     path: String,
     tag_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -359,12 +359,12 @@ pub async fn delete_tag(
 }
 
 #[tauri::command]
-pub async fn cherry_pick(
+pub async fn cherry_pick<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -381,12 +381,12 @@ pub async fn cherry_pick(
 }
 
 #[tauri::command]
-pub async fn revert_commit_begin(
+pub async fn revert_commit_begin<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<RevertBeginResult, String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -410,12 +410,12 @@ pub async fn revert_commit_begin(
 }
 
 #[tauri::command]
-pub async fn cherry_pick_continue(
+pub async fn cherry_pick_continue<R: Runtime>(
     path: String,
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -432,11 +432,11 @@ pub async fn cherry_pick_continue(
 }
 
 #[tauri::command]
-pub async fn cherry_pick_abort(
+pub async fn cherry_pick_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -453,12 +453,12 @@ pub async fn cherry_pick_abort(
 }
 
 #[tauri::command]
-pub async fn revert_continue(
+pub async fn revert_continue<R: Runtime>(
     path: String,
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -475,11 +475,11 @@ pub async fn revert_continue(
 }
 
 #[tauri::command]
-pub async fn revert_abort(
+pub async fn revert_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -561,11 +561,11 @@ pub fn check_undo_available_inner(
 }
 
 #[tauri::command]
-pub async fn undo_commit(
+pub async fn undo_commit<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<UndoResult, String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -588,13 +588,13 @@ pub async fn undo_commit(
 }
 
 #[tauri::command]
-pub async fn redo_commit(
+pub async fn redo_commit<R: Runtime>(
     path: String,
     subject: String,
     body: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();

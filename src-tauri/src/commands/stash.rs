@@ -6,7 +6,7 @@ use crate::git::{
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
 const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.";
@@ -165,12 +165,12 @@ pub async fn list_stashes(
 }
 
 #[tauri::command]
-pub async fn stash_save(
+pub async fn stash_save<R: Runtime>(
     path: String,
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -187,12 +187,12 @@ pub async fn stash_save(
 }
 
 #[tauri::command]
-pub async fn stash_pop(
+pub async fn stash_pop<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -209,12 +209,12 @@ pub async fn stash_pop(
 }
 
 #[tauri::command]
-pub async fn stash_apply(
+pub async fn stash_apply<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -231,12 +231,12 @@ pub async fn stash_apply(
 }
 
 #[tauri::command]
-pub async fn stash_drop(
+pub async fn stash_drop<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();

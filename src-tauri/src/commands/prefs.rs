@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 const PREFS_FILE: &str = "trunk-prefs.json";
 
@@ -105,7 +105,10 @@ fn join_error(e: tauri::Error) -> String {
 }
 
 #[tauri::command]
-pub async fn prefs_get(key: String, app: AppHandle) -> Result<Option<Value>, String> {
+pub async fn prefs_get<R: Runtime>(
+    key: String,
+    app: AppHandle<R>,
+) -> Result<Option<Value>, String> {
     let data_dir = resolve_data_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         prefs_get_inner(&data_dir, &app.state::<PrefsState>(), &key).map_err(|e| e.to_json())
@@ -115,7 +118,11 @@ pub async fn prefs_get(key: String, app: AppHandle) -> Result<Option<Value>, Str
 }
 
 #[tauri::command]
-pub async fn prefs_set(key: String, value: Value, app: AppHandle) -> Result<(), String> {
+pub async fn prefs_set<R: Runtime>(
+    key: String,
+    value: Value,
+    app: AppHandle<R>,
+) -> Result<(), String> {
     let data_dir = resolve_data_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         prefs_set_inner(&data_dir, &app.state::<PrefsState>(), key, value).map_err(|e| e.to_json())

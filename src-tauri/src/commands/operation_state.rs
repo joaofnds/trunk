@@ -7,7 +7,7 @@ use crate::shell_env;
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a two-step merge begin. The async wrapper emits `repo-changed`
 /// for every variant (the repo is mutated before the editor opens). The
@@ -425,12 +425,12 @@ fn find_branch_color(
 }
 
 #[tauri::command]
-pub async fn merge_continue(
+pub async fn merge_continue<R: Runtime>(
     path: String,
     message: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -446,11 +446,11 @@ pub async fn merge_continue(
 }
 
 #[tauri::command]
-pub async fn merge_abort(
+pub async fn merge_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -465,12 +465,12 @@ pub async fn merge_abort(
 }
 
 #[tauri::command]
-pub async fn rebase_continue(
+pub async fn rebase_continue<R: Runtime>(
     path: String,
     message: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -486,11 +486,11 @@ pub async fn rebase_continue(
 }
 
 #[tauri::command]
-pub async fn rebase_skip(
+pub async fn rebase_skip<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -505,11 +505,11 @@ pub async fn rebase_skip(
 }
 
 #[tauri::command]
-pub async fn rebase_abort(
+pub async fn rebase_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -536,12 +536,12 @@ pub async fn get_merge_message(
 }
 
 #[tauri::command]
-pub async fn merge_branch_begin(
+pub async fn merge_branch_begin<R: Runtime>(
     path: String,
     branch: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<MergeBeginResult, String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -566,12 +566,12 @@ pub async fn merge_branch_begin(
 }
 
 #[tauri::command]
-pub async fn rebase_branch(
+pub async fn rebase_branch<R: Runtime>(
     path: String,
     onto_branch: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();

@@ -4,7 +4,7 @@ use crate::git::types::MergeSides;
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 pub fn get_merge_sides_inner(
     path: &str,
@@ -106,13 +106,13 @@ pub async fn get_merge_sides(
 }
 
 #[tauri::command]
-pub async fn save_merge_result(
+pub async fn save_merge_result<R: Runtime>(
     path: String,
     file_path: String,
     content: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();

@@ -9,7 +9,7 @@ use crate::state::{CommitCache, RepoState};
 use git2::BranchType;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Inner implementation of list_refs — separated for testability without Tauri state.
 pub fn list_refs_inner(
@@ -286,12 +286,12 @@ pub fn checkout_branch_inner(
 }
 
 #[tauri::command]
-pub async fn checkout_branch(
+pub async fn checkout_branch<R: Runtime>(
     path: String,
     branch_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -336,12 +336,12 @@ pub fn fast_forward_to_inner(
 }
 
 #[tauri::command]
-pub async fn fast_forward_to(
+pub async fn fast_forward_to<R: Runtime>(
     path: String,
     target_oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -418,13 +418,13 @@ pub fn create_branch_inner(
 }
 
 #[tauri::command]
-pub async fn create_branch(
+pub async fn create_branch<R: Runtime>(
     path: String,
     name: String,
     from_oid: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -441,12 +441,12 @@ pub async fn create_branch(
 }
 
 #[tauri::command]
-pub async fn delete_branch(
+pub async fn delete_branch<R: Runtime>(
     path: String,
     branch_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -462,13 +462,13 @@ pub async fn delete_branch(
 }
 
 #[tauri::command]
-pub async fn rename_branch(
+pub async fn rename_branch<R: Runtime>(
     path: String,
     old_name: String,
     new_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();

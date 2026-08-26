@@ -2,15 +2,15 @@ use crate::error::TrunkError;
 use crate::git::{graph, repository};
 use crate::state::{CommitCache, CommitStatsCache, RepoState, RunningOp, kill_process};
 use crate::watcher::{self, WatcherState};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Runtime, State};
 
 #[tauri::command]
-pub async fn open_repo(
+pub async fn open_repo<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     watcher_state: State<'_, WatcherState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let path_clone = path.clone();
 

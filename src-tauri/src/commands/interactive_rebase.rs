@@ -5,7 +5,7 @@ use crate::state::{CommitCache, RepoState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -311,13 +311,13 @@ fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
 }
 
 #[tauri::command]
-pub async fn start_interactive_rebase(
+pub async fn start_interactive_rebase<R: Runtime>(
     path: String,
     base_oid: Option<String>,
     todo_items: Vec<RebaseTodoAction>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<RebaseStartResult, String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();

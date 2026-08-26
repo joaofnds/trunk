@@ -1,7 +1,7 @@
 use crate::error::TrunkError;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 /// The message reaches the user as a toast, so it names the repository rather than
 /// spelling out where it lives on disk.
@@ -26,7 +26,7 @@ pub(crate) fn open_repo_from_state(
 }
 
 /// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
-pub(crate) fn resolve_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn resolve_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())

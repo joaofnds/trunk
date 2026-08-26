@@ -237,14 +237,14 @@ pub fn list_threads_inner(
 }
 
 #[tauri::command]
-pub async fn add_thread(
+pub async fn add_thread<R: Runtime>(
     path: String,
     text: String,
     anchor: crate::git::types::Anchor,
     cached_excerpt: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -264,13 +264,13 @@ pub async fn add_thread(
 }
 
 #[tauri::command]
-pub async fn add_commit_thread(
+pub async fn add_commit_thread<R: Runtime>(
     path: String,
     commit_oid: String,
     text: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -290,13 +290,13 @@ pub async fn add_commit_thread(
 }
 
 #[tauri::command]
-pub async fn edit_thread(
+pub async fn edit_thread<R: Runtime>(
     path: String,
     id: String,
     text: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -312,12 +312,12 @@ pub async fn edit_thread(
 }
 
 #[tauri::command]
-pub async fn delete_thread(
+pub async fn delete_thread<R: Runtime>(
     path: String,
     id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -351,13 +351,13 @@ pub fn add_reply_inner(
 }
 
 #[tauri::command]
-pub async fn add_reply(
+pub async fn add_reply<R: Runtime>(
     path: String,
     thread_id: String,
     text: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -378,13 +378,13 @@ pub async fn add_reply(
 /// already does the full refusal check and is exercised directly in
 /// `test_reviewdb.rs`.
 #[tauri::command]
-pub async fn edit_reply(
+pub async fn edit_reply<R: Runtime>(
     path: String,
     id: String,
     text: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -402,12 +402,12 @@ pub async fn edit_reply(
 /// No `_inner` seam here either, for the same reason as `edit_reply`:
 /// `replies::delete` carries the whole refusal check and is tested directly.
 #[tauri::command]
-pub async fn delete_reply(
+pub async fn delete_reply<R: Runtime>(
     path: String,
     id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -440,13 +440,13 @@ pub fn set_thread_state_inner(
 }
 
 #[tauri::command]
-pub async fn set_thread_state(
+pub async fn set_thread_state<R: Runtime>(
     path: String,
     id: String,
     next: crate::review_types::ThreadState,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -462,11 +462,11 @@ pub async fn set_thread_state(
 }
 
 #[tauri::command]
-pub async fn list_threads(
+pub async fn list_threads<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<Vec<RenderedThread>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -476,11 +476,11 @@ pub async fn list_threads(
 // ── Reviews ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn list_reviews(
+pub async fn list_reviews<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<Vec<Review>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -488,12 +488,12 @@ pub async fn list_reviews(
 }
 
 #[tauri::command]
-pub async fn create_review(
+pub async fn create_review<R: Runtime>(
     path: String,
     title: Option<String>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<String, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -513,11 +513,11 @@ pub async fn create_review(
 }
 
 #[tauri::command]
-pub async fn get_active_review(
+pub async fn get_active_review<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<Option<String>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -525,12 +525,12 @@ pub async fn get_active_review(
 }
 
 #[tauri::command]
-pub async fn set_active_review(
+pub async fn set_active_review<R: Runtime>(
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -542,13 +542,13 @@ pub async fn set_active_review(
 }
 
 #[tauri::command]
-pub async fn rename_review(
+pub async fn rename_review<R: Runtime>(
     path: String,
     review_id: String,
     title: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -568,12 +568,12 @@ pub async fn rename_review(
 /// review. Pruning superseded refs is milestone 2's, deliberately paired with
 /// the renderer's excerpt-source flip.
 #[tauri::command]
-pub async fn publish_review(
+pub async fn publish_review<R: Runtime>(
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -589,12 +589,12 @@ pub async fn publish_review(
 }
 
 #[tauri::command]
-pub async fn delete_review(
+pub async fn delete_review<R: Runtime>(
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -628,13 +628,13 @@ pub fn get_draft_inner(
 }
 
 #[tauri::command]
-pub async fn save_draft(
+pub async fn save_draft<R: Runtime>(
     path: String,
     text: String,
     anchor: Option<crate::git::types::Anchor>,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -646,11 +646,11 @@ pub async fn save_draft(
 }
 
 #[tauri::command]
-pub async fn delete_draft(
+pub async fn delete_draft<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -658,11 +658,11 @@ pub async fn delete_draft(
 }
 
 #[tauri::command]
-pub async fn get_draft(
+pub async fn get_draft<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<Option<drafts::Draft>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -672,13 +672,13 @@ pub async fn get_draft(
 // ── The active review's commit set ───────────────────────────────────────────
 
 #[tauri::command]
-pub async fn seed_review_range(
+pub async fn seed_review_range<R: Runtime>(
     path: String,
     base_oid: String,
     tip_oid: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -706,12 +706,12 @@ pub async fn seed_review_range(
 }
 
 #[tauri::command]
-pub async fn add_review_commit(
+pub async fn add_review_commit<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -730,12 +730,12 @@ pub async fn add_review_commit(
 }
 
 #[tauri::command]
-pub async fn remove_review_commit(
+pub async fn remove_review_commit<R: Runtime>(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -759,12 +759,12 @@ pub async fn remove_review_commit(
 /// Dual path-keying: the commit set is read by CANONICAL key from the store; the
 /// graph order comes from `CommitCache` by RAW path.
 #[tauri::command]
-pub async fn list_session_commits(
+pub async fn list_session_commits<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<Vec<SessionCommit>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -848,12 +848,12 @@ pub fn read_snapshots_inner(
 }
 
 #[tauri::command]
-pub async fn ensure_review_snapshot(
+pub async fn ensure_review_snapshot<R: Runtime>(
     path: String,
     kind: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<String, String> {
     use crate::git::workdir_snapshot::SnapshotKind;
     let snapshot_kind = match kind.as_str() {
@@ -880,11 +880,11 @@ pub async fn ensure_review_snapshot(
 }
 
 #[tauri::command]
-pub async fn get_review_snapshots(
+pub async fn get_review_snapshots<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<snapshots::RepoSnapshots, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -938,11 +938,11 @@ fn as_doc_threads(
 /// `CommentResolution` per thread so the panel shows orphan badges at load
 /// without a click. Read-only.
 #[tauri::command]
-pub async fn resolve_threads(
+pub async fn resolve_threads<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<Vec<CommentResolution>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
@@ -1010,12 +1010,12 @@ pub fn generate_review_doc_inner(
 }
 
 #[tauri::command]
-pub async fn generate_review_doc(
+pub async fn generate_review_doc<R: Runtime>(
     path: String,
     review_id: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<String, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 

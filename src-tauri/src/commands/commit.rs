@@ -3,7 +3,7 @@ use crate::git::{graph, types::HeadCommitMessage};
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 fn refresh_commit_cache(
     path: &str,
@@ -88,13 +88,13 @@ pub fn get_head_commit_message_inner(
 }
 
 #[tauri::command]
-pub async fn create_commit(
+pub async fn create_commit<R: Runtime>(
     path: String,
     subject: String,
     body: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
@@ -112,13 +112,13 @@ pub async fn create_commit(
 }
 
 #[tauri::command]
-pub async fn amend_commit(
+pub async fn amend_commit<R: Runtime>(
     path: String,
     subject: String,
     body: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    app: AppHandle,
+    app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
