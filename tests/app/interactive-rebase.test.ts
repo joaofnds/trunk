@@ -51,4 +51,24 @@ describe("an interactive rebase", () => {
 		expect(app.repo.commitShas()).toEqual(before);
 		expect(app.staging.banner()).toBeNull();
 	});
+
+	it("rebases the repository's first commit from the root", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+		await app.repo.contextMenu("C1");
+		app.contextMenu.choose("Interactive Rebase...");
+
+		const toolbar = await app.rebaseEditor.toolbarLabel();
+		await app.rebaseEditor.move(3, 2);
+		await app.rebaseEditor.start();
+
+		expect(toolbar).toBe("Rebasing main onto root");
+		await expect(
+			waitFor("the reordered graph", () => {
+				const rows = app.repo.commitRows();
+				return rows[2] === "C1" ? rows : null;
+			}),
+		).resolves.toEqual(["C4", "C3", "C1", "C2"]);
+		expect(app.staging.banner()).toBeNull();
+	});
 });
