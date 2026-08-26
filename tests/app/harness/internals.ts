@@ -45,10 +45,12 @@ export class TauriInternals {
 	private nextCallbackId = 1;
 	private closed = false;
 
-	constructor(
-		private readonly host: HostClient,
-		fakes: TauriFake[],
-	) {
+	constructor(private readonly host: HostClient) {}
+
+	/** Points every `plugin:` command at the Fake that owns it. Separate from
+	 *  construction because a Fake whose surface is callback-driven needs this
+	 *  object to dispatch through. */
+	route(fakes: TauriFake[]): void {
 		for (const fake of fakes) this.fakes.set(fake.plugin, fake);
 	}
 
@@ -139,7 +141,7 @@ export class TauriInternals {
 		return id;
 	}
 
-	private runCallback(id: number, payload: unknown): void {
+	runCallback(id: number, payload: unknown): void {
 		const callback = this.callbacks.get(id);
 		if (!callback) return;
 		if (callback.once) this.callbacks.delete(id);

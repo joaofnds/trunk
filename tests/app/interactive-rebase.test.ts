@@ -1,0 +1,40 @@
+import { afterEach, describe, expect, it } from "vitest";
+import type { RepoSpec } from "./harness/host-client.js";
+import { setup, teardown } from "./harness/index.js";
+import { waitFor } from "./harness/wait.js";
+
+/** doc-17's `noedit` shape: four commits, each adding its own file. */
+const FOUR_COMMITS: RepoSpec = {
+	steps: [
+		{ step: "file", path: "c1.txt", content: "1" },
+		{ step: "commit", message: "C1" },
+		{ step: "file", path: "c2.txt", content: "2" },
+		{ step: "commit", message: "C2" },
+		{ step: "file", path: "c3.txt", content: "3" },
+		{ step: "commit", message: "C3" },
+		{ step: "file", path: "c4.txt", content: "4" },
+		{ step: "commit", message: "C4" },
+	],
+};
+
+describe("an interactive rebase", () => {
+	afterEach(teardown);
+
+	it("lands the commit it started from reordered above the rest", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+		await app.repo.contextMenu("C2");
+		await app.contextMenu.choose("Interactive Rebase...");
+
+		await app.rebaseEditor.move(2, 0);
+		await app.rebaseEditor.start();
+
+		await expect(
+			waitFor("the reordered graph", () => {
+				const rows = app.repo.commitRows();
+				return rows[0] === "C2" ? rows : null;
+			}),
+		).resolves.toEqual(["C2", "C4", "C3", "C1"]);
+		expect(app.staging.banner()).toBeNull();
+	});
+});

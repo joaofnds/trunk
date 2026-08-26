@@ -6,6 +6,7 @@ const STAGE_ALL = '[aria-label="Stage all changes"]';
 const SUBJECT = '[data-testid="commit-form-subject"]';
 const SUBMIT = '[data-testid="commit-form-submit"]';
 const WIP_PLACEHOLDER = "// WIP";
+const REBASE_PROGRESS = "Rebasing commit";
 
 /** The working-tree view: what the graph's top row opens onto, and the commit
  *  the user builds there. */
@@ -28,6 +29,19 @@ export class StagingDriver {
 
 		await waitFor("an empty unstaged section", () =>
 			stageAllButton() ? null : true,
+		);
+	}
+
+	/** What the rebase banner is offering the user, or null while the panel is
+	 *  showing no operation in progress. */
+	banner(): string[] | null {
+		const panel = firstMatching("div", (text) =>
+			text.startsWith(REBASE_PROGRESS),
+		);
+		if (!panel) return null;
+
+		return [...panel.querySelectorAll("button")].map(
+			(action) => action.textContent?.trim() ?? "",
 		);
 	}
 

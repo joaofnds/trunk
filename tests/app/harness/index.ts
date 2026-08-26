@@ -3,6 +3,7 @@ import App from "../../../src/App.svelte";
 import { startPerfSession } from "../../../src/lib/perf-session.js";
 import { trackScrollActivity } from "../../../src/lib/scrollbar-activity.js";
 import { AppDriver } from "../drivers/index.js";
+import { FakeMenu } from "../fakes/menu.js";
 import { FakePath } from "../fakes/path.js";
 import { FakeWebview } from "../fakes/webview.js";
 import { FakeWindow } from "../fakes/window.js";
@@ -42,16 +43,14 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	const repoPath = options.repo ? await host.seedRepo(options.repo) : "";
 	if (repoPath) await offerInRecents(host, repoPath);
 
+	const internals = new TauriInternals(host);
 	const fakes = {
 		window: new FakeWindow(),
 		webview: new FakeWebview(),
 		path: new FakePath(host.home),
+		menu: new FakeMenu(internals),
 	};
-	const internals = new TauriInternals(host, [
-		fakes.window,
-		fakes.webview,
-		fakes.path,
-	]);
+	internals.route(Object.values(fakes));
 
 	installDomPolyfills();
 	internals.install();

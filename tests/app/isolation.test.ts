@@ -12,8 +12,13 @@ const HARNESS_ROOTS = [
 	"tests/app/fakes",
 ];
 
+/** The harness roots plus the tests themselves. */
+const SUITE_ROOTS = ["tests/app"];
+
 const VITEST_IMPORT = /\bfrom\s+["']vitest["']|require\(["']vitest["']\)/;
 const IPC_MOCK = /tauri-mock|\bvi\.mock\b/;
+const MENU_API =
+	/\bfrom\s+["']@tauri-apps\/api\/menu["']|import\(["']@tauri-apps\/api\/menu["']\)/;
 
 const ONE_COMMIT: RepoSpec = {
 	steps: [
@@ -65,12 +70,19 @@ describe("the harness", () => {
 	it("reaches for no IPC mock", () => {
 		expect(sourcesMatching(IPC_MOCK)).toEqual([]);
 	});
+
+	it("drives the native menu without importing its API", () => {
+		expect(sourcesMatching(MENU_API, SUITE_ROOTS)).toEqual([]);
+	});
 });
 
-function sourcesMatching(pattern: RegExp): string[] {
-	return HARNESS_ROOTS.flatMap(sourcesUnder).filter((path) =>
-		pattern.test(readFileSync(path, "utf8")),
-	);
+function sourcesMatching(
+	pattern: RegExp,
+	roots: string[] = HARNESS_ROOTS,
+): string[] {
+	return roots
+		.flatMap(sourcesUnder)
+		.filter((path) => pattern.test(readFileSync(path, "utf8")));
 }
 
 function sourcesUnder(root: string): string[] {
