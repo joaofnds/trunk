@@ -5,10 +5,10 @@ mod common;
 
 use common::context::TestContext;
 use serde_json::{Value, json};
-use tauri::Manager;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder};
 use tauri::webview::InvokeRequest;
+use tauri::{App, Manager, WebviewWindow};
 use trunk_lib::state::RepoState;
 use trunk_lib::watcher::WatcherState;
 
@@ -39,6 +39,19 @@ fn invoke(
     })
 }
 
+/// The real application on `MockRuntime`, with the real capability set: the host
+/// builds what `run()` builds, minus single-instance and the runtime.
+fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
+    let app = trunk_lib::configure(mock_builder(), watcher)
+        .build(tauri::generate_context!("tauri.conf.json"))
+        .expect("build the app on MockRuntime");
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("create the main webview");
+
+    (app, webview)
+}
+
 #[test]
 fn the_real_handler_list_registers_on_a_mock_runtime() {
     let ctx = TestContext::builder()
@@ -46,12 +59,7 @@ fn the_real_handler_list_registers_on_a_mock_runtime() {
         .with_commit("Initial commit")
         .build();
 
-    let app = trunk_lib::configure(mock_builder(), WatcherState::disabled())
-        .build(tauri::generate_context!("tauri.conf.json"))
-        .expect("build the app on MockRuntime");
-    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-        .build()
-        .expect("create the main webview");
+    let (app, webview) = boot(WatcherState::disabled());
 
     let response = invoke(&webview, "open_repo", json!({ "path": ctx.path() }));
 
@@ -64,4 +72,46 @@ fn the_real_handler_list_registers_on_a_mock_runtime() {
             .contains_key(ctx.path()),
         "open_repo should register the repository in RepoState"
     );
+}
+
+#[test]
+fn get_rebase_todo_returns_the_wrapper_shape_over_ipc() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "a")
+        .with_commit_at("First", 1_700_000_000)
+        .with_file("b.txt", "b")
+        .with_commit_at("Second", 1_700_086_400)
+        .with_file("c.txt", "c")
+        .with_commit_at("Third", 1_700_172_800)
+        .with_file("d.txt", "d")
+        .with_commit_at("Fourth", 1_700_259_200)
+        .build();
+    let root = oldest_commit_oid(&ctx);
+    let (_app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
+
+    let todo = invoke(
+        &webview,
+        "get_rebase_todo",
+        json!({ "path": ctx.path(), "baseOid": root, "inclusive": false }),
+    )
+    .expect("list the rebase todo");
+
+    assert_eq!(todo["base_oid"], json!(root));
+    let summaries: Vec<&str> = todo["items"]
+        .as_array()
+        .expect("items is an array")
+        .iter()
+        .map(|item| item["summary"].as_str().expect("a summary"))
+        .collect();
+    assert_eq!(summaries, vec!["Second", "Third", "Fourth"]);
+}
+
+/// The root commit, which is the base a four-commit listing rebases onto.
+fn oldest_commit_oid(ctx: &TestContext) -> String {
+    let repo = ctx.repo();
+    let mut walk = repo.revwalk().unwrap();
+    walk.push_head().unwrap();
+
+    walk.last().unwrap().unwrap().to_string()
 }
