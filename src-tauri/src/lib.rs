@@ -10,7 +10,7 @@ pub mod state;
 mod storage;
 pub mod watcher;
 
-use state::{CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp};
+use state::{CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp, TrafficLights};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -19,7 +19,15 @@ use watcher::WatcherState;
 /// Report the current webview zoom so the macOS traffic lights (fixed on-screen
 /// size) stay centered in the zoom-scaled top bar.
 #[tauri::command]
-fn set_traffic_light_zoom<R: tauri::Runtime>(window: tauri::WebviewWindow<R>, zoom: f64) {
+fn set_traffic_light_zoom<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    zoom: f64,
+    traffic_lights: tauri::State<'_, TrafficLights>,
+) {
+    if !traffic_lights.enabled {
+        return;
+    }
+
     #[cfg(target_os = "macos")]
     {
         macos_traffic_lights::set_zoom(zoom);
@@ -84,6 +92,7 @@ pub fn run() {
             }
         })),
         WatcherState::default(),
+        TrafficLights::default(),
     )
     .plugin(tauri_plugin_clipboard_manager::init())
     .run(context())
@@ -98,9 +107,14 @@ pub fn run() {
 /// socket that parallel hosts would fight over. `tauri_plugin_clipboard_manager`
 /// stays out because its `setup` calls `arboard::Clipboard::new()` from inside
 /// `Builder::build()`, which costs 9-17 s per process outside a bundled app.
+///
+/// The two managed states it takes as parameters are the ones a test host
+/// overrides — `Builder::manage` panics on a duplicate type, so they cannot be
+/// added afterwards.
 pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     watcher: WatcherState,
+    traffic_lights: TrafficLights,
 ) -> tauri::Builder<R> {
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -218,6 +232,7 @@ pub fn configure<R: tauri::Runtime>(
         .manage(CommitStatsCache(Default::default()))
         .manage(RunningOp(Default::default()))
         .manage(watcher)
+        .manage(traffic_lights)
         .manage(ReviewStoreState(Default::default()))
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))

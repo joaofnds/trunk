@@ -40,6 +40,29 @@ pub struct CommitStatsCache(
     pub Mutex<HashMap<String, HashMap<String, crate::git::types::DiffStat>>>,
 );
 
+/// Whether the application repositions the macOS traffic-light buttons.
+///
+/// The application test harness manages a disabled one. `WebviewWindow::ns_window()`
+/// on `tauri::test::MockRuntime` builds its answer from a dangling `NSView*`, so
+/// asking for the native window there segfaults the process — and the frontend asks
+/// for the zoom on its very first render. Off, the command still runs; only the
+/// AppKit call is skipped.
+pub struct TrafficLights {
+    pub enabled: bool,
+}
+
+impl Default for TrafficLights {
+    fn default() -> Self {
+        TrafficLights { enabled: true }
+    }
+}
+
+impl TrafficLights {
+    pub fn disabled() -> Self {
+        TrafficLights { enabled: false }
+    }
+}
+
 /// The persistent review store, opened once on first use.
 ///
 /// Opening is fallible — a store newer than this build is refused, an unreadable

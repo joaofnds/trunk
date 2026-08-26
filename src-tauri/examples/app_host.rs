@@ -23,6 +23,7 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder};
 use tauri::webview::InvokeRequest;
 use tauri::{App, Emitter, Listener, Manager, WebviewWindow};
+use trunk_lib::state::TrafficLights;
 use trunk_lib::watcher::WatcherState;
 
 /// Invariant 2: `http://tauri.localhost` is refused by the real capability set,
@@ -147,9 +148,13 @@ fn main() {
 /// The real application on `MockRuntime`, with the watcher off: `open_repo` runs
 /// unchanged while no filesystem watch is created (D2).
 fn boot() -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
-    let app = trunk_lib::configure(mock_builder(), WatcherState::disabled())
-        .build(trunk_lib::context())
-        .expect("build the app on MockRuntime");
+    let app = trunk_lib::configure(
+        mock_builder(),
+        WatcherState::disabled(),
+        TrafficLights::disabled(),
+    )
+    .build(trunk_lib::context())
+    .expect("build the app on MockRuntime");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .expect("create the main webview");

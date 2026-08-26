@@ -9,7 +9,7 @@ use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{INVOKE_KEY, MockRuntime, get_ipc_response, mock_builder};
 use tauri::webview::InvokeRequest;
 use tauri::{App, Manager, WebviewWindow};
-use trunk_lib::state::RepoState;
+use trunk_lib::state::{RepoState, TrafficLights};
 use trunk_lib::watcher::WatcherState;
 
 /// Invariant 2: `http://tauri.localhost` is refused by the real capability set, and
@@ -39,7 +39,7 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
 /// builds what `run()` builds, minus the runtime and the two plugins `configure`
 /// leaves to `run()`.
 fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
-    let app = trunk_lib::configure(mock_builder(), watcher)
+    let app = trunk_lib::configure(mock_builder(), watcher, TrafficLights::disabled())
         .build(trunk_lib::context())
         .expect("build the app on MockRuntime");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -125,4 +125,18 @@ fn the_host_carries_no_clipboard_plugin() {
             .is_none(),
         "configure should leave the clipboard plugin to run()"
     );
+}
+
+/// `MockRuntime::window_handle()` returns an AppKit handle built from a dangling
+/// `NSView*` (`tauri-2.11.5/src/test/mock_runtime.rs:846`), and
+/// `WebviewWindow::ns_window()` dereferences it (`window/mod.rs:1639`). The
+/// application asks for this command in a mount effect, so a host that
+/// repositions the traffic lights segfaults on the boot path.
+#[test]
+fn set_traffic_light_zoom_survives_a_window_with_no_native_chrome() {
+    let (_app, webview) = boot(WatcherState::disabled());
+
+    let response = invoke(&webview, "set_traffic_light_zoom", json!({ "zoom": 1.25 }));
+
+    assert_eq!(response, Ok(Value::Null));
 }
