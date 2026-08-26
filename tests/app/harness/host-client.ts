@@ -7,7 +7,9 @@ import { createInterface } from "node:readline";
 /** One `TestContextBuilder` verb, as the host protocol carries it. */
 export type SpecStep =
 	| { step: "file"; path: string; content: string }
-	| { step: "commit"; message: string; at?: number };
+	| { step: "commit"; message: string; at?: number }
+	| { step: "branch"; name: string }
+	| { step: "checkout"; name: string };
 
 export interface RepoSpec {
 	steps: SpecStep[];

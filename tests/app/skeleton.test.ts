@@ -25,6 +25,27 @@ const FOUR_COMMITS: RepoSpec = {
 	],
 };
 
+/** Two branches whose `a.txt` differ, so checking one out over an uncommitted
+ *  edit of that file is the `dirty_workdir` refusal. */
+const DIVERGED_FILE: RepoSpec = {
+	steps: [
+		{ step: "file", path: "a.txt", content: "one" },
+		{ step: "commit", message: "First" },
+		{ step: "branch", name: "other" },
+		{ step: "checkout", name: "other" },
+		{ step: "file", path: "a.txt", content: "two" },
+		{ step: "commit", message: "Second" },
+		{ step: "checkout", name: "main" },
+	],
+};
+
+const ONE_COMMIT: RepoSpec = {
+	steps: [
+		{ step: "file", path: "a.txt", content: "one" },
+		{ step: "commit", message: "First" },
+	],
+};
+
 describe("the application", () => {
 	afterEach(teardown);
 
@@ -82,6 +103,38 @@ describe("the application", () => {
 			return rows.length > COMMIT_COUNT ? rows : null;
 		});
 		expect(rows[0]).toBe(`${WIP_PLACEHOLDER} A 1`);
+	});
+
+	it("turns a failing command's error code into the interface's own words", async () => {
+		const app = await setup({ repo: DIVERGED_FILE });
+		await app.repo.open();
+		writeFileSync(join(app.repo.path, "a.txt"), "uncommitted");
+
+		await app.branches.checkout("other");
+
+		await expect(
+			waitFor("the checkout refusal", () => app.branches.refusal("other")),
+		).resolves.toBe(
+			"Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.",
+		);
+	});
+
+	it("shows a commit made in the app as the graph's newest row", async () => {
+		const app = await setup({ repo: ONE_COMMIT });
+		await app.repo.open();
+		writeFileSync(join(app.repo.path, "b.txt"), "b");
+		await app.events.externalChange(app.repo.path);
+		await app.staging.open();
+		await app.staging.stageEverything();
+
+		await app.staging.commit("Add b");
+
+		await expect(
+			waitFor("the new commit", () => {
+				const rows = app.repo.commitRows();
+				return rows.includes("Add b") ? rows : null;
+			}),
+		).resolves.toEqual(["Add b", "First"]);
 	});
 
 	it("holds no filesystem watch", async () => {

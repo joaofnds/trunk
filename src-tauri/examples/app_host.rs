@@ -90,6 +90,12 @@ enum SpecStep {
         message: String,
         at: Option<i64>,
     },
+    Branch {
+        name: String,
+    },
+    Checkout {
+        name: String,
+    },
 }
 
 /// Serializes every line the host writes: `listen_any` handlers run on the
@@ -223,6 +229,8 @@ fn seed(spec: RepoSpec) -> TestContext {
                 at: Some(secs),
             } => builder.with_commit_at(&message, secs),
             SpecStep::Commit { message, at: None } => builder.with_commit(&message),
+            SpecStep::Branch { name } => builder.with_branch(&name),
+            SpecStep::Checkout { name } => builder.checkout(&name),
         };
     }
 

@@ -4,8 +4,10 @@ import type { FakeWindow } from "../fakes/window.js";
 import type { HostClient } from "../harness/host-client.js";
 import type { InvokeRecord, TauriInternals } from "../harness/internals.js";
 import { delay } from "../harness/wait.js";
+import { BranchesDriver } from "./branches.js";
 import { EventsDriver } from "./events.js";
 import { RepoDriver } from "./repo.js";
+import { StagingDriver } from "./staging.js";
 
 /**
  * `RepoView.svelte:838-847` clears and re-arms a 200 ms timer on `repo-changed`
@@ -24,7 +26,11 @@ export interface Fakes {
 /** The test's view of the running application: per-domain drivers and the Fakes
  *  every surface the harness does not run real is reached through. */
 export class AppDriver {
+	/** The tempdir this application's `app_data_dir()` resolves under. */
+	readonly home: string;
 	readonly repo: RepoDriver;
+	readonly branches: BranchesDriver;
+	readonly staging: StagingDriver;
 	readonly events: EventsDriver;
 	readonly window: FakeWindow;
 	readonly webview: FakeWebview;
@@ -36,7 +42,10 @@ export class AppDriver {
 		fakes: Fakes,
 		repoPath: string,
 	) {
+		this.home = host.home;
 		this.repo = new RepoDriver(repoPath);
+		this.branches = new BranchesDriver();
+		this.staging = new StagingDriver();
 		this.events = new EventsDriver(host);
 		this.window = fakes.window;
 		this.webview = fakes.webview;
