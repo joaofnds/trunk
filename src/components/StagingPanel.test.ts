@@ -100,6 +100,23 @@ describe("StagingPanel", () => {
 		});
 	});
 
+	it("sizes the panel header from the shared panel-header height", async () => {
+		render(StagingPanel, {
+			props: {
+				repoPath: "/test/repo",
+				clearRedoStack: vi.fn(),
+			},
+		});
+
+		const header = (await screen.findByText("2 files changed")).closest(
+			"div[style]",
+		);
+
+		expect(header?.getAttribute("style")).toContain(
+			"height: var(--panel-header-h)",
+		);
+	});
+
 	it("renders unstaged files section header", async () => {
 		render(StagingPanel, {
 			props: {

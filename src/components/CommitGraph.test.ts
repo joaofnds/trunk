@@ -213,6 +213,22 @@ describe("CommitGraph", () => {
 		expect(screen.getByText("SHA")).toBeInTheDocument();
 	});
 
+	it("sizes the header row from the shared panel-header height", async () => {
+		render(CommitGraph, {
+			props: {
+				repoPath: "/test/repo",
+				clearRedoStack: vi.fn(),
+				tabActive: true,
+			},
+		});
+
+		const headerRow = (await screen.findByText("Date")).parentElement;
+
+		expect(headerRow?.getAttribute("style")).toContain(
+			"height: var(--panel-header-h)",
+		);
+	});
+
 	it("renders commit summaries after data loads", async () => {
 		render(CommitGraph, {
 			props: {

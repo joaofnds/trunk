@@ -1617,7 +1617,7 @@ $effect(() => {
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="flex items-center flex-shrink-0"
-    style="height: {displaySettings.rowHeight}px; background: var(--bg-1); border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
+    style="height: var(--panel-header-h); background: var(--bg-1); border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
     oncontextmenu={showHeaderContextMenu}
   >
     {#if columnVisibility.ref}

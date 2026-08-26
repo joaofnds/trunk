@@ -221,7 +221,7 @@ async function saveNote() {
 
   <!-- Toolbar -->
   <div style="
-    height: 24px;
+    height: var(--panel-header-h);
     border-bottom: 1px solid var(--color-border);
     padding: 0 8px;
     display: flex;

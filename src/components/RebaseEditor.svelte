@@ -820,7 +820,7 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-header {
     display: flex;
     align-items: center;
-    height: 24px;
+    height: var(--panel-header-h);
     flex-shrink: 0;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
