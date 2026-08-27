@@ -352,7 +352,7 @@ async function requestDeleteReply(replyId: string) {
   .diff-content {
     flex: 1;
     min-width: 0;
-    padding-right: 8px;
+    padding-right: var(--space-2);
     white-space: pre-wrap;
     word-break: break-all;
   }

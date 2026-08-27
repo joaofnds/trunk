@@ -2078,8 +2078,8 @@ $effect(() => {
   }
   /* GRAPH-01: visible padding above first and below last commit row */
   :global(.virtual-list-viewport) {
-    padding-top: 8px;
-    padding-bottom: 8px;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
     box-sizing: border-box;
     overflow-x: hidden;
   }

@@ -563,7 +563,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
   overflow: hidden;
 ">
   <!-- Search input (sticky at top) -->
-  <div style="padding: var(--space-3) var(--space-3) var(--space-2); border-bottom: 1px solid var(--line);">
+  <div style="padding: var(--space-2); box-shadow: inset 0 -1px 0 var(--line);">
     <div style="
       display: flex;
       align-items: center;
@@ -582,6 +582,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         style="
           flex: 1;
           min-width: 0;
+          height: 100%;
           background: transparent;
           border: none;
           color: var(--fg-2);
@@ -631,7 +632,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
               }}
             />
             {#if createError}
-              <div class="error-text" style="font-size: 11px; margin-top: 2px;">{createError}</div>
+              <div class="error-text" style="font-size: 11px; margin-top: var(--space-1);">{createError}</div>
             {/if}
           </div>
         {/if}
@@ -822,7 +823,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
   }
 
   .stash-entry-error {
-    padding-left: 24px;
+    padding-left: calc(6 * var(--u));
   }
 
   .error-text {

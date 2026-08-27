@@ -974,10 +974,10 @@ $effect(() => {
             flex-shrink: 0;
           "
         >
-          <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: 4px;">
+          <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);">
             {#if conflicted_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
           </span>
-          <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: 4px;">
+          <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);">
             <AlertTriangle size={12} />
           </span>
           <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
@@ -1043,11 +1043,11 @@ $effect(() => {
           flex-shrink: 0;
         "
       >
-        <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: 4px;">
+        <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);">
           {#if unstaged_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
         </span>
         {#if isMerge}
-          <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: 4px;">
+          <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: var(--space-1);">
             <AlertTriangle size={12} />
           </span>
           <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);">
@@ -1115,7 +1115,7 @@ $effect(() => {
                 height: var(--control-sm-h);
                 padding: 0 var(--space-2);
                 white-space: nowrap;
-                margin-left: 4px;
+                margin-left: var(--space-1);
               "
               aria-label="Stage all changes"
             >
@@ -1185,7 +1185,7 @@ $effect(() => {
           flex-shrink: 0;
         "
       >
-        <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: 4px;">
+        <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: var(--space-1);">
           {#if staged_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
         </span>
         <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
@@ -1264,7 +1264,7 @@ $effect(() => {
       flex-shrink: 0;
       overflow: hidden;
     ">
-      <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom: 2px;">
+      <div style="font-size: 11px; color: var(--color-text-muted); margin-bottom: var(--space-1);">
         Rebasing commit {rebaseProgressNum} out of {rebaseProgressTotal}
       </div>
       <input

@@ -121,3 +121,22 @@ design constraint, not a target to negotiate: a suite that outgrows it is a deci
 repository's owner — raise the budget, or move the suite out of `just check` — not a reason to
 trim a workflow. CI wall time is a different number (the job runs about six minutes) and is
 not what this budget measures.
+
+## Measuring the rendered DOM
+
+The harness runs in jsdom, which computes no layout: every rect is zero, so it cannot answer
+how tall anything renders. The Tauri window cannot be driven from a tool session either. So
+pixel questions used to be settled by argument, and were wrong repeatedly.
+
+```bash
+just measure
+```
+
+That builds the host, puts it behind HTTP (`scripts/measure/bridge.ts`), and serves
+`scripts/measure/index.html`, which mounts the same `App` with the same `TauriInternals` seam
+and the same Fakes, pointed at that host. Open it in a browser and every element answers
+`getBoundingClientRect()` for real, against a real seeded repository.
+
+Use it before proposing a fix for anything measured in pixels, and again to check the fix. A
+census of every distinct chrome height is a few lines in the console, and it finds the
+elements nobody thought to look at.

@@ -554,7 +554,7 @@ function buildSegments(
   .gutter {
     text-align: right;
     color: var(--color-text-muted);
-    padding-right: 8px;
+    padding-right: var(--space-2);
     user-select: none;
     -webkit-user-select: none;
     flex-shrink: 0;

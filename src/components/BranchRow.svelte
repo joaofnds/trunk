@@ -59,11 +59,11 @@ let hovered = $state(false);
     "
   >
     {#if kind === 'tag'}
-      <span style="flex-shrink: 0; display: inline-flex; align-items: center; margin-right: 6px; color: var(--fg-3);">
+      <span style="flex-shrink: 0; display: inline-flex; align-items: center; margin-right: var(--space-2); color: var(--fg-3);">
         <Tag size={12} />
       </span>
     {:else}
-      <span style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: 8px; background: {isHead ? 'var(--accent)' : 'var(--fg-4)'};"></span>
+      <span style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--accent)' : 'var(--fg-4)'};"></span>
     {/if}
     <span style="
       display: block;
@@ -74,13 +74,13 @@ let hovered = $state(false);
       flex: 1;
     ">{name}{isLoading ? ' …' : ''}</span>
     {#if ahead > 0 || behind > 0}
-      <span style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); margin-left: 4px; display: inline-flex; align-items: center; gap: var(--space-1);">
+      <span style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); margin-left: var(--space-1); display: inline-flex; align-items: center; gap: var(--space-1);">
         {#if ahead > 0}<span style="display: inline-flex; align-items: center; color: var(--ok);"><ArrowUp size={11} />{ahead}</span>{/if}
-        {#if behind > 0}<span style="display: inline-flex; align-items: center; margin-left: 2px; color: var(--warn);"><ArrowDown size={11} />{behind}</span>{/if}
+        {#if behind > 0}<span style="display: inline-flex; align-items: center; margin-left: var(--space-1); color: var(--warn);"><ArrowDown size={11} />{behind}</span>{/if}
       </span>
     {/if}
     {#if isHead}
-      <span style="flex-shrink: 0; margin-left: 4px; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; color: var(--accent);">HEAD</span>
+      <span style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; color: var(--accent);">HEAD</span>
     {/if}
   </div>
 

@@ -517,7 +517,7 @@ function lineColor(): string {
   .gutter-num {
     text-align: right;
     color: var(--color-text-muted);
-    padding-right: 8px;
+    padding-right: var(--space-2);
   }
   .gutter-selectable {
     cursor: pointer;

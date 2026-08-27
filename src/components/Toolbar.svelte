@@ -302,6 +302,7 @@ async function handleBranchCreate(values: Record<string, string>) {
   .btn-group {
     display: inline-flex;
     align-items: stretch;
+    height: var(--control-h);
     border: 1px solid var(--line);
     border-radius: var(--radius);
   }

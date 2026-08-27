@@ -82,6 +82,13 @@ app-test:
     cargo build --manifest-path {{manifest}} --example app_host
     TRUNK_APP_HOST="${CARGO_TARGET_DIR:-{{justfile_directory()}}/src-tauri/target}/debug/examples/app_host" bun run test:app
 
+# Serve the real app to a browser so its rendered DOM can be measured (jsdom has no layout)
+measure:
+    cargo build --manifest-path {{manifest}} --example app_host
+    bun scripts/measure/bridge.ts & \
+    bunx vite --port 1420 --strictPort & \
+    echo "open http://localhost:1420/scripts/measure/index.html" && wait
+
 # ── Audits (not part of `check`) ─────────────────────
 
 # Scan dependencies for known advisories (needs: cargo install cargo-audit)

@@ -463,7 +463,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       width: 48px;
       flex-shrink: 0;
       text-align: right;
-      padding-right: 8px;
+      padding-right: var(--space-2);
       color: var(--color-text-muted);
       -webkit-user-select: none;
       user-select: none;
@@ -483,7 +483,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       {/if}
     </span>
     <span style="
-      padding-left: 4px;
+      padding-left: var(--space-1);
       white-space: pre;
       overflow-x: auto;
       flex: 1;
@@ -503,14 +503,14 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       width: 48px;
       flex-shrink: 0;
       text-align: right;
-      padding-right: 8px;
+      padding-right: var(--space-2);
       color: var(--color-text-muted);
       -webkit-user-select: none;
       user-select: none;
     ">{row.lineNum}</span>
     <span style="width: 20px; flex-shrink: 0;"></span>
     <span style="
-      padding-left: 4px;
+      padding-left: var(--space-1);
       white-space: pre;
       overflow-x: auto;
       flex: 1;

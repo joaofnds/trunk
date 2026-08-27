@@ -31,14 +31,15 @@ let {
     onclick={ontoggle}
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
     style="
-      padding: var(--space-3) var(--space-3) var(--space-2);
+      height: var(--bar-h);
+      padding: 0 var(--space-3);
       display: flex;
       flex-direction: row;
       align-items: center;
       cursor: pointer;
     "
   >
-    <span style="color: var(--fg-2); display: inline-flex; align-items: center; margin-right: 4px;">
+    <span style="color: var(--fg-2); display: inline-flex; align-items: center; margin-right: var(--space-1);">
       {#if expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
     </span>
     <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;">

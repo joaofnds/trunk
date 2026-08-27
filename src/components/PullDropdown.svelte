@@ -112,7 +112,7 @@ $effect(() => {
     top: 100%;
     left: 0;
     z-index: 100;
-    margin-top: 4px;
+    margin-top: var(--space-1);
     background: var(--bg-2);
     border: 1px solid var(--line);
     border-radius: var(--radius);

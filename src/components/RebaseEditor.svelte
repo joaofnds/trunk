@@ -757,7 +757,7 @@ let lastVisibleColumn = $derived.by(() => {
 
   .rebase-shortcut-label {
     font-weight: 600;
-    margin-right: 4px;
+    margin-right: var(--space-1);
   }
 
   .rebase-shortcut-key {
@@ -767,7 +767,7 @@ let lastVisibleColumn = $derived.by(() => {
     padding: 0 var(--space-1);
     font-family: var(--font-mono);
     font-size: 10px;
-    margin-left: 6px;
+    margin-left: var(--space-2);
   }
 
   .rebase-bottombar-right {
@@ -878,7 +878,7 @@ let lastVisibleColumn = $derived.by(() => {
   }
 
   .rebase-row-squash {
-    padding-left: 16px;
+    padding-left: var(--space-4);
     border-left: 2px solid var(--color-accent-alt);
   }
 

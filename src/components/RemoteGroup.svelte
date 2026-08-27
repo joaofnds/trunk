@@ -38,7 +38,7 @@ let {
 
   <!-- Branch rows for this remote -->
   {#each branches as branch (branch)}
-    <div style="padding-left: 12px; overflow: hidden;">
+    <div style="padding-left: var(--space-3); overflow: hidden;">
       <BranchRow
         name={branch}
         kind="remote"

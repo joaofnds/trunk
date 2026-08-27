@@ -195,7 +195,7 @@ $effect(() => {
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
-    margin-left: 4px;
+    margin-left: var(--space-1);
     transition: background-color 0.15s, color 0.15s;
   }
 

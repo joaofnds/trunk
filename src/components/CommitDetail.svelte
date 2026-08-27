@@ -293,7 +293,7 @@ async function saveNote() {
         font-weight: 600;
         color: var(--color-text);
         line-height: 1.4;
-        margin-bottom: {commitDetail.body ? '6px' : '0'};
+        margin-bottom: {commitDetail.body ? 'var(--space-2)' : '0'};
       ">
         {commitDetail.summary}
       </div>
@@ -303,7 +303,7 @@ async function saveNote() {
           color: var(--color-text-muted);
           white-space: pre-wrap;
           line-height: 1.5;
-          margin-top: 4px;
+          margin-top: var(--space-1);
         ">
           {commitDetail.body}
         </div>
@@ -435,7 +435,7 @@ async function saveNote() {
           {fileDiffs.length} file{fileDiffs.length === 1 ? '' : 's'} changed
         </span>
         {#if totalAdds > 0 || totalDels > 0}
-          <span style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: 8px; font-family: var(--font-mono); font-size: 10.5px;">
+          <span style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: 10.5px;">
             {#if totalAdds > 0}<span style="color: var(--ok);">+{totalAdds}</span>{/if}
             {#if totalDels > 0}<span style="color: var(--err);">−{totalDels}</span>{/if}
           </span>
@@ -537,7 +537,7 @@ async function saveNote() {
 
   /* Topology chips — clickable parent/child lineage links. */
   .topo {
-    margin-top: 8px;
+    margin-top: var(--space-2);
     display: flex;
     flex-direction: column;
     gap: var(--space-1);

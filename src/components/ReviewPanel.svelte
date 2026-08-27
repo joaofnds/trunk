@@ -499,7 +499,7 @@ $effect(() => {
   <!-- Review list (criterion 2): every review for this repo with its derived
        state, short id, thread count and an editable title. Selecting one makes
        it active, which is also criterion 3's one-step switch. -->
-  <div class="flex flex-col" style="gap: var(--space-1); padding-bottom: 8px;">
+  <div class="flex flex-col" style="gap: var(--space-1); padding-bottom: var(--space-2);">
     <div class="flex items-center" style="gap: var(--space-2); padding: var(--space-1) 0;">
       <span style="color: var(--color-text-muted); font-size: 11px; flex: 1;">
         {reviews.length} {reviews.length === 1 ? "review" : "reviews"}

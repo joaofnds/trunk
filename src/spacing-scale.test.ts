@@ -28,12 +28,24 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
 	return found;
 }
 
-const namedPart = /^(0|auto|var\(--[\w-]+\)|\{[^}]*\}px)$/;
+const namedPart = /^(0|auto|var\(--[\w-]+\)|@(?:px)?)$/;
+
+/** A Svelte interpolation and a `calc()` off the unit are each one opaque value
+ *  however many spaces they hold, so both are masked before the shorthand is
+ *  split into its sides. Any other `calc()` stays raw and fails. */
+const mask = (value: string) =>
+	value
+		.replace(/\{[^}]*\}/g, "@")
+		.replace(/calc\(\s*\d+\s*\*\s*var\(--u\)\s*\)/g, "@");
 
 describe("spacing scale", () => {
 	it("carries no raw pixel value in a gap, padding or margin", () => {
-		const raw = offences(/\b(?:gap|padding|margin): ([^;"\n]+)/g, (value) =>
-			value.split(/\s+/).every((part) => namedPart.test(part)),
+		const raw = offences(
+			/\b(?:gap|row-gap|column-gap|(?:padding|margin)(?:-(?:top|right|bottom|left))?): ([^;"\n]+)/g,
+			(value) =>
+				mask(value)
+					.split(/\s+/)
+					.every((part) => namedPart.test(part)),
 		);
 
 		expect(raw).toEqual([]);
