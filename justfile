@@ -45,7 +45,7 @@ front: biome svelte-check vitest
 rust: fmt clippy cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy cargo-test vitest graph-sweep-check
+check: fmt biome svelte-check clippy cargo-test vitest graph-sweep-check app-test
 
 # Check Rust formatting
 fmt:

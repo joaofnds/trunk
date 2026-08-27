@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every recipe in `just check` has a CI job
         run: |
-          mirrored=$(printf '%s\n' biome cargo-test clippy fmt graph-sweep-check svelte-check vitest | sort)
+          mirrored=$(printf '%s\n' app-test biome cargo-test clippy fmt graph-sweep-check svelte-check vitest | sort)
           recipes=$(sed -n 's/^check: *//p' justfile | tr ' ' '\n' | sort)
           if ! diff <(echo "$mirrored") <(echo "$recipes"); then
             echo "::error::just check and this workflow disagree; add or remove the CI job, then update the mirrored list in ci.yml"
@@ -149,6 +149,35 @@ jobs:
       # branches entirely; this is the only job that compiles them.
       - run: just clippy
       - run: just cargo-test
+
+  app-test:
+    name: Application Harness
+    needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "src-tauri -> target"
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: bun install --frozen-lockfile
+      # Builds a Rust example and runs vitest over it, so this job needs both
+      # toolchains where the other gate-2 jobs need one.
+      - run: just app-test
 
   vitest:
     name: Vitest
