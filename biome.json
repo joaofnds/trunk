@@ -9,9 +9,7 @@
 			"*.js",
 			"*.json",
 			"*.svelte",
-			"!!**/.claude",
-			"e2e/**",
-			"!e2e/node_modules"
+			"!!**/.claude"
 		]
 	},
 	"assist": {

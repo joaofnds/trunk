@@ -13,7 +13,7 @@
 //! instance would rewrite the whole map from its own stale copy. What makes the
 //! premise an invariant rather than an assumption is `tauri-plugin-single-instance`
 //! (registered first in `lib.rs`), whose lock is keyed on the app identifier —
-//! so dev, e2e, and the installed app still run side by side, each alone with
+//! so dev and the installed app still run side by side, each alone with
 //! its own state dir.
 //!
 //! The on-disk contract is unchanged from the plugin: a flat JSON object

@@ -10,8 +10,6 @@ on:
     paths:
       - 'package.json'
       - 'bun.lock'
-      - 'e2e/package.json'
-      - 'e2e/bun.lock'
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
 
@@ -41,7 +39,3 @@ jobs:
       - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
       - run: bun install --frozen-lockfile
       - run: bun audit
-      - run: bun install --frozen-lockfile
-        working-directory: e2e
-      - run: bun audit
-        working-directory: e2e

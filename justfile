@@ -29,10 +29,6 @@ perf-report over="":
 build:
     bun run tauri build
 
-# Build the e2e-flavored debug binary (own identifier, own target dir)
-e2e-build:
-    CARGO_TARGET_DIR={{justfile_directory()}}/src-tauri/target/e2e bun run tauri build --debug --no-bundle --config e2e/tauri.e2e.conf.json
-
 # ── Checks ───────────────────────────────────────────
 
 # Static checks only — no compile, no tests (~7s)
@@ -92,7 +88,6 @@ app-test:
 audit:
     cargo audit --file src-tauri/Cargo.lock
     bun audit
-    bun --cwd e2e audit
 
 # Report which mutations the Rust tests miss (slow; needs: cargo install cargo-mutants)
 mutants *args:
