@@ -597,7 +597,7 @@ function lineColor(): string {
     gap: var(--space-2);
     padding: 0 var(--space-2);
     height: var(--diff-hunk-header-height);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     box-sizing: border-box;
     z-index: 1;
   }
@@ -649,7 +649,7 @@ function lineColor(): string {
      is not restored here. */
   .file-header {
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     font-size: 12px;
     font-weight: 500;
     padding: 0 var(--space-2);

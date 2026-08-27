@@ -230,7 +230,7 @@ const renderedActive = $derived(
 
   .toolbar {
     height: var(--bar-h);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-2);
     display: flex;
     align-items: center;

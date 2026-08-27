@@ -245,7 +245,7 @@ function buildSegments(
         tabindex="0"
         style="
         background: var(--color-surface);
-        border-bottom: 1px solid var(--color-border);
+        box-shadow: inset 0 -1px 0 var(--color-border);
         font-size: 12px;
         font-weight: 500;
         height: var(--bar-h);

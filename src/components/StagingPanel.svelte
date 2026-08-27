@@ -777,7 +777,7 @@ $effect(() => {
   <div style="
     height: var(--bar-h);
     background: var(--bg-2);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-3);
     display: flex;
     align-items: center;
@@ -889,7 +889,7 @@ $effect(() => {
       <div style="
         height: var(--bar-h);
         background: var(--color-badge-warning-bg);
-        border-bottom: 1px solid var(--color-border);
+        box-shadow: inset 0 -1px 0 var(--color-border);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -904,7 +904,7 @@ $effect(() => {
     {/if}
     <div style="
       height: var(--bar-h);
-      border-bottom: 1px solid var(--color-border);
+      box-shadow: inset 0 -1px 0 var(--color-border);
       padding: 0 var(--space-3);
       display: flex;
       align-items: center;
@@ -966,7 +966,7 @@ $effect(() => {
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') conflicted_expanded = !conflicted_expanded; }}
           style="
             height: var(--bar-h);
-            border-bottom: 1px solid var(--color-border);
+            box-shadow: inset 0 -1px 0 var(--color-border);
             padding: 0 var(--space-2);
             display: flex;
             align-items: center;
@@ -1035,7 +1035,7 @@ $effect(() => {
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
         style="
           height: var(--bar-h);
-          border-bottom: 1px solid var(--color-border);
+          box-shadow: inset 0 -1px 0 var(--color-border);
           padding: 0 var(--space-2);
           display: flex;
           align-items: center;
@@ -1177,7 +1177,7 @@ $effect(() => {
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
         style="
           height: var(--bar-h);
-          border-bottom: 1px solid var(--color-border);
+          box-shadow: inset 0 -1px 0 var(--color-border);
           padding: 0 var(--space-2);
           display: flex;
           align-items: center;

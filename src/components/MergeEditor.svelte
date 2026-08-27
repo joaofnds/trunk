@@ -574,7 +574,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
         <div style="
           height: var(--bar-h);
           background: var(--color-accent-bg);
-          border-bottom: 1px solid var(--accent);
+          box-shadow: inset 0 -1px 0 var(--accent);
           display: flex;
           align-items: center;
           padding: 0 var(--space-2);
@@ -639,7 +639,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
         <div style="
           height: var(--bar-h);
           background: var(--color-success-bg);
-          border-bottom: 1px solid var(--color-success);
+          box-shadow: inset 0 -1px 0 var(--color-success);
           display: flex;
           align-items: center;
           padding: 0 var(--space-2);
@@ -704,7 +704,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       <div style="
         height: var(--bar-h);
         background: var(--color-muted-bg);
-        border-bottom: 1px solid var(--color-text-muted);
+        box-shadow: inset 0 -1px 0 var(--color-text-muted);
         display: grid;
         grid-template-columns: 1fr auto 1fr;
         align-items: center;

@@ -222,7 +222,7 @@ async function saveNote() {
   <!-- Toolbar -->
   <div style="
     height: var(--bar-h);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-2);
     display: flex;
     align-items: center;
@@ -428,7 +428,7 @@ async function saveNote() {
         padding: 0 var(--space-3);
         display: flex;
         align-items: center;
-        border-bottom: 1px solid var(--color-border);
+        box-shadow: inset 0 -1px 0 var(--color-border);
         flex-shrink: 0;
       ">
         <span style="font-size: 12px; font-weight: 500; color: var(--color-text); flex: 1;">
@@ -586,13 +586,13 @@ async function saveNote() {
   .commit-notes {
     display: flex;
     flex-direction: column;
-    border-bottom: 1px solid var(--color-border);
   }
   .commit-notes-head {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     height: var(--bar-h);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-3);
   }
   .commit-notes-title {

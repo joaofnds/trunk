@@ -445,7 +445,7 @@ $effect(() => {
       height: var(--bar-h);
       padding: 0 var(--space-3);
       background: var(--color-surface);
-      border-bottom: 1px solid var(--color-border);
+      box-shadow: inset 0 -1px 0 var(--color-border);
       flex-shrink: 0;
       font-size: 12px;
     "

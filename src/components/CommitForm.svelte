@@ -190,7 +190,7 @@ async function handleSubmit() {
   flex-shrink: 0;
 ">
   <!-- Mode tab selector -->
-  <div style="display: flex; gap: 0; height: var(--bar-h); border-bottom: 1px solid var(--color-border);">
+  <div style="display: flex; gap: 0; height: var(--bar-h); box-shadow: inset 0 -1px 0 var(--color-border);">
     {#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
       <button
         onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}

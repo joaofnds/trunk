@@ -39,6 +39,29 @@ describe("spacing scale", () => {
 		expect(raw).toEqual([]);
 	});
 
+	it("spends no layout on a bar's own rule", () => {
+		const barHeight =
+			/var\(--(?:bar-h|topbar-h|row-h|control-h|diff-(?:file|hunk)-header-height)\)/;
+		const raw: string[] = [];
+		for (const file of svelteFiles(root)) {
+			const source = readFileSync(file, "utf8").replace(
+				/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g,
+				"",
+			);
+			const blocks = [
+				...source.matchAll(/\{\n((?:(?!\n[ \t]*\}).)*?)\n[ \t]*\}/gs),
+				...source.matchAll(/style="((?:[^"]|\n)*?)"/g),
+			];
+			for (const [, body] of blocks) {
+				if (barHeight.test(body) && /border-(?:bottom|top): /.test(body)) {
+					raw.push(relative(root, file));
+				}
+			}
+		}
+
+		expect([...new Set(raw)]).toEqual([]);
+	});
+
 	it("reaches for no Tailwind radius step beside the token", () => {
 		const raw: string[] = [];
 		for (const file of svelteFiles(root)) {

@@ -698,7 +698,7 @@ let lastVisibleColumn = $derived.by(() => {
     height: var(--bar-h);
     flex-shrink: 0;
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-3);
   }
 
@@ -824,7 +824,7 @@ let lastVisibleColumn = $derived.by(() => {
     height: var(--bar-h);
     flex-shrink: 0;
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     font-size: 11px;
     color: var(--color-text-muted);
   }
