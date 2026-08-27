@@ -3,7 +3,10 @@ import App from "../../../src/App.svelte";
 import { startPerfSession } from "../../../src/lib/perf-session.js";
 import { trackScrollActivity } from "../../../src/lib/scrollbar-activity.js";
 import { AppDriver } from "../drivers/index.js";
+import { FakeClipboard } from "../fakes/clipboard.js";
+import { FakeDialog } from "../fakes/dialog.js";
 import { FakeMenu } from "../fakes/menu.js";
+import { FakeOpener } from "../fakes/opener.js";
 import { FakePath } from "../fakes/path.js";
 import { FakeWebview } from "../fakes/webview.js";
 import { FakeWindow } from "../fakes/window.js";
@@ -49,6 +52,9 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		webview: new FakeWebview(),
 		path: new FakePath(host.home),
 		menu: new FakeMenu(internals),
+		dialog: new FakeDialog(),
+		clipboard: new FakeClipboard(),
+		opener: new FakeOpener(),
 	};
 	internals.route(Object.values(fakes));
 

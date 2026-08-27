@@ -113,9 +113,8 @@ export class TauriInternals {
 	/**
 	 * A `plugin:` command with no Fake and no host route rejects, naming itself.
 	 * Nine commands answered `undefined` over the mocked transport during
-	 * milestone 1 with nothing noticing, and the clipboard plugin now has no
-	 * answer on either side — a silent `undefined` there reads as a copy that
-	 * copied nothing.
+	 * milestone 1 with nothing noticing: a silent `undefined` from a clipboard
+	 * write reads as a copy that copied nothing.
 	 */
 	private fake(cmd: string): TauriFake {
 		const fake = this.fakes.get(pluginOf(cmd));

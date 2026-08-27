@@ -71,13 +71,9 @@ describe("the application", () => {
 	it("rejects a command no route answers, naming it", async () => {
 		await setup({ repo: FOUR_COMMITS });
 
-		const copying = invoke("plugin:clipboard-manager|write_text", {
-			text: "abc",
-		});
+		const notifying = invoke("plugin:notification|notify", { title: "hi" });
 
-		await expect(copying).rejects.toThrow(
-			"plugin:clipboard-manager|write_text",
-		);
+		await expect(notifying).rejects.toThrow("plugin:notification|notify");
 	});
 
 	it("reports the window state a test seeded through the driver", async () => {

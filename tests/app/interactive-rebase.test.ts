@@ -57,6 +57,18 @@ const REBASE_STOPPED = "Rebase stopped — resolve it in the staging panel";
 describe("an interactive rebase", () => {
 	afterEach(teardown);
 
+	it("offers the rebase item enabled on a commit in the checked-out line", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+
+		await app.repo.contextMenu("C2");
+
+		expect(app.contextMenu.items()).toContainEqual({
+			label: "Interactive Rebase...",
+			enabled: true,
+		});
+	});
+
 	it("lands the commit it started from reordered above the rest", async () => {
 		const app = await setup({ repo: FOUR_COMMITS });
 		await app.repo.open();

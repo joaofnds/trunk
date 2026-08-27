@@ -1,4 +1,7 @@
+import type { FakeClipboard } from "../fakes/clipboard.js";
+import type { FakeDialog } from "../fakes/dialog.js";
 import type { FakeMenu } from "../fakes/menu.js";
+import type { FakeOpener } from "../fakes/opener.js";
 import type { FakePath } from "../fakes/path.js";
 import type { FakeWebview } from "../fakes/webview.js";
 import type { FakeWindow } from "../fakes/window.js";
@@ -24,6 +27,9 @@ export interface Fakes {
 	webview: FakeWebview;
 	path: FakePath;
 	menu: FakeMenu;
+	dialog: FakeDialog;
+	clipboard: FakeClipboard;
+	opener: FakeOpener;
 }
 
 /** The test's view of the running application: per-domain drivers and the Fakes
@@ -37,6 +43,9 @@ export class AppDriver {
 	readonly rebaseEditor: RebaseEditorDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
+	readonly dialog: FakeDialog;
+	readonly clipboard: FakeClipboard;
+	readonly opener: FakeOpener;
 	readonly window: FakeWindow;
 	readonly webview: FakeWebview;
 	readonly path: FakePath;
@@ -54,6 +63,9 @@ export class AppDriver {
 		this.rebaseEditor = new RebaseEditorDriver();
 		this.events = new EventsDriver(host);
 		this.contextMenu = fakes.menu;
+		this.dialog = fakes.dialog;
+		this.clipboard = fakes.clipboard;
+		this.opener = fakes.opener;
 		this.window = fakes.window;
 		this.webview = fakes.webview;
 		this.path = fakes.path;
