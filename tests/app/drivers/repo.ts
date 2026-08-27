@@ -1,6 +1,6 @@
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
-import { firstMatching } from "./dom.js";
+import { firstMatching, openContextMenu } from "./dom.js";
 
 const RECENT_ENTRY = '[role="button"]';
 const COMMIT_ROW = '[data-testid="commit-row"]';
@@ -34,11 +34,7 @@ export class RepoDriver {
 	async contextMenu(summary: string): Promise<void> {
 		const row = await waitFor(`the ${summary} row`, () => commitRow(summary));
 
-		row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-
-		await waitFor(`the context menu on ${summary}`, () =>
-			this.menu.items().length > 0 ? true : null,
-		);
+		await openContextMenu(row, this.menu, summary);
 	}
 
 	/** Every commit summary the graph is showing, top row first. */

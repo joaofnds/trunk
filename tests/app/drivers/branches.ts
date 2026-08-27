@@ -1,8 +1,9 @@
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
-import { firstMatching } from "./dom.js";
+import { firstMatching, openContextMenu } from "./dom.js";
 
 const BRANCH_ROW = '[data-testid="branch-row"]';
+const ROW_BUTTON = '[role="button"]';
 
 /** The branch sidebar, in the gestures it offers: a double-click checks a
  *  branch out, and a refusal shows under the row it was aimed at. */
@@ -12,19 +13,15 @@ export class BranchesDriver {
 	/** Right-clicks a branch, returning once the menu it opens is on screen. */
 	async contextMenu(name: string): Promise<void> {
 		const row = await waitFor(`the ${name} branch row`, () => branchRow(name));
+		const target = row.querySelector(ROW_BUTTON);
+		if (!target) throw new Error(`the ${name} branch row offers no control`);
 
-		row
-			.querySelector('[role="button"]')
-			?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-
-		await waitFor(`the context menu on ${name}`, () =>
-			this.menu.items().length > 0 ? true : null,
-		);
+		await openContextMenu(target, this.menu, name);
 	}
 
 	async checkout(name: string): Promise<void> {
 		const row = await waitFor(`the ${name} branch row`, () => branchRow(name));
-		const target = row.querySelector('[role="button"]');
+		const target = row.querySelector(ROW_BUTTON);
 
 		target?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
 	}
