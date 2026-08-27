@@ -2,10 +2,10 @@
 name: update-everything
 description: >
   Sweep every version-bearing surface of the repo to latest — mise toolchain,
-  Rust crates, frontend deps, e2e deps, GitHub Actions — majors included.
+  Rust crates, frontend deps, GitHub Actions — majors included.
   Parallel agents per ecosystem, revert-if-red per item, one commit per
   ecosystem. HALT if the tree is dirty or the baseline check is red.
-argument-hint: "[actions | crates | frontend | e2e | mise ...]"
+argument-hint: "[actions | crates | frontend | mise ...]"
 disable-model-invocation: true
 ---
 
@@ -24,7 +24,7 @@ Bring the whole project to current versions in one sweep. Policy decisions
 ## Argument
 
 Optional space-separated ecosystem filter: any of `actions`, `crates`,
-`frontend`, `e2e`, `mise`. No argument = all five.
+`frontend`, `mise`. No argument = all four.
 
 ## Phase 0 — Preflight (HALT conditions)
 
@@ -118,14 +118,6 @@ Scope: root `package.json`, `bun.lock`, and code fallout under `src/`.
   `bun.lock`; the npm lockfile looks dead and is a deletion candidate for the
   user to confirm.
 
-### Agent: e2e
-
-Scope: `e2e/` only (own `package.json` + `bun.lock`).
-
-- Same treatment as frontend: `bun outdated` → edit → `bun install` in `e2e/`.
-- E2E cannot run locally (needs a display driver); verification is
-  install success + `bunx wdio config --help`-level smoke only. Flag that the
-  real proof is the next CI e2e run.
 
 ## Phase 3 — Gate, fix, commit (orchestrator, sequential)
 
@@ -154,7 +146,6 @@ Scope: `e2e/` only (own `package.json` + `bun.lock`).
      constraint — revert that file before committing.
    - `chore(deps): update frontend dependencies` — `package.json`,
      `bun.lock`, `src/`
-   - `chore(deps): update e2e dependencies` — `e2e/`
    Skip ecosystems with no changes. Commit directly to `main` — never create
    a branch.
 6. Leftover unstaged files after the last commit = a scoping bug; stop and
@@ -165,5 +156,4 @@ Scope: `e2e/` only (own `package.json` + `bun.lock`).
 End with a table per ecosystem: **updated** (dep, from → to), **reverted**
 (dep + why), **flagged** (needs a human decision). Always include the standing
 flags when applicable: `package-lock.json` deletion and `release.yml`
-toolchain drift. Remind the user that e2e deps are only proven by the next
-CI run.
+toolchain drift.
