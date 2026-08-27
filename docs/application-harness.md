@@ -111,7 +111,7 @@ refetched" — which has no state to wait for, and it costs the whole quiet wind
 
 ## Budget
 
-The suite runs in 9.0 s against a 10 s ceiling, with the host binary already built. A
+The suite runs in 8.2 s against a 10 s ceiling, with the host binary already built. A
 scenario that boots the application and reads the graph costs 130-150 ms, one that waits out
 the debounce 275 ms, and a full stage-and-commit workflow about 500 ms. A test file costs about
 0.2 s of vite transform, so file count is a budget term, not a filing preference.
