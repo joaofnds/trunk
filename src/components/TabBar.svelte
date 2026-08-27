@@ -109,9 +109,9 @@ $effect(() => {
   .tab-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     height: 100%;
-    padding: 0 4px;
+    padding: 0 var(--space-1);
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -124,10 +124,10 @@ $effect(() => {
   .tab-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 8px 0 12px;
-    height: 26px;
-    border-radius: var(--radius-m);
+    gap: var(--space-2);
+    padding: 0 var(--space-2) 0 var(--space-3);
+    height: var(--control-h);
+    border-radius: var(--radius);
     font-size: 12px;
     font-weight: 500;
     color: var(--fg-2);
@@ -167,7 +167,7 @@ $effect(() => {
     justify-content: center;
     width: 16px;
     height: 16px;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius);
     border: none;
     background: none;
     color: var(--fg-2);
@@ -187,8 +187,8 @@ $effect(() => {
     align-items: center;
     justify-content: center;
     width: 26px;
-    height: 26px;
-    border-radius: var(--radius-m);
+    height: var(--control-h);
+    border-radius: var(--radius);
     border: 1px dashed var(--line);
     background: none;
     color: var(--fg-2);

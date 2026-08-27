@@ -1,16 +1,32 @@
 @import "tailwindcss";
 
 :root {
-	/* ── Base scale & density (comfortable) ── */
+	/* One unit. Every length in this file is an integer multiple of it, so the
+	   whole interface rescales from this line and nowhere else. */
 	--u: 4px;
-	--row-h: 28px;
-	--topbar-h: 44px;
-	--panel-header-h: 26px;
-	--subbar-h: 32px;
-	--graph-w: 130px;
-	--sidebar-w: 232px;
-	--right-w: 320px;
-	--refs-w: 0px;
+
+	/* ── Spacing ── */
+	--space-1: calc(1 * var(--u));
+	--space-2: calc(2 * var(--u));
+	--space-3: calc(3 * var(--u));
+	--space-4: calc(4 * var(--u));
+
+	/* ── Chrome heights ── */
+	--row-h: calc(7 * var(--u));
+	--bar-h: calc(7 * var(--u));
+	--topbar-h: calc(11 * var(--u));
+
+	/* ── Control heights ── */
+	--control-sm-h: calc(5 * var(--u));
+	--control-h: calc(7 * var(--u));
+	--control-lg-h: calc(8 * var(--u));
+
+	/* ── Widths ── */
+	--counter-gutter: calc(11 * var(--u));
+	--graph-w: calc(33 * var(--u));
+	--sidebar-w: calc(58 * var(--u));
+	--right-w: calc(80 * var(--u));
+	--refs-w: 0;
 
 	/* ── Surfaces — cool-neutral ramp (oklch, hue 260) ── */
 	--bg-0: oklch(0.08 0.003 260); /* deepest — body, editor & input wells */
@@ -77,9 +93,7 @@
 	--lane-7: oklch(0.76 0.02 75);
 
 	/* ── Radius & elevation ── */
-	--radius-s: 4px;
-	--radius-m: 6px;
-	--radius-l: 10px;
+	--radius: calc(1 * var(--u));
 	--radius-pill: 999px;
 	--shadow-1: 0 1px 0 rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
 	--shadow-2: 0 8px 32px -8px rgba(0, 0, 0, 0.6);
@@ -353,11 +367,11 @@ textarea::placeholder {
 .tooltip-pop {
 	position: fixed;
 	z-index: 1000;
-	padding: 3px 7px;
+	padding: var(--space-1) var(--space-2);
 	background: var(--bg-2);
 	color: var(--fg-1);
 	border: 1px solid var(--line);
-	border-radius: var(--radius-s);
+	border-radius: var(--radius);
 	box-shadow: var(--shadow-md);
 	font-size: 11px;
 	font-weight: 500;
@@ -467,7 +481,7 @@ textarea::placeholder {
 }
 .markdown-body code {
 	padding: 0.12em 0.35em;
-	border-radius: var(--radius-s);
+	border-radius: var(--radius);
 	background: var(--color-md-code-bg);
 	font-family: var(--font-mono);
 	font-size: 0.9em;
@@ -476,7 +490,7 @@ textarea::placeholder {
 	margin: 0.7em 0;
 	padding: 0.8em 1em;
 	overflow: auto;
-	border-radius: var(--radius-m);
+	border-radius: var(--radius);
 	background: var(--color-md-code-bg);
 }
 .markdown-body pre code {

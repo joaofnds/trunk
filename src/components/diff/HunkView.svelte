@@ -375,7 +375,7 @@ function lineColor(): string {
       class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
       style="
         {DIFF_ROW_FONT};
-        padding: 0 8px;
+        padding: 0 var(--space-2);
         white-space: {wrapActive ? 'pre-wrap' : 'pre'};
         word-break: {wrapActive ? 'break-all' : 'normal'};
         background: {lineBackground(line.origin, isSelected)};
@@ -594,9 +594,10 @@ function lineColor(): string {
     background: color-mix(in oklch, var(--info) 6%, var(--bg-2));
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 0 8px;
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
     height: var(--diff-hunk-header-height);
+    border-bottom: 1px solid var(--color-border);
     box-sizing: border-box;
     z-index: 1;
   }
@@ -607,10 +608,14 @@ function lineColor(): string {
     font-family: var(--font-mono, monospace);
   }
   .hunk-btn {
-    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
     font-size: 11px;
     font-family: var(--font-sans, sans-serif);
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     cursor: pointer;
     white-space: nowrap;
   }
@@ -647,7 +652,7 @@ function lineColor(): string {
     border-bottom: 1px solid var(--color-border);
     font-size: 12px;
     font-weight: 500;
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     height: var(--diff-file-header-height);
     box-sizing: border-box;
     color: var(--color-text);
@@ -655,7 +660,7 @@ function lineColor(): string {
     user-select: none;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .file-header-caret {
     font-size: 10px;
@@ -666,7 +671,7 @@ function lineColor(): string {
   .binary-row {
     height: var(--diff-binary-row-height);
     box-sizing: border-box;
-    padding: 8px;
+    padding: var(--space-2);
     color: var(--color-text-muted);
     font-size: 12px;
     line-height: 16px;
@@ -681,11 +686,11 @@ function lineColor(): string {
   }
   .word-add {
     background-color: var(--color-diff-word-add-bg);
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
   .word-delete {
     background-color: var(--color-diff-word-delete-bg);
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
 
   /* Syntax highlighting classes -- text color from CSS custom properties (per D-03) */
@@ -736,7 +741,7 @@ function lineColor(): string {
   .gutter-selectable:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
 
   /* Faint full-row tint while hovering a selectable gutter — the affordance that
@@ -765,8 +770,8 @@ function lineColor(): string {
   .inline-comment-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 6px 8px 6px 11px;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
     width: 100cqi;
     box-sizing: border-box;
   }

@@ -43,10 +43,10 @@ let hovered = $state(false);
     onmouseenter={() => (hovered = true)}
     onmouseleave={() => (hovered = false)}
     style="
-      height: 26px;
-      margin: 0 6px;
-      padding: 0 8px;
-      border-radius: var(--radius-m);
+      height: var(--row-h);
+      margin: 0 var(--space-2);
+      padding: 0 var(--space-2);
+      border-radius: var(--radius);
       display: flex;
       align-items: center;
       overflow: hidden;
@@ -74,7 +74,7 @@ let hovered = $state(false);
       flex: 1;
     ">{name}{isLoading ? ' …' : ''}</span>
     {#if ahead > 0 || behind > 0}
-      <span style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); margin-left: 4px; display: inline-flex; align-items: center; gap: 2px;">
+      <span style="flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); margin-left: 4px; display: inline-flex; align-items: center; gap: var(--space-1);">
         {#if ahead > 0}<span style="display: inline-flex; align-items: center; color: var(--ok);"><ArrowUp size={11} />{ahead}</span>{/if}
         {#if behind > 0}<span style="display: inline-flex; align-items: center; margin-left: 2px; color: var(--warn);"><ArrowDown size={11} />{behind}</span>{/if}
       </span>
@@ -85,7 +85,7 @@ let hovered = $state(false);
   </div>
 
   {#if isError}
-    <div class="error-banner" style="font-size: 11px; padding: 6px 10px; margin: 0 8px 4px; border-radius: 3px;">
+    <div class="error-banner" style="font-size: 11px; padding: var(--space-2) var(--space-3); margin: 0 var(--space-2) var(--space-1); border-radius: var(--radius);">
       {errorText ?? 'Cannot checkout — working tree has uncommitted changes. Commit or stash your changes first.'}
     </div>
   {/if}

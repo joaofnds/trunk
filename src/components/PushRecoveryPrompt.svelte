@@ -143,7 +143,7 @@ async function handleForcePush(target: Target) {
 <style>
   .recovery-surface {
     flex-shrink: 0;
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
     border-bottom: 1px solid var(--color-border);
     background: var(--color-banner-warning-bg);
     border-left: 3px solid var(--color-banner-warning-border);
@@ -151,7 +151,7 @@ async function handleForcePush(target: Target) {
   .recovery-body {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .recovery-text {
     font-size: 12px;
@@ -161,14 +161,18 @@ async function handleForcePush(target: Target) {
   }
   .recovery-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
     flex-shrink: 0;
   }
   .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 11px;
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     white-space: nowrap;
     border: 1px solid transparent;
   }

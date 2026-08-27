@@ -761,7 +761,7 @@ $effect(() => {
 </script>
 
 {#snippet sectionCount(n: number)}
-  <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 5px; border-radius: var(--radius-s); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;">{n}</span>
+  <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--space-1); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-1); font-family: var(--font-mono); font-weight: 600; font-size: 10px; letter-spacing: 0; flex-shrink: 0;">{n}</span>
 {/snippet}
 
 <div style="
@@ -775,16 +775,17 @@ $effect(() => {
 ">
   <!-- Panel header -->
   <div style="
-    height: var(--panel-header-h);
+    height: var(--bar-h);
+    background: var(--bg-2);
     border-bottom: 1px solid var(--color-border);
-    padding: 0 12px;
+    padding: 0 var(--space-3);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: var(--space-2);
     flex-shrink: 0;
   ">
-    <span style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0;">
+    <span style="flex: 1; display: flex; align-items: center; justify-content: center; gap: var(--space-2); min-width: 0;">
       <span style="font-size: 12px; color: var(--color-text);">
         {totalCount} file{totalCount === 1 ? '' : 's'} changed
       </span>
@@ -793,8 +794,8 @@ $effect(() => {
         <span style="
           background: color-mix(in oklch, var(--lane-0) 14%, transparent);
           box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-0) 50%, transparent);
-          border-radius: 9999px;
-          padding: 0 8px;
+          border-radius: var(--radius-pill);
+          padding: 0 var(--space-2);
           font-size: 11px;
           line-height: 16px;
           color: var(--lane-0);
@@ -822,8 +823,8 @@ $effect(() => {
           align-items: center;
           justify-content: center;
           width: 20px;
-          height: 20px;
-          border-radius: 3px;
+          height: var(--control-sm-h);
+          border-radius: var(--radius);
           flex-shrink: 0;
           padding: 0;
         "
@@ -843,8 +844,8 @@ $effect(() => {
           align-items: center;
           justify-content: center;
           width: 20px;
-          height: 20px;
-          border-radius: 3px;
+          height: var(--control-sm-h);
+          border-radius: var(--radius);
           flex-shrink: 0;
           padding: 0;
         "
@@ -867,8 +868,8 @@ $effect(() => {
         align-items: center;
         justify-content: center;
         width: 20px;
-        height: 20px;
-        border-radius: 3px;
+        height: var(--control-sm-h);
+        border-radius: var(--radius);
         flex-shrink: 0;
         padding: 0;
       "
@@ -886,13 +887,13 @@ $effect(() => {
     <!-- Rebase conflict/progress header -->
     {#if (status?.conflicted.length ?? 0) > 0}
       <div style="
-        height: 24px;
+        height: var(--bar-h);
         background: var(--color-badge-warning-bg);
         border-bottom: 1px solid var(--color-border);
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: var(--space-2);
         flex-shrink: 0;
       ">
         <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center;">
@@ -902,13 +903,13 @@ $effect(() => {
       </div>
     {/if}
     <div style="
-      height: 28px;
+      height: var(--bar-h);
       border-bottom: 1px solid var(--color-border);
-      padding: 0 12px;
+      padding: 0 var(--space-3);
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: var(--space-2);
       flex-shrink: 0;
       font-size: 11px;
       color: var(--color-text-muted);
@@ -917,8 +918,8 @@ $effect(() => {
       {#if operationInfo.source_branch}
         <span style="
           background: var(--lane-{operationInfo.source_color_index ?? 0});
-          border-radius: 9999px;
-          padding: 0 6px;
+          border-radius: var(--radius-pill);
+          padding: 0 var(--space-2);
           font-size: 10px;
           line-height: 16px;
           color: var(--bg-0);
@@ -929,8 +930,8 @@ $effect(() => {
       {#if operationInfo.target_branch}
         <span style="
           background: var(--lane-{operationInfo.target_color_index ?? 0});
-          border-radius: 9999px;
-          padding: 0 6px;
+          border-radius: var(--radius-pill);
+          padding: 0 var(--space-2);
           font-size: 10px;
           line-height: 16px;
           color: var(--bg-0);
@@ -964,9 +965,9 @@ $effect(() => {
           onclick={() => (conflicted_expanded = !conflicted_expanded)}
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') conflicted_expanded = !conflicted_expanded; }}
           style="
-            height: 34px;
+            height: var(--bar-h);
             border-bottom: 1px solid var(--color-border);
-            padding: 0 8px;
+            padding: 0 var(--space-2);
             display: flex;
             align-items: center;
             cursor: pointer;
@@ -979,19 +980,23 @@ $effect(() => {
           <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: 4px;">
             <AlertTriangle size={12} />
           </span>
-          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: 8px;">
+          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
             <span>Conflicted Files</span>{@render sectionCount(status?.conflicted.length ?? 0)}
           </span>
           <button
             onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
             style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
               background: var(--color-warning-bg);
               color: var(--color-warning);
               border: 1px solid var(--color-warning-border);
-              border-radius: 4px;
+              border-radius: var(--radius);
               font-size: 10px;
               font-weight: 600;
-              padding: 2px 8px;
+              height: var(--control-sm-h);
+              padding: 0 var(--space-2);
               cursor: pointer;
             "
           >Mark All Resolved</button>
@@ -1029,9 +1034,9 @@ $effect(() => {
         onclick={() => (unstaged_expanded = !unstaged_expanded)}
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') unstaged_expanded = !unstaged_expanded; }}
         style="
-          height: 34px;
+          height: var(--bar-h);
           border-bottom: 1px solid var(--color-border);
-          padding: 0 8px;
+          padding: 0 var(--space-2);
           display: flex;
           align-items: center;
           cursor: pointer;
@@ -1045,20 +1050,24 @@ $effect(() => {
           <span style="color: var(--color-badge-warning); display: inline-flex; align-items: center; margin-right: 4px;">
             <AlertTriangle size={12} />
           </span>
-          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px;">
+          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2);">
             <span>Conflicted Files</span>{@render sectionCount(status?.conflicted.length ?? 0)}
           </span>
           {#if (status?.conflicted.length ?? 0) > 0}
             <button
               onclick={(e) => { e.stopPropagation(); markAllResolved(); }}
               style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
                 background: var(--color-success-bg);
                 color: var(--color-success);
                 font-size: 11px;
                 border: 1px solid var(--color-success-border);
-                border-radius: 4px;
+                border-radius: var(--radius);
                 cursor: pointer;
-                padding: 2px 8px;
+                height: var(--control-sm-h);
+                padding: 0 var(--space-2);
                 white-space: nowrap;
               "
               aria-label="Mark all as resolved"
@@ -1067,20 +1076,24 @@ $effect(() => {
             </button>
           {/if}
         {:else}
-          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: 8px;">
+          <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
             <span>Unstaged Files</span>{@render sectionCount(status?.unstaged.length ?? 0)}
           </span>
           {#if (status?.unstaged.length ?? 0) > 0}
             <button
               onclick={(e) => { e.stopPropagation(); handleDiscardAll(); }}
               style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
                 background: var(--color-danger-bg);
                 color: var(--color-danger);
                 font-size: 11px;
                 border: 1px solid var(--color-danger-border);
-                border-radius: 4px;
+                border-radius: var(--radius);
                 cursor: pointer;
-                padding: 2px 8px;
+                height: var(--control-sm-h);
+                padding: 0 var(--space-2);
                 white-space: nowrap;
               "
               aria-label="Discard all changes"
@@ -1090,13 +1103,17 @@ $effect(() => {
             <button
               onclick={(e) => { e.stopPropagation(); stageAll(); }}
               style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
                 background: var(--color-success-bg);
                 color: var(--color-success);
                 font-size: 11px;
                 border: 1px solid var(--color-success-border);
-                border-radius: 4px;
+                border-radius: var(--radius);
                 cursor: pointer;
-                padding: 2px 8px;
+                height: var(--control-sm-h);
+                padding: 0 var(--space-2);
                 white-space: nowrap;
                 margin-left: 4px;
               "
@@ -1159,9 +1176,9 @@ $effect(() => {
         onclick={() => (staged_expanded = !staged_expanded)}
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') staged_expanded = !staged_expanded; }}
         style="
-          height: 34px;
+          height: var(--bar-h);
           border-bottom: 1px solid var(--color-border);
-          padding: 0 8px;
+          padding: 0 var(--space-2);
           display: flex;
           align-items: center;
           cursor: pointer;
@@ -1171,20 +1188,24 @@ $effect(() => {
         <span style="color: var(--color-text-muted); display: inline-flex; align-items: center; margin-right: 4px;">
           {#if staged_expanded}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
         </span>
-        <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: 8px;">
+        <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; flex: 1; display: inline-flex; align-items: center; gap: var(--space-2);">
           <span>{isOperation ? 'Resolved Files' : 'Staged Files'}</span>{@render sectionCount(status?.staged.length ?? 0)}
         </span>
         {#if (status?.staged.length ?? 0) > 0}
           <button
             onclick={(e) => { e.stopPropagation(); unstageAll(); }}
             style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
               background: var(--color-warning-bg);
               color: var(--color-warning);
               font-size: 11px;
               border: 1px solid var(--color-warning-border);
-              border-radius: 4px;
+              border-radius: var(--radius);
               cursor: pointer;
-              padding: 2px 8px;
+              height: var(--control-sm-h);
+              padding: 0 var(--space-2);
               white-space: nowrap;
             "
             aria-label="Unstage all"
@@ -1235,10 +1256,10 @@ $effect(() => {
   {#if isRebase && operationInfo}
     <!-- Rebase progress + actions (GitKraken style) -->
     <div style="
-      padding: 8px;
+      padding: var(--space-2);
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: var(--space-2);
       height: {bottomHeight}px;
       flex-shrink: 0;
       overflow: hidden;
@@ -1256,8 +1277,8 @@ $effect(() => {
           border: 1px solid var(--color-border);
           background: var(--color-surface);
           color: var(--color-text);
-          border-radius: 4px;
-          padding: 4px 6px;
+          border-radius: var(--radius);
+          padding: var(--space-1) var(--space-2);
           font-size: 12px;
         "
       />
@@ -1272,23 +1293,23 @@ $effect(() => {
           border: 1px solid var(--color-border);
           background: var(--color-surface);
           color: var(--color-text);
-          border-radius: 4px;
-          padding: 4px 6px;
+          border-radius: var(--radius);
+          padding: var(--space-1) var(--space-2);
           font-size: 12px;
           resize: none;
         "
       ></textarea>
-      <div style="display: flex; gap: 6px;">
+      <div style="display: flex; gap: var(--space-2);">
         <button
           onclick={continueRebase}
           disabled={rebaseLoading || !allResolved}
           style="
             flex: 3;
-            height: 34px;
+            height: var(--control-lg-h);
             background: var(--color-success-bg);
             color: var(--color-success);
             border: 1px solid var(--color-success-border);
-            border-radius: 4px;
+            border-radius: var(--radius);
             font-size: 12px;
             font-weight: 600;
             cursor: {allResolved && !rebaseLoading ? 'pointer' : 'not-allowed'};
@@ -1302,11 +1323,11 @@ $effect(() => {
           disabled={rebaseLoading}
           style="
             flex: 1;
-            height: 34px;
+            height: var(--control-lg-h);
             background: var(--color-warning-bg);
             color: var(--color-warning);
             border: 1px solid var(--color-warning-border);
-            border-radius: 4px;
+            border-radius: var(--radius);
             font-size: 12px;
             font-weight: 600;
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
@@ -1320,11 +1341,11 @@ $effect(() => {
           disabled={rebaseLoading}
           style="
             flex: 2;
-            height: 34px;
+            height: var(--control-lg-h);
             background: var(--color-danger-bg);
             color: var(--color-danger);
             border: 1px solid var(--color-danger-border);
-            border-radius: 4px;
+            border-radius: var(--radius);
             font-size: 12px;
             font-weight: 600;
             cursor: {rebaseLoading ? 'not-allowed' : 'pointer'};
@@ -1339,9 +1360,9 @@ $effect(() => {
     <!-- Merge-continue actions. The commit message is edited in the host-owned
          MessageEditor modal (runMergeContinue), not an inline form. -->
     <div style="
-      padding: 8px;
+      padding: var(--space-2);
       display: flex;
-      gap: 6px;
+      gap: var(--space-2);
       flex-shrink: 0;
     ">
       <button
@@ -1349,11 +1370,11 @@ $effect(() => {
         disabled={!allResolved || mergeLoading}
         style="
           flex: 3;
-          height: 34px;
+          height: var(--control-lg-h);
           background: var(--color-success-bg);
           color: var(--color-success);
           border: 1px solid var(--color-success-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           font-size: 12px;
           cursor: {allResolved && !mergeLoading ? 'pointer' : 'not-allowed'};
           opacity: {allResolved && !mergeLoading ? 1 : 0.4};
@@ -1366,11 +1387,11 @@ $effect(() => {
         disabled={mergeLoading}
         style="
           flex: 2;
-          height: 34px;
+          height: var(--control-lg-h);
           background: var(--color-danger-bg);
           color: var(--color-danger);
           border: 1px solid var(--color-danger-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           font-size: 12px;
           cursor: {mergeLoading ? 'not-allowed' : 'pointer'};
           opacity: {mergeLoading ? 0.4 : 1};

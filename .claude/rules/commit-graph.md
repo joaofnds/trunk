@@ -11,6 +11,7 @@ paths:
   - "src/lib/wip-row.ts"
   - "src/lib/overlay-paths.ts"
   - "src/lib/overlay-visible.ts"
+  - "src/lib/chrome-heights.ts"
   - "src/lib/graph-constants.ts"
   - "src/components/CommitGraph.svelte"
   - "src-tauri/tests/test_graph.rs"

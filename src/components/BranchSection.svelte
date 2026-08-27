@@ -31,7 +31,7 @@ let {
     onclick={ontoggle}
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
     style="
-      padding: 10px 10px 6px;
+      padding: var(--space-3) var(--space-3) var(--space-2);
       display: flex;
       flex-direction: row;
       align-items: center;
@@ -48,7 +48,7 @@ let {
       <button
         data-testid="branch-section-create-btn"
         onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-        style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0 4px; display: inline-flex; align-items: center;"
+        style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
         aria-label="Create new branch"
       >
         <Plus size={12} />

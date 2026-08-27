@@ -60,15 +60,15 @@ function autofocus(node: HTMLElement) {
     right: 8px;
     z-index: 10;
     width: 300px;
-    height: 34px;
+    height: var(--control-lg-h);
     background: var(--bg-2);
     border: 1px solid var(--line);
-    border-radius: var(--radius-m);
+    border-radius: var(--radius);
     box-shadow: var(--shadow-md);
     display: flex;
     align-items: center;
-    padding: 0 6px;
-    gap: 4px;
+    padding: 0 var(--space-2);
+    gap: var(--space-1);
   "
 >
   <input
@@ -114,8 +114,8 @@ function autofocus(node: HTMLElement) {
       border: none;
       background: transparent;
       cursor: pointer;
-      padding: 2px 4px;
-      border-radius: 4px;
+      padding: var(--space-1);
+      border-radius: var(--radius);
       color: var(--color-text-muted);
       display: flex;
       align-items: center;
@@ -134,8 +134,8 @@ function autofocus(node: HTMLElement) {
       border: none;
       background: transparent;
       cursor: pointer;
-      padding: 2px 4px;
-      border-radius: 4px;
+      padding: var(--space-1);
+      border-radius: var(--radius);
       color: var(--color-text-muted);
       display: flex;
       align-items: center;
@@ -153,8 +153,8 @@ function autofocus(node: HTMLElement) {
       border: none;
       background: transparent;
       cursor: pointer;
-      padding: 2px 4px;
-      border-radius: 4px;
+      padding: var(--space-1);
+      border-radius: var(--radius);
       color: var(--color-text-muted);
       display: flex;
       align-items: center;

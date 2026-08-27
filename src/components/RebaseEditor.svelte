@@ -695,17 +695,17 @@ let lastVisibleColumn = $derived.by(() => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 36px;
+    height: var(--bar-h);
     flex-shrink: 0;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
-    padding: 0 12px;
+    padding: 0 var(--space-3);
   }
 
   .rebase-toolbar-left {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .rebase-toolbar-title {
@@ -725,14 +725,15 @@ let lastVisibleColumn = $derived.by(() => {
     color: var(--accent-fg);
     font-size: 11px;
     font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 3px;
+    padding: 0 var(--space-2);
+    line-height: 16px;
+    border-radius: var(--radius);
   }
 
   .rebase-toolbar-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .rebase-bottombar {
@@ -740,7 +741,7 @@ let lastVisibleColumn = $derived.by(() => {
     align-items: center;
     justify-content: space-between;
     flex-shrink: 0;
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--color-border);
     background: var(--color-surface);
   }
@@ -750,7 +751,7 @@ let lastVisibleColumn = $derived.by(() => {
     color: var(--color-text-muted);
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     flex-wrap: wrap;
   }
 
@@ -762,8 +763,8 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-shortcut-key {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 3px;
-    padding: 0 4px;
+    border-radius: var(--radius);
+    padding: 0 var(--space-1);
     font-family: var(--font-mono);
     font-size: 10px;
     margin-left: 6px;
@@ -772,12 +773,12 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-bottombar-right {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .rebase-btn {
-    border-radius: 4px;
-    padding: 4px 12px;
+    border-radius: var(--radius);
+    padding: var(--space-1) var(--space-3);
     font-size: 11px;
     cursor: pointer;
     white-space: nowrap;
@@ -820,7 +821,7 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-header {
     display: flex;
     align-items: center;
-    height: var(--panel-header-h);
+    height: var(--bar-h);
     flex-shrink: 0;
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
@@ -925,7 +926,7 @@ let lastVisibleColumn = $derived.by(() => {
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .rebase-action-dot {
@@ -942,8 +943,8 @@ let lastVisibleColumn = $derived.by(() => {
     border: 1px solid var(--color-border);
     color: var(--color-text);
     font-size: 11px;
-    padding: 4px 4px;
-    border-radius: 3px;
+    padding: var(--space-1);
+    border-radius: var(--radius);
     cursor: pointer;
     font-family: var(--font-sans);
   }
@@ -994,11 +995,11 @@ let lastVisibleColumn = $derived.by(() => {
     z-index: 10;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 16px;
+    border-radius: var(--radius);
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: var(--space-3);
     box-shadow: var(--shadow-lg);
   }
 
@@ -1011,11 +1012,11 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-msg-editor-summary {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     color: var(--color-text);
     font-size: 13px;
     font-family: var(--font-sans);
-    padding: 6px 8px;
+    padding: var(--space-2);
     outline: none;
   }
 
@@ -1026,11 +1027,11 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-msg-editor-body {
     background: var(--color-bg);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     color: var(--color-text);
     font-size: 13px;
     font-family: var(--font-sans);
-    padding: 6px 8px;
+    padding: var(--space-2);
     resize: vertical;
     outline: none;
   }
@@ -1042,14 +1043,14 @@ let lastVisibleColumn = $derived.by(() => {
   .rebase-msg-editor-buttons {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   /* --- Validation error --- */
 
   .rebase-validation-error {
     background: var(--color-danger-bg-subtle);
-    padding: 4px 12px;
+    padding: var(--space-1) var(--space-3);
     font-size: 11px;
     color: var(--color-danger);
   }

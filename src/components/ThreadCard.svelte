@@ -286,7 +286,7 @@ async function requestDeleteReply(replyId: string) {
     display: flex;
     flex-direction: column;
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     background: var(--color-comment-card-bg);
     overflow: hidden;
     /* Own the typography so the card renders identically regardless of the
@@ -304,8 +304,8 @@ async function requestDeleteReply(replyId: string) {
   .comment-card-header {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     background: var(--color-comment-card-header-bg);
     border-bottom: 1px solid var(--color-border);
     font-size: 11px;
@@ -345,7 +345,7 @@ async function requestDeleteReply(replyId: string) {
   .diff-gutter {
     flex-shrink: 0;
     width: 18px;
-    padding: 0 4px;
+    padding: 0 var(--space-1);
     text-align: center;
     color: var(--color-text-muted);
   }
@@ -359,10 +359,10 @@ async function requestDeleteReply(replyId: string) {
 
   /* Body */
   .comment-card-body {
-    padding: 6px 8px;
+    padding: var(--space-2);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .comment-card-text {
     white-space: pre-wrap;
@@ -374,7 +374,7 @@ async function requestDeleteReply(replyId: string) {
     background: transparent;
     border: none;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 0 var(--space-1);
     font-size: 12px;
     color: var(--color-text-muted);
   }
@@ -390,8 +390,8 @@ async function requestDeleteReply(replyId: string) {
     line-height: 1.4;
     color: var(--color-warning);
     background: var(--color-warning-bg);
-    border-radius: 4px;
-    padding: 0 6px;
+    border-radius: var(--radius);
+    padding: 0 var(--space-2);
     white-space: nowrap;
   }
 
@@ -404,8 +404,8 @@ async function requestDeleteReply(replyId: string) {
     letter-spacing: 0.02em;
     color: var(--color-text-muted);
     background: var(--color-muted-bg);
-    border-radius: 4px;
-    padding: 0 6px;
+    border-radius: var(--radius);
+    padding: 0 var(--space-2);
     white-space: nowrap;
   }
 
@@ -416,8 +416,8 @@ async function requestDeleteReply(replyId: string) {
     line-height: 1.4;
     text-transform: uppercase;
     letter-spacing: 0.02em;
-    border-radius: 4px;
-    padding: 0 6px;
+    border-radius: var(--radius);
+    padding: 0 var(--space-2);
     white-space: nowrap;
     background: var(--color-muted-bg);
   }
@@ -433,22 +433,26 @@ async function requestDeleteReply(replyId: string) {
     background: var(--color-comment-card-bg);
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
-    padding: 4px 6px;
+    border-radius: var(--radius);
+    padding: var(--space-1) var(--space-2);
     font-size: 12px;
     font-family: inherit;
   }
   .card-editor-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .card-editor-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
   }
   .card-editor-actions button[disabled] {
@@ -460,21 +464,25 @@ async function requestDeleteReply(replyId: string) {
   .thread-reply-composer {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 6px 8px;
+    gap: var(--space-1);
+    padding: var(--space-2);
     border-top: 1px solid var(--color-border);
   }
   .thread-reply-composer .card-textarea {
     font-size: 12px;
   }
   .thread-reply-composer button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     align-self: flex-end;
     background: transparent;
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
   }
   .thread-reply-composer button[disabled] {

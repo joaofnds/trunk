@@ -85,11 +85,11 @@ $effect(() => {
     background: none;
     border: none;
     border-left: 1px solid var(--line);
-    border-radius: 0 var(--radius-m) var(--radius-m) 0;
+    border-radius: 0 var(--radius) var(--radius) 0;
     color: var(--fg-2);
     cursor: pointer;
     font-size: 10px;
-    padding: 0 6px;
+    padding: 0 var(--space-2);
     height: 100%;
     display: flex;
     align-items: center;
@@ -115,10 +115,10 @@ $effect(() => {
     margin-top: 4px;
     background: var(--bg-2);
     border: 1px solid var(--line);
-    border-radius: var(--radius-m);
+    border-radius: var(--radius);
     box-shadow: var(--shadow-md);
     min-width: 180px;
-    padding: 4px 0;
+    padding: var(--space-1) 0;
   }
 
   .dropdown-option {
@@ -129,7 +129,7 @@ $effect(() => {
     border: none;
     color: var(--fg-1);
     font-size: 12px;
-    padding: 6px 12px;
+    padding: var(--space-2) var(--space-3);
     cursor: pointer;
   }
   .dropdown-option:hover {

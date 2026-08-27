@@ -209,8 +209,8 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	.comment-composer {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		padding: 8px;
+		gap: var(--space-2);
+		padding: var(--space-2);
 		background: var(--color-surface);
 		border-top: 1px solid var(--color-border);
 	}
@@ -224,13 +224,13 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	.composer-textarea {
 		min-height: 60px;
 		resize: vertical;
-		padding: 6px 8px;
+		padding: var(--space-2);
 		font-size: 12px;
 		font-family: var(--font-sans, sans-serif);
 		color: var(--color-text);
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
-		border-radius: 3px;
+		border-radius: var(--radius);
 		box-sizing: border-box;
 	}
 
@@ -242,14 +242,14 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	.composer-actions {
 		display: flex;
 		justify-content: flex-end;
-		gap: 8px;
+		gap: var(--space-2);
 	}
 
 	.composer-btn {
-		border-radius: 3px;
+		border-radius: var(--radius);
 		font-size: 11px;
 		font-family: var(--font-sans, sans-serif);
-		padding: 4px 12px;
+		padding: var(--space-1) var(--space-3);
 		white-space: nowrap;
 		cursor: pointer;
 	}

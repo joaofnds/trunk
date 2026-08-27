@@ -349,7 +349,7 @@ function lineColor(): string {
       class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{item.spanned ? ' diff-line-commented' : ''}"
       style="
         {DIFF_ROW_FONT};
-        padding: 0 8px;
+        padding: 0 var(--space-2);
         white-space: {wrapActive ? 'pre-wrap' : 'pre'};
         word-break: {wrapActive ? 'break-all' : 'normal'};
         background: {lineBackground(line.origin, isSelected)};
@@ -382,16 +382,20 @@ function lineColor(): string {
          commit diffs and unstaged working-tree diffs (260531-k4j) once a
          selection exists. Lives outside the list because it follows the live
          selection, which the row model must not take as an input. -->
-    <div style="display: flex; justify-content: flex-end; padding: 4px 8px; flex: 0 0 auto;">
+    <div style="display: flex; justify-content: flex-end; padding: var(--space-1) var(--space-2); flex: 0 0 auto;">
       <button
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-accent-bg, var(--color-surface));
           border: 1px solid var(--color-border);
-          border-radius: 3px;
+          border-radius: var(--radius);
           color: var(--color-accent);
           font-size: 11px;
           font-family: var(--font-sans, sans-serif);
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           cursor: pointer;
           white-space: nowrap;
         "
@@ -458,7 +462,7 @@ function lineColor(): string {
   .binary-row {
     height: var(--diff-binary-row-height);
     box-sizing: border-box;
-    padding: 8px;
+    padding: var(--space-2);
     color: var(--color-text-muted);
     font-size: 12px;
     line-height: 16px;
@@ -466,11 +470,11 @@ function lineColor(): string {
 
   .word-add {
     background-color: var(--color-diff-word-add-bg);
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
   .word-delete {
     background-color: var(--color-diff-word-delete-bg);
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
 
   /* Syntax highlighting classes */
@@ -521,7 +525,7 @@ function lineColor(): string {
   .gutter-selectable:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
 
   /* Faint full-row tint while hovering a selectable gutter — signals the line
@@ -548,7 +552,7 @@ function lineColor(): string {
   /* Comment rows hang as full-width block siblings directly under their anchored
      line, indented to clear the change-indicator rail. */
   .comment-row {
-    padding: 4px 8px 4px 16px;
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
   }
 
   /* Invisible character styling (Phase 63 -- WHSP-03, D-11). Real whitespace stays

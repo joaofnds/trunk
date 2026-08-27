@@ -1617,7 +1617,7 @@ $effect(() => {
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="flex items-center flex-shrink-0"
-    style="height: var(--panel-header-h); background: var(--bg-1); border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
+    style="height: var(--bar-h); background: var(--bg-1); border-bottom: 1px solid var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
     oncontextmenu={showHeaderContextMenu}
   >
     {#if columnVisibility.ref}
@@ -1728,7 +1728,7 @@ $effect(() => {
       {/each}
     {:else if commits.length === 0 && error}
       <!-- Initial load error -->
-      <div class="error-banner m-4 rounded-md px-4 py-3 text-sm">
+      <div class="error-banner m-4 rounded px-4 py-3 text-sm">
         {error}
       </div>
     {:else}
@@ -1932,13 +1932,13 @@ $effect(() => {
           {#if hoveredPill.overflowCount > 0}
             <!-- Multi-ref expansion: shows all refs vertically -->
             <div
-              class="absolute rounded-lg shadow-lg"
+              class="absolute rounded shadow-lg"
               style="
                 left: {hoveredPill.x}px;
                 top: {hoveredPill.y - PILL_HEIGHT / 2}px;
                 background: var(--bg-2);
                 border: 1px solid var(--line);
-                padding: 4px 8px;
+                padding: var(--space-1) var(--space-2);
                 z-index: 50;
                 pointer-events: auto;
                 opacity: 1;
@@ -1950,7 +1950,7 @@ $effect(() => {
               {#each hoveredPill.allRefs as ref}
                 {@const ri = refFromLabel(ref)}
                 <div
-                  style="display: flex; align-items: center; gap: 3px; cursor: {ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}; border-radius: 4px; color: var(--lane-{ref.color_index % 8});"
+                  style="display: flex; align-items: center; gap: var(--space-1); cursor: {ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}; border-radius: var(--radius); color: var(--lane-{ref.color_index % 8});"
                   class="text-[11px] leading-5 font-medium whitespace-nowrap hover:bg-white/8 px-1 -mx-1"
                   oncontextmenu={(e) => showRefContextMenu(e, ri)}
                   ondblclick={ri.refType === 'LocalBranch' || ri.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, ri) : undefined}
@@ -1987,7 +1987,7 @@ $effect(() => {
               oncontextmenu={(e) => showRefContextMenu(e, refFromPill(hoveredPill!))}
               ondblclick={hoveredPill.refType === 'LocalBranch' || hoveredPill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(hoveredPill!)) : undefined}
             >
-              <span style="display: flex; align-items: center; gap: 2px; font-weight: {hoveredPill.isHead ? 700 : 500}; color: var(--lane-{hoveredPill.colorIndex % 8});" class="text-[11px] font-medium whitespace-nowrap">
+              <span style="display: flex; align-items: center; gap: var(--space-1); font-weight: {hoveredPill.isHead ? 700 : 500}; color: var(--lane-{hoveredPill.colorIndex % 8});" class="text-[11px] font-medium whitespace-nowrap">
                 {#if PILL_ICONS[hoveredPill.refType]}
                   {@const HoverIcon = PILL_ICONS[hoveredPill.refType]}
                   <HoverIcon size={10} style="flex-shrink: 0; opacity: 0.9;" />

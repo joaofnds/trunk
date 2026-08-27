@@ -22,7 +22,7 @@ let { name, size = 18 }: Props = $props();
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 9999px;
+		border-radius: var(--radius-pill);
 		background: var(--bg-3);
 		color: var(--fg-0);
 		box-shadow: inset 0 0 0 1px var(--line);

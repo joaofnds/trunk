@@ -185,21 +185,19 @@ async function handleSubmit() {
 </script>
 
 <div style="
-  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   flex-shrink: 0;
 ">
   <!-- Mode tab selector -->
-  <div style="display: flex; gap: 0; border-bottom: 1px solid var(--color-border); margin-bottom: 2px;">
+  <div style="display: flex; gap: 0; height: var(--bar-h); border-bottom: 1px solid var(--color-border);">
     {#each [['commit', 'Commit'], ['amend', 'Amend'], ['stash', 'Stash']] as [tab, label]}
       <button
         onclick={() => handleModeSwitch(tab as 'commit' | 'amend' | 'stash')}
         disabled={committing}
         style="
           flex: 1;
-          padding: 6px 0 4px;
+          padding: 0;
           font-size: 12px;
           background: none;
           border: none;
@@ -214,89 +212,92 @@ async function handleSubmit() {
     {/each}
   </div>
 
-  <!-- Subject field -->
-  <div style="position: relative;">
-    <input
-      data-testid="commit-form-subject"
-      type="text"
-      bind:value={getSubject, setSubject}
-      placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
+  <div style="padding: var(--space-2); display: flex; flex-direction: column; gap: var(--space-2);">
+    <!-- Subject field -->
+    <div style="position: relative;">
+      <input
+        data-testid="commit-form-subject"
+        type="text"
+        bind:value={getSubject, setSubject}
+        placeholder={mode === 'stash' ? 'Stash name (optional)' : 'Summary (required)'}
+        style="
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid var(--line);
+          background: var(--bg-0);
+          color: var(--fg-1);
+          border-radius: var(--radius);
+          height: var(--control-lg-h);
+          padding: 0 var(--counter-gutter) 0 var(--space-3);
+          font-size: 12px;
+        "
+      />
+      {#if counterVisible}
+        <span
+          data-testid="subject-counter"
+          data-over={subjectOverLimit}
+          style="
+            position: absolute;
+            top: 50%;
+            right: 10px;
+            transform: translateY(-50%);
+            pointer-events: none;
+            font-family: var(--font-mono);
+            font-size: 10.5px;
+            color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--fg-3)'};
+          "
+        >{getSubject().length}/72</span>
+      {/if}
+    </div>
+    {#if subjectError}
+      <span class="error-text" style="font-size: 11px;">{subjectError}</span>
+    {/if}
+
+    <!-- Body field -->
+    <textarea
+      bind:value={getBody, setBody}
+      rows={3}
+      placeholder="Description (optional)"
       style="
         width: 100%;
         box-sizing: border-box;
         border: 1px solid var(--line);
         background: var(--bg-0);
         color: var(--fg-1);
-        border-radius: var(--radius-m);
-        padding: 8px 44px 8px 10px;
+        border-radius: var(--radius);
+        padding: var(--space-2) var(--space-3);
         font-size: 12px;
+        resize: vertical;
       "
-    />
-    {#if counterVisible}
-      <span
-        data-testid="subject-counter"
-        data-over={subjectOverLimit}
-        style="
-          position: absolute;
-          top: 50%;
-          right: 10px;
-          transform: translateY(-50%);
-          pointer-events: none;
-          font-family: var(--font-mono);
-          font-size: 10.5px;
-          color: {subjectOverLimit ? 'var(--color-danger)' : 'var(--fg-3)'};
-        "
-      >{getSubject().length}/72</span>
+    ></textarea>
+
+    <!-- Staged error -->
+    {#if stagedError}
+      <span class="error-text" style="font-size: 11px;">{stagedError}</span>
     {/if}
+
+    <!-- Commit button -->
+    <button
+      data-testid="commit-form-submit"
+      onclick={handleSubmit}
+      disabled={committing}
+      style="
+        width: 100%;
+        height: var(--control-lg-h);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--accent);
+        color: var(--accent-fg);
+        border: 0;
+        border-radius: var(--radius);
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        opacity: {committing ? 0.6 : 1};
+      "
+    >{buttonLabel}</button>
   </div>
-  {#if subjectError}
-    <span class="error-text" style="font-size: 11px;">{subjectError}</span>
-  {/if}
-
-  <!-- Body field -->
-  <textarea
-    bind:value={getBody, setBody}
-    rows={3}
-    placeholder="Description (optional)"
-    style="
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--line);
-      background: var(--bg-0);
-      color: var(--fg-1);
-      border-radius: var(--radius-m);
-      padding: 8px 10px;
-      font-size: 12px;
-      resize: vertical;
-    "
-  ></textarea>
-
-  <!-- Staged error -->
-  {#if stagedError}
-    <span class="error-text" style="font-size: 11px;">{stagedError}</span>
-  {/if}
-
-  <!-- Commit button -->
-  <button
-    data-testid="commit-form-submit"
-    onclick={handleSubmit}
-    disabled={committing}
-    style="
-      width: 100%;
-      height: 32px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--accent);
-      color: var(--accent-fg);
-      border: 0;
-      border-radius: var(--radius-m);
-      font-size: 12.5px;
-      font-weight: 600;
-      cursor: pointer;
-      opacity: {committing ? 0.6 : 1};
-    "
-  >{buttonLabel}</button>
 </div>
 
 <style>

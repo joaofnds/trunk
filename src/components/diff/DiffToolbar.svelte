@@ -229,13 +229,13 @@ const renderedActive = $derived(
   }
 
   .toolbar {
-    height: 32px;
+    height: var(--bar-h);
     border-bottom: 1px solid var(--color-border);
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     display: flex;
     align-items: center;
     flex-shrink: 0;
-    gap: 4px;
+    gap: var(--space-1);
   }
 
   .filename {
@@ -249,10 +249,14 @@ const renderedActive = $derived(
   }
 
   .action-btn {
-    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
     font-size: 11px;
     font-family: var(--font-sans, sans-serif);
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -289,17 +293,17 @@ const renderedActive = $derived(
     color: var(--color-text-muted);
     font-size: 16px;
     line-height: 1;
-    padding: 2px 4px;
-    border-radius: 3px;
+    padding: var(--space-1);
+    border-radius: var(--radius);
     flex-shrink: 0;
   }
 
   .toggle-btn {
     background: none;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius);
     color: var(--color-text-muted);
-    padding: 2px 4px;
+    padding: var(--space-1);
     cursor: pointer;
     display: flex;
     align-items: center;

@@ -170,3 +170,67 @@ Changed goldens:
     ?? src/__tests__/goldens/graph-render/stash-19-two-backdated.txt
     ?? src/__tests__/goldens/graph-render/stash-20-stash-on-stash.txt
     ?? src/__tests__/goldens/graph-render/stash-21-tagged-stash.txt
+
+## 2026-08-27
+
+row pitch 26px to 28px: every length in the interface is now a whole number of --u (4px), and 26 was 6.5 units
+
+Changed goldens:
+
+     M src/__tests__/goldens/graph-render/lane-01-behind-only.txt
+     M src/__tests__/goldens/graph-render/lane-01-behind-only.wip.txt
+     M src/__tests__/goldens/graph-render/lane-02-local-ahead-no-remote.txt
+     M src/__tests__/goldens/graph-render/lane-03-detached-old.txt
+     M src/__tests__/goldens/graph-render/lane-04-tiebreak-upstream-vs-topic.txt
+     M src/__tests__/goldens/graph-render/lane-05-diverged.txt
+     M src/__tests__/goldens/graph-render/lane-06-tag-only-chain.txt
+     M src/__tests__/goldens/graph-render/lane-07-tag-on-unpulled.txt
+     M src/__tests__/goldens/graph-render/lane-08-stash-on-tip-behind.txt
+     M src/__tests__/goldens/graph-render/lane-09-branch-point-below-head.txt
+     M src/__tests__/goldens/graph-render/lane-10-two-remotes.txt
+     M src/__tests__/goldens/graph-render/lane-11-merge-in-head-chain.txt
+     M src/__tests__/goldens/graph-render/lane-12-author-vs-committer.txt
+     M src/__tests__/goldens/graph-render/lane-13-tall-linear.txt
+     M src/__tests__/goldens/graph-render/merge-01-octopus-merge.txt
+     M src/__tests__/goldens/graph-render/merge-02-criss-cross.txt
+     M src/__tests__/goldens/graph-render/merge-03-merge-of-merges.txt
+     M src/__tests__/goldens/graph-render/merge-04-three-topics.txt
+     M src/__tests__/goldens/graph-render/merge-05-sequential-merges.txt
+     M src/__tests__/goldens/graph-render/merge-06-merge-second-parent-newer.txt
+     M src/__tests__/goldens/graph-render/merge-07-fork-sibling-older.txt
+     M src/__tests__/goldens/graph-render/merge-08-fork-sibling-newer.txt
+     M src/__tests__/goldens/graph-render/merge-09-column-saturation.txt
+     M src/__tests__/goldens/graph-render/merge-10-merge-parent-left.txt
+     M src/__tests__/goldens/graph-render/merge-11-fork-in-left.txt
+     M src/__tests__/goldens/graph-render/merge-12-pagination-boundary.txt
+     M src/__tests__/goldens/graph-render/merge-13-freed-column-left.txt
+     M src/__tests__/goldens/graph-render/merge-14-spiral-right-before-left.txt
+     M src/__tests__/goldens/graph-render/stash-01-clean-inline.txt
+     M src/__tests__/goldens/graph-render/stash-02-dirty-tracked.txt
+     M src/__tests__/goldens/graph-render/stash-02-dirty-tracked.wip.txt
+     M src/__tests__/goldens/graph-render/stash-03-dirty-untracked.txt
+     M src/__tests__/goldens/graph-render/stash-03-dirty-untracked.wip.txt
+     M src/__tests__/goldens/graph-render/stash-04-dirty-staged.txt
+     M src/__tests__/goldens/graph-render/stash-04-dirty-staged.wip.txt
+     M src/__tests__/goldens/graph-render/stash-05-dirty-conflicted.txt
+     M src/__tests__/goldens/graph-render/stash-05-dirty-conflicted.wip.txt
+     M src/__tests__/goldens/graph-render/stash-06-ignored-stays-inline.txt
+     M src/__tests__/goldens/graph-render/stash-07-multi-stash-clean.txt
+     M src/__tests__/goldens/graph-render/stash-08-multi-stash-dirty.txt
+     M src/__tests__/goldens/graph-render/stash-08-multi-stash-dirty.wip.txt
+     M src/__tests__/goldens/graph-render/stash-09-topic-above-parent.txt
+     M src/__tests__/goldens/graph-render/stash-10-topic-below-parent.txt
+     M src/__tests__/goldens/graph-render/stash-11-stash-parent-mid-chain.txt
+     M src/__tests__/goldens/graph-render/stash-12-orphan-stash.txt
+     M src/__tests__/goldens/graph-render/stash-13-detached-head.txt
+     M src/__tests__/goldens/graph-render/stash-14-merge-tip.txt
+     M src/__tests__/goldens/graph-render/stash-14-merge-tip.wip.txt
+     M src/__tests__/goldens/graph-render/stash-15-backdated-stash.txt
+     M src/__tests__/goldens/graph-render/stash-16-bare-repo.git.txt
+     M src/__tests__/goldens/graph-render/stash-17-no-stash-dirty.txt
+     M src/__tests__/goldens/graph-render/stash-17-no-stash-dirty.wip.txt
+     M src/__tests__/goldens/graph-render/stash-18-many-files.txt
+     M src/__tests__/goldens/graph-render/stash-18-many-files.wip.txt
+     M src/__tests__/goldens/graph-render/stash-19-two-backdated.txt
+     M src/__tests__/goldens/graph-render/stash-20-stash-on-stash.txt
+     M src/__tests__/goldens/graph-render/stash-21-tagged-stash.txt

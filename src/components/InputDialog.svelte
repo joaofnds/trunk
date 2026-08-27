@@ -83,8 +83,8 @@ function autofocus(node: HTMLElement) {
   onclick={handleBackdropClick}
 >
   <div
-    class="rounded-lg"
-    style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: 16px;"
+    class="rounded"
+    style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 340px; max-width: 480px; padding: var(--space-4);"
   >
     <h3 class="text-sm font-semibold mb-3" style="color: var(--color-text);">{title}</h3>
 
@@ -98,7 +98,7 @@ function autofocus(node: HTMLElement) {
             <textarea
               id="input-dialog-{field.key}"
               class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: 6px 8px; resize: vertical; min-height: 60px;"
+              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
               placeholder={field.placeholder ?? ''}
               bind:value={values[field.key]}
               use:autofocus
@@ -107,7 +107,7 @@ function autofocus(node: HTMLElement) {
             <textarea
               id="input-dialog-{field.key}"
               class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: 6px 8px; resize: vertical; min-height: 60px;"
+              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2); resize: vertical; min-height: 60px;"
               placeholder={field.placeholder ?? ''}
               bind:value={values[field.key]}
             ></textarea>
@@ -118,7 +118,7 @@ function autofocus(node: HTMLElement) {
               id="input-dialog-{field.key}"
               type="text"
               class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: 6px 8px;"
+              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
               placeholder={field.placeholder ?? ''}
               bind:value={values[field.key]}
               use:autofocus
@@ -128,7 +128,7 @@ function autofocus(node: HTMLElement) {
               id="input-dialog-{field.key}"
               type="text"
               class="w-full rounded text-sm"
-              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: 6px 8px;"
+              style="background: var(--color-bg); border: 1px solid var(--color-border); color: var(--color-text); padding: var(--space-2);"
               placeholder={field.placeholder ?? ''}
               bind:value={values[field.key]}
             />

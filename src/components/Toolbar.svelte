@@ -210,14 +210,14 @@ async function handleBranchCreate(values: Record<string, string>) {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 10px 0 6px;
+    gap: var(--space-2);
+    padding: 0 var(--space-3) 0 var(--space-2);
   }
 
   .toolbar-group {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
   }
 
   .toolbar-divider {
@@ -231,11 +231,11 @@ async function handleBranchCreate(values: Record<string, string>) {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: var(--control-h);
+    height: var(--control-h);
     padding: 0;
     border: 1px solid var(--line);
-    border-radius: var(--radius-m);
+    border-radius: var(--radius);
     background: transparent;
     color: var(--fg-1);
     cursor: pointer;
@@ -287,7 +287,7 @@ async function handleBranchCreate(values: Record<string, string>) {
     right: -6px;
     min-width: 16px;
     height: 16px;
-    padding: 0 4px;
+    padding: 0 var(--space-1);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -303,11 +303,11 @@ async function handleBranchCreate(values: Record<string, string>) {
     display: inline-flex;
     align-items: stretch;
     border: 1px solid var(--line);
-    border-radius: var(--radius-m);
+    border-radius: var(--radius);
   }
   .btn-group .toolbar-btn {
     border: none;
-    border-radius: var(--radius-m) 0 0 var(--radius-m);
+    border-radius: var(--radius) 0 0 var(--radius);
   }
 
 </style>

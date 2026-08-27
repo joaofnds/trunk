@@ -224,9 +224,7 @@ describe("CommitGraph", () => {
 
 		const headerRow = (await screen.findByText("Date")).parentElement;
 
-		expect(headerRow?.getAttribute("style")).toContain(
-			"height: var(--panel-header-h)",
-		);
+		expect(headerRow?.getAttribute("style")).toContain("height: var(--bar-h)");
 	});
 
 	it("renders commit summaries after data loads", async () => {

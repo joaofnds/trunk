@@ -5,6 +5,7 @@
  * reports a zero-height viewport and truncates silently.
  */
 
+import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import { commentsForLine, spannedByComment } from "./comment-matching.js";
 import { displayColumns } from "./display-columns.js";
 import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
@@ -70,9 +71,9 @@ export interface BuildOptions {
  *  function and the rendered row cannot disagree: a toolbar change that alters
  *  a row's height has to change this number. */
 export const FIXED_ROW_HEIGHTS = {
-	fileHeader: 26,
-	hunkHeader: 28,
-	binary: 32,
+	fileHeader: BAR_HEIGHT,
+	hunkHeader: BAR_HEIGHT,
+	binary: 8 * UNIT,
 } as const;
 
 /** The custom properties the rows read, declared from the same numbers. */

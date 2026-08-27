@@ -9,6 +9,7 @@ import {
 	X,
 } from "@lucide/svelte";
 import { tick } from "svelte";
+import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
@@ -34,7 +35,7 @@ let { repoPath, filePath, onclose, onresolved }: Props = $props();
 
 // ---------- Constants ----------
 const LINE_HEIGHT = 18;
-const HEADER_HEIGHT = 24;
+
 const OVERSCAN = 20;
 
 // ---------- State ----------
@@ -114,7 +115,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 				key: "",
 				lineNum: 0,
 				conflictNum: conflictCount,
-				height: HEADER_HEIGHT,
+				height: BAR_HEIGHT,
 			});
 			theirs.push({
 				type: "conflict-header",
@@ -124,7 +125,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 				key: "",
 				lineNum: 0,
 				conflictNum: conflictCount,
-				height: HEADER_HEIGHT,
+				height: BAR_HEIGHT,
 			});
 			// Conflict lines
 			for (let j = 0; j < region.oursLines.length; j++) {
@@ -373,7 +374,7 @@ function scrollToConflict(idx: number) {
 	const targetTop = oursOffsets[rowIdx];
 	const scrollTo = Math.max(
 		0,
-		targetTop - panelViewportHeight / 2 + HEADER_HEIGHT / 2,
+		targetTop - panelViewportHeight / 2 + BAR_HEIGHT / 2,
 	);
 	scrolling = true;
 	for (const panel of panelRefs) {
@@ -421,14 +422,14 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleHunk(side, row.regionIdx); } }}
     style="
       width: 100%;
-      height: {HEADER_HEIGHT}px;
+      height: {BAR_HEIGHT}px;
       background: var(--color-surface);
       border-top: 1px solid var(--color-border);
       border-bottom: 1px solid var(--color-border);
       display: flex;
       align-items: center;
-      padding: 0 8px;
-      gap: 4px;
+      padding: 0 var(--space-2);
+      gap: var(--space-1);
       cursor: pointer;
       font-size: 11px;
       color: var(--color-text-muted);
@@ -545,7 +546,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: var(--space-2);
       color: var(--color-text-muted);
       font-size: 13px;
     ">
@@ -555,10 +556,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
         style="
           background: var(--color-surface);
           border: 1px solid var(--color-border);
-          border-radius: 3px;
+          border-radius: var(--radius);
           color: var(--color-text);
           font-size: 12px;
-          padding: 4px 12px;
+          padding: var(--space-1) var(--space-3);
           cursor: pointer;
         "
       >Retry</button>
@@ -571,13 +572,13 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--color-border);">
         <!-- Header -->
         <div style="
-          height: 28px;
+          height: var(--bar-h);
           background: var(--color-accent-bg);
           border-bottom: 1px solid var(--accent);
           display: flex;
           align-items: center;
-          padding: 0 8px;
-          gap: 8px;
+          padding: 0 var(--space-2);
+          gap: var(--space-2);
           flex-shrink: 0;
         ">
           <span style="font-size: 12px; color: var(--color-text);">Current (Ours)</span>
@@ -585,13 +586,17 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           <button
             onclick={handleTakeAllCurrent}
             style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
               background: var(--color-success-bg);
               border: 1px solid var(--color-success-border);
-              border-radius: 3px;
+              border-radius: var(--radius);
               color: var(--color-success);
               font-size: 11px;
               font-family: var(--font-sans, sans-serif);
-              padding: 2px 8px;
+              height: var(--control-sm-h);
+              padding: 0 var(--space-2);
               cursor: pointer;
               white-space: nowrap;
               flex-shrink: 0;
@@ -632,13 +637,13 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
       <div style="flex: 1; display: flex; flex-direction: column; min-width: 0;">
         <!-- Header -->
         <div style="
-          height: 28px;
+          height: var(--bar-h);
           background: var(--color-success-bg);
           border-bottom: 1px solid var(--color-success);
           display: flex;
           align-items: center;
-          padding: 0 8px;
-          gap: 8px;
+          padding: 0 var(--space-2);
+          gap: var(--space-2);
           flex-shrink: 0;
         ">
           <span style="font-size: 12px; color: var(--color-text);">Incoming (Theirs)</span>
@@ -646,13 +651,17 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           <button
             onclick={handleTakeAllIncoming}
             style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
               background: var(--color-success-bg);
               border: 1px solid var(--color-success-border);
-              border-radius: 3px;
+              border-radius: var(--radius);
               color: var(--color-success);
               font-size: 11px;
               font-family: var(--font-sans, sans-serif);
-              padding: 2px 8px;
+              height: var(--control-sm-h);
+              padding: 0 var(--space-2);
               cursor: pointer;
               white-space: nowrap;
               flex-shrink: 0;
@@ -693,17 +702,17 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     <div style="flex: 1; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--color-border);">
       <!-- Header: 3-column grid so the nav naturally centers -->
       <div style="
-        height: 28px;
+        height: var(--bar-h);
         background: var(--color-muted-bg);
         border-bottom: 1px solid var(--color-text-muted);
         display: grid;
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        padding: 0 8px;
+        padding: 0 var(--space-2);
         flex-shrink: 0;
       ">
         <!-- Left: label -->
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: var(--space-2);">
           <span style="font-size: 12px; color: var(--color-text);">Output</span>
           {#if manualEdit}
             <span style="font-size: 10px; color: var(--color-text-muted);">(manual edit)</span>
@@ -717,7 +726,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border: none;
               cursor: pointer;
               color: var(--color-text-muted);
-              padding: 2px;
+              padding: var(--space-1);
               display: flex;
               align-items: center;
             "
@@ -725,7 +734,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
         </div>
 
         <!-- Center: conflict navigation -->
-        <div style="display: flex; align-items: center; gap: 2px;">
+        <div style="display: flex; align-items: center; gap: var(--space-1);">
           {#if hasConflicts}
             <button
               onclick={handlePrevConflict}
@@ -737,7 +746,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
                 cursor: {hasPrev ? 'pointer' : 'default'};
                 color: {hasPrev ? 'var(--color-text)' : 'var(--color-text-muted)'};
                 opacity: {hasPrev ? 1 : 0.4};
-                padding: 2px;
+                padding: var(--space-1);
                 display: flex;
                 align-items: center;
               "
@@ -753,7 +762,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
                 cursor: {hasNext ? 'pointer' : 'default'};
                 color: {hasNext ? 'var(--color-text)' : 'var(--color-text-muted)'};
                 opacity: {hasNext ? 1 : 0.4};
-                padding: 2px;
+                padding: var(--space-1);
                 display: flex;
                 align-items: center;
               "
@@ -762,18 +771,22 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
         </div>
 
         <!-- Right: actions -->
-        <div style="display: flex; align-items: center; gap: 8px; justify-content: flex-end;">
+        <div style="display: flex; align-items: center; gap: var(--space-2); justify-content: flex-end;">
           <button
             onclick={handleSaveAndResolve}
             disabled={saving}
             style="
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
               background: var(--color-success-bg);
               border: 1px solid var(--color-success-border);
-              border-radius: 3px;
+              border-radius: var(--radius);
               color: var(--color-success);
               font-size: 11px;
               font-family: var(--font-sans, sans-serif);
-              padding: 2px 8px;
+              height: var(--control-sm-h);
+              padding: 0 var(--space-2);
               cursor: {saving ? 'not-allowed' : 'pointer'};
               opacity: {saving ? 0.4 : 1};
               white-space: nowrap;
@@ -787,7 +800,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               border: none;
               cursor: pointer;
               color: var(--color-text-muted);
-              padding: 2px;
+              padding: var(--space-1);
               display: flex;
               align-items: center;
             "
@@ -811,7 +824,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
           font-family: var(--font-mono);
           font-size: 12px;
           line-height: {LINE_HEIGHT}px;
-          padding: 4px 8px;
+          padding: var(--space-1) var(--space-2);
           outline: none;
           box-sizing: border-box;
         "

@@ -50,12 +50,12 @@ let badgeBg = $derived(
   onclick={() => onclick?.()}
   oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
   style="
-    height: 26px;
-    padding: 0 8px;
+    height: var(--row-h);
+    padding: 0 var(--space-2);
     padding-left: {8 + depth * 16}px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     cursor: {onclick ? 'pointer' : 'default'};
     background: {focused ? 'var(--color-tree-focus)' : hovered ? 'var(--bg-hover)' : 'transparent'};
     color: {isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
@@ -69,7 +69,7 @@ let badgeBg = $derived(
     justify-content: center;
     width: 16px;
     height: 16px;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius);
     font-family: var(--font-mono);
     font-weight: 600;
     font-size: 10px;
@@ -104,7 +104,7 @@ let badgeBg = $derived(
         color: {actionLabel === '+' ? 'var(--ok)' : 'var(--err)'};
         display: flex;
         align-items: center;
-        padding: 0 4px;
+        padding: 0 var(--space-1);
         line-height: 1;
       "
     >

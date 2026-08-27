@@ -4,71 +4,71 @@
       <rect height="4000" width="16" x="124" y="0">
   <g clip-path="url(#graph-clip)">
     <g class="overlay-paths" transform="translate(124, 0)">
-      <path d="M 8 13 V 39" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 39 V 65" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 65 V 91" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 91 V 117" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 117 V 143" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 143 V 169" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 169 V 195" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 195 V 221" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 221 V 247" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 247 V 273" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 273 V 299" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 299 V 325" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 325 V 351" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 351 V 377" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 377 V 403" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 403 V 429" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 429 V 455" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 455 V 481" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 481 V 507" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 507 V 533" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 533 V 559" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 559 V 585" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 585 V 611" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 611 V 637" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 637 V 663" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 663 V 689" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 689 V 715" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 715 V 741" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-      <path d="M 8 741 V 767" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 14 V 42" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 42 V 70" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 98 V 126" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 126 V 154" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 154 V 182" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 182 V 210" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 210 V 238" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 238 V 266" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 266 V 294" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 294 V 322" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 322 V 350" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 350 V 378" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 378 V 406" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 406 V 434" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 434 V 462" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 462 V 490" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 490 V 518" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 518 V 546" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 546 V 574" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 574 V 602" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 602 V 630" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 630 V 658" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 658 V 686" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 686 V 714" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 714 V 742" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 742 V 770" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 770 V 798" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 798 V 826" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g class="overlay-dots" transform="translate(124, 0)">
-    <circle cx="8" cy="13" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="39" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="65" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="91" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="117" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="143" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="169" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="195" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="221" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="247" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="273" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="299" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="325" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="351" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="377" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="403" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="429" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="455" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="481" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="507" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="533" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="559" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="585" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="611" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="637" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="663" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="689" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="715" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="741" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="767" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="182" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="210" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="238" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="266" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="294" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="322" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="350" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="378" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="406" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="434" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="462" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="490" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="518" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="546" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="574" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="602" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="630" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="658" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="686" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="714" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="742" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="770" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="798" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="826" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
-    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="13" y2="13">
-    <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="3">
-    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 8)">
+    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="14" y2="14">
+    <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="4">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 9)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-    <foreignObject height="20" width="28" x="22" y="3">
+    <foreignObject height="20" width="28" x="22" y="4">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-0); font-size: 11px; font-family: var(--font-sans); font-weight: 700; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "main"

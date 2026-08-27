@@ -221,12 +221,12 @@ async function saveNote() {
 
   <!-- Toolbar -->
   <div style="
-    height: var(--panel-header-h);
+    height: var(--bar-h);
     border-bottom: 1px solid var(--color-border);
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex-shrink: 0;
   ">
     <span style="
@@ -238,7 +238,7 @@ async function saveNote() {
       text-overflow: ellipsis;
       white-space: nowrap;
     ">
-      commit: <button type="button" title="Copy SHA" class="sha-copy" style="display: inline-flex; align-items: center; padding: 2px 6px; border-radius: var(--radius-s); background: var(--bg-3); color: var(--fg-0);" onclick={() => copySha(commitDetail.oid)}>{commitDetail.short_oid}</button>
+      commit: <button type="button" title="Copy SHA" class="sha-copy" style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-0);" onclick={() => copySha(commitDetail.oid)}>{commitDetail.short_oid}</button>
     </span>
     {#if nav}
       <span class="pager">
@@ -273,8 +273,8 @@ async function saveNote() {
         color: var(--color-text-muted);
         font-size: 16px;
         line-height: 1;
-        padding: 2px 4px;
-        border-radius: 3px;
+        padding: var(--space-1);
+        border-radius: var(--radius);
         flex-shrink: 0;
       "
     >✕</button>
@@ -285,7 +285,7 @@ async function saveNote() {
 
     <!-- Commit message -->
     <div style="
-      padding: 10px 12px;
+      padding: var(--space-3);
       border-bottom: 1px solid var(--color-border);
     ">
       <div class="select-text" style="
@@ -312,12 +312,12 @@ async function saveNote() {
 
     <!-- Author + parent -->
     <div style="
-      padding: 8px 12px;
+      padding: var(--space-2) var(--space-3);
       border-bottom: 1px solid var(--color-border);
       font-size: 11px;
       color: var(--color-text-muted);
     ">
-      <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: var(--space-3);">
         <Avatar name={commitDetail.author_name} size={22} />
         <div style="display: flex; flex-direction: column; min-width: 0;">
           <span style="color: var(--fg-0); font-weight: 600;">{commitDetail.author_name}</span>
@@ -424,8 +424,8 @@ async function saveNote() {
     <!-- File list -->
     <div>
       <div style="
-        height: 28px;
-        padding: 0 12px;
+        height: var(--bar-h);
+        padding: 0 var(--space-3);
         display: flex;
         align-items: center;
         border-bottom: 1px solid var(--color-border);
@@ -435,7 +435,7 @@ async function saveNote() {
           {fileDiffs.length} file{fileDiffs.length === 1 ? '' : 's'} changed
         </span>
         {#if totalAdds > 0 || totalDels > 0}
-          <span style="display: inline-flex; gap: 6px; flex-shrink: 0; margin-right: 8px; font-family: var(--font-mono); font-size: 10.5px;">
+          <span style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: 8px; font-family: var(--font-mono); font-size: 10.5px;">
             {#if totalAdds > 0}<span style="color: var(--ok);">+{totalAdds}</span>{/if}
             {#if totalDels > 0}<span style="color: var(--err);">−{totalDels}</span>{/if}
           </span>
@@ -456,8 +456,8 @@ async function saveNote() {
               align-items: center;
               justify-content: center;
               width: 20px;
-              height: 20px;
-              border-radius: 3px;
+              height: var(--control-sm-h);
+              border-radius: var(--radius);
               flex-shrink: 0;
               padding: 0;
             "
@@ -503,7 +503,7 @@ async function saveNote() {
   .pager {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     flex-shrink: 0;
   }
   .pager-btn {
@@ -511,8 +511,8 @@ async function saveNote() {
     align-items: center;
     justify-content: center;
     width: 22px;
-    height: 20px;
-    border-radius: var(--radius-s);
+    height: var(--control-sm-h);
+    border-radius: var(--radius);
     background: var(--bg-3);
     color: var(--fg-2);
     border: 1px solid transparent;
@@ -532,7 +532,7 @@ async function saveNote() {
     font-size: 10px;
     color: var(--fg-3);
     font-family: var(--font-mono);
-    padding: 0 2px;
+    padding: 0 var(--space-1);
   }
 
   /* Topology chips — clickable parent/child lineage links. */
@@ -540,12 +540,12 @@ async function saveNote() {
     margin-top: 8px;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: var(--space-1);
   }
   .topo-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
     flex-wrap: wrap;
   }
   .topo-lbl {
@@ -559,9 +559,10 @@ async function saveNote() {
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 1px 7px 1px 5px;
-    border-radius: 999px;
+    gap: var(--space-1);
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2) 0 var(--space-1);
+    border-radius: var(--radius-pill);
     font-family: var(--font-mono);
     font-size: 11px;
     cursor: pointer;
@@ -585,14 +586,14 @@ async function saveNote() {
   .commit-notes {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 8px 12px;
     border-bottom: 1px solid var(--color-border);
   }
   .commit-notes-head {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
+    height: var(--bar-h);
+    padding: 0 var(--space-3);
   }
   .commit-notes-title {
     font-size: 11px;
@@ -605,13 +606,13 @@ async function saveNote() {
   .add-note-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     background: transparent;
     color: var(--color-text-muted);
     border: none;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 6px;
+    padding: var(--space-1) var(--space-2);
     font-size: 12px;
     flex-shrink: 0;
   }
@@ -623,7 +624,8 @@ async function saveNote() {
   .add-note-composer {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
+    padding: 0 var(--space-3) var(--space-2);
   }
   .add-note-textarea {
     width: 100%;
@@ -631,22 +633,26 @@ async function saveNote() {
     background: var(--color-bg);
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
-    padding: 4px 6px;
+    border-radius: var(--radius);
+    padding: var(--space-1) var(--space-2);
     font-size: 12px;
     font-family: inherit;
   }
   .add-note-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .add-note-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
   }
   .add-note-actions button[disabled] {
@@ -656,9 +662,9 @@ async function saveNote() {
   .commit-notes-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: 0 var(--space-3) var(--space-2);
   }
 </style>

@@ -27,7 +27,7 @@ let {
 <div>
   <!-- Remote name sub-header -->
   <div style="
-    padding: 2px 8px 2px 16px;
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
     font-size: 11px;
     color: var(--fg-3);
     font-weight: 500;

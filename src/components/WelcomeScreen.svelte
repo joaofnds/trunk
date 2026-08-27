@@ -76,14 +76,14 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
 
 <div class="flex flex-col h-screen" style="background: var(--color-bg);">
   <!-- LAYOUT-02: drag region for window movement on welcome screen -->
-  <div data-tauri-drag-region class="flex-shrink-0" style="height: 36px; padding-left: {isFullscreen ? 0 : 78}px;"></div>
+  <div data-tauri-drag-region class="flex-shrink-0" style="height: var(--topbar-h); padding-left: {isFullscreen ? 0 : 78}px;"></div>
   <div class="flex-1 flex flex-col items-center justify-center gap-6">
   <div class="flex flex-col items-center gap-4 w-full max-w-md px-4">
     <h1 class="text-2xl font-semibold tracking-tight" style="color: var(--color-text);">Trunk</h1>
     <p class="text-sm" style="color: var(--color-text-muted);">Git history, beautifully visualized</p>
 
     {#if error}
-      <div class="error-banner w-full rounded-md px-4 py-2 text-sm">
+      <div class="error-banner w-full rounded px-4 py-2 text-sm">
         {error}
       </div>
     {/if}
@@ -91,7 +91,7 @@ async function handleRemoveRecent(path: string, event: MouseEvent) {
     <button
       onclick={openRepository}
       disabled={loading}
-      class="w-full rounded-md px-4 py-2.5 text-sm font-medium transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+      class="w-full rounded px-4 py-2.5 text-sm font-medium transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       style="background: var(--color-accent); color: var(--color-on-accent);"
     >
       {loading ? 'Opening...' : 'Open Repository'}

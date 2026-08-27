@@ -148,7 +148,7 @@ function handleBackdropClick() {
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="flex flex-col rounded-md overflow-hidden"
+      class="flex flex-col rounded overflow-hidden"
       style="width: 480px; max-width: 90vw; height: fit-content; margin-top: 80px; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
       onclick={(e) => e.stopPropagation()}
     >
@@ -168,7 +168,7 @@ function handleBackdropClick() {
           <p class="text-sm" style="color: var(--color-text-muted);">No recent repositories</p>
           <button
             onclick={handleOpenDialog}
-            class="rounded-md px-4 py-2 text-sm font-medium cursor-pointer"
+            class="rounded px-4 py-2 text-sm font-medium cursor-pointer"
             style="background: var(--color-accent); color: var(--color-on-accent);"
           >
             Open Repository

@@ -4,51 +4,51 @@
       <rect height="4000" width="16" x="124" y="0">
   <g clip-path="url(#graph-clip)">
     <g class="overlay-paths" transform="translate(124, 0)">
-      <path d="M 24 13 V 135 C 24 139.41827799864635 19.58172200135365 143 16 143 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
-      <path d="M 40 39 V 135 C 40 139.41827799864635 35.581722001353654 143 32 143 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
-      <path d="M 56 65 V 135 C 56 139.41827799864635 51.581722001353654 143 48 143 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-3)">
-      <path d="M 72 91 V 135 C 72 139.41827799864635 67.58172200135365 143 64 143 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-4)">
-      <path d="M 8 117 V 143" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 24 14 V 146 C 24 150.41827799864635 19.58172200135365 154 16 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
+      <path d="M 40 42 V 146 C 40 150.41827799864635 35.581722001353654 154 32 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
+      <path d="M 56 70 V 146 C 56 150.41827799864635 51.581722001353654 154 48 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-3)">
+      <path d="M 72 98 V 146 C 72 150.41827799864635 67.58172200135365 154 64 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-4)">
+      <path d="M 8 126 V 154" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g class="overlay-dots" transform="translate(124, 0)">
-    <circle cx="10" cy="13" fill="var(--lane-1)" r="6">
-    <circle cx="10" cy="39" fill="var(--lane-2)" r="6">
-    <circle cx="10" cy="65" fill="var(--lane-3)" r="6">
-    <circle cx="10" cy="91" fill="var(--lane-4)" r="6">
-    <circle cx="8" cy="117" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="143" fill="var(--lane-0)" r="6">
+    <circle cx="10" cy="14" fill="var(--lane-1)" r="6">
+    <circle cx="10" cy="42" fill="var(--lane-2)" r="6">
+    <circle cx="10" cy="70" fill="var(--lane-3)" r="6">
+    <circle cx="10" cy="98" fill="var(--lane-4)" r="6">
+    <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
+    <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
-    <line opacity="1" stroke-width="1" stroke="var(--lane-1)" style="filter: brightness(0.75);" x1="88" x2="134" y1="13" y2="13">
-    <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" style="cursor: pointer;" width="84" x="4" y="3">
-    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 8)">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-1)" style="filter: brightness(0.75);" x1="88" x2="134" y1="14" y2="14">
+    <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" style="cursor: pointer;" width="84" x="4" y="4">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 9)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-    <foreignObject height="20" width="60" x="22" y="3">
+    <foreignObject height="20" width="60" x="22" y="4">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-1); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-four"
-    <line opacity="1" stroke-width="1" stroke="var(--lane-2)" style="filter: brightness(0.75);" x1="94" x2="134" y1="39" y2="39">
-    <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" style="cursor: pointer;" width="90" x="4" y="29">
-    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 34)">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-2)" style="filter: brightness(0.75);" x1="94" x2="134" y1="42" y2="42">
+    <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" style="cursor: pointer;" width="90" x="4" y="32">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 37)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-    <foreignObject height="20" width="66" x="22" y="29">
+    <foreignObject height="20" width="66" x="22" y="32">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-2); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-three"
-    <line opacity="1" stroke-width="1" stroke="var(--lane-3)" style="filter: brightness(0.75);" x1="86" x2="134" y1="65" y2="65">
-    <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" style="cursor: pointer;" width="82" x="4" y="55">
-    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 60)">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-3)" style="filter: brightness(0.75);" x1="86" x2="134" y1="70" y2="70">
+    <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" style="cursor: pointer;" width="82" x="4" y="60">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 65)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-    <foreignObject height="20" width="58" x="22" y="55">
+    <foreignObject height="20" width="58" x="22" y="60">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-3); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-two"
-    <line opacity="1" stroke-width="1" stroke="var(--lane-4)" style="filter: brightness(0.75);" x1="82" x2="134" y1="91" y2="91">
-    <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" style="cursor: pointer;" width="78" x="4" y="81">
-    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 86)">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-4)" style="filter: brightness(0.75);" x1="82" x2="134" y1="98" y2="98">
+    <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" style="cursor: pointer;" width="78" x="4" y="88">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 93)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-    <foreignObject height="20" width="54" x="22" y="81">
+    <foreignObject height="20" width="54" x="22" y="88">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-4); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-one"
-    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="117" y2="117">
-    <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="107">
-    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 112)">
+    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="126" y2="126">
+    <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="116">
+    <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 121)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
-    <foreignObject height="20" width="28" x="22" y="107">
+    <foreignObject height="20" width="28" x="22" y="116">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-0); font-size: 11px; font-family: var(--font-sans); font-weight: 700; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "main"

@@ -174,10 +174,10 @@ async function handleRevertAbort() {
 
 <div style="
   flex-shrink: 0;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   border-bottom: 1px solid var(--color-border);
   background: {isMerge ? 'var(--color-banner-warning-bg)' : 'var(--color-banner-info-bg)'};
   border-left: 3px solid {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'};
@@ -185,13 +185,13 @@ async function handleRevertAbort() {
   <span style="color: {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}; display: inline-flex; align-items: center; flex-shrink: 0;">
     {#if isMerge}<GitMerge size={14} />{:else}<GitBranch size={14} />{/if}
   </span>
-  <div style="font-size: 12px; color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: 4px; white-space: nowrap;">
+  <div style="font-size: 12px; color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;">
     {#if isMerge || isRebase}
       <span style="flex-shrink: 0;">{isMerge ? 'Merging' : 'Rebasing'}</span>
       <span style="
         background: {sourceColor};
-        border-radius: 9999px;
-        padding: 0 6px;
+        border-radius: var(--radius-pill);
+        padding: 0 var(--space-2);
         font-size: 11px;
         line-height: 16px;
         color: var(--bg-0);
@@ -203,8 +203,8 @@ async function handleRevertAbort() {
       <span style="flex-shrink: 0;">{isMerge ? 'into' : 'onto'}</span>
       <span style="
         background: {targetColor};
-        border-radius: 9999px;
-        padding: 0 6px;
+        border-radius: var(--radius-pill);
+        padding: 0 var(--space-2);
         font-size: 11px;
         line-height: 16px;
         color: var(--bg-0);
@@ -221,18 +221,22 @@ async function handleRevertAbort() {
     {/if}
   </div>
   {#if isRebase}
-    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+    <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
       <button
         onclick={handleContinue}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-success-bg);
           color: var(--color-success);
           font-size: 11px;
           border: 1px solid var(--color-success-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Continue</button>
@@ -240,13 +244,17 @@ async function handleRevertAbort() {
         onclick={handleSkip}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-warning-bg);
           color: var(--color-warning);
           font-size: 11px;
           border: 1px solid var(--color-warning-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Skip</button>
@@ -254,31 +262,39 @@ async function handleRevertAbort() {
         onclick={handleAbort}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-danger-bg);
           color: var(--color-danger);
           font-size: 11px;
           border: 1px solid var(--color-danger-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Abort</button>
     </div>
   {/if}
   {#if isCherryPick}
-    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+    <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
       <button
         onclick={handleCherryPickContinue}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-success-bg);
           color: var(--color-success);
           font-size: 11px;
           border: 1px solid var(--color-success-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Continue</button>
@@ -286,31 +302,39 @@ async function handleRevertAbort() {
         onclick={handleCherryPickAbort}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-danger-bg);
           color: var(--color-danger);
           font-size: 11px;
           border: 1px solid var(--color-danger-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Abort</button>
     </div>
   {/if}
   {#if isRevert}
-    <div style="display: flex; gap: 4px; flex-shrink: 0;">
+    <div style="display: flex; gap: var(--space-1); flex-shrink: 0;">
       <button
         onclick={handleRevertContinue}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-success-bg);
           color: var(--color-success);
           font-size: 11px;
           border: 1px solid var(--color-success-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Continue</button>
@@ -318,13 +342,17 @@ async function handleRevertAbort() {
         onclick={handleRevertAbort}
         disabled={loading}
         style="
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           background: var(--color-danger-bg);
           color: var(--color-danger);
           font-size: 11px;
           border: 1px solid var(--color-danger-border);
-          border-radius: 4px;
+          border-radius: var(--radius);
           cursor: pointer;
-          padding: 2px 8px;
+          height: var(--control-sm-h);
+          padding: 0 var(--space-2);
           white-space: nowrap;
         "
       >Abort</button>

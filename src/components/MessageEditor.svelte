@@ -68,10 +68,10 @@ $effect(() => {
 {#if isOpen}
 	<dialog
 		bind:this={dialogEl}
-		class="rounded-lg"
+		class="rounded"
 		data-testid="message-editor-backdrop"
 		aria-labelledby={titleId}
-		style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 420px; max-width: 640px; padding: 16px;"
+		style="background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow-2); min-width: 420px; max-width: 640px; padding: var(--space-4);"
 		onkeydown={handleKeydown}
 		onclick={handleBackdropClick}
 	>
@@ -85,7 +85,7 @@ $effect(() => {
 
 		<textarea
 			class="w-full rounded text-sm"
-			style="background: var(--bg-0); border: 1px solid var(--line); color: var(--fg-1); padding: 6px 8px; resize: vertical; min-height: 200px;"
+			style="background: var(--bg-0); border: 1px solid var(--line); color: var(--fg-1); padding: var(--space-2); resize: vertical; min-height: 200px;"
 			bind:value={text}
 			use:autofocus
 		></textarea>

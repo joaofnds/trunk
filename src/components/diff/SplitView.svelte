@@ -248,7 +248,10 @@ function buildSegments(
         border-bottom: 1px solid var(--color-border);
         font-size: 12px;
         font-weight: 500;
-        padding: 4px 8px;
+        height: var(--bar-h);
+        display: flex;
+        align-items: center;
+        padding: 0 var(--space-2);
         color: var(--color-text);
         position: sticky;
         top: 0;
@@ -257,7 +260,7 @@ function buildSegments(
         user-select: none;
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: var(--space-1);
       "
         onclick={() => onfilecollapsetoggle(fd.path)}
         onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onfilecollapsetoggle(fd.path); } }}
@@ -270,7 +273,7 @@ function buildSegments(
     {#if !collapsedFiles.has(fd.path)}
     {#if fd.is_binary}
       <div style="
-        padding: 8px;
+        padding: var(--space-2);
         color: var(--color-text-muted);
         font-size: 12px;
       ">
@@ -531,7 +534,7 @@ function buildSegments(
     font-family: monospace;
     font-size: 12px;
     line-height: 1.5;
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     display: flex;
     align-items: flex-start;
   }
@@ -565,14 +568,14 @@ function buildSegments(
   .gutter-selectable:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: -2px;
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
 
   .split-phantom {
     font-family: monospace;
     font-size: 12px;
     line-height: 1.5;
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     background: var(--color-diff-phantom-bg);
   }
 
@@ -581,15 +584,19 @@ function buildSegments(
     color: color-mix(in oklch, var(--info) 70%, var(--fg-3));
     display: flex;
     align-items: center;
-    padding: 4px 8px;
-    gap: 8px;
+    padding: var(--space-1) var(--space-2);
+    gap: var(--space-2);
   }
 
   .staging-btn {
-    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius);
     font-size: 11px;
     font-family: var(--font-sans, sans-serif);
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     white-space: nowrap;
   }
 
@@ -626,11 +633,11 @@ function buildSegments(
   }
   .word-add {
     background-color: var(--color-diff-word-add-bg);
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
   .word-delete {
     background-color: var(--color-diff-word-delete-bg);
-    border-radius: 2px;
+    border-radius: var(--radius);
   }
 
   /* Syntax highlighting classes */
@@ -674,8 +681,8 @@ function buildSegments(
   .split-comment-row {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: var(--space-2);
+    padding: var(--space-2);
     width: 100%;
     box-sizing: border-box;
   }

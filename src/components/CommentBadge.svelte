@@ -19,7 +19,7 @@ let { count }: Props = $props();
     flex-shrink: 0;
     min-width: 16px;
     height: 16px;
-    padding: 0 4px;
+    padding: 0 var(--space-1);
     display: inline-flex;
     align-items: center;
     justify-content: center;

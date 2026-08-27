@@ -563,16 +563,16 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
   overflow: hidden;
 ">
   <!-- Search input (sticky at top) -->
-  <div style="padding: 10px 10px 8px; border-bottom: 1px solid var(--line);">
+  <div style="padding: var(--space-3) var(--space-3) var(--space-2); border-bottom: 1px solid var(--line);">
     <div style="
       display: flex;
       align-items: center;
-      gap: 6px;
-      height: 28px;
-      padding: 0 10px;
+      gap: var(--space-2);
+      height: var(--control-lg-h);
+      padding: 0 var(--space-3);
       background: var(--bg-0);
       border: 1px solid var(--line);
-      border-radius: var(--radius-m);
+      border-radius: var(--radius);
     ">
       <Search size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
       <input
@@ -605,7 +605,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         oncreate={() => { showCreateInput = true; }}
       >
         {#if showCreateInput}
-          <div style="padding: 2px 8px 4px;">
+          <div style="padding: var(--space-1) var(--space-2) var(--space-1);">
             <input
               data-testid="branch-create-input"
               type="text"
@@ -620,9 +620,9 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
                 box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
                 color: var(--fg-0);
                 font-size: 12px;
-                padding: 2px 6px;
-                height: 26px;
-                border-radius: var(--radius-m);
+                padding: var(--space-1) var(--space-2);
+                height: var(--control-lg-h);
+                border-radius: var(--radius);
                 outline: none;
               "
               onkeydown={(e) => {
@@ -760,35 +760,39 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
 <style>
   .stash-form {
     display: flex;
-    gap: 4px;
-    padding: 4px 8px;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
   }
 
   .stash-name-input {
     flex: 1;
     font-size: 12px;
-    padding: 2px 6px;
+    padding: var(--space-1) var(--space-2);
     background: var(--bg-0);
     border: 1px solid var(--line);
     color: var(--fg-1);
-    border-radius: var(--radius-s);
+    border-radius: var(--radius);
   }
 
   .stash-save-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 11px;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     cursor: pointer;
     background: var(--accent);
     color: var(--accent-fg);
     border: none;
-    border-radius: var(--radius-s);
+    border-radius: var(--radius);
   }
 
   .stash-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
     font-size: 12px;
     cursor: default;
   }
@@ -813,7 +817,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
   .stash-error {
     font-size: 11px;
     color: var(--err);
-    padding: 2px 12px 4px;
+    padding: var(--space-1) var(--space-3) var(--space-1);
     margin: 0;
   }
 

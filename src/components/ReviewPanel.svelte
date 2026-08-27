@@ -441,8 +441,9 @@ $effect(() => {
   <div
     class="flex items-center"
     style="
-      gap: 8px;
-      padding: 6px 12px;
+      gap: var(--space-2);
+      height: var(--bar-h);
+      padding: 0 var(--space-3);
       background: var(--color-surface);
       border-bottom: 1px solid var(--color-border);
       flex-shrink: 0;
@@ -488,7 +489,7 @@ $effect(() => {
       flex: 1;
       min-height: 0;
       overflow: auto;
-      padding: 12px;
+      padding: var(--space-3);
       background: var(--color-surface);
       color: var(--color-text);
       font-size: 12px;
@@ -498,8 +499,8 @@ $effect(() => {
   <!-- Review list (criterion 2): every review for this repo with its derived
        state, short id, thread count and an editable title. Selecting one makes
        it active, which is also criterion 3's one-step switch. -->
-  <div class="flex flex-col" style="gap: 2px; padding-bottom: 8px;">
-    <div class="flex items-center" style="gap: 8px; padding: 2px 0;">
+  <div class="flex flex-col" style="gap: var(--space-1); padding-bottom: 8px;">
+    <div class="flex items-center" style="gap: var(--space-2); padding: var(--space-1) 0;">
       <span style="color: var(--color-text-muted); font-size: 11px; flex: 1;">
         {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
       </span>
@@ -507,10 +508,10 @@ $effect(() => {
         New review
       </button>
     </div>
-    <ul class="flex flex-col" style="gap: 2px; list-style: none; margin: 0; padding: 0;">
+    <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
       {#each reviews as review (review.id)}
         <li class="review-row {review.id === activeReviewId ? 'active' : ''} flex items-center"
-            style="gap: 8px; padding: 3px 6px; border-radius: 4px;">
+            style="gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius);">
           <span
             aria-hidden="true"
             style="width: 6px; flex-shrink: 0; color: var(--color-accent);"
@@ -529,8 +530,9 @@ $effect(() => {
                 background: var(--color-bg);
                 color: var(--color-text);
                 border: 1px solid var(--color-border);
-                border-radius: 4px;
-                padding: 1px 4px;
+                border-radius: var(--radius);
+                height: var(--control-sm-h);
+                padding: 0 var(--space-1);
                 font-size: 12px;
                 font-family: inherit;
               "
@@ -591,7 +593,7 @@ $effect(() => {
             title={deleteConfirmingId === review.id
               ? "Click again to delete this review and its comments"
               : "Delete this review"}
-            style="flex-shrink: 0; padding: 0 6px;"
+            style="flex-shrink: 0; padding: 0 var(--space-2);"
           >
             {deleteConfirmingId === review.id ? "Confirm delete" : "Delete review"}
           </button>
@@ -601,7 +603,7 @@ $effect(() => {
   </div>
 
   {#if activeReview}
-    <span style="color: var(--color-text-muted); font-size: 11px; padding: 2px 0;">
+    <span style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;">
       {comments.length} {comments.length === 1 ? "comment" : "comments"} · {commits.length}
       {commits.length === 1 ? "commit" : "commits"}
     </span>
@@ -613,21 +615,21 @@ $effect(() => {
        yet." copy). The three branches are mutually exclusive; when the user has
        added at least one comment, none render and the list below takes over. -->
   {#if reviews.length === 0}
-    <div class="flex flex-col" style="gap: 4px; padding: 12px;">
+    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
       <span>No reviews yet</span>
       <span style="color: var(--color-text-muted); font-size: 11px;">
         Comment on a diff line to start one, or create an empty review above.
       </span>
     </div>
   {:else if commits.length === 0 && !hasAnyComment}
-    <div class="flex flex-col" style="gap: 4px; padding: 12px;">
+    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
       <span>No commits in this review yet.</span>
       <span style="color: var(--color-text-muted); font-size: 11px;">
         Add commits from the graph to start reviewing.
       </span>
     </div>
   {:else if !hasAnyComment}
-    <div class="flex flex-col" style="gap: 4px; padding: 12px;">
+    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
       <span>Review started.</span>
       <span style="color: var(--color-text-muted); font-size: 11px;">
         Select diff lines or add a commit note to comment.
@@ -636,13 +638,13 @@ $effect(() => {
   {/if}
 
   {#if groups.length > 0}
-    <ul class="flex flex-col" style="gap: 8px; list-style: none; margin: 0; padding: 0;">
+    <ul class="flex flex-col" style="gap: var(--space-2); list-style: none; margin: 0; padding: 0;">
       {#each groups as group (group.oid)}
-        <li class="flex flex-col" style="gap: 4px;">
+        <li class="flex flex-col" style="gap: var(--space-1);">
           <!-- Commit group header (focal point): short SHA mono 600 + summary -->
           <div
             class="flex items-center"
-            style="gap: 8px; padding: 2px 0; border-bottom: 1px solid var(--color-border);"
+            style="gap: var(--space-2); padding: var(--space-1) 0; border-bottom: 1px solid var(--color-border);"
           >
             <button
               type="button"
@@ -685,13 +687,13 @@ $effect(() => {
               class="flex items-center"
               onclick={() => openAddNote(group.oid)}
               style="
-                gap: 4px;
+                gap: var(--space-1);
                 background: transparent;
                 color: var(--color-text-muted);
                 border: none;
-                border-radius: 4px;
+                border-radius: var(--radius);
                 cursor: pointer;
-                padding: 2px 4px;
+                padding: var(--space-1);
                 flex-shrink: 0;
                 font-size: 12px;
               "
@@ -705,7 +707,7 @@ $effect(() => {
 
           <!-- Inline add-note composer for this commit -->
           {#if addNoteForCommit === group.oid}
-            <div class="flex flex-col" style="gap: 4px; padding: 4px 0;">
+            <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-1) 0;">
               <textarea
                 bind:value={draft.text}
                 rows="3"
@@ -715,24 +717,28 @@ $effect(() => {
                   background: var(--color-bg);
                   color: var(--color-text);
                   border: 1px solid var(--color-border);
-                  border-radius: 4px;
-                  padding: 4px 6px;
+                  border-radius: var(--radius);
+                  padding: var(--space-1) var(--space-2);
                   font-size: 12px;
                   font-family: inherit;
                 "
               ></textarea>
-              <div class="flex items-center" style="gap: 4px;">
+              <div class="flex items-center" style="gap: var(--space-1);">
                 <button
                   type="button"
                   onclick={() => saveAddNote(group.oid)}
                   disabled={!draft.valid}
                   style="
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
                     background: transparent;
                     color: var(--color-text);
                     border: 1px solid var(--color-border);
-                    border-radius: 4px;
+                    border-radius: var(--radius);
                     cursor: pointer;
-                    padding: 2px 8px;
+                    height: var(--control-sm-h);
+                    padding: 0 var(--space-2);
                     font-size: 12px;
                   "
                 >Save</button>
@@ -740,12 +746,16 @@ $effect(() => {
                   type="button"
                   onclick={cancelComposer}
                   style="
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
                     background: transparent;
                     color: var(--color-text-muted);
                     border: 1px solid var(--color-border);
-                    border-radius: 4px;
+                    border-radius: var(--radius);
                     cursor: pointer;
-                    padding: 2px 8px;
+                    height: var(--control-sm-h);
+                    padding: 0 var(--space-2);
                     font-size: 12px;
                   "
                 >Cancel</button>
@@ -754,11 +764,11 @@ $effect(() => {
           {/if}
 
           {#if group.comments.length === 0}
-            <span style="color: var(--color-text-muted); font-size: 11px; padding: 2px 0;">
+            <span style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;">
               No comments on this commit.
             </span>
           {:else}
-            <ul class="flex flex-col" style="gap: 4px; list-style: none; margin: 0; padding: 0;">
+            <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
               {#each group.comments as comment (comment.id)}
                 <li>
                   <ThreadCard
@@ -799,13 +809,14 @@ $effect(() => {
   .copy-button {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     background: transparent;
     color: var(--color-text-muted);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
     font-family: inherit;
   }
@@ -826,13 +837,14 @@ $effect(() => {
   .publish-button {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     background: transparent;
     color: var(--color-text-muted);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
     font-family: inherit;
   }
@@ -855,13 +867,14 @@ $effect(() => {
   .end-button {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     background: transparent;
     color: var(--color-text-muted);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
     font-family: inherit;
   }

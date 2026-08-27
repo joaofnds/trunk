@@ -51,12 +51,12 @@ let commentCount = $derived(
   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle(); } }}
   oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
   style="
-    height: 26px;
-    padding: 0 8px;
+    height: var(--row-h);
+    padding: 0 var(--space-2);
     padding-left: {8 + depth * 16}px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
     cursor: pointer;
     background: {focused ? 'var(--color-tree-focus)' : hovered ? 'var(--color-surface)' : 'transparent'};
     color: var(--color-text);
@@ -97,7 +97,7 @@ let commentCount = $derived(
         color: {actionLabel === '+' ? 'var(--color-success)' : 'var(--color-danger)'};
         display: flex;
         align-items: center;
-        padding: 0 4px;
+        padding: 0 var(--space-1);
         line-height: 1;
       "
     >

@@ -663,7 +663,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
      Padding-only box: rowHeights reconstructs each cell as markdown-body height
      + this padding — a border or margin here silently breaks row equalization. */
   .rendered-block {
-    padding: 8px 20px;
+    padding: var(--space-2) var(--space-4);
     min-width: 0;
   }
   /* GitHub's comment-prose size; the 16px browser default reads oversized
@@ -709,8 +709,8 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
   .rendered-sep {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 20px;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     background: var(--bg-0);
   }
   .rendered-sep::before,
@@ -727,7 +727,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
     white-space: nowrap;
   }
   .rendered-nochange {
-    padding: 6px 20px;
+    padding: var(--space-2) var(--space-4);
     background: var(--bg-1);
     color: var(--color-text-muted);
     font-size: 12px;
@@ -736,7 +736,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
     border-block-end: 1px solid var(--color-border);
   }
   .rendered-note {
-    padding: 16px 20px;
+    padding: var(--space-4);
     color: var(--color-text-muted);
     font-size: 13px;
     font-style: italic;

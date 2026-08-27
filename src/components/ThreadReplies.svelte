@@ -117,22 +117,26 @@ async function saveReplyEdit() {
     background: var(--color-comment-card-bg);
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
-    padding: 4px 6px;
+    border-radius: var(--radius);
+    padding: var(--space-1) var(--space-2);
     font-size: 12px;
     font-family: inherit;
   }
   .card-editor-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .card-editor-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius);
     cursor: pointer;
-    padding: 2px 8px;
+    height: var(--control-sm-h);
+    padding: 0 var(--space-2);
     font-size: 12px;
   }
   .card-editor-actions button[disabled] {
@@ -143,7 +147,7 @@ async function saveReplyEdit() {
   /* Expand control for a collapsed reply list. */
   .thread-replies-expand {
     align-self: flex-start;
-    margin: 6px 8px 0;
+    margin: var(--space-2) var(--space-2) 0;
     background: transparent;
     color: var(--color-accent);
     border: none;
@@ -155,21 +159,21 @@ async function saveReplyEdit() {
   .thread-replies {
     list-style: none;
     margin: 0;
-    padding: 6px 8px 0;
+    padding: var(--space-2) var(--space-2) 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-2);
     border-top: 1px solid var(--color-border);
   }
   .thread-reply {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-1);
   }
   .thread-reply-header {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: var(--space-2);
   }
   .thread-reply-edit-toggle,
   .thread-reply-delete {
@@ -192,8 +196,8 @@ async function saveReplyEdit() {
     letter-spacing: 0.02em;
     color: var(--color-text-muted);
     background: var(--color-comment-card-header-bg);
-    border-radius: 4px;
-    padding: 0 6px;
+    border-radius: var(--radius);
+    padding: 0 var(--space-2);
   }
   .thread-reply-text {
     font-size: 12px;

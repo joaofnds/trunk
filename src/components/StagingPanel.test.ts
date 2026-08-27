@@ -112,9 +112,7 @@ describe("StagingPanel", () => {
 			"div[style]",
 		);
 
-		expect(header?.getAttribute("style")).toContain(
-			"height: var(--panel-header-h)",
-		);
+		expect(header?.getAttribute("style")).toContain("height: var(--bar-h)");
 	});
 
 	it("renders unstaged files section header", async () => {
