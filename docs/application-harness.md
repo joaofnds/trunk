@@ -9,9 +9,9 @@ just app-test
 ```
 
 The recipe builds `src-tauri/examples/app_host` and runs `vitest.app.config.ts` over
-`tests/app/`. It is deliberately not part of `just check` yet, and not inside the `vitest`
-recipe: `just front` and `just quick` are the tiers run most, and neither should wait on a
-Rust artifact.
+`tests/app/`. It is part of `just check` and mirrored by the `Application Harness` job in CI,
+a required check on `main`. It is deliberately not inside the `vitest` recipe: `just front`
+and `just quick` are the tiers run most, and neither should wait on a Rust artifact.
 
 ## How it fits together
 
@@ -21,8 +21,8 @@ tests/app/*.test.ts          the tests
        ├─ harness/host-client.ts   one host process per test, newline-delimited JSON
        ├─ harness/internals.ts     window.__TAURI_INTERNALS__, the invoke router
        ├─ harness/dom.ts           the jsdom polyfills
-       ├─ fakes/                   window, webview, path
-       └─ drivers/                 repo, branches, staging, events
+       ├─ fakes/                   menu, dialog, clipboard, opener, window, webview, path
+       └─ drivers/                 repo, branches, staging, rebase editor, events
 ```
 
 `setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
@@ -50,6 +50,25 @@ mirrors each emit onto stdout and the harness dispatches from its own id map.
 **Every other `plugin:` command goes to its Fake**, and one with no Fake and no host route
 throws naming itself. That branch is load-bearing: nine commands answered `undefined` over the
 old mocked transport with nothing noticing.
+
+The menu Fake is the one worth knowing about. `@tauri-apps/api/menu` keeps no JavaScript
+state — `isEnabled()` is an `invoke` — and it replaces every item's action with a `Channel`,
+so a Fake that stored the action and called it would fire nothing. The Fake serializes the
+argument object it is handed, decodes the `__CHANNEL__:` reference, and dispatches through
+`runCallback`. That is what makes `driver.contextMenu.choose("Interactive Rebase...")` a
+gesture, and what lets a test read an item's `enabled` flag by its label.
+
+## What it covers today
+
+The five interactive-rebase workflows that forced TRUNK-32's manual QA round
+(`backlog/docs/doc-17`), in `tests/app/interactive-rebase.test.ts`: a reordered base commit,
+a no-edit rebase that must not rewrite a hash, a rebase from the repository's root, a rebase
+that stops with the toast it owes the user, and the fork-point entry point. Case 6 of that
+document, the greyed-out menu item, stays deliberately outside: it is a predicate over
+already-loaded data that crosses no boundary.
+
+`backlog/docs/doc-26` ranks what still has no end-to-end test — 29 of the 115 registered
+commands are driven here — and is the queue new scenarios come off.
 
 ## What it does not cover
 
@@ -92,7 +111,13 @@ refetched" — which has no state to wait for, and it costs the whole quiet wind
 
 ## Budget
 
-The suite runs in 6.4-6.7 s against a 10 s ceiling, with the host binary already built. A
+The suite runs in 9.0 s against a 10 s ceiling, with the host binary already built. A
 scenario that boots the application and reads the graph costs 130-150 ms, one that waits out
 the debounce 275 ms, and a full stage-and-commit workflow about 500 ms. A test file costs about
 0.2 s of vite transform, so file count is a budget term, not a filing preference.
+
+About a second of headroom is left, which is two or three more scenarios. The ceiling is the
+design constraint, not a target to negotiate: a suite that outgrows it is a decision for the
+repository's owner — raise the budget, or move the suite out of `just check` — not a reason to
+trim a workflow. CI wall time is a different number (the job runs about six minutes) and is
+not what this budget measures.
