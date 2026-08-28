@@ -72,14 +72,20 @@ the recovery prompt it raises, and the pull (rebase) and second push that leave 
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease
 refuses it in that fixture, which is a second scenario the budget has no room for.
 
-`backlog/docs/doc-26` ranks what still has no end-to-end test — 32 of the 115 registered
+The hunk-and-line staging workflow, in `tests/app/staging.test.ts`: staging one hunk of a
+two-hunk file and reading the partial state back from the panel, then discarding two of three
+inserted lines and reading the working-tree file back from disk. It runs in the default inline
+hunk mode; the split and full-file views render the same four buttons and reaching either
+costs a mode switch no criterion needs.
+
+`backlog/docs/doc-26` ranks what still has no end-to-end test — 35 of the 115 registered
 commands are driven here — and is the queue new scenarios come off.
 
 ## What it does not cover
 
 The filesystem watcher is off — `WatcherState::disabled()`, so `open_repo` runs unchanged while
 no watch is created — and `driver.events.externalChange(path)` fires the identical
-`app.emit("repo-changed", path)` call `watcher.rs:24` makes. What that gives up is one link:
+`app.emit("repo-changed", path)` call `watcher.rs:45` makes. What that gives up is one link:
 whether the watcher itself fires.
 
 The macOS traffic-light reposition is off too, through `TrafficLights::disabled()`.
@@ -91,6 +97,9 @@ A headless DOM cannot observe layout and paint, scroll and virtualization, WKWeb
 rendering, native OS chrome, or real pointer gestures. Those still need a human or a render
 golden. In particular jsdom lays nothing out, so `harness/dom.ts` stubs a 4000 px viewport —
 without it the commit graph renders 22 rows however tall the fixture is, coherently and wrongly.
+The same stub answers `clientWidth` as well as `clientHeight`, because the diff pane needs a
+width too: `HunkView` withholds its rows entirely until the pane measures wider than zero, so
+a diff opened without it renders no hunks at all and says nothing about why.
 
 ## Writing a test
 
