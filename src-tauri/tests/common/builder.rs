@@ -6,18 +6,47 @@ pub struct TestContextBuilder {
 }
 
 enum BuildStep {
-    WriteFile { path: String, content: Vec<u8> },
-    WriteBinaryFile { path: String, content: Vec<u8> },
-    Commit { message: String, secs: Option<i64> },
-    Branch { name: String },
-    Checkout { name: String },
-    Merge { branch: String },
-    Conflict { branch: String },
-    Tag { name: String },
-    Stash { message: Option<String> },
-    Remote { name: String },
-    Tracking { remote: String, branch: String },
-    Pushed { remote: String, branch: String },
+    WriteFile {
+        path: String,
+        content: Vec<u8>,
+    },
+    WriteBinaryFile {
+        path: String,
+        content: Vec<u8>,
+    },
+    Commit {
+        message: String,
+        secs: Option<i64>,
+    },
+    Branch {
+        name: String,
+    },
+    Checkout {
+        name: String,
+    },
+    Merge {
+        branch: String,
+    },
+    Conflict {
+        branch: String,
+    },
+    Tag {
+        name: String,
+    },
+    Stash {
+        message: Option<String>,
+    },
+    Remote {
+        name: String,
+    },
+    Tracking {
+        remote: String,
+        branch: String,
+    },
+    Pushed {
+        remote: String,
+        branch: String,
+    },
     RemoteCommit {
         remote: String,
         branch: String,
@@ -396,7 +425,8 @@ impl TestContextBuilder {
 
                     let blob = bare.blob(content.as_bytes()).unwrap();
                     let mut tree = bare.treebuilder(Some(&tip.tree().unwrap())).unwrap();
-                    tree.insert(path, blob, git2::FileMode::Blob.into()).unwrap();
+                    tree.insert(path, blob, git2::FileMode::Blob.into())
+                        .unwrap();
                     let tree = bare.find_tree(tree.write().unwrap()).unwrap();
 
                     bare.commit(

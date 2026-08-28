@@ -250,9 +250,7 @@ fn seed(spec: RepoSpec) -> TestContext {
             SpecStep::Branch { name } => builder.with_branch(&name),
             SpecStep::Checkout { name } => builder.checkout(&name),
             SpecStep::Remote { name } => builder.with_remote(&name),
-            SpecStep::TrackUpstream { remote, branch } => {
-                builder.with_tracking(&remote, &branch)
-            }
+            SpecStep::TrackUpstream { remote, branch } => builder.with_tracking(&remote, &branch),
             SpecStep::Push { remote, branch } => builder.with_pushed(&remote, &branch),
             SpecStep::RemoteCommit {
                 remote,
