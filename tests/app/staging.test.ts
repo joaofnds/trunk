@@ -4,6 +4,8 @@ import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
 
 const FILE = "src/main.ts";
+/** How the panel writes a modified file in either section: status badge, path. */
+const UNSTAGED_LABEL = `M ${FILE}`;
 
 const NUMBERED = Array.from({ length: 24 }, (_, at) => `line ${at + 1}`);
 const REWRITTEN = NUMBERED.with(2, "line 3 CHANGED");
@@ -26,7 +28,7 @@ const TWO_HUNK_EDIT: RepoSpec = {
 describe("a working-tree file with two hunks of changes", () => {
 	afterEach(teardown);
 
-	it("stages one hunk on its own", async () => {
+	it("stages one hunk on its own, leaving the rest of the file unstaged", async () => {
 		const app = await setup({ repo: TWO_HUNK_EDIT });
 		await app.repo.open();
 		await app.staging.open();
@@ -41,6 +43,15 @@ describe("a working-tree file with two hunks of changes", () => {
 			"@@ -1,6 +1,6 @@",
 			"@@ -17,6 +17,9 @@ line 16",
 		]);
+
+		await app.staging.stageHunk(0);
+		await app.events.externalChange(app.repo.path);
+		await app.settle();
+
+		expect(app.staging.stagedFiles()).toEqual([UNSTAGED_LABEL]);
+		expect(app.staging.unstagedFiles()).toEqual([UNSTAGED_LABEL]);
+		expect(app.staging.hunkHeaders()).toEqual(["@@ -17,6 +17,9 @@ line 16"]);
+		expect(app.staging.addedLines()).toEqual(["extra a", "extra b", "extra c"]);
 	});
 });
 
