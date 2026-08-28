@@ -28,7 +28,7 @@ const TWO_COMMITS: RepoSpec = {
 describe("a comment left on a commit's diff", () => {
 	afterEach(teardown);
 
-	it("becomes a thread the panel shows", async () => {
+	it("becomes a thread the panel keeps through publishing and marking it done", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await app.repo.open();
 		await app.repo.selectCommit("Change main");
@@ -46,6 +46,28 @@ describe("a comment left on a commit's diff", () => {
 		});
 		expect(threads).toEqual([ANCHOR]);
 		expect(app.review.states()).toEqual(["open"]);
+
+		await app.review.publish();
+
+		const published = await waitFor(
+			"the actions a published thread offers",
+			() => {
+				const offered = app.review.actions();
+				return offered.length > 0 && !offered.includes("Delete")
+					? offered
+					: null;
+			},
+		);
+		expect(published).toEqual(["Mark done", "Dismiss", "Edit"]);
+		expect(app.review.threads()).toEqual([ANCHOR]);
+		expect(app.review.states()).toEqual(["open"]);
+
+		await app.review.markDone();
+
+		await waitFor("the thread to reach done", () =>
+			app.review.states()[0] === "done" ? true : null,
+		);
+		expect(app.review.states()).toEqual(["done"]);
 	});
 });
 
