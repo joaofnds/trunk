@@ -13,6 +13,7 @@ const COMMIT_SHA = '[title="Copy SHA"]';
 // into its HTML children.
 const REF_PILL = "g.overlay-pills foreignObject";
 const OVERFLOW_BADGE = /^\+\d+$/;
+const FILE_ROW = '[data-testid="staging-file"]';
 
 /**
  * The repository surface, in gestures rather than transport. The harness seeds
@@ -35,6 +36,26 @@ export class RepoDriver {
 		await waitFor("the repository's commits", () =>
 			this.rows().length > 0 ? true : null,
 		);
+	}
+
+	/** Selects a commit, returning once the detail pane is listing its files. */
+	async selectCommit(summary: string): Promise<void> {
+		const row = await waitFor(`the ${summary} row`, () => commitRow(summary));
+
+		row.click();
+
+		await waitFor(`the files ${summary} touched`, () =>
+			document.querySelector<HTMLElement>(FILE_ROW) ? true : null,
+		);
+	}
+
+	/** Opens the selected commit's diff of one file in the center pane. */
+	async openCommitFile(path: string): Promise<void> {
+		const row = await waitFor(`the ${path} row`, () =>
+			firstMatching(FILE_ROW, (text) => text.includes(path)),
+		);
+
+		row.click();
 	}
 
 	/** Right-clicks a commit, returning once the menu it opens is on screen. */

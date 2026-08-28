@@ -13,6 +13,7 @@ import { EventsDriver } from "./events.js";
 import { RebaseEditorDriver } from "./rebase-editor.js";
 import { RemoteDriver } from "./remote.js";
 import { RepoDriver } from "./repo.js";
+import { ReviewDriver } from "./review.js";
 import { StagingDriver } from "./staging.js";
 
 /**
@@ -42,6 +43,7 @@ export class AppDriver {
 	readonly branches: BranchesDriver;
 	readonly staging: StagingDriver;
 	readonly remote: RemoteDriver;
+	readonly review: ReviewDriver;
 	readonly rebaseEditor: RebaseEditorDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
@@ -63,6 +65,7 @@ export class AppDriver {
 		this.branches = new BranchesDriver(fakes.menu);
 		this.staging = new StagingDriver();
 		this.remote = new RemoteDriver();
+		this.review = new ReviewDriver();
 		this.rebaseEditor = new RebaseEditorDriver();
 		this.events = new EventsDriver(host);
 		this.contextMenu = fakes.menu;

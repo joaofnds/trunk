@@ -24,6 +24,7 @@ interface Listener {
 
 const LISTEN = "plugin:event|listen";
 const UNLISTEN = "plugin:event|unlisten";
+const EMIT = "plugin:event|emit";
 const WINDOW_LABEL = "main";
 
 /**
@@ -31,9 +32,10 @@ const WINDOW_LABEL = "main";
  * `window.__TAURI_INTERNALS__`, so installing this before the application root
  * mounts routes every call without a single module mock.
  *
- * Trunk's own commands and the two event-registration commands go to the host,
- * which means the real ACL, the real id allocation and the real Rust
- * registration are all inside the box. Only the delivery hop is the harness's:
+ * Trunk's own commands, the two event-registration commands and the frontend's
+ * own emits go to the host, which means the real ACL, the real id allocation and
+ * the real Rust registration are all inside the box. Only the delivery hop is
+ * the harness's:
  * Tauri delivers an event by evaluating a script this side cannot observe, so
  * the host mirrors each emit onto stdout and dispatch runs from the id map here.
  */
@@ -104,7 +106,12 @@ export class TauriInternals {
 		this.records.push({ cmd, args });
 
 		if (cmd === LISTEN) return await this.listen(args);
-		if (cmd === UNLISTEN) return await this.host.invoke(cmd, args);
+		// A frontend `emit` goes to the host as a command, not through the host's
+		// own `emit` verb, so it travels the real plugin and the real ACL. Without
+		// this route the toolbar's own buttons reject below with no Fake to answer
+		// them, and an unhandled rejection is all the test sees.
+		if (cmd === UNLISTEN || cmd === EMIT)
+			return await this.host.invoke(cmd, args);
 		if (!cmd.startsWith("plugin:")) return await this.host.invoke(cmd, args);
 
 		return this.fake(cmd).answer(commandOf(cmd), args);
