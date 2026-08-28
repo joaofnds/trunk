@@ -11,6 +11,7 @@ import { waitFor } from "../harness/wait.js";
 import { BranchesDriver } from "./branches.js";
 import { EventsDriver } from "./events.js";
 import { RebaseEditorDriver } from "./rebase-editor.js";
+import { RemoteDriver } from "./remote.js";
 import { RepoDriver } from "./repo.js";
 import { StagingDriver } from "./staging.js";
 
@@ -40,6 +41,7 @@ export class AppDriver {
 	readonly repo: RepoDriver;
 	readonly branches: BranchesDriver;
 	readonly staging: StagingDriver;
+	readonly remote: RemoteDriver;
 	readonly rebaseEditor: RebaseEditorDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
@@ -60,6 +62,7 @@ export class AppDriver {
 		this.repo = new RepoDriver(repoPath, fakes.menu);
 		this.branches = new BranchesDriver(fakes.menu);
 		this.staging = new StagingDriver();
+		this.remote = new RemoteDriver();
 		this.rebaseEditor = new RebaseEditorDriver();
 		this.events = new EventsDriver(host);
 		this.contextMenu = fakes.menu;

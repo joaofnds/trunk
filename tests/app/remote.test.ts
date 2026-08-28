@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
+import { waitFor } from "./harness/wait.js";
 
 /** A clone whose remote moved on: `origin` carries a commit `main` has never
  *  seen, and `main` carries one the remote has never seen. */
@@ -32,5 +33,15 @@ describe("a push to a remote that has moved", () => {
 		await app.repo.open();
 
 		expect(app.repo.refPills()).toEqual(["main", "origin/main"]);
+
+		await app.remote.push();
+
+		const refusal = await waitFor("the push recovery prompt", () =>
+			app.remote.recovery(),
+		);
+		expect(refusal).toEqual({
+			text: "Push to origin rejected — main has diverged from the remote.",
+			actions: ["Force Push", "Cancel"],
+		});
 	});
 });
