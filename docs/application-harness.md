@@ -126,15 +126,20 @@ refetched" — which has no state to wait for, and it costs the whole quiet wind
 ## Budget
 
 `just app-test` runs in 9.1 s of **wall** time against a 10 s ceiling, with the host binary
-already built: the median of three runs on a quiet machine. That is the recipe's own wall
-clock, not the `Duration` vitest prints, which comes out about half a second smaller. An
-earlier triple, taken while the machine was still loaded, measured 8.8, 9.7 and 12.1 s, so a
-number taken while something else is compiling says nothing. A scenario that boots the
-application and reads the graph costs 130-150 ms, one that waits out the debounce 275 ms, a
-full stage-and-commit workflow about 500 ms, the remote workflow, which drives real `git`
-twice, about 560 ms, and the hunk-and-line staging workflow, which waits out a `settle()`
-quiet window before selecting lines, about 720 ms. A test file costs about 0.2 s of vite
-transform, so file count is a budget term, not a filing preference.
+already built: the median of three runs on a quiet machine (9.9, 9.1, 9.1). That is the
+recipe's own wall clock, not the `Duration` vitest prints, which comes out about half a second
+smaller. An earlier triple, taken while the machine was still loaded, measured 8.8, 9.7 and
+12.1 s, so a number taken while something else is compiling says nothing. A scenario that boots
+the application and reads the graph costs 130-150 ms, one that waits out the debounce 275 ms, a
+full stage-and-commit workflow about 500 ms, the review workflow, which never waits out a quiet
+window, about 335 ms, the remote workflow, which drives real `git` twice, about 560 ms, and the
+hunk-and-line staging workflow, which waits out a `settle()` quiet window before selecting
+lines, about 720 ms. A test file costs about 0.2 s of vite transform, so file count is a budget
+term, not a filing preference.
+
+The review workflow went in against the same 9.1 s median it was measured before, which says
+the suite's run-to-run spread is wider than a scenario of this size, not that the scenario is
+free: read the per-scenario costs, not the difference between two medians.
 
 About 0.9 s of headroom is left, which is one more scenario of this size. The ceiling is the
 design constraint, not a target to negotiate: a suite that outgrows it is a decision for the
