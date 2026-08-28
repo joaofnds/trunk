@@ -41,17 +41,28 @@ jobs:
       - name: Run benchmarks
         run: cd src-tauri && cargo bench --bench bench_graph --bench bench_commands --bench bench_ipc -- --output-format bencher | tee output.txt
 
+      - name: Normalize against the calibration benchmarks
+        run: bun run scripts/bench-gate.ts src-tauri/output.txt > src-tauri/normalized.txt
+
       - name: Download previous benchmark data
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ./cache
-          key: ${{ runner.os }}-benchmark
+          key: ${{ runner.os }}-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ runner.os }}-benchmark-
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
         with:
           tool: 'cargo'
-          output-file-path: src-tauri/output.txt
+          output-file-path: src-tauri/normalized.txt
           external-data-json-path: ./cache/benchmark-data.json
           alert-threshold: '130%'
           fail-on-alert: true
+
+      - name: Upload raw benchmark output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: criterion-bencher-output
+          path: src-tauri/output.txt

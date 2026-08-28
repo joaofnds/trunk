@@ -2,6 +2,9 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use syntect::easy::HighlightLines;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSet;
 
 struct BenchRepo {
     _dir: tempfile::TempDir,
@@ -584,8 +587,131 @@ fn bench_diff_large_file(c: &mut Criterion) {
     group.finish();
 }
 
+/// One block of TypeScript, frozen. Nothing in `trunk_lib` may reach this
+/// constant: the calibration benchmarks measure the runner, so the moment their
+/// workload tracks Trunk's code they stop dividing runner speed out of the gate.
+const CALIBRATION_TS_BLOCK: &str = r#"
+export interface CalibrationRecord {
+  readonly id: string;
+  readonly label: string;
+  readonly weight: number;
+  readonly tags: readonly string[];
+}
+
+export function summarize(records: readonly CalibrationRecord[]): number {
+  let total = 0;
+  for (const record of records) {
+    if (record.weight > 0 && record.tags.length > 0) {
+      total += record.weight * record.tags.length;
+    } else {
+      total -= 1;
+    }
+  }
+  return total;
+}
+
+export const DEFAULTS: CalibrationRecord = {
+  id: "0",
+  label: "default",
+  weight: 1,
+  tags: ["a", "b"],
+};
+"#;
+
+const CALIBRATION_TS_BLOCKS: usize = 40;
+
+const CALIBRATION_COMMITS: usize = 200;
+
+static CALIBRATION_TS: OnceLock<String> = OnceLock::new();
+static CALIBRATION_SYNTAX: OnceLock<SyntaxSet> = OnceLock::new();
+static CALIBRATION_THEMES: OnceLock<ThemeSet> = OnceLock::new();
+static CALIBRATION_REPO: OnceLock<BenchRepo> = OnceLock::new();
+
+/// A fixed syntect highlight, the divisor for every syntect-class benchmark.
+fn bench_calibration_syntect(c: &mut Criterion) {
+    let source = CALIBRATION_TS.get_or_init(|| CALIBRATION_TS_BLOCK.repeat(CALIBRATION_TS_BLOCKS));
+    let syntaxes = CALIBRATION_SYNTAX.get_or_init(two_face::syntax::extra_newlines);
+    let themes = CALIBRATION_THEMES.get_or_init(ThemeSet::load_defaults);
+    let syntax = syntaxes.find_syntax_by_extension("ts").unwrap();
+    let theme = &themes.themes["base16-ocean.dark"];
+
+    c.bench_function("calibration/syntect", |b| {
+        b.iter(|| {
+            let mut highlighter = HighlightLines::new(syntax, theme);
+            let mut spans = 0usize;
+            for line in source.split_inclusive('\n') {
+                spans += highlighter.highlight_line(line, syntaxes).unwrap().len();
+            }
+            spans
+        });
+    });
+}
+
+/// A fixed git2 walk, the divisor for every git2-class benchmark.
+fn bench_calibration_git2(c: &mut Criterion) {
+    let bench_repo = CALIBRATION_REPO.get_or_init(make_calibration_repo);
+
+    c.bench_function("calibration/git2", |b| {
+        b.iter(|| {
+            let repo = git2::Repository::open(&bench_repo.path).unwrap();
+            let mut walk = repo.revwalk().unwrap();
+            walk.push_head().unwrap();
+
+            let mut bytes = 0usize;
+            for oid in walk {
+                let commit = repo.find_commit(oid.unwrap()).unwrap();
+                let tree = commit.tree().unwrap();
+                for entry in tree.iter() {
+                    let object = entry.to_object(&repo).unwrap();
+                    bytes += object.as_blob().map_or(0, |blob| blob.content().len());
+                }
+            }
+            bytes
+        });
+    });
+}
+
+fn make_calibration_repo() -> BenchRepo {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    let when = git2::Time::new(1_700_000_000, 0);
+    let sig = git2::Signature::new("Calibration", "calibration@test.com", &when).unwrap();
+
+    let mut parent: Option<git2::Oid> = None;
+    for n in 0..CALIBRATION_COMMITS {
+        let blob = repo
+            .blob(format!("{CALIBRATION_TS_BLOCK}{n}").as_bytes())
+            .unwrap();
+        let mut tb = repo.treebuilder(None).unwrap();
+        tb.insert("calibration.ts", blob, 0o100644).unwrap();
+        let tree_oid = tb.write().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let parents: Vec<git2::Commit> = parent
+            .map(|oid| repo.find_commit(oid).unwrap())
+            .into_iter()
+            .collect();
+        let borrowed: Vec<&git2::Commit> = parents.iter().collect();
+        parent = Some(
+            repo.commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                &format!("Calibration commit {n}"),
+                &tree,
+                &borrowed,
+            )
+            .unwrap(),
+        );
+    }
+
+    let path = dir.path().to_path_buf();
+    BenchRepo { _dir: dir, path }
+}
+
 criterion_group!(
     benches,
+    bench_calibration_syntect,
+    bench_calibration_git2,
     bench_draft_write,
     bench_list_refs,
     bench_diff_unstaged,

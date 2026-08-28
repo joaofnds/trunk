@@ -39,6 +39,7 @@ after touching a color token.
 
 | Doc | What it covers |
 |-----|----------------|
+| [benchmark-gate.md](benchmark-gate.md) | The CI benchmark gate: why it compares each benchmark divided by a calibration benchmark of its workload class rather than raw nanoseconds, which benchmark belongs to which class, how to read a failure, and the three things that reset the baseline. Read before changing `.github/workflows/benchmarks.yml`, `scripts/bench-normalize.ts`, or any calibration benchmark. |
 | [performance-instrumentation.md](performance-instrumentation.md) | The standing measurement tooling: `just perf` and `just perf-report`, what is instrumented automatically (every Tauri command, frame gaps) and how to add a named span, why percentiles are nearest-rank, and why the gate is an env var rather than `import.meta.env.DEV`. Read before measuring anything. |
 
 ## Known issues
