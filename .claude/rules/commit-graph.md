@@ -118,13 +118,15 @@ then mirror the same edit into the changelog.
 - Render a stash's graph marker as a dashed hollow **square** (`<rect>`) with dashed edges,
   never a circle. Hollow alone does not identify a stash: WIP is a dashed hollow **circle**, a
   merge is a solid-stroke hollow circle
-- Stash *lane assignment* deliberately depends on worktree state: `can_inline` places a stash
-  inline at its parent's column only when the worktree is clean, and branches it right
-  otherwise. The frontend prepends the WIP row at the head-chain column whenever
-  `wipCount > 0`, and an inline stash lands in that same column. Do not drop **or narrow** the
-  `!worktree_dirty` clause — its dirtiness stays the shared `git::status::worktree_dirty`
-  definition the WIP row is gated on, staged, unstaged, conflicted and untracked alike; a
-  tighter predicate keeps the clause and still collides (amended 2026-08-02, after a
+- Stash *lane assignment* and the HEAD lane's upward extension deliberately depend on worktree
+  state: `can_inline` places a stash inline at its parent's column only when the worktree is
+  clean and branches it right otherwise, and `head_lane_extension` yields no extension at all
+  while the worktree is dirty. The frontend prepends the WIP row at the head-chain column
+  whenever `wipCount > 0`, and an inline stash lands in that same column. Do not drop **or
+  narrow** either worktree-state guard — their dirtiness stays the shared
+  `git::status::worktree_dirty` definition the WIP row is gated on, staged, unstaged,
+  conflicted and untracked alike; a tighter predicate keeps both guards and still collides
+  (amended 2026-08-02, after a
   TypeScript-only fix for the same collision was reverted; the counterexample was refuted
   2026-08-03 — 31 inline events across the suite and the QA fixtures, all at column 0)
 - Do not drop `can_inline`'s `head_lane_ext.is_empty()` clause. It is load-bearing twice: it
@@ -147,7 +149,9 @@ then mirror the same edit into the changelog.
   `docs/architecture/commit-graph.md` §"Phase 1", which enumerates the clauses and quotes this
   disjunct in full (referent settled 2026-08-11 at the user's direction). Landing a third insert
   without a matching exclusion re-opens it — re-derive before you land it, and record the
-  result here (re-derived 2026-08-05, when `head_lane_extension` became the second)
+  result here (re-derived 2026-08-05, when `head_lane_extension` became the second;
+  re-derived 2026-08-28, when a dirty worktree began suppressing the extension: still exactly
+  two sites, and while dirty the second produces no insert at all)
 - Never let the HEAD lane's upward extension take a stash. A stash hangs off its parent by
   first parent like any commit, and placing it in the lane would both steal column 0 from the
   branch's real continuation and bypass `can_inline` entirely. `head_lane_extension` filters
@@ -158,12 +162,20 @@ then mirror the same edit into the changelog.
   upstream, so it cannot reach the other arm. The tracked-upstream filter is pinned by
   `a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension` in `test_placement.rs`
   (corrected 2026-08-11: this bullet claimed one test caught both, and deleting the upstream
-  filter left it green)
+  filter left it green). A dirty worktree returns from `head_lane_extension` before either
+  filter runs, so a test probing either needs a clean worktree: `worktree_dirty: false` in a
+  `test_placement.rs` literal, or a clean working tree in the shape behind a captured rule
+  input (added 2026-08-28 with the suppression)
 - Any change on the dirty path must assert a **non-stash** branch's column *and* colour in
   `src-tauri/tests/test_graph.rs` — flipping clean↔dirty re-lays-out and re-colours unrelated
-  branches. The churn that is already accepted is pinned by
+  branches. Two churn classes are accepted, each with its own pinned pair. Stash placement:
   `dirtiness_relayouts_unrelated_branches` and
-  `dirtiness_recolors_branches_below_the_stash_parent`
+  `dirtiness_recolors_branches_below_the_stash_parent`. The HEAD lane's upward extension,
+  which a dirty worktree suppresses outright, so every continuation above `head_tip` moves
+  right and takes a colour of its own:
+  `a_dirty_worktree_outranks_the_upstream_for_the_head_lane` and
+  `a_dirty_worktree_outranks_the_tiebreak_continuation_for_the_head_lane` (class added
+  2026-08-28 at the user's direction, with the suppression itself)
 - A red graph golden, export or render golden is a suspected defect, never a stale
   artifact. Investigate before regenerating. The one legitimate door is
   `just graph-accept "<reason>"`, which records the reason in
@@ -229,8 +241,9 @@ then mirror the same edit into the changelog.
   which is the same value — the flags are distinct bits — so it is an equivalent mutant, and
   nothing in the sweep drops `TIME`. **(b) Not yet migrated, and free to migrate** —
   `detached_head_marks_first_parent_chain`, and every test under the "HEAD lane follows linear
-  continuations" heading except `stash_branches_right_when_the_head_lane_extends`, which
-  already reads a capture
+  continuations" heading that still builds its repository in the body rather than reading a
+  capture through `rule_inputs`. The set only shrinks: a new test rebuilds a repository under
+  (a) or not at all
 - Pin every commit timestamp in a graph shape, spaced, never same-second. `TestContext::builder`
   pins its own clock (`FIXTURE_BASE_SECS`, day-spaced); a raw-git2 shape must call
   `graph_shapes::sig_at` with spaced values rather than declare a local signature helper.
