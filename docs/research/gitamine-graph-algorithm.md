@@ -465,8 +465,11 @@ verification.
 
 Since 2026-08-05 that reservation covers more than HEAD's ancestors: it also
 covers the chain continuing HEAD's tip upward, so a branch that is merely
-behind renders straight. See `head_lane_extension` in `placement.rs` and
-`docs/architecture/commit-graph.md` §"HEAD lane pre-reservation".
+behind renders straight while the worktree is clean. Since 2026-08-28 a dirty
+worktree outranks every such continuation and yields no extension at all, so
+column 0 above HEAD's tip is the WIP row's. See `head_lane_extension` in
+`placement.rs` and `docs/architecture/commit-graph.md`
+§"HEAD lane pre-reservation".
 
 ### Concept 6: Simplify Stash Handling (adopt)
 

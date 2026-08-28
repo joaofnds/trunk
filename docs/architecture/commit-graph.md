@@ -115,15 +115,21 @@ Before processing any commit:
   fresh colour instead. Processing HEAD's tip flips it back to 0, so lane 0 carries the
   extension's colour above HEAD and HEAD's colour from HEAD down.
 
-**The extension is why a branch that is only behind renders straight.** Its members reach
-Phase 1 through the `pending_parents` branch and take column 0 verbatim, so Phase 4 emits
-`Straight` edges all the way down to HEAD's tip and no fork is ever produced.
+**The extension is why a branch that is only behind renders straight while the worktree is
+clean.** Its members reach Phase 1 through the `pending_parents` branch and take column 0
+verbatim, so Phase 4 emits `Straight` edges all the way down to HEAD's tip and no fork is
+ever produced.
 
 **Which chain wins the extension**, when more than one continues HEAD's tip:
 
-1. HEAD's tracked upstream, when its first-parent path reaches HEAD's tip. This is the only
+1. The working tree, whenever it is dirty. It has no commits to place — the frontend draws it
+   as the WIP row above HEAD's tip — so it wins by yielding no extension at all, and every
+   real continuation forks right under a colour of its own. Without this the WIP row sits
+   above an extension commit in the same lane and reads as that commit's child (TRUNK-42,
+   2026-08-28).
+2. HEAD's tracked upstream, when its first-parent path reaches HEAD's tip. This is the only
    case that keeps HEAD's colour.
-2. Otherwise the first-parent child that the revwalk emitted earliest, walked upward as far
+3. Otherwise the first-parent child that the revwalk emitted earliest, walked upward as far
    as it goes.
 
 Stashes are excluded from **both** candidates. A stash hangs off its parent by first parent
@@ -419,7 +425,7 @@ The lane algorithm has deeply coupled state. Changing any one thing cascades:
 | A lane's dashed flag | Every pass-through edge at that column gets dashed |
 | `pending_parents` removal timing | Fork-in detection in Phase 2 depends on `active_lanes` holding the child's oid until the parent is processed |
 | `active_lanes` layout | `max_columns` high-water mark, `is_branch_tip` detection, fork-in scan all use this |
-| The dirtiness read | Stash placement, and through it the column and colour of unrelated branches — see `can_inline` in Phase 1 |
+| The dirtiness read | Stash placement (`can_inline`) and the HEAD lane's upward extension (`head_lane_extension`), and through both the column and colour of unrelated branches — see Phase 1 |
 
 **Where the stash-specific code is**: (1) parent filtering (only first parent), (2) the
 lane's dashed flag, (3) `is_stash` flag on output, (4) the `can_inline` placement exception,
