@@ -12,17 +12,16 @@ const tauriSink: PerfSink = {
 	},
 };
 
-/** Turns instrumentation on for a `VITE_PERF=1` dev session and answers where
- *  the samples land, so the path is never something to go looking for. Any
- *  other build leaves it off and pays one boolean per measurement. */
-export async function startPerfSession(): Promise<string | null> {
-	if (import.meta.env.VITE_PERF !== "1") return null;
+/** Turns instrumentation on for a `VITE_PERF=1` dev session and announces
+ *  where the samples land, so the path is never something to go looking for.
+ *  Any other build leaves it off and pays one boolean per measurement. */
+export async function startPerfSession(): Promise<void> {
+	if (import.meta.env.VITE_PERF !== "1") return;
 
 	const path = await invoke<string>("perf_reset");
+	console.info(`perf samples: ${path}`);
 	enablePerf({ sink: tauriSink });
 
 	setInterval(() => void flushPerf(), FLUSH_INTERVAL_MS);
 	window.addEventListener("beforeunload", () => void flushPerf());
-
-	return path;
 }

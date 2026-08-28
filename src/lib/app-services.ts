@@ -4,9 +4,7 @@ import { trackScrollActivity } from "./scrollbar-activity.js";
 export function startAppServices(): () => void {
 	const untrackScroll = trackScrollActivity();
 
-	startPerfSession().then((path) => {
-		if (path) console.info(`perf samples: ${path}`);
-	});
+	void startPerfSession();
 
 	return untrackScroll;
 }
