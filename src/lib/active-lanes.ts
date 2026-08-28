@@ -51,14 +51,14 @@ export function buildGraphData(
 
 			// Dashed connections from WIP to HEAD, split around every row already
 			// occupying the WIP column, so the dashes never cross a commit dot.
-			// Two shapes land here. A branch behind its upstream puts the unpulled
-			// commits in this column in a settled frame. A stash lands here only in an
-			// unsettled one: on a clean->dirty edit get_dirty_counts resolves ~40ms
-			// before refresh_commit_graph (RepoView dispatches loadDirtyCounts
-			// synchronously while the graph fetch waits a microtask for CommitGraph's
-			// $effect), so the WIP row is drawn over the previous layout with the stash
-			// still inline. Structural ordering, not a race — the window grows with
-			// history size.
+			// Two shapes land here, both only in an unsettled frame: a stash still
+			// inline, and the unpulled commits of a branch behind its upstream. On a
+			// clean->dirty edit get_dirty_counts resolves ~40ms before
+			// refresh_commit_graph (RepoView dispatches loadDirtyCounts synchronously
+			// while the graph fetch waits a microtask for CommitGraph's $effect), so the
+			// WIP row is drawn over the previous clean layout, where both still hold this
+			// column. Structural ordering, not a race — the window grows with history
+			// size.
 			if (headRow > y) {
 				const wipCol = commit.column;
 				const breakRows: number[] = [];
