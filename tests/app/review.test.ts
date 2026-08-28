@@ -28,10 +28,13 @@ const TWO_COMMITS: RepoSpec = {
 describe("a comment left on a commit's diff", () => {
 	afterEach(teardown);
 
-	it("becomes a thread the panel keeps through publishing and marking it done", async () => {
+	it("becomes a thread the panel keeps through publishing, and reaches done in the copied doc", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
 		await app.repo.open();
 		await app.repo.selectCommit("Change main");
+		// Read while the graph is still on screen: opening the review panel takes
+		// the layout the commit rows live in with it.
+		const commit = app.repo.shaOf("Change main");
 		await app.review.showInlineComments();
 		await app.repo.openCommitFile(FILE);
 
@@ -68,6 +71,14 @@ describe("a comment left on a commit's diff", () => {
 			app.review.states()[0] === "done" ? true : null,
 		);
 		expect(app.review.states()).toEqual(["done"]);
+
+		await app.review.copyDoc();
+
+		const doc = await waitFor(
+			"the copied review doc",
+			() => app.clipboard.text,
+		);
+		expect(doc).toContain(`${ANCHOR} (${commit}, after) — done`);
 	});
 });
 
