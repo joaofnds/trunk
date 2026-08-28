@@ -1,17 +1,12 @@
 import { mount } from "svelte";
 import App from "./App.svelte";
 import "./app.css";
-import { startPerfSession } from "./lib/perf-session.js";
-import { trackScrollActivity } from "./lib/scrollbar-activity.js";
+import { startAppServices } from "./lib/app-services.js";
 
 const target = document.getElementById("app");
 if (!target) throw new Error("Missing #app element");
 
-trackScrollActivity();
-
-startPerfSession().then((path) => {
-	if (path) console.info(`perf samples: ${path}`);
-});
+startAppServices();
 
 const app = mount(App, { target });
 

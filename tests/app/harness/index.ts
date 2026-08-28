@@ -1,7 +1,6 @@
 import { mount, unmount } from "svelte";
 import App from "../../../src/App.svelte";
-import { startPerfSession } from "../../../src/lib/perf-session.js";
-import { trackScrollActivity } from "../../../src/lib/scrollbar-activity.js";
+import { startAppServices } from "../../../src/lib/app-services.js";
 import { AppDriver } from "../drivers/index.js";
 import { FakeClipboard } from "../fakes/clipboard.js";
 import { FakeDialog } from "../fakes/dialog.js";
@@ -33,7 +32,7 @@ let running: Running | null = null;
 /**
  * Boots the real application headlessly: a fresh host process, a seeded
  * repository, the transport seam installed before anything imports it, and the
- * same root `src/main.ts` mounts, running the same two side effects it runs.
+ * same root `src/main.ts` mounts, started via `startAppServices()`.
  *
  * One host process is one application is one test, so every managed state and
  * the resolved `app_data_dir` isolate without a reset step.
@@ -63,8 +62,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 
 	const root = document.createElement("div");
 	document.body.appendChild(root);
-	const untrackScroll = trackScrollActivity();
-	void startPerfSession();
+	const untrackScroll = startAppServices();
 	const app = mount(App, { target: root });
 
 	running = { host, internals, root, app, untrackScroll };
