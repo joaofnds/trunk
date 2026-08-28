@@ -2,6 +2,9 @@ import { waitFor } from "../harness/wait.js";
 import { firstMatching } from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
+const UNSTAGED_SECTION = '[data-testid="staging-unstaged-section"]';
+const FILE_ROW = '[data-testid="staging-file"]';
+const HUNK_HEADER = ".hunk-toolbar .hunk-header-text";
 const STAGE_ALL = '[aria-label="Stage all changes"]';
 const SUBJECT = '[data-testid="commit-form-subject"]';
 const SUBMIT = '[data-testid="commit-form-submit"]';
@@ -30,6 +33,24 @@ export class StagingDriver {
 		await waitFor("an empty unstaged section", () =>
 			stageAllButton() ? null : true,
 		);
+	}
+
+	/** Opens the unstaged file's diff in the centre pane. */
+	async openFile(path: string): Promise<void> {
+		const row = await waitFor(`the unstaged ${path} row`, () =>
+			firstMatching(`${UNSTAGED_SECTION} ${FILE_ROW}`, (text) =>
+				text.includes(path),
+			),
+		);
+
+		row.click();
+	}
+
+	/** The `@@` header of each hunk the diff pane is showing, topmost first. */
+	hunkHeaders(): string[] {
+		const headers = document.querySelectorAll<HTMLElement>(HUNK_HEADER);
+
+		return [...headers].map((header) => header.textContent?.trim() ?? "");
 	}
 
 	/** What the rebase banner is offering the user, or null while the panel is

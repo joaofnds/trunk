@@ -16,6 +16,13 @@
  */
 const VIEWPORT_HEIGHT = 4000;
 
+/**
+ * The same gap one step further in: `HunkView` withholds its rows entirely
+ * until the pane measures wider than zero, so a diff opened under a headless
+ * DOM renders no hunks at all and reports nothing about it.
+ */
+const VIEWPORT_WIDTH = 1200;
+
 /** Per-glyph rather than uniform, so two equal-length strings can measure
  *  differently the way they do in a proportional font. */
 const WIDE_GLYPH = /[0-9mwMW]/;
@@ -94,6 +101,15 @@ function installLayout(): void {
 			toJSON: () => ({}),
 		} as DOMRect;
 	};
+
+	Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+		configurable: true,
+		get: () => VIEWPORT_WIDTH,
+	});
+	Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+		configurable: true,
+		get: () => VIEWPORT_HEIGHT,
+	});
 }
 
 function installTextMeasurement(): void {
