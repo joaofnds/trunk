@@ -116,20 +116,21 @@ refetched" — which has no state to wait for, and it costs the whole quiet wind
 
 ## Budget
 
-`just app-test` runs in 8.4 s of **wall** time against a 10 s ceiling, with the host binary
+`just app-test` runs in 9.1 s of **wall** time against a 10 s ceiling, with the host binary
 already built: the median of three runs on a quiet machine. That is the recipe's own wall
 clock, not the `Duration` vitest prints, which comes out about half a second smaller. An
 earlier triple, taken while the machine was still loaded, measured 8.8, 9.7 and 12.1 s, so a
 number taken while something else is compiling says nothing. A scenario that boots the
 application and reads the graph costs 130-150 ms, one that waits out the debounce 275 ms, a
-full stage-and-commit workflow about 500 ms, and the remote workflow, which drives real `git`
-twice, about 560 ms. A test file costs about 0.2 s of vite transform, so file count is a budget
-term, not a filing preference.
+full stage-and-commit workflow about 500 ms, the remote workflow, which drives real `git`
+twice, about 560 ms, and the hunk-and-line staging workflow, which waits out a `settle()`
+quiet window before selecting lines, about 720 ms. A test file costs about 0.2 s of vite
+transform, so file count is a budget term, not a filing preference.
 
-About a second and a half of headroom is left, which is two or three more scenarios. The
-ceiling is the design constraint, not a target to negotiate: a suite that outgrows it is a
-decision for the repository's owner — raise the budget, or move the suite out of `just check`
-— not a reason to trim a workflow. CI wall time is a different number (the job runs about six
+About 0.9 s of headroom is left, which is one more scenario of this size. The ceiling is the
+design constraint, not a target to negotiate: a suite that outgrows it is a decision for the
+repository's owner — raise the budget, or move the suite out of `just check` — not a reason
+to trim a workflow. CI wall time is a different number (the job runs about six
 minutes) and is not what this budget measures.
 
 ## Measuring the rendered DOM
