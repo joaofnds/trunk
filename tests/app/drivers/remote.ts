@@ -1,6 +1,9 @@
 import { waitFor } from "../harness/wait.js";
+import { firstMatching } from "./dom.js";
 
 const PUSH = '[aria-label="Push"]';
+const PULL_OPTIONS = '[title="Pull options"]';
+const PULL_REBASE = "Pull (rebase)";
 const RECOVERY_SURFACE = ".recovery-surface";
 const RECOVERY_TEXT = ".recovery-text";
 const FORCE_PUSH = "Force Push";
@@ -23,6 +26,23 @@ export class RemoteDriver {
 		const button = await waitFor("an enabled push button", () => enabled(PUSH));
 
 		button.click();
+	}
+
+	/** Opens the pull dropdown and chooses the rebase strategy. The plain Pull
+	 *  button is not the same gesture: on a diverged branch under a scrubbed git
+	 *  config, a strategy-less pull is a fatal error rather than a default. */
+	async pullRebase(): Promise<void> {
+		const chevron = await waitFor("an enabled pull-options button", () =>
+			enabled(PULL_OPTIONS),
+		);
+
+		chevron.click();
+
+		const option = await waitFor(`the ${PULL_REBASE} option`, () =>
+			firstMatching("button", (text) => text === PULL_REBASE),
+		);
+
+		option.click();
 	}
 
 	/**

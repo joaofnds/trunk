@@ -43,5 +43,14 @@ describe("a push to a remote that has moved", () => {
 			text: "Push to origin rejected — main has diverged from the remote.",
 			actions: ["Force Push", "Cancel"],
 		});
+
+		await app.remote.pullRebase();
+		await app.remote.push();
+
+		const pills = await waitFor("the graph to settle on one pill", () => {
+			const showing = app.repo.refPills();
+			return showing.length === 1 ? showing : null;
+		});
+		expect(pills).toEqual(["main"]);
 	});
 });
