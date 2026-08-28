@@ -44,10 +44,7 @@ describe("a working-tree file with two hunks of changes", () => {
 			const showing = app.staging.hunkHeaders();
 			return showing.length > 0 ? showing : null;
 		});
-		expect(headers).toEqual([
-			"@@ -1,6 +1,6 @@",
-			"@@ -17,6 +17,9 @@ line 16",
-		]);
+		expect(headers).toEqual(["@@ -1,6 +1,6 @@", "@@ -17,6 +17,9 @@ line 16"]);
 
 		await app.staging.stageHunk(0);
 		await app.events.externalChange(app.repo.path);

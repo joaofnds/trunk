@@ -2,9 +2,14 @@ import { waitFor } from "../harness/wait.js";
 import { firstMatching } from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
+const STAGE_ALL = '[aria-label="Stage all changes"]';
+const SUBJECT = '[data-testid="commit-form-subject"]';
+const SUBMIT = '[data-testid="commit-form-submit"]';
+const WIP_PLACEHOLDER = "// WIP";
+const REBASE_PROGRESS = "Rebasing commit";
 const UNSTAGED_SECTION = '[data-testid="staging-unstaged-section"]';
-const FILE_ROW = '[data-testid="staging-file"]';
 const STAGED_SECTION = '[data-testid="staging-staged-section"]';
+const FILE_ROW = '[data-testid="staging-file"]';
 const HUNK_TOOLBAR = ".hunk-toolbar";
 const HUNK_HEADER = `${HUNK_TOOLBAR} .hunk-header-text`;
 const DIFF_LINE = ".diff-line";
@@ -13,11 +18,6 @@ const ADDED_LINE = `.diff-line-add ${LINE_CONTENT}`;
 const GRIP = ".gutter-selectable";
 const STAGE_HUNK = "Stage Hunk";
 const DISCARD_LINES = "Discard Lines";
-const STAGE_ALL = '[aria-label="Stage all changes"]';
-const SUBJECT = '[data-testid="commit-form-subject"]';
-const SUBMIT = '[data-testid="commit-form-submit"]';
-const WIP_PLACEHOLDER = "// WIP";
-const REBASE_PROGRESS = "Rebasing commit";
 
 /** The working-tree view: what the graph's top row opens onto, and the commit
  *  the user builds there. */
@@ -43,7 +43,7 @@ export class StagingDriver {
 		);
 	}
 
-	/** Opens the unstaged file's diff in the centre pane. */
+	/** Opens the unstaged file's diff in the center pane. */
 	async openFile(path: string): Promise<void> {
 		const row = await waitFor(`the unstaged ${path} row`, () =>
 			firstMatching(`${UNSTAGED_SECTION} ${FILE_ROW}`, (text) =>
@@ -165,8 +165,8 @@ function enabledIn(
 	return action && !action.disabled ? action : null;
 }
 
-/** The action wherever a toolbar is offering it: a selection lives in one hunk,
- *  and which one is the test's business rather than the driver's. */
+/** The action wherever a toolbar is offering it. A line selection lives in one
+ *  hunk, so the toolbar carrying the action is the one holding the selection. */
 function offeredAnywhere(label: string): HTMLButtonElement | null {
 	for (const toolbar of toolbars()) {
 		const action = enabledIn(toolbar, label);
