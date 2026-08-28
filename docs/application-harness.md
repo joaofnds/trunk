@@ -22,7 +22,7 @@ tests/app/*.test.ts          the tests
        ├─ harness/internals.ts     window.__TAURI_INTERNALS__, the invoke router
        ├─ harness/dom.ts           the jsdom polyfills
        ├─ fakes/                   menu, dialog, clipboard, opener, window, webview, path
-       └─ drivers/                 repo, branches, staging, rebase editor, events
+       └─ drivers/                 repo, branches, staging, remote, rebase editor, events
 ```
 
 `setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
@@ -67,7 +67,12 @@ that stops with the toast it owes the user, and the fork-point entry point. Case
 document, the greyed-out menu item, stays deliberately outside: it is a predicate over
 already-loaded data that crosses no boundary.
 
-`backlog/docs/doc-26` ranks what still has no end-to-end test — 29 of the 115 registered
+The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
+the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
+level with its upstream. Force Push is offered there and deliberately not pressed — the lease
+refuses it in that fixture, which is a second scenario the budget has no room for.
+
+`backlog/docs/doc-26` ranks what still has no end-to-end test — 32 of the 115 registered
 commands are driven here — and is the queue new scenarios come off.
 
 ## What it does not cover
@@ -113,18 +118,19 @@ refetched" — which has no state to wait for, and it costs the whole quiet wind
 
 `just app-test` runs in 8.4 s of **wall** time against a 10 s ceiling, with the host binary
 already built: the median of three runs on a quiet machine. That is the recipe's own wall
-clock, not the `Duration` vitest prints, which comes out about half a second smaller. The same
-three runs on a loaded machine measured 8.8, 9.7 and 12.1 s, so a number taken while something
-else is compiling says nothing. A scenario that boots the application and reads the graph costs
-130-150 ms, one that waits out the debounce 275 ms, a full stage-and-commit workflow about
-500 ms, and the remote workflow, which drives real `git` twice, about 560 ms. A test file costs
-about 0.2 s of vite transform, so file count is a budget term, not a filing preference.
+clock, not the `Duration` vitest prints, which comes out about half a second smaller. An
+earlier triple, taken while the machine was still loaded, measured 8.8, 9.7 and 12.1 s, so a
+number taken while something else is compiling says nothing. A scenario that boots the
+application and reads the graph costs 130-150 ms, one that waits out the debounce 275 ms, a
+full stage-and-commit workflow about 500 ms, and the remote workflow, which drives real `git`
+twice, about 560 ms. A test file costs about 0.2 s of vite transform, so file count is a budget
+term, not a filing preference.
 
-About a second and a half of headroom is left, which is two or three more scenarios. The ceiling is the
-design constraint, not a target to negotiate: a suite that outgrows it is a decision for the
-repository's owner — raise the budget, or move the suite out of `just check` — not a reason to
-trim a workflow. CI wall time is a different number (the job runs about six minutes) and is
-not what this budget measures.
+About a second and a half of headroom is left, which is two or three more scenarios. The
+ceiling is the design constraint, not a target to negotiate: a suite that outgrows it is a
+decision for the repository's owner — raise the budget, or move the suite out of `just check`
+— not a reason to trim a workflow. CI wall time is a different number (the job runs about six
+minutes) and is not what this budget measures.
 
 ## Measuring the rendered DOM
 
