@@ -9,7 +9,18 @@ export type SpecStep =
 	| { step: "file"; path: string; content: string }
 	| { step: "commit"; message: string; at?: number }
 	| { step: "branch"; name: string }
-	| { step: "checkout"; name: string };
+	| { step: "checkout"; name: string }
+	| { step: "remote"; name: string }
+	| { step: "trackUpstream"; remote: string; branch: string }
+	| { step: "push"; remote: string; branch: string }
+	| {
+			step: "remoteCommit";
+			remote: string;
+			branch: string;
+			path: string;
+			content: string;
+			message: string;
+	  };
 
 export interface RepoSpec {
 	steps: SpecStep[];

@@ -16,6 +16,15 @@ enum BuildStep {
     Tag { name: String },
     Stash { message: Option<String> },
     Remote { name: String },
+    Tracking { remote: String, branch: String },
+    Pushed { remote: String, branch: String },
+    RemoteCommit {
+        remote: String,
+        branch: String,
+        path: String,
+        content: String,
+        message: String,
+    },
 }
 
 /// 2026-01-01T00:00:00Z, the same base `scripts/qa-*-fixtures.sh` pin. Commits are spaced a
@@ -114,6 +123,46 @@ impl TestContextBuilder {
     pub fn with_remote(&mut self, name: &str) -> &mut Self {
         self.steps.push(BuildStep::Remote {
             name: name.to_string(),
+        });
+        self
+    }
+
+    /// Points `branch` at `remote`, which `with_remote` deliberately leaves
+    /// unconfigured, so a bare `git pull`/`git push` has a target.
+    pub fn with_tracking(&mut self, remote: &str, branch: &str) -> &mut Self {
+        self.steps.push(BuildStep::Tracking {
+            remote: remote.to_string(),
+            branch: branch.to_string(),
+        });
+        self
+    }
+
+    /// Publishes `branch` to `remote` and points the tracking ref at it, standing
+    /// in for the clone the repository would have come from.
+    pub fn with_pushed(&mut self, remote: &str, branch: &str) -> &mut Self {
+        self.steps.push(BuildStep::Pushed {
+            remote: remote.to_string(),
+            branch: branch.to_string(),
+        });
+        self
+    }
+
+    /// Commits straight into the bare remote, standing in for another clone
+    /// pushing to it. `branch` must already exist there: push it first.
+    pub fn with_remote_commit(
+        &mut self,
+        remote: &str,
+        branch: &str,
+        path: &str,
+        content: &str,
+        message: &str,
+    ) -> &mut Self {
+        self.steps.push(BuildStep::RemoteCommit {
+            remote: remote.to_string(),
+            branch: branch.to_string(),
+            path: path.to_string(),
+            content: content.to_string(),
+            message: message.to_string(),
         });
         self
     }
@@ -290,6 +339,75 @@ impl TestContextBuilder {
 
                     let bare_url = bare_path.display().to_string();
                     repo.remote(name, &bare_url).unwrap();
+                }
+
+                BuildStep::Tracking { remote, branch } => {
+                    let mut cfg = repo.config().unwrap();
+                    cfg.set_str(&format!("branch.{}.remote", branch), remote)
+                        .unwrap();
+                    cfg.set_str(
+                        &format!("branch.{}.merge", branch),
+                        &format!("refs/heads/{}", branch),
+                    )
+                    .unwrap();
+                }
+
+                BuildStep::Pushed { remote, branch } => {
+                    let mut handle = repo.find_remote(remote).unwrap();
+                    handle
+                        .push(&[format!("refs/heads/{0}:refs/heads/{0}", branch)], None)
+                        .unwrap();
+
+                    let tip = repo
+                        .find_reference(&format!("refs/heads/{}", branch))
+                        .unwrap()
+                        .peel_to_commit()
+                        .unwrap();
+
+                    // Written here rather than left to the push: over the local transport
+                    // libgit2 need not update the tip, and without it the branch has no
+                    // upstream to be ahead of.
+                    repo.reference(
+                        &format!("refs/remotes/{}/{}", remote, branch),
+                        tip.id(),
+                        true,
+                        "seed the tracking ref",
+                    )
+                    .unwrap();
+                }
+
+                BuildStep::RemoteCommit {
+                    remote,
+                    branch,
+                    path,
+                    content,
+                    message,
+                } => {
+                    let sig = pinned_signature(clock);
+                    clock += FIXTURE_DAY_SECS;
+
+                    let bare_path = dir.path().join(format!("{}.git", remote));
+                    let bare = git2::Repository::open(&bare_path).unwrap();
+                    let tip = bare
+                        .find_reference(&format!("refs/heads/{}", branch))
+                        .unwrap()
+                        .peel_to_commit()
+                        .unwrap();
+
+                    let blob = bare.blob(content.as_bytes()).unwrap();
+                    let mut tree = bare.treebuilder(Some(&tip.tree().unwrap())).unwrap();
+                    tree.insert(path, blob, git2::FileMode::Blob.into()).unwrap();
+                    let tree = bare.find_tree(tree.write().unwrap()).unwrap();
+
+                    bare.commit(
+                        Some(&format!("refs/heads/{}", branch)),
+                        &sig,
+                        &sig,
+                        message,
+                        &tree,
+                        &[&tip],
+                    )
+                    .unwrap();
                 }
             }
         }

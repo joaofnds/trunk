@@ -6,6 +6,11 @@ const RECENT_ENTRY = '[role="button"]';
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
 const COMMIT_SHA = '[title="Copy SHA"]';
+// The label lives in a `span` inside this `foreignObject`, and a selector that
+// names the span matches nothing: jsdom does not reach across the SVG boundary
+// into its HTML children.
+const REF_PILL = "g.overlay-pills foreignObject";
+const OVERFLOW_BADGE = /^\+\d+$/;
 
 /**
  * The repository surface, in gestures rather than transport. The harness seeds
@@ -49,6 +54,19 @@ export class RepoDriver {
 		);
 
 		return [...shas].map((sha) => sha.textContent?.trim() ?? "");
+	}
+
+	/**
+	 * The ref label on each row the graph gives a pill, top row first. A row
+	 * carrying several refs shows only the highest-priority one and folds the
+	 * rest into a `+N` badge, which is not a label and is dropped here.
+	 */
+	refPills(): string[] {
+		const labels = document.querySelectorAll<SVGElement>(REF_PILL);
+
+		return [...labels]
+			.map((label) => label.textContent?.trim() ?? "")
+			.filter((label) => !OVERFLOW_BADGE.test(label));
 	}
 
 	/** The short hash the graph shows for one commit. */

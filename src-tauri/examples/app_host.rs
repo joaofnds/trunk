@@ -96,6 +96,24 @@ enum SpecStep {
     Checkout {
         name: String,
     },
+    Remote {
+        name: String,
+    },
+    TrackUpstream {
+        remote: String,
+        branch: String,
+    },
+    Push {
+        remote: String,
+        branch: String,
+    },
+    RemoteCommit {
+        remote: String,
+        branch: String,
+        path: String,
+        content: String,
+        message: String,
+    },
 }
 
 /// Serializes every line the host writes: `listen_any` handlers run on the
@@ -231,6 +249,18 @@ fn seed(spec: RepoSpec) -> TestContext {
             SpecStep::Commit { message, at: None } => builder.with_commit(&message),
             SpecStep::Branch { name } => builder.with_branch(&name),
             SpecStep::Checkout { name } => builder.checkout(&name),
+            SpecStep::Remote { name } => builder.with_remote(&name),
+            SpecStep::TrackUpstream { remote, branch } => {
+                builder.with_tracking(&remote, &branch)
+            }
+            SpecStep::Push { remote, branch } => builder.with_pushed(&remote, &branch),
+            SpecStep::RemoteCommit {
+                remote,
+                branch,
+                path,
+                content,
+                message,
+            } => builder.with_remote_commit(&remote, &branch, &path, &content, &message),
         };
     }
 
