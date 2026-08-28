@@ -1503,3 +1503,89 @@ fn stash_branches_right_when_the_head_lane_extends() {
         assert_eq!(row(&commits, summary).column, 0);
     }
 }
+
+/// (column, colour) for one row — the pair the rule file's dirty-path bullet demands.
+fn place(commits: &[trunk_lib::git::types::GraphCommit], summary: &str) -> (usize, usize) {
+    let c = row(commits, summary);
+
+    (c.column, c.color_index)
+}
+
+/// The working tree outranks the tracked upstream for the HEAD lane. While it is dirty the
+/// unpulled chain places like any other branch, so nothing sits between the WIP row and
+/// HEAD's tip.
+#[test]
+fn a_dirty_worktree_outranks_the_upstream_for_the_head_lane() {
+    let clean = rule_inputs::commits("behind-upstream");
+    let dirty = rule_inputs::commits("behind-upstream-dirty");
+
+    for summary in ["up5", "up4", "up3"] {
+        assert_eq!(
+            place(&clean, summary),
+            (0, 0),
+            "clean: {summary} shares the HEAD lane in HEAD's colour"
+        );
+    }
+    assert_eq!(
+        place(&clean, "base2"),
+        (0, 0),
+        "clean: the head tip owns lane 0"
+    );
+
+    let (ext_col, ext_color) = place(&dirty, "up5");
+    assert!(
+        ext_col >= 1,
+        "dirty: the working tree owns lane 0, so the unpulled chain forks right, got column {ext_col}"
+    );
+    assert!(
+        ext_color >= 1,
+        "dirty: an outranked upstream loses HEAD's colour, got colour {ext_color}"
+    );
+    for summary in ["up4", "up3"] {
+        assert_eq!(
+            place(&dirty, summary),
+            (ext_col, ext_color),
+            "dirty: {summary} stays on the chain up5 opened"
+        );
+    }
+    assert_eq!(
+        place(&dirty, "base2"),
+        (0, 0),
+        "dirty: the head tip keeps lane 0 and HEAD's colour"
+    );
+}
+
+/// The same for the revwalk tie-break arm: with no tracked upstream a local continuation holds
+/// the lane while the worktree is clean, and forks right the moment the working tree wants it.
+#[test]
+fn a_dirty_worktree_outranks_the_tiebreak_continuation_for_the_head_lane() {
+    let clean = rule_inputs::commits("non-upstream-continuation");
+    let dirty = rule_inputs::commits("non-upstream-continuation-dirty");
+
+    let (clean_col, clean_color) = place(&clean, "later1");
+    assert_eq!(clean_col, 0, "clean: the continuation holds the HEAD lane");
+    assert!(
+        clean_color >= 1,
+        "clean: a continuation that is not the tracked upstream holds it under its own colour, got colour {clean_color}"
+    );
+    assert_eq!(
+        place(&clean, "base2"),
+        (0, 0),
+        "clean: the head tip owns lane 0"
+    );
+
+    let (dirty_col, dirty_color) = place(&dirty, "later1");
+    assert!(
+        dirty_col >= 1,
+        "dirty: the working tree owns lane 0, so the continuation forks right, got column {dirty_col}"
+    );
+    assert!(
+        dirty_color >= 1,
+        "dirty: the continuation keeps a colour of its own, got colour {dirty_color}"
+    );
+    assert_eq!(
+        place(&dirty, "base2"),
+        (0, 0),
+        "dirty: the head tip keeps lane 0 and HEAD's colour"
+    );
+}

@@ -127,10 +127,16 @@ fn head_chain(input: &PlacementInput) -> HashSet<Oid> {
 /// first, plus whether that chain is HEAD's tracked upstream.
 ///
 /// The HEAD lane owns these as well as HEAD's ancestors, so a branch that is merely behind
-/// renders as the straight line the DAG actually is. When several chains continue `head_tip`
-/// only one can hold the lane: the tracked upstream takes it outright, and otherwise the
-/// revwalk's own order breaks the tie.
+/// renders as the straight line the DAG actually is. Several chains can continue `head_tip`
+/// and only one holds the lane, in this order: the working tree while it is dirty, then the
+/// tracked upstream, then whichever continuation the revwalk ordered first. The working tree
+/// has no commits to place — the frontend draws it as the WIP row above `head_tip` — so when
+/// it wins there is no extension at all and every real continuation forks right.
 fn head_lane_extension(input: &PlacementInput) -> (Vec<Oid>, bool) {
+    if input.worktree_dirty {
+        return (Vec::new(), false);
+    }
+
     let Some(head_tip) = input.head_tip else {
         return (Vec::new(), false);
     };
@@ -212,8 +218,9 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
 
     let head_chain = head_chain(input);
 
-    // Commits above HEAD's tip on the same first-parent line. They share the HEAD lane, so a
-    // branch that is only behind renders straight instead of forking away from itself.
+    // Commits above HEAD's tip on the same first-parent line. While the worktree is clean they
+    // share the HEAD lane, so a branch that is only behind renders straight instead of forking
+    // away from itself; a dirty one keeps lane 0 for the WIP row and there is no extension.
     let (head_lane_ext, ext_is_upstream) = head_lane_extension(input);
 
     // Pre-reserve column 0 for ALL head_chain members via pending_parents.
