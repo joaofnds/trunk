@@ -441,6 +441,13 @@ pub fn non_upstream_continuation_repo() -> TestContext {
     context_at(dir)
 }
 
+/// The same shape with a tracked file modified, so `worktree_dirty` is true.
+pub fn non_upstream_continuation_dirty_repo() -> TestContext {
+    let ctx = non_upstream_continuation_repo();
+    std::fs::write(ctx.repo_path().join("f.txt"), "dirty").unwrap();
+    ctx
+}
+
 /// `main` with one commit, `feature` one commit off it, merged back into `main`.
 pub fn merge_feature_repo() -> TestContext {
     TestContext::builder()
@@ -889,6 +896,13 @@ pub fn behind_upstream_repo() -> TestContext {
     }
 
     context_at(dir)
+}
+
+/// The same shape with a tracked file modified, so `worktree_dirty` is true.
+pub fn behind_upstream_dirty_repo() -> TestContext {
+    let ctx = behind_upstream_repo();
+    std::fs::write(ctx.repo_path().join("f.txt"), "dirty").unwrap();
+    ctx
 }
 
 /// The behind-upstream shape with a stash taken on top, so the unpulled chain owns lane 0

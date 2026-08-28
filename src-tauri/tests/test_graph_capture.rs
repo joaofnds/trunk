@@ -90,6 +90,15 @@ fn shapes() -> Vec<Shape> {
             "non-upstream-continuation",
             graph_shapes::non_upstream_continuation_repo,
         ),
+        (
+            "non-upstream-continuation-dirty",
+            graph_shapes::non_upstream_continuation_dirty_repo,
+        ),
+        ("behind-upstream", graph_shapes::behind_upstream_repo),
+        (
+            "behind-upstream-dirty",
+            graph_shapes::behind_upstream_dirty_repo,
+        ),
     ]
 }
 
