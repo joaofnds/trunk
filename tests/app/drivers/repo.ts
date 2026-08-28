@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
 import { firstMatching, openContextMenu } from "./dom.js";
@@ -67,6 +69,12 @@ export class RepoDriver {
 		return [...labels]
 			.map((label) => label.textContent?.trim() ?? "")
 			.filter((label) => !OVERFLOW_BADGE.test(label));
+	}
+
+	/** A working-tree file as it stands on disk, which is where a discard lands
+	 *  and what the diff pane is a re-read of. */
+	workingTreeFile(relativePath: string): string {
+		return readFileSync(join(this.path, relativePath), "utf8");
 	}
 
 	/** The short hash the graph shows for one commit. */

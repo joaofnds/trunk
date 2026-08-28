@@ -7,8 +7,12 @@ const FILE_ROW = '[data-testid="staging-file"]';
 const STAGED_SECTION = '[data-testid="staging-staged-section"]';
 const HUNK_TOOLBAR = ".hunk-toolbar";
 const HUNK_HEADER = `${HUNK_TOOLBAR} .hunk-header-text`;
-const ADDED_LINE = ".diff-line-add .diff-line-content";
+const DIFF_LINE = ".diff-line";
+const LINE_CONTENT = ".diff-line-content";
+const ADDED_LINE = `.diff-line-add ${LINE_CONTENT}`;
+const GRIP = ".gutter-selectable";
 const STAGE_HUNK = "Stage Hunk";
+const DISCARD_LINES = "Discard Lines";
 const STAGE_ALL = '[aria-label="Stage all changes"]';
 const SUBJECT = '[data-testid="commit-form-subject"]';
 const SUBMIT = '[data-testid="commit-form-submit"]';
@@ -77,7 +81,29 @@ export class StagingDriver {
 	/** Stages the hunk at `ordinal`, topmost first. */
 	async stageHunk(ordinal: number): Promise<void> {
 		const button = await waitFor(`${STAGE_HUNK} on hunk ${ordinal}`, () =>
-			enabledAction(ordinal, STAGE_HUNK),
+			enabledIn(toolbars()[ordinal], STAGE_HUNK),
+		);
+
+		button.click();
+	}
+
+	/** Selects every row from the one reading `first` to the one reading `last`,
+	 *  the shift-click a user makes on the gutter. */
+	async selectLines(first: string, last: string): Promise<void> {
+		const from = await waitFor(`the grip on ${first}`, () => grip(first));
+		const to = await waitFor(`the grip on ${last}`, () => grip(last));
+
+		from.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		to.dispatchEvent(
+			new MouseEvent("mousedown", { bubbles: true, shiftKey: true }),
+		);
+	}
+
+	/** Discards the selected lines. The confirmation goes to the dialog Fake,
+	 *  which dismisses unless the test has said otherwise. */
+	async discardSelectedLines(): Promise<void> {
+		const button = await waitFor(`${DISCARD_LINES} on the selection`, () =>
+			offeredAnywhere(DISCARD_LINES),
 		);
 
 		button.click();
@@ -117,13 +143,19 @@ function filesIn(section: string): string[] {
 	return [...rows].map((row) => row.textContent?.trim() ?? "");
 }
 
+function toolbars(): HTMLElement[] {
+	return [...document.querySelectorAll<HTMLElement>(HUNK_TOOLBAR)];
+}
+
 /**
- * The hunk toolbar's action, or null while it is disabled. `hunkOperationInFlight`
+ * The toolbar's action, or null while it is disabled. `hunkOperationInFlight`
  * disables every staging button for the length of a call, and jsdom dispatches
  * no click on a disabled button: a gesture issued early does nothing, quietly.
  */
-function enabledAction(ordinal: number, label: string): HTMLButtonElement | null {
-	const toolbar = document.querySelectorAll<HTMLElement>(HUNK_TOOLBAR)[ordinal];
+function enabledIn(
+	toolbar: HTMLElement | undefined,
+	label: string,
+): HTMLButtonElement | null {
 	if (!toolbar) return null;
 
 	const action = [...toolbar.querySelectorAll("button")].find((button) =>
@@ -131,6 +163,23 @@ function enabledAction(ordinal: number, label: string): HTMLButtonElement | null
 	);
 
 	return action && !action.disabled ? action : null;
+}
+
+/** The action wherever a toolbar is offering it: a selection lives in one hunk,
+ *  and which one is the test's business rather than the driver's. */
+function offeredAnywhere(label: string): HTMLButtonElement | null {
+	for (const toolbar of toolbars()) {
+		const action = enabledIn(toolbar, label);
+		if (action) return action;
+	}
+
+	return null;
+}
+
+function grip(content: string): HTMLElement | null {
+	const cell = firstMatching(LINE_CONTENT, (text) => text === content);
+
+	return cell?.closest(DIFF_LINE)?.querySelector<HTMLElement>(GRIP) ?? null;
 }
 
 function stageAllButton(): HTMLElement | null {
