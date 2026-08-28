@@ -311,12 +311,11 @@ body {
    layout width and draw nothing. So every scroller needs an explicit thumb.
 
    The thumb is transparent until src/lib/scrollbar-activity.ts sets
-   --scrollbar-thumb on a scroller that is actually scrolling, so a pane at rest
-   shows nothing. That reveal cannot be expressed in CSS: WebKit resolves these
-   pseudo-element rules once and never re-matches them when the owner's class or
-   :hover state changes, which is why an earlier `:hover::-webkit-scrollbar-thumb`
-   attempt fired only when something else happened to invalidate the scrollbar.
-   A custom property is the one channel that reaches a live scrollbar.
+   --scrollbar-thumb-paint on a scroller that is actually scrolling, so a pane
+   at rest shows nothing. That reveal cannot be expressed in CSS: WebKit
+   resolves these pseudo-element rules once and never re-matches them when the
+   owner's class or :hover state changes. A custom property is the one channel
+   that reaches a live scrollbar.
 
    Vertical axis only, and the zero height is load-bearing. `overflow-y: scroll`
    forces the used `overflow-x` to `auto`, so VirtualList's viewport scrolls
@@ -326,8 +325,9 @@ body {
    manufactures 11px of vertical range and paints a full-height thumb on a list
    with nothing to scroll (measured: clientHeight 733 -> 722, scrollHeight 733).
    Turning the horizontal bar on means giving `.virtual-list-viewport`
-   `overflow-x: hidden` first. */
-@property --scrollbar-thumb {
+   `overflow-x: hidden` first, and adding back a ::-webkit-scrollbar-corner
+   rule, which has nothing to paint while the horizontal bar stays zero height. */
+@property --scrollbar-thumb-paint {
 	syntax: "<color>";
 	inherits: true;
 	initial-value: transparent;
@@ -343,14 +343,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-	background: var(--scrollbar-thumb);
+	background: var(--scrollbar-thumb-paint);
 	border: 3px solid transparent;
 	background-clip: content-box;
 	border-radius: var(--radius-pill);
-}
-
-::-webkit-scrollbar-corner {
-	background: transparent;
 }
 
 /* Placeholders render at full token contrast, not the UA's ~0.54-opacity
