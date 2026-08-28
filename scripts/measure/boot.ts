@@ -7,6 +7,7 @@
 import { mount } from "svelte";
 import App from "../../src/App.svelte";
 import "../../src/app.css";
+import { startAppServices } from "../../src/lib/app-services.js";
 import { FakeClipboard } from "../../tests/app/fakes/clipboard.js";
 import { FakeDialog } from "../../tests/app/fakes/dialog.js";
 import { FakeMenu } from "../../tests/app/fakes/menu.js";
@@ -65,5 +66,7 @@ internals.route([
 	new FakeOpener(),
 ]);
 internals.install();
+
+startAppServices();
 
 mount(App, { target: document.getElementById("app") as HTMLElement });
