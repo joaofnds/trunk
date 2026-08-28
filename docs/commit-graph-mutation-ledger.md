@@ -248,26 +248,28 @@ colour is ever readable and differs from the default. All 81 tests stayed green.
 
 ### `head_lane_extension`'s cycle guard — unreachable, and conditionally so
 
-This site is not one of the 37. It is a mutation site the extraction introduced, at
-`placement.rs:161` to `:164`. Grill decision A called it a real gap needing a test. That is wrong,
+This site is not one of the 37. It is a mutation site the extraction introduced, in
+`head_lane_extension`'s second arm (`placement.rs`). Grill decision A called it a real gap needing a test. That is wrong,
 and the probe below is what settles it.
 
 The second arm of `head_lane_extension` walks upward over `first_parent_children`. An edge from
 `c` to `c'` in that map means `first_parent(c') == c`. First-parent is a function, so a revisited
 node forces the cycle back through `head_tip` itself. Any such cycle is a first-parent cycle that
-`head_chain` descends, under an identical `steps > input.parents.len()` bound. `head_chain` runs
-at `:213`, before `head_lane_extension` at `:217`. So `head_chain` panics first, every time.
+`head_chain` descends, under an identical `steps > input.parents.len()` bound. `assign_lanes` calls
+`head_chain` before `head_lane_extension`. So `head_chain` panics first, every time.
 
-**Probe.** `steps += 1;` was changed to `steps *= 1;` at `:161`, which disables the guard. Two
+**Probe.** `steps += 1;` was changed to `steps *= 1;` in that arm, which disables the guard. Two
 shapes ran unmutated and mutated, with identical results. A `head_tip` whose own first parent is
-itself panicked at `placement.rs:120:13`, which is `head_chain`'s guard and not this one. A
+itself panicked in `head_chain`'s guard (`placement.rs`) and not this one. A
 first-parent cycle above a root `head_tip` terminated normally, because the cycle is unreachable
 from `head_tip`. All 80 tests stayed green under the mutation, and nothing hung.
 
 **Carry this caveat with the proof.** The equivalence depends on two facts that no test pins. It
-depends on `head_chain` being called at `:213` before `head_lane_extension` at `:217`. It also
+depends on `head_chain` being called before `head_lane_extension`. It also
 depends on `head_chain` keeping its own guard. Reordering those two calls revives the gap
-silently.
+silently. Since 2026-08-28 (TRUNK-42) `head_lane_extension` also returns early on a dirty
+worktree, before this arm runs at all, which narrows reachability further and changes nothing
+above: every `PlacementInput` literal in `test_placement.rs` sets `worktree_dirty: false`.
 
 **Do not close this with a `#[should_panic]` test.** All three cycle guards raise the identical
 message, and `head_chain`'s fires first. Such a test passes under the mutation. It is false
@@ -285,16 +287,16 @@ stops after the first failing binary, and a later suite's failure reads as a pas
 | Binding rule | Named test | Probing mutation | Outcome | Decision |
 |---|---|---|---|---|
 | Stash square, WIP circle, merge circle | four cases under `the node shape ladder`, `CommitGraph.render.test.ts` | render the stash branch as `<circle>` instead of `<rect>` in `CommitGraph.svelte` | `paints a stash as a dashed hollow square` red, plus 27 render goldens. The other three cases stayed green | keep |
-| `can_inline`'s `!worktree_dirty` clause | `stash_branches_right_when_worktree_dirty`, `…_when_only_untracked`, `…_when_only_staged` | delete `&& !input.worktree_dirty` at `placement.rs:264` | all three red, plus seven others | keep all three |
-| `can_inline`'s `head_lane_ext.is_empty()` clause | `stash_branches_right_when_the_head_lane_extends` | delete `&& head_lane_ext.is_empty()` at `:265` | red, plus the two golden tests | keep |
-| `head_lane_extension` filters stashes, revwalk arm | `a_stash_never_extends_the_head_lane`, `stash_inline_on_head_tip` | delete `.filter(\|o\| !input.stashes.contains(o))` at `:149` | both red, plus eleven others | keep both |
-| `head_lane_extension` filters stashes, tracked-upstream arm | `a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension` | delete `&& !path.iter().any(\|o\| input.stashes.contains(o))` at `:141` | red, `left: (0, 0) right: (1, 1)` | keep, added by milestone 5 |
-| Dirty path asserts colour as well as column | `dirtiness_relayouts_unrelated_branches`, `dirtiness_recolors_branches_below_the_stash_parent` | `next_color += 1` to `+= 2` at `:283` to `:284` | exactly those two red, plus three golden tests | keep both |
+| `can_inline`'s `!worktree_dirty` clause | `stash_branches_right_when_worktree_dirty`, `…_when_only_untracked`, `…_when_only_staged` | delete `&& !input.worktree_dirty` in `can_inline` (`placement.rs`) | all three red, plus seven others | keep all three |
+| `can_inline`'s `head_lane_ext.is_empty()` clause | `stash_branches_right_when_the_head_lane_extends` | delete `&& head_lane_ext.is_empty()` in `can_inline` | red, plus the two golden tests | keep |
+| `head_lane_extension` filters stashes, revwalk arm | `a_stash_never_extends_the_head_lane`, `stash_inline_on_head_tip` | delete `.filter(\|o\| !input.stashes.contains(o))` in the revwalk arm | both red, plus eleven others | keep both |
+| `head_lane_extension` filters stashes, tracked-upstream arm | `a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension` | delete `&& !path.iter().any(\|o\| input.stashes.contains(o))` in the tracked-upstream arm | red, `left: (0, 0) right: (1, 1)` | keep, added by milestone 5 |
+| Dirty path asserts colour as well as column | `dirtiness_relayouts_unrelated_branches`, `dirtiness_recolors_branches_below_the_stash_parent` | `next_color += 1` to `+= 2` in `assign_lanes`'s normal-placement branch | exactly those two red, plus three golden tests | keep both |
 | Every unpaired `pending_parents.insert` | `a_stash_below_the_head_tip_branches_out_of_the_head_lane` | Appendix A row 11, delete `!` from `can_inline`'s off-chain disjunct | row 11 flipped from `SURVIVES` to `killed` | keep, added by milestone 5 |
 
 ### Two findings this audit produced
 
-**The tracked-upstream filter was uncovered.** Deleting it at `placement.rs:141` left all 76 tests
+**The tracked-upstream filter was uncovered.** Deleting it from that arm left all 76 tests
 green. The reason is narrow. A non-stash commit's first parent is never a stash, and no captured
 input puts a stash on an upstream's first-parent path. `PlacementInput` takes `tracked_upstream`
 directly, so a literal expresses the shape that the corpus does not contain.
