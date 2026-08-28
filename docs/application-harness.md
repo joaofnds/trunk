@@ -22,7 +22,7 @@ tests/app/*.test.ts          the tests
        ├─ harness/internals.ts     window.__TAURI_INTERNALS__, the invoke router
        ├─ harness/dom.ts           the jsdom polyfills
        ├─ fakes/                   menu, dialog, clipboard, opener, window, webview, path
-       └─ drivers/                 repo, branches, staging, remote, rebase editor, events
+       └─ drivers/                 repo, branches, staging, remote, review, rebase editor, events
 ```
 
 `setup()` spawns a host, seeds a repository, installs the transport seam, runs the polyfills,
@@ -42,10 +42,13 @@ hoisting, and nothing in `tests/app/harness/`, `tests/app/drivers/` or `tests/ap
 imports vitest — which is what makes the harness usable from another runner. A test asserts
 that by inspection.
 
-**Trunk's commands and the two event-registration commands go to the host.** The ACL check,
-the event id allocation and the Rust registration are all real. Only the delivery hop is the
-harness's: Tauri delivers an event by evaluating a script this side cannot observe, so the host
-mirrors each emit onto stdout and the harness dispatches from its own id map.
+**Trunk's commands, the two event-registration commands and the frontend's own emits go to
+the host.** The ACL check, the event id allocation and the Rust registration are all real. Only
+the delivery hop is the harness's: Tauri delivers an event by evaluating a script this side
+cannot observe, so the host mirrors each emit onto stdout and the harness dispatches from its
+own id map. A frontend `emit` travels as the `plugin:event|emit` command rather than through
+the host's own `emit` verb, so the plugin and the ACL are the real ones; the verb, which
+`driver.events` uses to mirror the watcher, calls `app.emit` directly and skips both.
 
 **Every other `plugin:` command goes to its Fake**, and one with no Fake and no host route
 throws naming itself. That branch is load-bearing: nine commands answered `undefined` over the
@@ -78,7 +81,15 @@ inserted lines and reading the working-tree file back from disk. It runs in the 
 hunk mode; the split and full-file views render the same four buttons and reaching either
 costs a mode switch no criterion needs.
 
-`backlog/docs/doc-26` ranks what still has no end-to-end test — 35 of the 115 registered
+The review workflow, in `tests/app/review.test.ts`: a comment left on a hunk of a commit's
+diff, the thread the review panel shows for it, the publish that keeps the thread and drops its
+Delete action, the Mark done that only a human can give it, and the copied review doc carrying
+the thread's heading and its state. Reading a thread card back needs care: `HunkView` renders
+every thread a second time inside a hidden `.comment-probe` to measure its height, so a query
+naming `.comment-card` alone answers with the probe's copy whether or not the panel ever
+opened.
+
+`backlog/docs/doc-26` ranks what still has no end-to-end test — 42 of the 115 registered
 commands are driven here — and is the queue new scenarios come off.
 
 ## What it does not cover
