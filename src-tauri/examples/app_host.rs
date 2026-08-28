@@ -146,7 +146,8 @@ fn main() {
         let request: Request = match serde_json::from_str(&line) {
             Ok(request) => request,
             Err(e) => {
-                output.send(&json!({ "hostError": format!("unreadable request: {e}") }));
+                let failure = Err(format!("unreadable request: {e}"));
+                output.send(&reply_line(request_id(&line), failure));
                 continue;
             }
         };
@@ -226,6 +227,16 @@ fn serve(
 
         Request::Shutdown { .. } => Ok(Ok(Value::Null)),
     }
+}
+
+/// The `id` of a line the typed parse rejected, read back off the raw JSON. The client
+/// matches every reply by id, so a reply without one leaves the call pending for as long
+/// as the test's timeout rather than failing with the parse error.
+fn request_id(line: &str) -> u64 {
+    serde_json::from_str::<Value>(line)
+        .ok()
+        .and_then(|value| value["id"].as_u64())
+        .unwrap_or_default()
 }
 
 fn reply_line(id: u64, reply: Reply) -> Value {

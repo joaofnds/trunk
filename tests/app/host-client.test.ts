@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RefsResponse } from "../../src/lib/types.js";
-import { HostClient } from "./harness/host-client.js";
+import { HostClient, type SpecStep } from "./harness/host-client.js";
 
 describe("host client", () => {
 	let host: HostClient | undefined;
@@ -32,6 +32,15 @@ describe("host client", () => {
 		await host.invoke("prefs_set", { key: "zoom_level", value: 1.25 });
 
 		expect(filesUnder(host.home)).toContain("trunk-prefs.json");
+	});
+
+	it("rejects a seed step it cannot parse", async () => {
+		host = await HostClient.spawn();
+		const unknown = { step: "teleport" } as unknown as SpecStep;
+
+		const seeded = host.seedRepo({ steps: [unknown] });
+
+		await expect(seeded).rejects.toThrow("unreadable request");
 	});
 
 	it("removes the temporary home on shutdown", async () => {
