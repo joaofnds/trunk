@@ -117,10 +117,6 @@ $effect(() => {
     scrollbar-width: none;
   }
 
-  .tab-bar::-webkit-scrollbar {
-    display: none;
-  }
-
   .tab-item {
     display: flex;
     align-items: center;

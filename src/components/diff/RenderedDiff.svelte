@@ -645,9 +645,6 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
     scrollbar-width: none;
     background: var(--bg-0);
   }
-  .split-column::-webkit-scrollbar {
-    display: none;
-  }
   .split-column:first-child {
     border-right: 1px solid var(--color-border);
   }

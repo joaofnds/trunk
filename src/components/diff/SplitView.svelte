@@ -517,10 +517,6 @@ function buildSegments(
     scrollbar-width: none;
   }
 
-  .split-column::-webkit-scrollbar {
-    display: none;
-  }
-
   .split-column:first-child {
     border-right: 1px solid var(--color-border);
   }
