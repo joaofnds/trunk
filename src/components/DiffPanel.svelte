@@ -755,6 +755,8 @@ async function handleLineMouseDown(
 
 // Cursor enters a line during a drag: extend the painted range. The e.buttons
 // guard makes a stuck `dragging` flag inert — without a held button, no paint.
+// It must ignore, not end, the drag: WebKit's scroll-synthesized hover events
+// report no buttons mid-drag, and ending it there kills a live gutter drag.
 function handleLineEnter(
 	filePath: string,
 	hunkIdx: number,
@@ -762,10 +764,7 @@ function handleLineEnter(
 	e: MouseEvent,
 ) {
 	if (!dragging) return;
-	if (e.buttons !== 1) {
-		dragging = false;
-		return;
-	}
+	if (e.buttons !== 1) return;
 	if (`${filePath}-${hunkIdx}` !== selectedHunkKey) return;
 	applyDragRange(lineIndex);
 	lastClickedIndex = lineIndex;

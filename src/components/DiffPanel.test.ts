@@ -1727,6 +1727,19 @@ describe("DiffPanel drag-to-select", () => {
 		expect(selectedCount()).toBe(1);
 	});
 
+	it("keeps the drag alive across a hover that reports no held button", async () => {
+		await renderCommit();
+
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await tick();
+		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 0 });
+		await tick();
+		await fireEvent.mouseEnter(lineDiv("const y = 3;"), { buttons: 1 });
+		await tick();
+
+		expect(selectedCount()).toBe(2);
+	});
+
 	it("deselects the range when the drag starts on an already-selected line", async () => {
 		await renderCommit();
 
