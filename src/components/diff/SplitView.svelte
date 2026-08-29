@@ -363,6 +363,21 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	return "transparent";
 }
 
+// One half's geometry, stated once: `clip` rather than `hidden` so a cell never
+// becomes a scroll container and cannot steal a wheel or be scrolled by focus.
+const HALF_GEOMETRY = "width: 50cqi; overflow: clip;";
+
+function cellStyle(origin: string, isSelected: boolean): string {
+	return `${DIFF_ROW_FONT}; ${HALF_GEOMETRY} background: ${lineBackground(origin, isSelected)}; color: var(--color-diff-text);`;
+}
+
+/** The pan, clamped to this side's own end so a short side stops where its text
+ *  does instead of panning into blank. Expressed in CSS, not arithmetic here:
+ *  `--pan-x` changes once per scroll event and the compositor does the rest. */
+function windowTransform(ceiling: "--max-l" | "--max-r"): string {
+	return `transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(${ceiling}) - 50cqi))));`;
+}
+
 function originClass(origin: string): string {
 	if (origin === "Add") return "diff-line-add";
 	if (origin === "Delete") return "diff-line-delete";
@@ -406,15 +421,15 @@ function originClass(origin: string): string {
         {@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
         <div
           class="split-cell split-cell-left diff-line {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
-          style="{DIFF_ROW_FONT}; width: 50cqi; overflow: clip; background: {lineBackground(line.origin, isSelected)}; color: var(--color-diff-text);"
+          style={cellStyle(line.origin, isSelected)}
         >
           <span class="split-gutter" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span>
-          <div class="split-window" style="transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-l) - 50cqi))));">
+          <div class="split-window" style={windowTransform('--max-l')}>
             {@render cellContent(line)}
           </div>
         </div>
       {:else}
-        <div class="split-cell split-cell-left split-phantom" style="width: 50cqi; overflow: clip;"></div>
+        <div class="split-cell split-cell-left split-phantom" style={HALF_GEOMETRY}></div>
       {/if}
 
       {#if item.row.right}
@@ -427,7 +442,7 @@ function originClass(origin: string): string {
              `dragging` in the host); the cell is not a control. -->
         <div
           class="split-cell diff-line {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
-          style="{DIFF_ROW_FONT}; width: 50cqi; overflow: clip; background: {lineBackground(line.origin, isSelected)}; color: var(--color-diff-text);"
+          style={cellStyle(line.origin, isSelected)}
           onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, lineIdx, e)}
         >
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -439,12 +454,12 @@ function originClass(origin: string): string {
             onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
             onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
           >{line.new_lineno ?? ''}</span>
-          <div class="split-window" style="transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-r) - 50cqi))));">
+          <div class="split-window" style={windowTransform('--max-r')}>
             {@render cellContent(line)}
           </div>
         </div>
       {:else}
-        <div class="split-cell split-phantom" style="width: 50cqi; overflow: clip;"></div>
+        <div class="split-cell split-phantom" style={HALF_GEOMETRY}></div>
       {/if}
     </div>
   {:else if item.kind === "hunk-header"}
