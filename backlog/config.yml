@@ -1,6 +1,6 @@
 project_name: "Trunk"
-default_status: "Todo"
-statuses: ["Todo", "Spec", "Research", "Grill", "Plan", "Build", "Review", "Done"]
+default_status: "To Do"
+statuses: ["To Do", "Shape", "Build", "Review", "Ship", "Done"]
 labels: ["graph", "review", "diff", "ui", "perf", "a11y", "ci", "release"]
 types: ["bug", "feature", "refactor", "chore", "docs", "spike"]
 definition_of_done: ["just check passes — the full gate, not a narrower tier", "New or changed behavior has a test that fails without the change", "No new suppressions: lint/clippy allows, skipped tests, or check exclusions", "Docs describing the changed behavior are updated (docs/, and .claude/rules/commit-graph.md paths when the graph pipeline changed)", "QA verified by a different session than the implementer (move to In QA; QA moves to Done)"]
