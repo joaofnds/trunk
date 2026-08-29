@@ -4,8 +4,8 @@
  * A virtualized view has no stable element per hunk — the row a jump targets is
  * usually not mounted when the jump happens — so navigation goes through row
  * indices the view owns rather than through `scrollIntoView` on a bound node.
- * Views that still render every row (RenderedDiff, SplitView) publish nothing,
- * and the host falls back to its element record.
+ * RenderedDiff still renders every row and publishes nothing, so the host falls
+ * back to its element record for that one.
  */
 export interface DiffNav {
 	/** How many hunks `[` and `]` step through. */

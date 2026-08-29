@@ -1,14 +1,17 @@
 <script lang="ts">
+import { onMount, tick } from "svelte";
 import {
-	commentsForLine,
-	spannedByComment,
-} from "../../lib/comment-matching.js";
+	buildSplitRows,
+	type DiffRow,
+	FIXED_ROW_HEIGHT_VARS,
+	rowHeights,
+	rowIndexForLine,
+} from "../../lib/diff-rows.js";
 import {
-	type PairedRow,
-	pairLines,
 	splitInvisibles,
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
+import { measure } from "../../lib/perf.js";
 import {
 	addReply,
 	deleteReply,
@@ -17,7 +20,12 @@ import {
 	editThread,
 	setThreadState,
 } from "../../lib/review-comment-actions.js";
-import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
+import {
+	availableCharsFor,
+	DIFF_ROW_FONT,
+	measureRowMetrics,
+	type RowMetrics,
+} from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
 	DiffLine,
@@ -26,6 +34,7 @@ import type {
 	Thread,
 } from "../../lib/types.js";
 import ThreadCard from "../ThreadCard.svelte";
+import ExactVirtualList from "./ExactVirtualList.svelte";
 
 interface Props {
 	contentMode: ContentMode;
@@ -41,7 +50,6 @@ interface Props {
 	selectedCount: number;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
-	hunkElements: Record<string, HTMLDivElement>;
 	onfilecollapsetoggle: (path: string) => void;
 	onlineclick: (
 		filePath: string,
@@ -92,7 +100,6 @@ let {
 	selectedCount,
 	isMerge,
 	collapsedFiles,
-	hunkElements,
 	onfilecollapsetoggle,
 	onlineclick,
 	onlinemousedown,
@@ -110,7 +117,17 @@ let {
 	viewComments = [],
 }: Props = $props();
 
-const splitColSync = createHorizontalScrollSync();
+// Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
+// columns — unless invisibles are on, where .invisible-char collapses it to one.
+const TAB_SIZE = 4;
+
+// Horizontal room ONE HALF spends on something other than columns: 8px padding
+// each side, the 3px change-indicator border, the 8px gap after this half's one
+// gutter, and the 1px divider between the halves. The inline views spend two
+// gutter gaps here; a split half has one.
+const SPLIT_ROW_CHROME_PX = 28;
+
+const FLASH_MS = 600;
 
 const stagingDisabled = $derived(hunkOperationInFlight || ignoreWhitespace);
 const stagingDisabledTitle = $derived(
@@ -118,6 +135,221 @@ const stagingDisabledTitle = $derived(
 		? "Staging is disabled while whitespace changes are ignored"
 		: undefined,
 );
+
+let pane = $state<HTMLDivElement | null>(null);
+let metricsProbe = $state<HTMLDivElement | null>(null);
+let commentProbe = $state<HTMLDivElement | null>(null);
+let metrics = $state<RowMetrics | null>(null);
+let paneWidthPx = $state(0);
+let probedHeights = $state(new Map<string, number>());
+let list = $state<{
+	topIndex: () => number;
+	anchorTo: (index: number) => void;
+	scrollToIndex: (index: number) => void;
+} | null>(null);
+
+// The flashed hunk's identity, not a class on an element: the element a jump
+// targets may not be mounted when the jump happens, and will be replaced by
+// another row's node as the reader scrolls away.
+let flashedHunkKey = $state<string | null>(null);
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
+
+const model = $derived(
+	measure("diff.buildRows", (observation) => {
+		observation.attr("lines", countLines(fileDiffs));
+
+		return buildSplitRows(fileDiffs, {
+			content: contentMode,
+			comments: viewComments,
+			showInlineComments,
+			collapsed: collapsedFiles,
+			// The per-file header bar is the multi-file view's; with one file
+			// selected the top bar already shows the path.
+			fileHeaders: selectedPath === null,
+			tabSize: TAB_SIZE,
+			invisibles: showInvisibles,
+		});
+	}),
+);
+
+// A proportional font makes column arithmetic meaningless, so wrapping is
+// refused rather than rendered at a height nothing can derive.
+const wrapActive = $derived(wordWrap && (metrics?.monospace ?? false));
+
+// Half the pane, one gutter: what a single side actually has to wrap into.
+const availableColumns = $derived(
+	metrics
+		? availableCharsFor(
+				paneWidthPx / 2,
+				model.gutterChars,
+				SPLIT_ROW_CHROME_PX,
+				metrics,
+			)
+		: 0,
+);
+
+const threadsToProbe = $derived(
+	model.rows.flatMap((row) => (row.kind === "comment" ? row.threads : [])),
+);
+
+// Withhold the list until every input exists, rather than render against a
+// default height and correct it afterwards.
+const ready = $derived(
+	metrics !== null &&
+		paneWidthPx > 0 &&
+		threadsToProbe.every((thread) => probedHeights.has(thread.id)) &&
+		(!wrapActive || availableColumns > 0),
+);
+
+const heights = $derived.by(() => {
+	const measured = metrics;
+	if (!ready || !measured) return [];
+
+	return measure("diff.rowHeights", (observation) => {
+		observation.attr("rows", model.rows.length);
+		observation.attr("wrap", String(wrapActive));
+
+		return rowHeights(
+			model,
+			measured,
+			availableColumns,
+			wrapActive,
+			probedHeights,
+		);
+	});
+});
+
+// Each side's FULL width: the gutter is pinned outside the translated window,
+// so a ceiling built from text columns alone would stop short of the widest
+// line's tail by the gutter plus this half's chrome.
+const maxLeftPx = $derived(
+	metrics
+		? (model.gutterChars + (model.columns[0] ?? 0)) * metrics.charWidthPx +
+				SPLIT_ROW_CHROME_PX
+		: 0,
+);
+const maxRightPx = $derived(
+	metrics
+		? (model.gutterChars + (model.columns[1] ?? 0)) * metrics.charWidthPx +
+				SPLIT_ROW_CHROME_PX
+		: 0,
+);
+
+// The widest side plus one half, so the pan reaches that side's last character:
+// a half only ever shows 50cqi of it. A wrapped split view must not pan at all.
+const contentWidth = $derived(
+	wrapActive || !metrics
+		? "100%"
+		: `calc(${Math.max(maxLeftPx, maxRightPx)}px + 50cqi)`,
+);
+
+const gutterW = $derived(`${model.gutterChars}ch`);
+
+onMount(() => {
+	if (metricsProbe) metrics = measureRowMetrics(metricsProbe);
+
+	const el = pane;
+	if (!el) return;
+
+	paneWidthPx = el.clientWidth;
+
+	const observer = new ResizeObserver(() => {
+		const anchor = list?.topIndex() ?? 0;
+		paneWidthPx = el.clientWidth;
+
+		if (wrapActive) tick().then(() => list?.anchorTo(anchor));
+	});
+	observer.observe(el);
+
+	return () => {
+		observer.disconnect();
+		if (flashTimer) clearTimeout(flashTimer);
+	};
+});
+
+$effect(() => {
+	const container = commentProbe;
+	const wanted = threadsToProbe;
+	if (!container || wanted.length === 0) return;
+
+	// Lay the probe out at the width the real rows occupy, and re-measure
+	// whenever that width changes: a ThreadCard reflows, so a height taken at
+	// another width is not this row's height.
+	container.style.width = contentWidth;
+	container.style.minWidth = `${paneWidthPx}px`;
+
+	const measured = new Map<string, number>();
+	for (const row of container.querySelectorAll<HTMLElement>(
+		"[data-thread-id]",
+	)) {
+		const id = row.dataset.threadId;
+		const height = row.offsetHeight;
+		// A zero here is an unmeasured row, not a row of no height.
+		if (id && height > 0) measured.set(id, height);
+	}
+
+	if (wanted.every((thread) => measured.has(thread.id))) {
+		probedHeights = measured;
+	}
+});
+
+function countLines(diffs: FileDiff[]): number {
+	let total = 0;
+	for (const fd of diffs) {
+		for (const hunk of fd.hunks) total += hunk.lines.length;
+	}
+	return total;
+}
+
+function hunkLinesOf(path: string, hunkIdx: number): DiffLine[] {
+	return fileDiffs.find((fd) => fd.path === path)?.hunks[hunkIdx]?.lines ?? [];
+}
+
+/** How many hunks `[` and `]` step through. */
+export function hunkCount(): number {
+	return model.hunkNav.length;
+}
+
+/** Where a hunk sits in that sequence, or -1 when it is not rendered at all —
+ *  a collapsed file's hunks are absent. */
+export function ordinalOf(path: string, hunkIdx: number): number {
+	return model.hunkNav.findIndex(
+		(entry) => entry.path === path && entry.hunkIdx === hunkIdx,
+	);
+}
+
+export function scrollToHunk(ordinal: number): void {
+	const nav = model.hunkNav[ordinal];
+	if (!nav) return;
+
+	list?.scrollToIndex(nav.rowIndex);
+	flash(`${nav.path}-${nav.hunkIdx}`);
+}
+
+/** Scrolls to the pair row carrying one line, on either side. A line the model
+ *  does not carry — a collapsed file — falls back to the hunk. */
+export function scrollToLine(
+	path: string,
+	hunkIdx: number,
+	lineIdx: number,
+): void {
+	const rowIndex = rowIndexForLine(model, path, hunkIdx, lineIdx);
+	if (rowIndex < 0) {
+		scrollToHunk(ordinalOf(path, hunkIdx));
+		return;
+	}
+
+	list?.scrollToIndex(rowIndex);
+	flash(`${path}-${hunkIdx}`);
+}
+
+function flash(hunkKey: string): void {
+	if (flashTimer) clearTimeout(flashTimer);
+	flashedHunkKey = hunkKey;
+	flashTimer = setTimeout(() => {
+		flashedHunkKey = null;
+	}, FLASH_MS);
+}
 
 function lineBackground(origin: string, isSelected: boolean = false): string {
 	if (origin === "Add")
@@ -131,423 +363,283 @@ function lineBackground(origin: string, isSelected: boolean = false): string {
 	return "transparent";
 }
 
-function lineColor(): string {
-	return "var(--color-diff-text)";
-}
-
-function maxLineNumber(fd: FileDiff): number {
-	let max = 0;
-	for (const hunk of fd.hunks) {
-		for (const line of hunk.lines) {
-			if (line.old_lineno !== null && line.old_lineno > max)
-				max = line.old_lineno;
-			if (line.new_lineno !== null && line.new_lineno > max)
-				max = line.new_lineno;
-		}
-	}
-	return max;
-}
-
-function gutterWidth(maxNum: number): string {
-	const digits = Math.max(String(maxNum).length, 1);
-	return `${digits + 1}ch`;
-}
-
-interface Section {
-	type: "header" | "lines";
-	header?: string;
-	hunkIdx: number;
-	rows: PairedRow[];
-	hunkLines?: DiffLine[];
-}
-
-const pairedData = $derived(
-	fileDiffs.map((fd) => {
-		const maxLn = maxLineNumber(fd);
-		const gw = gutterWidth(maxLn);
-		if (contentMode === "full") {
-			const allLines = fd.hunks.flatMap((h) => h.lines);
-			return {
-				fd,
-				gutterW: gw,
-				sections: [
-					{
-						type: "lines" as const,
-						rows: pairLines(allLines),
-						hunkIdx: 0,
-						hunkLines: allLines,
-					},
-				] as Section[],
-			};
-		}
-		const sections: Section[] = fd.hunks.flatMap((hunk, hunkIdx) => [
-			{
-				type: "header" as const,
-				header: hunk.header,
-				hunkIdx,
-				rows: [] as PairedRow[],
-				hunkLines: hunk.lines,
-			},
-			{
-				type: "lines" as const,
-				rows: pairLines(hunk.lines),
-				hunkIdx,
-				hunkLines: hunk.lines,
-			},
-		]);
-		return { fd, gutterW: gw, sections };
-	}),
-);
-
-// Split a hunk's row-pairs into runs broken at comment boundaries: each run is a
-// two-column block, with a full-width comment row inserted after the row-pair the
-// comment is anchored to. Preserves the existing column scroll-sync (every run's
-// columns join the shared synced set, exactly like the per-hunk columns already do).
-type SplitSegment =
-	| { kind: "run"; rows: PairedRow[] }
-	| { kind: "comments"; comments: Thread[] };
-
-function rowComments(row: PairedRow, comments: Thread[]): Thread[] {
-	return [
-		...commentsForLine(comments, "New", row.right?.line.new_lineno ?? null),
-		...commentsForLine(comments, "Old", row.left?.line.old_lineno ?? null),
-	];
-}
-
-function buildSegments(
-	rows: PairedRow[],
-	comments: Thread[],
-	show: boolean,
-): SplitSegment[] {
-	if (!show) return [{ kind: "run", rows }];
-	const segments: SplitSegment[] = [];
-	let run: PairedRow[] = [];
-	for (const row of rows) {
-		run.push(row);
-		const cs = rowComments(row, comments);
-		if (cs.length > 0) {
-			segments.push({ kind: "run", rows: run });
-			segments.push({ kind: "comments", comments: cs });
-			run = [];
-		}
-	}
-	if (run.length > 0) segments.push({ kind: "run", rows: run });
-	return segments;
+function originClass(origin: string): string {
+	if (origin === "Add") return "diff-line-add";
+	if (origin === "Delete") return "diff-line-delete";
+	return "diff-line-context";
 }
 </script>
 
-{#each pairedData as { fd, gutterW, sections } (fd.path)}
-  <div class="split-file">
-    <!-- File header bar (hidden for single-file view since top bar shows the path) -->
-    {#if !selectedPath}
-      <div
-        role="button"
-        tabindex="0"
-        style="
-        background: var(--color-surface);
-        box-shadow: inset 0 -1px 0 var(--color-border);
-        font-size: 12px;
-        font-weight: 500;
-        height: var(--bar-h);
-        display: flex;
-        align-items: center;
-        padding: 0 var(--space-2);
-        color: var(--color-text);
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        cursor: pointer;
-        user-select: none;
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-      "
-        onclick={() => onfilecollapsetoggle(fd.path)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onfilecollapsetoggle(fd.path); } }}
-      >
-        <span style="font-size: 10px; color: var(--color-text-muted); width: 10px; display: inline-block;">{collapsedFiles.has(fd.path) ? '▶' : '▼'}</span>
-        {fd.path}
-      </div>
-    {/if}
+{#snippet threadCard(c: Thread)}
+  <ThreadCard
+    variant="inline"
+    confirmDelete={false}
+    thread={c}
+    onedit={(id, text) => editThread(repoPath, id, text)}
+    onreplyadd={(id, text) => addReply(repoPath, id, text)}
+    onstatechange={(id, next) => setThreadState(repoPath, id, next)}
+    onreplyedit={(id, text) => editReply(repoPath, id, text)}
+    onreplydelete={(id) => deleteReply(repoPath, id)}
+    ondelete={(id) => deleteThread(repoPath, id)}
+  />
+{/snippet}
 
-    {#if !collapsedFiles.has(fd.path)}
-    {#if fd.is_binary}
-      <div style="
-        padding: var(--space-2);
-        color: var(--color-text-muted);
-        font-size: 12px;
-      ">
-        Binary file — no diff available
-      </div>
-    {:else}
-      {#each sections as section}
-        {#if section.type === "header"}
-          <!-- Hunk header spans full width -->
-          <div
-            bind:this={hunkElements[`${fd.path}-${section.hunkIdx}`]}
-            class="split-hunk-header"
-          >
-            <span style="flex: 1; font-size: 11px; font-family: var(--font-mono, monospace);">
-              {section.header}
-            </span>
-            {#if diffKind === 'unstaged'}
-              {@const hunkKey = `${fd.path}-${section.hunkIdx}`}
-              {@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
-              {#if hasSelection}
-                <!-- Working-tree Comment affordance (260531-k4j): reuses the
-                     commit-mode accent button class verbatim (no new color).
-                     New-side scope + Old-side guard live in the host. Leads the
-                     action cluster (260531-l02 UX: Comment left of staging). -->
-                {#if showInlineComments}
-                <button
-                  class="staging-btn accent-btn"
-                  style="cursor: pointer;"
-                  onclick={() => oncommentlines(fd.path, section.hunkIdx)}
-                >Comment ({selectedCount})</button>
-                {/if}
-                <button
-                  disabled={stagingDisabled}
-                  title={stagingDisabledTitle}
-                  class="staging-btn danger-btn"
-                  style="cursor: {stagingDisabled ? 'not-allowed' : 'pointer'}; opacity: {stagingDisabled ? 0.4 : 1};"
-                  onclick={() => ondiscardlines(fd.path, section.hunkIdx)}
-                >Discard Lines ({selectedCount})</button>
-                <button
-                  disabled={stagingDisabled}
-                  title={stagingDisabledTitle}
-                  class="staging-btn success-btn"
-                  style="cursor: {stagingDisabled ? 'not-allowed' : 'pointer'}; opacity: {stagingDisabled ? 0.4 : 1};"
-                  onclick={() => onstagelines(fd.path, section.hunkIdx)}
-                >Stage Lines ({selectedCount})</button>
-              {:else}
-                <!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
-                     without selecting lines. Reuses the accent button class
-                     verbatim (no new color); host applies the New-side guard.
-                     Leads the action cluster. -->
-                {#if showInlineComments}
-                <button
-                  class="staging-btn accent-btn"
-                  style="cursor: pointer;"
-                  onclick={() => oncommenthunk(fd.path, section.hunkIdx)}
-                >Comment</button>
-                {/if}
-                <button
-                  disabled={stagingDisabled}
-                  title={stagingDisabledTitle}
-                  class="staging-btn danger-btn"
-                  style="cursor: {stagingDisabled ? 'not-allowed' : 'pointer'}; opacity: {stagingDisabled ? 0.4 : 1};"
-                  onclick={() => ondiscardhunk(fd.path, section.hunkIdx)}
-                >Discard Hunk</button>
-                <button
-                  disabled={stagingDisabled}
-                  title={stagingDisabledTitle}
-                  class="staging-btn success-btn"
-                  style="cursor: {stagingDisabled ? 'not-allowed' : 'pointer'}; opacity: {stagingDisabled ? 0.4 : 1};"
-                  onclick={() => onstagehunk(fd.path, section.hunkIdx)}
-                >Stage Hunk</button>
-              {/if}
-            {:else if diffKind === 'staged'}
-              {@const hunkKey = `${fd.path}-${section.hunkIdx}`}
-              {@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
-              {#if hasSelection}
-                <!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
-                     resolve (no Old-side guard). Leads the cluster. -->
-                {#if showInlineComments}
-                <button
-                  class="staging-btn accent-btn"
-                  style="cursor: pointer;"
-                  onclick={() => oncommentlines(fd.path, section.hunkIdx)}
-                >Comment ({selectedCount})</button>
-                {/if}
-                <button
-                  disabled={stagingDisabled}
-                  title={stagingDisabledTitle}
-                  class="staging-btn warning-btn"
-                  style="cursor: {stagingDisabled ? 'not-allowed' : 'pointer'}; opacity: {stagingDisabled ? 0.4 : 1};"
-                  onclick={() => onunstagelines(fd.path, section.hunkIdx)}
-                >Unstage Lines ({selectedCount})</button>
-              {:else}
-                {#if showInlineComments}
-                <button
-                  class="staging-btn accent-btn"
-                  style="cursor: pointer;"
-                  onclick={() => oncommenthunk(fd.path, section.hunkIdx)}
-                >Comment</button>
-                {/if}
-                <button
-                  disabled={stagingDisabled}
-                  title={stagingDisabledTitle}
-                  class="staging-btn warning-btn"
-                  style="cursor: {stagingDisabled ? 'not-allowed' : 'pointer'}; opacity: {stagingDisabled ? 0.4 : 1};"
-                  onclick={() => onunstagehunk(fd.path, section.hunkIdx)}
-                >Unstage Hunk</button>
-              {/if}
-            {:else if diffKind === 'commit'}
-              {@const hunkKey = `${fd.path}-${section.hunkIdx}`}
-              {@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
-              {#if hasSelection}
-                {#if showInlineComments}
-                <button
-                  disabled={isMerge}
-                  title={isMerge ? "Diff comments aren't available on merge commits" : ""}
-                  class="staging-btn accent-btn"
-                  style="cursor: {isMerge ? 'not-allowed' : 'pointer'}; opacity: {isMerge ? 0.4 : 1};"
-                  onclick={() => oncommentlines(fd.path, section.hunkIdx)}
-                >Comment ({selectedCount})</button>
-                {/if}
-              {:else}
-                <!-- Whole-hunk Comment in commit diffs (260531-l02): same accent
-                     class + isMerge disable guard as the line-level commit Comment. -->
-                {#if showInlineComments}
-                <button
-                  disabled={isMerge}
-                  title={isMerge ? "Diff comments aren't available on merge commits" : ""}
-                  class="staging-btn accent-btn"
-                  style="cursor: {isMerge ? 'not-allowed' : 'pointer'}; opacity: {isMerge ? 0.4 : 1};"
-                  onclick={() => oncommenthunk(fd.path, section.hunkIdx)}
-                >Comment</button>
-                {/if}
-              {/if}
-            {/if}
+<!-- One side's code, inside the window the pan translates. `word-break` is not a
+     style choice: rowHeights' ceil(columns / available) is only a height when
+     the break is unconditional, so it is declared here with the height it
+     belongs to. -->
+{#snippet cellContent(line: DiffLine)}
+  {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
+  <span class="diff-line-content" style="white-space: {wrapActive ? 'pre-wrap' : 'pre'}; word-break: {wrapActive ? 'break-all' : 'normal'}; user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span>
+{/snippet}
+
+{#snippet splitRow(item: DiffRow, _index: number)}
+  {#if item.kind === "pair"}
+    {@const hunkKey = `${item.path}-${item.hunkIdx}`}
+    <!-- The row, not the cell, is what the pan is held against: it is sticky at
+         the viewport's left edge and spans one viewport, and the two halves
+         translate inside it. jsdom reads only inline styles, so every
+         load-bearing declaration here is inline. -->
+    <div class="split-row" style="position: sticky; left: 0; width: 100cqi; display: flex;">
+      {#if item.row.left}
+        {@const line = item.row.left.line}
+        {@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(item.row.left.lineIdx)}
+        <div
+          class="split-cell split-cell-left diff-line {originClass(line.origin)}{item.spannedLeft ? ' diff-line-commented' : ''}"
+          style="{DIFF_ROW_FONT}; width: 50cqi; overflow: clip; background: {lineBackground(line.origin, isSelected)}; color: var(--color-diff-text);"
+        >
+          <span class="split-gutter" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span>
+          <div class="split-window" style="transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-l) - 50cqi))));">
+            {@render cellContent(line)}
           </div>
-        {:else}
-          {@const rowSegments = buildSegments(section.rows, viewComments, showInlineComments)}
-          {#each rowSegments as segment}
-          {#if segment.kind === "run"}
-          <div class="split-columns">
-            <!-- Left column (old content) -->
-            <div class="split-column" use:splitColSync>
-              <div style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};">
-              {#each segment.rows as row}
-                {#if row.left}
-                  {@const line = row.left.line}
-                  {@const isSelected = selectedHunkKey === `${fd.path}-${section.hunkIdx}` && selectedLineIndices.has(row.left.lineIdx)}
-                  {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-                  {@const commented = showInlineComments && spannedByComment(viewComments, 'Old', line.old_lineno)}
-                  <div
-                    class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{commented ? ' diff-line-commented' : ''}"
-                    style="
-                      background: {lineBackground(line.origin, isSelected)};
-                      color: {lineColor()};
-                      white-space: {wordWrap ? 'pre-wrap' : 'pre'};
-                    "
-                  ><span class="gutter" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
-                {:else}
-                  <div class="split-phantom"></div>
-                {/if}
-              {/each}
-              </div>
-            </div>
-            <!-- Right column (new content) -->
-            <div class="split-column" use:splitColSync>
-              <div style="min-width: 100%; width: {wordWrap ? '100%' : 'max-content'};">
-              {#each segment.rows as row}
-                {#if row.right}
-                  {@const line = row.right.line}
-                  {@const isSelectable = line.origin === 'Add'}
-                  {@const isSelected = selectedHunkKey === `${fd.path}-${section.hunkIdx}` && selectedLineIndices.has(row.right.lineIdx)}
-                  {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-                  {@const commented = showInlineComments && spannedByComment(viewComments, 'New', line.new_lineno)}
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <!-- mouseenter only continues an in-progress gutter drag
-                       (guarded by `dragging` in the host); the row is not a control. -->
-                  <div
-                    class="diff-line {line.origin === 'Add' ? 'diff-line-add' : line.origin === 'Delete' ? 'diff-line-delete' : 'diff-line-context'}{commented ? ' diff-line-commented' : ''}"
-                    style="
-                      background: {lineBackground(line.origin, isSelected)};
-                      color: {lineColor()};
-                      white-space: {wordWrap ? 'pre-wrap' : 'pre'};
-                    "
-                    onmouseenter={(e) => onlineenter(fd.path, section.hunkIdx, row.right!.lineIdx, e)}
-                  ><!-- svelte-ignore a11y_no_noninteractive_tabindex --><span
-                      class="gutter{isSelectable ? ' gutter-selectable' : ''}"
-                      style="min-width: {gutterW};"
-                      role={isSelectable ? 'button' : undefined}
-                      tabindex={isSelectable ? 0 : undefined}
-                      onmousedown={(e) => { if (isSelectable && section.hunkLines) onlinemousedown(fd.path, section.hunkIdx, row.right!.lineIdx, line.origin, section.hunkLines, e); }}
-                      onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ') && section.hunkLines) { e.preventDefault(); onlineclick(fd.path, section.hunkIdx, row.right!.lineIdx, line.origin, section.hunkLines, new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
-                    >{line.new_lineno ?? ''}</span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
-                {:else}
-                  <div class="split-phantom"></div>
-                {/if}
-              {/each}
-              </div>
-            </div>
+        </div>
+      {:else}
+        <div class="split-cell split-cell-left split-phantom" style="width: 50cqi; overflow: clip;"></div>
+      {/if}
+
+      {#if item.row.right}
+        {@const line = item.row.right.line}
+        {@const lineIdx = item.row.right.lineIdx}
+        {@const isSelectable = line.origin === 'Add'}
+        {@const isSelected = selectedHunkKey === hunkKey && selectedLineIndices.has(lineIdx)}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- mouseenter only continues an in-progress gutter drag (guarded by
+             `dragging` in the host); the cell is not a control. -->
+        <div
+          class="split-cell diff-line {originClass(line.origin)}{item.spannedRight ? ' diff-line-commented' : ''}"
+          style="{DIFF_ROW_FONT}; width: 50cqi; overflow: clip; background: {lineBackground(line.origin, isSelected)}; color: var(--color-diff-text);"
+          onmouseenter={(e) => onlineenter(item.path, item.hunkIdx, lineIdx, e)}
+        >
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <span
+            class="split-gutter{isSelectable ? ' gutter-selectable' : ''}"
+            style="min-width: {gutterW};"
+            role={isSelectable ? 'button' : undefined}
+            tabindex={isSelectable ? 0 : undefined}
+            onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
+            onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
+          >{line.new_lineno ?? ''}</span>
+          <div class="split-window" style="transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-r) - 50cqi))));">
+            {@render cellContent(line)}
           </div>
-          {:else}
-            <div class="split-comment-row">
-              {#each segment.comments as comment (comment.id)}
-                <ThreadCard
-                  variant="inline"
-                  confirmDelete={false}
-                  thread={comment}
-                  onedit={(id, text) => editThread(repoPath, id, text)}
-                  onreplyadd={(id, text) => addReply(repoPath, id, text)}
-                  onstatechange={(id, next) => setThreadState(repoPath, id, next)}
-                  onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                  onreplydelete={(id) => deleteReply(repoPath, id)}
-                  ondelete={(id) => deleteThread(repoPath, id)}
-                />
-              {/each}
-            </div>
+        </div>
+      {:else}
+        <div class="split-cell split-phantom" style="width: 50cqi; overflow: clip;"></div>
+      {/if}
+    </div>
+  {:else if item.kind === "hunk-header"}
+    {@const hunkKey = `${item.path}-${item.hunkIdx}`}
+    {@const hasSelection = selectedHunkKey === hunkKey && selectedCount > 0}
+    <div
+      class="split-hunk-header{flashedHunkKey === hunkKey ? ' hunk-highlight' : ''}"
+      style="position: sticky; left: 0; width: 100cqi; height: var(--diff-hunk-header-height); box-sizing: border-box;"
+    >
+      <span class="split-hunk-header-text">{item.header}</span>
+      {#if diffKind === 'unstaged'}
+        {#if hasSelection}
+          <!-- Working-tree Comment affordance (260531-k4j): reuses the
+               commit-mode accent button class verbatim (no new color). New-side
+               scope + Old-side guard live in the host. Leads the action cluster
+               (260531-l02 UX: Comment left of staging). -->
+          {#if showInlineComments}
+          <button
+            class="staging-btn accent-btn"
+            onclick={() => oncommentlines(item.path, item.hunkIdx)}
+          >Comment ({selectedCount})</button>
           {/if}
-          {/each}
+          <button
+            disabled={stagingDisabled}
+            title={stagingDisabledTitle}
+            class="staging-btn danger-btn"
+            onclick={() => ondiscardlines(item.path, item.hunkIdx)}
+          >Discard Lines ({selectedCount})</button>
+          <button
+            disabled={stagingDisabled}
+            title={stagingDisabledTitle}
+            class="staging-btn success-btn"
+            onclick={() => onstagelines(item.path, item.hunkIdx)}
+          >Stage Lines ({selectedCount})</button>
+        {:else}
+          <!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
+               without selecting lines. Reuses the accent button class verbatim
+               (no new color); host applies the New-side guard. -->
+          {#if showInlineComments}
+          <button
+            class="staging-btn accent-btn"
+            onclick={() => oncommenthunk(item.path, item.hunkIdx)}
+          >Comment</button>
+          {/if}
+          <button
+            disabled={stagingDisabled}
+            title={stagingDisabledTitle}
+            class="staging-btn danger-btn"
+            onclick={() => ondiscardhunk(item.path, item.hunkIdx)}
+          >Discard Hunk</button>
+          <button
+            disabled={stagingDisabled}
+            title={stagingDisabledTitle}
+            class="staging-btn success-btn"
+            onclick={() => onstagehunk(item.path, item.hunkIdx)}
+          >Stage Hunk</button>
         {/if}
+      {:else if diffKind === 'staged'}
+        {#if hasSelection}
+          <!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
+               resolve (no Old-side guard). Leads the cluster. -->
+          {#if showInlineComments}
+          <button
+            class="staging-btn accent-btn"
+            onclick={() => oncommentlines(item.path, item.hunkIdx)}
+          >Comment ({selectedCount})</button>
+          {/if}
+          <button
+            disabled={stagingDisabled}
+            title={stagingDisabledTitle}
+            class="staging-btn warning-btn"
+            onclick={() => onunstagelines(item.path, item.hunkIdx)}
+          >Unstage Lines ({selectedCount})</button>
+        {:else}
+          {#if showInlineComments}
+          <button
+            class="staging-btn accent-btn"
+            onclick={() => oncommenthunk(item.path, item.hunkIdx)}
+          >Comment</button>
+          {/if}
+          <button
+            disabled={stagingDisabled}
+            title={stagingDisabledTitle}
+            class="staging-btn warning-btn"
+            onclick={() => onunstagehunk(item.path, item.hunkIdx)}
+          >Unstage Hunk</button>
+        {/if}
+      {:else if diffKind === 'commit'}
+        <!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
+             selected, line-scoped otherwise; both carry the isMerge guard. -->
+        {#if showInlineComments}
+        <button
+          disabled={isMerge}
+          title={isMerge ? "Diff comments aren't available on merge commits" : ""}
+          class="staging-btn accent-btn"
+          onclick={() => hasSelection ? oncommentlines(item.path, item.hunkIdx) : oncommenthunk(item.path, item.hunkIdx)}
+        >{hasSelection ? `Comment (${selectedCount})` : 'Comment'}</button>
+        {/if}
+      {/if}
+    </div>
+  {:else if item.kind === "comment"}
+    <div class="split-comment-row" style="position: sticky; left: 0; width: 100cqi;">
+      {#each item.threads as c (c.id)}
+        {@render threadCard(c)}
       {/each}
-    {/if}
-    {/if}
-  </div>
-{/each}
+    </div>
+  {:else if item.kind === "file-header"}
+    <div
+      class="split-file-header"
+      style="position: sticky; left: 0; width: 100cqi;"
+      role="button"
+      tabindex="0"
+      onclick={() => onfilecollapsetoggle(item.path)}
+      onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onfilecollapsetoggle(item.path); } }}
+    >
+      <span class="split-file-header-caret">{item.collapsed ? '▶' : '▼'}</span>
+      {item.path}
+    </div>
+  {:else if item.kind === "binary"}
+    <div class="binary-row" style="position: sticky; left: 0; width: 100cqi;">Binary file — no diff available</div>
+  {/if}
+{/snippet}
+
+<div
+  class="split-view"
+  style="{FIXED_ROW_HEIGHT_VARS}; --max-l: {maxLeftPx}px; --max-r: {maxRightPx}px;"
+  bind:this={pane}
+>
+  {#if ready}
+    <ExactVirtualList
+      bind:this={list}
+      items={model.rows}
+      {heights}
+      {contentWidth}
+      renderItem={splitRow}
+    />
+  {/if}
+
+  <div
+    class="diff-line metrics-probe"
+    bind:this={metricsProbe}
+    style="{DIFF_ROW_FONT};"
+  ></div>
+
+  {#if threadsToProbe.length > 0}
+    <div class="comment-probe" bind:this={commentProbe}>
+      {#each threadsToProbe as c (c.id)}
+        <div class="split-comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
+      {/each}
+    </div>
+  {/if}
+</div>
 
 <style>
-  .split-file {
+  .split-view {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* Both probes are laid out at the row's real width so their measurements are
+     the ones the rendered rows will produce, and neither is visible or
+     hit-testable. */
+  .metrics-probe,
+  .comment-probe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .split-cell {
     display: flex;
-    flex-direction: column;
+    align-items: flex-start;
+    padding: 0 var(--space-2);
+    box-sizing: border-box;
   }
 
-  .split-columns {
-    display: flex;
-  }
-
-  .split-column {
-    flex: 1;
-    min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: none;
-    scrollbar-width: none;
-  }
-
-  .split-column:first-child {
+  /* The divider between the halves. Under border-box it comes out of the left
+     half's own width, so the right half's ceiling over-reserves by this 1px —
+     the safe direction: the pan may reach a pixel past the last character,
+     never stop short of it. */
+  .split-cell-left {
     border-right: 1px solid var(--color-border);
   }
 
-  .diff-line {
-    position: relative;
-    /* Own stacking context so the z-index:-1 hover overlay below resolves
-       against this row (painting over its inline background) instead of slipping
-       behind it. */
-    isolation: isolate;
-    font-family: monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    padding: 0 var(--space-2);
-    display: flex;
-    align-items: flex-start;
+  /* The window the pan translates. The gutter is its sibling, not its child, so
+     the line numbers stay put while the code moves. */
+  .split-window {
+    flex: 1;
+    min-width: 0;
   }
 
-  /* Faint full-row tint while hovering the selectable (right) gutter — signals
-     that the line number, not the code, arms staging. z-index:-1 overlay so it
-     tints over the inline diff background without hiding it. */
-  .diff-line:has(.gutter-selectable:hover)::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in oklch, var(--color-hover) 60%, transparent);
-    pointer-events: none;
-  }
-
-  .gutter {
+  .split-gutter {
     text-align: right;
     color: var(--color-text-muted);
     padding-right: var(--space-2);
@@ -568,20 +660,56 @@ function buildSegments(
   }
 
   .split-phantom {
-    font-family: monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    padding: 0 var(--space-2);
     background: var(--color-diff-phantom-bg);
   }
 
+  /* The hunk header's height is the declared token the row model computes
+     offsets from, not whatever the button cluster happens to measure. */
   .split-hunk-header {
     background: color-mix(in oklch, var(--info) 6%, var(--bg-2));
-    color: color-mix(in oklch, var(--info) 70%, var(--fg-3));
     display: flex;
     align-items: center;
-    padding: var(--space-1) var(--space-2);
     gap: var(--space-2);
+    padding: 0 var(--space-2);
+    z-index: 1;
+  }
+  .split-hunk-header-text {
+    flex: 1;
+    color: color-mix(in oklch, var(--info) 70%, var(--fg-3));
+    font-size: 11px;
+    font-family: var(--font-mono, monospace);
+  }
+
+  /* Multi-file view only. Vertical stickiness does not survive the list — a row
+     inside a translated container has no scrollport-relative flow position. */
+  .split-file-header {
+    background: var(--color-surface);
+    box-shadow: inset 0 -1px 0 var(--color-border);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 0 var(--space-2);
+    height: var(--diff-file-header-height);
+    box-sizing: border-box;
+    color: var(--color-text);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .split-file-header-caret {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    width: 10px;
+    display: inline-block;
+  }
+  .binary-row {
+    height: var(--diff-binary-row-height);
+    box-sizing: border-box;
+    padding: var(--space-2);
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 16px;
   }
 
   .staging-btn {
@@ -593,7 +721,12 @@ function buildSegments(
     font-family: var(--font-sans, sans-serif);
     height: var(--control-sm-h);
     padding: 0 var(--space-2);
+    cursor: pointer;
     white-space: nowrap;
+  }
+  .staging-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
 
   .danger-btn {
@@ -620,7 +753,7 @@ function buildSegments(
     color: var(--color-accent);
   }
 
-  :global(.hunk-highlight) {
+  .hunk-highlight {
     animation: hunk-flash 0.6s ease-out;
   }
   @keyframes hunk-flash {
@@ -654,8 +787,13 @@ function buildSegments(
   .syn-escape { color: var(--color-syn-escape); }
 
   /* Change-indicator accent bar: saturated for add/delete, neutral rail for context.
-     Every line carries the 3px border so columns stay aligned regardless of origin. */
+     Every cell carries the 3px border so the columns stay aligned regardless of origin. */
   .diff-line {
+    position: relative;
+    /* Own stacking context so the z-index:-1 hover overlay below resolves
+       against this cell (painting over its inline background) instead of
+       slipping behind it. */
+    isolation: isolate;
     border-left: 3px solid var(--color-border);
   }
   .diff-line-add {
@@ -665,6 +803,18 @@ function buildSegments(
     border-left-color: var(--color-diff-delete);
   }
 
+  /* Faint full-cell tint while hovering the selectable (right) gutter — signals
+     that the line number, not the code, arms staging. z-index:-1 overlay so it
+     tints over the inline diff background without hiding it. */
+  .diff-line:has(.gutter-selectable:hover)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: color-mix(in oklch, var(--color-hover) 60%, transparent);
+    pointer-events: none;
+  }
+
   /* Left-edge accent on lines spanned by an inline comment. Inset box-shadow
      rather than a background tint so it doesn't fight the add/delete/context
      row backgrounds; layered over the existing 3px change-indicator border. */
@@ -672,14 +822,12 @@ function buildSegments(
     box-shadow: inset 3px 0 0 0 var(--color-accent);
   }
 
-  /* Inline comment row: a plain full-width block sibling spanning both columns
-     (sibling of .split-columns, not inside a single column). */
+  /* Inline comment row: a plain full-width row spanning both halves. */
   .split-comment-row {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
     padding: var(--space-2);
-    width: 100%;
     box-sizing: border-box;
   }
 

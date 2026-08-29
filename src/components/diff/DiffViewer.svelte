@@ -131,9 +131,7 @@ const renderedMarkdown = $derived(
 // A virtualized view owns its own scroller. Leaving this wrapper scrolling too
 // would give the wheel two places to go on the same axis.
 const virtualized = $derived(
-	!renderedMarkdown &&
-		layoutMode === "inline" &&
-		(contentMode === "full" || contentMode === "hunk"),
+	!renderedMarkdown && (contentMode === "full" || contentMode === "hunk"),
 );
 </script>
 
@@ -221,10 +219,11 @@ const virtualized = $derived(
       {viewComments}
     />
   {:else}
-    <SplitView {contentMode} {fileDiffs} {selectedPath} {diffKind}
+    <SplitView bind:this={diffNav}
+      {contentMode} {fileDiffs} {selectedPath} {diffKind}
       {hunkOperationInFlight} {ignoreWhitespace} {showInvisibles} {wordWrap}
       {selectedHunkKey} {selectedLineIndices} {selectedCount} {isMerge}
-      {collapsedFiles} {hunkElements}
+      {collapsedFiles}
       {onfilecollapsetoggle} {onlineclick} {onlinemousedown} {onlineenter}
       onstagehunk={onstagehunk} onunstagehunk={onunstagehunk} ondiscardhunk={ondiscardhunk}
       onstagelines={onstagelines} onunstagelines={onunstagelines} ondiscardlines={ondiscardlines}

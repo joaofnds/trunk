@@ -645,7 +645,7 @@ describe("DiffPanel", () => {
 		// Flush Svelte reactivity
 		await flushPrefs();
 		// Split view should render paired rows with two cells each
-		const rows = container.querySelectorAll(".split-columns");
+		const rows = container.querySelectorAll(".split-row");
 		expect(rows.length).toBeGreaterThan(0);
 	});
 
@@ -1296,11 +1296,11 @@ describe("VIEW-02: Split view layout", () => {
 		await flushPrefs();
 
 		// Split view should render paired rows with two cells each
-		const rows = container.querySelectorAll(".split-columns");
+		const rows = container.querySelectorAll(".split-row");
 		expect(rows.length).toBeGreaterThan(0);
 		// Each row should have two cells
 		const firstRow = rows[0];
-		expect(firstRow.querySelectorAll(".split-column").length).toBe(2);
+		expect(firstRow.querySelectorAll(".split-cell").length).toBe(2);
 
 		// Reset
 		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
@@ -1326,9 +1326,25 @@ describe("VIEW-02: Split view layout", () => {
 		});
 		await flushPrefs();
 
-		// The split view is rendered -- verify paired rows exist
-		const rows = container.querySelectorAll(".split-columns");
-		expect(rows.length).toBeGreaterThan(0);
+		// One row per pair now, so both sides sit in the same row: the old number
+		// belongs to the left cell and the new number to the right.
+		const guttersOf = (text: string) => {
+			const row = Array.from(container.querySelectorAll(".split-row")).find(
+				(candidate) => candidate.textContent?.includes(text),
+			) as Element;
+			return Array.from(
+				row.querySelectorAll(".split-gutter"),
+				(gutter) => gutter.textContent,
+			);
+		};
+
+		// A context line carries its own number on each side.
+		expect(guttersOf("import { foo } from 'bar';")).toEqual(["1", "1"]);
+		// The delete/add pair: old 2 on the left, new 2 on the right.
+		expect(guttersOf("const x = 1;")).toEqual(["2", "2"]);
+		// An add with nothing opposite it: the left half is a phantom with no
+		// gutter at all, so the only number is the new-side one.
+		expect(guttersOf("const y = 3;")).toEqual(["3"]);
 
 		// Reset
 		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
@@ -1359,7 +1375,7 @@ describe("VIEW-02: Split view layout", () => {
 		const bodyText = container.textContent ?? "";
 		expect(bodyText).toContain("const x = 2;");
 		// Verify paired rows rendered
-		const rows = container.querySelectorAll(".split-columns");
+		const rows = container.querySelectorAll(".split-row");
 		expect(rows.length).toBeGreaterThan(0);
 
 		// Reset
@@ -2425,6 +2441,33 @@ describe("DiffPanel hunk navigation", () => {
 		await tick();
 
 		expect(viewportOf(container).scrollTop).toBe(64);
+	});
+
+	// Split view is virtualized too, and publishes the same handle: both of hunk
+	// 0's lines are Context, so they pair one-to-one and the second hunk's header
+	// lands at the same 64px offset the inline view puts it at.
+	it("scrolls the split list to the next hunk's row on ]", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+			Promise.resolve("split"),
+		);
+		try {
+			const { container, ready } = renderNav();
+			await ready;
+
+			await fireEvent.keyDown(window, { key: "]" });
+			await tick();
+
+			expect(viewportOf(container).scrollTop).toBe(64);
+			expect(
+				screen.getByText("@@ -10,3 +10,2 @@").closest(".split-hunk-header")
+					?.className,
+			).toContain("hunk-highlight");
+		} finally {
+			vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
+				Promise.resolve("inline"),
+			);
+		}
 	});
 
 	it("scrolls back to the previous hunk's row on [", async () => {
