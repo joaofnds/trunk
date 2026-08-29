@@ -42,6 +42,7 @@ const WINDOW_LABEL = "main";
 export class TauriInternals {
 	private readonly callbacks = new Map<number, Callback>();
 	private readonly listeners = new Map<number, Listener>();
+	private readonly registering = new Set<Promise<number>>();
 	private readonly records: InvokeRecord[] = [];
 	private readonly fakes = new Map<string, TauriFake>();
 	private nextCallbackId = 1;
@@ -129,13 +130,36 @@ export class TauriInternals {
 		return fake;
 	}
 
-	private async listen(args: Record<string, unknown>): Promise<number> {
-		const eventId = await this.host.invoke<number>(LISTEN, args);
-		this.listeners.set(eventId, {
-			event: args.event as string,
-			callbackId: args.handler as number,
+	private listen(args: Record<string, unknown>): Promise<number> {
+		const registration = this.host.invoke<number>(LISTEN, args).then((id) => {
+			this.listeners.set(id, {
+				event: args.event as string,
+				callbackId: args.handler as number,
+			});
+			return id;
 		});
-		return eventId;
+
+		this.registering.add(registration);
+		void registration
+			.catch(() => undefined)
+			.then(() => this.registering.delete(registration));
+
+		return registration;
+	}
+
+	/**
+	 * Resolves once every `listen` the application has already called has reached
+	 * the map `deliver` reads. Registering costs a host round trip, so a `listen`
+	 * issued while the application mounts is still in flight when the driver's
+	 * readiness wait — a commit row on screen — is already satisfied. The real
+	 * watcher emits `repo-changed` again and again and never notices; a test emits
+	 * once, and the listener that missed it never hears about the change at all
+	 * (TRUNK-45).
+	 */
+	async registrationsSettled(): Promise<void> {
+		while (this.registering.size > 0) {
+			await Promise.allSettled([...this.registering]);
+		}
 	}
 
 	private transformCallback(

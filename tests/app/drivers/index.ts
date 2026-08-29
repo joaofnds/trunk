@@ -67,7 +67,7 @@ export class AppDriver {
 		this.remote = new RemoteDriver();
 		this.review = new ReviewDriver();
 		this.rebaseEditor = new RebaseEditorDriver();
-		this.events = new EventsDriver(host);
+		this.events = new EventsDriver(host, internals);
 		this.contextMenu = fakes.menu;
 		this.dialog = fakes.dialog;
 		this.clipboard = fakes.clipboard;

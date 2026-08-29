@@ -143,6 +143,14 @@ was 801 ms — because a wait is bounded by a round trip, not by the clock. So a
 reaches 5 000 ms is one whose state never arrived, and a longer deadline only makes the same
 failure take longer to report.
 
+`app.events.externalChange()` waits for the application's in-flight `listen` calls before it
+emits, because registering a listener costs a host round trip. Two of the four `repo-changed`
+registrations, `RepoView.svelte:836` and `StagingPanel.svelte:752`, had still not landed when
+`repo.open()` returned, by a measured margin of one to four milliseconds. The real watcher
+emits over and over and never notices a lost first event, so nothing in the product cares; a
+test emits once, so the listener that missed it never hears about the change and the wait that
+follows times out five seconds later saying only that the state never arrived (TRUNK-45).
+
 ## Budget
 
 `just app-test` runs in **7.5 s** of wall time against a 10 s ceiling, with the host binary

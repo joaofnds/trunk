@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AppDriver } from "./drivers/index.js";
@@ -148,6 +149,20 @@ describe("the application", () => {
 		await app.settle();
 
 		expect(refreshes(app)).toBe(before);
+	});
+
+	it("reaches a listener whose registration is still in flight", async () => {
+		const app = await setup({ repo: FOUR_COMMITS });
+		await app.repo.open();
+		let heard: string | undefined;
+		const registering = listen<string>("repo-changed", (event) => {
+			heard = event.payload;
+		});
+
+		await app.events.externalChange(app.repo.path);
+
+		await registering;
+		expect(heard).toBe(app.repo.path);
 	});
 
 	it("holds no filesystem watch", async () => {
