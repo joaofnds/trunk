@@ -25,6 +25,10 @@ let {
 
 let viewport = $state<HTMLDivElement | null>(null);
 let scrollTop = $state(0);
+// Published to the rows below in the same reactive style string that carries
+// translateY: Svelte's set_style assigns cssText wholesale, so a custom property
+// set imperatively on this element would be wiped on the next vertical scroll.
+let panLeft = $state(0);
 let viewportHeight = $state(0);
 
 const offsets = $derived(buildOffsets(heights));
@@ -67,6 +71,7 @@ export function anchorTo(index: number): void {
 
 function onscroll() {
 	scrollTop = viewport?.scrollTop ?? 0;
+	panLeft = viewport?.scrollLeft ?? 0;
 }
 </script>
 
@@ -74,7 +79,7 @@ function onscroll() {
   class="exact-virtual-viewport"
   bind:this={viewport}
   {onscroll}
-  style="position: absolute; inset: 0; overflow-y: auto; overflow-x: {horizontal ? 'auto' : 'hidden'}; overflow-anchor: none;"
+  style="position: absolute; inset: 0; overflow-y: auto; overflow-x: {horizontal ? 'auto' : 'hidden'}; overscroll-behavior-x: none; overflow-anchor: none;"
 >
   <div
     class="exact-virtual-content"
@@ -82,7 +87,7 @@ function onscroll() {
   >
     <div
       class="exact-virtual-rows"
-      style="position: absolute; top: 0; left: 0; width: 100%; min-width: 100%; transform: translateY({shown.offsetTop}px);"
+      style="position: absolute; top: 0; left: 0; width: 100%; min-width: 100%; --pan-x: {panLeft}px; transform: translateY({shown.offsetTop}px);"
     >
       {#each visible as item, offset (shown.start + offset)}
         {@render renderItem(item, shown.start + offset)}

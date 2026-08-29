@@ -61,6 +61,45 @@ describe("ExactVirtualList", () => {
 		expect(rows?.getAttribute("style")).toContain("min-width: 100%");
 	});
 
+	it("suppresses horizontal overscroll chaining on the viewport", () => {
+		const { container } = mountList(5000);
+
+		expect(viewportOf(container).getAttribute("style")).toContain(
+			"overscroll-behavior-x: none",
+		);
+	});
+
+	it("publishes the viewport's horizontal offset for the rows to pan from", async () => {
+		const { container } = mountList(5000);
+		const viewport = viewportOf(container);
+
+		viewport.scrollLeft = 420;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+
+		expect(
+			container.querySelector(".exact-virtual-rows")?.getAttribute("style"),
+		).toContain("--pan-x: 420px");
+	});
+
+	it("keeps the horizontal offset published across a vertical scroll", async () => {
+		const { container } = mountList(5000);
+		const viewport = viewportOf(container);
+
+		viewport.scrollLeft = 420;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+		viewport.scrollTop = 100 * ROW_HEIGHT;
+		viewport.dispatchEvent(new Event("scroll"));
+		await tick();
+
+		const style =
+			container.querySelector(".exact-virtual-rows")?.getAttribute("style") ??
+			"";
+		expect(style).toContain("--pan-x: 420px");
+		expect(style).toContain("translateY(");
+	});
+
 	it("offsets the mounted rows by the first one's top", async () => {
 		const { container } = mountList(5000);
 		const viewport = viewportOf(container);
