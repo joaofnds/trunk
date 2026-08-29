@@ -29,7 +29,7 @@ function makeScroller({
 // belonging to a given scroller rather than assuming there is only one.
 function thumbFor(el: HTMLElement): HTMLDivElement | null {
 	const rect = el.getBoundingClientRect();
-	const expectedRight = `${window.innerWidth - rect.right + 3 - 5}px`;
+	const expectedRight = `${window.innerWidth - rect.right + 3}px`;
 	return (
 		[...document.body.querySelectorAll<HTMLDivElement>(`.${THUMB_CLASS}`)].find(
 			(thumb) => thumb.style.right === expectedRight,
@@ -53,14 +53,12 @@ function release() {
 	window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
 }
 
-function pointerOver(el: HTMLElement) {
-	el.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
+function pointerEnter(el: HTMLElement) {
+	el.dispatchEvent(new MouseEvent("pointerenter"));
 }
 
-function pointerOut(el: HTMLElement, into: HTMLElement | null = null) {
-	el.dispatchEvent(
-		new MouseEvent("pointerout", { bubbles: true, relatedTarget: into }),
-	);
+function pointerLeave(el: HTMLElement) {
+	el.dispatchEvent(new MouseEvent("pointerleave"));
 }
 
 let stop: () => void;
@@ -159,7 +157,7 @@ describe("trackScrollActivity", () => {
 
 		const thumb = thumbFor(el);
 		expect(thumb?.parentElement).toBe(document.body);
-		expect(thumb?.style.right).toBe(`${window.innerWidth - 210 + 3 - 5}px`);
+		expect(thumb?.style.right).toBe(`${window.innerWidth - 210 + 3}px`);
 	});
 
 	it("removes the thumb once scrolling stops", () => {
@@ -267,74 +265,12 @@ describe("trackScrollActivity", () => {
 		expect(thumbFor(el)).toBeNull();
 	});
 
-	it("reveals the thumb while the pointer rests over a scrollable pane", () => {
-		const el = makeScroller();
-
-		pointerOver(el);
-
-		expect(thumbFor(el)).not.toBeNull();
-	});
-
-	it("reveals the thumb from an SVG child, as the commit graph's overlay is", () => {
-		const el = makeScroller();
-		const overlay = document.createElementNS(
-			"http://www.w3.org/2000/svg",
-			"circle",
-		);
-		el.append(overlay);
-
-		overlay.dispatchEvent(new MouseEvent("pointerover", { bubbles: true }));
-
-		expect(thumbFor(el)).not.toBeNull();
-	});
-
-	it("holds the thumb up for as long as the pointer stays in the pane", () => {
-		const el = makeScroller();
-
-		pointerOver(el);
-		vi.advanceTimersByTime(PAST_LINGER_MS);
-
-		expect(thumbFor(el)).not.toBeNull();
-	});
-
-	it("lets the thumb fade once the pointer leaves the pane", () => {
-		const el = makeScroller();
-
-		pointerOver(el);
-		pointerOut(el);
-		vi.advanceTimersByTime(PAST_LINGER_MS);
-
-		expect(thumbFor(el)).toBeNull();
-	});
-
-	it("keeps the thumb up while the pointer moves between rows inside the pane", () => {
-		const el = makeScroller();
-		const row = document.createElement("div");
-		el.append(row);
-
-		pointerOver(el);
-		pointerOut(el, row);
-		vi.advanceTimersByTime(PAST_LINGER_MS);
-
-		expect(thumbFor(el)).not.toBeNull();
-	});
-
-	it("keeps the thumb up when the pointer crosses from the pane onto the thumb", () => {
-		const el = makeScroller();
-
-		pointerOver(el);
-		pointerOut(el, thumbFor(el));
-		vi.advanceTimersByTime(PAST_LINGER_MS);
-
-		expect(thumbFor(el)).not.toBeNull();
-	});
-
 	it("holds the thumb up while the pointer rests on the thumb itself", () => {
 		const el = makeScroller();
 		el.dispatchEvent(new Event("scroll"));
 		const thumb = thumbFor(el);
 
-		pointerOver(thumb as HTMLElement);
+		pointerEnter(thumb as HTMLElement);
 		vi.advanceTimersByTime(PAST_LINGER_MS);
 
 		expect(thumbFor(el)).not.toBeNull();
@@ -342,31 +278,12 @@ describe("trackScrollActivity", () => {
 
 	it("lets the thumb fade once the pointer leaves it for something else", () => {
 		const el = makeScroller();
-		const elsewhere = document.createElement("div");
-		document.body.append(elsewhere);
 		el.dispatchEvent(new Event("scroll"));
 		const thumb = thumbFor(el);
 
-		pointerOver(thumb as HTMLElement);
-		pointerOut(thumb as HTMLElement, elsewhere);
+		pointerEnter(thumb as HTMLElement);
+		pointerLeave(thumb as HTMLElement);
 		vi.advanceTimersByTime(PAST_LINGER_MS);
-
-		expect(thumbFor(el)).toBeNull();
-	});
-
-	it("reveals nothing over a pane with nothing to scroll", () => {
-		const el = makeScroller({ scrollHeight: 200, clientHeight: 200 });
-
-		pointerOver(el);
-
-		expect(thumbFor(el)).toBeNull();
-	});
-
-	it("stops revealing on hover once torn down", () => {
-		const el = makeScroller();
-
-		stop();
-		pointerOver(el);
 
 		expect(thumbFor(el)).toBeNull();
 	});

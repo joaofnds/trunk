@@ -2,9 +2,6 @@ export const THUMB_CLASS = "scrollbar-overlay-thumb";
 const LINGER_MS = 900;
 const IGNORED_RANGE_PX = 2;
 const THUMB_INSET_PX = 3;
-// Matches the transparent side borders .scrollbar-overlay-thumb grabs with, so
-// the painted sliver still lands THUMB_INSET_PX from the scroller's edge.
-const THUMB_GRAB_PADDING_PX = 5;
 const MIN_THUMB_HEIGHT_PX = 24;
 
 // Geometry only, no DOM: the part a real browser layout can't help test.
@@ -65,8 +62,6 @@ export function dragScrollTop(drag: {
 export function trackScrollActivity(): () => void {
 	const hideTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
 	const thumbs = new Map<HTMLElement, HTMLDivElement>();
-	const owners = new WeakMap<HTMLElement, HTMLElement>();
-	let hovered: HTMLElement | null = null;
 	let drag: {
 		el: HTMLElement;
 		startY: number;
@@ -74,39 +69,6 @@ export function trackScrollActivity(): () => void {
 		trackHeight: number;
 		thumbHeight: number;
 	} | null = null;
-
-	// Starts at Element, not HTMLElement: the commit graph's overlay is SVG, and
-	// an SVGElement is neither, so anchoring the walk on HTMLElement would make
-	// the whole graph pane unhoverable.
-	function scrollerAt(node: EventTarget | null): HTMLElement | null {
-		let el = node instanceof Element ? node : null;
-		while (el) {
-			if (
-				el instanceof HTMLElement &&
-				el.scrollHeight - el.clientHeight > IGNORED_RANGE_PX
-			) {
-				const { overflowY } = getComputedStyle(el);
-				if (overflowY === "auto" || overflowY === "scroll") return el;
-			}
-			el = el.parentElement;
-		}
-		return null;
-	}
-
-	// The thumb is a body-level overlay, so crossing onto it leaves the pane as
-	// far as the DOM is concerned. Both are the same scroller to the reveal.
-	function paneOf(node: EventTarget | null): HTMLElement | null {
-		if (node instanceof HTMLElement) {
-			const owner = owners.get(node);
-			if (owner) return owner;
-		}
-		return scrollerAt(node);
-	}
-
-	function stillWithin(el: HTMLElement, node: EventTarget | null): boolean {
-		if (!(node instanceof Node)) return false;
-		return el.contains(node) || thumbs.get(el) === node;
-	}
 
 	function paint(el: HTMLElement) {
 		const rect = el.getBoundingClientRect();
@@ -123,14 +85,17 @@ export function trackScrollActivity(): () => void {
 			thumb = document.createElement("div");
 			thumb.className = THUMB_CLASS;
 			thumb.addEventListener("pointerdown", (event) => grab(event, el));
+			// Without these the linger timer runs out under a cursor that is
+			// resting on the thumb, and the thumb vanishes as it is reached for.
+			thumb.addEventListener("pointerenter", () => hold(el));
+			thumb.addEventListener("pointerleave", () => settle(el));
 			document.body.appendChild(thumb);
 			thumbs.set(el, thumb);
-			owners.set(thumb, el);
 		}
 
 		thumb.style.top = `${top}px`;
 		thumb.style.height = `${height}px`;
-		thumb.style.right = `${window.innerWidth - rect.right + THUMB_INSET_PX - THUMB_GRAB_PADDING_PX}px`;
+		thumb.style.right = `${window.innerWidth - rect.right + THUMB_INSET_PX}px`;
 	}
 
 	function hold(el: HTMLElement) {
@@ -151,7 +116,7 @@ export function trackScrollActivity(): () => void {
 	}
 
 	function settle(el: HTMLElement) {
-		if (drag?.el === el || hovered === el) hold(el);
+		if (drag?.el === el) hold(el);
 		else fade(el);
 	}
 
@@ -186,24 +151,6 @@ export function trackScrollActivity(): () => void {
 		settle(el);
 	}
 
-	function onPointerOver(event: PointerEvent) {
-		const el = paneOf(event.target);
-		if (!el) return;
-
-		hovered = el;
-		paint(el);
-		hold(el);
-	}
-
-	function onPointerOut(event: PointerEvent) {
-		const el = paneOf(event.target);
-		if (!el) return;
-		if (stillWithin(el, event.relatedTarget)) return;
-
-		if (hovered === el) hovered = null;
-		settle(el);
-	}
-
 	function onPointerMove(event: PointerEvent) {
 		if (!drag) return;
 
@@ -227,16 +174,12 @@ export function trackScrollActivity(): () => void {
 	}
 
 	document.addEventListener("scroll", onScroll, true);
-	document.addEventListener("pointerover", onPointerOver, true);
-	document.addEventListener("pointerout", onPointerOut, true);
 	window.addEventListener("pointermove", onPointerMove);
 	window.addEventListener("pointerup", onPointerUp);
 	window.addEventListener("pointercancel", onPointerUp);
 
 	return () => {
 		document.removeEventListener("scroll", onScroll, true);
-		document.removeEventListener("pointerover", onPointerOver, true);
-		document.removeEventListener("pointerout", onPointerOut, true);
 		window.removeEventListener("pointermove", onPointerMove);
 		window.removeEventListener("pointerup", onPointerUp);
 		window.removeEventListener("pointercancel", onPointerUp);
@@ -245,7 +188,6 @@ export function trackScrollActivity(): () => void {
 		hideTimers.clear();
 		for (const thumb of thumbs.values()) thumb.remove();
 		thumbs.clear();
-		hovered = null;
 		drag = null;
 	};
 }

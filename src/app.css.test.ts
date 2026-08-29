@@ -94,13 +94,11 @@ describe("app.css scrollbars", () => {
 		);
 	});
 
-	it("gives the thumb a grab area wider than the sliver it paints", () => {
+	it("paints the same 5px sliver it always did, so taking a press changed no widths", () => {
 		const [, body] =
 			css.match(new RegExp(`\\.${THUMB_CLASS}\\s*\\{([^}]*)\\}`)) ?? [];
-		expect(body).toMatch(/border-left:\s*5px solid transparent;/);
-		expect(body).toMatch(/border-right:\s*5px solid transparent;/);
-		expect(body).toMatch(/background-clip:\s*content-box;/);
-		expect(body).toMatch(/width:\s*15px;/);
+		expect(body).toMatch(/width:\s*5px;/);
+		expect(body).not.toMatch(/border-(left|right):/);
 	});
 });
 
