@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BAR_HEIGHT, ROW_HEIGHT, UNIT } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
@@ -101,6 +101,29 @@ describe("app.css scrollbars", () => {
 	});
 });
 
+/** Every stylesheet the app ships, app.css included — a token is read from a
+ *  component or from another rule in app.css itself, and both count. */
+function svelteAndCssSources(): string[] {
+	const root = resolve(process.cwd(), "src");
+	const walk = (dir: string): string[] =>
+		readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+			const full = join(dir, entry.name);
+			if (entry.isDirectory()) return walk(full);
+			return /\.(svelte|css|ts)$/.test(entry.name) &&
+				!entry.name.endsWith(".test.ts")
+				? [readFileSync(full, "utf8")]
+				: [];
+		});
+	return walk(root);
+}
+
+/** One length: a bare `0`, a single px value, or a `calc()` over the unit. A
+ *  shadow is a list of them and an opacity has no unit; neither is on the scale
+ *  this guards. */
+function isLength(value: string): boolean {
+	return /^(?:0|-?[\d.]+px|calc\([^,]*\))$/.test(value.trim());
+}
+
 describe("app.css lengths", () => {
 	const unit = css.match(/^\t--u: (\d+)px;$/m)?.[1];
 	const lengths = [
@@ -115,18 +138,35 @@ describe("app.css lengths", () => {
 		expect(unit).toBe(String(UNIT));
 	});
 
+	/* Named one by one, because the rule is that a length is on the scale and
+	   these are the exceptions. An allowlist of prefixes would let a token
+	   reintroduced under a new name — a second bar height, say — pass unread. */
+	const offScaleByDesign = new Set([
+		"--u", // the unit itself
+		"--radius-pill", // a pill is round, not a multiple of anything
+	]);
+
 	it("expresses every declared length as a whole number of units", () => {
-		const declared = [
-			...css.matchAll(
-				/^\t(--(?:space|row|bar|topbar|control|graph|sidebar|right|refs|counter)[\w-]*): ([^;]+);$/gm,
-			),
-		];
+		const declared = [...css.matchAll(/^\t(--[\w-]+): ([^;]+);$/gm)].filter(
+			([, name, value]) => !offScaleByDesign.has(name) && isLength(value),
+		);
 		const offScale = declared.filter(
 			([, , value]) =>
 				value !== "0" && !/^calc\(\d+ \* var\(--u\)\)$/.test(value),
 		);
 
 		expect(offScale.map(([line]) => line.trim())).toEqual([]);
+	});
+
+	it("declares no length token nothing reads", () => {
+		const sources = svelteAndCssSources();
+		const unread = [...css.matchAll(/^\t(--[\w-]+): ([^;]+);$/gm)]
+			.filter(([, , value]) => isLength(value))
+			.map(([, name]) => name)
+			.filter((name) => !offScaleByDesign.has(name))
+			.filter((name) => !sources.some((text) => text.includes(`var(${name})`)));
+
+		expect(unread).toEqual([]);
 	});
 
 	it("gives the virtualized bars and rows the heights their constants assume", () => {

@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 
 const root = resolve(process.cwd(), "src");
 
+/** Every stylesheet the app ships. app.css converted its own spacing and radii
+ *  to tokens too, and nothing was checking that they stayed that way. */
 function svelteFiles(dir: string): string[] {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
 		const full = join(dir, entry.name);
 		if (entry.isDirectory()) return svelteFiles(full);
-		return entry.name.endsWith(".svelte") ? [full] : [];
+		return /\.(svelte|css)$/.test(entry.name) ? [full] : [];
 	});
 }
 
@@ -28,7 +30,9 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
 	return found;
 }
 
-const namedPart = /^(0|auto|var\(--[\w-]+\)|@(?:px)?)$/;
+/* `em` is prose, not chrome: `.markdown-body` sizes its paragraph rhythm to the
+   text it wraps, which is what an em is for and what the unit scale is not. */
+const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
 
 /** A Svelte interpolation and a `calc()` off the unit are each one opaque value
  *  however many spaces they hold, so both are masked before the shorthand is

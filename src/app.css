@@ -23,10 +23,6 @@
 
 	/* ── Widths ── */
 	--counter-gutter: calc(11 * var(--u));
-	--graph-w: calc(33 * var(--u));
-	--sidebar-w: calc(58 * var(--u));
-	--right-w: calc(80 * var(--u));
-	--refs-w: 0;
 
 	/* ── Surfaces — cool-neutral ramp (oklch, hue 260) ── */
 	--bg-0: oklch(0.08 0.003 260); /* deepest — body, editor & input wells */
