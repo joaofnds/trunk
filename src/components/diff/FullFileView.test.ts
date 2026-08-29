@@ -165,7 +165,7 @@ describe("FullFileView", () => {
 
 	it("selects the span between the pressed row and the row the pointer reaches", async () => {
 		const oncommentfullfile = vi.fn();
-		const { container } = render(FullFileView, {
+		render(FullFileView, {
 			props: defaultProps({ oncommentfullfile }),
 		});
 
@@ -182,7 +182,7 @@ describe("FullFileView", () => {
 	});
 
 	it("leaves the span alone when the pointer crosses a row with no button held", async () => {
-		const { container } = render(FullFileView, { props: defaultProps() });
+		render(FullFileView, { props: defaultProps() });
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
@@ -195,7 +195,7 @@ describe("FullFileView", () => {
 	});
 
 	it("stops extending the span once the button is released", async () => {
-		const { container } = render(FullFileView, { props: defaultProps() });
+		render(FullFileView, { props: defaultProps() });
 
 		await fireEvent.mouseDown(gutterGrip("added one"));
 		await tick();
