@@ -372,10 +372,16 @@ function cellStyle(origin: string, isSelected: boolean): string {
 }
 
 /** The pan, clamped to this side's own end so a short side stops where its text
- *  does instead of panning into blank. Expressed in CSS, not arithmetic here:
- *  `--pan-x` changes once per scroll event and the compositor does the rest. */
-function windowTransform(ceiling: "--max-l" | "--max-r"): string {
-	return `transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(${ceiling}) - 50cqi))));`;
+ *  does instead of panning into blank. It rides the content INSIDE the clipping
+ *  window, never the window: transforming the clipper moves its clip box too,
+ *  which slides the whole half out of the cell instead of panning within it. */
+function panTransform(ceiling: "--max-l" | "--max-r"): string {
+	// `max-content` is what gives an unwrapped line its full width to translate
+	// across; a wrapped half has nothing to pan, and max-content there would run
+	// the line past the window instead of wrapping into the height `rowHeights`
+	// predicted for it.
+	const width = wrapActive ? "100%" : "max-content";
+	return `width: ${width}; min-width: 100%; transform: translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(${ceiling}) - 50cqi))));`;
 }
 
 function originClass(origin: string): string {
@@ -424,8 +430,10 @@ function originClass(origin: string): string {
           style={cellStyle(line.origin, isSelected)}
         >
           <span class="split-gutter" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span>
-          <div class="split-window" style={windowTransform('--max-l')}>
-            {@render cellContent(line)}
+          <div class="split-window" style="overflow: clip;">
+            <div class="split-pan" style={panTransform('--max-l')}>
+              {@render cellContent(line)}
+            </div>
           </div>
         </div>
       {:else}
@@ -454,8 +462,10 @@ function originClass(origin: string): string {
             onmousedown={(e) => { if (isSelectable) onlinemousedown(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), e); }}
             onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onlineclick(item.path, item.hunkIdx, lineIdx, line.origin, hunkLinesOf(item.path, item.hunkIdx), new MouseEvent('click', { shiftKey: e.shiftKey })); } }}
           >{line.new_lineno ?? ''}</span>
-          <div class="split-window" style={windowTransform('--max-r')}>
-            {@render cellContent(line)}
+          <div class="split-window" style="overflow: clip;">
+            <div class="split-pan" style={panTransform('--max-r')}>
+              {@render cellContent(line)}
+            </div>
           </div>
         </div>
       {:else}
@@ -647,12 +657,14 @@ function originClass(origin: string): string {
     border-right: 1px solid var(--color-border);
   }
 
-  /* The window the pan translates. The gutter is its sibling, not its child, so
-     the line numbers stay put while the code moves. */
+  /* The window the pan happens inside. The gutter is its sibling, not its child,
+     so the line numbers stay put while the code moves. */
   .split-window {
     flex: 1;
     min-width: 0;
   }
+
+
 
   .split-gutter {
     text-align: right;

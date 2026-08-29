@@ -190,19 +190,32 @@ describe("SplitView panning", () => {
 	it("clamps each half's translation against that side's own ceiling", () => {
 		const { container } = render(SplitView, { props: defaultProps() });
 
-		const windows = Array.from(
-			container
-				.querySelector(".split-row")
-				?.querySelectorAll(".split-window") ?? [],
+		const pans = Array.from(
+			container.querySelector(".split-row")?.querySelectorAll(".split-pan") ??
+				[],
 			(el) => el.getAttribute("style") ?? "",
 		);
 
-		expect(windows[0]).toContain(
+		expect(pans[0]).toContain(
 			"translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-l) - 50cqi))))",
 		);
-		expect(windows[1]).toContain(
+		expect(pans[1]).toContain(
 			"translateX(calc(-1 * min(var(--pan-x, 0px), max(0px, var(--max-r) - 50cqi))))",
 		);
+	});
+
+	it("translates inside the clipping window rather than translating the window", () => {
+		const { container } = render(SplitView, { props: defaultProps() });
+
+		const windows = [...container.querySelectorAll(".split-window")];
+
+		expect(windows.length).toBeGreaterThan(0);
+		for (const window of windows) {
+			// Transforming the clipper moves its clip box too, which slides the
+			// whole half out of the cell instead of panning the code within it.
+			expect(window.getAttribute("style") ?? "").not.toContain("transform");
+			expect(window.querySelector(".split-pan")).not.toBeNull();
+		}
 	});
 
 	it("publishes each side's full width, gutter and chrome included, as its ceiling", () => {
@@ -229,6 +242,20 @@ describe("SplitView panning", () => {
 		expect(expected).toBeGreaterThan(WIDEST * CHAR_WIDTH + CHROME);
 	});
 
+	it("clips each half's window, so panned code cannot cross the pinned gutter", () => {
+		const { container } = render(SplitView, { props: defaultProps() });
+
+		const windows = [...container.querySelectorAll(".split-window")];
+
+		expect(windows.length).toBeGreaterThan(0);
+		for (const window of windows) {
+			// The cell's own clip stops at the cell box, which the gutter sits
+			// inside: without a clip on the window, content translated left paints
+			// across the line numbers (doc-38 §4's "clipped window").
+			expect(window.getAttribute("style") ?? "").toContain("overflow: clip");
+		}
+	});
+
 	it("leaves the line-number gutters out of the translated window", () => {
 		const { container } = render(SplitView, { props: defaultProps() });
 
@@ -237,7 +264,7 @@ describe("SplitView panning", () => {
 		expect(gutters.length).toBeGreaterThan(0);
 		for (const gutter of gutters) {
 			expect(gutter.getAttribute("style") ?? "").not.toContain("transform");
-			expect(gutter.closest(".split-window")).toBeNull();
+			expect(gutter.closest(".split-pan")).toBeNull();
 		}
 	});
 });
@@ -258,6 +285,25 @@ describe("SplitView row shapes", () => {
 		expect(styleOf(wrapped.container)).toContain("white-space: pre-wrap");
 		expect(styleOf(unwrapped.container)).toContain("word-break: normal");
 		expect(styleOf(unwrapped.container)).toContain("white-space: pre");
+	});
+
+	it("sizes the panned content to its text only when there is a pan", () => {
+		const unwrapped = render(SplitView, {
+			props: defaultProps({ wordWrap: false }),
+		});
+		const wrapped = render(SplitView, {
+			props: defaultProps({ wordWrap: true }),
+		});
+
+		const panStyle = (root: Element) =>
+			root.querySelector(".split-pan")?.getAttribute("style") ?? "";
+
+		expect(panStyle(unwrapped.container)).toContain("width: max-content");
+		// A wrapped half has nothing to pan, and max-content there would let the
+		// line run past the window instead of wrapping into the height
+		// `rowHeights` predicted for it.
+		expect(panStyle(wrapped.container)).toContain("width: 100%");
+		expect(panStyle(wrapped.container)).not.toContain("max-content");
 	});
 
 	it("takes the hunk-header row's height from the declared token", () => {
