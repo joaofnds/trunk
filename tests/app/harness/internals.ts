@@ -1,10 +1,18 @@
 import type { TauriFake } from "../fakes/index.js";
-import type { HostClient } from "./host-client.js";
+import type { EventHandler } from "./host-client.js";
 
 declare global {
 	interface Window {
 		__TAURI_INTERNALS__?: Record<string, unknown>;
 	}
+}
+
+/** All `TauriInternals` needs of a host: a command channel and an event feed.
+ *  `HostClient` (stdio) and the measurement bridge's HTTP host both satisfy it,
+ *  so neither one has to be cast to the other. */
+export interface HostChannel {
+	invoke<T>(cmd: string, args?: unknown): Promise<T>;
+	onEvent(handler: EventHandler): void;
 }
 
 export interface InvokeRecord {
@@ -48,7 +56,7 @@ export class TauriInternals {
 	private nextCallbackId = 1;
 	private closed = false;
 
-	constructor(private readonly host: HostClient) {}
+	constructor(private readonly host: HostChannel) {}
 
 	/** Points every `plugin:` command at the Fake that owns it. Separate from
 	 *  construction because a Fake whose surface is callback-driven needs this

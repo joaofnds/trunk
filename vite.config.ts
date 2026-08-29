@@ -28,6 +28,16 @@ export default defineConfig({
 		watch: {
 			ignored: ["**/src-tauri/**", "**/.boris/**"],
 		},
+		// `just measure` serves the measurement page from this same server, so
+		// proxying the host bridge keeps the page same-origin with it. Nothing
+		// listens on 8732 during an ordinary `just dev`, where the route is
+		// simply never requested.
+		proxy: {
+			"/bridge": {
+				target: "http://127.0.0.1:8732",
+				rewrite: (path) => path.replace(/^\/bridge/, ""),
+			},
+		},
 	},
 	test: {
 		include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],

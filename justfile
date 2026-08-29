@@ -1,6 +1,8 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 manifest := "src-tauri/Cargo.toml"
+# Cargo's output root, honouring CARGO_TARGET_DIR the way cargo itself does.
+target := env("CARGO_TARGET_DIR", justfile_directory() / "src-tauri/target")
 
 # The Rust suite drives real `git` subprocesses. Without this the developer's
 # editor vars and global git config decide which path a test takes, and the
@@ -80,12 +82,12 @@ vitest-cov:
 # Drive the assembled app headlessly: the real Svelte tree against a real Rust backend
 app-test:
     cargo build --manifest-path {{manifest}} --example app_host
-    TRUNK_APP_HOST="${CARGO_TARGET_DIR:-{{justfile_directory()}}/src-tauri/target}/debug/examples/app_host" bun run test:app
+    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
 
 # Serve the real app to a browser so its rendered DOM can be measured (jsdom has no layout)
 measure:
     cargo build --manifest-path {{manifest}} --example app_host
-    bun scripts/measure/bridge.ts & \
+    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun scripts/measure/bridge.ts & \
     bunx vite --port 1420 --strictPort & \
     echo "open http://localhost:1420/scripts/measure/index.html" && wait
 

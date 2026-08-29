@@ -3,14 +3,25 @@
  * DOM. `tests/app/harness` reaches the host over stdio from node; a page cannot,
  * and jsdom reports no layout, so neither one can answer "how tall does this
  * actually render". This serves the same host to `scripts/measure/boot.ts`.
+ *
+ * The routes reach the real command set, destructive commands included, so the
+ * run writes a random token to `.bridge-token` and refuses every request that
+ * does not carry it. Vite proxies the page to this port (see `vite.config.ts`),
+ * which keeps the page same-origin and leaves no CORS headers to widen.
  */
+import { randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { join } from "node:path";
 import {
 	HostClient,
 	type RepoSpec,
 } from "../../tests/app/harness/host-client.js";
+import type { BridgeEvent } from "./router.js";
+import { createRouter } from "./router.js";
 
 const PORT = 8732;
+const TOKEN_FILE = join(import.meta.dirname, ".bridge-token");
 
 const repo: RepoSpec = {
 	steps: [
@@ -46,51 +57,36 @@ await host.invoke("prefs_set", {
 });
 await host.invoke("prefs_set", { key: "open_tabs", value: [repoPath] });
 
-const events: Array<{ event: string; payload: unknown }> = [];
+const events: BridgeEvent[] = [];
 host.onEvent((event, payload) => events.push({ event, payload }));
 
-function cors(res: import("node:http").ServerResponse): void {
-	res.setHeader("access-control-allow-origin", "*");
-	res.setHeader("access-control-allow-headers", "content-type");
-}
+const token = randomBytes(32).toString("hex");
+writeFileSync(TOKEN_FILE, token, { mode: 0o600 });
+
+const route = createRouter({
+	token,
+	invoke: (cmd, args) => host.invoke(cmd, args),
+	context: { home: host.home, repoPath },
+	events,
+});
 
 createServer(async (req, res) => {
-	cors(res);
-	if (req.method === "OPTIONS") return res.writeHead(204).end();
+	const body = await new Promise<string>((resolve) => {
+		let text = "";
+		req.on("data", (chunk) => (text += chunk));
+		req.on("end", () => resolve(text));
+	});
 
-	if (req.url === "/home") {
-		return res
-			.writeHead(200, { "content-type": "application/json" })
-			.end(JSON.stringify({ home: host.home, repoPath }));
-	}
+	const reply = await route({
+		method: req.method,
+		url: req.url,
+		token: req.headers["x-bridge-token"] as string | undefined,
+		body,
+	});
 
-	if (req.url === "/events") {
-		const drained = events.splice(0, events.length);
-		return res
-			.writeHead(200, { "content-type": "application/json" })
-			.end(JSON.stringify(drained));
-	}
-
-	if (req.url === "/invoke" && req.method === "POST") {
-		const body = await new Promise<string>((resolve) => {
-			let text = "";
-			req.on("data", (chunk) => (text += chunk));
-			req.on("end", () => resolve(text));
-		});
-		const { cmd, args } = JSON.parse(body);
-		try {
-			const value = await host.invoke(cmd, args);
-			return res
-				.writeHead(200, { "content-type": "application/json" })
-				.end(JSON.stringify({ ok: true, value: value ?? null }));
-		} catch (error) {
-			return res
-				.writeHead(200, { "content-type": "application/json" })
-				.end(JSON.stringify({ ok: false, error: String(error) }));
-		}
-	}
-
-	res.writeHead(404).end();
+	res
+		.writeHead(reply.status, { "content-type": "application/json" })
+		.end(reply.body);
 }).listen(PORT, "127.0.0.1", () => {
 	console.log(`host bridge on http://127.0.0.1:${PORT}  repo=${repoPath}`);
 });
