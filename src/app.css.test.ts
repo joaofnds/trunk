@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BAR_HEIGHT, UNIT } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
 import { ROW_HEIGHT } from "./lib/graph-constants";
-import { THUMB_PROPERTY } from "./lib/scrollbar-activity.js";
+import { THUMB_CLASS } from "./lib/scrollbar-activity.js";
 
 /* jsdom renders no scrollbars, so these read the stylesheet as text. They guard
    the contract src/lib/scrollbar-activity.ts drives; the proof that it renders
@@ -57,10 +57,14 @@ function contrastRatio(fg: string, bg: string): number {
 }
 
 describe("app.css scrollbars", () => {
-	it("paints the thumb from the property the tracker sets, not a fixed color", () => {
+	it("hides the native scrollbar on every axis, so it never reserves layout space", () => {
+		expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*display:\s*none;/);
+	});
+
+	it("styles the overlay thumb class the tracker paints, from the theme token", () => {
 		expect(css).toMatch(
 			new RegExp(
-				`::-webkit-scrollbar-thumb\\s*\\{[^}]*background:\\s*var\\(${THUMB_PROPERTY}\\)`,
+				`\\.${THUMB_CLASS}\\s*\\{[^}]*background:\\s*var\\(--color-scrollbar-thumb\\)`,
 			),
 		);
 	});
@@ -78,37 +82,13 @@ describe("app.css scrollbars", () => {
 		).toBeGreaterThanOrEqual(3);
 	});
 
-	it("registers the tracker's property as transparent, so a pane at rest shows nothing", () => {
+	it("keeps the overlay thumb out of the scroller's own layout and click targets", () => {
 		expect(css).toMatch(
-			new RegExp(
-				`@property\\s+${THUMB_PROPERTY}\\s*\\{[^}]*syntax:\\s*"<color>"`,
-			),
+			new RegExp(`\\.${THUMB_CLASS}\\s*\\{[^}]*position:\\s*fixed;`),
 		);
 		expect(css).toMatch(
-			new RegExp(
-				`@property\\s+${THUMB_PROPERTY}\\s*\\{[^}]*initial-value:\\s*transparent`,
-			),
+			new RegExp(`\\.${THUMB_CLASS}\\s*\\{[^}]*pointer-events:\\s*none;`),
 		);
-	});
-
-	it("leaves the track transparent, so a pane with nothing to scroll paints nothing", () => {
-		expect(css).toMatch(
-			/::-webkit-scrollbar-track\s*\{[^}]*background:\s*transparent/,
-		);
-	});
-
-	it("declares no state-based reveal, which WebKit does not repaint", () => {
-		expect(css).not.toMatch(/:hover::-webkit-scrollbar/);
-	});
-
-	it("keeps the horizontal bar at zero height, so it never steals viewport clientHeight", () => {
-		expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*height:\s*0;/);
-	});
-
-	it("lets the vertical hide overrides in SplitView, RenderedDiff and TabBar keep outranking the bare rule", () => {
-		const [, body] = css.match(/::-webkit-scrollbar\s*\{([^}]*)\}/) ?? [];
-		expect(body).toBeDefined();
-		expect(body).not.toMatch(/!important/);
 	});
 });
 

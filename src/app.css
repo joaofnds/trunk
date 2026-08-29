@@ -306,47 +306,29 @@ body {
 	user-select: none;
 }
 
-/* WKWebView paints no visible native scrollbar here — neither the overlay bar
-   nor the classic one macOS's "Show scrollbars: Always" asks for; both reserve
-   layout width and draw nothing. So every scroller needs an explicit thumb.
-
-   The thumb is transparent until src/lib/scrollbar-activity.ts sets
-   --scrollbar-thumb-paint on a scroller that is actually scrolling, so a pane
-   at rest shows nothing. That reveal cannot be expressed in CSS: WebKit
-   resolves these pseudo-element rules once and never re-matches them when the
-   owner's class or :hover state changes. A custom property is the one channel
-   that reaches a live scrollbar.
-
-   Vertical axis only, and the zero height is load-bearing. `overflow-y: scroll`
-   forces the used `overflow-x` to `auto`, so VirtualList's viewport scrolls
-   horizontally whenever the commit-graph overlay SVG is wider than the pane.
-   Give the horizontal bar a height and it takes 11px off that viewport's
-   clientHeight while its content stays pinned to the container height, which
-   manufactures 11px of vertical range and paints a full-height thumb on a list
-   with nothing to scroll (measured: clientHeight 733 -> 722, scrollHeight 733).
-   Turning the horizontal bar on means giving `.virtual-list-viewport`
-   `overflow-x: hidden` first, and adding back a ::-webkit-scrollbar-corner
-   rule, which has nothing to paint while the horizontal bar stays zero height. */
-@property --scrollbar-thumb-paint {
-	syntax: "<color>";
-	inherits: true;
-	initial-value: transparent;
-}
-
+/* WKWebView paints no visible native scrollbar, and styling ::-webkit-scrollbar
+   to paint one ourselves costs the one thing that matters here: any rule that
+   targets it switches WebKit (and Blink) out of overlay mode, and the declared
+   width becomes both the thumb's paint width and a permanently reserved layout
+   gutter, on every axis, with no way to get one without the other (measured:
+   `display: none` is the only setting that reserves nothing, and native
+   scrolling keeps working regardless). So native chrome stays fully hidden,
+   and src/lib/scrollbar-activity.ts paints a themed thumb of its own instead,
+   as a `position: fixed` overlay appended to <body> — never a child of the
+   scroller, so it can never affect that scroller's own layout. Same mechanism
+   as Radix UI's ScrollArea and the OverlayScrollbars library: real native
+   scroll, native chrome hidden, a separate thumb kept in sync from JS. */
 ::-webkit-scrollbar {
-	width: 11px;
-	height: 0;
+	display: none;
 }
 
-::-webkit-scrollbar-track {
-	background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-	background: var(--scrollbar-thumb-paint);
-	border: 3px solid transparent;
-	background-clip: content-box;
+.scrollbar-overlay-thumb {
+	position: fixed;
+	width: 5px;
+	background: var(--color-scrollbar-thumb);
 	border-radius: var(--radius-pill);
+	pointer-events: none;
+	z-index: 100;
 }
 
 /* Placeholders render at full token contrast, not the UA's ~0.54-opacity
