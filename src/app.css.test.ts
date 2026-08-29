@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BAR_HEIGHT, UNIT } from "./lib/chrome-heights";
+import { BAR_HEIGHT, ROW_HEIGHT, UNIT } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
-import { ROW_HEIGHT } from "./lib/graph-constants";
 import { THUMB_CLASS } from "./lib/scrollbar-activity.js";
 
 /* jsdom renders no scrollbars, so these read the stylesheet as text. They guard

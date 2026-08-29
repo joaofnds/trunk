@@ -149,7 +149,7 @@ let displaySettings = $state({ ...DEFAULT_GRAPH_SETTINGS });
 
 // Measured row height from VirtualList. At non-100% browser zoom, sub-pixel
 // snapping makes the actual rendered row height differ slightly from the CSS
-// value (ROW_HEIGHT = 26). Over thousands of rows, using the CSS constant for
+// value (ROW_HEIGHT). Over thousands of rows, using the CSS constant for
 // SVG coordinates causes progressive drift. svgRowHeight tracks the real
 // measured height so the SVG overlay stays aligned with the DOM rows.
 let svgRowHeight = $state(displaySettings.rowHeight);

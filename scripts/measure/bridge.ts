@@ -5,7 +5,7 @@
  * actually render". This serves the same host to `scripts/measure/boot.ts`.
  *
  * The routes reach the real command set, destructive commands included, so the
- * run writes a random token to `.bridge-token` and refuses every request that
+ * run writes a random token to `.bridge-token.txt` and refuses every request that
  * does not carry it. Vite proxies the page to this port (see `vite.config.ts`),
  * which keeps the page same-origin and leaves no CORS headers to widen.
  */
@@ -21,7 +21,7 @@ import type { BridgeEvent } from "./router.js";
 import { createRouter } from "./router.js";
 
 const PORT = 8732;
-const TOKEN_FILE = join(import.meta.dirname, ".bridge-token");
+const TOKEN_FILE = join(import.meta.dirname, ".bridge-token.txt");
 
 const repo: RepoSpec = {
 	steps: [

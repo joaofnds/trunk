@@ -234,7 +234,9 @@ async function handleBranchCreate(values: Record<string, string>) {
     width: var(--control-h);
     height: var(--control-h);
     padding: 0;
-    border: 1px solid var(--line);
+    /* Paint, not length: a border under border-box would cost the button 2px
+       of the height its token declares. */
+    box-shadow: inset 0 0 0 1px var(--line);
     border-radius: var(--radius);
     background: transparent;
     color: var(--fg-1);
@@ -256,12 +258,12 @@ async function handleBranchCreate(values: Record<string, string>) {
 
   .toolbar-btn.toolbar-btn-active {
     background: var(--accent);
-    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
     color: var(--accent-fg);
   }
   .toolbar-btn.toolbar-btn-active:hover:not(:disabled) {
     background: var(--accent-hi);
-    border-color: var(--accent-hi);
+    box-shadow: inset 0 0 0 1px var(--accent-hi);
   }
 
   /* Subtle "on" state for view-preference toggles (e.g. inline comments) —
@@ -269,12 +271,12 @@ async function handleBranchCreate(values: Record<string, string>) {
      than the loud solid fill the labeled Review button uses. */
   .toolbar-btn.toolbar-btn-toggle-on {
     background: var(--color-accent-bg);
-    border-color: var(--color-accent-border);
+    box-shadow: inset 0 0 0 1px var(--color-accent-border);
     color: var(--accent);
   }
   .toolbar-btn.toolbar-btn-toggle-on:hover:not(:disabled) {
     background: color-mix(in oklch, var(--accent) 14%, transparent);
-    border-color: var(--color-accent-border);
+    box-shadow: inset 0 0 0 1px var(--color-accent-border);
   }
 
   .toolbar-btn-badged {
@@ -303,11 +305,13 @@ async function handleBranchCreate(values: Record<string, string>) {
     display: inline-flex;
     align-items: stretch;
     height: var(--control-h);
-    border: 1px solid var(--line);
+    /* Paint, not length: a real border would take 2px out of the content box
+       and leave the group's own children overflowing it. */
+    box-shadow: inset 0 0 0 1px var(--line);
     border-radius: var(--radius);
   }
   .btn-group .toolbar-btn {
-    border: none;
+    box-shadow: none;
     border-radius: var(--radius) 0 0 var(--radius);
   }
 

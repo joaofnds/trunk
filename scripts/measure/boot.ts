@@ -23,6 +23,7 @@ import {
 	type HostChannel,
 	TauriInternals,
 } from "../../tests/app/harness/internals.js";
+import rawToken from "./.bridge-token.txt?raw";
 import type { BridgeContext, BridgeEvent } from "./router.js";
 
 const BRIDGE = "/bridge";
@@ -86,7 +87,10 @@ class BridgeHost implements HostChannel {
 	}
 }
 
-const token = (await fetch("./.bridge-token").then((r) => r.text())).trim();
+/* Vite serves this directory as modules, so the token is read with ?raw — a
+   plain-text import — rather than fetched, which would come back transformed
+   into a module with a sourcemap comment appended. */
+const token = rawToken.trim();
 const { home }: BridgeContext = await fetch(`${BRIDGE}/home`, {
 	headers: { "x-bridge-token": token },
 }).then((r) => r.json());

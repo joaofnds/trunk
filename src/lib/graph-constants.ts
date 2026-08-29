@@ -1,7 +1,9 @@
-import { UNIT } from "./chrome-heights.js";
+import { ROW_HEIGHT, UNIT } from "./chrome-heights.js";
 import type { GraphDisplaySettings } from "./types.js";
 
-export const ROW_HEIGHT = 7 * UNIT;
+/* A graph row is a list row; the value belongs with the other chrome heights.
+   Re-exported so the graph pipeline's public names are unchanged. */
+export { ROW_HEIGHT };
 export const LANE_WIDTH = 4 * UNIT;
 export const DOT_RADIUS = 6;
 export const EDGE_STROKE = 1.5;

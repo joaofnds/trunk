@@ -52,8 +52,11 @@ describe("spacing scale", () => {
 	});
 
 	it("spends no layout on a bar's own rule", () => {
+		/* A bar declares its height either from the token or, where the height is
+		   also needed by virtualization math, from the constant that mirrors it.
+		   Both spellings are the same bar and owe the same rule. */
 		const barHeight =
-			/var\(--(?:bar-h|topbar-h|row-h|control-h|diff-(?:file|hunk)-header-height)\)/;
+			/var\(--(?:bar-h|topbar-h|row-h|control-h|diff-(?:file|hunk)-header-height)\)|\{(?:BAR_HEIGHT|ROW_HEIGHT)\}px/;
 		const raw: string[] = [];
 		for (const file of svelteFiles(root)) {
 			const source = readFileSync(file, "utf8").replace(
@@ -65,7 +68,10 @@ describe("spacing scale", () => {
 				...source.matchAll(/style="((?:[^"]|\n)*?)"/g),
 			];
 			for (const [, body] of blocks) {
-				if (barHeight.test(body) && /border-(?:bottom|top): /.test(body)) {
+				if (
+					barHeight.test(body) &&
+					/border(?:-(?:bottom|top))?: [^;]*\d/.test(body)
+				) {
 					raw.push(relative(root, file));
 				}
 			}

@@ -131,7 +131,9 @@ $effect(() => {
     white-space: nowrap;
     flex-shrink: 0;
     background: none;
-    border: 1px solid transparent;
+    /* Paint, not length: the active state's outline must not take a pixel out
+       of a chip already declaring its height. */
+    box-shadow: inset 0 0 0 1px transparent;
   }
 
   .tab-item:hover {
@@ -142,7 +144,7 @@ $effect(() => {
   .tab-item.active {
     color: var(--fg-0);
     background: var(--bg-2);
-    border-color: var(--line);
+    box-shadow: inset 0 0 0 1px var(--line);
   }
 
   .tab-item.active:hover {
@@ -185,7 +187,8 @@ $effect(() => {
     width: 26px;
     height: var(--control-h);
     border-radius: var(--radius);
-    border: 1px dashed var(--line);
+    /* Paint, not length, like every other control declaring its height. */
+    box-shadow: inset 0 0 0 1px var(--line);
     background: none;
     color: var(--fg-2);
     cursor: pointer;

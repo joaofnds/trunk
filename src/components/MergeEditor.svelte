@@ -422,10 +422,9 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleHunk(side, row.regionIdx); } }}
     style="
       width: 100%;
-      height: {BAR_HEIGHT}px;
+      height: var(--bar-h);
       background: var(--color-surface);
-      border-top: 1px solid var(--color-border);
-      border-bottom: 1px solid var(--color-border);
+      box-shadow: inset 0 1px 0 var(--color-border), inset 0 -1px 0 var(--color-border);
       display: flex;
       align-items: center;
       padding: 0 var(--space-2);

@@ -1,7 +1,8 @@
 <script lang="ts">
 import Sortable from "sortablejs";
+import { ROW_HEIGHT } from "../lib/chrome-heights.js";
 import { copySha } from "../lib/clipboard.js";
-import { COLUMN_PADDING_X, ROW_HEIGHT } from "../lib/graph-constants.js";
+import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";

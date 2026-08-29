@@ -20,4 +20,4 @@ mutants.out.old
 .boris/
 
 # The measurement bridge writes its per-run token here (just measure)
-scripts/measure/.bridge-token
+scripts/measure/.bridge-token.txt
