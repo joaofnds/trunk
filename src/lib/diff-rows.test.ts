@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type BuildOptions,
 	buildInlineRows,
+	buildSplitRows,
 	FIXED_ROW_HEIGHTS,
 	rowHeights,
 	rowIndexForLine,
@@ -354,6 +355,210 @@ describe("buildInlineRows", () => {
 	});
 });
 
+// One context line, two deletes and one add: the pairing puts the context on
+// both sides, marries the first delete to the add, and leaves the second delete
+// facing a phantom.
+const pairable = file("src/main.ts", [
+	hunk("@@ -1,4 +1,2 @@", [
+		line("Context", "first", 1, 1),
+		line("Delete", "old a", 2, null),
+		line("Delete", "old b", 3, null),
+		line("Add", "new a", null, 2),
+	]),
+]);
+
+describe("buildSplitRows", () => {
+	it("emits one pair row per paired line, phantoms included", () => {
+		const model = buildSplitRows([pairable], fullMode);
+
+		const sides = model.rows.map((row) =>
+			row.kind === "pair"
+				? [row.row.left?.lineIdx ?? null, row.row.right?.lineIdx ?? null]
+				: row.kind,
+		);
+
+		expect(sides).toEqual([
+			[0, 0],
+			[1, 3],
+			[2, null],
+		]);
+	});
+
+	it("precedes each hunk's pairs with a header row in hunk mode", () => {
+		const model = buildSplitRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"hunk-header",
+			"pair",
+			"pair",
+			"hunk-header",
+			"pair",
+		]);
+	});
+
+	it("pairs within each hunk, so a pair reports the hunk it belongs to", () => {
+		const model = buildSplitRows([twoHunks], fullMode);
+
+		expect(
+			model.rows.map((row) => (row.kind === "pair" ? row.hunkIdx : null)),
+		).toEqual([0, 0, 1]);
+	});
+
+	it("sizes the gutter to the largest line number's digits plus one", () => {
+		const deep = file("src/main.ts", [
+			hunk("@@ -998,1 +1000,1 @@", [line("Context", "x", 998, 1000)]),
+		]);
+
+		const model = buildSplitRows([deep], fullMode);
+
+		expect(model.gutterChars).toBe(5);
+	});
+
+	it("emits a header row per file when the view shows one, and none without", () => {
+		const withHeaders = buildSplitRows([pairable], {
+			...fullMode,
+			fileHeaders: true,
+		});
+
+		expect(withHeaders.rows[0].kind).toBe("file-header");
+		expect(
+			buildSplitRows([pairable], fullMode).rows.some(
+				(row) => row.kind === "file-header",
+			),
+		).toBe(false);
+	});
+
+	it("emits only the header row for a collapsed file", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			fileHeaders: true,
+			collapsed: new Set(["src/main.ts"]),
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual(["file-header"]);
+	});
+
+	it("emits a header row and a binary row, and no pairs, for a binary file", () => {
+		const binary = file("assets/logo.png", [], true);
+
+		const model = buildSplitRows([binary], { ...fullMode, fileHeaders: true });
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"file-header",
+			"binary",
+		]);
+	});
+
+	it("emits a comment row after the pair its thread anchors to, keyed by the right side", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect(model.rows.map((row) => row.kind)).toEqual([
+			"pair",
+			"pair",
+			"comment",
+			"pair",
+		]);
+		const comment = model.rows[2];
+		expect(
+			comment.kind === "comment" && [
+				comment.hunkIdx,
+				comment.lineIdx,
+				comment.flatIdx,
+			],
+		).toEqual([0, 3, 3]);
+	});
+
+	it("keys a comment row by the left side when the pair has no right side", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [thread("t1", "Old", 3, 3)],
+		});
+
+		const comment = model.rows.find((row) => row.kind === "comment");
+
+		expect(
+			comment?.kind === "comment" && [comment.lineIdx, comment.flatIdx],
+		).toEqual([2, 2]);
+	});
+
+	it("holds both sides' threads for one pair in a single comment row", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [thread("tNew", "New", 2, 2), thread("tOld", "Old", 2, 2)],
+		});
+
+		const comments = model.rows.filter((row) => row.kind === "comment");
+
+		expect(comments).toHaveLength(1);
+		expect(
+			comments[0].kind === "comment" && comments[0].threads.map((t) => t.id),
+		).toEqual(["tNew", "tOld"]);
+	});
+
+	it("omits comment rows when inline comments are hidden", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			showInlineComments: false,
+			comments: [thread("t1", "New", 2, 2)],
+		});
+
+		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
+	});
+
+	it("marks each side spanned from that side's own comments", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			comments: [thread("t1", "New", 1, 2)],
+		});
+
+		const pairs = model.rows.filter((row) => row.kind === "pair");
+
+		expect(pairs.map((row) => row.spannedRight)).toEqual([true, true, false]);
+		expect(pairs.map((row) => row.spannedLeft)).toEqual([false, false, false]);
+	});
+
+	it("reports the widest old-side and new-side content as two column entries", () => {
+		const lopsided = file("src/main.ts", [
+			hunk("@@ -1,2 +1,2 @@", [
+				line("Delete", "an old line that runs long", 1, null),
+				line("Add", "new", null, 1),
+			]),
+		]);
+
+		const model = buildSplitRows([lopsided], fullMode);
+
+		expect(model.columns).toEqual(["an old line that runs long".length, 3]);
+	});
+
+	it("counts a tab as one cell per side when invisibles are shown", () => {
+		const tabbed = file("src/main.ts", [
+			hunk("@@ -1,1 +1,1 @@", [line("Context", "\tx", 1, 1)]),
+		]);
+
+		expect(buildSplitRows([tabbed], fullMode).columns).toEqual([5, 5]);
+		expect(
+			buildSplitRows([tabbed], { ...fullMode, invisibles: true }).columns,
+		).toEqual([2, 2]);
+	});
+
+	it("carries each pair's own two column counts, zero for a phantom side", () => {
+		const model = buildSplitRows([pairable], fullMode);
+
+		const counts = model.rows.map((row) =>
+			row.kind === "pair" ? [row.leftColumns, row.rightColumns] : null,
+		);
+
+		expect(counts).toEqual([
+			["first".length, "first".length],
+			["old a".length, "new a".length],
+			["old b".length, 0],
+		]);
+	});
+});
+
 describe("rowIndexForLine", () => {
 	it("finds a line's row past the comment rows its hunk carries before it", () => {
 		const model = buildInlineRows([twoHunks], {
@@ -393,6 +598,49 @@ describe("rowIndexForLine", () => {
 		});
 
 		expect(rowIndexForLine(model, "src/main.ts", 0, 0)).toBe(-1);
+	});
+
+	it("finds the pair row carrying a line on its left side", () => {
+		const model = buildSplitRows([pairable], { ...fullMode, content: "hunk" });
+
+		const index = rowIndexForLine(model, "src/main.ts", 0, 2);
+
+		const row = model.rows[index];
+		expect(row.kind === "pair" && row.row.left?.lineIdx).toBe(2);
+	});
+
+	it("finds the pair row carrying a line on its right side", () => {
+		const model = buildSplitRows([pairable], { ...fullMode, content: "hunk" });
+
+		const index = rowIndexForLine(model, "src/main.ts", 0, 3);
+
+		const row = model.rows[index];
+		expect(row.kind === "pair" && row.row.right?.lineIdx).toBe(3);
+	});
+});
+
+describe("buildSplitRows navigation", () => {
+	it("points each hunk at its header row in hunk mode", () => {
+		const model = buildSplitRows([twoHunks], { ...fullMode, content: "hunk" });
+
+		expect(model.hunkNav.map((nav) => [nav.path, nav.hunkIdx])).toEqual([
+			["src/main.ts", 0],
+			["src/main.ts", 1],
+		]);
+		expect(model.hunkNav.map((nav) => model.rows[nav.rowIndex].kind)).toEqual([
+			"hunk-header",
+			"hunk-header",
+		]);
+	});
+
+	it("points each hunk at its first pair row in full mode", () => {
+		const model = buildSplitRows([twoHunks], fullMode);
+
+		expect(model.hunkNav.map((nav) => model.rows[nav.rowIndex].kind)).toEqual([
+			"pair",
+			"pair",
+		]);
+		expect(model.hunkNav.map((nav) => nav.rowIndex)).toEqual([0, 2]);
 	});
 });
 
@@ -502,6 +750,26 @@ describe("rowHeights", () => {
 			}
 		},
 	);
+
+	it("gives a pair row one line height when wrap is off", () => {
+		const model = buildSplitRows([pairable], fullMode);
+
+		expect(rowHeights(model, metrics, 3, false, new Map())).toEqual([
+			18, 18, 18,
+		]);
+	});
+
+	it("gives a wrapped pair row the taller of its two sides", () => {
+		const lopsided = file("src/main.ts", [
+			hunk("@@ -1,2 +1,2 @@", [
+				line("Delete", "x".repeat(25), 1, null),
+				line("Add", "y".repeat(5), null, 1),
+			]),
+		]);
+		const model = buildSplitRows([lopsided], fullMode);
+
+		expect(rowHeights(model, metrics, 10, true, new Map())).toEqual([54]);
+	});
 
 	it("needs nothing probed for a hunk header", () => {
 		const model = buildInlineRows([twoHunks], {
