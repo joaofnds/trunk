@@ -2,6 +2,9 @@ export const THUMB_CLASS = "scrollbar-overlay-thumb";
 const LINGER_MS = 900;
 const IGNORED_RANGE_PX = 2;
 const THUMB_INSET_PX = 3;
+// Matches the transparent side borders .scrollbar-overlay-thumb grabs with, so
+// the painted sliver still lands THUMB_INSET_PX from the scroller's edge.
+const THUMB_GRAB_PADDING_PX = 5;
 const MIN_THUMB_HEIGHT_PX = 24;
 
 // Geometry only, no DOM: the part a real browser layout can't help test.
@@ -21,6 +24,24 @@ export function thumbGeometry(
 	const top =
 		trackTop + (maxScrollTop > 0 ? (scrollTop / maxScrollTop) * travel : 0);
 	return { top, height };
+}
+
+// The inverse of thumbGeometry: where a thumb dragged this far leaves the content.
+export function dragScrollTop(drag: {
+	startScrollTop: number;
+	deltaY: number;
+	trackHeight: number;
+	thumbHeight: number;
+	scrollHeight: number;
+	clientHeight: number;
+}): number {
+	const travel = drag.trackHeight - drag.thumbHeight;
+	if (travel <= 0) return drag.startScrollTop;
+
+	const maxScrollTop = drag.scrollHeight - drag.clientHeight;
+	const moved = drag.startScrollTop + (drag.deltaY / travel) * maxScrollTop;
+
+	return Math.min(Math.max(moved, 0), maxScrollTop);
 }
 
 /** One capture-phase listener covers every scroller in the app, including ones
@@ -44,12 +65,50 @@ export function thumbGeometry(
 export function trackScrollActivity(): () => void {
 	const hideTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
 	const thumbs = new Map<HTMLElement, HTMLDivElement>();
+	const owners = new WeakMap<HTMLElement, HTMLElement>();
+	let hovered: HTMLElement | null = null;
+	let drag: {
+		el: HTMLElement;
+		startY: number;
+		startScrollTop: number;
+		trackHeight: number;
+		thumbHeight: number;
+	} | null = null;
 
-	function onScroll(event: Event) {
-		const el = event.target;
-		if (!(el instanceof HTMLElement)) return;
-		if (el.scrollHeight - el.clientHeight <= IGNORED_RANGE_PX) return;
+	// Starts at Element, not HTMLElement: the commit graph's overlay is SVG, and
+	// an SVGElement is neither, so anchoring the walk on HTMLElement would make
+	// the whole graph pane unhoverable.
+	function scrollerAt(node: EventTarget | null): HTMLElement | null {
+		let el = node instanceof Element ? node : null;
+		while (el) {
+			if (
+				el instanceof HTMLElement &&
+				el.scrollHeight - el.clientHeight > IGNORED_RANGE_PX
+			) {
+				const { overflowY } = getComputedStyle(el);
+				if (overflowY === "auto" || overflowY === "scroll") return el;
+			}
+			el = el.parentElement;
+		}
+		return null;
+	}
 
+	// The thumb is a body-level overlay, so crossing onto it leaves the pane as
+	// far as the DOM is concerned. Both are the same scroller to the reveal.
+	function paneOf(node: EventTarget | null): HTMLElement | null {
+		if (node instanceof HTMLElement) {
+			const owner = owners.get(node);
+			if (owner) return owner;
+		}
+		return scrollerAt(node);
+	}
+
+	function stillWithin(el: HTMLElement, node: EventTarget | null): boolean {
+		if (!(node instanceof Node)) return false;
+		return el.contains(node) || thumbs.get(el) === node;
+	}
+
+	function paint(el: HTMLElement) {
 		const rect = el.getBoundingClientRect();
 		const { top, height } = thumbGeometry(
 			rect.top,
@@ -63,14 +122,24 @@ export function trackScrollActivity(): () => void {
 		if (!thumb) {
 			thumb = document.createElement("div");
 			thumb.className = THUMB_CLASS;
+			thumb.addEventListener("pointerdown", (event) => grab(event, el));
 			document.body.appendChild(thumb);
 			thumbs.set(el, thumb);
+			owners.set(thumb, el);
 		}
+
 		thumb.style.top = `${top}px`;
 		thumb.style.height = `${height}px`;
-		thumb.style.right = `${window.innerWidth - rect.right + THUMB_INSET_PX}px`;
+		thumb.style.right = `${window.innerWidth - rect.right + THUMB_INSET_PX - THUMB_GRAB_PADDING_PX}px`;
+	}
 
+	function hold(el: HTMLElement) {
 		clearTimeout(hideTimers.get(el));
+		hideTimers.delete(el);
+	}
+
+	function fade(el: HTMLElement) {
+		hold(el);
 		hideTimers.set(
 			el,
 			setTimeout(() => {
@@ -81,13 +150,102 @@ export function trackScrollActivity(): () => void {
 		);
 	}
 
+	function settle(el: HTMLElement) {
+		if (drag?.el === el || hovered === el) hold(el);
+		else fade(el);
+	}
+
+	function grab(event: PointerEvent, el: HTMLElement) {
+		const rect = el.getBoundingClientRect();
+		const { height } = thumbGeometry(
+			rect.top,
+			rect.height,
+			el.scrollTop,
+			el.scrollHeight,
+			el.clientHeight,
+		);
+
+		drag = {
+			el,
+			startY: event.clientY,
+			startScrollTop: el.scrollTop,
+			trackHeight: rect.height,
+			thumbHeight: height,
+		};
+
+		hold(el);
+		event.preventDefault();
+	}
+
+	function onScroll(event: Event) {
+		const el = event.target;
+		if (!(el instanceof HTMLElement)) return;
+		if (el.scrollHeight - el.clientHeight <= IGNORED_RANGE_PX) return;
+
+		paint(el);
+		settle(el);
+	}
+
+	function onPointerOver(event: PointerEvent) {
+		const el = paneOf(event.target);
+		if (!el) return;
+
+		hovered = el;
+		paint(el);
+		hold(el);
+	}
+
+	function onPointerOut(event: PointerEvent) {
+		const el = paneOf(event.target);
+		if (!el) return;
+		if (stillWithin(el, event.relatedTarget)) return;
+
+		if (hovered === el) hovered = null;
+		settle(el);
+	}
+
+	function onPointerMove(event: PointerEvent) {
+		if (!drag) return;
+
+		drag.el.scrollTop = dragScrollTop({
+			startScrollTop: drag.startScrollTop,
+			deltaY: event.clientY - drag.startY,
+			trackHeight: drag.trackHeight,
+			thumbHeight: drag.thumbHeight,
+			scrollHeight: drag.el.scrollHeight,
+			clientHeight: drag.el.clientHeight,
+		});
+		paint(drag.el);
+	}
+
+	function onPointerUp() {
+		if (!drag) return;
+
+		const { el } = drag;
+		drag = null;
+		settle(el);
+	}
+
 	document.addEventListener("scroll", onScroll, true);
+	document.addEventListener("pointerover", onPointerOver, true);
+	document.addEventListener("pointerout", onPointerOut, true);
+	window.addEventListener("pointermove", onPointerMove);
+	window.addEventListener("pointerup", onPointerUp);
+	window.addEventListener("pointercancel", onPointerUp);
 
 	return () => {
 		document.removeEventListener("scroll", onScroll, true);
+		document.removeEventListener("pointerover", onPointerOver, true);
+		document.removeEventListener("pointerout", onPointerOut, true);
+		window.removeEventListener("pointermove", onPointerMove);
+		window.removeEventListener("pointerup", onPointerUp);
+		window.removeEventListener("pointercancel", onPointerUp);
+
 		for (const timer of hideTimers.values()) clearTimeout(timer);
 		hideTimers.clear();
 		for (const thumb of thumbs.values()) thumb.remove();
 		thumbs.clear();
+		hovered = null;
+		drag = null;
 	};
 }

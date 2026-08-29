@@ -82,13 +82,25 @@ describe("app.css scrollbars", () => {
 		).toBeGreaterThanOrEqual(3);
 	});
 
-	it("keeps the overlay thumb out of the scroller's own layout and click targets", () => {
+	it("keeps the overlay thumb out of the scroller's own layout", () => {
 		expect(css).toMatch(
 			new RegExp(`\\.${THUMB_CLASS}\\s*\\{[^}]*position:\\s*fixed;`),
 		);
+	});
+
+	it("leaves the thumb able to take a press, since dragging it is how a pane scrolls", () => {
 		expect(css).toMatch(
-			new RegExp(`\\.${THUMB_CLASS}\\s*\\{[^}]*pointer-events:\\s*none;`),
+			new RegExp(`\\.${THUMB_CLASS}\\s*\\{[^}]*pointer-events:\\s*auto;`),
 		);
+	});
+
+	it("gives the thumb a grab area wider than the sliver it paints", () => {
+		const [, body] =
+			css.match(new RegExp(`\\.${THUMB_CLASS}\\s*\\{([^}]*)\\}`)) ?? [];
+		expect(body).toMatch(/border-left:\s*5px solid transparent;/);
+		expect(body).toMatch(/border-right:\s*5px solid transparent;/);
+		expect(body).toMatch(/background-clip:\s*content-box;/);
+		expect(body).toMatch(/width:\s*15px;/);
 	});
 });
 
