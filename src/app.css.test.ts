@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { BAR_HEIGHT, UNIT } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
 import { ROW_HEIGHT } from "./lib/graph-constants";
+import { THUMB_PROPERTY } from "./lib/scrollbar-activity.js";
 
 /* jsdom renders no scrollbars, so these read the stylesheet as text. They guard
    the contract src/lib/scrollbar-activity.ts drives; the proof that it renders
@@ -58,7 +59,9 @@ function contrastRatio(fg: string, bg: string): number {
 describe("app.css scrollbars", () => {
 	it("paints the thumb from the property the tracker sets, not a fixed color", () => {
 		expect(css).toMatch(
-			/::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*var\(--scrollbar-thumb-paint\)/,
+			new RegExp(
+				`::-webkit-scrollbar-thumb\\s*\\{[^}]*background:\\s*var\\(${THUMB_PROPERTY}\\)`,
+			),
 		);
 	});
 
@@ -75,12 +78,16 @@ describe("app.css scrollbars", () => {
 		).toBeGreaterThanOrEqual(3);
 	});
 
-	it("registers --scrollbar-thumb-paint as transparent, so a pane at rest shows nothing", () => {
+	it("registers the tracker's property as transparent, so a pane at rest shows nothing", () => {
 		expect(css).toMatch(
-			/@property\s+--scrollbar-thumb-paint\s*\{[^}]*syntax:\s*"<color>"/,
+			new RegExp(
+				`@property\\s+${THUMB_PROPERTY}\\s*\\{[^}]*syntax:\\s*"<color>"`,
+			),
 		);
 		expect(css).toMatch(
-			/@property\s+--scrollbar-thumb-paint\s*\{[^}]*initial-value:\s*transparent/,
+			new RegExp(
+				`@property\\s+${THUMB_PROPERTY}\\s*\\{[^}]*initial-value:\\s*transparent`,
+			),
 		);
 	});
 

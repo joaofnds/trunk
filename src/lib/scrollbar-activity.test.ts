@@ -99,4 +99,14 @@ describe("trackScrollActivity", () => {
 
 		expect(thumbOf(el)).toBe("");
 	});
+
+	it("clears a pending hide timer on teardown, so a stale write never lands", () => {
+		const el = makeScroller();
+
+		el.dispatchEvent(new Event("scroll"));
+		stop();
+		vi.advanceTimersByTime(PAST_LINGER_MS);
+
+		expect(thumbOf(el)).toBe(REVEALED);
+	});
 });
