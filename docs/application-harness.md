@@ -134,6 +134,15 @@ Assert post-event state with `waitFor` rather than sleeping out the 200 ms `repo
 debounce. `driver.settle()` is the fallback for a negative assertion — "nothing else
 refetched" — which has no state to wait for, and it costs the whole quiet window.
 
+`waitFor`'s 5 000 ms deadline is a safety net, not a budget, and it is not the thing to raise
+when a run goes red. Measured over 448 waits, 336 on a quiet machine and 112 with the CPU
+oversubscribed two to one: the slowest legitimate wait was 849 ms, it was a `settle()` paying
+out its own quiet window, the mean was 51 ms, and none reached one second. Load did not move
+those figures — the loaded suite took 23 s of wall against a 7.4 s median and its slowest wait
+was 801 ms — because a wait is bounded by a round trip, not by the clock. So a wait that
+reaches 5 000 ms is one whose state never arrived, and a longer deadline only makes the same
+failure take longer to report.
+
 ## Budget
 
 `just app-test` runs in **7.5 s** of wall time against a 10 s ceiling, with the host binary
