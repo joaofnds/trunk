@@ -73,6 +73,14 @@ if (typeof Element.prototype.scrollTo === "undefined") {
 // wrong. Removing this stub silently caps every render golden at 22 rows.
 const VIEWPORT_HEIGHT = 4000;
 
+// VirtualList measures the viewport's content box, so `clientHeight` has to be
+// stubbed alongside the rect: leaving it at jsdom's 0 collapses the visible
+// range and every golden renders the untruncated fallback height instead.
+Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+	configurable: true,
+	get: () => VIEWPORT_HEIGHT,
+});
+
 Element.prototype.getBoundingClientRect = function stubbedRect(): DOMRect {
 	return {
 		x: 0,

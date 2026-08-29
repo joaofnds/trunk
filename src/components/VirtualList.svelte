@@ -326,10 +326,27 @@ const atBottom = $derived(heightManager.scrollTop >= totalHeight - height - 1);
 let wasAtBottomBeforeHeightChange = false;
 let lastVisibleRange: SvelteVirtualListPreviousVisibleRange | null = null;
 
+/** The space the content actually gets: the viewport's content box, which is
+ *  its border box less any padding a consumer put on it. Measuring the
+ *  container instead leaves the content taller than its box by exactly that
+ *  padding, and a list that fits keeps a scroll range it should not have. */
+function viewportContentHeight(): number {
+	const viewport = heightManager.viewportElement;
+	if (!viewport) return 0;
+
+	const { paddingTop, paddingBottom } = getComputedStyle(viewport);
+
+	return (
+		viewport.clientHeight -
+		(Number.parseFloat(paddingTop) || 0) -
+		(Number.parseFloat(paddingBottom) || 0)
+	);
+}
+
 // Update container height continuously
 $effect(() => {
 	if (BROWSER && heightManager.isReady) {
-		const h = heightManager.container.getBoundingClientRect().height;
+		const h = viewportContentHeight();
 		if (Number.isFinite(h) && h > 0) height = h;
 	}
 });
@@ -337,7 +354,7 @@ $effect(() => {
 // One-time fallback measurement when height hasn't been established yet
 $effect(() => {
 	if (BROWSER && height === 0 && heightManager.isReady) {
-		const h = heightManager.container.getBoundingClientRect().height;
+		const h = viewportContentHeight();
 		if (Number.isFinite(h) && h > 0) measuredFallbackHeight = h;
 	}
 });
@@ -526,7 +543,7 @@ onMount(() => {
 
 		resizeObserver = new ResizeObserver(() => {
 			// Always update height when container resizes — even before initialized.
-			const h = heightManager.container?.getBoundingClientRect().height ?? 0;
+			const h = viewportContentHeight();
 			if (Number.isFinite(h) && h > 0) height = h;
 
 			if (!heightManager.initialized) return;
