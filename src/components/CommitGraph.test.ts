@@ -235,12 +235,8 @@ describe("CommitGraph", () => {
 				tabActive: true,
 			},
 		});
-		await waitFor(() => {
-			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("get_commit_graph", {
-				path: "/test/repo",
-				offset: 0,
-			});
-		});
+		expect(await screen.findByText("first commit")).toBeInTheDocument();
+		expect(await screen.findByText("second commit")).toBeInTheDocument();
 	});
 
 	it("has listbox role for keyboard navigation", () => {

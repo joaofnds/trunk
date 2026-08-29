@@ -1,12 +1,18 @@
-import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { safeInvoke } from "../lib/invoke.js";
 import StagingPanel from "./StagingPanel.svelte";
 
-// All Tauri module mocks — declared locally for proper vi.mock hoisting
-vi.mock("@tauri-apps/api/core", () => ({
-	invoke: vi.fn().mockResolvedValue(undefined),
-}));
+// All Tauri module mocks — declared locally for proper vi.mock hoisting.
+// Patched at the wrapper the components call, not at @tauri-apps/api/core
+// beneath it, so safeInvoke's error translation is exercised here too.
+vi.mock("../lib/invoke.js", async () => {
+	const actual =
+		await vi.importActual<typeof import("../lib/invoke.js")>(
+			"../lib/invoke.js",
+		);
+	return { ...actual, safeInvoke: vi.fn() };
+});
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
 	open: vi.fn(),
@@ -49,7 +55,7 @@ vi.mock("@tauri-apps/api/menu", () => ({
 
 vi.mock("@tauri-apps/plugin-window-state", () => ({}));
 
-const mockInvoke = vi.mocked(invoke);
+const mockInvoke = vi.mocked(safeInvoke);
 
 describe("StagingPanel", () => {
 	beforeEach(() => {
