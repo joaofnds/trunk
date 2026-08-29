@@ -9,6 +9,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 |-----|----------------|
 | [architecture/commit-graph.md](architecture/commit-graph.md) | The graph pipeline end to end: `placement.rs` column and edge assignment, the `active-lanes.ts` overlay translation, SVG path building, and the invariants each layer owns. Read before changing lane assignment, edge emission, or node rendering; the binding rules are in `.claude/rules/commit-graph.md`. |
 | [architecture/diff-highlighting.md](architecture/diff-highlighting.md) | The diff syntax-highlighting cost model: the bounded lookback window and how faithful it is, why cost now scales with a change's span rather than its depth, what that makes slower, the measured split between parsing and theme matching, the three guards that bound pathological input, and the optimisations that were measured and rejected. Read before touching `syntax.rs` or diff enrichment. |
+| [architecture/diff-virtualization.md](architecture/diff-virtualization.md) | How all three diff views render through one row model and one virtual list: why heights are computed and never measured, the sticky-row plus shared-`--pan-x` mechanism split view pans with, and the four ways that mechanism has been re-derived wrongly. Read before touching a diff view's geometry. |
 | [architecture/overview.md](architecture/overview.md) | Whole-system map — component tree, Rust command modules, state ownership. A 2026-05-14 snapshot, not kept current. |
 
 ## Decisions
