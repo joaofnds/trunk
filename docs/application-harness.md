@@ -136,27 +136,43 @@ refetched" — which has no state to wait for, and it costs the whole quiet wind
 
 ## Budget
 
-`just app-test` runs in 9.1 s of **wall** time against a 10 s ceiling, with the host binary
-already built: the median of three runs on a quiet machine (9.9, 9.1, 9.1). That is the
-recipe's own wall clock, not the `Duration` vitest prints, which comes out about half a second
-smaller. An earlier triple, taken while the machine was still loaded, measured 8.8, 9.7 and
-12.1 s, so a number taken while something else is compiling says nothing. A scenario that boots
-the application and reads the graph costs 130-150 ms, one that waits out the debounce 275 ms, a
-full stage-and-commit workflow about 500 ms, the review workflow, which never waits out a quiet
-window, about 335 ms, the remote workflow, which drives real `git` twice, about 560 ms, and the
-hunk-and-line staging workflow, which waits out a `settle()` quiet window before selecting
-lines, about 720 ms. A test file costs about 0.2 s of vite transform, so file count is a budget
-term, not a filing preference.
+`just app-test` runs in **7.5 s** of wall time against a 10 s ceiling, with the host binary
+already built: the median of twelve runs, each alternated against a run on the `forks` pool so
+machine drift hit both arms. The same twelve runs on `forks` measured 9.4 s, and one of them
+came in at 10.25 s — the ceiling was already being breached occasionally before the pool
+changed. That is the recipe's own wall clock, not the `Duration` vitest prints, which comes out
+about half a second smaller.
 
-The review workflow went in against the same 9.1 s median it was measured before, which says
-the suite's run-to-run spread is wider than a scenario of this size, not that the scenario is
-free: read the per-scenario costs, not the difference between two medians.
+**Scenario count is not the budget term, and the cost is not per scenario.** Two things set the
+wall clock:
 
-About 0.9 s of headroom is left, which is one more scenario of this size. The ceiling is the
-design constraint, not a target to negotiate: a suite that outgrows it is a decision for the
-repository's owner — raise the budget, or move the suite out of `just check` — not a reason
-to trim a workflow. CI wall time is a different number (the job runs about six
-minutes) and is not what this budget measures.
+1. **The Svelte compile, once per worker.** A single app-mounting test file costs 5.2 s on its
+   own: 3.75 s of transform and 4.11 s of import for the application tree, against 240 ms of
+   actual test. `tests/app/host-client.test.ts`, which never imports the app, costs 554 ms all
+   in. This floor is most of the budget and no vitest setting removes it; `pool: "threads"`
+   shares it between files where `forks` recompiles per worker, which is the 1.8 s that change
+   bought.
+2. **App boots**, at roughly 0.15 s each beyond the first few, running as wide as the machine
+   has cores. One `it` that calls `setup()` is one boot.
+
+File count is nearly free on a machine with cores to spare. Measured on `forks`, one
+app-mounting file cost 5.16 s, two 5.96 s, four 6.26 s and six 8.71 s — the jump at the end is
+the two files carrying nine and six boots, not the two extra files. Adding the review workflow,
+a whole new file with a 335 ms scenario, moved the median by 0.05 s, which is smaller than the
+spread of either arm it was measured against.
+
+So the question to ask of a new scenario is how many application boots it adds, not how many
+milliseconds its assertions take. Splitting a file to spread its scenarios does not help: boots
+already run in parallel.
+
+Two limits on every number here. They come from an 18-core machine, where six workers have
+cores to spare; on a smaller machine the boots stop being free and file count starts costing
+real time. And CI wall time is a different number (the job runs about six minutes) on a
+2-core runner, and is not what this budget measures.
+
+About 2.5 s of headroom is left. The ceiling is the design constraint, not a target to
+negotiate: a suite that outgrows it is a decision for the repository's owner — and the first
+lever to reach for is the compile floor above, not trimming a workflow.
 
 ## Measuring the rendered DOM
 

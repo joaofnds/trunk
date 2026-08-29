@@ -21,6 +21,10 @@ export default defineConfig({
 	test: {
 		include: ["tests/app/**/*.test.ts"],
 		environment: "jsdom",
+		// Every worker compiles the whole Svelte tree, and that compile is most of
+		// the suite's wall time. Threads share it where the default forks pool does
+		// not: dropping back to forks costs 1.8 s of the 10 s ceiling.
+		pool: "threads",
 		// Booting the real application costs far more than a component mount, and
 		// the 5 000 ms default silently killed a round of the grill's measurements.
 		testTimeout: 20_000,
