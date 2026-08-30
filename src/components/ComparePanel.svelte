@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ArrowDown, ArrowLeftRight, FolderTree, List } from "@lucide/svelte";
+import { ArrowDown, ArrowUpDown, FolderTree, List } from "@lucide/svelte";
 import { copySha } from "../lib/clipboard.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { currentMinute } from "../lib/now.svelte.js";
@@ -119,7 +119,7 @@ let filesChanged = $derived(stat?.files_changed ?? fileDiffs.length);
         cursor: {base === null ? 'default' : 'pointer'};
         opacity: {base === null ? '0.4' : '1'};
       "
-    ><ArrowLeftRight size={14} /></button>
+    ><ArrowUpDown size={14} /></button>
     <button
       onclick={onclose}
       aria-label="Close comparison"
