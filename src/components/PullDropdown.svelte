@@ -84,15 +84,21 @@ $effect(() => {
   .chevron-btn {
     background: none;
     border: none;
-    border-left: 1px solid var(--line);
+    /* Paint, not length: a border here would take a pixel out of the declared
+       width, the same way it did out of the group's height. */
+    box-shadow: inset 1px 0 0 var(--line);
     border-radius: 0 var(--radius) var(--radius) 0;
     color: var(--fg-2);
     cursor: pointer;
     font-size: 10px;
-    padding: 0 var(--space-2);
+    /* Narrower than the button it hangs off: this is that button's dropdown,
+       not a peer of it. Declared rather than derived from padding. */
+    width: var(--control-sm-h);
+    padding: 0;
     height: 100%;
     display: flex;
     align-items: center;
+    justify-content: center;
   }
   .chevron-btn:focus-visible {
     outline: 2px solid var(--accent);
