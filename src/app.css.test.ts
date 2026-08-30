@@ -146,8 +146,28 @@ describe("app.css lengths", () => {
 		"--radius-pill", // a pill is round, not a multiple of anything
 	]);
 
+	/** Every `--token: value;` in `:root`, including the ones biome wraps across
+	 *  lines. Matching only single-line declarations left `--counter-gutter` and
+	 *  `--dialog-drop` outside every guard here — whether a token was checked came
+	 *  down to whether its line was long enough for the formatter to break it.
+	 *  Whitespace inside the value is collapsed so a wrapped calc() compares the
+	 *  same as an unwrapped one. */
+	function declarations(): [string, string, string][] {
+		return [...css.matchAll(/^\t(--[\w-]+):\s([^;]+);/gm)].map(
+			([line, name, value]) => [
+				line,
+				name,
+				value
+					.replace(/\s+/g, " ")
+					.replace(/\(\s+/g, "(")
+					.replace(/\s+\)/g, ")")
+					.trim(),
+			],
+		);
+	}
+
 	it("expresses every declared length as a whole number of units", () => {
-		const declared = [...css.matchAll(/^\t(--[\w-]+): ([^;]+);$/gm)].filter(
+		const declared = declarations().filter(
 			([, name, value]) => !offScaleByDesign.has(name) && isLength(value),
 		);
 		/* A whole number of units, optionally plus the single pixel a painted rule
@@ -162,7 +182,7 @@ describe("app.css lengths", () => {
 
 	it("declares no length token nothing reads", () => {
 		const sources = svelteAndCssSources();
-		const unread = [...css.matchAll(/^\t(--[\w-]+): ([^;]+);$/gm)]
+		const unread = declarations()
 			.filter(([, , value]) => isLength(value))
 			.map(([, name]) => name)
 			.filter((name) => !offScaleByDesign.has(name))

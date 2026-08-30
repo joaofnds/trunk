@@ -111,7 +111,7 @@ describe("spacing scale", () => {
 			for (const [, body] of blocks) {
 				if (
 					barHeight.test(body) &&
-					/border(?:-(?:bottom|top))?: [^;]*\d/.test(body)
+					/border(?:-(?:bottom|top|left|right))?: [^;]*\d/.test(body)
 				) {
 					raw.push(relative(root, file));
 				}
