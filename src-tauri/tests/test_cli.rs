@@ -5,8 +5,47 @@
 //! carries the *prod* identifier, and without the override it would read the
 //! developer's real store.
 
+mod common;
+
+use common::context::TestContext;
+use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
+use trunk_lib::reviewdb::{self, reviews, threads};
+
+/// A store seeded the way the app would seed it: one composing review (title
+/// "draft in progress") and one published review (title "ready for reading")
+/// with a single thread, both keyed by the repo's canonical path. Returns the
+/// two review ids `(composing, published)`.
+fn seed_reviews(ctx: &TestContext) -> (String, String) {
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let composing = store
+        .write(|tx| reviews::create(tx, &canonical, Some("draft in progress"), 100))
+        .unwrap();
+    let published = store
+        .write(|tx| reviews::create(tx, &canonical, Some("ready for reading"), 200))
+        .unwrap();
+    store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &published,
+                threads::NewThread {
+                    text: "a note".to_string(),
+                    anchor: None,
+                    commit_oid: None,
+                    cached_excerpt: None,
+                },
+                300,
+            )?;
+            reviews::publish(tx, &canonical, &published, 400)
+        })
+        .unwrap();
+
+    (composing, published)
+}
 
 /// Wait for the child with a Rust-side deadline (macOS ships no `timeout`
 /// binary). A hang here means the argv branch fell through to the GUI, which
@@ -26,10 +65,17 @@ fn wait_or_kill(mut child: Child, deadline: Duration) -> Output {
     }
 }
 
-fn trunk_review(args: &[&str], data_dir: &std::path::Path) -> Output {
+fn trunk_review(args: &[&str], data_dir: &Path) -> Output {
+    trunk_review_in(data_dir, args, data_dir)
+}
+
+/// Run `trunk review …` with `cwd` as the working directory — repo discovery
+/// starts there when `--repo` is absent.
+fn trunk_review_in(cwd: &Path, args: &[&str], data_dir: &Path) -> Output {
     let child = Command::new(env!("CARGO_BIN_EXE_trunk"))
         .arg("review")
         .args(args)
+        .current_dir(cwd)
         .env("TRUNK_DATA_DIR", data_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -58,6 +104,64 @@ fn data_dir_matches_the_app_handles() {
         derived,
         app.path().app_data_dir().unwrap(),
         "the CLI's derivation must name the exact dir the app resolves",
+    );
+}
+
+#[test]
+fn cli_lists_only_published_reviews() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (composing, published) = seed_reviews(&ctx);
+
+    let out = trunk_review_in(ctx.repo_path(), &["list"], ctx.data_dir());
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(&published)
+            && stdout.contains("ready")
+            && stdout.contains("ready for reading"),
+        "the published review must be listed with state and title, got {stdout:?}",
+    );
+    assert!(
+        !stdout.contains(&composing) && !stdout.contains("draft in progress"),
+        "a composing review must not leak through the CLI, got {stdout:?}",
+    );
+}
+
+#[test]
+fn discovery_from_a_subdirectory_and_a_symlink_matches_the_app() {
+    let ctx = TestContext::builder()
+        .with_file("nested/deep.txt", "content")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+
+    let subdir = ctx.repo_path().join("nested");
+    let from_subdir = trunk_review_in(&subdir, &["list"], ctx.data_dir());
+    assert!(
+        String::from_utf8_lossy(&from_subdir.stdout).contains(&published),
+        "discovery from a subdirectory must land on the app's repo key",
+    );
+
+    let link = tempfile::TempDir::new().unwrap();
+    let link_path = link.path().join("repo-link");
+    std::os::unix::fs::symlink(ctx.repo_path(), &link_path).unwrap();
+    let via_symlink = trunk_review_in(
+        ctx.repo_path(),
+        &["list", "--repo", link_path.to_str().unwrap()],
+        ctx.data_dir(),
+    );
+    assert!(
+        String::from_utf8_lossy(&via_symlink.stdout).contains(&published),
+        "a symlinked --repo must canonicalize onto the app's repo key",
     );
 }
 

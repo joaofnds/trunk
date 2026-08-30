@@ -12,12 +12,31 @@ pub fn review_args(args: &[String]) -> Option<&[String]> {
     }
 }
 
+pub mod review;
+
 /// Run the review subcommand and return the process exit code. Output goes to
 /// stdout, errors to stderr with a nonzero exit and no partial write (§5.1).
+/// Usage mistakes exit 2, store and repo failures exit 1.
 pub fn run_review(args: &[String]) -> i32 {
-    let _ = args;
-    eprintln!("usage: trunk review <list|show|reply|address> [--repo <path>]");
-    2
+    let cmd = match review::parse(args) {
+        Ok(cmd) => cmd,
+        Err(usage) => {
+            eprintln!("{usage}");
+            return 2;
+        }
+    };
+
+    let identifier = crate::context::<tauri::Wry>().config().identifier.clone();
+    match review::run(cmd, &identifier) {
+        Ok(out) => {
+            print!("{out}");
+            0
+        }
+        Err(e) => {
+            eprintln!("{}: {}", e.code, e.message);
+            1
+        }
+    }
 }
 
 #[cfg(test)]
