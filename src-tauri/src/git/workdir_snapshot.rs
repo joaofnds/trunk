@@ -66,7 +66,7 @@ impl SnapshotKind {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             SnapshotKind::Workdir => "Uncommitted changes",
             SnapshotKind::Index => "Staged changes",

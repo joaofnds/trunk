@@ -699,9 +699,18 @@ pub async fn seed_review_range<R: Runtime>(
         // a failure between them would strand an empty active review the user can
         // neither publish nor explain.
         let now = crate::reviewdb::now_secs();
+        // A range walks real history, so subjects are plain summaries — no
+        // snapshot can appear in it.
+        let members: Vec<commits::ReviewCommit> = range_oids
+            .iter()
+            .map(|oid| commits::ReviewCommit {
+                oid: oid.clone(),
+                subject: commit_summary(&repo, oid),
+            })
+            .collect();
         store.write(|tx| {
             let review_id = reviews::ensure_active(tx, &target, now)?;
-            commits::seed(tx, &review_id, &range_oids)
+            commits::seed(tx, &review_id, &members)
         })
     })
     .await?;
@@ -722,16 +731,43 @@ pub async fn add_review_commit<R: Runtime>(
 
     let target = canonical.clone();
     blocking_store(move || {
+        let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
         let now = crate::reviewdb::now_secs();
         store.write(|tx| {
             let review_id = reviews::ensure_active(tx, &target, now)?;
-            commits::add(tx, &review_id, &oid)
+            let subject = member_subject(&repo, &snapshots::get(tx, &target)?, &oid);
+            commits::add(tx, &review_id, &oid, &subject)
         })
     })
     .await?;
 
     emit_reviews_changed(&app, &canonical);
     Ok(())
+}
+
+/// The subject a commit-set member is stored under: a current snapshot's
+/// synthetic label, a real commit's summary, or '' when neither resolves.
+/// Resolved once, at add time — the doc renders from the stored value with no
+/// repository open (D13), and a snapshot gc later collects keeps the label it
+/// was added under (ruling 2026-08-31).
+fn member_subject(repo: &git2::Repository, snaps: &snapshots::RepoSnapshots, oid: &str) -> String {
+    use crate::git::workdir_snapshot::SnapshotKind;
+
+    for kind in [SnapshotKind::Workdir, SnapshotKind::Index] {
+        if snaps.for_kind(kind) == Some(oid) {
+            return kind.label().to_string();
+        }
+    }
+
+    commit_summary(repo, oid)
+}
+
+fn commit_summary(repo: &git2::Repository, oid: &str) -> String {
+    git2::Oid::from_str(oid)
+        .ok()
+        .and_then(|o| repo.find_commit(o).ok())
+        .and_then(|c| c.summary().ok().flatten().map(String::from))
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -783,7 +819,10 @@ pub async fn list_session_commits<R: Runtime>(
     blocking_store(move || {
         let (commits, snapshot_oids) = store.read(|conn| {
             let commits = match reviews::active(conn, &canonical)? {
-                Some(id) => commits::list(conn, &id)?,
+                Some(id) => commits::list(conn, &id)?
+                    .into_iter()
+                    .map(|c| c.oid)
+                    .collect(),
                 None => vec![],
             };
             Ok((commits, snapshots::get(conn, &canonical)?.oids()))
@@ -989,7 +1028,14 @@ pub fn generate_review_doc_inner(
     repo_path: &str,
     review_id: &str,
 ) -> Result<String, TrunkError> {
-    use crate::git::review::RenderInput;
+    use crate::git::review::{DocCommit, RenderInput};
+
+    // The repository contributes two path facts and nothing else — content
+    // (subjects, excerpts) is stored, which is what lets the CLI render the
+    // same doc with the repo closed (D13).
+    let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
+    let workdir = repo.workdir().map(std::path::Path::to_path_buf);
+    let repo_dir = repo.path().to_path_buf();
 
     let input = store.read(|conn| {
         let review = reviews::get(conn, review_id)?.ok_or_else(|| {
@@ -1001,7 +1047,15 @@ pub fn generate_review_doc_inner(
         Ok(RenderInput {
             review_id: review.id.clone(),
             title: review.title,
-            commits: commits::list(conn, &review.id)?,
+            workdir: workdir.clone(),
+            repo_dir: repo_dir.clone(),
+            commits: commits::list(conn, &review.id)?
+                .into_iter()
+                .map(|c| DocCommit {
+                    oid: c.oid,
+                    subject: c.subject,
+                })
+                .collect(),
             threads: as_doc_threads(threads_with_replies),
             working_tree_snapshot: snapshots.working_tree_snapshot,
             index_snapshot: snapshots.index_snapshot,
@@ -1015,9 +1069,7 @@ pub fn generate_review_doc_inner(
         ));
     }
 
-    let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-
-    Ok(crate::git::review::render(&input, &repo))
+    Ok(crate::git::review::render(&input))
 }
 
 #[tauri::command]

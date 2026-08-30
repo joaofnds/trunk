@@ -11,6 +11,14 @@ use trunk_lib::git::types::{Anchor, Side, Source};
 use trunk_lib::review_types::{Channel, ThreadState};
 use trunk_lib::reviewdb::{self, reviews::ReviewState};
 
+/// A commit-set member with the subject a test stores it under.
+fn member(oid: &str, subject: &str) -> reviewdb::commits::ReviewCommit {
+    reviewdb::commits::ReviewCommit {
+        oid: oid.to_string(),
+        subject: subject.to_string(),
+    }
+}
+
 fn diff_anchor() -> Anchor {
     Anchor {
         commit_oid: "abc123def456".to_string(),
@@ -185,6 +193,13 @@ CREATE TABLE threads (
     updated_at  INTEGER NOT NULL
 );
 
+CREATE TABLE review_commits (
+    review_id TEXT    NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    oid       TEXT    NOT NULL,
+    position  INTEGER NOT NULL,
+    PRIMARY KEY (review_id, oid)
+);
+
 PRAGMA user_version = 1;
 "#;
 
@@ -206,6 +221,12 @@ fn migrates_v1_to_v2_additively() {
             [],
         )
         .unwrap();
+        conn.execute(
+            "INSERT INTO review_commits (review_id, oid, position)
+             VALUES ('REVIEW01', 'oldoid', 0)",
+            [],
+        )
+        .unwrap();
     }
 
     let store = reviewdb::open(dir.path()).unwrap();
@@ -217,6 +238,14 @@ fn migrates_v1_to_v2_additively() {
         .read(|c| reviewdb::reviews::list(c, std::path::Path::new("/repo")))
         .unwrap();
     assert_eq!(reviews.len(), 1, "a v1 review must survive the migration");
+
+    assert_eq!(
+        store
+            .read(|c| reviewdb::commits::list(c, "REVIEW01"))
+            .unwrap(),
+        vec![member("oldoid", "")],
+        "a pre-v3 commit row survives with an empty stored subject",
+    );
 
     let reply_id = store
         .write(|tx| {
@@ -1047,12 +1076,18 @@ fn seeding_a_range_populates_the_active_reviews_commits() {
     let id = only_review(&store, &canonical).id;
 
     store
-        .write(|tx| reviewdb::commits::seed(tx, &id, &["oid-a".to_string(), "oid-b".to_string()]))
+        .write(|tx| {
+            reviewdb::commits::seed(
+                tx,
+                &id,
+                &[member("oid-a", "subject a"), member("oid-b", "subject b")],
+            )
+        })
         .unwrap();
 
     assert_eq!(
         store.read(|c| reviewdb::commits::list(c, &id)).unwrap(),
-        vec!["oid-a".to_string(), "oid-b".to_string()],
+        vec![member("oid-a", "subject a"), member("oid-b", "subject b")],
         "the commit set is per review and keeps its seeded order",
     );
 }
@@ -1067,10 +1102,10 @@ fn adding_and_removing_a_commit_is_idempotent() {
         .unwrap();
 
     store
-        .write(|tx| reviewdb::commits::add(tx, &id, "oid-a"))
+        .write(|tx| reviewdb::commits::add(tx, &id, "oid-a", "subject a"))
         .unwrap();
     store
-        .write(|tx| reviewdb::commits::add(tx, &id, "oid-a"))
+        .write(|tx| reviewdb::commits::add(tx, &id, "oid-a", "subject a"))
         .unwrap();
     assert_eq!(
         store
@@ -1108,7 +1143,7 @@ fn each_review_carries_its_own_commit_set() {
         .unwrap();
 
     store
-        .write(|tx| reviewdb::commits::add(tx, &first, "only-in-first"))
+        .write(|tx| reviewdb::commits::add(tx, &first, "only-in-first", "s"))
         .unwrap();
 
     assert_eq!(
@@ -1201,7 +1236,7 @@ fn renders_a_stored_review() {
     }
     let review = only_review(&store, &canonical);
     store
-        .write(|tx| reviewdb::commits::add(tx, &review.id, &head))
+        .write(|tx| reviewdb::commits::add(tx, &review.id, &head, "head subject"))
         .unwrap();
 
     let doc = generate_review_doc_inner(&store, &canonical, ctx.path(), &review.id).unwrap();
@@ -2026,16 +2061,18 @@ fn a_range_seed_keeps_hand_picked_commits() {
         .write(|tx| reviewdb::reviews::create(tx, &canonical, None, 1_000))
         .unwrap();
     store
-        .write(|tx| reviewdb::commits::add(tx, &id, "picked"))
+        .write(|tx| reviewdb::commits::add(tx, &id, "picked", "s"))
         .unwrap();
 
     store
-        .write(|tx| reviewdb::commits::seed(tx, &id, &["picked".to_string(), "range1".to_string()]))
+        .write(|tx| {
+            reviewdb::commits::seed(tx, &id, &[member("picked", "s"), member("range1", "s")])
+        })
         .unwrap();
 
     assert_eq!(
         store.read(|c| reviewdb::commits::list(c, &id)).unwrap(),
-        vec!["picked".to_string(), "range1".to_string()],
+        vec![member("picked", "s"), member("range1", "s")],
         "a seed unions in: hand-picked commits survive and overlaps dedup",
     );
 }

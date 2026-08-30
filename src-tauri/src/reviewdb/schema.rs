@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 2;
+pub const CURRENT_VERSION: i64 = 3;
 
 const V1: &str = r#"
 CREATE TABLE reviews (
@@ -90,6 +90,13 @@ CREATE TABLE replies (
 CREATE INDEX replies_by_thread ON replies(thread_id, created_at);
 "#;
 
+/// The commit's subject line, stored at add time so the doc renders with no
+/// repository open (D13) and a gc'd snapshot commit keeps its label. Rows
+/// from before v3 carry '' and render as "(no subject)".
+const V3: &str = r#"
+ALTER TABLE review_commits ADD COLUMN subject TEXT NOT NULL DEFAULT '';
+"#;
+
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sqlite_error)
@@ -140,6 +147,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 2 {
         conn.execute_batch(&format!("{V2} PRAGMA user_version = 2;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 3 {
+        conn.execute_batch(&format!("{V3} PRAGMA user_version = 3;"))
             .map_err(sqlite_error)?;
     }
 
