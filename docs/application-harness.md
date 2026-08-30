@@ -209,3 +209,12 @@ and the same Fakes, pointed at that host. Open it in a browser and every element
 Use it before proposing a fix for anything measured in pixels, and again to check the fix. A
 census of every distinct chrome height is a few lines in the console, and it finds the
 elements nobody thought to look at.
+
+The bridge reaches the real command set, destructive commands included, so it is not open to
+whatever else the browser has open. Each run writes a random token to
+`scripts/measure/.bridge-token.txt` (gitignored) and rejects every request that does not carry
+it in `x-bridge-token`; the page reads the token as a `?raw` import and reaches the bridge
+through Vite's `/bridge` proxy, so it is same-origin and there are no CORS headers. The
+request handling lives in `scripts/measure/router.ts`, apart from the socket, so
+`router.test.ts` can drive it directly — that is where to add a route, and where the
+rejection cases are pinned.
