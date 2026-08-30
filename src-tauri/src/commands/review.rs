@@ -188,6 +188,11 @@ pub struct RenderedThread {
     // refuses to delete this thread or its replies, so the frontend needs it
     // to gate the Delete/Delete-reply controls it would otherwise offer.
     pub published: bool,
+    // The states a UI gesture may legally move this thread to, in the order
+    // the card presents them — `ThreadState::allowed_transitions` for
+    // `Channel::Human`, precomputed here so the card never re-derives the
+    // matrix. The CLI claims `Channel::Agent` and computes its own set.
+    pub allowed_transitions: Vec<crate::review_types::ThreadState>,
     pub text_html: String,
     pub replies: Vec<RenderedReply>,
 }
@@ -206,6 +211,9 @@ impl RenderedThread {
             stale: t.stale,
             channel: t.channel,
             published,
+            allowed_transitions: t
+                .state
+                .allowed_transitions(crate::review_types::Channel::Human),
             text_html,
             replies: replies.into_iter().map(RenderedReply::from_reply).collect(),
         }

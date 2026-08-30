@@ -1302,63 +1302,9 @@ fn publish_leaves_the_pointer_on_the_published_review() {
 }
 
 // ── Milestone 2, Task 2: the transition matrix ───────────────────────────────
-
-/// All 16 (from, to) pairs × 2 channels: the 8 the spec's matrix legalizes,
-/// and `illegal_transition` for the other 24 — identity transitions included.
-#[test]
-fn the_transition_matrix_is_exact() {
-    use Channel::*;
-    use ThreadState::*;
-
-    let legal: &[(Channel, ThreadState, ThreadState)] = &[
-        (Human, Open, Done),
-        (Human, Open, Dismissed),
-        (Human, Addressed, Done),
-        (Human, Addressed, Dismissed),
-        (Human, Addressed, Open),
-        (Human, Done, Open),
-        (Human, Dismissed, Open),
-        (Agent, Open, Addressed),
-    ];
-
-    let states = [Open, Addressed, Done, Dismissed];
-    let mut checked = 0;
-    for &channel in &[Human, Agent] {
-        for &from in &states {
-            for &to in &states {
-                let result = reviewdb::threads::transition(from, to, channel);
-                let expect_legal = legal.contains(&(channel, from, to));
-                assert_eq!(
-                    result.is_ok(),
-                    expect_legal,
-                    "{channel:?} {from:?} -> {to:?}: expected legal={expect_legal}, got {result:?}",
-                );
-                if !expect_legal {
-                    assert_eq!(result.unwrap_err().code, "illegal_transition");
-                }
-                checked += 1;
-            }
-        }
-    }
-    assert_eq!(checked, 32, "4 states x 4 states x 2 channels");
-}
-
-#[test]
-fn a_second_addressed_claim_names_the_current_state() {
-    let err = reviewdb::threads::transition(
-        ThreadState::Addressed,
-        ThreadState::Addressed,
-        Channel::Agent,
-    )
-    .unwrap_err();
-
-    assert_eq!(err.code, "illegal_transition");
-    assert!(
-        err.message.contains("addressed"),
-        "the error must name the CURRENT state, got {:?}",
-        err.message,
-    );
-}
+// The matrix itself is pinned by `the_transition_matrix_is_exact` and its
+// companions, unit tests beside `ThreadState::transition` in `review_types.rs`
+// (moved with the function, TRUNK-17). What stays here is the I/O seam.
 
 /// `set_thread_state_inner` is the UI-facing seam and always claims
 /// `Channel::Human` internally (spec §2: the CLI is the only caller allowed to
@@ -1679,6 +1625,32 @@ fn list_threads_reports_the_owning_reviews_published_bit() {
     assert!(
         after.iter().find(|t| t.id == thread_id).unwrap().published,
         "a published review's threads report published: true",
+    );
+}
+
+/// The wire precomputes the human-legal moves (`ThreadState::allowed_transitions`)
+/// so the UI renders entries instead of re-deriving the matrix (TRUNK-17). The
+/// UI batch always claims `Channel::Human`; the CLI computes its own.
+#[test]
+fn list_threads_carries_the_human_allowed_transitions() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+
+    let open = list_threads_inner(&store, &canonical).unwrap();
+    assert_eq!(
+        open[0].allowed_transitions,
+        vec![ThreadState::Done, ThreadState::Dismissed],
+        "an open thread offers the two resolutions",
+    );
+
+    set_thread_state_inner(&store, &canonical, &thread_id, ThreadState::Done, 1_001).unwrap();
+    let done = list_threads_inner(&store, &canonical).unwrap();
+    assert_eq!(
+        done[0].allowed_transitions,
+        vec![ThreadState::Open],
+        "a done thread offers only reopen",
     );
 }
 

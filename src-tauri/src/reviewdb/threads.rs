@@ -1,7 +1,7 @@
 //! Threads: the persisted form of today's comments — root text plus anchor,
-//! now carrying a state and a channel. `transition` is the single place the
-//! state matrix (spec §2) is enforced; every other writer of `threads.state`
-//! goes through it via `set_state`.
+//! now carrying a state and a channel. `ThreadState::transition`
+//! (`review_types`) is the single place the state matrix (spec §2) is
+//! enforced; every writer of `threads.state` goes through it via `set_state`.
 
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
@@ -131,49 +131,9 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
     })
 }
 
-/// The single place the transition matrix (spec §2) is decided. `current` is
-/// the thread's state before the change; `channel` is who is asking.
-///
-/// Legal: `Human` moves `open|addressed -> done|dismissed`, `addressed -> open`
-/// (rejecting the agent's claim), and `done|dismissed -> open` (reopen).
-/// `Agent` moves `open -> addressed` and nothing else — it is the agent's claim
-/// by definition, so no path reaches it from `Human`. Every other pair,
-/// identity transitions included, is illegal: the CLI's `open -> addressed`
-/// claim on an already-`addressed` thread must fail naming the current state,
-/// not silently no-op.
-pub fn transition(
-    current: ThreadState,
-    next: ThreadState,
-    channel: Channel,
-) -> Result<(), TrunkError> {
-    use Channel::{Agent, Human};
-    use ThreadState::{Addressed, Dismissed, Done, Open};
-
-    let legal = matches!(
-        (channel, current, next),
-        (Human, Open, Done)
-            | (Human, Open, Dismissed)
-            | (Human, Addressed, Done)
-            | (Human, Addressed, Dismissed)
-            | (Human, Addressed, Open)
-            | (Human, Done, Open)
-            | (Human, Dismissed, Open)
-            | (Agent, Open, Addressed)
-    );
-
-    if legal {
-        Ok(())
-    } else {
-        Err(TrunkError::new(
-            "illegal_transition",
-            format!("thread is {}", current.as_str()),
-        ))
-    }
-}
-
-/// Move a thread's state, enforcing `transition` inside the same read-then-write
-/// pass. A missing id is `not_found`, matching `edit`'s convention: state
-/// changes target by id, never by list position.
+/// Move a thread's state, enforcing `ThreadState::transition` inside the same
+/// read-then-write pass. A missing id is `not_found`, matching `edit`'s
+/// convention: state changes target by id, never by list position.
 pub fn set_state(
     conn: &Connection,
     repo_path: &Path,
@@ -199,7 +159,7 @@ pub fn set_state(
         ));
     };
 
-    transition(ThreadState::from_str(&current)?, next, channel)?;
+    ThreadState::from_str(&current)?.transition(next, channel)?;
 
     conn.execute(
         "UPDATE threads SET state = ?2, updated_at = ?3 WHERE id = ?1",
