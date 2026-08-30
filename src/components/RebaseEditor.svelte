@@ -1,6 +1,5 @@
 <script lang="ts">
 import Sortable from "sortablejs";
-import { ROW_HEIGHT } from "../lib/chrome-heights.js";
 import { copySha } from "../lib/clipboard.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -558,7 +557,7 @@ let lastVisibleColumn = $derived.by(() => {
         onclick={() => (focusedIndex = idx)}
         onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (item.action !== 'drop') openMessageEditor(idx); } else if (e.key === ' ') { e.preventDefault(); focusedIndex = idx; } }}
         ondblclick={() => { if (item.action !== 'drop') openMessageEditor(idx); }}
-        style="height: {ROW_HEIGHT}px;"
+        style="height: var(--row-h);"
       >
         {#if item.action === 'squash'}
           <span class="rebase-squash-arrow">↓</span>
