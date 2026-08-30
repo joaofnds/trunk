@@ -1,5 +1,11 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# Sessions inherit whatever RUSTUP_TOOLCHAIN their startup environment computed
+# (mise, shell profile, none), which has run the gate on three different
+# compilers against one shared target dir — every switch rebuilds the world.
+# Drop it so every recipe resolves through rust-toolchain.toml.
+unexport RUSTUP_TOOLCHAIN
+
 manifest := "src-tauri/Cargo.toml"
 # Cargo's output root, honouring CARGO_TARGET_DIR the way cargo itself does.
 target := env("CARGO_TARGET_DIR", justfile_directory() / "src-tauri/target")

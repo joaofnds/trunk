@@ -1,0 +1,6 @@
+# Keep in lockstep with the rust version in mise.toml: mise-activated shells
+# obey mise, everything else (bare cargo, editors, CI caches keyed on the
+# compiler) obeys this file. Two versions against one shared target dir double
+# every rebuild and every freshly linked test binary.
+[toolchain]
+channel = "1.97.0"
