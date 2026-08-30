@@ -39,6 +39,28 @@ fn trunk_review(args: &[&str], data_dir: &std::path::Path) -> Output {
     wait_or_kill(child, Duration::from_secs(10))
 }
 
+/// One store, two discoverers: the app resolves its data dir through Tauri's
+/// path resolver, the CLI derives it from the compiled-in identifier alone.
+/// The two must name the same directory or app and CLI silently run two
+/// stores. (`TRUNK_DATA_DIR` overrides both sides; the built-binary tests
+/// cover that per-process, since env mutation races parallel tests here.)
+#[test]
+fn data_dir_matches_the_app_handles() {
+    use tauri::Manager;
+    let app = tauri::test::mock_builder()
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .unwrap();
+    let identifier = app.config().identifier.clone();
+
+    let derived = trunk_lib::reviewdb::data_dir_for(&identifier);
+
+    assert_eq!(
+        derived,
+        app.path().app_data_dir().unwrap(),
+        "the CLI's derivation must name the exact dir the app resolves",
+    );
+}
+
 #[test]
 fn the_review_subcommand_exits_without_a_window() {
     let scratch = tempfile::TempDir::new().unwrap();

@@ -19,7 +19,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Look the repo up in `RepoState`'s map and canonicalize its `PathBuf`.
 /// Returns `not_open` when the path is not a currently-open repo.
@@ -85,10 +85,7 @@ async fn prepare<R: Runtime>(
     // can wait on another process's write lock — all of it off the async runtime,
     // for the reason `blocking_store` documents.
     let slot = store.0.clone_handle();
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())?;
+    let app_dir = super::store_data_dir(app)?;
     let store = blocking_store(move || open_cached(&slot, &app_dir)).await?;
 
     Ok((canonical, store))

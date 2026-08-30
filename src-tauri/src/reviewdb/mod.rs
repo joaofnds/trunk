@@ -34,6 +34,43 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
+/// The store's data directory for a compiled-in app identifier — the CLI's
+/// whole store discovery (D4): no filesystem probing, the dev binary reads
+/// the dev store because its identifier says so. Must name the exact
+/// directory Tauri's `app_data_dir` resolves for the same identifier;
+/// `data_dir_matches_the_app_handles` pins the agreement.
+///
+/// `TRUNK_DATA_DIR` overrides the derivation, in the app and the CLI both
+/// (§5.2). It is the one sanctioned escape from the identifier: a test-built
+/// binary carries the prod identifier and would otherwise read the
+/// developer's real store.
+pub fn data_dir_for(identifier: &str) -> PathBuf {
+    if let Some(dir) = std::env::var_os("TRUNK_DATA_DIR") {
+        return PathBuf::from(dir);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        home().join("Library/Application Support").join(identifier)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        PathBuf::from(std::env::var_os("APPDATA").expect("APPDATA is unset")).join(identifier)
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        match std::env::var_os("XDG_DATA_HOME") {
+            Some(xdg) if !xdg.is_empty() => PathBuf::from(xdg).join(identifier),
+            _ => home().join(".local/share").join(identifier),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn home() -> PathBuf {
+    PathBuf::from(std::env::var_os("HOME").expect("HOME is unset"))
+}
+
 /// Open (creating if absent) the review store under `data_dir`, applying
 /// migrations under the write lock. A store whose `user_version` exceeds this
 /// build is refused with `store_newer` and left untouched; an unreadable one is

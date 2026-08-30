@@ -32,6 +32,28 @@ pub(crate) fn resolve_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf
         .map_err(|e| TrunkError::new("app_data_dir", e.to_string()).to_json())
 }
 
+/// The review store's directory. `TRUNK_DATA_DIR` is authoritative on both
+/// sides (see `reviewdb::data_dir_for`); otherwise the identifier derivation
+/// must agree with Tauri's resolver — a disagreement means the app and the
+/// CLI would silently run two stores, so it is refused, never papered over.
+pub(crate) fn store_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let derived = crate::reviewdb::data_dir_for(&app.config().identifier);
+    if std::env::var_os("TRUNK_DATA_DIR").is_some() {
+        return Ok(derived);
+    }
+
+    let resolved = resolve_data_dir(app)?;
+    if derived != resolved {
+        return Err(TrunkError::new(
+            "data_dir_disagreement",
+            format!("identifier derives {derived:?}, the app resolves {resolved:?}"),
+        )
+        .to_json());
+    }
+
+    Ok(resolved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
