@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
+import { exactLabel } from "../lib/relative-time.js";
 import type { CommitDetail, FileDiff } from "../lib/types.js";
 import ComparePanel from "./ComparePanel.svelte";
 
@@ -97,6 +98,26 @@ describe("ComparePanel", () => {
 		renderPanel();
 		expect(screen.getAllByText("Test User")).toHaveLength(2);
 		expect(screen.getAllByText(/ago$/)).toHaveLength(2);
+	});
+
+	it("reveals the exact date on hover, and carries it as the accessible name", () => {
+		vi.useFakeTimers();
+		try {
+			renderPanel();
+			const exact = exactLabel(base.author_timestamp);
+			const cell = screen.getAllByText(/ago$/)[0];
+
+			expect(cell.getAttribute("title")).toBeNull();
+			expect(cell.getAttribute("aria-label")).toBe(exact);
+
+			cell.dispatchEvent(new MouseEvent("mouseenter"));
+			vi.advanceTimersByTime(120);
+
+			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(exact);
+		} finally {
+			document.querySelector(".tooltip-pop")?.remove();
+			vi.useRealTimers();
+		}
 	});
 
 	it("counts files from the list and totals lines from the stat", () => {

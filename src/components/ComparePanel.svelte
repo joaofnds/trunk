@@ -3,7 +3,8 @@ import { ArrowDown, ArrowUpDown, FolderTree, List } from "@lucide/svelte";
 import { copySha } from "../lib/clipboard.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { currentMinute } from "../lib/now.svelte.js";
-import { relativeLabel } from "../lib/relative-time.js";
+import { exactLabel, relativeLabel } from "../lib/relative-time.js";
+import { tooltip } from "../lib/tooltip.js";
 import type {
 	CommitDetail,
 	DiffStat,
@@ -63,7 +64,7 @@ let filesChanged = $derived(fileDiffs.length);
     <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0; font-size: 11px;">
       <Avatar name={commit.author_name} size={18} />
       <span style="color: var(--fg-0); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{commit.author_name}</span>
-      <span style="color: var(--fg-3); font-family: var(--font-mono); flex-shrink: 0;">{relativeLabel(commit.author_timestamp, currentMinute())}</span>
+      <span style="color: var(--fg-3); font-family: var(--font-mono); flex-shrink: 0;" use:tooltip={exactLabel(commit.author_timestamp)} aria-label={exactLabel(commit.author_timestamp)}>{relativeLabel(commit.author_timestamp, currentMinute())}</span>
       <span style="flex: 1;"></span>
       <button
         type="button"
