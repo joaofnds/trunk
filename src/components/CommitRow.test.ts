@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import CommitRow from "./CommitRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import { makeCommit } from "../__tests__/helpers/factories";
+import { exactLabel } from "../lib/relative-time.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store";
 
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
@@ -522,6 +523,26 @@ describe("CommitRow", () => {
 			const { getByText } = renderAtPinnedTime();
 
 			expect(getByText("3h ago")).toBeInTheDocument();
+		});
+
+		it("reveals the exact date on hover, and carries it as the accessible name", () => {
+			try {
+				renderAtPinnedTime();
+				const exact = exactLabel(pinnedNow.getTime() / 1000);
+				const cell = screen.getByTestId("commit-date");
+
+				// Shared `tooltip` action, not a native title; aria-label is the
+				// accessible name per the action's contract.
+				expect(cell.getAttribute("title")).toBeNull();
+				expect(cell.getAttribute("aria-label")).toBe(exact);
+
+				cell.dispatchEvent(new MouseEvent("mouseenter"));
+				vi.advanceTimersByTime(120);
+
+				expect(document.querySelector(".tooltip-pop")?.textContent).toBe(exact);
+			} finally {
+				document.querySelector(".tooltip-pop")?.remove();
+			}
 		});
 	});
 });

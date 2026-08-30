@@ -9,7 +9,7 @@ import {
 	ROW_HEIGHT,
 } from "../lib/graph-constants.js";
 import { currentMinute } from "../lib/now.svelte.js";
-import { relativeLabel } from "../lib/relative-time.js";
+import { exactLabel, relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
 import { tooltip } from "../lib/tooltip.js";
@@ -72,6 +72,7 @@ let {
 const dateLabel = $derived(
 	relativeLabel(commit.author_timestamp, currentMinute()),
 );
+const dateExact = $derived(exactLabel(commit.author_timestamp));
 
 const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
@@ -219,7 +220,7 @@ const rowShadow = $derived(
   <!-- Column 6: Date -->
   {#if columnVisibility.date}
     <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: {columnWidths.date}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}{dateLabel}{/if}
+      {#if !isWip && !isStash}<span data-testid="commit-date" use:tooltip={dateExact} aria-label={dateExact}>{dateLabel}</span>{/if}
     </div>
   {/if}
 
