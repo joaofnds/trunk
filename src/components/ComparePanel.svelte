@@ -47,10 +47,7 @@ let filesChanged = $derived(stat?.files_changed ?? fileDiffs.length);
 </script>
 
 {#snippet commitCard(commit: CommitDetail)}
-  <div style="
-    padding: var(--space-2) var(--space-3);
-    min-width: 0;
-  ">
+  <div style="min-width: 0;">
     <div style="
       font-size: 13px;
       font-weight: 600;
@@ -138,42 +135,27 @@ let filesChanged = $derived(stat?.files_changed ?? fileDiffs.length);
     >×</button>
   </div>
 
-  <!-- Base → Target: one frame, the arrow on its divider -->
+  <!-- Base → Target: open blocks split by a hairline carrying the arrow -->
   <div data-testid="compare-header" style="
     padding: var(--space-3);
     border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
   ">
-    <div style="border: 1px solid var(--color-border); border-radius: var(--radius);">
-      {#if base}
-        {@render commitCard(base)}
-      {:else}
-        <div style="
-          padding: var(--space-2) var(--space-3);
-          font-size: 12px;
-          font-style: italic;
-          color: var(--color-text-muted);
-        ">empty tree</div>
-      {/if}
-      <div style="position: relative; border-top: 1px solid var(--color-border);">
-        <span aria-hidden="true" style="
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: var(--bg-1);
-          border: 1px solid var(--color-border);
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--color-text-muted);
-          position: absolute;
-          left: 50%;
-          top: 0;
-          transform: translate(-50%, -50%);
-        "><ArrowDown size={11} /></span>
-      </div>
-      {@render commitCard(target)}
+    {#if base}
+      {@render commitCard(base)}
+    {:else}
+      <div style="
+        font-size: 12px;
+        font-style: italic;
+        color: var(--color-text-muted);
+      ">empty tree</div>
+    {/if}
+    <div aria-hidden="true" style="display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; color: var(--color-text-muted);">
+      <span style="flex: 1; border-top: 1px solid var(--color-border);"></span>
+      <ArrowDown size={13} />
+      <span style="flex: 1; border-top: 1px solid var(--color-border);"></span>
     </div>
+    {@render commitCard(target)}
   </div>
 
   <!-- File list, headed by the same stats bar CommitDetail uses -->
