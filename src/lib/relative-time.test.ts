@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { relativeLabel } from "./relative-time.js";
+import { exactLabel, relativeLabel } from "./relative-time.js";
 
 const nowMinute = 30_000_000;
 
@@ -33,5 +33,20 @@ describe("relativeLabel", () => {
 
 	it("counts a timestamp one second into the previous calendar minute as a minute", () => {
 		expect(relativeLabel(nowMinute * 60 - 1, nowMinute)).toBe("1m ago");
+	});
+});
+
+describe("exactLabel", () => {
+	// Locale and zone are pinned here so the assertion is deterministic across
+	// machines; production callers pass neither and get the user's own.
+	const pinned = { locale: "en-US", timeZone: "UTC" } as const;
+
+	it("renders the full date and time with the zone", () => {
+		const ts = Date.UTC(2026, 7, 30, 12, 34, 56) / 1000;
+		expect(exactLabel(ts, pinned)).toBe("Aug 30, 2026, 12:34:56 PM UTC");
+	});
+
+	it("renders an absent timestamp as an empty label", () => {
+		expect(exactLabel(0, pinned)).toBe("");
 	});
 });
