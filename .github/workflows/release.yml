@@ -56,9 +56,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # This action does not read rust-toolchain.toml, but the repo has one, and
+      # a rustup directory override outranks whatever this installs. Asking for
+      # "stable" would install the cross-compile targets for stable and then
+      # build on the pinned version, which does not have them. Keep the version
+      # here in lockstep with rust-toolchain.toml and mise.toml.
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # stable
         with:
-          toolchain: stable
+          toolchain: 1.97.0
           targets: ${{ matrix.rust_target }}
 
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
