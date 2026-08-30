@@ -277,6 +277,189 @@ fn cli_show_answers_a_composing_review_exactly_as_missing() {
     );
 }
 
+/// The thread living in the published review seeded by `seed_reviews`.
+fn published_thread_id(ctx: &TestContext, published: &str) -> String {
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    store
+        .read(|c| threads::list_for_review(c, published))
+        .unwrap()
+        .first()
+        .expect("the published review has a thread")
+        .id
+        .clone()
+}
+
+#[test]
+fn cli_reply_posts_an_agent_attributed_reply() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+
+    let out = trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "done, see the new commit"],
+        ctx.data_dir(),
+    );
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let replies = store
+        .read(|c| trunk_lib::reviewdb::replies::list_for_threads(c, &[thread_id]))
+        .unwrap();
+    let reply = replies
+        .values()
+        .flatten()
+        .next()
+        .expect("the reply must land in the store");
+    assert_eq!(reply.text, "done, see the new commit");
+    assert_eq!(
+        reply.channel,
+        trunk_lib::review_types::Channel::Agent,
+        "a CLI write renders as agent, whoever drove it",
+    );
+}
+
+#[test]
+fn cli_reply_reads_the_text_from_stdin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_trunk"))
+        .args(["review", "reply", &thread_id, "--stdin"])
+        .current_dir(ctx.repo_path())
+        .env("TRUNK_DATA_DIR", ctx.data_dir())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"multi\nline\nreply")
+            .unwrap();
+    }
+    let out = wait_or_kill(child, Duration::from_secs(10));
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let replies = store
+        .read(|c| trunk_lib::reviewdb::replies::list_for_threads(c, &[thread_id]))
+        .unwrap();
+    assert_eq!(
+        replies.values().flatten().next().unwrap().text,
+        "multi\nline\nreply",
+    );
+}
+
+#[test]
+fn two_concurrent_cli_replies_both_land() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+
+    let spawn = |text: &str| {
+        Command::new(env!("CARGO_BIN_EXE_trunk"))
+            .args(["review", "reply", &thread_id, text])
+            .current_dir(ctx.repo_path())
+            .env("TRUNK_DATA_DIR", ctx.data_dir())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+    let first = spawn("first writer");
+    let second = spawn("second writer");
+
+    let first = wait_or_kill(first, Duration::from_secs(10));
+    let second = wait_or_kill(second, Duration::from_secs(10));
+
+    assert!(
+        first.status.success() && second.status.success(),
+        "busy_timeout must turn contention into queueing; stderr: {} / {}",
+        String::from_utf8_lossy(&first.stderr),
+        String::from_utf8_lossy(&second.stderr),
+    );
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let replies = store
+        .read(|c| trunk_lib::reviewdb::replies::list_for_threads(c, &[thread_id]))
+        .unwrap();
+    assert_eq!(
+        replies.values().flatten().count(),
+        2,
+        "both concurrent writes must land",
+    );
+}
+
+#[test]
+fn cli_reply_to_a_composing_thread_answers_as_missing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (composing, _) = seed_reviews(&ctx);
+    let composing_thread = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &composing,
+                    threads::NewThread {
+                        text: "unpublished".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    600,
+                )
+            })
+            .unwrap()
+    };
+
+    let of_composing = trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &composing_thread, "hello"],
+        ctx.data_dir(),
+    );
+    let of_missing = trunk_review_in(
+        ctx.repo_path(),
+        &["reply", "ZZZZZZZZ", "hello"],
+        ctx.data_dir(),
+    );
+
+    assert_ne!(of_composing.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&of_composing.stderr).replace(&composing_thread, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_missing.stderr),
+        "an unpublished review must not leak through reply either",
+    );
+}
+
 #[test]
 fn the_review_subcommand_exits_without_a_window() {
     let scratch = tempfile::TempDir::new().unwrap();

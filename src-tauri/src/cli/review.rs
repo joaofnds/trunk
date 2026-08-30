@@ -13,8 +13,26 @@ use std::path::PathBuf;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReviewCmd {
-    List { repo: Option<PathBuf> },
-    Show { id: String, repo: Option<PathBuf> },
+    List {
+        repo: Option<PathBuf>,
+    },
+    Show {
+        id: String,
+        repo: Option<PathBuf>,
+    },
+    Reply {
+        id: String,
+        text: ReplyText,
+        repo: Option<PathBuf>,
+    },
+}
+
+/// Where the reply body comes from: an argv word, or stdin for multi-line
+/// text an agent pipes in.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReplyText {
+    Inline(String),
+    Stdin,
 }
 
 /// Parse the argv slice after `trunk review`. Errors are the usage line the
@@ -36,6 +54,26 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
             let repo = take_repo_flag(rest)?;
             Ok(ReviewCmd::Show {
                 id: (*id).to_string(),
+                repo,
+            })
+        }
+        "reply" => {
+            let (id, text, rest) = match rest.as_slice() {
+                [id, "--stdin", rest @ ..] => (id, ReplyText::Stdin, rest),
+                [id, text, rest @ ..] if !text.starts_with("--") => {
+                    (id, ReplyText::Inline((*text).to_string()), rest)
+                }
+                _ => {
+                    return Err(format!(
+                        "reply needs a thread id and text (or --stdin)\n{}",
+                        usage()
+                    ));
+                }
+            };
+            let repo = take_repo_flag(rest)?;
+            Ok(ReviewCmd::Reply {
+                id: (*id).to_string(),
+                text,
                 repo,
             })
         }
@@ -82,7 +120,63 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
                 canonical.join(".git"),
             )
         }
+        ReviewCmd::Reply { id, text, repo } => {
+            let canonical = discover_repo(repo)?;
+            let thread = published_thread(&store, &canonical, &id)?;
+
+            let body = match text {
+                ReplyText::Inline(s) => s,
+                ReplyText::Stdin => {
+                    use std::io::Read;
+                    let mut buf = String::new();
+                    std::io::stdin()
+                        .read_to_string(&mut buf)
+                        .map_err(|e| TrunkError::new("io", e.to_string()))?;
+                    buf
+                }
+            };
+            if body.trim().is_empty() {
+                return Err(TrunkError::new("bad_request", "reply text is empty"));
+            }
+
+            let now = reviewdb::now_secs();
+            let reply_id = store.write(|tx| {
+                reviewdb::replies::add(
+                    tx,
+                    &canonical,
+                    &thread.id,
+                    &body,
+                    crate::review_types::Channel::Agent,
+                    now,
+                )
+            })?;
+
+            Ok(format!("replied to {} as agent ({reply_id})\n", thread.id))
+        }
     }
+}
+
+/// Resolve `raw` against this repo's published-review *threads*, with the
+/// same exact-or-unique-prefix rule and the same no-leak posture as
+/// `published_review`: a composing review's thread answers as missing.
+fn published_thread(
+    store: &reviewdb::Store,
+    canonical: &std::path::Path,
+    raw: &str,
+) -> Result<crate::reviewdb::threads::Thread, TrunkError> {
+    use crate::reviewdb::threads;
+
+    let candidates: Vec<threads::Thread> = store.read(|conn| {
+        let mut all = Vec::new();
+        for review in reviews::list(conn, canonical)? {
+            if review.published {
+                all.extend(threads::list_for_review(conn, &review.id)?);
+            }
+        }
+        Ok(all)
+    })?;
+
+    resolve_unique(candidates, |t| &t.id, raw, "thread")
 }
 
 /// Resolve `raw` against this repo's *published* reviews only: exact id, or a
@@ -95,29 +189,52 @@ fn published_review(
     canonical: &std::path::Path,
     raw: &str,
 ) -> Result<reviews::Review, TrunkError> {
-    let needle = reviewdb::ids::normalize(raw);
     let published: Vec<reviews::Review> = store
         .read(|conn| reviews::list(conn, canonical))?
         .into_iter()
         .filter(|r| r.published)
         .collect();
 
-    if let Some(exact) = published.iter().find(|r| r.id == needle) {
-        return Ok(exact.clone());
+    resolve_unique(published, |r| &r.id, raw, "review")
+}
+
+/// Exact id, or a prefix matching exactly one candidate (Crockford
+/// normalization, like the app's `ids::resolve_prefix`). The candidate list
+/// is already scoped and filtered by the caller, so ambiguity and misses are
+/// judged only over what the CLI may serve — that scoping is what keeps an
+/// unpublished review from leaking even through a prefix collision.
+fn resolve_unique<T>(
+    candidates: Vec<T>,
+    id_of: impl Fn(&T) -> &str,
+    raw: &str,
+    noun: &str,
+) -> Result<T, TrunkError> {
+    let needle = reviewdb::ids::normalize(raw);
+
+    let mut matches: Vec<T> = candidates
+        .into_iter()
+        .filter(|c| !needle.is_empty() && id_of(c).starts_with(&needle))
+        .collect();
+    if let Some(exact) = matches.iter().position(|c| id_of(c) == needle) {
+        return Ok(matches.swap_remove(exact));
     }
 
-    let mut matches = published
-        .into_iter()
-        .filter(|r| !needle.is_empty() && r.id.starts_with(&needle));
-    match (matches.next(), matches.next()) {
-        (Some(only), None) => Ok(only),
-        (Some(a), Some(b)) => Err(TrunkError::new(
-            "ambiguous_id",
-            format!("id `{raw}` matches {} and {}", a.id, b.id),
+    match matches.len() {
+        1 => Ok(matches.pop().expect("len checked")),
+        0 => Err(TrunkError::new(
+            "not_found",
+            format!("no {noun} with id {raw}"),
         )),
         _ => Err(TrunkError::new(
-            "not_found",
-            format!("no review with id {raw}"),
+            "ambiguous_id",
+            format!(
+                "id `{raw}` matches {}",
+                matches
+                    .iter()
+                    .map(|c| id_of(c).to_string())
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            ),
         )),
     }
 }
