@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { FIXED_ROW_HEIGHT_VARS } from "./lib/diff-rows.js";
 
 const root = resolve(process.cwd(), "src");
 
@@ -32,6 +33,27 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
 
 /* `em` is prose, not chrome: `.markdown-body` sizes its paragraph rhythm to the
    text it wraps, which is what an em is for and what the unit scale is not. */
+/** Every custom property that declares the height of a band spanning its pane,
+ *  read from where it is declared rather than restated: app.css's `:root`
+ *  chrome heights, and the diff pane's `FIXED_ROW_HEIGHT_VARS`, which emits its
+ *  properties from TS constants. Adding a chrome height token brings it under
+ *  this guard with no edit here.
+ *
+ *  `--control-h` is in: a full-size control sits in a bar and shares its edge,
+ *  and this is what caught the toolbar's button group. The two smaller control
+ *  heights are deliberately out: a bordered chip loses the same pixel, but the
+ *  ~11 sites belong with the button-recipe extraction (TRUNK-50), not here. */
+function barTokens(): string[] {
+	const css = readFileSync(join(root, "app.css"), "utf8");
+	const chrome = [
+		...css.matchAll(/^\t(--(?:row|bar|topbar)-h|--control-h): /gm),
+	].map(([, name]) => name);
+	const diffRows = [...FIXED_ROW_HEIGHT_VARS.matchAll(/(--[\w-]+):/g)].map(
+		([, name]) => name,
+	);
+	return [...chrome, ...diffRows];
+}
+
 const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
 
 /** A Svelte interpolation and a `calc()` built only from the scale are each one
@@ -60,9 +82,14 @@ describe("spacing scale", () => {
 	it("spends no layout on a bar's own rule", () => {
 		/* A bar declares its height either from the token or, where the height is
 		   also needed by virtualization math, from the constant that mirrors it.
-		   Both spellings are the same bar and owe the same rule. */
-		const barHeight =
-			/var\(--(?:bar-h|topbar-h|row-h|control-h|diff-(?:file|hunk)-header-height)\)|\{(?:BAR_HEIGHT|ROW_HEIGHT)\}px/;
+		   Both spellings are the same bar and owe the same rule.
+
+		   The token names are read from where they are declared, not restated
+		   here: a list written out by hand is how the merge editor's bar ended up
+		   the one site this guard could not see. */
+		const barHeight = new RegExp(
+			`var\\((?:${barTokens().join("|")})\\)|\\{(?:BAR_HEIGHT|ROW_HEIGHT)\\}px`,
+		);
 		const raw: string[] = [];
 		for (const file of svelteFiles(root)) {
 			const source = readFileSync(file, "utf8").replace(

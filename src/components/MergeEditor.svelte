@@ -35,7 +35,6 @@ let { repoPath, filePath, onclose, onresolved }: Props = $props();
 
 // ---------- Constants ----------
 const LINE_HEIGHT = 18;
-
 const OVERSCAN = 20;
 
 // ---------- State ----------
