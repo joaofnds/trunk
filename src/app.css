@@ -18,6 +18,12 @@
 	--bar-h: calc(7 * var(--u));
 	--topbar-h: calc(11 * var(--u));
 
+	/* A rule paints inside its own box, so a surface that draws one is a pixel
+	   taller than the band it shows. Bars spend that pixel by design — every bar
+	   shows one less than --bar-h. A surface that must show a full step adds it
+	   back with these. */
+	--banded-lg-h: calc(8 * var(--u) + 1px);
+
 	/* ── Control heights ── */
 	--control-sm-h: calc(5 * var(--u));
 	--control-h: calc(7 * var(--u));

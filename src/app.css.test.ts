@@ -150,9 +150,11 @@ describe("app.css lengths", () => {
 		const declared = [...css.matchAll(/^\t(--[\w-]+): ([^;]+);$/gm)].filter(
 			([, name, value]) => !offScaleByDesign.has(name) && isLength(value),
 		);
+		/* A whole number of units, optionally plus the single pixel a painted rule
+		   costs the surface that draws one. Anything else is off the scale. */
+		const onScale = /^calc\(\d+ \* var\(--u\)(?: \+ 1px)?\)$/;
 		const offScale = declared.filter(
-			([, , value]) =>
-				value !== "0" && !/^calc\(\d+ \* var\(--u\)\)$/.test(value),
+			([, , value]) => value !== "0" && !onScale.test(value),
 		);
 
 		expect(offScale.map(([line]) => line.trim())).toEqual([]);
