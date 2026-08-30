@@ -422,6 +422,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     style="
       width: 100%;
       height: var(--bar-h);
+      /* The scroller is a flex column, so a bar without this gets compressed
+         below the height it declares — a pixel, which is exactly enough to sit
+         off the band every other bar paints. */
+      flex-shrink: 0;
       background: var(--color-surface);
       box-shadow: inset 0 1px 0 var(--color-border), inset 0 -1px 0 var(--color-border);
       display: flex;
@@ -453,6 +457,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     style="
       display: flex;
       height: {LINE_HEIGHT}px;
+      flex-shrink: 0;
       background: {bgColor};
       cursor: pointer;
     "
@@ -495,6 +500,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
   <div style="
     display: flex;
     height: {LINE_HEIGHT}px;
+    flex-shrink: 0;
     background: transparent;
   ">
     <span style="
@@ -615,10 +621,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
             line-height: {LINE_HEIGHT}px;
           "
         >
-          <div style="height: {oursOffsets[oursVisible[0]]}px;"></div>
+          <div style="height: {oursOffsets[oursVisible[0]]}px; flex-shrink: 0;"></div>
           {#each oursFlat.slice(oursVisible[0], oursVisible[1]) as row, idx (oursVisible[0] + idx)}
             {#if row.type === 'padding'}
-              <div style="height: {row.height}px;"></div>
+              <div style="height: {row.height}px; flex-shrink: 0;"></div>
             {:else if row.type === 'conflict-header'}
               {@render conflictHeader('ours', row)}
             {:else if row.type === 'conflict-line'}
@@ -627,7 +633,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               {@render contextLine(row)}
             {/if}
           {/each}
-          <div style="height: {oursTotalHeight - (oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px;"></div>
+          <div style="height: {oursTotalHeight - (oursOffsets[oursVisible[1]] ?? oursTotalHeight)}px; flex-shrink: 0;"></div>
         </div>
       </div>
 
@@ -679,10 +685,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
             line-height: {LINE_HEIGHT}px;
           "
         >
-          <div style="height: {theirsOffsets[theirsVisible[0]]}px;"></div>
+          <div style="height: {theirsOffsets[theirsVisible[0]]}px; flex-shrink: 0;"></div>
           {#each theirsFlat.slice(theirsVisible[0], theirsVisible[1]) as row, idx (theirsVisible[0] + idx)}
             {#if row.type === 'padding'}
-              <div style="height: {row.height}px;"></div>
+              <div style="height: {row.height}px; flex-shrink: 0;"></div>
             {:else if row.type === 'conflict-header'}
               {@render conflictHeader('theirs', row)}
             {:else if row.type === 'conflict-line'}
@@ -691,7 +697,7 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
               {@render contextLine(row)}
             {/if}
           {/each}
-          <div style="height: {theirsTotalHeight - (theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px;"></div>
+          <div style="height: {theirsTotalHeight - (theirsOffsets[theirsVisible[1]] ?? theirsTotalHeight)}px; flex-shrink: 0;"></div>
         </div>
       </div>
     </div>

@@ -233,6 +233,9 @@ async function handleBranchCreate(values: Record<string, string>) {
     justify-content: center;
     width: var(--control-h);
     height: var(--control-h);
+    /* The toolbar is a flex row, so without this a crowded window narrows the
+       buttons off their declared square. */
+    flex-shrink: 0;
     padding: 0;
     /* Paint, not length: a border under border-box would cost the button 2px
        of the height its token declares. */
@@ -305,6 +308,7 @@ async function handleBranchCreate(values: Record<string, string>) {
     display: inline-flex;
     align-items: stretch;
     height: var(--control-h);
+    flex-shrink: 0;
     /* Paint, not length: a real border would take 2px out of the content box
        and leave the group's own children overflowing it. */
     box-shadow: inset 0 0 0 1px var(--line);

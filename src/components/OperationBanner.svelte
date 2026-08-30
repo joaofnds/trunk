@@ -174,13 +174,13 @@ async function handleRevertAbort() {
 
 <div style="
   flex-shrink: 0;
-  padding: var(--space-2) var(--space-3);
+  min-height: var(--bar-h);
+  padding: 0 var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  box-shadow: inset 0 -1px 0 var(--color-border), inset 3px 0 0 {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'};
   background: {isMerge ? 'var(--color-banner-warning-bg)' : 'var(--color-banner-info-bg)'};
-  border-left: 3px solid {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'};
 ">
   <span style="color: {isMerge ? 'var(--color-banner-warning-border)' : 'var(--color-banner-info-border)'}; display: inline-flex; align-items: center; flex-shrink: 0;">
     {#if isMerge}<GitMerge size={14} />{:else}<GitBranch size={14} />{/if}
@@ -193,7 +193,9 @@ async function handleRevertAbort() {
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
         font-size: 11px;
-        line-height: 16px;
+        height: var(--control-sm-h);
+        display: inline-flex;
+        align-items: center;
         color: var(--bg-0);
         font-weight: 700;
         overflow: hidden;
@@ -206,7 +208,9 @@ async function handleRevertAbort() {
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
         font-size: 11px;
-        line-height: 16px;
+        height: var(--control-sm-h);
+        display: inline-flex;
+        align-items: center;
         color: var(--bg-0);
         font-weight: 700;
         overflow: hidden;

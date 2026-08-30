@@ -143,10 +143,14 @@ async function handleForcePush(target: Target) {
 <style>
   .recovery-surface {
     flex-shrink: 0;
+    /* No declared height: this one wraps to several lines by design. The rules
+       are still paint, so they cost it no space of its own. */
+    min-height: var(--bar-h);
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    box-shadow:
+      inset 0 -1px 0 var(--color-border),
+      inset 3px 0 0 var(--color-banner-warning-border);
     background: var(--color-banner-warning-bg);
-    border-left: 3px solid var(--color-banner-warning-border);
   }
   .recovery-body {
     display: flex;

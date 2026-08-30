@@ -592,6 +592,9 @@ async function saveNote() {
     align-items: center;
     gap: var(--space-2);
     height: var(--bar-h);
+    /* .commit-notes is a flex column, which would otherwise shrink this bar
+       below the height it declares. */
+    flex-shrink: 0;
     box-shadow: inset 0 -1px 0 var(--color-border);
     padding: 0 var(--space-3);
   }
