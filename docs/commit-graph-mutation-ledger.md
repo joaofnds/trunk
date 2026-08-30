@@ -207,29 +207,32 @@ can distinguish them.
 
 ### Row 10 — `is_merge`'s `&&` and `||` agree wherever the value is read
 
-`is_merge` is written at `placement.rs:243` and read exactly once, at `:437`. That read sits in
+`is_merge` is written once in `placement.rs` (`let is_merge = !is_stash && …`) and read exactly
+once, in the parent-edge `edge_type` ladder. That read sits in
 the `else` arm of `if idx == 0`, so it runs only when `idx >= 1`. Reaching `idx >= 1` needs
-`parents.len() >= 2`. For a stash, `:361` to `:365` truncates `parents` to one element, so a stash
-never reaches it. For a non-stash, `parents` is the full list, so `commit_parents.len() >= 2`
+`parents.len() >= 2`. For a stash, the `parents` binding keeps only `commit_parents.first()`, so a
+stash never reaches it. For a non-stash, `parents` is the full list, so `commit_parents.len() >= 2`
 holds. Both conjuncts are therefore true wherever `is_merge` is read, and `&&` and `||` agree.
 `graph_input.rs` recomputes the flag that the goldens print, independently of this value.
 
 ### Rows 30 to 35 — the non-merge fork ladder is unreachable
 
-These six mutate the `} else if parent_col < col {` and `} else if parent_col > col {` arms at
-`:445` and `:447`. Both sit in the `else` half of `if is_merge` at `:437`. Row 10's argument shows
+These six mutate the `} else if parent_col < col {` and `} else if parent_col > col {` arms of the
+parent-edge `edge_type` ladder. Both sit in the `else` half of that ladder's `if is_merge`.
+Row 10's argument shows
 that `idx >= 1` implies `is_merge`, so that `else` half never executes. No input reaches any of
 the six. Deleting the ladder outright is a separate decision, recorded in the milestone status
 file and scheduled after milestone 6.
 
 ### Row 19 — `other_col < col` and `other_col <= col` agree
 
-The fork-out ladder at `:324` sits inside the loop guarded by `other_col != col` at `:315`. The
+The fork-out ladder (`if other_col < col`) sits inside the `active_lanes` loop guarded by
+`other_col != col`. The
 two operators can differ only when `other_col == col`, which the guard excludes.
 
 ### Row 36 — `parents.is_empty() && !col_reoccupied` and `|| !col_reoccupied` agree
 
-`col_reoccupied` starts `false` at `:368`. It is set `true` at `:385`, `:391` and `:409`, and
+`col_reoccupied` starts `false` at its `let`. It is set `true` at three sites, and
 those three are the three branches of the `idx == 0` arm. That arm runs whenever `parents` is not
 empty. So `parents.is_empty()` holds exactly when `!col_reoccupied` holds. Where `A` is equivalent
 to `!B`, the expressions `A && !B` and `A || !B` agree.
@@ -237,20 +240,20 @@ to `!B`, the expressions `A && !B` and `A || !B` agree.
 ### Row 37 — the root cleanup's removal is unobservable
 
 Row 36's equivalence makes the mutated guard `parents.is_empty() && col_reoccupied` read as
-`A && !A`, which is permanently false. So the mutant is exactly "`lane_colors.remove(&col)` at
-`:467` never runs". Every read of `lane_colors` takes the form `get(&k).unwrap_or(&d)`. Mutant and
+`A && !A`, which is permanently false. So the mutant is exactly "the root cleanup's
+`lane_colors.remove(&col)` never runs". Every read of `lane_colors` takes the form `get(&k).unwrap_or(&d)`. Mutant and
 original can differ only where a retained key is read before something rewrites it.
 
 Consider a column that the root cleanup frees. Reallocating that column takes one of three paths.
-`find_free_column_near` at `:281` writes `lane_colors` at `:283` before any read. The
-secondary-parent path at `:427` writes it at `:431`. A `pending_parents` column is always paired
-with an `active_lanes` occupancy at `:408` or `:429`, so no live reservation at a freed column
-survives the root that freed it.
+The phase-1 `find_free_column_near` call writes `lane_colors` immediately after, before any read.
+The secondary-parent path likewise writes it immediately after its own call. A `pending_parents`
+column is always paired with an `active_lanes` occupancy at one of the two paired inserts, so no
+live reservation at a freed column survives the root that freed it.
 
-One path writes no colour: `can_inline` at `:273`. It requires a column that is reserved and free
+One path writes no colour: the `can_inline` branch. It requires a column that is reserved and free
 at once. The unpaired-insert rule in `.claude/rules/commit-graph.md` confines that state to column
-0. At column 0 the retained value is `0`, from `:223` or `:297`, and every default for column 0 is
-also `0`. So the two agree there as well.
+0. At column 0 the retained value is `0`, written by `reserve_head_lane` or the post-phase-1
+colour assignment, and every default for column 0 is also `0`. So the two agree there as well.
 
 **Falsifier, run and silent.** `placement.rs` was instrumented with a shadow map of what the root
 cleanup removed, plus a checked read at all seven read sites. The check panics if a root-freed
