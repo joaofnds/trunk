@@ -4,6 +4,14 @@
 // shift-click range, which always compares parent(oldest) → newest so every
 // commit in the range contributes its changes (GitKraken behavior).
 
+/** Modifier keys on a commit-row click, as the compare gesture reads them. */
+export interface SelectModifiers {
+	/** Cmd/Ctrl: pair this commit with the anchor. */
+	compare?: boolean;
+	/** Shift: range-compare from the anchor to this commit. */
+	range?: boolean;
+}
+
 export interface ComparePair {
 	/** Left/old side. `null` means the empty tree (a range rooted at a root commit). */
 	baseOid: string | null;

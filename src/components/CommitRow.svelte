@@ -1,6 +1,7 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
+import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
 import {
 	COLUMN_PADDING_X,
@@ -19,7 +20,7 @@ import CommentBadge from "./CommentBadge.svelte";
 interface Props {
 	commit: GraphCommit;
 	rowIndex: number;
-	onselect?: (oid: string) => void;
+	onselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
 	maxColumns?: number;
 	columnWidths: ColumnWidths;
@@ -130,7 +131,7 @@ const rowShadow = $derived(
   class:hover:bg-[var(--bg-hover)]={!selected && !isCurrentMatch && !isSearchMatch}
   style:height="{rowHeight}px"
   style="color: var(--color-text); {isCurrentMatch ? 'background: var(--color-search-current);' : isSearchMatch ? 'background: var(--color-search-match);' : selected ? 'background: var(--color-selected-row);' : ''} {isSearchActive && !isSearchMatch && !isCurrentMatch ? 'opacity: var(--opacity-search-dim);' : ''} {rowShadow ? `box-shadow: ${rowShadow};` : ''}"
-  onclick={() => onselect?.(commit.oid)}
+  onclick={(e) => onselect?.(commit.oid, { compare: e.metaKey || e.ctrlKey, range: e.shiftKey })}
   onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onselect?.(commit.oid); } }}
   oncontextmenu={(e: MouseEvent) => { if (oncontextmenu && !isWip) { e.preventDefault(); oncontextmenu(e, commit); } }}
 >

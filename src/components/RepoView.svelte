@@ -8,6 +8,15 @@ import {
 	type ViewDescriptor,
 } from "../lib/comment-matching.js";
 import { computeCommitNav } from "../lib/commitNav.js";
+import {
+	type ComparePair,
+	cmdClick,
+	plainClick,
+	type SelectionState,
+	type SelectModifiers,
+	shiftClick,
+	swapCompare,
+} from "../lib/compare-select.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -48,6 +57,7 @@ import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 import CommitDetail from "./CommitDetail.svelte";
 import CommitGraph from "./CommitGraph.svelte";
+import ComparePanel from "./ComparePanel.svelte";
 import DiffPanel from "./DiffPanel.svelte";
 import MergeEditor from "./MergeEditor.svelte";
 import MessageEditor from "./MessageEditor.svelte";
@@ -267,6 +277,20 @@ let selectedCommitFile = $state<string | null>(null);
 // it's still the latest before clearing state.
 let commitSelectGeneration = 0;
 
+// Compare selection (TRUNK-001): the Base → Target pair picked in the graph.
+// Detail/file state loads per pair; a stale response is dropped by generation.
+let compare = $state<ComparePair | null>(null);
+let compareBaseDetail = $state<CommitDetailType | null>(null);
+let compareTargetDetail = $state<CommitDetailType | null>(null);
+// Replace this array wholesale: $state.raw ignores an in-place mutation, so a
+// push here updates nothing on screen.
+let compareFileDiffs = $state.raw<FileDiff[]>([]);
+let selectedCompareFile = $state<string | null>(null);
+let compareGeneration = 0;
+let compareOids = $derived<ReadonlySet<string>>(
+	new Set(compare ? compare.picked : []),
+);
+
 // The WIP-inclusive display list + pagination state CommitGraph reports via
 // oncommitschange, cached here so commitNav below can be recomputed on every
 // selectedCommitOid change without requiring CommitGraph to be mounted — it
@@ -322,15 +346,18 @@ const wipStats = $derived<WipStats>({
 let showDiff = $derived(
 	selectedFile !== null ||
 		selectedCommitFile !== null ||
-		diffInViewPath !== null,
+		diffInViewPath !== null ||
+		selectedCompareFile !== null,
 );
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 
 // The diffs to display: filtered commit file diff, or staging diff
 let currentDiffFiles = $derived(
-	selectedCommitFile
-		? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
-		: stagingDiffFiles,
+	selectedCompareFile
+		? compareFileDiffs.filter((f) => f.path === selectedCompareFile)
+		: selectedCommitFile
+			? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
+			: stagingDiffFiles,
 );
 
 // The diffKind the active DiffPanel renders under — mirrors the template prop
@@ -366,7 +393,7 @@ let viewDescriptor = $derived<ViewDescriptor>({
 // Comments matching the file currently shown in DiffPanel. Empty when no file
 // is selected.
 let viewComments = $derived(
-	selectedDiffPath
+	selectedDiffPath && !selectedCompareFile
 		? commentsForView(reviewComments.threads, viewDescriptor, selectedDiffPath)
 		: [],
 );
@@ -377,13 +404,15 @@ let viewComments = $derived(
 //   CommitDetail is the active right pane → commit-level notes for its oid
 //   otherwise (commit graph / staging, no file) → 0 (nothing in this view)
 let inlineCommentCount = $derived(
-	showDiff && selectedDiffPath
-		? viewComments.length
-		: selectedCommitOid && commitDetail
-			? reviewComments.threads.filter(
-					(t) => t.anchor === null && t.commit_oid === commitDetail?.oid,
-				).length
-			: 0,
+	selectedCompareFile
+		? 0
+		: showDiff && selectedDiffPath
+			? viewComments.length
+			: selectedCommitOid && commitDetail
+				? reviewComments.threads.filter(
+						(t) => t.anchor === null && t.commit_oid === commitDetail?.oid,
+					).length
+				: 0,
 );
 
 // Total threads in the active review, for the Review button badge — independent
@@ -486,7 +515,8 @@ function handleWipClick() {
 }
 
 function handleDiffClose() {
-	if (selectedFile) clearStagingDiff();
+	if (selectedCompareFile) selectedCompareFile = null;
+	else if (selectedFile) clearStagingDiff();
 	else clearCommitFileDiff();
 }
 
@@ -623,10 +653,126 @@ async function selectCommitIdempotent(oid: string) {
 	}
 }
 
-// Toggle wrapper for graph clicks: re-clicking the selected commit clears it.
-// Keep this for the CommitGraph / CommitDetail close gestures; the rune uses
-// `selectCommitIdempotent` directly.
-async function handleCommitSelect(oid: string) {
+function clearCompare() {
+	compare = null;
+	compareBaseDetail = null;
+	compareTargetDetail = null;
+	compareFileDiffs = [];
+	selectedCompareFile = null;
+	compareGeneration++;
+}
+
+async function applyCompare(pair: ComparePair | null) {
+	if (pair === null) {
+		if (compare !== null) clearCompare();
+		return;
+	}
+	compare = pair;
+	selectedCompareFile = null;
+	const gen = ++compareGeneration;
+	if (rightPaneCollapsed) {
+		onrightpanecollapsedchange(false);
+	}
+	if (!repoPath) return;
+	try {
+		const [files, baseDetail, targetDetail] = await Promise.all([
+			safeInvoke<FileDiff[]>("list_compare_files", {
+				path: repoPath,
+				baseOid: pair.baseOid,
+				targetOid: pair.targetOid,
+			}),
+			pair.baseOid
+				? safeInvoke<CommitDetailType>("get_commit_detail", {
+						path: repoPath,
+						oid: pair.baseOid,
+					})
+				: Promise.resolve(null),
+			safeInvoke<CommitDetailType>("get_commit_detail", {
+				path: repoPath,
+				oid: pair.targetOid,
+			}),
+		]);
+		if (gen !== compareGeneration) return;
+		compareFileDiffs = files;
+		compareBaseDetail = baseDetail;
+		compareTargetDetail = targetDetail;
+	} catch (e) {
+		if (gen !== compareGeneration) return;
+		reportErrorToast(e, "Failed to load comparison");
+		clearCompare();
+	}
+}
+
+async function applySelection(next: SelectionState) {
+	if (next.selectedOid === null) {
+		if (selectedCommitOid !== null) clearCommit();
+	} else if (next.selectedOid !== selectedCommitOid) {
+		await selectCommitIdempotent(next.selectedOid);
+	}
+	await applyCompare(next.compare);
+}
+
+function firstParentOfLoaded(oid: string): string | null {
+	return graphDisplayItems.find((c) => c.oid === oid)?.parent_oids[0] ?? null;
+}
+
+async function handleCompareSwap() {
+	await applyCompare(
+		swapCompare({ selectedOid: selectedCommitOid, compare }).compare,
+	);
+}
+
+// Compare file clicks toggle like commit-detail file clicks, and patch the
+// lightweight list entry with the full diff the same way.
+async function handleCompareFileSelect(path: string) {
+	if (selectedCompareFile === path) {
+		selectedCompareFile = null;
+		return;
+	}
+	selectedCompareFile = path;
+	if (!repoPath || !compare) return;
+	// Captured at fire time so a slow response for an old pair can't patch the
+	// new pair's list (same hazard as selectCommitFileIdempotent's fireOid).
+	const firePair = compare;
+	try {
+		const options = buildDiffOptions();
+		const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
+			path: repoPath,
+			baseOid: firePair.baseOid,
+			targetOid: firePair.targetOid,
+			filePath: path,
+			options,
+		});
+		if (compare !== firePair) return;
+		compareFileDiffs = compareFileDiffs.map((fd) =>
+			fd.path === path && fileDiffs.length > 0 ? fileDiffs[0] : fd,
+		);
+	} catch {
+		// Keep the lightweight entry — DiffPanel will show empty diff
+	}
+}
+
+// Graph clicks: a plain click keeps the existing toggle (re-clicking the
+// selected commit clears it) and dissolves any compare; cmd/shift route
+// through the compare state machine. The rune uses `selectCommitIdempotent`
+// directly.
+async function handleCommitSelect(oid: string, mods?: SelectModifiers) {
+	const current: SelectionState = { selectedOid: selectedCommitOid, compare };
+	if (mods?.compare) {
+		await applySelection(cmdClick(current, oid));
+		return;
+	}
+	if (mods?.range) {
+		const order = graphDisplayItems
+			.filter((c) => c.oid !== "__wip__")
+			.map((c) => c.oid);
+		await applySelection(shiftClick(current, oid, order, firstParentOfLoaded));
+		return;
+	}
+	if (compare !== null) {
+		await applySelection(plainClick(current, oid));
+		return;
+	}
 	if (selectedCommitOid === oid) {
 		clearCommit();
 		return;
@@ -859,13 +1005,13 @@ $effect(() => {
 // Escape key handler for closing diffs
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
-		if (
-			e.key === "Escape" &&
-			!showRebaseEditor &&
-			(showDiff || showMergeEditor)
-		) {
+		if (e.key !== "Escape" || showRebaseEditor) return;
+		if (showDiff || showMergeEditor) {
 			e.preventDefault();
 			handleDiffClose();
+		} else if (compare !== null && tabActive) {
+			e.preventDefault();
+			clearCompare();
 		}
 	}
 	window.addEventListener("keydown", handleKeydown);
@@ -1162,8 +1308,8 @@ function startRightResize(e: MouseEvent) {
         <DiffPanel
           bind:this={diffPanelRef}
           fileDiffs={currentDiffFiles}
-          commitDetail={commitDetail}
-          selectedPath={selectedDiffPath}
+          commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
+          selectedPath={selectedCompareFile ?? selectedDiffPath}
           {diffKind}
           emptyCommit={commitEmpty}
           {repoPath}
@@ -1191,6 +1337,24 @@ function startRightResize(e: MouseEvent) {
             cachedDiffOptions = options;
             if (selectedFile && selectedFile.kind !== "conflicted") {
               await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
+            } else if (selectedCompareFile && compare) {
+              const firePair = compare;
+              try {
+                const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
+                  path: repoPath,
+                  baseOid: firePair.baseOid,
+                  targetOid: firePair.targetOid,
+                  filePath: selectedCompareFile,
+                  options,
+                });
+                if (compare === firePair) {
+                  compareFileDiffs = compareFileDiffs.map((fd) =>
+                    fd.path === selectedCompareFile && fileDiffs.length > 0 ? fileDiffs[0] : fd,
+                  );
+                }
+              } catch {
+                // non-fatal
+              }
             } else if (selectedCommitFile && selectedCommitOid) {
               try {
                 const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
@@ -1212,13 +1376,25 @@ function startRightResize(e: MouseEvent) {
             : handleDiffClose}
         />
       {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {tabActive} {showInlineComments} {reviewComments} />
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {tabActive} {showInlineComments} {reviewComments} {compareOids} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="pane-divider" style="display: {rightPaneCollapsed ? 'none' : 'block'};" onmousedown={startRightResize}></div>
     <div style="width: {rightPaneCollapsed ? 0 : rightPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-      {#if selectedCommitOid && commitDetail}
+      {#if compare && compareTargetDetail}
+        <ComparePanel
+          base={compareBaseDetail}
+          target={compareTargetDetail}
+          fileDiffs={compareFileDiffs}
+          selectedFile={selectedCompareFile}
+          onfileselect={handleCompareFileSelect}
+          onswap={handleCompareSwap}
+          onclose={clearCompare}
+          {treeViewEnabled}
+          ontreeviewtoggle={handleTreeViewToggle}
+        />
+      {:else if selectedCommitOid && commitDetail}
         <CommitDetail
           {commitDetail}
           fileDiffs={commitFileDiffs}

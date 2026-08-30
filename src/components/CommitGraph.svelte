@@ -25,6 +25,7 @@ import {
 	headerMinWidths,
 	shaContentWidth,
 } from "../lib/column-widths.js";
+import type { SelectModifiers } from "../lib/compare-select.js";
 import {
 	errorMessage,
 	reportErrorDialog,
@@ -76,7 +77,7 @@ import VirtualList from "./VirtualList.svelte";
 
 interface Props {
 	repoPath: string;
-	oncommitselect?: (oid: string) => void;
+	oncommitselect?: (oid: string, mods?: SelectModifiers) => void;
 	// Reports the WIP-inclusive display list + pagination state whenever they
 	// change, so the parent can compute commit nav (pager + child chips) itself
 	// via computeCommitNav — independent of whether this component is mounted
@@ -88,6 +89,8 @@ interface Props {
 	onWipClick?: () => void;
 	refreshSignal?: number;
 	selectedCommitOid?: string | null;
+	/** OIDs of the active compare's picked rows, highlighted like the selection. */
+	compareOids?: ReadonlySet<string>;
 	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
 	onopenmessageeditor?: (
 		defaultValue: string,
@@ -113,6 +116,7 @@ let {
 	onWipClick,
 	refreshSignal,
 	selectedCommitOid,
+	compareOids = new Set<string>(),
 	onopenrebaseeditor,
 	onopenmessageeditor,
 	clearRedoStack,
@@ -677,6 +681,23 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		);
 	}
 
+	// Compare (TRUNK-001): the context-menu fallback for the cmd-click gesture.
+	const compareItems: (
+		| Awaited<ReturnType<typeof MenuItem.new>>
+		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>
+	)[] = [];
+	if (selectedCommitOid && selectedCommitOid !== commit.oid) {
+		compareItems.push(
+			await MenuItem.new({
+				text: "Compare with selected commit",
+				action: () => {
+					oncommitselect?.(commit.oid, { compare: true });
+				},
+			}),
+			await PredefinedMenuItem.new({ item: "Separator" }),
+		);
+	}
+
 	// Review selection items (D-01 range gesture + D-06 Add/Remove toggle).
 	// Always injected: "Add to review" creates the active review when the repo
 	// has none, the same way a comment submit does, so there is nothing to gate
@@ -748,6 +769,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 			...mergeRebaseItems,
 			...fastForwardItems,
 			...interactiveRebaseItems,
+			...compareItems,
 			...reviewItems,
 			await MenuItem.new({
 				text: "Copy SHA",
@@ -2011,7 +2033,7 @@ $effect(() => {
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={commit.oid === selectedCommitOid && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
         {/snippet}
       </VirtualList>
       {/key}

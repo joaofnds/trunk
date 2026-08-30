@@ -1137,4 +1137,172 @@ describe("RepoView", () => {
 			});
 		});
 	});
+
+	describe("compare selection (TRUNK-001)", () => {
+		function makeFileDiff(path: string): FileDiff {
+			return { path, status: "Modified", is_binary: false, hunks: [] };
+		}
+
+		function makeDetail(
+			oid: string,
+			parentOids: string[] = [],
+		): CommitDetailType {
+			return {
+				oid,
+				short_oid: oid.slice(0, 7),
+				summary: `commit ${oid}`,
+				body: null,
+				author_name: "Test",
+				author_email: "test@test.com",
+				author_timestamp: 0,
+				committer_name: "Test",
+				committer_email: "test@test.com",
+				committer_timestamp: 0,
+				parent_oids: parentOids,
+			};
+		}
+
+		let commits: ReturnType<typeof makeCommit>[];
+
+		beforeEach(() => {
+			// oid-3 → oid-2 → oid-1, newest first, mirroring the graph order.
+			commits = [
+				makeCommit({
+					oid: "oid-3",
+					summary: "third commit",
+					parent_oids: ["oid-2"],
+				}),
+				makeCommit({
+					oid: "oid-2",
+					summary: "second commit",
+					parent_oids: ["oid-1"],
+				}),
+				makeCommit({ oid: "oid-1", summary: "first commit" }),
+			];
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({ commits, max_columns: 1 });
+					case "list_commit_files":
+						return Promise.resolve([]);
+					case "get_commit_detail":
+						return Promise.resolve(
+							makeDetail(
+								a?.oid as string,
+								commits.find((c) => c.oid === a?.oid)?.parent_oids ?? [],
+							),
+						);
+					case "list_compare_files":
+						return Promise.resolve([makeFileDiff("f.ts")]);
+					case "diff_compare_file":
+						return Promise.resolve([makeFileDiff(a?.filePath as string)]);
+					default:
+						return base(cmd, args);
+				}
+			});
+		});
+
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+		}
+
+		async function renderAndGetRows() {
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			const rows = await screen.findAllByTestId("commit-row");
+			await flush();
+			return rows;
+		}
+
+		function compareCalls() {
+			return mockInvoke.mock.calls.filter((c) => c[0] === "list_compare_files");
+		}
+
+		it("cmd-clicking a second commit opens the compare, first pick as Base", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]); // oid-1
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true }); // oid-3
+			await flush();
+
+			expect(compareCalls()).toHaveLength(1);
+			expect(compareCalls()[0][1]).toMatchObject({
+				baseOid: "oid-1",
+				targetOid: "oid-3",
+			});
+			const header = await screen.findByTestId("compare-header");
+			expect(header.textContent).toContain("oid-1");
+			expect(header.textContent).toContain("oid-3");
+		});
+
+		it("shift-clicking compares parent(oldest) to newest", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[0]); // oid-3
+			await flush();
+			await fireEvent.click(rows[1], { shiftKey: true }); // oid-2, older
+			await flush();
+
+			expect(compareCalls()).toHaveLength(1);
+			expect(compareCalls()[0][1]).toMatchObject({
+				baseOid: "oid-1",
+				targetOid: "oid-3",
+			});
+		});
+
+		it("swap flips Base and Target and reloads", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+			await flush();
+
+			expect(compareCalls()).toHaveLength(2);
+			expect(compareCalls()[1][1]).toMatchObject({
+				baseOid: "oid-3",
+				targetOid: "oid-1",
+			});
+		});
+
+		it("clicking a compare file opens its Base-to-Target diff", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			const calls = mockInvoke.mock.calls.filter(
+				(c) => c[0] === "diff_compare_file",
+			);
+			expect(calls).toHaveLength(1);
+			expect(calls[0][1]).toMatchObject({
+				baseOid: "oid-1",
+				targetOid: "oid-3",
+				filePath: "f.ts",
+			});
+		});
+
+		it("escape clears the compare", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await flush();
+
+			expect(screen.queryByTestId("compare-header")).toBeNull();
+		});
+	});
 });

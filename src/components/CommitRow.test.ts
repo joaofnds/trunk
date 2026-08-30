@@ -167,7 +167,10 @@ describe("CommitRow", () => {
 		const row = container.firstElementChild;
 		expect(row).toBeTruthy();
 		await fireEvent.click(row as Element);
-		expect(onselect).toHaveBeenCalledWith("abc1234567");
+		expect(onselect).toHaveBeenCalledWith("abc1234567", {
+			compare: false,
+			range: false,
+		});
 	});
 
 	describe("clicking the SHA", () => {
