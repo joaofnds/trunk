@@ -1,11 +1,12 @@
 <script lang="ts">
 import Sortable from "sortablejs";
 import { copySha } from "../lib/clipboard.js";
+import { exactDate } from "../lib/exact-date.js";
 import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { validateRebasePlan } from "../lib/rebase-validation.js";
-import { exactLabel, relativeLabel } from "../lib/relative-time.js";
+import { relativeLabel } from "../lib/relative-time.js";
 import type {
 	RebaseColumnVisibility,
 	RebaseColumnWidths,
@@ -17,7 +18,6 @@ import {
 	setRebaseColumnWidths,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
-import { tooltip } from "../lib/tooltip.js";
 import type { RebaseTodoItem } from "../lib/types.js";
 
 type RebaseAction = "pick" | "squash" | "reword" | "drop";
@@ -620,7 +620,7 @@ let lastVisibleColumn = $derived.by(() => {
             class="rebase-cell flex-shrink-0 rebase-cell-date"
             style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;"
           >
-            <span class:rebase-text-drop={item.action === 'drop'} use:tooltip={exactLabel(item.authorTimestamp)} aria-label={exactLabel(item.authorTimestamp)}>{relativeLabel(item.authorTimestamp, nowMinute)}</span>
+            <span class:rebase-text-drop={item.action === 'drop'} use:exactDate={item.authorTimestamp}>{relativeLabel(item.authorTimestamp, nowMinute)}</span>
           </div>
         {/if}
       </div>

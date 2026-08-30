@@ -3,13 +3,14 @@ import { copySha } from "../lib/clipboard.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
+import { exactDate } from "../lib/exact-date.js";
 import {
 	COLUMN_PADDING_X,
 	LANE_WIDTH,
 	ROW_HEIGHT,
 } from "../lib/graph-constants.js";
 import { currentMinute } from "../lib/now.svelte.js";
-import { exactLabel, relativeLabel } from "../lib/relative-time.js";
+import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
 import { tooltip } from "../lib/tooltip.js";
@@ -72,7 +73,6 @@ let {
 const dateLabel = $derived(
 	relativeLabel(commit.author_timestamp, currentMinute()),
 );
-const dateExact = $derived(exactLabel(commit.author_timestamp));
 
 const isWip = $derived(commit.oid === "__wip__");
 const isStash = $derived(commit.is_stash);
@@ -220,7 +220,7 @@ const rowShadow = $derived(
   <!-- Column 6: Date -->
   {#if columnVisibility.date}
     <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: {columnWidths.date}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
-      {#if !isWip && !isStash}<span data-testid="commit-date" use:tooltip={dateExact} aria-label={dateExact}>{dateLabel}</span>{/if}
+      {#if !isWip && !isStash}<span data-testid="commit-date" use:exactDate={commit.author_timestamp}>{dateLabel}</span>{/if}
     </div>
   {/if}
 
