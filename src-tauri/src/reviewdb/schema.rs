@@ -116,7 +116,7 @@ pub fn version_guard(conn: &Connection) -> Result<(), TrunkError> {
     if user_version(conn)? > CURRENT_VERSION {
         return Err(TrunkError::new(
             "store_newer",
-            "This review store was written by a newer version of Trunk",
+            "This review store was written by a newer version of Trunk — restart Trunk to pick it up",
         ));
     }
 

@@ -31,6 +31,14 @@ impl PollHandle {
         self.halt();
     }
 
+    /// Whether the loop has exited on its own — the refused-store posture a
+    /// test observes without joining.
+    pub fn is_stopped(&self) -> bool {
+        self.thread
+            .as_ref()
+            .is_none_or(std::thread::JoinHandle::is_finished)
+    }
+
     fn halt(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(thread) = self.thread.take() {

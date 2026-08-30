@@ -620,6 +620,46 @@ fn a_draft_write_triggers_no_emit() {
     poll.stop();
 }
 
+/// D4/grilled §7: an open-time-only check would let a still-running old app
+/// keep refetching a store a newer CLI just migrated. Every access path
+/// refuses — open, read, write — and the poll stops instead of re-observing
+/// the refusal every 300 ms.
+#[test]
+fn a_newer_store_refuses_open_write_and_poll() {
+    let ctx = TestContext::new_empty();
+    let held = reviewdb::open(ctx.data_dir()).unwrap();
+    rusqlite::Connection::open(ctx.data_dir().join(reviewdb::DB_FILE))
+        .unwrap()
+        .pragma_update(None, "user_version", 99)
+        .unwrap();
+
+    let reopen = reviewdb::open(ctx.data_dir());
+    assert_eq!(reopen.unwrap_err().code, "store_newer");
+
+    let read = held.read(reviewdb::revision);
+    assert_eq!(read.unwrap_err().code, "store_newer");
+
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let write = submit_thread_inner(&held, &canonical, submission("refused"), 1_000);
+    let err = write.unwrap_err();
+    assert_eq!(err.code, "store_newer");
+    assert!(
+        err.message.contains("estart"),
+        "the refusal must tell the user the way out is restarting, got {:?}",
+        err.message,
+    );
+
+    let poll = reviewdb::poll::spawn(ctx.data_dir(), || {});
+    let deadline = std::time::Instant::now() + reviewdb::poll::INTERVAL * 5;
+    while !poll.is_stopped() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        poll.is_stopped(),
+        "the poll must stop on a refused store, not loop on the refusal",
+    );
+}
+
 // ── Milestone 2, Task 10: snapshot ref pruning at supersession ──────────────
 
 #[test]
