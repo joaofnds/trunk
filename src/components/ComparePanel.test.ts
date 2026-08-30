@@ -28,6 +28,8 @@ const fileDiffs: FileDiff[] = [
 	{ path: "src/main.ts", status: "Modified", is_binary: false, hunks: [] },
 ];
 
+const stat = { insertions: 48, deletions: 102, files_changed: 3 };
+
 function renderPanel(overrides: Record<string, unknown> = {}) {
 	const onswap = vi.fn();
 	const onclose = vi.fn();
@@ -37,6 +39,7 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 			base,
 			target,
 			fileDiffs,
+			stat,
 			selectedFile: null,
 			onfileselect,
 			onswap,
@@ -88,5 +91,22 @@ describe("ComparePanel", () => {
 			screen.getByRole("button", { name: "Close comparison" }),
 		);
 		expect(onclose).toHaveBeenCalledOnce();
+	});
+
+	it("shows each commit's author and age on its card", () => {
+		renderPanel();
+		expect(screen.getAllByText("Test User")).toHaveLength(2);
+	});
+
+	it("totals the comparison in the stats row", () => {
+		renderPanel();
+		expect(screen.getByText("3 files changed")).toBeInTheDocument();
+		expect(screen.getByText("+48")).toBeInTheDocument();
+		expect(screen.getByText("\u2212102")).toBeInTheDocument();
+	});
+
+	it("shows no stats row while the totals load", () => {
+		renderPanel({ stat: null });
+		expect(screen.queryByText(/files changed/)).toBeNull();
 	});
 });

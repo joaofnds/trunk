@@ -799,6 +799,27 @@ pub fn diff_compare_file_inner(
     walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
+/// Whole-compare totals via the cheap `Diff::stats()` path, mirroring
+/// `history::commit_stat_from_repo`: renames collapsed, no line walking.
+pub fn compare_stat_inner(
+    path: &str,
+    base_oid: Option<&str>,
+    target_oid: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<crate::git::types::DiffStat, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let base_tree = compare_tree(&repo, base_oid)?;
+    let target_tree = compare_tree(&repo, Some(target_oid))?;
+    let mut diff = repo.diff_tree_to_tree(base_tree.as_ref(), target_tree.as_ref(), None)?;
+    diff.find_similar(None)?;
+    let stats = diff.stats()?;
+    Ok(crate::git::types::DiffStat {
+        insertions: stats.insertions(),
+        deletions: stats.deletions(),
+        files_changed: stats.files_changed(),
+    })
+}
+
 /// The delta → metadata-only `FileDiff` mapping shared by the commit and
 /// compare file listings.
 fn file_metadata_list(diff: &git2::Diff) -> Vec<FileDiff> {
@@ -954,6 +975,22 @@ pub async fn diff_compare_file(
             &state_map,
             &options,
         )
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())
+}
+
+#[tauri::command]
+pub async fn compare_stat(
+    path: String,
+    base_oid: Option<String>,
+    target_oid: String,
+    state: State<'_, RepoState>,
+) -> Result<crate::git::types::DiffStat, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        compare_stat_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

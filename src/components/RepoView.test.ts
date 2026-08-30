@@ -1197,6 +1197,12 @@ describe("RepoView", () => {
 						);
 					case "list_compare_files":
 						return Promise.resolve([makeFileDiff("f.ts")]);
+					case "compare_stat":
+						return Promise.resolve({
+							insertions: 5,
+							deletions: 2,
+							files_changed: 1,
+						});
 					case "diff_compare_file":
 						return Promise.resolve([makeFileDiff(a?.filePath as string)]);
 					default:

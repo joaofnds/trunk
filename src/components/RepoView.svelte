@@ -44,6 +44,7 @@ import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
 	DiffRequestOptions,
+	DiffStat,
 	FileDiff,
 	GraphCommit,
 	RebaseTodo,
@@ -286,6 +287,7 @@ let compareTargetDetail = $state<CommitDetailType | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
 // push here updates nothing on screen.
 let compareFileDiffs = $state.raw<FileDiff[]>([]);
+let compareStat = $state<DiffStat | null>(null);
 let selectedCompareFile = $state<string | null>(null);
 let compareGeneration = 0;
 let compareOids = $derived<ReadonlySet<string>>(
@@ -659,6 +661,7 @@ function clearCompare() {
 	compareBaseDetail = null;
 	compareTargetDetail = null;
 	compareFileDiffs = [];
+	compareStat = null;
 	selectedCompareFile = null;
 	compareGeneration++;
 }
@@ -676,12 +679,17 @@ async function applyCompare(pair: ComparePair | null) {
 	}
 	if (!repoPath) return;
 	try {
-		const [files, baseDetail, targetDetail] = await Promise.all([
+		const [files, stat, baseDetail, targetDetail] = await Promise.all([
 			safeInvoke<FileDiff[]>("list_compare_files", {
 				path: repoPath,
 				baseOid: pair.baseOid,
 				targetOid: pair.targetOid,
 			}),
+			safeInvoke<DiffStat>("compare_stat", {
+				path: repoPath,
+				baseOid: pair.baseOid,
+				targetOid: pair.targetOid,
+			}).catch(() => null),
 			pair.baseOid
 				? safeInvoke<CommitDetailType>("get_commit_detail", {
 						path: repoPath,
@@ -695,6 +703,7 @@ async function applyCompare(pair: ComparePair | null) {
 		]);
 		if (gen !== compareGeneration) return;
 		compareFileDiffs = files;
+		compareStat = stat;
 		compareBaseDetail = baseDetail;
 		compareTargetDetail = targetDetail;
 	} catch (e) {
@@ -1380,6 +1389,7 @@ function startRightResize(e: MouseEvent) {
           base={compareBaseDetail}
           target={compareTargetDetail}
           fileDiffs={compareFileDiffs}
+          stat={compareStat}
           selectedFile={selectedCompareFile}
           onfileselect={handleCompareFileSelect}
           onswap={handleCompareSwap}

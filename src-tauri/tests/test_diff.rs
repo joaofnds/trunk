@@ -1212,3 +1212,44 @@ fn compare_with_no_base_diffs_against_the_empty_tree() {
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].status, trunk_lib::git::types::DiffStatus::Added);
 }
+
+/// The compare stats summarize the whole two-tree diff: Base has a.txt="two",
+/// Target has a.txt="one" (+1 −1) and adds f.txt (+1) → 2 files, +2 −1.
+#[test]
+fn compare_stat_totals_the_two_tree_diff() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\n")
+        .with_commit("root")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("f.txt", "feat\n")
+        .with_commit("feature adds f.txt")
+        .checkout("main")
+        .with_file("a.txt", "two\n")
+        .with_commit("main edits a.txt")
+        .build();
+
+    let repo = ctx.repo();
+    let main_tip = repo
+        .revparse_single("main")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    let feature_tip = repo
+        .revparse_single("feature")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    drop(repo);
+
+    let stat = ctx
+        .compare_stat(Some(&main_tip), &feature_tip)
+        .expect("compare stat failed");
+    assert_eq!(stat.files_changed, 2);
+    assert_eq!(stat.insertions, 2);
+    assert_eq!(stat.deletions, 1);
+}

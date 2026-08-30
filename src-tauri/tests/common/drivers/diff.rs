@@ -124,3 +124,13 @@ impl TestContext {
         )
     }
 }
+
+impl TestContext {
+    pub fn compare_stat(
+        &self,
+        base_oid: Option<&str>,
+        target_oid: &str,
+    ) -> Result<trunk_lib::git::types::DiffStat, TrunkError> {
+        diff::compare_stat_inner(self.path(), base_oid, target_oid, self.state_map())
+    }
+}

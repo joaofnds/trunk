@@ -1,8 +1,16 @@
 <script lang="ts">
-import { ArrowLeftRight, FolderTree, List } from "@lucide/svelte";
+import { ArrowDown, ArrowLeftRight, FolderTree, List } from "@lucide/svelte";
 import { copySha } from "../lib/clipboard.js";
 import { toFileStatusList } from "../lib/file-status.js";
-import type { CommitDetail, FileDiff, FileStatus } from "../lib/types.js";
+import { currentMinute } from "../lib/now.svelte.js";
+import { relativeLabel } from "../lib/relative-time.js";
+import type {
+	CommitDetail,
+	DiffStat,
+	FileDiff,
+	FileStatus,
+} from "../lib/types.js";
+import Avatar from "./Avatar.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
 interface Props {
@@ -11,6 +19,8 @@ interface Props {
 	/** Right/new side of the compare. */
 	target: CommitDetail;
 	fileDiffs: FileDiff[];
+	/** Whole-compare totals; null while they load. */
+	stat: DiffStat | null;
 	selectedFile: string | null;
 	onfileselect: (path: string) => void;
 	onswap: () => void;
@@ -23,6 +33,7 @@ let {
 	base,
 	target,
 	fileDiffs,
+	stat,
 	selectedFile,
 	onfileselect,
 	onswap,
@@ -33,6 +44,39 @@ let {
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 </script>
+
+{#snippet commitCard(commit: CommitDetail)}
+  <div style="
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: var(--space-2) var(--space-3);
+    background: var(--bg-1);
+    min-width: 0;
+  ">
+    <p style="
+      margin: 0;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--color-text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    ">{commit.summary}</p>
+    <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0;">
+      <Avatar name={commit.author_name} size={16} />
+      <span style="font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{commit.author_name}</span>
+      <span style="font-size: 12px; color: var(--color-text-muted); flex-shrink: 0;">{relativeLabel(commit.author_timestamp, currentMinute())}</span>
+      <span style="flex: 1;"></span>
+      <button
+        type="button"
+        title="Copy SHA"
+        class="sha-copy"
+        style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-0); font-family: var(--font-mono); font-size: 11px; flex-shrink: 0;"
+        onclick={() => copySha(commit.oid)}
+      >{commit.short_oid}</button>
+    </div>
+  </div>
+{/snippet}
 
 <div style="
   width: 100%;
@@ -51,7 +95,7 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     padding: 0 var(--space-2);
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1);
     flex-shrink: 0;
   ">
     <span style="
@@ -61,7 +105,27 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      padding-left: var(--space-1);
     ">Comparing</span>
+    <button
+      type="button"
+      aria-label="Swap comparison direction"
+      title="Swap comparison direction"
+      disabled={base === null}
+      aria-disabled={base === null}
+      onclick={onswap}
+      style="
+        display: inline-flex;
+        align-items: center;
+        padding: var(--space-1);
+        border-radius: var(--radius);
+        background: none;
+        border: none;
+        color: var(--color-text-muted);
+        cursor: {base === null ? 'default' : 'pointer'};
+        opacity: {base === null ? '0.4' : '1'};
+      "
+    ><ArrowLeftRight size={14} /></button>
     <button
       onclick={onclose}
       aria-label="Close comparison"
@@ -77,50 +141,51 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     >×</button>
   </div>
 
-  <!-- Base → Target header -->
+  <!-- Base card → connector → Target card, then totals -->
   <div data-testid="compare-header" style="
     padding: var(--space-3);
     box-shadow: inset 0 -1px 0 var(--color-border);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
     flex-shrink: 0;
   ">
-    <div style="display: flex; align-items: center; gap: var(--space-2); min-width: 0;">
-      {#if base}
-        <button type="button" title="Copy SHA" class="sha-copy" style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-0); font-family: monospace; font-size: 11px;" onclick={() => base && copySha(base.oid)}>{base.short_oid}</button>
-      {:else}
-        <span style="font-size: 11px; color: var(--color-text-muted); font-style: italic;">empty tree</span>
-      {/if}
-      <span aria-hidden="true" style="color: var(--color-text-muted);">→</span>
-      <button type="button" title="Copy SHA" class="sha-copy" style="display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-3); color: var(--fg-0); font-family: monospace; font-size: 11px;" onclick={() => copySha(target.oid)}>{target.short_oid}</button>
-      <button
-        type="button"
-        aria-label="Swap comparison direction"
-        title="Swap comparison direction"
-        disabled={base === null}
-        aria-disabled={base === null}
-        onclick={onswap}
-        style="
-          margin-left: auto;
-          display: inline-flex;
-          align-items: center;
-          padding: var(--space-1);
-          border-radius: var(--radius);
-          background: none;
-          border: none;
-          color: var(--color-text-muted);
-          cursor: {base === null ? 'default' : 'pointer'};
-          opacity: {base === null ? '0.4' : '1'};
-        "
-      ><ArrowLeftRight size={14} /></button>
+    {#if base}
+      {@render commitCard(base)}
+    {:else}
+      <div style="
+        border: 1px dashed var(--color-border);
+        border-radius: var(--radius);
+        padding: var(--space-2) var(--space-3);
+        font-size: 12px;
+        font-style: italic;
+        color: var(--color-text-muted);
+      ">empty tree</div>
+    {/if}
+    <div style="position: relative; height: var(--space-2);">
+      <span aria-hidden="true" style="
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--bg-1);
+        border: 1px solid var(--color-border);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-text-muted);
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1;
+      "><ArrowDown size={12} /></span>
     </div>
-    <div style="display: flex; flex-direction: column; gap: var(--space-1); font-size: 12px; color: var(--color-text); min-width: 0;">
-      {#if base}
-        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{base.summary}</span>
-      {/if}
-      <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{target.summary}</span>
-    </div>
+    {@render commitCard(target)}
+    {#if stat}
+      <div style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); font-size: 12px;">
+        <span style="color: var(--color-text-muted);">{stat.files_changed} {stat.files_changed === 1 ? 'file' : 'files'} changed</span>
+        <span style="flex: 1;"></span>
+        <span style="color: var(--color-diff-add); font-family: var(--font-mono);">+{stat.insertions}</span>
+        <span style="color: var(--color-diff-delete); font-family: var(--font-mono);">−{stat.deletions}</span>
+      </div>
+    {/if}
   </div>
 
   <!-- File list -->
@@ -131,9 +196,7 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     padding: var(--space-2) var(--space-3);
     flex-shrink: 0;
   ">
-    <span style="font-size: 11px; color: var(--color-text-muted);">
-      {fileStatusList.length} changed {fileStatusList.length === 1 ? 'file' : 'files'}
-    </span>
+    <span style="font-size: 11px; color: var(--color-text-muted);">Changed files</span>
     {#if ontreeviewtoggle}
       <button
         type="button"
