@@ -174,8 +174,8 @@ async function handleRevertAbort() {
 
 <div style="
   flex-shrink: 0;
-  min-height: var(--bar-h);
-  padding: 0 var(--space-3);
+  min-height: var(--control-lg-h);
+  padding: var(--space-1) var(--space-3);
   display: flex;
   align-items: center;
   gap: var(--space-2);

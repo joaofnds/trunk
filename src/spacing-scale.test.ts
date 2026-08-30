@@ -113,6 +113,22 @@ describe("spacing scale", () => {
 		expect([...new Set(raw)]).toEqual([]);
 	});
 
+	it("hides no declaration behind a comment the browser will not parse", () => {
+		/* A CSS comment is not valid inside an HTML style attribute: the browser
+		   drops the comment and every declaration after it, silently. A conflict
+		   header lost its height, background and rule this way, while the source
+		   still read correctly. */
+		const raw: string[] = [];
+		for (const file of svelteFiles(root)) {
+			const source = readFileSync(file, "utf8");
+			for (const [, body] of source.matchAll(/style="((?:[^"]|\n)*?)"/g)) {
+				if (body.includes("/*")) raw.push(relative(root, file));
+			}
+		}
+
+		expect([...new Set(raw)]).toEqual([]);
+	});
+
 	it("reaches for no Tailwind radius step beside the token", () => {
 		const raw: string[] = [];
 		for (const file of svelteFiles(root)) {

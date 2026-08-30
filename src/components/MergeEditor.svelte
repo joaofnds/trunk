@@ -422,9 +422,6 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     style="
       width: 100%;
       height: var(--bar-h);
-      /* The scroller is a flex column, so a bar without this gets compressed
-         below the height it declares — a pixel, which is exactly enough to sit
-         off the band every other bar paints. */
       flex-shrink: 0;
       background: var(--color-surface);
       box-shadow: inset 0 1px 0 var(--color-border), inset 0 -1px 0 var(--color-border);

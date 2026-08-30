@@ -145,8 +145,8 @@ async function handleForcePush(target: Target) {
     flex-shrink: 0;
     /* No declared height: this one wraps to several lines by design. The rules
        are still paint, so they cost it no space of its own. */
-    min-height: var(--bar-h);
-    padding: var(--space-2) var(--space-3);
+    min-height: var(--control-lg-h);
+    padding: var(--space-1) var(--space-3);
     box-shadow:
       inset 0 -1px 0 var(--color-border),
       inset 3px 0 0 var(--color-banner-warning-border);
