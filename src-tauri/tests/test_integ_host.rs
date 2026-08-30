@@ -178,3 +178,77 @@ fn create_commit_puts_its_own_commit_in_the_graph_cache() {
         .collect();
     assert_eq!(summaries, vec!["Add b", "First"]);
 }
+
+/// The compare surface end to end over IPC (TRUNK-001): camelCase args map onto
+/// the commands, the file listing crosses divergent branches with no ancestry,
+/// and the single-file diff carries hunks in Base → Target direction.
+#[test]
+fn compare_commands_answer_over_ipc() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\n")
+        .with_commit_at("root", 1_700_000_000)
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("f.txt", "feat\n")
+        .with_commit_at("feature adds f.txt", 1_700_086_400)
+        .checkout("main")
+        .with_file("a.txt", "two\n")
+        .with_commit_at("main edits a.txt", 1_700_172_800)
+        .build();
+    let (main_tip, feature_tip) = {
+        let repo = ctx.repo();
+        let tip = |name: &str| {
+            repo.revparse_single(name)
+                .unwrap()
+                .peel_to_commit()
+                .unwrap()
+                .id()
+                .to_string()
+        };
+        (tip("main"), tip("feature"))
+    };
+    let (_app, webview) = boot(WatcherState::disabled());
+    invoke(&webview, "open_repo", json!({ "path": ctx.path() })).expect("open the repository");
+
+    let files = invoke(
+        &webview,
+        "list_compare_files",
+        json!({ "path": ctx.path(), "baseOid": main_tip, "targetOid": feature_tip }),
+    )
+    .expect("list the compare files");
+    let mut paths: Vec<&str> = files
+        .as_array()
+        .expect("files is an array")
+        .iter()
+        .map(|f| f["path"].as_str().expect("a path"))
+        .collect();
+    paths.sort_unstable();
+    assert_eq!(paths, vec!["a.txt", "f.txt"]);
+
+    let diff = invoke(
+        &webview,
+        "diff_compare_file",
+        json!({
+            "path": ctx.path(),
+            "baseOid": main_tip,
+            "targetOid": feature_tip,
+            "filePath": "a.txt",
+            "options": { "contextLines": 3, "ignoreWhitespace": false, "showFullFile": false },
+        }),
+    )
+    .expect("diff one compared file");
+    let lines = &diff[0]["hunks"][0]["lines"];
+    let contents: Vec<(&str, &str)> = lines
+        .as_array()
+        .expect("lines is an array")
+        .iter()
+        .map(|l| {
+            (
+                l["origin"].as_str().expect("an origin"),
+                l["content"].as_str().expect("content"),
+            )
+        })
+        .collect();
+    assert!(contents.contains(&("Delete", "two\n")), "{contents:?}");
+    assert!(contents.contains(&("Add", "one\n")), "{contents:?}");
+}
