@@ -8,15 +8,25 @@ the checks.
 
 ## One toolchain, pinned
 
-`rust-toolchain.toml` pins the compiler; `mise.toml` must name the same version
-(mise exports `RUSTUP_TOOLCHAIN`, which outranks the pin file, so a mismatch
-silently wins). The justfile additionally unexports `RUSTUP_TOOLCHAIN` so a
-version leaked into a session's environment cannot reach the gate's cargo calls.
+Three files name the rust version and all three must agree: `rust-toolchain.toml`
+pins it, `mise.toml` feeds CI through `mise-action`, and `release.yml` passes it
+to `dtolnay/rust-toolchain`. `just toolchain-parity` fails the gate when they
+drift, so bump the version by editing all three in one commit.
+
+The pin is a rustup *directory override*: inside this repo it beats a toolchain
+installed by name. Two consequences, both of which have bitten:
+
+- mise exports `RUSTUP_TOOLCHAIN`, and an environment variable outranks even the
+  pin file, so a mismatch there wins silently. The justfile unexports it so a
+  version leaked into a session's environment cannot reach the gate's cargo calls.
+- `dtolnay/rust-toolchain` does not read the pin file. Asking it for `stable`
+  installs the cross-compile targets for stable, and the build then runs on the
+  pinned version, which does not have them — the macOS release legs fail to link.
+  It must be given the pinned version explicitly.
 
 Why it matters: all sessions share one `src-tauri/target`. Artifacts are keyed
 by compiler version, so every extra version in play multiplies cold builds and
-disk (three versions once grew the dir to 113GB). Bump the version by editing
-both files in one commit.
+disk (three versions once grew the dir to 113GB).
 
 ## macOS Gatekeeper can stall every fresh binary
 
@@ -44,6 +54,15 @@ Fix (both were needed on 2026-08-30):
 ## Scanners must not walk `src-tauri/target`
 
 The target dir is orders of magnitude bigger than the source. Biome's scanner is
-force-excluded from it in `biome.json` (`!!**/target`); Vite's watcher and the
-Tailwind scan are scoped in `vite.config.ts`. Any new repo-walking tool needs
-the same exclusion — a 35s biome run on 264 files was this, not lint cost.
+force-excluded from it in `biome.json` (`!!src-tauri/target`); Vite's watcher and
+the Tailwind scan are scoped in `vite.config.ts`. Any new repo-walking tool needs
+the same exclusion — a 35s biome run on 264 files was the 113GB target dir being
+walked, not lint cost. Once that dir was cleaned back to ~6GB the same walk cost
+~0.13s, so the exclusion is cheap insurance against the dir growing again rather
+than a standing 35s saving.
+
+Write these exclusions as anchored paths, never as `!!**/target`. Biome's `!!` is
+a force-exclude that outranks positive includes and cannot be overridden even by
+naming a file explicitly, so a `**` pattern would also silently un-check any
+source directory that happened to be called `target` or `node_modules` — plausible
+names in a Git GUI — with the Biome job still reporting green.
