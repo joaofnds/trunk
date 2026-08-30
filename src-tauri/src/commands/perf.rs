@@ -67,16 +67,26 @@ pub fn perf_reset() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("trunk-perf-test-{}", name));
-        let _ = std::fs::remove_dir_all(&dir);
-        dir.join("samples.jsonl")
+    /// A private directory per call, so concurrent `cargo test` runs in one
+    /// working tree cannot append to or delete each other's sample file.
+    ///
+    /// The sample file sits one level below the temp root, in a subdirectory
+    /// that does not exist yet: that missing parent is what makes the
+    /// directory-creating behaviour observable. The returned guard owns the
+    /// temp root, so hold it for the whole test.
+    fn scratch() -> (TempDir, std::path::PathBuf) {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("trunk-perf").join("samples.jsonl");
+        (dir, path)
     }
 
     #[test]
     fn appending_creates_the_directory_and_writes_one_line_each() {
-        let path = scratch("creates");
+        let (_dir, path) = scratch();
+
+        assert!(!path.parent().unwrap().exists());
 
         append_samples(&path, &[r#"{"a":1}"#.into(), r#"{"a":2}"#.into()]).unwrap();
 
@@ -86,7 +96,7 @@ mod tests {
 
     #[test]
     fn appending_keeps_what_is_already_there() {
-        let path = scratch("appends");
+        let (_dir, path) = scratch();
         append_samples(&path, &[r#"{"a":1}"#.into()]).unwrap();
 
         append_samples(&path, &[r#"{"a":2}"#.into()]).unwrap();
@@ -97,7 +107,7 @@ mod tests {
 
     #[test]
     fn truncating_empties_the_file_without_removing_it() {
-        let path = scratch("truncates");
+        let (_dir, path) = scratch();
         append_samples(&path, &[r#"{"a":1}"#.into()]).unwrap();
 
         truncate_samples(&path).unwrap();
@@ -107,7 +117,7 @@ mod tests {
 
     #[test]
     fn truncating_a_file_that_was_never_written_is_not_an_error() {
-        let path = scratch("truncate-missing");
+        let (_dir, path) = scratch();
 
         truncate_samples(&path).unwrap();
 
