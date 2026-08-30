@@ -10,7 +10,7 @@
  * which keeps the page same-origin and leaves no CORS headers to widen.
  */
 import { randomBytes } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import {
@@ -61,7 +61,21 @@ const events: BridgeEvent[] = [];
 host.onEvent((event, payload) => events.push({ event, payload }));
 
 const token = randomBytes(32).toString("hex");
+/* `mode` applies only when the file is created, so a token file left behind by
+   an editor, a shell redirect or an earlier tool keeps its old permissions and
+   the run's token lands in a world-readable file. Removing it first makes 0600
+   a property of every run rather than of the first one. */
+rmSync(TOKEN_FILE, { force: true });
 writeFileSync(TOKEN_FILE, token, { mode: 0o600 });
+
+/* The token grants the full command set, including the destructive ones. It has
+   no use once this process is gone, so it does not outlive it. */
+for (const signal of ["exit", "SIGINT", "SIGTERM"] as const) {
+	process.on(signal, () => {
+		rmSync(TOKEN_FILE, { force: true });
+		if (signal !== "exit") process.exit(0);
+	});
+}
 
 const route = createRouter({
 	token,
