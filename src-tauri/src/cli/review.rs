@@ -25,6 +25,10 @@ pub enum ReviewCmd {
         text: ReplyText,
         repo: Option<PathBuf>,
     },
+    Address {
+        id: String,
+        repo: Option<PathBuf>,
+    },
 }
 
 /// Where the reply body comes from: an argv word, or stdin for multi-line
@@ -74,6 +78,16 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
             Ok(ReviewCmd::Reply {
                 id: (*id).to_string(),
                 text,
+                repo,
+            })
+        }
+        "address" => {
+            let [id, rest @ ..] = rest.as_slice() else {
+                return Err(format!("address needs a thread id\n{}", usage()));
+            };
+            let repo = take_repo_flag(rest)?;
+            Ok(ReviewCmd::Address {
+                id: (*id).to_string(),
                 repo,
             })
         }
@@ -152,6 +166,27 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
             })?;
 
             Ok(format!("replied to {} as agent ({reply_id})\n", thread.id))
+        }
+        ReviewCmd::Address { id, repo } => {
+            let canonical = discover_repo(repo)?;
+            let thread = published_thread(&store, &canonical, &id)?;
+
+            // `set_state` runs `ThreadState::transition` with the agent
+            // channel — the one matrix, never re-derived here (TRUNK-17). An
+            // illegal claim fails naming the current state and writes nothing.
+            let now = reviewdb::now_secs();
+            store.write(|tx| {
+                reviewdb::threads::set_state(
+                    tx,
+                    &canonical,
+                    &thread.id,
+                    crate::review_types::ThreadState::Addressed,
+                    crate::review_types::Channel::Agent,
+                    now,
+                )
+            })?;
+
+            Ok(format!("{} claimed as addressed\n", thread.id))
         }
     }
 }

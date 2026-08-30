@@ -11,6 +11,7 @@ use common::context::TestContext;
 use std::path::Path;
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
+use trunk_lib::review_types::ThreadState;
 use trunk_lib::reviewdb::{self, reviews, threads};
 
 /// A store seeded the way the app would seed it: one composing review (title
@@ -458,6 +459,80 @@ fn cli_reply_to_a_composing_thread_answers_as_missing() {
         String::from_utf8_lossy(&of_missing.stderr),
         "an unpublished review must not leak through reply either",
     );
+}
+
+fn thread_state(ctx: &TestContext, review_id: &str, thread_id: &str) -> ThreadState {
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    store
+        .read(|c| threads::list_for_review(c, review_id))
+        .unwrap()
+        .into_iter()
+        .find(|t| t.id == thread_id)
+        .unwrap()
+        .state
+}
+
+#[test]
+fn cli_address_moves_open_to_addressed() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["address", &thread_id], ctx.data_dir());
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        thread_state(&ctx, &published, &thread_id),
+        ThreadState::Addressed,
+    );
+}
+
+#[test]
+fn cli_illegal_transition_names_the_current_state_and_writes_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    trunk_review_in(ctx.repo_path(), &["address", &thread_id], ctx.data_dir());
+
+    let second = trunk_review_in(ctx.repo_path(), &["address", &thread_id], ctx.data_dir());
+
+    assert_eq!(second.status.code(), Some(1), "a second claim must fail");
+    assert!(
+        String::from_utf8_lossy(&second.stderr).contains("addressed"),
+        "the error must name the CURRENT state, got {:?}",
+        String::from_utf8_lossy(&second.stderr),
+    );
+    assert!(second.stdout.is_empty(), "no partial write");
+    assert_eq!(
+        thread_state(&ctx, &published, &thread_id),
+        ThreadState::Addressed,
+        "the failed claim must change nothing",
+    );
+}
+
+#[test]
+fn cli_has_no_verb_for_done_or_reopen() {
+    let scratch = tempfile::TempDir::new().unwrap();
+
+    for verb in ["done", "dismiss", "reopen"] {
+        let out = trunk_review(&[verb, "SOMEID"], scratch.path());
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "`{verb}` must not exist: resolution is the human's, or an agent could settle a review",
+        );
+    }
 }
 
 #[test]
