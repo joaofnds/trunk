@@ -3,7 +3,7 @@
 // under its trigger and clamped to the viewport so it never spills off-screen.
 // `aria-label` on the trigger remains the accessible name; this is visual only.
 
-const SHOW_DELAY_MS = 120;
+export const SHOW_DELAY_MS = 300;
 const VIEWPORT_MARGIN = 6;
 const TRIGGER_GAP = 6;
 

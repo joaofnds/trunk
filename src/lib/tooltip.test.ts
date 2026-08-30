@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clampedLeft, tooltip } from "./tooltip.js";
+import { clampedLeft, SHOW_DELAY_MS, tooltip } from "./tooltip.js";
 
 describe("clampedLeft", () => {
 	it("centers the tooltip under the trigger when there is room", () => {
@@ -44,21 +44,21 @@ describe("tooltip", () => {
 
 	it("shows the tooltip after the delay on mouseenter", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 		expect(popup()?.textContent).toBe("Stash");
 	});
 
 	it("does not show the tooltip before the delay elapses", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(119);
+		vi.advanceTimersByTime(SHOW_DELAY_MS - 1);
 
 		expect(popup()).toBeNull();
 	});
 
 	it("hides the tooltip on mouseleave", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 		node.dispatchEvent(new MouseEvent("mouseleave"));
 
 		expect(popup()).toBeNull();
@@ -67,14 +67,14 @@ describe("tooltip", () => {
 	it("cancels a pending tooltip when the pointer leaves before the delay", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
 		node.dispatchEvent(new MouseEvent("mouseleave"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 		expect(popup()).toBeNull();
 	});
 
 	it("shows on focus and hides on blur", () => {
 		node.dispatchEvent(new FocusEvent("focus"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 		expect(popup()?.textContent).toBe("Stash");
 
 		node.dispatchEvent(new FocusEvent("blur"));
@@ -83,7 +83,7 @@ describe("tooltip", () => {
 
 	it("removes the tooltip when the trigger is clicked", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 		node.dispatchEvent(new MouseEvent("click"));
 
 		expect(popup()).toBeNull();
@@ -92,7 +92,7 @@ describe("tooltip", () => {
 	it("reflects an updated label on the next show", () => {
 		handle.update("Pop");
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 		expect(popup()?.textContent).toBe("Pop");
 	});
@@ -100,7 +100,7 @@ describe("tooltip", () => {
 	it("stops responding to events after destroy", () => {
 		handle.destroy();
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 		expect(popup()).toBeNull();
 	});
@@ -111,7 +111,7 @@ describe("tooltip", () => {
 		const blank = tooltip(blankNode, "   ");
 
 		blankNode.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 		expect(popup()).toBeNull();
 
 		blank.destroy();
@@ -120,7 +120,7 @@ describe("tooltip", () => {
 
 	it("hides a shown popup when updated to a blank label", () => {
 		node.dispatchEvent(new MouseEvent("mouseenter"));
-		vi.advanceTimersByTime(120);
+		vi.advanceTimersByTime(SHOW_DELAY_MS);
 		expect(popup()).not.toBeNull();
 
 		handle.update("");

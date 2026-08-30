@@ -7,6 +7,7 @@ import "../__tests__/helpers/tauri-mock";
 import { makeCommit } from "../__tests__/helpers/factories";
 import { exactLabel } from "../lib/relative-time.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store";
+import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
@@ -369,7 +370,7 @@ describe("CommitRow", () => {
 				expect(col.getAttribute("title")).toBeNull();
 
 				col.dispatchEvent(new MouseEvent("mouseenter"));
-				vi.advanceTimersByTime(120);
+				vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 				expect(document.querySelector(".tooltip-pop")?.textContent).toContain(
 					"4 files changed",
@@ -537,7 +538,7 @@ describe("CommitRow", () => {
 				expect(cell.getAttribute("aria-label")).toBe(exact);
 
 				cell.dispatchEvent(new MouseEvent("mouseenter"));
-				vi.advanceTimersByTime(120);
+				vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 				expect(document.querySelector(".tooltip-pop")?.textContent).toBe(exact);
 			} finally {

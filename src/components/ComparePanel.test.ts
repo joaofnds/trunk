@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { exactLabel } from "../lib/relative-time.js";
+import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type { CommitDetail, FileDiff } from "../lib/types.js";
 import ComparePanel from "./ComparePanel.svelte";
 
@@ -111,7 +112,7 @@ describe("ComparePanel", () => {
 			expect(cell.getAttribute("aria-label")).toBe(exact);
 
 			cell.dispatchEvent(new MouseEvent("mouseenter"));
-			vi.advanceTimersByTime(120);
+			vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 			expect(document.querySelector(".tooltip-pop")?.textContent).toBe(exact);
 		} finally {

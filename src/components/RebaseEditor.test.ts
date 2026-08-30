@@ -3,6 +3,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exactLabel } from "../lib/relative-time.js";
+import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 import type { RebaseTodoItem } from "../lib/types.js";
 import RebaseEditor from "./RebaseEditor.svelte";
 
@@ -364,7 +365,7 @@ describe("RebaseEditor", () => {
 				expect(cell.getAttribute("aria-label")).toBe(exact);
 
 				cell.dispatchEvent(new MouseEvent("mouseenter"));
-				vi.advanceTimersByTime(120);
+				vi.advanceTimersByTime(SHOW_DELAY_MS);
 
 				expect(document.querySelector(".tooltip-pop")?.textContent).toBe(exact);
 			} finally {
