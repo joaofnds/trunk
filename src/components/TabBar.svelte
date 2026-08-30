@@ -184,11 +184,15 @@ $effect(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
+    width: var(--control-h);
     height: var(--control-h);
     border-radius: var(--radius);
-    /* Paint, not length, like every other control declaring its height. */
-    box-shadow: inset 0 0 0 1px var(--line);
+    /* Dashed, because this is an add affordance rather than a real tab, and
+       a box-shadow cannot render a dash pattern. An outline is paint like an
+       inset shadow — it sits outside the box and costs the declared size
+       nothing, which is why the border this replaced had to go. */
+    outline: 1px dashed var(--line);
+    outline-offset: -1px;
     background: none;
     color: var(--fg-2);
     cursor: pointer;

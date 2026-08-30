@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import DirectoryRow from "./DirectoryRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import type { DirectoryNode } from "../lib/build-tree";
+import { treeIndent } from "../lib/chrome-heights.js";
 
 describe("DirectoryRow", () => {
 	function makeNode(name: string, childCount: number = 2): DirectoryNode {
@@ -18,6 +19,26 @@ describe("DirectoryRow", () => {
 		}));
 		return { type: "directory", name, path: name, children };
 	}
+
+	it("indents one gutter step per level, in the padding shorthand", () => {
+		/* Same construction and same trap as FileRow: a padding-left from a
+		   stylesheet rule loses to this inline shorthand, which is how the indent
+		   silently flattened to 8px at every depth once already. */
+		const { container } = render(DirectoryRow, {
+			props: {
+				node: makeNode("src"),
+				depth: 3,
+				expanded: false,
+				focused: false,
+				ontoggle: vi.fn(),
+			},
+		});
+
+		const row = container.querySelector("[role=treeitem]");
+		expect(row?.getAttribute("style")).toContain(
+			`padding: 0 var(--space-2) 0 ${treeIndent(3)}`,
+		);
+	});
 
 	it("renders directory name", () => {
 		render(DirectoryRow, {

@@ -5,7 +5,9 @@ import StagingPanel from "./StagingPanel.svelte";
 
 // All Tauri module mocks — declared locally for proper vi.mock hoisting.
 // Patched at the wrapper the components call, not at @tauri-apps/api/core
-// beneath it, so safeInvoke's error translation is exercised here too.
+// beneath it, so a test states the call the component makes rather than the
+// transport under it. safeInvoke itself is replaced here, so its error
+// translation does not run in this file; invoke.test.ts owns that.
 vi.mock("../lib/invoke.js", async () => {
 	const actual =
 		await vi.importActual<typeof import("../lib/invoke.js")>(
