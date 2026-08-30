@@ -42,12 +42,20 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
  *  `--control-h` is in: a full-size control sits in a bar and shares its edge,
  *  and this is what caught the toolbar's button group. The two smaller control
  *  heights are deliberately out: a bordered chip loses the same pixel, but the
- *  ~11 sites belong with the button-recipe extraction (TRUNK-50), not here. */
+ *  ~11 sites belong with the button-recipe extraction (TRUNK-50), not here.
+ *
+ *  Derived by shape rather than by name. An earlier version matched a closed
+ *  list of four spellings, so a token whose name was not already in the pattern
+ *  was exempt from the guard however it was used — which is the same way every
+ *  guard on this card failed before it. `--banded-lg-h` was live and unwatched
+ *  under that version. */
+const SMALLER_CONTROLS = new Set(["--control-sm-h", "--control-lg-h"]);
+
 function barTokens(): string[] {
 	const css = readFileSync(join(root, "app.css"), "utf8");
-	const chrome = [
-		...css.matchAll(/^\t(--(?:row|bar|topbar)-h|--control-h): /gm),
-	].map(([, name]) => name);
+	const chrome = [...css.matchAll(/^\t(--[\w-]*h): /gm)]
+		.map(([, name]) => name)
+		.filter((name) => !SMALLER_CONTROLS.has(name));
 	const diffRows = [...FIXED_ROW_HEIGHT_VARS.matchAll(/(--[\w-]+):/g)].map(
 		([, name]) => name,
 	);
