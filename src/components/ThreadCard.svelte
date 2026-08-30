@@ -107,8 +107,9 @@ async function submitReply() {
 
 // The card owns only the wording per target state; which targets to offer, and
 // in what order, is `thread.allowed_transitions` — the backend's one transition
-// matrix (spec §2), precomputed for the human channel. Total over ThreadState
-// so an entry the wire may someday send still renders instead of crashing.
+// matrix (spec §2), precomputed for the human channel. Total over the
+// ThreadState union, so a member the human wire never sends today
+// ("addressed") still renders instead of crashing.
 const TRANSITION_LABELS: Record<ThreadState, string> = {
 	done: "Mark done",
 	dismissed: "Dismiss",

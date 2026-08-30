@@ -159,7 +159,7 @@ pub fn set_state(
         ));
     };
 
-    ThreadState::from_str(&current)?.transition(next, channel)?;
+    let next = ThreadState::from_str(&current)?.transition(next, channel)?;
 
     conn.execute(
         "UPDATE threads SET state = ?2, updated_at = ?3 WHERE id = ?1",
