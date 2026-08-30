@@ -1063,3 +1063,152 @@ fn diff_commit_file_error_carries_a_json_code_and_message() {
         "error JSON must carry a string message, got {json}"
     );
 }
+
+// -- compare tests (TRUNK-001) --
+// A compare is a plain two-tree diff between a Base and a Target commit; no
+// ancestry is required, unlike a review range. Direction is Base → Target.
+
+/// main and feature diverge from a shared root; the compare lists exactly the
+/// tree differences between the two tips, in Base → Target direction.
+#[test]
+fn compare_across_divergent_branches_lists_tree_differences() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\n")
+        .with_commit("root")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("f.txt", "feat\n")
+        .with_commit("feature adds f.txt")
+        .checkout("main")
+        .with_file("a.txt", "two\n")
+        .with_commit("main edits a.txt")
+        .build();
+
+    let repo = ctx.repo();
+    let main_tip = repo
+        .revparse_single("main")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    let feature_tip = repo
+        .revparse_single("feature")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    drop(repo);
+
+    let files = ctx
+        .list_compare_files(Some(&main_tip), &feature_tip)
+        .expect("compare across divergent branches must not require ancestry");
+
+    let mut paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    paths.sort_unstable();
+    assert_eq!(paths, vec!["a.txt", "f.txt"]);
+    let a = files.iter().find(|f| f.path == "a.txt").unwrap();
+    assert_eq!(a.status, trunk_lib::git::types::DiffStatus::Modified);
+    let f = files.iter().find(|f| f.path == "f.txt").unwrap();
+    assert_eq!(f.status, trunk_lib::git::types::DiffStatus::Added);
+}
+
+/// The single-file compare reads old lines from Base and new lines from Target:
+/// Base has "two", Target has "one", so the hunk deletes two and adds one.
+#[test]
+fn compare_file_diff_direction_is_base_to_target() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\n")
+        .with_commit("root")
+        .with_branch("feature")
+        .checkout("main")
+        .with_file("a.txt", "two\n")
+        .with_commit("main edits a.txt")
+        .build();
+
+    let repo = ctx.repo();
+    let main_tip = repo
+        .revparse_single("main")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    let feature_tip = repo
+        .revparse_single("feature")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    drop(repo);
+
+    let files = ctx
+        .diff_compare_file(Some(&main_tip), &feature_tip, "a.txt")
+        .expect("single-file compare failed");
+    let hunk = &files[0].hunks[0];
+    let deleted: Vec<&str> = hunk
+        .lines
+        .iter()
+        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Delete))
+        .map(|l| l.content.as_str())
+        .collect();
+    let added: Vec<&str> = hunk
+        .lines
+        .iter()
+        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Add))
+        .map(|l| l.content.as_str())
+        .collect();
+    assert_eq!(deleted, vec!["two\n"]);
+    assert_eq!(added, vec!["one\n"]);
+}
+
+/// The compare honors DiffRequestOptions like every other diff surface: a
+/// whitespace-only change disappears under ignore_whitespace.
+#[test]
+fn compare_file_diff_respects_ignore_whitespace() {
+    let ctx = TestContext::builder()
+        .with_file("indent.rs", "fn main() {\nreturn 0;\n}\n")
+        .with_commit("unindented")
+        .with_file("indent.rs", "fn main() {\n    return 0;\n}\n")
+        .with_commit("indented only")
+        .build();
+
+    let repo = ctx.repo();
+    let tip_commit = repo.head().unwrap().peel_to_commit().unwrap();
+    let base = tip_commit.parent(0).unwrap().id().to_string();
+    let tip = tip_commit.id().to_string();
+    drop(tip_commit);
+    drop(repo);
+
+    let options = DiffRequestOptions {
+        ignore_whitespace: true,
+        ..Default::default()
+    };
+    let files = ctx
+        .diff_compare_file_with_options(Some(&base), &tip, "indent.rs", &options)
+        .expect("compare with options failed");
+    assert!(
+        files.iter().all(|f| f.hunks.is_empty()),
+        "whitespace-only change must vanish under ignore_whitespace, got {files:?}"
+    );
+}
+
+/// A None Base means the empty tree — the range gesture's oldest commit can be
+/// a root commit, whose "parent" is no tree at all. Every file shows as Added.
+#[test]
+fn compare_with_no_base_diffs_against_the_empty_tree() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\n")
+        .with_commit("root")
+        .build();
+
+    let repo = ctx.repo();
+    let tip = repo.head().unwrap().target().unwrap().to_string();
+    drop(repo);
+
+    let files = ctx.list_compare_files(None, &tip).expect("compare failed");
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].status, trunk_lib::git::types::DiffStatus::Added);
+}

@@ -282,6 +282,8 @@ pub fn configure<R: tauri::Runtime>(
             commands::diff::diff_unstaged,
             commands::diff::diff_staged,
             commands::diff::list_commit_files,
+            commands::diff::list_compare_files,
+            commands::diff::diff_compare_file,
             commands::diff::diff_commit_file,
             commands::diff::get_commit_detail,
             commands::stash::list_stashes,

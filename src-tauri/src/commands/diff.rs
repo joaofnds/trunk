@@ -773,6 +773,91 @@ pub fn diff_commit_file_inner(
     walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
+/// Resolve a commit OID to its tree for a compare side; `None` is the empty
+/// tree, which the range gesture needs when its oldest commit is a root.
+fn compare_tree<'r>(
+    repo: &'r git2::Repository,
+    oid: Option<&str>,
+) -> Result<Option<git2::Tree<'r>>, TrunkError> {
+    let Some(oid) = oid else { return Ok(None) };
+    let oid =
+        git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
+    Ok(Some(repo.find_commit(oid)?.tree()?))
+}
+
+/// Lightweight Base → Target file listing (TRUNK-001 compare). Two-tree diff
+/// with no ancestry requirement — unlike a review range, any pair of commits
+/// compares. Metadata only, like `list_commit_files_inner`.
+pub fn list_compare_files_inner(
+    path: &str,
+    base_oid: Option<&str>,
+    target_oid: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<Vec<FileDiff>, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let base_tree = compare_tree(&repo, base_oid)?;
+    let target_tree = compare_tree(&repo, Some(target_oid))?;
+    let diff = repo.diff_tree_to_tree(
+        base_tree.as_ref(),
+        target_tree.as_ref(),
+        Some(&mut git2::DiffOptions::new()),
+    )?;
+    Ok(file_metadata_list(&diff))
+}
+
+/// Diff a single file between Base and Target — used when the user clicks a
+/// file in the compare view.
+pub fn diff_compare_file_inner(
+    path: &str,
+    base_oid: Option<&str>,
+    target_oid: &str,
+    file_path: &str,
+    state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
+) -> Result<Vec<FileDiff>, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let base_tree = compare_tree(&repo, base_oid)?;
+    let target_tree = compare_tree(&repo, Some(target_oid))?;
+    let mut opts = git2::DiffOptions::new();
+    opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
+    apply_request_options(&mut opts, options);
+    let diff = repo.diff_tree_to_tree(base_tree.as_ref(), target_tree.as_ref(), Some(&mut opts))?;
+    walk_diff(diff, &repo, NewSideSource::Odb)
+}
+
+/// The delta → metadata-only `FileDiff` mapping shared by the commit and
+/// compare file listings.
+fn file_metadata_list(diff: &git2::Diff) -> Vec<FileDiff> {
+    let mut file_diffs = Vec::new();
+    for delta_idx in 0..diff.deltas().len() {
+        let delta = diff.get_delta(delta_idx).unwrap();
+        let file_path = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
+        let status = match delta.status() {
+            git2::Delta::Added => DiffStatus::Added,
+            git2::Delta::Deleted => DiffStatus::Deleted,
+            git2::Delta::Modified => DiffStatus::Modified,
+            git2::Delta::Renamed => DiffStatus::Renamed,
+            git2::Delta::Copied => DiffStatus::Copied,
+            git2::Delta::Untracked => DiffStatus::Untracked,
+            _ => DiffStatus::Unknown,
+        };
+        file_diffs.push(FileDiff {
+            path: file_path,
+            status,
+            is_binary,
+            hunks: Vec::new(),
+        });
+    }
+    file_diffs
+}
+
 pub fn get_commit_detail_inner(
     path: &str,
     oid: &str,
@@ -855,6 +940,47 @@ pub async fn diff_commit_file(
     let state_map = state.0.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
         diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())
+}
+
+#[tauri::command]
+pub async fn list_compare_files(
+    path: String,
+    base_oid: Option<String>,
+    target_oid: String,
+    state: State<'_, RepoState>,
+) -> Result<Vec<FileDiff>, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        list_compare_files_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())
+}
+
+#[tauri::command]
+pub async fn diff_compare_file(
+    path: String,
+    base_oid: Option<String>,
+    target_oid: String,
+    file_path: String,
+    options: DiffRequestOptions,
+    state: State<'_, RepoState>,
+) -> Result<Vec<FileDiff>, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        diff_compare_file_inner(
+            &path,
+            base_oid.as_deref(),
+            &target_oid,
+            &file_path,
+            &state_map,
+            &options,
+        )
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

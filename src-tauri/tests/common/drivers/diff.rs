@@ -83,3 +83,44 @@ impl TestContext {
         self.diff_unstaged(file_path)
     }
 }
+
+impl TestContext {
+    pub fn list_compare_files(
+        &self,
+        base_oid: Option<&str>,
+        target_oid: &str,
+    ) -> Result<Vec<FileDiff>, TrunkError> {
+        diff::list_compare_files_inner(self.path(), base_oid, target_oid, self.state_map())
+    }
+
+    pub fn diff_compare_file(
+        &self,
+        base_oid: Option<&str>,
+        target_oid: &str,
+        file_path: &str,
+    ) -> Result<Vec<FileDiff>, TrunkError> {
+        self.diff_compare_file_with_options(
+            base_oid,
+            target_oid,
+            file_path,
+            &DiffRequestOptions::default(),
+        )
+    }
+
+    pub fn diff_compare_file_with_options(
+        &self,
+        base_oid: Option<&str>,
+        target_oid: &str,
+        file_path: &str,
+        options: &DiffRequestOptions,
+    ) -> Result<Vec<FileDiff>, TrunkError> {
+        diff::diff_compare_file_inner(
+            self.path(),
+            base_oid,
+            target_oid,
+            file_path,
+            self.state_map(),
+            options,
+        )
+    }
+}
