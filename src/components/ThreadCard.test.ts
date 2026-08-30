@@ -192,19 +192,52 @@ describe("ThreadCard", () => {
 	// comparison, instead of being silently filtered away.
 	const STATIC_ACTION_LABELS = ["Edit", "Delete"];
 
-	it.each([
-		{ state: "open" as const, labels: ["Mark done", "Dismiss"] },
-		{ state: "addressed" as const, labels: ["Mark done", "Dismiss", "Reopen"] },
-		{ state: "done" as const, labels: ["Reopen"] },
-		{ state: "dismissed" as const, labels: ["Reopen"] },
-	])("offers $labels for a $state thread", ({ state, labels }) => {
-		const { container } = renderCard({ thread: { ...comment, state } });
-
-		const actionLabels = Array.from(container.querySelectorAll(".card-action"))
+	function stateActionLabels(container: HTMLElement) {
+		return Array.from(container.querySelectorAll(".card-action"))
 			.map((b) => b.textContent)
 			.filter((label) => !STATIC_ACTION_LABELS.includes(label ?? ""));
+	}
 
-		expect(actionLabels).toEqual(labels);
+	// Each row mirrors what the wire sends for that state (the backend's
+	// human-channel allowed_transitions, in wire order) and pins the label per
+	// target. The set itself is the backend's; only the wording is the card's.
+	it.each([
+		{
+			state: "open" as const,
+			allowed: ["done", "dismissed"] as const,
+			labels: ["Mark done", "Dismiss"],
+		},
+		{
+			state: "addressed" as const,
+			allowed: ["done", "dismissed", "open"] as const,
+			labels: ["Mark done", "Dismiss", "Reopen"],
+		},
+		{ state: "done" as const, allowed: ["open"] as const, labels: ["Reopen"] },
+		{
+			state: "dismissed" as const,
+			allowed: ["open"] as const,
+			labels: ["Reopen"],
+		},
+	])("offers $labels for a $state thread", ({ state, allowed, labels }) => {
+		const { container } = renderCard({
+			thread: { ...comment, state, allowed_transitions: [...allowed] },
+		});
+
+		expect(stateActionLabels(container)).toEqual(labels);
+	});
+
+	it("renders its state actions from allowed_transitions, not from the state", () => {
+		// A list the matrix would never pair with "open": a local switch on the
+		// state would offer Mark done / Dismiss and this expectation would fail.
+		const mismatched: Thread = {
+			...comment,
+			state: "open",
+			allowed_transitions: ["open"],
+		};
+
+		const { container } = renderCard({ thread: mismatched });
+
+		expect(stateActionLabels(container)).toEqual(["Reopen"]);
 	});
 
 	it("calls onstatechange with the target state when Mark done is clicked", async () => {
@@ -226,7 +259,11 @@ describe("ThreadCard", () => {
 	});
 
 	it("calls onstatechange with the target state when Reopen is clicked", async () => {
-		const done: Thread = { ...comment, state: "done" };
+		const done: Thread = {
+			...comment,
+			state: "done",
+			allowed_transitions: ["open"],
+		};
 		const onstatechange = vi.fn();
 		renderCard({ thread: done, onstatechange });
 

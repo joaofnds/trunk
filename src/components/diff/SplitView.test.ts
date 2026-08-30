@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
+import { aThread } from "../../__tests__/helpers/thread-fixture.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import SplitView from "./SplitView.svelte";
 
@@ -323,7 +324,7 @@ describe("SplitView row shapes", () => {
 		const { container } = render(SplitView, {
 			props: defaultProps({
 				viewComments: [
-					{
+					aThread({
 						id: "t1",
 						review_id: "r1",
 						text: "a note",
@@ -335,13 +336,7 @@ describe("SplitView row shapes", () => {
 							start_line: 11,
 							end_line: 11,
 						},
-						cached_excerpt: null,
-						state: "open",
-						stale: false,
-						channel: "human",
-						published: false,
-						replies: [],
-					},
+					}),
 				],
 			}),
 		});

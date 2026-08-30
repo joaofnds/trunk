@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	disablePerf,
 	enablePerf,
@@ -1425,19 +1426,12 @@ describe("RepoView", () => {
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === "list_threads"
 					? Promise.resolve([
-							{
+							aThread({
 								id: "t1",
 								review_id: "r1",
 								text: "a note",
-								anchor: null,
-								cached_excerpt: null,
 								commit_oid: "oid-1",
-								state: "open",
-								stale: false,
-								channel: "human",
-								published: false,
-								replies: [],
-							},
+							}),
 						])
 					: withCompare(cmd, args),
 			);

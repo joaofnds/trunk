@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	type BuildOptions,
 	buildInlineRows,
@@ -53,7 +54,7 @@ function thread(
 	startLine: number,
 	endLine: number,
 ): Thread {
-	return {
+	return aThread({
 		id,
 		review_id: "review-1",
 		text: id,
@@ -65,13 +66,7 @@ function thread(
 			start_line: startLine,
 			end_line: endLine,
 		},
-		cached_excerpt: null,
-		state: "open",
-		stale: false,
-		channel: "human",
-		published: false,
-		replies: [],
-	};
+	});
 }
 
 const fullMode: BuildOptions = {

@@ -363,6 +363,11 @@ export interface Thread {
 	// Delete / Delete reply controls rather than offer an action that only
 	// fails on the round trip.
 	published: boolean;
+	// The states a UI gesture may legally move this thread to, in presentation
+	// order — precomputed by the backend from the one transition matrix
+	// (ThreadState::allowed_transitions, human channel). ThreadCard renders
+	// these verbatim instead of re-deriving the matrix locally.
+	allowed_transitions: readonly ThreadState[];
 	// Present only on threads returned by `list_threads` (the render batch);
 	// optional so optimistic/raw shapes elsewhere still type-check. ThreadCard
 	// `{@html}`s it, falling back to escaped raw `text` when absent.

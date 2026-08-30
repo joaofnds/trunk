@@ -105,32 +105,23 @@ async function submitReply() {
 	replyDraft.close();
 }
 
-// The UI's slice of the transition matrix (spec §2): `open|addressed ->
-// done|dismissed`, `addressed -> open`, `done|dismissed -> open`. Nothing
-// here ever offers `addressed` — that is the agent's claim by definition, and
-// no UI control may claim it.
-function humanActionsFor(
-	state: ThreadState,
-): { label: string; next: ThreadState }[] {
-	switch (state) {
-		case "open":
-			return [
-				{ label: "Mark done", next: "done" },
-				{ label: "Dismiss", next: "dismissed" },
-			];
-		case "addressed":
-			return [
-				{ label: "Mark done", next: "done" },
-				{ label: "Dismiss", next: "dismissed" },
-				{ label: "Reopen", next: "open" },
-			];
-		case "done":
-		case "dismissed":
-			return [{ label: "Reopen", next: "open" }];
-	}
-}
+// The card owns only the wording per target state; which targets to offer, and
+// in what order, is `thread.allowed_transitions` — the backend's one transition
+// matrix (spec §2), precomputed for the human channel. Total over ThreadState
+// so an entry the wire may someday send still renders instead of crashing.
+const TRANSITION_LABELS: Record<ThreadState, string> = {
+	done: "Mark done",
+	dismissed: "Dismiss",
+	open: "Reopen",
+	addressed: "Mark addressed",
+};
 
-const stateActions = $derived(humanActionsFor(thread.state));
+const stateActions = $derived(
+	thread.allowed_transitions.map((next) => ({
+		label: TRANSITION_LABELS[next],
+		next,
+	})),
+);
 
 async function confirmedDeletion(
 	prompt: string,
