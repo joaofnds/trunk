@@ -1,4 +1,4 @@
-// Compare selection (TRUNK-001): the pure state machine behind picking two
+// Compare selection (TRUNK-1): the pure state machine behind picking two
 // commits in the graph and viewing the Base → Target diff between them.
 // Direction is selection order — the first pick is Base — except for a
 // shift-click range, which always compares parent(oldest) → newest so every

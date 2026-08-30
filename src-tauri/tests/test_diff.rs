@@ -1064,7 +1064,7 @@ fn diff_commit_file_error_carries_a_json_code_and_message() {
     );
 }
 
-// -- compare tests (TRUNK-001) --
+// -- compare tests (TRUNK-1) --
 // A compare is a plain two-tree diff between a Base and a Target commit; no
 // ancestry is required, unlike a review range. Direction is Base → Target.
 

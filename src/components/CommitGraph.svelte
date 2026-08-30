@@ -681,7 +681,7 @@ async function showCommitContextMenu(e: MouseEvent, commit: GraphCommit) {
 		);
 	}
 
-	// Compare (TRUNK-001): the context-menu fallback for the cmd-click gesture.
+	// Compare (TRUNK-1): the context-menu fallback for the cmd-click gesture.
 	const compareItems: (
 		| Awaited<ReturnType<typeof MenuItem.new>>
 		| Awaited<ReturnType<typeof PredefinedMenuItem.new>>

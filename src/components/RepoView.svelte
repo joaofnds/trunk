@@ -279,7 +279,7 @@ let selectedCommitFile = $state<string | null>(null);
 // it's still the latest before clearing state.
 let commitSelectGeneration = 0;
 
-// Compare selection (TRUNK-001): the Base → Target pair picked in the graph.
+// Compare selection (TRUNK-1): the Base → Target pair picked in the graph.
 // Detail/file state loads per pair; a stale response is dropped by generation.
 let compare = $state<ComparePair | null>(null);
 let compareBaseDetail = $state<CommitDetailType | null>(null);

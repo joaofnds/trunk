@@ -1138,7 +1138,7 @@ describe("RepoView", () => {
 		});
 	});
 
-	describe("compare selection (TRUNK-001)", () => {
+	describe("compare selection (TRUNK-1)", () => {
 		function makeFileDiff(path: string): FileDiff {
 			return { path, status: "Modified", is_binary: false, hunks: [] };
 		}

@@ -179,7 +179,7 @@ fn create_commit_puts_its_own_commit_in_the_graph_cache() {
     assert_eq!(summaries, vec!["Add b", "First"]);
 }
 
-/// The compare surface end to end over IPC (TRUNK-001): camelCase args map onto
+/// The compare surface end to end over IPC (TRUNK-1): camelCase args map onto
 /// the commands, the file listing crosses divergent branches with no ancestry,
 /// and the single-file diff carries hunks in Base → Target direction.
 #[test]

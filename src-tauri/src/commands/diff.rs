@@ -758,7 +758,7 @@ fn compare_tree<'r>(
     Ok(Some(repo.find_commit(oid)?.tree()?))
 }
 
-/// Lightweight Base → Target file listing (TRUNK-001 compare). Two-tree diff
+/// Lightweight Base → Target file listing (TRUNK-1 compare). Two-tree diff
 /// with no ancestry requirement — unlike a review range, any pair of commits
 /// compares. Metadata only, like `list_commit_files_inner`.
 pub fn list_compare_files_inner(
