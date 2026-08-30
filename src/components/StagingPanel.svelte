@@ -791,6 +791,9 @@ $effect(() => {
       </span>
       {#if currentBranch}
         <span style="font-size: 11px; color: var(--color-text-muted);">on</span>
+        <!-- inline-block, not inline-flex: text-overflow does not apply to a
+             flex container, so a long branch name would hard-clip instead of
+             showing an ellipsis. line-height does the vertical centring. -->
         <span style="
           background: color-mix(in oklch, var(--lane-0) 14%, transparent);
           box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--lane-0) 50%, transparent);
@@ -798,8 +801,8 @@ $effect(() => {
           padding: 0 var(--space-2);
           font-size: 11px;
           height: var(--control-sm-h);
-          display: inline-flex;
-          align-items: center;
+          display: inline-block;
+          line-height: var(--control-sm-h);
           color: var(--lane-0);
           font-weight: 700;
           white-space: nowrap;
@@ -924,8 +927,8 @@ $effect(() => {
           padding: 0 var(--space-2);
           font-size: 10px;
           height: var(--control-sm-h);
-          display: inline-flex;
-          align-items: center;
+          display: inline-block;
+          line-height: var(--control-sm-h);
           color: var(--bg-0);
           font-weight: 700;
         ">{operationInfo.source_branch}</span>
@@ -938,8 +941,8 @@ $effect(() => {
           padding: 0 var(--space-2);
           font-size: 10px;
           height: var(--control-sm-h);
-          display: inline-flex;
-          align-items: center;
+          display: inline-block;
+          line-height: var(--control-sm-h);
           color: var(--bg-0);
           font-weight: 700;
         ">{operationInfo.target_branch}</span>

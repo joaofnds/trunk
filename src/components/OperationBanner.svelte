@@ -188,14 +188,18 @@ async function handleRevertAbort() {
   <div style="font-size: 12px; color: var(--color-text); flex: 1; overflow: hidden; display: flex; align-items: center; gap: var(--space-1); white-space: nowrap;">
     {#if isMerge || isRebase}
       <span style="flex-shrink: 0;">{isMerge ? 'Merging' : 'Rebasing'}</span>
+      <!-- The branch chips are inline-block, not inline-flex: text-overflow
+           does not apply to a flex container, so an over-long branch name
+           would hard-clip instead of showing an ellipsis. line-height does
+           the vertical centring that align-items would have done. -->
       <span style="
         background: {sourceColor};
         border-radius: var(--radius-pill);
         padding: 0 var(--space-2);
         font-size: 11px;
         height: var(--control-sm-h);
-        display: inline-flex;
-        align-items: center;
+        display: inline-block;
+        line-height: var(--control-sm-h);
         color: var(--bg-0);
         font-weight: 700;
         overflow: hidden;
@@ -209,8 +213,8 @@ async function handleRevertAbort() {
         padding: 0 var(--space-2);
         font-size: 11px;
         height: var(--control-sm-h);
-        display: inline-flex;
-        align-items: center;
+        display: inline-block;
+        line-height: var(--control-sm-h);
         color: var(--bg-0);
         font-weight: 700;
         overflow: hidden;
