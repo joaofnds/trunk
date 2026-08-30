@@ -14,6 +14,7 @@ use std::path::PathBuf;
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReviewCmd {
     List { repo: Option<PathBuf> },
+    Show { id: String, repo: Option<PathBuf> },
 }
 
 /// Parse the argv slice after `trunk review`. Errors are the usage line the
@@ -27,6 +28,16 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
         "list" => {
             let repo = take_repo_flag(&rest)?;
             Ok(ReviewCmd::List { repo })
+        }
+        "show" => {
+            let [id, rest @ ..] = rest.as_slice() else {
+                return Err(format!("show needs a review id\n{}", usage()));
+            };
+            let repo = take_repo_flag(rest)?;
+            Ok(ReviewCmd::Show {
+                id: (*id).to_string(),
+                repo,
+            })
         }
         other => Err(format!("unknown verb `{other}`\n{}", usage())),
     }
@@ -59,6 +70,55 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
 
             Ok(render_list(&listed))
         }
+        ReviewCmd::Show { id, repo } => {
+            let canonical = discover_repo(repo)?;
+            let review = published_review(&store, &canonical, &id)?;
+
+            crate::commands::review::render_review_doc(
+                &store,
+                &canonical,
+                &review.id,
+                Some(canonical.clone()),
+                canonical.join(".git"),
+            )
+        }
+    }
+}
+
+/// Resolve `raw` against this repo's *published* reviews only: exact id, or a
+/// prefix matching exactly one. Anything else — missing, composing,
+/// another repo's — answers with one identical `not_found`, and ambiguity is
+/// judged after the published filter, so an unpublished review's existence
+/// never leaks, not even through a prefix collision (§5.1).
+fn published_review(
+    store: &reviewdb::Store,
+    canonical: &std::path::Path,
+    raw: &str,
+) -> Result<reviews::Review, TrunkError> {
+    let needle = reviewdb::ids::normalize(raw);
+    let published: Vec<reviews::Review> = store
+        .read(|conn| reviews::list(conn, canonical))?
+        .into_iter()
+        .filter(|r| r.published)
+        .collect();
+
+    if let Some(exact) = published.iter().find(|r| r.id == needle) {
+        return Ok(exact.clone());
+    }
+
+    let mut matches = published
+        .into_iter()
+        .filter(|r| !needle.is_empty() && r.id.starts_with(&needle));
+    match (matches.next(), matches.next()) {
+        (Some(only), None) => Ok(only),
+        (Some(a), Some(b)) => Err(TrunkError::new(
+            "ambiguous_id",
+            format!("id `{raw}` matches {} and {}", a.id, b.id),
+        )),
+        _ => Err(TrunkError::new(
+            "not_found",
+            format!("no review with id {raw}"),
+        )),
     }
 }
 

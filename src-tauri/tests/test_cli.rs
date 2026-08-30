@@ -166,6 +166,118 @@ fn discovery_from_a_subdirectory_and_a_symlink_matches_the_app() {
 }
 
 #[test]
+fn cli_show_prints_threads_states_and_excerpts() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "please rename this".to_string(),
+                        anchor: Some(trunk_lib::git::types::Anchor {
+                            commit_oid: "abc123def456".to_string(),
+                            file_path: "a.txt".to_string(),
+                            source: trunk_lib::git::types::Source::Diff,
+                            side: trunk_lib::git::types::Side::New,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        commit_oid: None,
+                        cached_excerpt: Some("EXCERPT_TOKEN line".to_string()),
+                    },
+                    500,
+                )
+            })
+            .unwrap();
+    }
+
+    let out = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for expected in ["please rename this", "EXCERPT_TOKEN line", "open", "a note"] {
+        assert!(
+            stdout.contains(expected),
+            "show must print threads, states and excerpts; missing {expected:?} in {stdout:?}",
+        );
+    }
+}
+
+#[test]
+fn a_thread_added_after_publish_shows_in_cli_show() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "LATE_THREAD_TOKEN".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    9_000,
+                )
+            })
+            .unwrap();
+    }
+
+    let out = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("LATE_THREAD_TOKEN"),
+        "a thread born into a published review is immediately CLI-visible",
+    );
+}
+
+#[test]
+fn cli_show_answers_a_composing_review_exactly_as_missing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (composing, _) = seed_reviews(&ctx);
+
+    let of_composing = trunk_review_in(ctx.repo_path(), &["show", &composing], ctx.data_dir());
+    let of_missing = trunk_review_in(ctx.repo_path(), &["show", "ZZZZZZZZ"], ctx.data_dir());
+
+    assert_eq!(
+        of_composing.status.code(),
+        of_missing.status.code(),
+        "same exit code",
+    );
+    assert_ne!(of_composing.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8_lossy(&of_composing.stderr).replace(&composing, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_missing.stderr),
+        "a composing review must be indistinguishable from a missing one",
+    );
+    assert!(
+        of_composing.stdout.is_empty(),
+        "no partial write on the error path",
+    );
+}
+
+#[test]
 fn the_review_subcommand_exits_without_a_window() {
     let scratch = tempfile::TempDir::new().unwrap();
 

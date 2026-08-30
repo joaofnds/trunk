@@ -1028,14 +1028,31 @@ pub fn generate_review_doc_inner(
     repo_path: &str,
     review_id: &str,
 ) -> Result<String, TrunkError> {
-    use crate::git::review::{DocCommit, RenderInput};
-
     // The repository contributes two path facts and nothing else — content
     // (subjects, excerpts) is stored, which is what lets the CLI render the
     // same doc with the repo closed (D13).
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let workdir = repo.workdir().map(std::path::Path::to_path_buf);
-    let repo_dir = repo.path().to_path_buf();
+
+    render_review_doc(
+        store,
+        canonical,
+        review_id,
+        repo.workdir().map(std::path::Path::to_path_buf),
+        repo.path().to_path_buf(),
+    )
+}
+
+/// Render `review_id`'s doc from stored rows. `workdir` and `repo_dir` are
+/// the caller's two path facts: the app takes them from its open repo, the
+/// CLI from discovery — neither reads repository content for the doc (D13).
+pub fn render_review_doc(
+    store: &Store,
+    canonical: &Path,
+    review_id: &str,
+    workdir: Option<PathBuf>,
+    repo_dir: PathBuf,
+) -> Result<String, TrunkError> {
+    use crate::git::review::{DocCommit, RenderInput};
 
     let input = store.read(|conn| {
         let review = reviews::get(conn, review_id)?.ok_or_else(|| {
