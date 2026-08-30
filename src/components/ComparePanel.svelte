@@ -19,7 +19,7 @@ interface Props {
 	/** Right/new side of the compare. */
 	target: CommitDetail;
 	fileDiffs: FileDiff[];
-	/** Whole-compare totals; null while they load. */
+	/** Whole-compare totals; null while they load (the bar shows counts only). */
 	stat: DiffStat | null;
 	selectedFile: string | null;
 	onfileselect: (path: string) => void;
@@ -43,6 +43,7 @@ let {
 }: Props = $props();
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
+let filesChanged = $derived(stat?.files_changed ?? fileDiffs.length);
 </script>
 
 {#snippet commitCard(commit: CommitDetail)}
@@ -50,19 +51,19 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     padding: var(--space-2) var(--space-3);
     min-width: 0;
   ">
-    <p style="
-      margin: 0;
+    <div style="
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--color-text);
+      line-height: 1.4;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    ">{commit.summary}</p>
-    <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0;">
-      <Avatar name={commit.author_name} size={16} />
-      <span style="font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{commit.author_name}</span>
-      <span style="font-size: 12px; color: var(--color-text-muted); flex-shrink: 0;">{relativeLabel(commit.author_timestamp, currentMinute())}</span>
+    ">{commit.summary}</div>
+    <div style="display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); min-width: 0; font-size: 11px;">
+      <Avatar name={commit.author_name} size={18} />
+      <span style="color: var(--fg-0); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{commit.author_name}</span>
+      <span style="color: var(--fg-3); font-family: var(--font-mono); flex-shrink: 0;">{relativeLabel(commit.author_timestamp, currentMinute())}</span>
       <span style="flex: 1;"></span>
       <button
         type="button"
@@ -102,7 +103,6 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      padding-left: var(--space-1);
     ">Comparing</span>
     <button
       type="button"
@@ -138,10 +138,10 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     >×</button>
   </div>
 
-  <!-- Base card → connector → Target card, then totals -->
+  <!-- Base → Target: one frame, the arrow on its divider -->
   <div data-testid="compare-header" style="
     padding: var(--space-3);
-    box-shadow: inset 0 -1px 0 var(--color-border);
+    border-bottom: 1px solid var(--color-border);
     flex-shrink: 0;
   ">
     <div style="border: 1px solid var(--color-border); border-radius: var(--radius);">
@@ -174,34 +174,49 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
       </div>
       {@render commitCard(target)}
     </div>
-    {#if stat}
-      <div style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); font-size: 12px;">
-        <span style="color: var(--color-text-muted);">{stat.files_changed} {stat.files_changed === 1 ? 'file' : 'files'} changed</span>
-        <span style="flex: 1;"></span>
-        <span style="color: var(--color-diff-add); font-family: var(--font-mono);">+{stat.insertions}</span>
-        <span style="color: var(--color-diff-delete); font-family: var(--font-mono);">−{stat.deletions}</span>
-      </div>
-    {/if}
   </div>
 
-  <!-- File list -->
+  <!-- File list, headed by the same stats bar CommitDetail uses -->
   <div style="
+    height: var(--bar-h);
+    padding: 0 var(--space-3);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
+    box-shadow: inset 0 -1px 0 var(--color-border);
     flex-shrink: 0;
   ">
-    <span style="font-size: 11px; color: var(--color-text-muted);">Changed files</span>
+    <span style="font-size: 12px; font-weight: 500; color: var(--color-text); flex: 1;">
+      {filesChanged} file{filesChanged === 1 ? '' : 's'} changed
+    </span>
+    {#if stat && (stat.insertions > 0 || stat.deletions > 0)}
+      <span style="display: inline-flex; gap: var(--space-2); flex-shrink: 0; margin-right: var(--space-2); font-family: var(--font-mono); font-size: 10.5px;">
+        {#if stat.insertions > 0}<span style="color: var(--ok);">+{stat.insertions}</span>{/if}
+        {#if stat.deletions > 0}<span style="color: var(--err);">−{stat.deletions}</span>{/if}
+      </span>
+    {/if}
     {#if ontreeviewtoggle}
       <button
-        type="button"
+        role="switch"
+        aria-checked={treeViewEnabled}
         aria-label={treeViewEnabled ? 'Switch to list view' : 'Switch to tree view'}
         title={treeViewEnabled ? 'List view' : 'Tree view'}
-        onclick={ontreeviewtoggle}
-        style="background: none; border: none; cursor: pointer; color: var(--color-text-muted); display: inline-flex; padding: var(--space-1);"
+        onclick={(e) => { e.stopPropagation(); ontreeviewtoggle?.(); }}
+        style="
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: var(--color-text-muted);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: var(--control-sm-h);
+          border-radius: var(--radius);
+          flex-shrink: 0;
+          padding: 0;
+        "
       >
-        {#if treeViewEnabled}<List size={14} />{:else}<FolderTree size={14} />{/if}
+        {#if treeViewEnabled}<FolderTree size={14} />{:else}<List size={14} />{/if}
       </button>
     {/if}
   </div>

@@ -105,8 +105,9 @@ describe("ComparePanel", () => {
 		expect(screen.getByText("\u2212102")).toBeInTheDocument();
 	});
 
-	it("shows no stats row while the totals load", () => {
+	it("counts from the file list and holds the totals while they load", () => {
 		renderPanel({ stat: null });
-		expect(screen.queryByText(/files changed/)).toBeNull();
+		expect(screen.getByText("1 file changed")).toBeInTheDocument();
+		expect(screen.queryByText("+48")).toBeNull();
 	});
 });
