@@ -568,6 +568,58 @@ fn every_write_bumps_the_revision_except_the_draft_autosave() {
     );
 }
 
+#[test]
+fn poll_detects_a_foreign_commit_within_two_intervals() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let (emitted, changes) = std::sync::mpsc::channel();
+    let poll = reviewdb::poll::spawn(ctx.data_dir(), move || {
+        let _ = emitted.send(());
+    });
+
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &foreign,
+        &canonical,
+        submission("from another process"),
+        1_000,
+    )
+    .unwrap();
+
+    changes
+        .recv_timeout(reviewdb::poll::INTERVAL * 5)
+        .expect("a foreign revision-bumping commit must be announced");
+    poll.stop();
+}
+
+#[test]
+fn a_draft_write_triggers_no_emit() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let (emitted, changes) = std::sync::mpsc::channel();
+    let poll = reviewdb::poll::spawn(ctx.data_dir(), move || {
+        let _ = emitted.send(());
+    });
+
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    trunk_lib::commands::review::save_draft_inner(&foreign, &canonical, "typing…", None, 1_000)
+        .unwrap();
+
+    assert!(
+        changes.recv_timeout(reviewdb::poll::INTERVAL * 3).is_err(),
+        "the draft autosave moves data_version but not the revision — no emit",
+    );
+    poll.stop();
+}
+
 // ── Milestone 2, Task 10: snapshot ref pruning at supersession ──────────────
 
 #[test]

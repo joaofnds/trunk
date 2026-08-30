@@ -151,8 +151,11 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	// the promise delivers after destroy().
 	let unlisten: (() => void) | undefined;
 	let cancelled = false;
-	listen<string>("reviews-changed", (event) => {
-		if (!canonicalPath || event.payload !== canonicalPath) return;
+	// A string payload is a per-repo emit; a payload-free event is the store
+	// poll announcing a foreign commit it can't attribute — refresh ours.
+	listen<string | null>("reviews-changed", (event) => {
+		if (!canonicalPath) return;
+		if (event.payload != null && event.payload !== canonicalPath) return;
 		refresh().catch(() => {});
 	}).then((fn) => {
 		if (cancelled) fn();

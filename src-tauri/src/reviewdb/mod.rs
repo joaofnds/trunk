@@ -10,6 +10,7 @@ pub mod anchor;
 pub mod commits;
 pub mod drafts;
 pub mod ids;
+pub mod poll;
 pub mod replies;
 pub mod reviews;
 pub mod schema;

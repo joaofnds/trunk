@@ -11,17 +11,21 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // Capture the rune's reviews-changed callback so tests can simulate a cross-tab
 // emit; the real IPC core is undefined under jsdom.
-let reviewsChangedHandler: ((event: { payload: string }) => void) | null = null;
+let reviewsChangedHandler:
+	| ((event: { payload: string | null }) => void)
+	| null = null;
 vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn((_event: string, cb: (event: { payload: string }) => void) => {
-		reviewsChangedHandler = cb;
-		return Promise.resolve(() => {
-			reviewsChangedHandler = null;
-		});
-	}),
+	listen: vi.fn(
+		(_event: string, cb: (event: { payload: string | null }) => void) => {
+			reviewsChangedHandler = cb;
+			return Promise.resolve(() => {
+				reviewsChangedHandler = null;
+			});
+		},
+	),
 }));
 
-function fireReviewsChanged(payload: string): void {
+function fireReviewsChanged(payload: string | null): void {
 	reviewsChangedHandler?.({ payload });
 }
 
@@ -197,6 +201,21 @@ describe("createReviewComments — reviews-changed listener", () => {
 		const before = manager.revision;
 
 		fireReviewsChanged("/repo");
+		await flush();
+
+		expect(manager.revision).toBeGreaterThan(before);
+		manager.destroy();
+	});
+
+	it("refreshes on a payload-free event, the store poll's shape", async () => {
+		// The poll can't know which repo a foreign commit touched, so it
+		// announces with no payload and every tab refreshes its own.
+		aPopulatedStore();
+		const manager = createReviewComments("/repo");
+		await flush();
+		const before = manager.revision;
+
+		fireReviewsChanged(null);
 		await flush();
 
 		expect(manager.revision).toBeGreaterThan(before);

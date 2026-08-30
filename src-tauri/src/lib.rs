@@ -218,6 +218,21 @@ pub fn configure<R: tauri::Runtime>(
                 }
             });
 
+            // Live reflection (milestone 3, D3): announce foreign store
+            // commits — a CLI reply, another instance — so they appear
+            // without a restart. The payload-free emit means "refresh
+            // yours"; the app's own writes also land here and cause a benign
+            // self-refetch, the same shape as the per-repo emits.
+            match crate::commands::store_data_dir(app.handle()) {
+                Ok(data_dir) => {
+                    let handle = app.handle().clone();
+                    app.manage(crate::reviewdb::poll::spawn(&data_dir, move || {
+                        let _ = handle.emit("reviews-changed", ());
+                    }));
+                }
+                Err(e) => eprintln!("review poll not started: {e}"),
+            }
+
             // Re-inset on every live resize (flicker-free), and position once before
             // the first paint. The frontend reports the restored zoom on mount via
             // set_traffic_light_zoom; other relayouts go through on_window_event.
