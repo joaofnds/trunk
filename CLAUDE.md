@@ -4,6 +4,11 @@ Desktop Git GUI — Tauri 2 + Svelte 5 + Rust.
 
 ## Commands
 
+Prefix every command below with `mise exec --`. This project pins its tool versions
+in `mise.toml`, and an agent's shell does not get mise's directory hook: without the
+prefix `just` is not found at all, and `bun` silently resolves to the global version
+instead of the pinned one.
+
 ```bash
 just              # List all recipes
 just dev          # Vite dev + Tauri watch
