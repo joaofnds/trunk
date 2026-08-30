@@ -38,8 +38,9 @@ DEFAULT_TIMEOUT = 600
 # `.boris/plans/2026-08-05-commit-graph-snapshot-testing-5-grilled.md`, in row order. Rows
 # 38-64 are the sites Appendix A never covered — the twelve `graph.rs` mutants outside row 7
 # and all fifteen in `graph_input.rs` — enumerated with `cargo mutants --list` and anchored by
-# hand. Indentation is part of the anchor; where indentation still collides, the anchor
-# carries the following line.
+# hand. Rows past 64 are sites later changes introduced, appended as they land (row 65:
+# TRUNK-43's `ext_tip`). Indentation is part of the anchor; where indentation still collides,
+# the anchor carries the following line.
 #
 # A whole-function replacement is expressed as an `if true { return … }` prologue spliced
 # under the signature: the body below it stops running, which is the mutation, and every
@@ -254,6 +255,9 @@ MUTATIONS = [
     (64, I, "layout/is_merge",
      "        let is_merge = !is_stash && parents.len() >= 2;",
      "        let is_merge = !is_stash && parents.len() < 2;"),
+    (65, P, "can_inline ext tip",
+     "            let ext_tip = head_lane_ext.first().copied();",
+     "            let ext_tip = head_lane_ext.last().copied();"),
 ]
 
 # The four graph suites, under the env scrub `just` applies. Never `just check`: ~24s against
