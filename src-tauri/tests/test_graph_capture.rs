@@ -99,6 +99,10 @@ fn shapes() -> Vec<Shape> {
             "behind-upstream-dirty",
             graph_shapes::behind_upstream_dirty_repo,
         ),
+        (
+            "stash-on-upstream-extension-tip",
+            graph_shapes::stash_on_upstream_extension_tip_repo,
+        ),
     ]
 }
 

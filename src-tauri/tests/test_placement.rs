@@ -288,6 +288,81 @@ fn a_stash_below_the_head_tip_branches_out_of_the_head_lane() {
 }
 
 #[test]
+fn a_stash_on_the_upstream_extension_tip_inlines_into_the_head_lane() {
+    let (stash, up5, up4, up3, base2, base1) = (oid(1), oid(2), oid(3), oid(4), oid(5), oid(6));
+    let input = PlacementInput {
+        oids: vec![stash, up5, up4, up3, base2, base1],
+        parents: HashMap::from([
+            (stash, vec![up5]),
+            (up5, vec![up4]),
+            (up4, vec![up3]),
+            (up3, vec![base2]),
+            (base2, vec![base1]),
+            (base1, vec![]),
+        ]),
+        stashes: HashSet::from([stash]),
+        head_tip: Some(base2),
+        tracked_upstream: Some(up5),
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(lane_of(&layout, stash), (0, 0));
+    assert_eq!(layout.max_columns, 1);
+    assert_eq!(edge_kinds(&layout, up5), ["Straight(0->0)"]);
+}
+
+#[test]
+fn a_stash_on_the_tiebreak_extension_tip_inlines_into_the_head_lane() {
+    let (stash, up5, up4, up3, base2, base1) = (oid(1), oid(2), oid(3), oid(4), oid(5), oid(6));
+    let input = PlacementInput {
+        oids: vec![stash, up5, up4, up3, base2, base1],
+        parents: HashMap::from([
+            (stash, vec![up5]),
+            (up5, vec![up4]),
+            (up4, vec![up3]),
+            (up3, vec![base2]),
+            (base2, vec![base1]),
+            (base1, vec![]),
+        ]),
+        stashes: HashSet::from([stash]),
+        head_tip: Some(base2),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(lane_of(&layout, stash), (0, 1));
+    assert_eq!(layout.max_columns, 1);
+}
+
+#[test]
+fn a_stash_inside_the_head_lane_extension_branches_right() {
+    let (stash, up5, up4, up3, base2, base1) = (oid(1), oid(2), oid(3), oid(4), oid(5), oid(6));
+    let input = PlacementInput {
+        oids: vec![stash, up5, up4, up3, base2, base1],
+        parents: HashMap::from([
+            (stash, vec![up4]),
+            (up5, vec![up4]),
+            (up4, vec![up3]),
+            (up3, vec![base2]),
+            (base2, vec![base1]),
+            (base1, vec![]),
+        ]),
+        stashes: HashSet::from([stash]),
+        head_tip: Some(base2),
+        tracked_upstream: Some(up5),
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(layout.placements[&stash].column, 1);
+}
+
+#[test]
 fn a_merge_edge_back_to_the_merges_own_column_stays_straight() {
     let (merge, first, second) = (oid(1), oid(2), oid(3));
     let input = PlacementInput {

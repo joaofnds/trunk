@@ -234,3 +234,13 @@ Changed goldens:
      M src/__tests__/goldens/graph-render/stash-19-two-backdated.txt
      M src/__tests__/goldens/graph-render/stash-20-stash-on-stash.txt
      M src/__tests__/goldens/graph-render/stash-21-tagged-stash.txt
+
+## 2026-08-30
+
+TRUNK-43: a stash whose first parent is the head-lane extension's tip now inlines at column 0, so stash-12-orphan-stash drops to a single lane (max_columns 1, no fork out of 'Add app')
+
+Changed goldens:
+
+     M src-tauri/tests/goldens/exports/stash-12-orphan-stash.json
+     M src-tauri/tests/goldens/graph/stash-12-orphan-stash.txt
+     M src/__tests__/goldens/graph-render/stash-12-orphan-stash.txt

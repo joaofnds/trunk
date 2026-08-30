@@ -1,16 +1,15 @@
-max_columns=2
+max_columns=1
 
 row 0: On main: half-finished notes
-  col=1 color=2 head=false merge=false tip=true stash=true in_head_chain=false
+  col=0 color=1 head=false merge=false tip=true stash=true in_head_chain=false
   parents: Add app
-  refs: On main: half-finished notes (Stash color=2 head=false)
-  edge 1->1 Straight color=2 dashed=true
+  refs: On main: half-finished notes (Stash color=1 head=false)
+  edge 0->0 Straight color=1 dashed=true
 
 row 1: Add app
-  col=0 color=1 head=false merge=false tip=true stash=false in_head_chain=false
+  col=0 color=1 head=false merge=false tip=false stash=false in_head_chain=false
   parents: Add notes
   refs: -
-  edge 0->1 ForkRight color=2 dashed=true
   edge 0->0 Straight color=1 dashed=false
 
 row 2: Add notes

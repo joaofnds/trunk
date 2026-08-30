@@ -383,18 +383,22 @@ an oversight. It is nil in single-lane repos, which is the common case.
 - [ ] **10-topic-below-parent** — same shape, topic sorts below the parent. Clean
       and dirty both keep topic at column 1; **only its colour changes**. Confirms
       the churn is bounded — not every branch moves.
+- [ ] **12-orphan-stash** — `reset --hard` dropped the stash's parent from every
+      ref, but the stash still points at it, so it keeps its row — and `Add app`
+      is the revwalk tie-break extension of the HEAD lane, with the stash parented
+      on its tip. Clean: one lane — stash at column 0 colour 1, straight dashed
+      line down to `Add app` (also column 0, colour 1), `Add notes` below it at
+      column 0 colour 0, no fork. Dirty (edit `notes.txt`): the WIP row suppresses
+      the extension, so stash and `Add app` move to column 1 (both colour 1) and
+      `Add notes` forks right into them. By design: `reset --hard` no longer
+      visually removes a commit a stash holds — dropping the stash is what
+      removes it.
 
 ### Shapes that must not change with dirtiness
 
 - [ ] **11-stash-parent-mid-chain** — a commit was made after the stash, so the
       stash's parent is no longer the tip. It branches right **identically** clean
       and dirty. Toggle `notes.txt` and nothing about the stash may move.
-- [ ] **12-orphan-stash** — `reset --hard` dropped the stash's parent from every
-      ref, but the stash still points at it, so it keeps its row. Stash at column
-      1, straight dashed line down to `Add app` (also column 1, colour 1), and
-      `Add notes` at column 0 forking right into it. Identical clean and dirty.
-      By design: `reset --hard` no longer visually removes a commit a stash holds
-      — dropping the stash is what removes it.
 
 ### Ordering — a stash sorts above the commit it was taken on
 

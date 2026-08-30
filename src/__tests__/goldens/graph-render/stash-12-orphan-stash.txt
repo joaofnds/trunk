@@ -1,13 +1,13 @@
-<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="152">
+<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
   <defs>
     <clipPath id="graph-clip">
       <rect height="4000" width="16" x="124" y="0">
   <g clip-path="url(#graph-clip)">
     <g class="overlay-paths" transform="translate(124, 0)">
-      <path d="M 24 23 V 34 C 24 38.418277998646346 19.58172200135365 42 16 42 H 8" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
+      <path d="M 8 23 V 42" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
       <path d="M 8 42 V 70" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
   <g class="overlay-dots" transform="translate(124, 0)">
-    <rect fill="none" height="12" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-2)" width="12" x="4" y="8">
+    <rect fill="none" height="12" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-1)" width="12" x="2" y="8">
     <circle cx="8" cy="42" fill="var(--lane-1)" r="6">
     <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">

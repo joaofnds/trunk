@@ -165,7 +165,10 @@ consuming no new lane and no new colour — when all of these hold:
 1. it is a stash;
 2. **the worktree is clean** (`!worktree_dirty`, read once per walk via
    `git::status::worktree_dirty`);
-3. **the HEAD lane has no upward extension** (`head_lane_ext.is_empty()`);
+3. **the HEAD lane has no upward extension, or the stash's first parent is the
+   extension's topmost row** (`head_lane_ext.is_empty() || ext_tip == parent_oid`, where
+   `ext_tip` is `head_lane_ext.first().copied()` — both `head_lane_extension` arms return
+   newest first);
 4. its first parent already has a column reserved;
 5. that parent is outside the HEAD chain (`!head_chain.contains(&p)`), or is the HEAD tip
    (`input.head_tip == Some(p)`);
@@ -177,9 +180,12 @@ The off-chain disjunct `!head_chain.contains(&p)` looks like it would inline a s
 from column 0, and it does not. Clauses 4 and 6 together demand a column that is reserved in `pending_parents` but
 still free in `active_lanes`. **Two** sites leave a column in that state, both at column 0:
 the HEAD-chain pre-reservation and `head_lane_extension` (`placement.rs`, "Pre-reserve column
-0"). Clause 3 excludes the second outright, so whenever an inline happens at all the
-pre-reservation is again the only one, and every inline still lands at column 0. Clause 5
-narrows it further to the HEAD tip. The binding form of this invariant, and what to do when a
+0"). Clause 3 excludes the second except at its top row — an inline may consume the
+reservation the extension left for `head_lane_ext[0]`, and only that one — so every inline
+still lands at column 0. When the extension is non-empty, the admitted parent is off the
+head chain and is not the HEAD tip, so the off-chain disjunct is the only half of clause 5
+it can satisfy: the disjunct is load-bearing, and deleting it silently reverts the ext-tip
+inline. The binding form of this invariant, and what to do when a
 third such site lands, is in `.claude/rules/commit-graph.md`.
 A stash whose parent sits on a topic branch off the HEAD chain branches right instead,
 taking its own lane and colour (probed 2026-08-03).
@@ -519,7 +525,8 @@ Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
 - `stash_stays_inline_when_worktree_clean` / `stash_branches_right_when_worktree_dirty` — the paired control for the dirtiness clause
 - `stash_branches_right_when_only_untracked` / `..._only_staged` — pins `include_untracked(true)` and the `INDEX_*` bits
 - `multiple_stashes_on_same_parent` — the newest inlines, the older branches right
-- `stash_branches_right_when_head_chain_occupies_lane` — asserts the branch-right shape; it does not pin the off-chain disjunct (row 11 survived it — see the ledger's AC-7 findings). The disjunct is pinned by `a_stash_below_the_head_tip_branches_out_of_the_head_lane` in `src-tauri/tests/test_placement.rs`, which is what flipped row 11 to `killed`
+- `stash_branches_right_when_head_chain_occupies_lane` — asserts the branch-right shape; it does not pin the off-chain disjunct (row 11 survived it — see the ledger's AC-7 findings). The disjunct is pinned by the ext-tip inline tests in `src-tauri/tests/test_placement.rs` (`a_stash_on_the_upstream_extension_tip_inlines_into_the_head_lane` and its tiebreak twin — the admitted parent satisfies only the off-chain arm) alongside `a_stash_below_the_head_tip_branches_out_of_the_head_lane`, which is what first flipped row 11 to `killed`
+- `a_stash_on_the_upstream_extension_tip_inlines_end_to_end` — the tracked-upstream arm's end-to-end witness: a stash parented on the extension tip inlines at column 0 through the real pipeline (`stash-on-upstream-extension-tip` rule input)
 - `dirtiness_relayouts_unrelated_branches` / `dirtiness_recolors_branches_below_the_stash_parent` — the accepted churn
 - `graph_and_dirty_counts_agree_when_*` — the graph and `get_dirty_counts` never disagree about dirtiness
 - `walk_commits_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it

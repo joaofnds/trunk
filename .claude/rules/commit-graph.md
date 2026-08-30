@@ -129,29 +129,54 @@ then mirror the same edit into the changelog.
   (amended 2026-08-02, after a
   TypeScript-only fix for the same collision was reverted; the counterexample was refuted
   2026-08-03 — 31 inline events across the suite and the QA fixtures, all at column 0)
-- Do not drop `can_inline`'s `head_lane_ext.is_empty()` clause. It is load-bearing twice: it
-  keeps the stash out of the rows the unpulled chain owns, **and** it is what keeps the
-  reserved-and-free invariant below valid. Pinned by
-  `stash_branches_right_when_the_head_lane_extends`
+- Do not drop **or widen** `can_inline`'s extension clause,
+  `head_lane_ext.is_empty() || ext_tip == parent_oid`, where `ext_tip` is
+  `head_lane_ext.first().copied()` — the topmost extension row. Both arms of
+  `head_lane_extension` return their path newest first, and reversing either silently
+  inverts the predicate. Below the top the clause is load-bearing twice: it keeps the stash
+  out of the rows the unpulled chain owns, **and** it is part of what keeps the
+  reserved-and-free invariant below valid; only a stash parented on the extension's own tip
+  may inline, because no column-0 holder is walked between that stash and its parent
+  (narrowed 2026-08-30 at the user's direction, TRUNK-43 — the all-or-nothing clause made a
+  stash on the extension tip take its own lane while column 0 sat free). Pinned by
+  `stash_branches_right_when_the_head_lane_extends` (parent below the extension still
+  branches right), `a_stash_inside_the_head_lane_extension_branches_right` (parent inside
+  it), and the tip-inline pair
+  `a_stash_on_the_upstream_extension_tip_inlines_into_the_head_lane` /
+  `a_stash_on_the_tiebreak_extension_tip_inlines_into_the_head_lane`
 - **Every unpaired `pending_parents.insert`** (the map is a local of `assign_lanes` in
   `placement.rs`) — one that reserves a column without also
   occupying it in `active_lanes` — must either be the HEAD-chain pre-reservation or be
-  excluded by a `can_inline` clause. Exactly two exist today, both at column 0: the
-  `head_chain` pre-reservation and `head_lane_extension`, the second excluded by
-  `head_lane_ext.is_empty()`. This is what makes every inline land at column 0, and it is why
-  the off-chain disjunct `!head_chain.contains(&p)` is not the exception it looks like:
-  `can_inline`'s reserved-and-free clauses (parent's column reserved, and still free in
-  `active_lanes`) demand a column only these two sites produce, so whenever an inline happens
-  the pre-reservation is the only site left. The disjunct is redundant under this
-  invariant and still stays: it is the sweep's row-11 anchor, pinned by
-  `a_stash_below_the_head_tip_branches_out_of_the_head_lane`, and deleting it turns the
-  invariant back into an unmeasured claim. The walk-through is in
+  excluded by a `can_inline` clause. Exactly two exist today, and both reserve column 0
+  only: the `head_chain` pre-reservation and `head_lane_extension`, the second excluded
+  except at its top row — an inline may consume the reservation the extension left for
+  `head_lane_ext[0]`, and only that one. That both sites reserve column 0 only is what
+  makes every inline land at column 0, and it is the property a third site must preserve.
+  The safety condition the exclusion stands in for, stated directly: an inline is safe
+  exactly when no row walked between the stash's row and its parent's row claims column 0.
+  The column-0 reservation holders are exactly `head_chain ∪ head_lane_ext`, one
+  first-parent line, and the walk is topological, so a holder walked between the stash and
+  its parent must be a descendant of that parent on that line — no such holder exists
+  precisely when the parent is the line's topmost member. The two `can_inline` clauses
+  (`head_lane_ext.is_empty() || ext_tip == parent_oid`, and
+  `!head_chain.contains(&p) || input.head_tip == Some(p)`) are the two-piece encoding of
+  that one condition. **The off-chain disjunct `!head_chain.contains(&p)` is no longer
+  redundant:** when the extension is non-empty, the admitted parent is `head_lane_ext[0]`,
+  which is **not** in `head_chain` and is **not** the HEAD tip — the off-chain disjunct is
+  the only half of that clause it can satisfy, so deleting it silently reverts the TRUNK-43
+  fix while leaving `a_stash_below_the_head_tip_branches_out_of_the_head_lane` green. It
+  stays the sweep's row-11 anchor, and after the narrowing it is killed by more tests, not
+  fewer. The walk-through is in
   `docs/architecture/commit-graph.md` §"Phase 1", which enumerates the clauses and quotes this
   disjunct in full (referent settled 2026-08-11 at the user's direction). Landing a third insert
-  without a matching exclusion re-opens it — re-derive before you land it, and record the
+  without a matching exclusion re-opens it: the third site must either reserve column 0
+  **and** sit on the same first-parent line above `head_tip`, or be excluded by a
+  `can_inline` clause — re-derive before you land it, and record the
   result here (re-derived 2026-08-05, when `head_lane_extension` became the second;
   re-derived 2026-08-28, when a dirty worktree began suppressing the extension: still exactly
-  two sites, and while dirty the second produces no insert at all)
+  two sites, and while dirty the second produces no insert at all; re-derived 2026-08-30
+  with TRUNK-43's tip narrowing, which this bullet now states — the off-chain disjunct
+  stopped being redundant in that same change)
 - Never let the HEAD lane's upward extension take a stash. A stash hangs off its parent by
   first parent like any commit, and placing it in the lane would both steal column 0 from the
   branch's real continuation and bypass `can_inline` entirely. `head_lane_extension` filters

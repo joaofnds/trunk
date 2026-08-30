@@ -262,14 +262,18 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
             // Inline stash placement: if the stash's parent column is free and
             // no intermediate commits will occupy it, place inline (same column
             // as parent) with a straight dashed line — like GitKraken.
-            // Only column 0 is ever reserved-and-free, so the !head_chain arm cannot
-            // fire on its own — see .claude/rules/commit-graph.md before narrowing any
-            // clause. The worktree must be clean: a dirty one puts the WIP row here.
-            // An extending HEAD lane rules inlining out entirely: the unpulled chain already
-            // owns column 0 across the rows between the stash and its parent.
+            // An extending HEAD lane admits an inline only at its topmost row: below the
+            // top, the unpulled chain still owns column 0 across the rows between the
+            // stash and its parent. That admitted parent is off the head chain and not the
+            // HEAD tip, so the !head_chain arm is what admits it — see
+            // .claude/rules/commit-graph.md before narrowing any clause. The worktree must
+            // be clean: a dirty one puts the WIP row here.
+            // `head_lane_extension` returns its path newest first on both arms, which is
+            // what makes `first()` the topmost row.
+            let ext_tip = head_lane_ext.first().copied();
             let can_inline = is_stash
                 && !input.worktree_dirty
-                && head_lane_ext.is_empty()
+                && (head_lane_ext.is_empty() || ext_tip == parent_oid)
                 && parent_col.is_some()
                 && parent_oid
                     .is_some_and(|p| !head_chain.contains(&p) || input.head_tip == Some(p))

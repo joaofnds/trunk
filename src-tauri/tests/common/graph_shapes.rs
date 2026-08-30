@@ -905,6 +905,25 @@ pub fn behind_upstream_dirty_repo() -> TestContext {
     ctx
 }
 
+/// The behind-upstream shape with a stash parented on the upstream tip itself: taken with
+/// HEAD detached on `up5`, so `refs/stash^` is the topmost extension row, then `main`
+/// checked back out and the worktree left clean.
+pub fn stash_on_upstream_extension_tip_repo() -> TestContext {
+    let ctx = behind_upstream_repo();
+    {
+        let mut repo = ctx.repo();
+        let up5 = repo.refname_to_id("refs/remotes/origin/main").unwrap();
+        repo.set_head_detached(up5).unwrap();
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
+            .unwrap();
+        std::fs::write(ctx.repo_path().join("f.txt"), "half-finished").unwrap();
+        repo.stash_save(&sig_at(9000), "on the upstream tip", None)
+            .unwrap();
+        checkout_main(&repo);
+    }
+    ctx
+}
+
 /// The behind-upstream shape with a stash taken on top, so the unpulled chain owns lane 0
 /// while the stash needs a column.
 pub fn stash_under_extended_head_lane_repo() -> TestContext {

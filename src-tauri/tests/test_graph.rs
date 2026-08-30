@@ -1504,6 +1504,22 @@ fn stash_branches_right_when_the_head_lane_extends() {
     }
 }
 
+#[test]
+fn a_stash_on_the_upstream_extension_tip_inlines_end_to_end() {
+    let commits = rule_inputs::commits("stash-on-upstream-extension-tip");
+
+    let stash = commits.iter().find(|c| c.is_stash).expect("no stash row");
+    assert_eq!(
+        (stash.column, stash.color_index),
+        (0, 0),
+        "the stash joins the lane its parent, the extension tip, already holds"
+    );
+    assert!(
+        !has_fork_right(row(&commits, "up5")),
+        "nothing branches out of the extension tip"
+    );
+}
+
 /// (column, colour) for one row — the pair the rule file's dirty-path bullet demands.
 fn place(commits: &[trunk_lib::git::types::GraphCommit], summary: &str) -> (usize, usize) {
     let c = row(commits, summary);
