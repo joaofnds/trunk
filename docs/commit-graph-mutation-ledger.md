@@ -154,47 +154,48 @@ row is left open.
 ### Rows 13, 14, 15, 16, 22 and 23 — the three resize guards are dead
 
 These six mutate `active_lanes.resize(x + 1, None)` into `resize(x - 1, …)` or `resize(x * 1, …)`
-at three sites: `placement.rs` `:275` (the inline branch), `:291` (post phase 1), and `:405` (the
-unclaimed-parent branch). Each site sits inside a guard of the form `if x >= active_lanes.len()`.
+at three sites in `placement.rs`: the inline branch's resize, the post-phase-1 resize, and the
+unclaimed-parent branch's resize. Each site sits inside a guard of the form `if x >= active_lanes.len()`.
 All three guards are permanently false, so all three bodies are unreachable. Three lemmas
 establish that.
 
 **Lemma 1. `active_lanes.len()` never decreases.** Only two kinds of operation change its length:
-the `push` at `:221`, and five `resize` calls at `:60`, `:72`, `:275`, `:291` and `:405`. Every
+the `push` in `reserve_head_lane`, and the five `resize` calls (two in `find_free_column_near`,
+plus the three above). Every
 resize is `resize(x + 1, None)` under a guard proving `x >= active_lanes.len()`. So the new length
 `x + 1` always exceeds the old one. The file contains no `truncate`, `pop`, `clear`, `drain`, or
 reassignment of the vector.
 
 **Lemma 2. `find_free_column_near` returns an index strictly inside `active_lanes`.** It has five
-return sites. `:61` returns `target` right after `resize(target + 1, …)`. `:64` returns `target`
-under `active_lanes[target].is_none()`, which would panic if `target` were out of range. `:73`
-returns `right` right after `resize(right + 1, …)`. `:76` returns `right` under the same kind of
-index. `:82` returns `left`, which is smaller than `target`, and the code reaches `:79` only when
-`right < active_lanes.len()` held at `:71`.
+return sites. One returns `target` right after `resize(target + 1, …)`; one returns `target`
+under `active_lanes[target].is_none()`, which would panic if `target` were out of range; one
+returns `right` right after `resize(right + 1, …)`; one returns `right` under the same kind of
+index; the last returns `left`, which is smaller than `target`, and that site is reached only when
+`right < active_lanes.len()` held at the loop's bound check.
 
 **Lemma 3. Every value stored in `pending_parents` indexes `active_lanes` validly.** There are
-four insert sites. `:225` and `:228` insert column 0 after the `push` at `:221`, so the length is
-at least 1. `:408` inserts `col`, which `:290` to `:292` has already brought into range. `:429`
-inserts a column from `find_free_column_near`, and `:428` indexes `active_lanes` at that column
-immediately. Lemma 1 keeps every such value valid for the rest of the walk.
+four insert sites. The two unpaired inserts in `reserve_head_lane` insert column 0 after that
+function's `push`, so the length is at least 1. The first paired insert inserts `col`, which the
+post-phase-1 resize has already brought into range. The second inserts a column from
+`find_free_column_near`, and the line above it indexes `active_lanes` at that column immediately. Lemma 1 keeps every such value valid for the rest of the walk.
 
-**Site `:291`, rows 15 and 16.** The value `col` comes from one of three places. From
-`pending_parents` at `:246`, which lemmas 1 and 3 bound. From the `can_inline` branch at `:273`,
-which also reads `pending_parents`. From `find_free_column_near` at `:281`, which lemma 2 bounds.
-All three are smaller than the length, so the guard at `:290` never fires.
+**Post-phase-1 site, rows 15 and 16.** The value `col` comes from one of three places. From
+`pending_parents`, which lemmas 1 and 3 bound. From the `can_inline` branch, which also reads
+`pending_parents`. From `find_free_column_near`, which lemma 2 bounds.
+All three are smaller than the length, so that site's guard never fires.
 
-**Site `:405`, rows 22 and 23.** After `:290` to `:292`, `col` is smaller than the length. Between
-`:292` and `:404` the code only iterates `active_lanes` at `:314` and assigns to existing slots at
-`:351` and `:356`. Neither changes the length. So the guard at `:404` never fires.
+**Unclaimed-parent site, rows 22 and 23.** After the post-phase-1 resize, `col` is smaller than
+the length. Between there and this site the code only iterates `active_lanes` (the `is_branch_tip`
+pass) and assigns to existing slots. Neither changes the length. So this site's guard never fires.
 
-**Site `:275`, rows 13 and 14.** This site needs its own argument, because `can_inline`'s last
-clause at `:269` to `:270` explicitly admits `pcol >= active_lanes.len()`. That disjunct exists to
+**Inline-branch site, rows 13 and 14.** This site needs its own argument, because `can_inline`'s
+last clause explicitly admits `pcol >= active_lanes.len()`. That disjunct exists to
 short-circuit before the `active_lanes[pcol]` index on the same line. It is a defensive bound
-check, not a reachable state. The value `c` at `:273` is a `pending_parents` value, which lemma 3
-bounds, so the guard at `:274` never fires either.
+check, not a reachable state. The value `c` is a `pending_parents` value, which lemma 3
+bounds, so this site's guard never fires either.
 
-**Falsifier, run and silent.** The three resize bodies were replaced with `panic!`, and `:269`'s
-first disjunct with `assert!(pcol < active_lanes.len())`. All 80 tests across the four graph
+**Falsifier, run and silent.** The three resize bodies were replaced with `panic!`, and `can_inline`'s
+last clause's first disjunct with `assert!(pcol < active_lanes.len())`. All 80 tests across the four graph
 suites stayed green. That result refutes nothing and proves nothing on its own. The lemmas above
 carry the verdict.
 

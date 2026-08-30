@@ -519,7 +519,7 @@ orphan branch's root, then allocate against a target of column 2. In 13 column 3
 so the search falls back leftward to column 1. In 14 nothing holds column 3, so the search
 extends rightward instead. Only the pair distinguishes a rightward step from a leftward one.
 
-Key test cases to maintain (all in `src-tauri/tests/test_graph.rs`):
+Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet names another file):
 - `stash_inline_on_head_tip` — clean tree, stash on the HEAD tip: parent's column, parent's colour, dashed Straight, no ForkRight
 - `stash_inline_with_topic_branch` — inline still holds with another branch present
 - `stash_stays_inline_when_worktree_clean` / `stash_branches_right_when_worktree_dirty` — the paired control for the dirtiness clause
