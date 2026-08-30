@@ -738,32 +738,39 @@ async function handleCompareSwap() {
 	);
 }
 
-// Compare file clicks toggle like commit-detail file clicks, and patch the
-// lightweight list entry with the full diff the same way.
+// Fetch one file's Base → Target diff and patch the lightweight list entry
+// with it. The pair is captured at fire time so a slow response for an old
+// pair can't patch the new pair's list (same hazard as
+// selectCommitFileIdempotent's fireOid).
+async function reloadCompareFile(
+	filePath: string,
+	options: DiffRequestOptions,
+) {
+	if (!repoPath || !compare) return;
+	const firePair = compare;
+	try {
+		const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
+			path: repoPath,
+			baseOid: firePair.baseOid,
+			targetOid: firePair.targetOid,
+			filePath,
+			options,
+		});
+		if (compare !== firePair) return;
+		compareFileDiffs = patchLoadedDiff(compareFileDiffs, filePath, fileDiffs);
+	} catch {
+		// Keep the lightweight entry — DiffPanel will show empty diff
+	}
+}
+
+// Compare file clicks toggle like commit-detail file clicks.
 async function handleCompareFileSelect(path: string) {
 	if (selectedCompareFile === path) {
 		selectedCompareFile = null;
 		return;
 	}
 	selectedCompareFile = path;
-	if (!repoPath || !compare) return;
-	// Captured at fire time so a slow response for an old pair can't patch the
-	// new pair's list (same hazard as selectCommitFileIdempotent's fireOid).
-	const firePair = compare;
-	try {
-		const options = buildDiffOptions();
-		const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
-			path: repoPath,
-			baseOid: firePair.baseOid,
-			targetOid: firePair.targetOid,
-			filePath: path,
-			options,
-		});
-		if (compare !== firePair) return;
-		compareFileDiffs = patchLoadedDiff(compareFileDiffs, path, fileDiffs);
-	} catch {
-		// Keep the lightweight entry — DiffPanel will show empty diff
-	}
+	await reloadCompareFile(path, buildDiffOptions());
 }
 
 // Graph clicks: a plain click keeps the existing toggle (re-clicking the
@@ -1353,21 +1360,7 @@ function startRightResize(e: MouseEvent) {
             if (selectedFile && selectedFile.kind !== "conflicted") {
               await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
             } else if (selectedCompareFile && compare) {
-              const firePair = compare;
-              try {
-                const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
-                  path: repoPath,
-                  baseOid: firePair.baseOid,
-                  targetOid: firePair.targetOid,
-                  filePath: selectedCompareFile,
-                  options,
-                });
-                if (compare === firePair) {
-                  compareFileDiffs = patchLoadedDiff(compareFileDiffs, selectedCompareFile, fileDiffs);
-                }
-              } catch {
-                // non-fatal
-              }
+              await reloadCompareFile(selectedCompareFile, options);
             } else if (selectedCommitFile && selectedCommitOid) {
               try {
                 const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
