@@ -187,3 +187,19 @@ describe("tree row indent", () => {
 		expect(treeIndent(3)).toBe(`${14 * UNIT}px`);
 	});
 });
+
+describe("merge editor conflict header", () => {
+	it("adds the pixel its second rule costs, so its band matches a plain bar", () => {
+		/* It fences content on both sides, so both rules paint inside the box and
+		   the visible band would otherwise be a pixel short of every other bar.
+		   The virtualized row model and the CSS must agree on that, or the two
+		   panes drift out of alignment with each other. */
+		const source = readFileSync(
+			resolve(process.cwd(), "src/components/MergeEditor.svelte"),
+			"utf8",
+		);
+
+		expect(source).toContain("const CONFLICT_HEADER_HEIGHT = BAR_HEIGHT + 1;");
+		expect(source).toContain("height: calc(var(--bar-h) + 1px);");
+	});
+});

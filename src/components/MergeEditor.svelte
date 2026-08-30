@@ -35,6 +35,11 @@ let { repoPath, filePath, onclose, onresolved }: Props = $props();
 
 // ---------- Constants ----------
 const LINE_HEIGHT = 18;
+
+/* A conflict header fences content on both sides, so it draws a rule on each
+   edge. Both rules paint inside the box, so it needs one pixel more than a
+   plain bar to leave the same visible band between them. */
+const CONFLICT_HEADER_HEIGHT = BAR_HEIGHT + 1;
 const OVERSCAN = 20;
 
 // ---------- State ----------
@@ -114,7 +119,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 				key: "",
 				lineNum: 0,
 				conflictNum: conflictCount,
-				height: BAR_HEIGHT,
+				height: CONFLICT_HEADER_HEIGHT,
 			});
 			theirs.push({
 				type: "conflict-header",
@@ -124,7 +129,7 @@ function flattenAligned(regions: ConflictRegion[]): {
 				key: "",
 				lineNum: 0,
 				conflictNum: conflictCount,
-				height: BAR_HEIGHT,
+				height: CONFLICT_HEADER_HEIGHT,
 			});
 			// Conflict lines
 			for (let j = 0; j < region.oursLines.length; j++) {
@@ -373,7 +378,7 @@ function scrollToConflict(idx: number) {
 	const targetTop = oursOffsets[rowIdx];
 	const scrollTo = Math.max(
 		0,
-		targetTop - panelViewportHeight / 2 + BAR_HEIGHT / 2,
+		targetTop - panelViewportHeight / 2 + CONFLICT_HEADER_HEIGHT / 2,
 	);
 	scrolling = true;
 	for (const panel of panelRefs) {
@@ -421,10 +426,10 @@ function isHunkAllTaken(side: "ours" | "theirs", regionIdx: number): boolean {
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleToggleHunk(side, row.regionIdx); } }}
     style="
       width: 100%;
-      height: var(--bar-h);
+      height: calc(var(--bar-h) + 1px);
       flex-shrink: 0;
       background: var(--color-surface);
-      box-shadow: inset 0 -1px 0 var(--color-border);
+      box-shadow: inset 0 1px 0 var(--color-border), inset 0 -1px 0 var(--color-border);
       display: flex;
       align-items: center;
       padding: 0 var(--space-2);
