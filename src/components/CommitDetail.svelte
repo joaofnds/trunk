@@ -13,6 +13,7 @@ import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
 import { createDraft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
+import { toFileStatusList } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	addCommitThread,
@@ -29,7 +30,6 @@ import type {
 	CommitNav,
 	FileDiff,
 	FileStatus,
-	FileStatusType,
 } from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
 import ThreadCard from "./ThreadCard.svelte";
@@ -77,23 +77,7 @@ let fileCommentCounts = $derived(
 		: new Map<string, number>(),
 );
 
-const DIFF_STATUS_MAP: Record<string, FileStatusType> = {
-	Added: "New",
-	Deleted: "Deleted",
-	Modified: "Modified",
-	Renamed: "Renamed",
-	Copied: "Modified",
-	Untracked: "New",
-	Unknown: "Modified",
-};
-
-let fileStatusList = $derived<FileStatus[]>(
-	fileDiffs.map((fd) => ({
-		path: fd.path,
-		status: DIFF_STATUS_MAP[fd.status] ?? "Modified",
-		is_binary: fd.is_binary,
-	})),
-);
+let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 
 async function showFileContextMenu(e: MouseEvent, filePath: string) {
 	e.preventDefault();

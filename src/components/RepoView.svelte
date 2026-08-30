@@ -19,6 +19,7 @@ import {
 } from "../lib/compare-select.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
+import { patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
@@ -744,9 +745,7 @@ async function handleCompareFileSelect(path: string) {
 			options,
 		});
 		if (compare !== firePair) return;
-		compareFileDiffs = compareFileDiffs.map((fd) =>
-			fd.path === path && fileDiffs.length > 0 ? fileDiffs[0] : fd,
-		);
+		compareFileDiffs = patchLoadedDiff(compareFileDiffs, path, fileDiffs);
 	} catch {
 		// Keep the lightweight entry — DiffPanel will show empty diff
 	}
@@ -857,9 +856,7 @@ async function selectCommitFileIdempotent(path: string) {
 
 			if (fireOid !== selectedCommitOid) return;
 			// Replace the lightweight entry with the raw diff data
-			commitFileDiffs = commitFileDiffs.map((fd) =>
-				fd.path === path && fileDiffs.length > 0 ? fileDiffs[0] : fd,
-			);
+			commitFileDiffs = patchLoadedDiff(commitFileDiffs, path, fileDiffs);
 		});
 	} catch {
 		// Keep the lightweight entry — DiffPanel will show empty diff
@@ -1348,9 +1345,7 @@ function startRightResize(e: MouseEvent) {
                   options,
                 });
                 if (compare === firePair) {
-                  compareFileDiffs = compareFileDiffs.map((fd) =>
-                    fd.path === selectedCompareFile && fileDiffs.length > 0 ? fileDiffs[0] : fd,
-                  );
+                  compareFileDiffs = patchLoadedDiff(compareFileDiffs, selectedCompareFile, fileDiffs);
                 }
               } catch {
                 // non-fatal
@@ -1363,9 +1358,7 @@ function startRightResize(e: MouseEvent) {
                   filePath: selectedCommitFile,
                   options,
                 });
-                commitFileDiffs = commitFileDiffs.map((fd) =>
-                  fd.path === selectedCommitFile && fileDiffs.length > 0 ? fileDiffs[0] : fd,
-                );
+                commitFileDiffs = patchLoadedDiff(commitFileDiffs, selectedCommitFile, fileDiffs);
               } catch {
                 // non-fatal
               }

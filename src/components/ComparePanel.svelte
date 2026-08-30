@@ -1,12 +1,8 @@
 <script lang="ts">
 import { ArrowLeftRight, FolderTree, List } from "@lucide/svelte";
 import { copySha } from "../lib/clipboard.js";
-import type {
-	CommitDetail,
-	FileDiff,
-	FileStatus,
-	FileStatusType,
-} from "../lib/types.js";
+import { toFileStatusList } from "../lib/file-status.js";
+import type { CommitDetail, FileDiff, FileStatus } from "../lib/types.js";
 import TreeFileList from "./TreeFileList.svelte";
 
 interface Props {
@@ -35,23 +31,7 @@ let {
 	ontreeviewtoggle,
 }: Props = $props();
 
-const DIFF_STATUS_MAP: Record<string, FileStatusType> = {
-	Added: "New",
-	Deleted: "Deleted",
-	Modified: "Modified",
-	Renamed: "Renamed",
-	Copied: "Modified",
-	Untracked: "New",
-	Unknown: "Modified",
-};
-
-let fileStatusList = $derived<FileStatus[]>(
-	fileDiffs.map((fd) => ({
-		path: fd.path,
-		status: DIFF_STATUS_MAP[fd.status] ?? "Modified",
-		is_binary: fd.is_binary,
-	})),
-);
+let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 </script>
 
 <div style="
