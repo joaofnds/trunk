@@ -1,6 +1,7 @@
 <script lang="ts">
 import {
 	buildInlineRows,
+	countLines,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 } from "../../lib/diff-rows.js";
@@ -113,14 +114,6 @@ $effect(() => {
 	window.addEventListener("mouseup", stopDrag);
 	return () => window.removeEventListener("mouseup", stopDrag);
 });
-
-function countLines(diffs: FileDiff[]): number {
-	let total = 0;
-	for (const fd of diffs) {
-		for (const hunk of fd.hunks) total += hunk.lines.length;
-	}
-	return total;
-}
 
 function computeSpan(anchor: number | null, focus: number | null): Set<number> {
 	if (anchor === null || focus === null) return new Set();

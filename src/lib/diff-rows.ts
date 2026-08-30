@@ -95,6 +95,16 @@ export const FIXED_ROW_HEIGHT_VARS = [
 	`--diff-binary-row-height: ${FIXED_ROW_HEIGHTS.binary}px`,
 ].join("; ");
 
+/** Total diff lines across files — the `lines` attribute every view's
+ *  `diff.buildRows` observation reports. */
+export function countLines(diffs: FileDiff[]): number {
+	let total = 0;
+	for (const fd of diffs) {
+		for (const hunk of fd.hunks) total += hunk.lines.length;
+	}
+	return total;
+}
+
 export function buildInlineRows(
 	fileDiffs: FileDiff[],
 	opts: BuildOptions,

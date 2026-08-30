@@ -2,6 +2,7 @@
 import { onMount } from "svelte";
 import {
 	buildInlineRows,
+	countLines,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
 	rowIndexForLine,
@@ -165,14 +166,6 @@ onMount(() => {
 		if (flashTimer) clearTimeout(flashTimer);
 	};
 });
-
-function countLines(diffs: FileDiff[]): number {
-	let total = 0;
-	for (const fd of diffs) {
-		for (const hunk of fd.hunks) total += hunk.lines.length;
-	}
-	return total;
-}
 
 /** How many hunks `[` and `]` step through. */
 export function hunkCount(): number {
