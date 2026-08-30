@@ -28,13 +28,13 @@ export const TAB_SIZE = 4;
 // padding each side, the 3px change-indicator border, and the 8px gap after
 // each of the two gutters. Erring high shortens the wrap point, which
 // over-predicts a wrapped row's height — the safe direction.
-export const ROW_CHROME_PX = 35;
+const ROW_CHROME_PX = 35;
 
 // Horizontal room ONE HALF spends on something other than columns: 8px padding
 // each side, the 3px change-indicator border, the 8px gap after this half's one
 // gutter, and the 1px divider between the halves. The inline views spend two
 // gutter gaps here; a split half has one.
-export const SPLIT_ROW_CHROME_PX = 28;
+const SPLIT_ROW_CHROME_PX = 28;
 
 export interface VirtualizedDiffDeps {
 	model: () => DiffRowModel;
