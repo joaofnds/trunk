@@ -717,34 +717,7 @@ pub fn list_commit_files_inner(
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut { opts }))?
     };
-
-    let mut file_diffs = Vec::new();
-    for delta_idx in 0..diff.deltas().len() {
-        let delta = diff.get_delta(delta_idx).unwrap();
-        let file_path = delta
-            .new_file()
-            .path()
-            .or_else(|| delta.old_file().path())
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-        let status = match delta.status() {
-            git2::Delta::Added => DiffStatus::Added,
-            git2::Delta::Deleted => DiffStatus::Deleted,
-            git2::Delta::Modified => DiffStatus::Modified,
-            git2::Delta::Renamed => DiffStatus::Renamed,
-            git2::Delta::Copied => DiffStatus::Copied,
-            git2::Delta::Untracked => DiffStatus::Untracked,
-            _ => DiffStatus::Unknown,
-        };
-        file_diffs.push(FileDiff {
-            path: file_path,
-            status,
-            is_binary,
-            hunks: Vec::new(),
-        });
-    }
-    Ok(file_diffs)
+    Ok(file_metadata_list(&diff))
 }
 
 /// Diff a single file from a commit — used when user clicks a file in commit detail.
