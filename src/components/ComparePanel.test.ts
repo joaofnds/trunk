@@ -96,11 +96,14 @@ describe("ComparePanel", () => {
 	it("shows each commit's author and age on its card", () => {
 		renderPanel();
 		expect(screen.getAllByText("Test User")).toHaveLength(2);
+		expect(screen.getAllByText(/ago$/)).toHaveLength(2);
 	});
 
-	it("totals the comparison in the stats row", () => {
+	it("counts files from the list and totals lines from the stat", () => {
+		// files_changed: 3 collapses renames the file list splits into two
+		// entries \u2014 the count must agree with the list the user sees below it.
 		renderPanel();
-		expect(screen.getByText("3 files changed")).toBeInTheDocument();
+		expect(screen.getByText("1 file changed")).toBeInTheDocument();
 		expect(screen.getByText("+48")).toBeInTheDocument();
 		expect(screen.getByText("\u2212102")).toBeInTheDocument();
 	});

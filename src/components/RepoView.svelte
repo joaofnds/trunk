@@ -407,7 +407,7 @@ let viewComments = $derived(
 //   CommitDetail is the active right pane → commit-level notes for its oid
 //   otherwise (commit graph / staging, no file) → 0 (nothing in this view)
 let inlineCommentCount = $derived(
-	selectedCompareFile
+	compare
 		? 0
 		: showDiff && selectedDiffPath
 			? viewComments.length
@@ -510,6 +510,7 @@ function buildDiffOptions(): DiffRequestOptions {
 
 /** WIP row clicked -- switch to staging view and auto-open right pane if collapsed. */
 function handleWipClick() {
+	if (compare !== null) clearCompare();
 	clearCommit();
 	// Auto-open right pane if collapsed (LAYOUT-01)
 	if (rightPaneCollapsed) {
@@ -599,6 +600,11 @@ async function handleFileSelect(
 // seam the review-panel jump binds to (CR-03): the jump gesture must never
 // clear the very target it's about to scroll to.
 async function selectCommitIdempotent(oid: string) {
+	// A jump or navigation lands on a single commit's diff, so any open compare
+	// dissolves — otherwise the compare pane keeps rendering over the target.
+	// Safe under applySelection: every transition that changes the anchor also
+	// returns a null compare, so the applyCompare that follows never re-fetches.
+	if (compare !== null) clearCompare();
 	if (selectedCommitOid === oid && commitDetail !== null) return;
 	// Switching to commit view -- close any open staging diff
 	clearStagingDiff();
@@ -1011,11 +1017,14 @@ $effect(() => {
 // Escape key handler for closing diffs
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
+		// Every tab's RepoView stays mounted, so this window listener fires in
+		// hidden tabs too — only the active tab may act on Escape.
+		if (!tabActive) return;
 		if (e.key !== "Escape" || showRebaseEditor) return;
 		if (showDiff || showMergeEditor) {
 			e.preventDefault();
 			handleDiffClose();
-		} else if (compare !== null && tabActive) {
+		} else if (compare !== null) {
 			e.preventDefault();
 			clearCompare();
 		}
@@ -1319,7 +1328,7 @@ function startRightResize(e: MouseEvent) {
           {diffKind}
           emptyCommit={commitEmpty}
           {repoPath}
-          {showInlineComments}
+          showInlineComments={selectedCompareFile ? false : showInlineComments}
           {viewComments}
           refreshToken={diffRefreshToken}
           loading={stagingDiffLoading}

@@ -43,7 +43,10 @@ let {
 }: Props = $props();
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
-let filesChanged = $derived(stat?.files_changed ?? fileDiffs.length);
+// Count from the list, not stat.files_changed: the stat collapses renames the
+// list splits into Deleted + Added, and the count sits right above that list.
+// The stat still owns +/- — collapsed totals are the true edit size.
+let filesChanged = $derived(fileDiffs.length);
 </script>
 
 {#snippet commitCard(commit: CommitDetail)}

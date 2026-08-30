@@ -1310,5 +1310,154 @@ describe("RepoView", () => {
 
 			expect(screen.queryByTestId("compare-header")).toBeNull();
 		});
+
+		it("a plain click on a third commit dissolves the compare", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]); // oid-1
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true }); // oid-3
+			await flush();
+			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+
+			await fireEvent.click(rows[1]); // oid-2, no modifier
+			await flush();
+
+			expect(screen.queryByTestId("compare-header")).toBeNull();
+		});
+
+		it("clicking the WIP row dissolves the compare", async () => {
+			const withCompare = mockInvoke.getMockImplementation();
+			if (!withCompare)
+				throw new Error("compare invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "get_dirty_counts"
+					? Promise.resolve({ staged: 1, unstaged: 0, conflicted: 0 })
+					: withCompare(cmd, args),
+			);
+			const rows = await renderAndGetRows();
+			// rows[0] is the WIP row; commits shift down one.
+			await fireEvent.click(rows[3]); // oid-1
+			await flush();
+			await fireEvent.click(rows[1], { metaKey: true }); // oid-3
+			await flush();
+			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+
+			await fireEvent.click(rows[0]);
+			await flush();
+
+			expect(screen.queryByTestId("compare-header")).toBeNull();
+		});
+
+		it("a review jump to a commit dissolves the compare", async () => {
+			const withCompare = mockInvoke.getMockImplementation();
+			if (!withCompare)
+				throw new Error("compare invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "list_session_commits"
+					? Promise.resolve([
+							{
+								oid: "oid-2",
+								short_oid: "oid-2",
+								summary: "second commit",
+								is_snapshot: false,
+							},
+						])
+					: withCompare(cmd, args),
+			);
+			const props = baseProps(createMockRemoteState());
+			const { rerender } = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await flush();
+			await fireEvent.click(rows[2]); // oid-1
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true }); // oid-3
+			await flush();
+			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+
+			await rerender({ ...props, reviewActive: true });
+			await flush();
+			await fireEvent.click(
+				await screen.findByLabelText("Jump to commit oid-2"),
+			);
+			await flush();
+
+			expect(screen.queryByTestId("compare-header")).toBeNull();
+		});
+
+		it("a compare diff offers no comment affordance", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+
+			expect(screen.queryByText("Comment File")).toBeNull();
+		});
+
+		it("escape in an inactive tab leaves the compare diff alone", async () => {
+			render(RepoView, {
+				props: { ...baseProps(createMockRemoteState()), tabActive: false },
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await flush();
+			await fireEvent.click(rows[2]);
+			await flush();
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await flush();
+			// The file diff replaces the graph in the center pane.
+			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await flush();
+
+			expect(screen.queryAllByTestId("commit-row")).toHaveLength(0);
+			expect(screen.queryByTestId("compare-header")).toBeTruthy();
+		});
+
+		it("the comment badge empties while a compare is open", async () => {
+			const withCompare = mockInvoke.getMockImplementation();
+			if (!withCompare)
+				throw new Error("compare invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "list_threads"
+					? Promise.resolve([
+							{
+								id: "t1",
+								review_id: "r1",
+								text: "a note",
+								anchor: null,
+								cached_excerpt: null,
+								commit_oid: "oid-1",
+								state: "open",
+								stale: false,
+								channel: "human",
+								published: false,
+								replies: [],
+							},
+						])
+					: withCompare(cmd, args),
+			);
+			const counts = vi.fn();
+			render(RepoView, {
+				props: {
+					...baseProps(createMockRemoteState()),
+					oncommentcountschange: counts,
+				},
+			});
+			const rows = await screen.findAllByTestId("commit-row");
+			await flush();
+			await fireEvent.click(rows[2]); // oid-1 — its commit-level note counts
+			await flush();
+			expect(counts.mock.calls.at(-1)?.[0].view).toBe(1);
+
+			await fireEvent.click(rows[0], { metaKey: true });
+			await flush();
+
+			expect(counts.mock.calls.at(-1)?.[0].view).toBe(0);
+		});
 	});
 });
