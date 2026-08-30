@@ -8,9 +8,9 @@ Desktop Git GUI — Tauri 2 + Svelte 5 + Rust.
 just              # List all recipes
 just dev          # Vite dev + Tauri watch
 just build        # Production build
-just quick        # Static only: fmt, biome, svelte-check (~7s)
-just front        # biome, svelte-check, vitest (~17s)
-just rust         # fmt, clippy, cargo-test (~26s; longer after an edit)
+just quick        # Static only: fmt, biome, svelte-check (~3s)
+just front        # biome, svelte-check, vitest (~14s)
+just rust         # fmt, clippy, cargo-test (~12s; longer after an edit)
 just check        # Run ALL checks (fmt, biome, svelte-check, clippy, cargo-test, vitest, graph-sweep-check)
 just audit        # Dependency advisories (cargo-audit + bun audit)
 just mutants      # Which mutations the Rust tests miss (slow, opt-in)

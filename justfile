@@ -39,13 +39,13 @@ build:
 
 # ── Checks ───────────────────────────────────────────
 
-# Static checks only — no compile, no tests (~7s)
+# Static checks only — no compile, no tests (~3s)
 quick: fmt biome svelte-check
 
-# Everything that touches the frontend (~16s)
+# Everything that touches the frontend (~14s)
 front: biome svelte-check vitest
 
-# Everything that touches Rust (~26s, more after an edit)
+# Everything that touches Rust (~12s, more after an edit)
 rust: fmt clippy cargo-test
 
 # Run all checks (run before committing)
