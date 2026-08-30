@@ -49,7 +49,21 @@ front: biome svelte-check vitest
 rust: fmt clippy cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy cargo-test vitest graph-sweep-check app-test
+check: fmt biome svelte-check clippy cargo-test vitest graph-sweep-check app-test toolchain-parity
+
+# Verify every file naming the rust version names the same one (milliseconds)
+toolchain-parity:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pinned=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+    mised=$(sed -n 's/^rust *= *"\(.*\)"/\1/p' mise.toml)
+    released=$(sed -n 's/^ *toolchain: *\(.*\)/\1/p' .github/workflows/release.yml)
+    for pair in "mise.toml:$mised" "release.yml:$released"; do
+        if [ "${pair#*:}" != "$pinned" ]; then
+            echo "::error::${pair%%:*} says '${pair#*:}', rust-toolchain.toml says '$pinned' — a rustup directory override outranks both, so the mismatch would build on the pin with the other file's targets and caches. Make them equal."
+            exit 1
+        fi
+    done
 
 # Check Rust formatting
 fmt:

@@ -51,6 +51,15 @@ jobs:
       # Pure string matching over two source files: no bun install, no cargo invocation.
       - run: just graph-sweep-check
 
+  toolchain-parity:
+    name: Toolchain Pin Agreement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      # Pure string matching over three config files: no bun install, no cargo invocation.
+      - run: just toolchain-parity
+
   check-parity:
     name: CI Mirrors just check
     runs-on: ubuntu-latest
@@ -58,7 +67,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every recipe in `just check` has a CI job
         run: |
-          mirrored=$(printf '%s\n' app-test biome cargo-test clippy fmt graph-sweep-check svelte-check vitest | sort)
+          mirrored=$(printf '%s\n' app-test biome cargo-test clippy fmt graph-sweep-check svelte-check toolchain-parity vitest | sort)
           recipes=$(sed -n 's/^check: *//p' justfile | tr ' ' '\n' | sort)
           if ! diff <(echo "$mirrored") <(echo "$recipes"); then
             echo "::error::just check and this workflow disagree; add or remove the CI job, then update the mirrored list in ci.yml"
