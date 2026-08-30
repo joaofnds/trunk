@@ -86,10 +86,25 @@ app-test:
 
 # Serve the real app to a browser so its rendered DOM can be measured (jsdom has no layout)
 measure:
+    #!/usr/bin/env bash
+    set -euo pipefail
     cargo build --manifest-path {{manifest}} --example app_host
-    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun scripts/measure/bridge.ts & \
-    bunx vite --port 1420 --strictPort & \
-    echo "open http://localhost:1420/scripts/measure/index.html" && wait
+    # The bridge seeds a repository before it writes the token, which takes ten
+    # seconds or so, while vite is ready in under one. The page imports the
+    # token with ?raw at module load and vite caches that, so a browser opening
+    # early binds a missing or stale token and every request 403s until the
+    # module cache is cleared. Wait for the token this run wrote before saying
+    # the page is ready.
+    rm -f scripts/measure/.bridge-token.txt
+    TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun scripts/measure/bridge.ts &
+    bunx vite --port 1420 --strictPort &
+    for _ in $(seq 1 60); do
+      [ -s scripts/measure/.bridge-token.txt ] && break
+      sleep 1
+    done
+    [ -s scripts/measure/.bridge-token.txt ] || { echo "bridge did not write a token" >&2; exit 1; }
+    echo "open http://localhost:1420/scripts/measure/index.html"
+    wait
 
 # ── Audits (not part of `check`) ─────────────────────
 
