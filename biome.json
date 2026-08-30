@@ -9,7 +9,10 @@
 			"*.js",
 			"*.json",
 			"*.svelte",
-			"!!**/.claude"
+			"!!**/.claude",
+			"!!**/target",
+			"!!**/node_modules",
+			"!!**/.git"
 		]
 	},
 	"assist": {
