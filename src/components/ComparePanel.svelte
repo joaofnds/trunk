@@ -47,10 +47,7 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 
 {#snippet commitCard(commit: CommitDetail)}
   <div style="
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
     padding: var(--space-2) var(--space-3);
-    background: var(--bg-1);
     min-width: 0;
   ">
     <p style="
@@ -147,37 +144,36 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     box-shadow: inset 0 -1px 0 var(--color-border);
     flex-shrink: 0;
   ">
-    {#if base}
-      {@render commitCard(base)}
-    {:else}
-      <div style="
-        border: 1px dashed var(--color-border);
-        border-radius: var(--radius);
-        padding: var(--space-2) var(--space-3);
-        font-size: 12px;
-        font-style: italic;
-        color: var(--color-text-muted);
-      ">empty tree</div>
-    {/if}
-    <div style="position: relative; height: var(--space-2);">
-      <span aria-hidden="true" style="
-        width: 22px;
-        height: 22px;
-        border-radius: 50%;
-        background: var(--bg-1);
-        border: 1px solid var(--color-border);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--color-text-muted);
-        position: absolute;
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-        z-index: 1;
-      "><ArrowDown size={12} /></span>
+    <div style="border: 1px solid var(--color-border); border-radius: var(--radius);">
+      {#if base}
+        {@render commitCard(base)}
+      {:else}
+        <div style="
+          padding: var(--space-2) var(--space-3);
+          font-size: 12px;
+          font-style: italic;
+          color: var(--color-text-muted);
+        ">empty tree</div>
+      {/if}
+      <div style="position: relative; border-top: 1px solid var(--color-border);">
+        <span aria-hidden="true" style="
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: var(--bg-1);
+          border: 1px solid var(--color-border);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--color-text-muted);
+          position: absolute;
+          left: 50%;
+          top: 0;
+          transform: translate(-50%, -50%);
+        "><ArrowDown size={11} /></span>
+      </div>
+      {@render commitCard(target)}
     </div>
-    {@render commitCard(target)}
     {#if stat}
       <div style="display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); font-size: 12px;">
         <span style="color: var(--color-text-muted);">{stat.files_changed} {stat.files_changed === 1 ? 'file' : 'files'} changed</span>
@@ -220,3 +216,14 @@ let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
     />
   </div>
 </div>
+
+<style>
+  /* Click-to-copy SHA chip. The .sha-copy rules in CommitDetail are
+     component-scoped and never reach this panel, so the affordance lives here. */
+  .sha-copy {
+    cursor: pointer;
+  }
+  .sha-copy:hover {
+    text-decoration: underline;
+  }
+</style>
