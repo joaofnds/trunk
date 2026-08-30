@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-	/* One unit. Every length in this file is an integer multiple of it, so the
-	   whole interface rescales from this line and nowhere else. */
+	/* One unit. Every length declared below is an integer multiple of it, and
+	   src/app.css.test.ts fails if one is not, or if a JS constant mirroring one
+	   disagrees. Tailwind's own utilities keep a separate scale — see the note
+	   in src/lib/chrome-heights.ts. */
 	--u: 4px;
 
 	/* ── Spacing ── */
@@ -21,8 +23,15 @@
 	--control-h: calc(7 * var(--u));
 	--control-lg-h: calc(8 * var(--u));
 
-	/* ── Widths ── */
-	--counter-gutter: calc(11 * var(--u));
+	/* ── Named lengths — functional, not steps on the spacing scale ── */
+	--counter-gutter: calc(
+		11 *
+		var(--u)
+	); /* the commit summary's character counter */
+	--dialog-drop: calc(
+		20 *
+		var(--u)
+	); /* how far a centred dialog sits from the top */
 
 	/* ── Surfaces — cool-neutral ramp (oklch, hue 260) ── */
 	--bg-0: oklch(0.08 0.003 260); /* deepest — body, editor & input wells */

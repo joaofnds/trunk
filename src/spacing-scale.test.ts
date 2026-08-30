@@ -34,13 +34,15 @@ function offences(pattern: RegExp, allowed: (value: string) => boolean) {
    text it wraps, which is what an em is for and what the unit scale is not. */
 const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
 
-/** A Svelte interpolation and a `calc()` off the unit are each one opaque value
- *  however many spaces they hold, so both are masked before the shorthand is
- *  split into its sides. Any other `calc()` stays raw and fails. */
+/** A Svelte interpolation and a `calc()` built only from the scale are each one
+ *  opaque value however many spaces they hold, so both are masked before the
+ *  shorthand is split into its sides. A `calc()` naming any length the scale
+ *  does not own stays raw and fails. */
+const onScaleCalc =
+	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[1-4]|depth(?:,\s*0)?)\))+\)/g;
+
 const mask = (value: string) =>
-	value
-		.replace(/\{[^}]*\}/g, "@")
-		.replace(/calc\(\s*\d+\s*\*\s*var\(--u\)\s*\)/g, "@");
+	value.replace(/\{[^}]*\}/g, "@").replace(onScaleCalc, "@");
 
 describe("spacing scale", () => {
 	it("carries no raw pixel value in a gap, padding or margin", () => {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import FileRow from "./FileRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import { makeFile } from "../__tests__/helpers/factories";
+import { treeIndent } from "../lib/chrome-heights.js";
 
 describe("FileRow", () => {
 	it("renders file path", () => {
@@ -39,6 +40,25 @@ describe("FileRow", () => {
 			},
 		});
 		expect(screen.getByRole("listitem")).toBeInTheDocument();
+	});
+
+	it("indents one gutter step per level, in the padding shorthand", () => {
+		/* The indent has to ride in the same shorthand as the rest of the padding:
+		   a padding-left from a stylesheet rule loses to this inline shorthand,
+		   which is how the indent silently flattened to 8px once already. */
+		const { container } = render(FileRow, {
+			props: {
+				file: makeFile("deep.ts", "Modified"),
+				actionLabel: "+",
+				onaction: vi.fn(),
+				depth: 3,
+			},
+		});
+
+		const row = container.querySelector("[data-testid=staging-file]");
+		expect(row?.getAttribute("style")).toContain(
+			`padding: 0 var(--space-2) 0 ${treeIndent(3)}`,
+		);
 	});
 
 	it("has treeitem role when depth>0", () => {

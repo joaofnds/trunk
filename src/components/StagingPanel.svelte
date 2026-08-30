@@ -797,7 +797,9 @@ $effect(() => {
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
           font-size: 11px;
-          line-height: 16px;
+          height: var(--control-sm-h);
+          display: inline-flex;
+          align-items: center;
           color: var(--lane-0);
           font-weight: 700;
           white-space: nowrap;
@@ -921,7 +923,9 @@ $effect(() => {
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
           font-size: 10px;
-          line-height: 16px;
+          height: var(--control-sm-h);
+          display: inline-flex;
+          align-items: center;
           color: var(--bg-0);
           font-weight: 700;
         ">{operationInfo.source_branch}</span>
@@ -933,7 +937,9 @@ $effect(() => {
           border-radius: var(--radius-pill);
           padding: 0 var(--space-2);
           font-size: 10px;
-          line-height: 16px;
+          height: var(--control-sm-h);
+          display: inline-flex;
+          align-items: center;
           color: var(--bg-0);
           font-weight: 700;
         ">{operationInfo.target_branch}</span>

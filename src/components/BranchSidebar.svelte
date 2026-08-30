@@ -823,7 +823,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
   }
 
   .stash-entry-error {
-    padding-left: calc(6 * var(--u));
+    padding-left: calc(var(--space-4) + var(--space-2));
   }
 
   .error-text {

@@ -149,7 +149,7 @@ function handleBackdropClick() {
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="flex flex-col rounded overflow-hidden"
-      style="width: 480px; max-width: 90vw; height: fit-content; margin-top: calc(20 * var(--u)); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
+      style="width: 480px; max-width: 90vw; height: fit-content; margin-top: var(--dialog-drop); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
       onclick={(e) => e.stopPropagation()}
     >
       <input

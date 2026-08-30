@@ -1,5 +1,6 @@
 <script lang="ts">
 import { Minus, Plus } from "@lucide/svelte";
+import { treeIndent } from "../lib/chrome-heights.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus } from "../lib/types.js";
 import CommentBadge from "./CommentBadge.svelte";
@@ -51,8 +52,7 @@ let badgeBg = $derived(
   oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
   style="
     height: var(--row-h);
-    padding: 0 var(--space-2);
-    padding-left: {8 + depth * 16}px;
+    padding: 0 var(--space-2) 0 {treeIndent(depth)};
     display: flex;
     align-items: center;
     gap: var(--space-2);

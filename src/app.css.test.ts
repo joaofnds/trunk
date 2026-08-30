@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BAR_HEIGHT, ROW_HEIGHT, UNIT } from "./lib/chrome-heights";
+import { BAR_HEIGHT, ROW_HEIGHT, treeIndent, UNIT } from "./lib/chrome-heights";
 import { FIXED_ROW_HEIGHTS } from "./lib/diff-rows";
 import { THUMB_CLASS } from "./lib/scrollbar-activity.js";
 
@@ -177,5 +177,13 @@ describe("app.css lengths", () => {
 	it("gives the diff pane's fixed header rows that same bar height", () => {
 		expect(FIXED_ROW_HEIGHTS.fileHeader).toBe(BAR_HEIGHT);
 		expect(FIXED_ROW_HEIGHTS.hunkHeader).toBe(BAR_HEIGHT);
+	});
+});
+
+describe("tree row indent", () => {
+	it("insets one gutter step, plus four per level of nesting", () => {
+		expect(treeIndent(0)).toBe(`${2 * UNIT}px`);
+		expect(treeIndent(1)).toBe(`${6 * UNIT}px`);
+		expect(treeIndent(3)).toBe(`${14 * UNIT}px`);
 	});
 });

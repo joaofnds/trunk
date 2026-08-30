@@ -2,6 +2,7 @@
 import { ChevronDown, ChevronRight, Minus, Plus } from "@lucide/svelte";
 import type { DirectoryNode } from "../lib/build-tree.js";
 import { countFiles, sumCommentsInSubtree } from "../lib/build-tree.js";
+import { treeIndent } from "../lib/chrome-heights.js";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
@@ -52,8 +53,7 @@ let commentCount = $derived(
   oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
   style="
     height: var(--row-h);
-    padding: 0 var(--space-2);
-    padding-left: {8 + depth * 16}px;
+    padding: 0 var(--space-2) 0 {treeIndent(depth)};
     display: flex;
     align-items: center;
     gap: var(--space-1);

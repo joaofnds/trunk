@@ -721,13 +721,14 @@ let lastVisibleColumn = $derived.by(() => {
   }
 
   .rebase-branch-pill {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    height: var(--control-sm-h);
     background: var(--color-accent);
     color: var(--accent-fg);
     font-size: 11px;
     font-weight: 600;
     padding: 0 var(--space-2);
-    line-height: 16px;
     border-radius: var(--radius);
   }
 
