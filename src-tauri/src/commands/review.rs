@@ -622,7 +622,9 @@ pub fn save_draft_inner(
     anchor: Option<&crate::git::types::Anchor>,
     now: i64,
 ) -> Result<(), TrunkError> {
-    store.write(|tx| drafts::save(tx, canonical, text, anchor, now))
+    // Quiet on purpose: a per-keystroke bump would make the poll refetch
+    // every thread while the user types (plan §3).
+    store.write_quiet(|tx| drafts::save(tx, canonical, text, anchor, now))
 }
 
 pub fn get_draft_inner(

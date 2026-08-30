@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 3;
+pub const CURRENT_VERSION: i64 = 4;
 
 const V1: &str = r#"
 CREATE TABLE reviews (
@@ -97,6 +97,14 @@ const V3: &str = r#"
 ALTER TABLE review_commits ADD COLUMN subject TEXT NOT NULL DEFAULT '';
 "#;
 
+/// One-row mutation counter (plan §5.3): `data_version` tells the poll that
+/// SOME connection committed; `revision` is what makes the emit meaningful,
+/// because the draft autosave commits without bumping it.
+const V4: &str = r#"
+CREATE TABLE store_meta (revision INTEGER NOT NULL);
+INSERT INTO store_meta (revision) VALUES (0);
+"#;
+
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sqlite_error)
@@ -151,6 +159,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 3 {
         conn.execute_batch(&format!("{V3} PRAGMA user_version = 3;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 4 {
+        conn.execute_batch(&format!("{V4} PRAGMA user_version = 4;"))
             .map_err(sqlite_error)?;
     }
 

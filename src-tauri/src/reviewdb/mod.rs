@@ -165,6 +165,24 @@ impl Store {
         &self,
         f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
     ) -> Result<T, TrunkError> {
+        self.write_bumping(f, true)
+    }
+
+    /// A write the poll must not announce: today only the per-keystroke draft
+    /// autosave, whose bump would refetch every thread while the user types
+    /// (plan §3). Everything else goes through `write`.
+    pub fn write_quiet<T>(
+        &self,
+        f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
+    ) -> Result<T, TrunkError> {
+        self.write_bumping(f, false)
+    }
+
+    fn write_bumping<T>(
+        &self,
+        f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
+        bump: bool,
+    ) -> Result<T, TrunkError> {
         let mut conn = self.conn.lock().unwrap();
 
         let tx = conn
@@ -175,6 +193,10 @@ impl Store {
         // the guard exists to prevent (D4).
         schema::version_guard(&tx)?;
         let value = f(&tx)?;
+        if bump {
+            tx.execute("UPDATE store_meta SET revision = revision + 1", [])
+                .map_err(sqlite_error)?;
+        }
         tx.commit().map_err(sqlite_error)?;
 
         Ok(value)
@@ -191,6 +213,13 @@ impl Store {
 
         f(&conn)
     }
+}
+
+/// The store's mutation counter — what the poll compares to decide whether a
+/// `data_version` movement deserves an emit.
+pub fn revision(conn: &Connection) -> Result<i64, TrunkError> {
+    conn.query_row("SELECT revision FROM store_meta", [], |row| row.get(0))
+        .map_err(sqlite_error)
 }
 
 /// The error code a corrupt store reports. Distinguishing it from every other

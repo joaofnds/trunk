@@ -537,6 +537,37 @@ fn the_two_snapshot_kinds_are_tracked_apart() {
     );
 }
 
+// ── Milestone 3, Task 7: the store revision counter ─────────────────────────
+
+/// The poll emits only when `store_revision` moved (plan §3): every mutation
+/// bumps it, EXCEPT the per-keystroke draft autosave — a draft bump would
+/// refetch every thread several times a second while the user types.
+#[test]
+fn every_write_bumps_the_revision_except_the_draft_autosave() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let before = store.read(reviewdb::revision).unwrap();
+
+    submit_thread_inner(&store, &canonical, submission("bump"), 1_000).unwrap();
+    let after_thread = store.read(reviewdb::revision).unwrap();
+    assert!(
+        after_thread > before,
+        "a thread submit must move the revision ({before} -> {after_thread})",
+    );
+
+    trunk_lib::commands::review::save_draft_inner(&store, &canonical, "typing…", None, 1_001)
+        .unwrap();
+    assert_eq!(
+        store.read(reviewdb::revision).unwrap(),
+        after_thread,
+        "the draft autosave must not move the revision",
+    );
+}
+
 // ── Milestone 2, Task 10: snapshot ref pruning at supersession ──────────────
 
 #[test]
