@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { exactLabel } from "../lib/relative-time.js";
 import type { RebaseTodoItem } from "../lib/types.js";
 import RebaseEditor from "./RebaseEditor.svelte";
 
@@ -351,6 +352,24 @@ describe("RebaseEditor", () => {
 			await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000 + 1_000);
 
 			expect(dateCell).toHaveTextContent("2h ago");
+		});
+
+		it("reveals the exact date on hover, and carries it as the accessible name", () => {
+			try {
+				const { getByText } = renderItemAgedDays(0);
+				const exact = exactLabel(pinnedNow.getTime() / 1000);
+				const cell = getByText("just now");
+
+				expect(cell.getAttribute("title")).toBeNull();
+				expect(cell.getAttribute("aria-label")).toBe(exact);
+
+				cell.dispatchEvent(new MouseEvent("mouseenter"));
+				vi.advanceTimersByTime(120);
+
+				expect(document.querySelector(".tooltip-pop")?.textContent).toBe(exact);
+			} finally {
+				document.querySelector(".tooltip-pop")?.remove();
+			}
 		});
 	});
 
