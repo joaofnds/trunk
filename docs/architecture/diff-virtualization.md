@@ -10,6 +10,7 @@ record for navigation.
 |---|---|
 | `src/lib/diff-rows.ts` | The row model. Pure, no DOM: `buildInlineRows` and `buildSplitRows` project a diff into a flat row list, and `rowHeights` gives each row an exact height. |
 | `src/lib/row-metrics.ts` | Character width and line height, measured once from a probe element carrying the row's own font. |
+| `src/lib/virtualized-diff.svelte.ts` | The plumbing all three views share, behind one factory: the font-metrics and comment-height probes, the pane ResizeObserver, the readiness gate, and the width arithmetic for both layouts (inline's px content width, split's per-side pan ceilings). Views read every output through the factory's getters. |
 | `src/components/diff/ExactVirtualList.svelte` | The list. Takes exact heights, never measures a row, and publishes `--pan-x` from its scroll handler. |
 | `src/lib/diff-nav.ts` | `DiffNav`, the handle a virtualized view publishes so the host can jump to a hunk or a line by row index. |
 
