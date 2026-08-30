@@ -1,10 +1,8 @@
 <script lang="ts">
-import { onMount, tick } from "svelte";
 import {
 	buildInlineRows,
 	type DiffRow,
 	FIXED_ROW_HEIGHT_VARS,
-	rowHeights,
 } from "../../lib/diff-rows.js";
 import {
 	splitInvisibles,
@@ -19,13 +17,12 @@ import {
 	editThread,
 	setThreadState,
 } from "../../lib/review-comment-actions.js";
-import {
-	availableCharsFor,
-	DIFF_ROW_FONT,
-	measureRowMetrics,
-	type RowMetrics,
-} from "../../lib/row-metrics.js";
+import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type { DiffLine, FileDiff, Thread } from "../../lib/types.js";
+import {
+	createVirtualizedDiff,
+	TAB_SIZE,
+} from "../../lib/virtualized-diff.svelte.js";
 import ThreadCard from "../ThreadCard.svelte";
 import ExactVirtualList from "./ExactVirtualList.svelte";
 
@@ -57,16 +54,6 @@ let {
 	viewComments = [],
 }: Props = $props();
 
-// Tailwind's preflight sets tab-size: 4 globally, so a tab advances four
-// columns — unless invisibles are on, where .invisible-char collapses it to one.
-const TAB_SIZE = 4;
-
-// Horizontal room a row spends on something other than columns: 8px padding
-// each side, the 3px change-indicator border, and the 8px gap after each of the
-// two gutters. Erring high shortens the wrap point, which over-predicts a
-// wrapped row's height — the safe direction.
-const ROW_CHROME_PX = 35;
-
 // Net-new contiguous selection state (D-01): a click sets a single-line anchor;
 // shift-click extends the focus, and the selected span is the inclusive range
 // anchorIndex..focusIndex over the active file's flat line list. Only new-side
@@ -81,12 +68,6 @@ let focusIndex = $state<number | null>(null);
 // contiguous span with a moving endpoint, which is what shift-click already is.
 let dragging = false;
 
-let pane = $state<HTMLDivElement | null>(null);
-let metricsProbe = $state<HTMLDivElement | null>(null);
-let commentProbe = $state<HTMLDivElement | null>(null);
-let metrics = $state<RowMetrics | null>(null);
-let paneWidthPx = $state(0);
-let probedHeights = $state(new Map<string, number>());
 let list = $state<{
 	topIndex: () => number;
 	anchorTo: (index: number) => void;
@@ -111,86 +92,18 @@ const model = $derived(
 	}),
 );
 
-// A proportional font makes column arithmetic meaningless, so wrapping is
-// refused rather than rendered at a height nothing can derive (P-8).
-const wrapActive = $derived(wordWrap && (metrics?.monospace ?? false));
-
-const availableColumns = $derived(
-	metrics
-		? availableCharsFor(
-				paneWidthPx,
-				2 * model.gutterChars,
-				ROW_CHROME_PX,
-				metrics,
-			)
-		: 0,
-);
-
-const threadsToProbe = $derived(
-	model.rows.flatMap((row) => (row.kind === "comment" ? row.threads : [])),
-);
-
-// Invariant 8: withhold the list until every input exists, rather than render
-// against a default height and correct it afterwards.
-const ready = $derived(
-	metrics !== null &&
-		paneWidthPx > 0 &&
-		threadsToProbe.every((thread) => probedHeights.has(thread.id)) &&
-		(!wrapActive || availableColumns > 0),
-);
-
-const heights = $derived.by(() => {
-	const measured = metrics;
-	if (!ready || !measured) return [];
-
-	return measure("diff.rowHeights", (observation) => {
-		observation.attr("rows", model.rows.length);
-		observation.attr("wrap", String(wrapActive));
-
-		return rowHeights(
-			model,
-			measured,
-			availableColumns,
-			wrapActive,
-			probedHeights,
-		);
-	});
+const vd = createVirtualizedDiff({
+	layout: "inline",
+	model: () => model,
+	wordWrap: () => wordWrap,
+	list: () => list,
 });
-
-// Computed, never measured: a virtual list never has the widest row mounted, so
-// measuring one would make the extent jump while scrolling (invariant 2). In
-// pixels rather than `ch`, because the content div sits outside the rows and
-// would resolve `ch` against the app font instead of the diff row's.
-const contentWidth = $derived(
-	wrapActive || !metrics
-		? "100%"
-		: `${(2 * model.gutterChars + (model.columns[0] ?? 0)) * metrics.charWidthPx + ROW_CHROME_PX}px`,
-);
 
 const affordanceVisible = $derived(
 	(diffKind === "commit" || diffKind === "unstaged") &&
 		selectedPath !== null &&
 		selectedIndices.size > 0,
 );
-
-onMount(() => {
-	if (metricsProbe) metrics = measureRowMetrics(metricsProbe);
-
-	const el = pane;
-	if (!el) return;
-
-	paneWidthPx = el.clientWidth;
-
-	const observer = new ResizeObserver(() => {
-		const anchor = list?.topIndex() ?? 0;
-		paneWidthPx = el.clientWidth;
-
-		if (wrapActive) tick().then(() => list?.anchorTo(anchor));
-	});
-	observer.observe(el);
-
-	return () => observer.disconnect();
-});
 
 $effect(() => {
 	const stopDrag = () => {
@@ -199,33 +112,6 @@ $effect(() => {
 
 	window.addEventListener("mouseup", stopDrag);
 	return () => window.removeEventListener("mouseup", stopDrag);
-});
-
-$effect(() => {
-	const container = commentProbe;
-	const wanted = threadsToProbe;
-	if (!container || wanted.length === 0) return;
-
-	// Lay the probe out at the width the real rows occupy, and re-measure
-	// whenever that width changes: a ThreadCard reflows, so a height taken at
-	// another width is not this row's height (P-2's re-probe triggers).
-	container.style.width = contentWidth;
-	container.style.minWidth = `${paneWidthPx}px`;
-
-	const measured = new Map<string, number>();
-	for (const row of container.querySelectorAll<HTMLElement>(
-		"[data-thread-id]",
-	)) {
-		const id = row.dataset.threadId;
-		const height = row.offsetHeight;
-		// A zero here is an unmeasured row, not a row of no height. Recording it
-		// would be the substituted default invariant 8 forbids.
-		if (id && height > 0) measured.set(id, height);
-	}
-
-	if (wanted.every((thread) => measured.has(thread.id))) {
-		probedHeights = measured;
-	}
 });
 
 function countLines(diffs: FileDiff[]): number {
@@ -341,7 +227,6 @@ function lineColor(): string {
     {@const isSelectable = line.new_lineno !== null}
     {@const isSelected = selectedPath === item.path && selectedIndices.has(item.flatIdx)}
     {@const trailStart = showInvisibles ? trailingWhitespaceStart(line.content) : line.content.length}
-    {@const gutterW = `${model.gutterChars}ch`}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- mouseenter only continues an in-progress gutter drag; the row itself is
          not a control. -->
@@ -350,8 +235,8 @@ function lineColor(): string {
       style="
         {DIFF_ROW_FONT};
         padding: 0 var(--space-2);
-        white-space: {wrapActive ? 'pre-wrap' : 'pre'};
-        word-break: {wrapActive ? 'break-all' : 'normal'};
+        white-space: {vd.wrapActive ? 'pre-wrap' : 'pre'};
+        word-break: {vd.wrapActive ? 'break-all' : 'normal'};
         background: {lineBackground(line.origin, isSelected)};
         color: {lineColor()};
         display: flex;
@@ -366,7 +251,7 @@ function lineColor(): string {
         onmousedown={(e) => isSelectable && startDrag(item.path, line, item.flatIdx, e)}
         onclick={(e) => isSelectable && selectLine(item.path, line, item.flatIdx, e.shiftKey)}
         onkeydown={(e) => { if (isSelectable && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectLine(item.path, line, item.flatIdx, e.shiftKey); } }}
-      ><span class="gutter-num" style="min-width: {gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
+      ><span class="gutter-num" style="min-width: {vd.gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {vd.gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
   {:else if item.kind === "comment"}
     {#each item.threads as c (c.id)}
       <div class="comment-row">{@render threadCard(c)}</div>
@@ -406,26 +291,26 @@ function lineColor(): string {
     </div>
   {/if}
 
-  <div class="list-area" bind:this={pane}>
-    {#if ready}
+  <div class="list-area" bind:this={vd.pane}>
+    {#if vd.ready}
       <ExactVirtualList
         bind:this={list}
         items={model.rows}
-        {heights}
-        {contentWidth}
+        heights={vd.heights}
+        contentWidth={vd.contentWidth}
         renderItem={diffRow}
       />
     {/if}
 
     <div
       class="diff-line metrics-probe"
-      bind:this={metricsProbe}
+      bind:this={vd.metricsProbe}
       style="{DIFF_ROW_FONT};"
     ></div>
 
-    {#if threadsToProbe.length > 0}
-      <div class="comment-probe" bind:this={commentProbe}>
-        {#each threadsToProbe as c (c.id)}
+    {#if vd.threadsToProbe.length > 0}
+      <div class="comment-probe" bind:this={vd.commentProbe}>
+        {#each vd.threadsToProbe as c (c.id)}
           <div class="comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
         {/each}
       </div>
