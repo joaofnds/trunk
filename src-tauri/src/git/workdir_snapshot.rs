@@ -160,10 +160,14 @@ pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), 
 }
 
 /// Drop the keepalive ref for one specific superseded snapshot oid (D8).
-/// Named pruning, not glob-based: `refs/trunk/review-snapshots/` holds at
-/// most the two CURRENT pins, one per kind, so deleting only the ref this
-/// call names is what leaves a sibling kind's pin untouched. A missing ref
-/// is not an error — pruning is idempotent, same as `keep_snapshot_ref`.
+/// Named pruning, not glob-based: `refs/trunk/review-snapshots/` holds the
+/// two CURRENT pins, one per kind, plus superseded pins threads still anchor
+/// to, so deleting only the ref this call names is what leaves every other
+/// pin untouched. The caller decides whether a superseded pin may go — this
+/// function must never be reached for a snapshot a thread still anchors to
+/// (`keep_snapshot_ref`'s contract; the gate lives at the call site, which
+/// holds the review store). A missing ref is not an error — pruning is
+/// idempotent, same as `keep_snapshot_ref`.
 pub fn prune_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), TrunkError> {
     let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
     if let Ok(mut reference) = repo.find_reference(&name) {

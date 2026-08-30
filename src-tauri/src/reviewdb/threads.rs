@@ -134,6 +134,26 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
 /// Move a thread's state, enforcing `ThreadState::transition` inside the same
 /// read-then-write pass. A missing id is `not_found`, matching `edit`'s
 /// convention: state changes target by id, never by list position.
+/// Whether any of the repo's threads anchors to `commit_oid`, across every
+/// review. Gates snapshot-pin pruning: a superseded snapshot stays pinned
+/// while a thread still anchors to it, or gc collects the commit its inline
+/// diff renders from.
+pub fn any_anchored_to(
+    conn: &Connection,
+    repo_path: &Path,
+    commit_oid: &str,
+) -> Result<bool, TrunkError> {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM threads
+            WHERE commit_oid = ?2
+              AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1))",
+        rusqlite::params![repo_key(repo_path), commit_oid],
+        |row| row.get(0),
+    )
+    .map_err(sqlite_error)
+}
+
 pub fn set_state(
     conn: &Connection,
     repo_path: &Path,

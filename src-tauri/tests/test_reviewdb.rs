@@ -554,6 +554,42 @@ fn superseding_a_snapshot_deletes_the_old_pin() {
     );
 }
 
+/// Ruling on TRUNK-18 (2026-08-31): supersession alone must not unpin a
+/// snapshot a thread still anchors to — gc would collect it and the thread's
+/// inline diff would resolve CommitGone while the thread is still live.
+#[test]
+fn a_pin_survives_supersession_while_a_thread_anchors_to_it() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let anchored_oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut anchored = submission("on uncommitted work");
+    anchored.anchor = Some(Anchor {
+        commit_oid: anchored_oid.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, anchored, 1_000).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{anchored_oid}"))
+            .is_ok(),
+        "a superseded snapshot a thread still anchors to must stay pinned",
+    );
+}
+
 #[test]
 fn pruning_one_kind_leaves_the_other_pinned() {
     let ctx = TestContext::builder()

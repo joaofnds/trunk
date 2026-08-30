@@ -837,12 +837,18 @@ pub fn ensure_review_snapshot_inner(
     store.write(|tx| snapshots::set(tx, canonical, kind, &oid, now))?;
 
     // A new snapshot supersedes the prior one — prune its pin so gc can
-    // reclaim it (D8). Reuse (created == false) means oid == prior_oid, so
-    // pruning here would delete the ref just pinned above. Pruning only
+    // reclaim it (D8), unless a thread still anchors to it: an anchored
+    // snapshot stays pinned or gc collects the commit its inline diff renders
+    // from (TRUNK-18 ruling). Reuse (created == false) means oid == prior_oid,
+    // so pruning here would delete the ref just pinned above. Pruning only
     // after the store write is durable keeps a failed or interrupted write
     // from leaving the old pin gone while the store still names it.
     if created && let Some(old) = prior_oid {
-        prune_snapshot_ref(&repo, old)?;
+        let anchored =
+            store.read(|conn| threads::any_anchored_to(conn, canonical, &old.to_string()))?;
+        if !anchored {
+            prune_snapshot_ref(&repo, old)?;
+        }
     }
 
     Ok(oid)
