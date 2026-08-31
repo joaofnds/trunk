@@ -3943,3 +3943,37 @@ fn a_thread_landing_inside_the_sweeps_window_keeps_its_pin() {
         "a comment landing mid-sweep must keep its anchor commit",
     );
 }
+
+/// The refs are walked before the reconciling transaction opens, so a snapshot
+/// minted in between has a live ref that the walk never saw. Its row must not
+/// be dropped as though the ref were gone: the record would then lie about a
+/// pin an in-flight submit is holding.
+#[test]
+fn reconciliation_keeps_the_row_of_a_ref_minted_after_the_walk() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    // A row minted at the same instant the sweep reconciles, for an oid the
+    // sweep's own ref walk did not return.
+    let unseen = "3333333333333333333333333333333333333333".to_string();
+    store
+        .write(|tx| reviewdb::pins::mark_minted(tx, &canonical, &unseen, 5_000))
+        .unwrap();
+
+    let empty = std::collections::HashSet::new();
+    store
+        .write(|tx| reviewdb::pins::reconcile(tx, &canonical, &empty, 5_000))
+        .unwrap();
+
+    let survived = store
+        .read(|c| reviewdb::pins::grants(c, &canonical, &unseen))
+        .unwrap();
+    assert!(
+        survived.is_some(),
+        "a row minted after the ref walk must outlive reconciliation",
+    );
+}

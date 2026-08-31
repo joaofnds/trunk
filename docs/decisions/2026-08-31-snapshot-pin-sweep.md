@@ -63,11 +63,16 @@ thread. So a pin cannot be judged against a stale view of either fact.
 
 The sweep decides and records in one transaction, then deletes refs after that
 transaction closes, so git I/O never runs under the store lock. That leaves a
-window: between the decision and the deletion, `ensure_review_snapshot` can hand
-out one of the condemned oids again and re-pin it. So each deletion re-checks,
-under the store lock, that the oid is still absent from the record, and skips it
-otherwise. Deciding once and acting later is exactly the staleness this design
-keeps running into; the re-check is what makes the deferred action safe.
+window: between the decision and the deletion, the row can be written again —
+handed out afresh, or anchored by a thread that landed. So each deletion
+re-checks, under the store lock, that the row's **grant counter** still matches
+what the decision read, and skips it otherwise.
+
+A counter, not a timestamp. Anchoring writes no timestamp at all, and the clock
+has one-second granularity, so a mint time answers "how long ago" and cannot
+answer "did this change". Deciding once and acting later is the staleness this
+design keeps running into, and the counter is what makes the deferred action
+safe.
 
 The repo's two current pins are never candidates. They are what the next comment
 will anchor to.
@@ -136,9 +141,9 @@ Two ordering rules fall out of it, and both are load-bearing:
   re-adopts the ref with a fresh mint time, protecting it again on every pass —
   it would never be reclaimed at all.
 - Because a row therefore outlives the decision that condemned it, the check
-  guarding the deletion compares the *mint time* against the one the decision
-  saw, not merely whether a row exists. A row not yet cleared and a genuine
-  regrant are otherwise indistinguishable.
+  guarding the deletion compares the *grant counter* against the one the
+  decision saw, not merely whether a row exists. A row not yet cleared and a
+  genuine regrant are otherwise indistinguishable.
 
 A failing deletion does not abort the batch.
 

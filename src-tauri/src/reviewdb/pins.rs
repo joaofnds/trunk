@@ -161,10 +161,38 @@ pub fn reconcile(
         mark_minted(conn, repo_path, oid, now)?;
     }
 
-    let vanished: Vec<String> = recorded.difference(refs).cloned().collect();
+    // Drop only rows for refs that were already gone when the walk ran and are
+    // still not there. A row minted after the walk describes a ref that exists;
+    // the walk simply predates it, and dropping it would make the record lie
+    // about a pin an in-flight submit is holding.
+    let vanished: Vec<String> = recorded
+        .difference(refs)
+        .filter(|oid| !minted_since(conn, repo_path, oid, now).unwrap_or(true))
+        .cloned()
+        .collect();
     forget(conn, repo_path, &vanished)?;
 
     Ok(())
+}
+
+/// Whether this repo's row for `oid` was minted at or after `since`, which
+/// means it postdates the caller's view of the refs on disk.
+fn minted_since(
+    conn: &Connection,
+    repo_path: &Path,
+    oid: &str,
+    since: i64,
+) -> Result<bool, TrunkError> {
+    let minted: Option<i64> = conn
+        .query_row(
+            "SELECT minted_at FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2",
+            rusqlite::params![repo_key(repo_path), oid],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+
+    Ok(minted.is_some_and(|m| m >= since))
 }
 
 /// This repo's grant count for `oid`, if it has a row.
