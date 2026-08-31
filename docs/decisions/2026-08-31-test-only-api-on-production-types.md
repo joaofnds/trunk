@@ -87,12 +87,24 @@ cargo build --lib --release
 nm target/release/libtrunk_lib.rlib | grep -oE "11StoreEvents[0-9]+(sync|baseline|try_recv)"
 ```
 
-Empty output, while `StoreEvents4recv` is present, is the proof. The reverse
-direction is worth confirming too: building the suites *without* the feature
-must fail with "no method named `sync`".
+Empty output, while `StoreEvents4recv` is present, is the proof.
 
-During TRUNK-59 the example-target probe was run first and suggested the gate
-did nothing. Acting on it would have reverted a change that works.
+**There is no flag that builds the suites with the feature off.** The self
+dev-dependency is unconditional, so `--no-default-features` does not reach it —
+`test-util` is not a *default* feature, it is enabled through a dependency
+edge. `cargo build --tests --no-default-features` succeeds, and it succeeds
+whether or not the gate works, so it proves nothing. To see the feature-off
+compile error, remove the dev-dependency line temporarily; nothing else does
+it.
+
+Two probes were run during TRUNK-59 that each looked like proof and were not.
+An `examples/` probe called a gated method successfully, suggesting the gate
+did nothing; acting on it would have reverted a change that works. And the
+`--no-default-features` build above was written into the first version of this
+document as a reverse check, on the strength of an earlier run that had the
+dev-dependency removed at the time. The general shape: a build that succeeds is
+weak evidence about a gate, because it succeeds for many reasons. Inspect the
+artifact.
 
 ## What this does not license
 

@@ -30,9 +30,18 @@ current `is_err()` check does clean up. Reverted.
 
 A subscriber has to accumulate 128 unaccepted connections. The listener takes
 one connection per doorbell and returns immediately, so reaching that needs the
-listener wedged. The wedge that made this live — an unbounded read on a peer
-that never writes — was fixed in `5e034f1b`; the identify read now has a
-deadline.
+listener to fall behind.
+
+`5e034f1b` bounded each peer: the identify read now gives up after 250ms, so
+one silent peer no longer parks the listener forever. That is a mitigation, not
+a fix. The listener is serial, so N silent peers still cost N × 250ms, and a
+process opening connections in a loop keeps it permanently behind — and past
+128 queued, `ring` unlinks its socket and the subscriber is deaf for good.
+
+The socket sits under `~/Library/Application Support`, which is 0700, so this
+needs a process running as the same user. At that privilege the socket file can
+simply be deleted, so the attack buys nothing an attacker did not already have.
+It matters as a robustness bound, not as a security boundary.
 
 If this is ever worth closing properly, the fix is not at `connect` time. It is
 for a subscriber to hold something the sweeper can check that a dead process

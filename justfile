@@ -46,10 +46,10 @@ quick: fmt biome svelte-check
 front: biome svelte-check vitest
 
 # Everything that touches Rust (~12s, more after an edit)
-rust: fmt clippy cargo-test
+rust: fmt clippy clippy-shipped cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy cargo-test vitest graph-sweep-check app-test toolchain-parity
+check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity
 
 # Verify every file naming the rust version names the same one (milliseconds)
 toolchain-parity:
@@ -80,6 +80,15 @@ svelte-check:
 # Clippy lints
 clippy:
     cargo clippy --manifest-path {{manifest}} --all-targets -- -D warnings
+
+# Clippy the configuration that actually ships. `clippy` above passes
+# --all-targets, which pulls in the dev targets, and the dev-dependency on
+# ourselves turns `test-util` on for all of them — so the feature-off build is
+# the one configuration nothing else compiles. Without this recipe, code that
+# reads a `test-util`-gated field from ungated code passes `just check` and
+# fails only at `tauri build`.
+clippy-shipped:
+    cargo clippy --manifest-path {{manifest}} --lib --bins -- -D warnings
 
 # Run Rust tests
 cargo-test:

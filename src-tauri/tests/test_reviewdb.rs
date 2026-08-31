@@ -739,7 +739,7 @@ fn store_events_survive_a_commit_racing_the_subscribe() {
 }
 
 /// A peer that connects and never writes must not be able to stall the feed.
-/// `is_sync` reads the connection to tell a barrier from a doorbell, and a
+/// `identify` reads the connection to tell a barrier from a doorbell, and a
 /// read with no deadline would park the listener thread forever: the loop
 /// never reaches `accept` again, every later doorbell goes unread, and a
 /// running watch goes deaf without erroring. The read therefore gives up,
@@ -761,7 +761,9 @@ fn store_events_survive_a_peer_that_connects_and_says_nothing() {
         .map(|entry| entry.path())
         .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
         .expect("the subscriber's socket");
-    let mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    // Held open for the rest of the test by scope alone: the listener must be
+    // wedged on it while the commit below rings.
+    let _mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
 
     // A real commit behind the mute peer. If the listener is stuck on it,
     // this doorbell is never processed and the event never arrives.
@@ -798,7 +800,6 @@ fn store_events_survive_a_peer_that_connects_and_says_nothing() {
         matches!(event, Some(reviewdb::events::StoreEvent::Changed { .. })),
         "a commit behind a silent peer must still be announced",
     );
-    drop(mute);
 }
 
 #[test]
