@@ -255,6 +255,7 @@ pub fn configure<R: tauri::Runtime>(
         .manage(watcher)
         .manage(traffic_lights)
         .manage(ReviewStoreState(Default::default()))
+        .manage(crate::state::SweptRepos::default())
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
         .invoke_handler(tauri::generate_handler![

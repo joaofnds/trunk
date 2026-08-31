@@ -91,6 +91,28 @@ async fn prepare<R: Runtime>(
     Ok((canonical, store))
 }
 
+/// Reclaim this repo's abandoned snapshot pins, once per process.
+///
+/// The first review command to touch a repo is this process's "app start" for
+/// it: the store opens lazily and per repo. Nothing panel-visible changes, so
+/// this emits nothing. A sweep failure is not the caller's failure — the
+/// command it rode in on has nothing to do with pins — so it is reported to
+/// stderr and swallowed.
+fn sweep_once(store: &Store, canonical: &Path, repo_path: &str, swept: &crate::state::SweptRepos) {
+    if !swept.claim(canonical) {
+        return;
+    }
+
+    let now = crate::reviewdb::now_secs();
+    if let Err(e) = sweep_unanchored_pins(store, canonical, repo_path, now) {
+        eprintln!(
+            "snapshot pin sweep failed for {}: {}",
+            canonical.display(),
+            e.message
+        );
+    }
+}
+
 // ── Threads ──────────────────────────────────────────────────────────────────
 
 /// Everything a submitted thread carries. `anchor` is the diff-anchored shape
@@ -471,11 +493,18 @@ pub async fn list_threads<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     store: State<'_, ReviewStoreState>,
+    swept: State<'_, crate::state::SweptRepos>,
     app: AppHandle<R>,
 ) -> Result<Vec<RenderedThread>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
-    blocking_store(move || list_threads_inner(&store, &canonical)).await
+    let swept_repos = swept.inner().clone_handle();
+    let target = canonical.clone();
+    blocking_store(move || {
+        sweep_once(&store, &target, &path, &swept_repos);
+        list_threads_inner(&store, &target)
+    })
+    .await
 }
 
 // ── Reviews ──────────────────────────────────────────────────────────────────
@@ -604,7 +633,16 @@ pub async fn delete_review<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || store.write(|tx| reviews::delete(tx, &target, &review_id))).await?;
+    let repo_path = path.clone();
+    blocking_store(move || {
+        store.write(|tx| reviews::delete(tx, &target, &review_id))?;
+        // Deleting a review is when a batch of pins becomes garbage: the
+        // threads that anchored them are gone with it.
+        let now = crate::reviewdb::now_secs();
+        sweep_unanchored_pins(&store, &target, &repo_path, now)?;
+        Ok(())
+    })
+    .await?;
 
     emit_reviews_changed(&app, &canonical);
     Ok(())
@@ -920,7 +958,10 @@ pub fn sweep_unanchored_pins(
         .filter(|oid| !anchored.contains(oid) && !current.contains(oid))
         .collect();
 
-    let reclaimable: Vec<&String> = unanchored.iter().filter(|o| seen_before.contains(*o)).collect();
+    let reclaimable: Vec<&String> = unanchored
+        .iter()
+        .filter(|o| seen_before.contains(*o))
+        .collect();
 
     let mut reclaimed = 0;
     for oid in reclaimable {

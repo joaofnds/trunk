@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 // CRITICAL: Store PathBuf ONLY — git2::Repository is not Sync.
 // Each Tauri command opens a fresh Repository::open(path) inside spawn_blocking.
@@ -80,5 +80,26 @@ impl StoreSlot {
         &self,
     ) -> std::sync::Arc<Mutex<Option<std::sync::Arc<crate::reviewdb::Store>>>> {
         std::sync::Arc::clone(&self.0)
+    }
+}
+
+/// The repos whose snapshot pins have been swept in this process.
+///
+/// The sweep belongs at app start, but the review store is opened lazily and
+/// per repo, so "start" here means the first review command to touch a repo.
+/// Once per process is the whole point: sweeping on every command would put
+/// ref I/O on the comment gesture's path, which is what TRUNK-61 removed.
+#[derive(Default)]
+pub struct SweptRepos(Arc<Mutex<HashSet<PathBuf>>>);
+
+impl SweptRepos {
+    /// A handle the blocking pool can own, mirroring `StoreSlot`.
+    pub fn clone_handle(&self) -> SweptRepos {
+        SweptRepos(Arc::clone(&self.0))
+    }
+
+    /// True the first time it is asked about a repo, false forever after.
+    pub fn claim(&self, canonical: &Path) -> bool {
+        self.0.lock().unwrap().insert(canonical.to_path_buf())
     }
 }

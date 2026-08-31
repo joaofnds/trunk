@@ -2762,3 +2762,142 @@ fn a_thread_landing_during_supersession_keeps_its_pin() {
         "a snapshot whose thread was still in flight must keep its pin",
     );
 }
+
+/// The two-pass rule, which is what makes the sweep safe without coordinating
+/// with writers. One observation cannot tell an abandoned pin from one whose
+/// submit is still in flight, so the first sweep only records.
+#[test]
+fn one_sweep_records_an_unanchored_pin_without_deleting_it() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let superseded =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let reclaimed = sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+
+    assert_eq!(reclaimed, 0, "the first sweep reclaims nothing");
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{superseded}"))
+            .is_ok(),
+        "a pin seen unanchored only once must survive",
+    );
+}
+
+/// A thread landing between the two sweeps clears the mark: the pin was a
+/// submit in flight, not garbage. This is the interleaving that would lose a
+/// comment if one observation were enough.
+#[test]
+fn a_thread_landing_between_sweeps_saves_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let in_flight =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    let mut late = submission("landed between the two sweeps");
+    late.anchor = Some(Anchor {
+        commit_oid: in_flight.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, late, 2_001).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_002).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{in_flight}")).is_ok(),
+        "a pin whose thread landed between sweeps must not be reclaimed",
+    );
+}
+
+/// The leak TRUNK-18 left behind: deleting the review that owned the only
+/// thread anchored to a pin left that pin alive forever, because nothing
+/// swept.
+#[test]
+fn the_sweep_reclaims_a_pin_whose_review_was_deleted() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let anchored =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut thread = submission("the only thread on this snapshot");
+    thread.anchor = Some(Anchor {
+        commit_oid: anchored.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, thread, 1_000).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let review_id = only_review(&store, &canonical).id;
+    store
+        .write(|tx| reviewdb::reviews::delete(tx, &canonical, &review_id))
+        .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{anchored}")).is_err(),
+        "a pin whose review was deleted must be reclaimed",
+    );
+}
+
+/// The current pins are what the next comment will anchor to, and they carry
+/// no thread until someone comments, so they must never be candidates however
+/// many times the sweep runs.
+#[test]
+fn the_sweep_never_reclaims_a_current_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let current =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_002).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{current}")).is_ok(),
+        "the repo's current pin must survive any number of sweeps",
+    );
+}
