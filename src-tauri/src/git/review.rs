@@ -159,14 +159,14 @@ fn inline_code(s: &str) -> String {
     }
 }
 
-/// Neutralizes control characters in reviewer-facing heading text. A git
-/// tree-entry name may legally contain a literal `\n` (tree entries are
-/// NUL-delimited, not newline-delimited), so a crafted `file_path` spliced
-/// unescaped into a heading line could forge a fake heading or inject a
-/// free-standing instruction line into a document that is later handed
-/// unwrapped to an AI agent as its entire prompt. Replacing `\n`/`\r` with a
-/// space keeps the heading on one line without hiding the reviewer's data.
-fn sanitize_heading_text(s: &str) -> String {
+/// Neutralizes control characters in any reviewer-facing line an agent reads
+/// as structure. A git tree-entry name may legally contain a literal `\n`
+/// (tree entries are NUL-delimited, not newline-delimited), so a crafted
+/// `file_path` spliced unescaped into a heading line could forge a fake
+/// heading, and into the CLI's one-line-per-thread index could forge a whole
+/// thread. Replacing `\n`/`\r` with a space keeps the text on one line
+/// without hiding the reviewer's data.
+pub(crate) fn sanitize_heading_text(s: &str) -> String {
     s.chars()
         .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
         .collect()

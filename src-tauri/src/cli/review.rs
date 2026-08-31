@@ -821,7 +821,10 @@ fn discover_repo(repo: Option<PathBuf>) -> Result<PathBuf, TrunkError> {
 /// One line per thread: id, state, where it points, and the first line of its
 /// text — the index an agent scans before asking for a thread in full. The
 /// location is the anchor's `file:start-end`, a commit-level thread's short
-/// oid, or `no target`, mirroring the document's three thread shapes.
+/// oid, or `no target`, mirroring the document's three thread shapes. A file
+/// path may legally contain a newline, so the location passes through the
+/// renderer's sanitizer: one thread must never print as two lines, or the
+/// second is a thread an agent will act on that nobody wrote.
 fn render_threads(threads: &[crate::reviewdb::threads::Thread]) -> String {
     threads
         .iter()
@@ -830,7 +833,7 @@ fn render_threads(threads: &[crate::reviewdb::threads::Thread]) -> String {
                 "- {id} {state} {location} — {summary}\n",
                 id = t.id,
                 state = t.state.as_str(),
-                location = thread_location(t),
+                location = crate::git::review::sanitize_heading_text(&thread_location(t)),
                 summary = first_line(&t.text),
             )
         })
@@ -850,9 +853,12 @@ fn thread_location(thread: &crate::reviewdb::threads::Thread) -> String {
 }
 
 /// The comment's opening line, so one thread is one line of the index however
-/// long the comment runs.
-fn first_line(text: &str) -> &str {
-    text.lines().next().unwrap_or("").trim()
+/// long the comment runs. `lines` splits on `\n` and leaves a lone `\r`,
+/// which a terminal renders by returning to the start of the line and
+/// overwriting what the index already printed — so the result goes through
+/// the same sanitizer as the location.
+fn first_line(text: &str) -> String {
+    crate::git::review::sanitize_heading_text(text.lines().next().unwrap_or("").trim())
 }
 
 /// The `threads` index as NDJSON, one `thread` object per line, in `watch`'s
