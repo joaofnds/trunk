@@ -1011,13 +1011,20 @@ pub fn ensure_review_snapshot_inner(
         Some(s) => Some(git2::Oid::from_str(&s).map_err(TrunkError::from)?),
         None => None,
     };
-    let (oid, _) = decide_snapshot(&repo, kind, prior_oid)?;
-    keep_snapshot_ref(&repo, oid)?;
+    // Pin and record under one lock, for the same reason the sweep does its own
+    // git work inside its transaction: a ref pinned before its row is written
+    // is a snapshot the sweep can see as garbage while a composer already holds
+    // it. The two stores, git and SQLite, have to move together or the gap
+    // between them is a window (TRUNK-64).
+    let oid = store.write(|tx| {
+        let (oid, _) = decide_snapshot(&repo, kind, prior_oid)?;
+        keep_snapshot_ref(&repo, oid)?;
 
-    let oid = oid.to_string();
-    store.write(|tx| {
+        let oid = oid.to_string();
         snapshots::set(tx, canonical, kind, &oid, now)?;
-        pins::mark_minted(tx, canonical, &oid, now)
+        pins::mark_minted(tx, canonical, &oid, now)?;
+
+        Ok(oid)
     })?;
 
     Ok(oid)

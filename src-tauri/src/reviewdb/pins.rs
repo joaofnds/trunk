@@ -163,11 +163,12 @@ pub fn reconcile(
     // still not there. A row minted after the walk describes a ref that exists;
     // the walk simply predates it, and dropping it would make the record lie
     // about a pin an in-flight submit is holding.
-    let vanished: Vec<String> = recorded
-        .difference(refs)
-        .filter(|oid| !minted_since(conn, repo_path, oid, now).unwrap_or(true))
-        .cloned()
-        .collect();
+    let mut vanished = Vec::new();
+    for oid in recorded.difference(refs) {
+        if !minted_since(conn, repo_path, oid, now)? {
+            vanished.push(oid.clone());
+        }
+    }
     forget(conn, repo_path, &vanished)?;
 
     Ok(())

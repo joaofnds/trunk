@@ -61,12 +61,14 @@ transaction that stores its oid, before the oid is returned to any caller.
 `submit_thread` marks it anchored in the same transaction that writes the
 thread. So a pin cannot be judged against a stale view of either fact.
 
-**The sweep does everything in one transaction, git included.** It reads the
-refs, reconciles the record, decides what is garbage, deletes those refs, and
-drops their rows, all under the store's connection mutex.
+**Both writers move git and the store together, under one lock.** The sweep
+reads the refs, reconciles, decides, deletes refs and drops rows inside one
+transaction. Minting pins its ref inside the transaction that records it.
 
-That is the whole safety argument, and it is why there is no guard here to get
-wrong.
+That is the whole safety argument. It has to hold for *every* writer, not just
+the sweep: making the sweep atomic while minting still pinned its ref before
+writing its row left the same window open, which is how the sixth defect
+survived the fifth fix.
 
 ### Why nothing is deferred
 
@@ -89,7 +91,8 @@ new defect appeared wherever a writer touched one store without passing the
 other's witness.
 
 The cost the deferral was avoiding turns out to be small. A ref deletion is
-about 0.1ms; 200 of them take 27ms. The sweep runs on the blocking pool, never
+0.17ms with loose refs and 0.39ms once they are packed, which is what a repo
+looks like after any `gc`: 500 deletions take 83ms loose, 194ms packed. The sweep runs on the blocking pool, never
 the async runtime, so it never touches UI latency, and the store's own busy
 timeout is five seconds. Holding the mutex across a handful of ref deletions is
 cheaper than the machinery it replaced: removing the guards deleted about 140

@@ -4000,3 +4000,209 @@ fn a_snapshot_handed_out_under_a_concurrent_sweep_is_pinned() {
 
     sweeper.join().unwrap();
 }
+
+/// The sweep and a mint both touch git and the store. Making only the sweep
+/// atomic left the mint's own gap: it pinned the ref, then wrote the row, and a
+/// sweep landing between saw a snapshot it could call garbage while a composer
+/// already held it. Both writers must move the two stores together.
+#[test]
+fn a_mint_and_a_sweep_cannot_interleave() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    // S carried a thread that is now gone, so it is reclaimable without waiting
+    // out the grace window — the case the grace window does not cover.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let s =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut first = submission("comment on state A");
+    first.anchor = Some(Anchor {
+        commit_oid: s.clone(),
+        ..diff_anchor()
+    });
+    let first_id = submit_thread_inner(&store, &canonical, first, 1_000).unwrap();
+    store
+        .write(|tx| reviewdb::threads::delete(tx, &canonical, &first_id))
+        .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    // The user reverts: the composer is handed S again. A sweep running at any
+    // point around this must not be able to see S unpinned-but-unrecorded.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let handed =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_002)
+            .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    let mut late = submission("the comment the composer was holding");
+    late.anchor = Some(Anchor {
+        commit_oid: handed.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, late, SWEEP_NOW).unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    assert!(
+        fresh
+            .find_commit(git2::Oid::from_str(&handed).unwrap())
+            .is_ok(),
+        "a snapshot handed to a composer must survive a sweep and gc",
+    );
+}
+
+/// An unreleased commit numbered this same cleanup 8. A dev store that ran it
+/// has exactly the schema v7 produces, so the version is the only thing wrong.
+/// Refusing it would tell the user to restart, which never helps.
+#[test]
+fn a_store_from_the_unreleased_v8_is_accepted() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    reviewdb::open(ctx.data_dir()).unwrap();
+    {
+        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE pin_seq (repo_path TEXT PRIMARY KEY, next INTEGER NOT NULL);
+             PRAGMA user_version = 8;",
+        )
+        .unwrap();
+    }
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("still works"), 1_000).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+    assert_eq!(threads.len(), 1, "a v8 dev store must still take a comment");
+}
+
+/// The renumber is for that one known shape only. A store stamped 8 by anything
+/// else — a future build — is still refused, untouched.
+#[test]
+fn a_store_newer_than_the_unreleased_v8_is_still_refused() {
+    let ctx = TestContext::new_empty();
+
+    reviewdb::open(ctx.data_dir()).unwrap();
+    {
+        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        conn.execute_batch("PRAGMA user_version = 8;").unwrap();
+    }
+
+    let err = reviewdb::open(ctx.data_dir()).unwrap_err();
+    assert_eq!(
+        err.code, "store_newer",
+        "a truly newer store must be refused"
+    );
+
+    let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+    let version: i64 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, 8, "a refused store must be left untouched");
+}
+
+/// Adoption stamps the current time, which is what makes an unknown pin age out
+/// through the grace window instead of being deleted on sight. Written with a
+/// realistic clock: at `1_000`-scale constants the grace subtraction goes
+/// negative and any mint time passes, so the assertion proves nothing.
+#[test]
+fn an_adopted_pin_is_stamped_with_the_time_it_was_adopted() {
+    const NOW: i64 = 1_756_000_000;
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "legacy").unwrap();
+    let legacy =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, NOW)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "current").unwrap();
+    ensure_review_snapshot_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        SnapshotKind::Workdir,
+        NOW + 1,
+    )
+    .unwrap();
+    store
+        .write(|tx| reviewdb::pins::forget(tx, &canonical, std::slice::from_ref(&legacy)))
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), NOW + 2).unwrap();
+
+    assert!(
+        pin_refs(&repo).contains(&legacy),
+        "an adopted pin must be stamped now, not with a time already past grace",
+    );
+}
+
+/// Reconciliation runs before the decision reads so the decision sees the
+/// record as it stands, not as it stood before the refs were walked. The half
+/// that matters is dropping vanished rows: a row for a ref that is gone must
+/// not still be offered to the decision as a live pin.
+#[test]
+fn the_decision_sees_the_reconciled_record() {
+    const NOW: i64 = 1_756_000_000;
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "gone").unwrap();
+    let vanished =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, NOW)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "current").unwrap();
+    ensure_review_snapshot_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        SnapshotKind::Workdir,
+        NOW + 1,
+    )
+    .unwrap();
+
+    // Something else removed the ref, leaving the row behind.
+    trunk_lib::git::workdir_snapshot::prune_snapshot_ref(
+        &repo,
+        git2::Oid::from_str(&vanished).unwrap(),
+    )
+    .unwrap();
+
+    let reclaimed = sweep_unanchored_pins(&store, &canonical, ctx.path(), NOW + 100_000).unwrap();
+
+    assert_eq!(
+        reclaimed, 0,
+        "a row whose ref is already gone must be dropped by reconciliation, not counted as reclaimed work",
+    );
+    assert!(
+        !store
+            .read(|c| reviewdb::pins::recorded(c, &canonical, &vanished))
+            .unwrap(),
+        "the vanished row must be gone",
+    );
+}

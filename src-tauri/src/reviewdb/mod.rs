@@ -106,6 +106,7 @@ fn open_at(path: &Path, data_dir: &Path) -> Result<Store, TrunkError> {
     // Before any pragma that writes the file: `journal_mode = WAL` rewrites the
     // header, so a store this build must refuse would be modified on the way to
     // refusing it.
+    schema::accept_unreleased_v8(&conn)?;
     schema::version_guard(&conn)?;
 
     conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))

@@ -147,17 +147,50 @@ DROP TABLE IF EXISTS unanchored_pins;
 "#;
 
 /// Retire the guard machinery an earlier, unreleased shape of this feature
-/// needed.
+/// needed, and accept a store that already ran it.
 ///
 /// The sweep used to decide a pin was garbage and delete its ref afterwards,
 /// outside the transaction. Four successive guards tried to make that window
 /// safe and each was defeated; the sweep now does both in one transaction, so
 /// nothing needs guarding. `grants`, `grant_id` and `pin_seq` were those
-/// guards' bookkeeping and are dropped. None of them shipped, so no store in
-/// the wild carries data worth keeping here.
+/// guards' bookkeeping. `pin_seq` is dropped here; the two dead columns on
+/// `snapshot_pins` are left in place, because SQLite would need a table rebuild
+/// to remove them and they cost a byte each. None of it shipped, so no store in
+/// the wild carries data worth keeping.
 const V7: &str = r#"
 DROP TABLE IF EXISTS pin_seq;
 "#;
+
+/// A dev store may carry `user_version = 8` from an unreleased commit that
+/// numbered this same cleanup differently. Its schema is what v7 produces, so
+/// the version is the only thing wrong: renumber it rather than refuse the
+/// store. `version_guard` would otherwise tell the user to restart, which never
+/// helps, and leave the app unusable against that store forever.
+pub fn accept_unreleased_v8(conn: &Connection) -> Result<(), TrunkError> {
+    if user_version(conn)? != 8 {
+        return Ok(());
+    }
+
+    // Only the store that unreleased commit actually produced: it created
+    // `pin_seq`. A store stamped 8 without it was written by something else,
+    // and something else is exactly what `version_guard` must keep refusing.
+    let has_pin_seq: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master
+             WHERE type = 'table' AND name = 'pin_seq')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    if !has_pin_seq {
+        return Ok(());
+    }
+
+    conn.execute_batch("PRAGMA user_version = 7;")
+        .map_err(sqlite_error)?;
+
+    Ok(())
+}
 
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
