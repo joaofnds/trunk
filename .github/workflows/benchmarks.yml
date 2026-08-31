@@ -38,6 +38,14 @@ jobs:
           workspaces: "src-tauri -> target"
           save-if: true
 
+      # rust-cache saves target/ after a main run, and the restored copy carries
+      # Criterion's baseline directories with their sample files pruned. Criterion
+      # then errors comparing against that half-baseline and drops the bencher
+      # result line, which bench-gate reads as a missing benchmark. History lives
+      # in benchmark-data.json, not here, so stale baselines are safe to drop.
+      - name: Drop stale Criterion baselines
+        run: rm -rf src-tauri/target/criterion
+
       - name: Run benchmarks
         run: cd src-tauri && cargo bench --bench bench_graph --bench bench_commands --bench bench_ipc -- --output-format bencher | tee output.txt
 
