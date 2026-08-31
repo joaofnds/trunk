@@ -48,10 +48,12 @@ pub struct StoreEvents {
     thread: Option<std::thread::JoinHandle<()>>,
     /// Rung by [`StoreEvents::sync`] and acknowledged by the listener once it
     /// has finished the ring that carried it.
+    #[cfg(feature = "test-util")]
     synced: mpsc::Receiver<()>,
     /// The revision the subscriber has accounted for: read once at subscribe
     /// and advanced by the listener as it announces. Shared with the listener
     /// thread, which is the only writer.
+    #[cfg(feature = "test-util")]
     last_revision: Arc<Mutex<Option<i64>>>,
 }
 
@@ -63,6 +65,7 @@ impl StoreEvents {
 
     /// The event already queued, if any. Paired with [`StoreEvents::sync`]
     /// this answers "was an event produced" without a deadline.
+    #[cfg(feature = "test-util")]
     pub fn try_recv(&self) -> Option<StoreEvent> {
         self.receiver.try_recv().ok()
     }
@@ -71,6 +74,7 @@ impl StoreEvents {
     /// at subscribe or by announcing its way up to it. A commit at or below
     /// this revision needs no event; one above it has been lost. That is what
     /// separates "nothing to announce" from "the startup window dropped it".
+    #[cfg(feature = "test-util")]
     pub fn baseline(&self) -> Option<i64> {
         *self.last_revision.lock().unwrap()
     }
@@ -93,6 +97,7 @@ impl StoreEvents {
     /// the listener to acknowledge without inspecting the store.
     ///
     /// `false` means the feed has ended and no further events can arrive.
+    #[cfg(feature = "test-util")]
     pub fn sync(&self) -> bool {
         use std::io::Write;
 
@@ -143,8 +148,10 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
         .map_err(|e| TrunkError::new("watch", e.to_string()))?;
 
     let last_revision = Arc::new(Mutex::new(super::revision(&conn).ok()));
+    #[cfg(feature = "test-util")]
     let baseline = Arc::clone(&last_revision);
     let (sender, receiver) = mpsc::channel();
+    #[cfg(feature = "test-util")]
     let (synced_tx, synced) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
 
@@ -158,6 +165,7 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
                 // Acknowledge that everything rung before this point is
                 // done, without inspecting the store.
                 Caller::Barrier => {
+                    #[cfg(feature = "test-util")]
                     let _ = synced_tx.send(());
                 }
                 Caller::Doorbell => {
@@ -174,7 +182,9 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
         stop,
         socket_path,
         thread: Some(thread),
+        #[cfg(feature = "test-util")]
         synced,
+        #[cfg(feature = "test-util")]
         last_revision: baseline,
     })
 }

@@ -19,6 +19,15 @@ bench = false
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# Test-only affordances compiled out of the shipped binary. `StoreEvents::sync`
+# and its companions let a test wait on what the event feed did instead of on a
+# clock; nothing in the app calls them. Off by default, and enabled for the test
+# and bench targets below, following tokio's `test-util` convention — `cfg(test)`
+# cannot serve this, because the suites in `tests/` are separate crates that
+# compile this one as an ordinary dependency.
+test-util = []
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
@@ -72,6 +81,9 @@ objc2-foundation = { version = "0.3", features = [
 block2 = "0.6"
 
 [dev-dependencies]
+# Depend on ourselves with the feature on: the documented way to enable a
+# crate's own feature for its test targets only.
+trunk = { path = ".", features = ["test-util"] }
 tauri = { version = "2", features = ["test"] }
 criterion = { version = "0.8", features = ["html_reports"] }
 

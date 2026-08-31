@@ -5003,6 +5003,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "tempfile",
  "tokio",
+ "trunk",
  "two-face",
  "windows-sys 0.61.2",
  "yaml-rust",
