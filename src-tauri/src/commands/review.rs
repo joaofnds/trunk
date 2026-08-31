@@ -1026,145 +1026,69 @@ pub fn ensure_review_snapshot_inner(
 /// Delete the keepalive refs of snapshots that are finished with.
 ///
 /// A pin is reclaimable only when a thread once anchored to it and no thread
-/// anchors to it now. "Nothing anchors to it" alone is not enough: a comment is
-/// submitted as two separate calls, so a snapshot minted for a submit still in
-/// flight looks identical to an abandoned one, and reclaiming it unpins the
-/// commit that submit is about to name (TRUNK-61). A snapshot that has carried
-/// a thread can never be named again once its threads are gone, because a fresh
-/// comment mints a fresh snapshot.
+/// anchors to it now. "Nothing anchors to it right now" is not enough on its
+/// own: a comment is submitted as two separate calls, so a snapshot minted for
+/// a submit still in flight looks identical to an abandoned one (TRUNK-61). A
+/// snapshot that has carried a thread can never be named again once its threads
+/// are gone — unless it is handed out afresh, which re-protects it.
 ///
-/// The decision and its record commit together, so a thread landing during the
-/// sweep either marks its snapshot before the sweep reads (and is protected) or
-/// after the sweep commits (and finds the pin already gone from the record,
-/// which `ensure_review_snapshot` re-mints on the next gesture). The refs are
-/// deleted after that transaction closes: the store's connection lock is never
-/// held across git I/O.
+/// The record is reconciled against the refs first, so a pin minted before the
+/// record existed is adopted rather than ignored, and a row for a ref that is
+/// gone is dropped.
+///
+/// **Everything happens in one transaction, git included.** Deciding a pin is
+/// garbage and then deleting its ref later is what this mechanism kept getting
+/// wrong: six defects, four guards, each blind to some change in the window
+/// between. There is no window here. A ref deletion costs ~0.1ms and the sweep
+/// runs on the blocking pool, never the async runtime, so holding the store's
+/// connection mutex across it is cheaper than the guards it replaces.
+///
+/// A ref that will not delete is skipped, not fatal: it keeps its row and the
+/// next sweep tries again. The transaction still commits, because the rows it
+/// drops describe refs that are actually gone.
 pub fn sweep_unanchored_pins(
     store: &Store,
     canonical: &Path,
     repo_path: &str,
     now: i64,
 ) -> Result<usize, TrunkError> {
-    sweep_between(store, canonical, repo_path, now, || {})
-}
-
-/// The sweep, with `between` run at the seam its two phases leave open: after
-/// the decision commits, before the deferred ref deletions. A snapshot can be
-/// handed out again in that window, and a test needs to drive that interleaving
-/// against the real code rather than a copy of it.
-///
-/// Gated behind `test-util` so it never ships, per
-/// `docs/decisions/2026-08-31-test-only-api-on-production-types.md`.
-#[cfg(feature = "test-util")]
-pub fn sweep_unanchored_pins_between(
-    store: &Store,
-    canonical: &Path,
-    repo_path: &str,
-    now: i64,
-    between: impl FnOnce(),
-) -> Result<usize, TrunkError> {
-    sweep_between(store, canonical, repo_path, now, between)
-}
-
-fn sweep_between(
-    store: &Store,
-    canonical: &Path,
-    repo_path: &str,
-    now: i64,
-    between: impl FnOnce(),
-) -> Result<usize, TrunkError> {
     use crate::git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let pinned: Vec<(git2::Oid, String)> = pinned_snapshot_oids(&repo)?
-        .into_iter()
-        .map(|oid| (oid, oid.to_string()))
-        .collect();
 
-    // write_quiet: reclaiming a pin changes nothing the panel renders, and a
-    // revision bump here would make every other window and the CLI refetch
-    // every thread on a panel open where nothing changed.
-    let reclaimable = store.write_quiet(|tx| {
-        // The record and the refs drift: a pin minted before this table
-        // existed has no row, and a row whose deletion never ran describes a
-        // ref that is gone. Reconcile first so the decision below sees every
-        // pin that actually exists, and only those.
+    store.write_quiet(|tx| {
+        let pinned = pinned_snapshot_oids(&repo)?;
         let on_disk: std::collections::HashSet<String> =
-            pinned.iter().map(|(_, text)| text.clone()).collect();
+            pinned.iter().map(git2::Oid::to_string).collect();
         pins::reconcile(tx, canonical, &on_disk, now)?;
 
         let anchored = threads::anchored_oids(tx, canonical)?;
         let eligible = pins::reclaimable(tx, canonical, now)?;
         let current = snapshots::get(tx, canonical)?.oids();
 
-        let reclaimable: Vec<(git2::Oid, String, Option<i64>)> = pinned
-            .iter()
-            .filter(|(_, text)| {
-                eligible.contains(text) && !anchored.contains(text) && !current.contains(text)
-            })
-            .map(|(oid, text)| {
-                let grants = pins::grants(tx, canonical, text)?;
-                Ok((*oid, text.clone(), grants))
-            })
-            .collect::<Result<Vec<_>, TrunkError>>()?;
-
-        Ok(reclaimable)
-    })?;
-
-    // Delete only what is still garbage. Between the decision committing and
-    // this loop, `ensure_review_snapshot` can hand out one of these oids again
-    // — a snapshot oid is derived from its tree, so reverting the working tree
-    // re-mints it — and that regrant re-pins the ref and re-records the row. A
-    // stale deletion would then unpin a snapshot a new submit is holding, which
-    // is the loss this whole design prevents. Re-checking under the store's
-    // lock, with the deletion itself outside it, keeps git I/O off that lock.
-    between();
-
-    let mut reclaimed = 0;
-    for (oid, text, decided_grants) in &reclaimable {
-        let still_garbage = store.read(|conn| {
-            let now_grants = pins::grants(conn, canonical, text)?;
-            Ok(now_grants == *decided_grants)
-        })?;
-        if !still_garbage {
-            continue;
-        }
-
-        // One ref that will not delete — locked by a concurrent gc, a
-        // permission problem — must not strand every oid after it. Those would
-        // keep their refs with no record, and only the next reconciliation
-        // would find them again. Report and carry on.
-        match prune_snapshot_ref(&repo, *oid) {
-            // Forget only what is actually gone, and only after it is gone. A
-            // row dropped for a ref that survived would be re-adopted by the
-            // next reconciliation with a fresh mint time, protecting it afresh
-            // every pass, so it would never be reclaimed at all.
-            Ok(()) => {
-                // Same reasoning as the arm below: the ref is already gone, so
-                // failing here would strand every later oid over a row the next
-                // reconciliation drops anyway.
-                if let Err(e) =
-                    store.write_quiet(|tx| pins::forget(tx, canonical, std::slice::from_ref(text)))
-                {
-                    eprintln!(
-                        "pin {} in {} was unpinned but its record remains: {}",
-                        text,
-                        canonical.display(),
-                        e.message
-                    );
-                }
-                reclaimed += 1;
+        let mut reclaimed = 0;
+        for oid in &pinned {
+            let text = oid.to_string();
+            if !eligible.contains(&text) || anchored.contains(&text) || current.contains(&text) {
+                continue;
             }
-            Err(e) => eprintln!(
-                "pin {} in {} could not be unpinned: {}",
-                text,
-                canonical.display(),
-                e.message
-            ),
-        }
-    }
 
-    Ok(reclaimed)
+            match prune_snapshot_ref(&repo, *oid) {
+                Ok(()) => {
+                    pins::forget(tx, canonical, std::slice::from_ref(&text))?;
+                    reclaimed += 1;
+                }
+                Err(e) => eprintln!(
+                    "pin {} in {} could not be unpinned: {}",
+                    text,
+                    canonical.display(),
+                    e.message
+                ),
+            }
+        }
+
+        Ok(reclaimed)
+    })
 }
 
 pub fn read_snapshots_inner(

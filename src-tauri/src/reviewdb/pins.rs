@@ -36,15 +36,13 @@ pub fn mark_minted(
     oid: &str,
     now: i64,
 ) -> Result<(), TrunkError> {
-    let grant = next_grant(conn, repo_path)?;
     conn.execute(
-        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at, grant_id)
-         VALUES (?1, ?2, 0, ?3, ?4)
+        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at)
+         VALUES (?1, ?2, 0, ?3)
          ON CONFLICT(repo_path, oid) DO UPDATE SET
              anchored = 0,
-             minted_at = excluded.minted_at,
-             grant_id = excluded.grant_id",
-        rusqlite::params![repo_key(repo_path), oid, now, grant],
+             minted_at = excluded.minted_at",
+        rusqlite::params![repo_key(repo_path), oid, now],
     )
     .map_err(sqlite_error)?;
 
@@ -65,12 +63,10 @@ pub fn mark_anchored(
     oid: &str,
     now: i64,
 ) -> Result<Anchored, TrunkError> {
-    let grant = next_grant(conn, repo_path)?;
     let updated = conn
         .execute(
-            "UPDATE snapshot_pins SET anchored = 1, grant_id = ?3
-             WHERE repo_path = ?1 AND oid = ?2",
-            rusqlite::params![repo_key(repo_path), oid, grant],
+            "UPDATE snapshot_pins SET anchored = 1 WHERE repo_path = ?1 AND oid = ?2",
+            rusqlite::params![repo_key(repo_path), oid],
         )
         .map_err(sqlite_error)?;
     if updated > 0 {
@@ -78,9 +74,9 @@ pub fn mark_anchored(
     }
 
     conn.execute(
-        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at, grant_id)
-         VALUES (?1, ?2, 1, ?3, ?4)",
-        rusqlite::params![repo_key(repo_path), oid, now, grant],
+        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at)
+         VALUES (?1, ?2, 1, ?3)",
+        rusqlite::params![repo_key(repo_path), oid, now],
     )
     .map_err(sqlite_error)?;
 
@@ -177,30 +173,6 @@ pub fn reconcile(
     Ok(())
 }
 
-/// The next value in this repo's grant sequence, consuming it.
-///
-/// Never reused, so a row deleted and re-created is stamped with a value no
-/// earlier read can have seen. A counter on the row cannot do this: it dies
-/// with the row and the replacement starts over, which is how a stale deletion
-/// came to look valid.
-fn next_grant(conn: &Connection, repo_path: &Path) -> Result<i64, TrunkError> {
-    let key = repo_key(repo_path);
-
-    conn.execute(
-        "INSERT INTO pin_seq (repo_path, next) VALUES (?1, 1)
-         ON CONFLICT(repo_path) DO UPDATE SET next = next + 1",
-        [&key],
-    )
-    .map_err(sqlite_error)?;
-
-    conn.query_row(
-        "SELECT next FROM pin_seq WHERE repo_path = ?1",
-        [&key],
-        |row| row.get(0),
-    )
-    .map_err(sqlite_error)
-}
-
 /// Whether this repo's row for `oid` was minted at or after `since`, which
 /// means it postdates the caller's view of the refs on disk.
 fn minted_since(
@@ -221,23 +193,13 @@ fn minted_since(
     Ok(minted.is_some_and(|m| m >= since))
 }
 
-/// This repo's grant count for `oid`, if it has a row.
-///
-/// The sweep reads this when it decides, and again before it deletes: any
-/// change means the row was written in between — handed out again, or anchored
-/// by a thread that landed — so the deletion it authorised is stale.
-///
-/// A counter, not a timestamp. `now_secs` has one-second granularity, so a
-/// regrant inside the same second leaves the mint time unchanged, and
-/// `mark_anchored` does not write the mint time at all. Either case would
-/// delete a pin a live comment is holding.
-pub fn grants(conn: &Connection, repo_path: &Path, oid: &str) -> Result<Option<i64>, TrunkError> {
+/// Whether this repo has a record for `oid`.
+pub fn recorded(conn: &Connection, repo_path: &Path, oid: &str) -> Result<bool, TrunkError> {
     conn.query_row(
-        "SELECT grant_id FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2",
+        "SELECT EXISTS(SELECT 1 FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2)",
         rusqlite::params![repo_key(repo_path), oid],
         |row| row.get(0),
     )
-    .optional()
     .map_err(sqlite_error)
 }
 

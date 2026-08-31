@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 8;
+pub const CURRENT_VERSION: i64 = 7;
 
 const V1: &str = r#"
 CREATE TABLE reviews (
@@ -146,41 +146,17 @@ CREATE TABLE IF NOT EXISTS snapshot_pins (
 DROP TABLE IF EXISTS unanchored_pins;
 "#;
 
-/// A counter bumped by every write to a `snapshot_pins` row.
+/// Retire the guard machinery an earlier, unreleased shape of this feature
+/// needed.
 ///
-/// The sweep decides which pins are garbage, then deletes their refs after its
-/// transaction commits so git I/O stays off the store lock. Anything that
-/// happens to a row in that window — a regrant, a thread anchoring — must make
-/// the pending deletion stand down. A timestamp cannot carry that: `now_secs`
-/// has one-second granularity, so a regrant in the same second is invisible,
-/// and `mark_anchored` does not write `minted_at` at all. A counter changes on
-/// every write, which is the only property the guard needs.
+/// The sweep used to decide a pin was garbage and delete its ref afterwards,
+/// outside the transaction. Four successive guards tried to make that window
+/// safe and each was defeated; the sweep now does both in one transaction, so
+/// nothing needs guarding. `grants`, `grant_id` and `pin_seq` were those
+/// guards' bookkeeping and are dropped. None of them shipped, so no store in
+/// the wild carries data worth keeping here.
 const V7: &str = r#"
-ALTER TABLE snapshot_pins ADD COLUMN grants INTEGER NOT NULL DEFAULT 0;
-"#;
-
-/// Replace the per-row grant counter with a per-repo sequence.
-///
-/// A counter living on the row cannot survive the row. `forget` deletes it and
-/// the next hand-out inserts a fresh one starting over, so a value the sweep
-/// read before its deferred deletion can recur, and the deletion then runs
-/// against a snapshot that was handed out again in between. What the guard
-/// needs is identity, not change-count: a number that has never been used for
-/// this repo before, so a re-created row can never look like the one the
-/// decision saw.
-///
-/// `pin_seq` is that source. Rows carry `grant_id`, the value they were stamped
-/// with; the sequence only ever moves forward.
-///
-/// The column is added by V6's table definition rather than altered in here, so
-/// a store arriving by either route ends with the same shape.
-const V8: &str = r#"
-CREATE TABLE IF NOT EXISTS pin_seq (
-    repo_path TEXT PRIMARY KEY,
-    next      INTEGER NOT NULL
-);
-
-ALTER TABLE snapshot_pins ADD COLUMN grant_id INTEGER NOT NULL DEFAULT 0;
+DROP TABLE IF EXISTS pin_seq;
 "#;
 
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
@@ -253,10 +229,6 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 7 {
         conn.execute_batch(&format!("{V7} PRAGMA user_version = 7;"))
-            .map_err(sqlite_error)?;
-    }
-    if user_version(conn)? < 8 {
-        conn.execute_batch(&format!("{V8} PRAGMA user_version = 8;"))
             .map_err(sqlite_error)?;
     }
 

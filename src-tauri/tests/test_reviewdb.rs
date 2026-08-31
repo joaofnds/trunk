@@ -3527,87 +3527,6 @@ fn superseding_one_kind_does_not_expose_the_others_current_pin() {
     );
 }
 
-/// The sweep's ref deletions run after its decision commits. A snapshot can be
-/// handed out again inside that window — reverting the working tree re-mints the
-/// same oid — and the deletion the earlier decision authorised must not then
-/// unpin a snapshot a new submit is holding.
-#[test]
-fn a_regrant_during_the_sweeps_window_keeps_its_pin() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("c1")
-        .build();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let repo = git2::Repository::open(ctx.path()).unwrap();
-
-    // S: anchored once, its thread deleted, so genuinely reclaimable.
-    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
-    let s =
-        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
-            .unwrap();
-    let mut first = submission("comment on state A");
-    first.anchor = Some(Anchor {
-        commit_oid: s.clone(),
-        ..diff_anchor()
-    });
-    let first_id = submit_thread_inner(&store, &canonical, first, 1_000).unwrap();
-    store
-        .write(|tx| reviewdb::threads::delete(tx, &canonical, &first_id))
-        .unwrap();
-
-    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
-    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
-        .unwrap();
-
-    // The user reverts and starts a new comment inside the sweep's window.
-    trunk_lib::commands::review::sweep_unanchored_pins_between(
-        &store,
-        &canonical,
-        ctx.path(),
-        1_002,
-        || {
-            std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
-            store
-                .write(|tx| {
-                    reviewdb::snapshots::set(tx, &canonical, SnapshotKind::Workdir, &s, 1_003)
-                })
-                .unwrap();
-            let reused = ensure_review_snapshot_inner(
-                &store,
-                &canonical,
-                ctx.path(),
-                SnapshotKind::Workdir,
-                1_003,
-            )
-            .unwrap();
-            assert_eq!(reused, s, "the reverted tree yields S again");
-        },
-    )
-    .unwrap();
-
-    // The new comment lands.
-    let mut second = submission("new comment on the reused snapshot");
-    second.anchor = Some(Anchor {
-        commit_oid: s.clone(),
-        ..diff_anchor()
-    });
-    submit_thread_into(&store, &canonical, Some(&repo), second, 1_004).unwrap();
-
-    let gc = std::process::Command::new("git")
-        .args(["gc", "--prune=now", "--aggressive"])
-        .current_dir(ctx.repo_path())
-        .output()
-        .unwrap();
-    assert!(gc.status.success(), "git gc failed: {gc:?}");
-
-    let fresh = git2::Repository::open(ctx.path()).unwrap();
-    assert!(
-        fresh.find_commit(git2::Oid::from_str(&s).unwrap()).is_ok(),
-        "a snapshot handed out again mid-sweep must survive the deferred deletion",
-    );
-}
-
 /// Marking an anchor is scoped by repo like every other query over the record.
 /// Two repos with identical trees mint the same oid, so an unscoped mark would
 /// flip another repo's row and make its in-flight snapshot reclaimable at once.
@@ -3738,10 +3657,10 @@ fn a_record_with_no_ref_is_dropped() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_001).unwrap();
 
     let still_recorded = store
-        .read(|c| reviewdb::pins::grants(c, &canonical, &oid))
+        .read(|c| reviewdb::pins::recorded(c, &canonical, &oid))
         .unwrap();
     assert!(
-        still_recorded.is_none(),
+        !still_recorded,
         "a record for a ref that is gone must be dropped",
     );
 }
@@ -3890,60 +3809,6 @@ fn one_undeletable_ref_does_not_strand_the_rest_of_the_batch() {
     }
 }
 
-/// The defect a timestamp guard cannot see: a comment landing inside the
-/// sweep's window anchors its snapshot, but anchoring does not change when the
-/// snapshot was minted. The pending deletion must still stand down.
-#[test]
-fn a_thread_landing_inside_the_sweeps_window_keeps_its_pin() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("c1")
-        .build();
-    let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-
-    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
-    let in_flight =
-        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
-            .unwrap();
-    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
-    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
-        .unwrap();
-
-    // Past the grace window, so the snapshot is genuinely condemned, and the
-    // submit lands between the decision and the deletion.
-    trunk_lib::commands::review::sweep_unanchored_pins_between(
-        &store,
-        &canonical,
-        ctx.path(),
-        SWEEP_NOW,
-        || {
-            let mut late = submission("landed inside the sweep's window");
-            late.anchor = Some(Anchor {
-                commit_oid: in_flight.clone(),
-                ..diff_anchor()
-            });
-            submit_thread_inner(&store, &canonical, late, SWEEP_NOW).unwrap();
-        },
-    )
-    .unwrap();
-
-    let gc = std::process::Command::new("git")
-        .args(["gc", "--prune=now", "--aggressive"])
-        .current_dir(ctx.repo_path())
-        .output()
-        .unwrap();
-    assert!(gc.status.success(), "git gc failed: {gc:?}");
-
-    let fresh = git2::Repository::open(ctx.path()).unwrap();
-    assert!(
-        fresh
-            .find_commit(git2::Oid::from_str(&in_flight).unwrap())
-            .is_ok(),
-        "a comment landing mid-sweep must keep its anchor commit",
-    );
-}
-
 /// The refs are walked before the reconciling transaction opens, so a snapshot
 /// minted in between has a live ref that the walk never saw. Its row must not
 /// be dropped as though the ref were gone: the record would then lie about a
@@ -3970,21 +3835,21 @@ fn reconciliation_keeps_the_row_of_a_ref_minted_after_the_walk() {
         .unwrap();
 
     let survived = store
-        .read(|c| reviewdb::pins::grants(c, &canonical, &unseen))
+        .read(|c| reviewdb::pins::recorded(c, &canonical, &unseen))
         .unwrap();
     assert!(
-        survived.is_some(),
+        survived,
         "a row minted after the ref walk must outlive reconciliation",
     );
 }
 
-/// The guard must identify the row it condemned, not merely notice it changed.
-/// A row dropped and re-created between the decision and the deletion — a
-/// second sweep reclaiming it, then the user reverting — would restart a
-/// per-row counter at its first value, and the stale deletion would then unpin
-/// a snapshot that had just been handed to a composer.
+// The sweep decides and deletes in one transaction, so there is no window for a
+// concurrent write to fall into. These pin the properties the window's guards
+// used to protect, stated as what the sweep must never reclaim.
+
+/// A snapshot a thread anchors to is never reclaimed, however stale its record.
 #[test]
-fn a_pin_dropped_and_reminted_inside_the_window_keeps_its_pin() {
+fn the_sweep_never_reclaims_an_anchored_snapshot() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -3993,50 +3858,44 @@ fn a_pin_dropped_and_reminted_inside_the_window_keeps_its_pin() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let repo = git2::Repository::open(ctx.path()).unwrap();
 
-    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
-    let victim =
+    std::fs::write(ctx.repo_path().join("a.txt"), "commented").unwrap();
+    let anchored =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
-    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    let mut thread = submission("a live comment");
+    thread.anchor = Some(Anchor {
+        commit_oid: anchored.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, thread, 1_000).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "moved on").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
-    trunk_lib::commands::review::sweep_unanchored_pins_between(
-        &store,
-        &canonical,
-        ctx.path(),
-        SWEEP_NOW,
-        || {
-            // A concurrent sweep reclaims the row, then the user reverts and a
-            // composer is handed the same oid again.
-            store
-                .write(|tx| reviewdb::pins::forget(tx, &canonical, std::slice::from_ref(&victim)))
-                .unwrap();
-            std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
-            let again = ensure_review_snapshot_inner(
-                &store,
-                &canonical,
-                ctx.path(),
-                SnapshotKind::Workdir,
-                SWEEP_NOW,
-            )
-            .unwrap();
-            assert_eq!(again, victim, "the revert hands out the same oid");
-        },
-    )
-    .unwrap();
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
 
-    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
     assert!(
-        repo.find_reference(&format!("{prefix}{victim}")).is_ok(),
-        "a re-created row must not look like the one the decision condemned",
+        fresh
+            .find_commit(git2::Oid::from_str(&anchored).unwrap())
+            .is_ok(),
+        "a live comment's anchor commit must survive the sweep and gc",
     );
+    let _ = &repo;
 }
 
-/// Handing out a snapshot again inside the sweep's window stands its pending
-/// deletion down. The plain regrant, where the row survives.
+/// A snapshot handed out again is protected again, whatever it was before. This
+/// is the revert case: snapshot oids come from the tree, so undoing an edit
+/// hands out the same oid a second time.
 #[test]
-fn a_regrant_inside_the_sweeps_window_keeps_its_pin() {
+fn a_snapshot_handed_out_again_is_not_reclaimed() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -4045,37 +3904,99 @@ fn a_regrant_inside_the_sweeps_window_keeps_its_pin() {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let repo = git2::Repository::open(ctx.path()).unwrap();
 
+    // S carried a thread that is now deleted: without a regrant it is garbage.
     std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
     let s =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
+    let mut first = submission("comment on state A");
+    first.anchor = Some(Anchor {
+        commit_oid: s.clone(),
+        ..diff_anchor()
+    });
+    let first_id = submit_thread_inner(&store, &canonical, first, 1_000).unwrap();
+    store
+        .write(|tx| reviewdb::threads::delete(tx, &canonical, &first_id))
+        .unwrap();
+
     std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
 
-    trunk_lib::commands::review::sweep_unanchored_pins_between(
-        &store,
-        &canonical,
-        ctx.path(),
-        SWEEP_NOW,
-        || {
-            std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
-            let again = ensure_review_snapshot_inner(
-                &store,
-                &canonical,
-                ctx.path(),
-                SnapshotKind::Workdir,
-                SWEEP_NOW,
-            )
+    // The user reverts: a composer is handed S again, so it is live once more.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let again =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_002)
             .unwrap();
-            assert_eq!(again, s, "the revert hands out the same oid");
-        },
-    )
-    .unwrap();
+    assert_eq!(again, s, "the reverted tree hands out the same oid");
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{s}")).is_ok(),
-        "a snapshot handed out again must not be unpinned",
+        "a snapshot handed out again must be protected again",
     );
+}
+
+/// A stress check, not a proof. What makes a mint safe against the sweep is
+/// that the sweep holds the store lock across its git work, so the two cannot
+/// interleave at all — a property of the structure, not of any guard. This
+/// drives them against each other anyway, because a structural claim that is
+/// never exercised is a claim nobody has tried to break.
+#[test]
+fn a_snapshot_handed_out_under_a_concurrent_sweep_is_pinned() {
+    use std::sync::Arc;
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = Arc::new(ctx.repo_path().canonicalize().unwrap());
+    let store = Arc::new(reviewdb::open(ctx.data_dir()).unwrap());
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+        .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let path = ctx.path().to_string();
+    let sweeper = {
+        let store = Arc::clone(&store);
+        let canonical = Arc::clone(&canonical);
+        let path = path.clone();
+        std::thread::spawn(move || {
+            for _ in 0..40 {
+                sweep_unanchored_pins(&store, &canonical, &path, SWEEP_NOW).unwrap();
+            }
+        })
+    };
+
+    // Never assert WHICH oid comes back: a snapshot commit embeds a timestamp,
+    // so a revert reproduces an earlier oid only inside the same second. The
+    // property is that whatever is handed out is pinned when it is handed out.
+    let repo_path = ctx.repo_path().to_path_buf();
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    for i in 0..40 {
+        let content = if i % 2 == 0 { "state A" } else { "state B" };
+        std::fs::write(repo_path.join("a.txt"), content).unwrap();
+        let handed = ensure_review_snapshot_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            SnapshotKind::Workdir,
+            1_002 + i,
+        )
+        .unwrap();
+
+        assert!(
+            repo.find_reference(&format!("{prefix}{handed}")).is_ok(),
+            "a snapshot handed to a composer must be pinned, sweeper or not",
+        );
+    }
+
+    sweeper.join().unwrap();
 }

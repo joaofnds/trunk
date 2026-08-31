@@ -61,32 +61,43 @@ transaction that stores its oid, before the oid is returned to any caller.
 `submit_thread` marks it anchored in the same transaction that writes the
 thread. So a pin cannot be judged against a stale view of either fact.
 
-The sweep decides and records in one transaction, then deletes refs after that
-transaction closes, so git I/O never runs under the store lock. That leaves a
-window: between the decision and the deletion, the row can be written again —
-handed out afresh, or anchored by a thread that landed. So each deletion
-re-checks, under the store lock, that the row still carries the **grant id** the
-decision read, and skips it otherwise.
+**The sweep does everything in one transaction, git included.** It reads the
+refs, reconciles the record, decides what is garbage, deletes those refs, and
+drops their rows, all under the store's connection mutex.
 
-The grant id comes from a per-repo sequence that only moves forward, and every
-hand-out and every anchoring stamps a fresh one. Two weaker versions of this
-were tried and both lost comments:
+That is the whole safety argument, and it is why there is no guard here to get
+wrong.
 
-- A **mint timestamp** is blind twice over. Anchoring writes no timestamp at
-  all, and the clock has one-second granularity, so it answers "how long ago"
-  rather than "did this change".
-- A **per-row counter** dies with its row. `forget` deletes the row and the next
-  hand-out inserts a fresh one starting over, so a value the decision read can
-  recur and the stale deletion looks valid again.
+### Why nothing is deferred
 
-What the guard needs is identity, not change-count: proof that the row in front
-of it is the one condemned, not a replacement that happens to look alike. Only a
-value never reused for the repo gives that. Deciding once and acting later is
-the staleness this design keeps running into, and this is what makes the
-deferred action safe.
+The sweep used to delete refs after its transaction committed, to keep git I/O
+off the store lock. That left a window between deciding a pin was garbage and
+acting on it, and the world changes in windows. Four guards were built for it
+and all four were defeated by a reproduction:
 
-The repo's two current pins are never candidates. They are what the next comment
-will anchor to.
+| Guard | Blind to |
+|---|---|
+| Two sweeps must agree | A submit spanning both sweeps sees them as one observation |
+| The mint timestamp changed | Anchoring writes no timestamp, and the clock is one-second |
+| A per-row counter changed | `forget` deletes the row; the replacement restarts the count |
+| A never-reused grant id | A ref is pinned before its grant is written, so the store lags the disk |
+
+Six defects in total, each the same shape and each found by a test rather than
+by reasoning. The pattern is not bad luck: the invariant spans two stores, git
+and SQLite, and every guard was a SQLite-side witness for a git-side fact. Each
+new defect appeared wherever a writer touched one store without passing the
+other's witness.
+
+The cost the deferral was avoiding turns out to be small. A ref deletion is
+about 0.1ms; 200 of them take 27ms. The sweep runs on the blocking pool, never
+the async runtime, so it never touches UI latency, and the store's own busy
+timeout is five seconds. Holding the mutex across a handful of ref deletions is
+cheaper than the machinery it replaced: removing the guards deleted about 140
+lines of production code, a schema table, and two columns.
+
+`reconcile` stays, because the record and the refs can still disagree for
+reasons that have nothing to do with the sweep — a pin minted before the record
+existed, or a ref removed by a manual `gc`.
 
 ### Why not two passes
 
