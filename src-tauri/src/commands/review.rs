@@ -847,7 +847,8 @@ pub async fn list_session_commits<R: Runtime>(
 ///
 /// The stored OID is `decide_snapshot`'s `prior`: on an unchanged tree it is
 /// reused, so a submit does not mint a redundant snapshot commit. The snapshot
-/// is pinned by a keepalive ref — pruning superseded pins is milestone 2's.
+/// is pinned by a keepalive ref; a superseded pin is pruned here, but only
+/// when no thread anchors to it (TRUNK-18 ruling — see the gate below).
 pub fn ensure_review_snapshot_inner(
     store: &Store,
     canonical: &Path,

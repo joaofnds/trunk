@@ -131,9 +131,6 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
     })
 }
 
-/// Move a thread's state, enforcing `ThreadState::transition` inside the same
-/// read-then-write pass. A missing id is `not_found`, matching `edit`'s
-/// convention: state changes target by id, never by list position.
 /// Whether any of the repo's threads anchors to `commit_oid`, across every
 /// review. Gates snapshot-pin pruning: a superseded snapshot stays pinned
 /// while a thread still anchors to it, or gc collects the commit its inline
@@ -154,6 +151,9 @@ pub fn any_anchored_to(
     .map_err(sqlite_error)
 }
 
+/// Move a thread's state, enforcing `ThreadState::transition` inside the same
+/// read-then-write pass. A missing id is `not_found`, matching `edit`'s
+/// convention: state changes target by id, never by list position.
 pub fn set_state(
     conn: &Connection,
     repo_path: &Path,
