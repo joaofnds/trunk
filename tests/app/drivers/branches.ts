@@ -4,6 +4,8 @@ import { firstMatching, openContextMenu } from "./dom.js";
 
 const BRANCH_ROW = '[data-testid="branch-row"]';
 const ROW_BUTTON = '[role="button"]';
+const CREATE_BUTTON = '[aria-label="Create new branch"]';
+const CREATE_INPUT = '[data-testid="branch-create-input"]';
 
 /** The branch sidebar, in the gestures it offers: a double-click checks a
  *  branch out, and a refusal shows under the row it was aimed at. */
@@ -17,6 +19,29 @@ export class BranchesDriver {
 		if (!target) throw new Error(`the ${name} branch row offers no control`);
 
 		await openContextMenu(target, this.menu, name);
+	}
+
+	/** Creates a branch through the sidebar's + affordance: the input it opens,
+	 *  the name typed into it, and the Enter that submits. */
+	async create(name: string): Promise<void> {
+		const plus = await waitFor("the create-branch button", () =>
+			document.querySelector<HTMLButtonElement>(CREATE_BUTTON),
+		);
+		plus.click();
+
+		const input = await waitFor("the create-branch input", () =>
+			document.querySelector<HTMLInputElement>(CREATE_INPUT),
+		);
+		input.value = name;
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		input.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+		);
+	}
+
+	/** Whether the sidebar is listing `name` right now. */
+	lists(name: string): boolean {
+		return branchRow(name) !== null;
 	}
 
 	async checkout(name: string): Promise<void> {

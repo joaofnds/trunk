@@ -85,6 +85,10 @@ panel, then a second file staged and its staged side read back. The two files ca
 edits, so the runtime choice between `diff_staged` and `diff_unstaged` cannot drift and still
 show the right lines.
 
+Branch mutation, in `tests/app/branch-mutation.test.ts`: a branch created through the
+sidebar's + input lands as a graph pill with HEAD on it, and deleting it through the
+confirmation dialog removes the row and the pill.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease
