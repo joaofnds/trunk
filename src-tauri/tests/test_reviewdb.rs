@@ -620,12 +620,59 @@ fn store_events_ignore_a_ring_with_no_commit_behind_it() {
     let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
 
     reviewdb::events::ring(ctx.data_dir());
-    reviewdb::events::ring(ctx.data_dir());
 
     assert!(events.sync(), "the feed must still be live");
     assert!(
         events.try_recv().is_none(),
         "a ring with no revision movement behind it must announce nothing",
+    );
+}
+
+/// The other half of that promise: two bumping writes must leave the
+/// subscriber announcing the revision it ended at, not the one it passed
+/// through. The listener compares against `store_meta.revision` rather than
+/// counting doorbells, so however the two rings interleave with the two
+/// commits, what it reports is where the store actually is.
+#[test]
+fn store_events_announce_where_two_commits_left_the_store() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&foreign, &canonical, submission("first"), 1_000).unwrap();
+    submit_thread_inner(&foreign, &canonical, submission("second"), 1_000).unwrap();
+
+    assert!(events.sync(), "the feed must still be live");
+    let revision = reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .read(reviewdb::revision)
+        .unwrap();
+
+    // Drain: the two rings may arrive as two events or as one, depending on
+    // whether the listener got to the first before the second landed. Both
+    // are correct. What must hold is where the subscriber ends up.
+    let mut last_seen = None;
+    while let Some(event) = events.try_recv() {
+        match event {
+            reviewdb::events::StoreEvent::Changed { revision } => last_seen = Some(revision),
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    assert_eq!(
+        last_seen,
+        Some(revision),
+        "the last announced revision must be where the two commits left the store",
+    );
+    assert_eq!(
+        events.baseline(),
+        Some(revision),
+        "and the subscriber must have accounted for it",
     );
 }
 

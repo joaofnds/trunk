@@ -75,12 +75,6 @@ impl StoreEvents {
         *self.last_revision.lock().unwrap()
     }
 
-    /// `recv` with a deadline, for tests and impatient callers. Production
-    /// consumers use `recv`; the deadline here is the caller's, not ours.
-    pub fn recv_timeout(&self, timeout: std::time::Duration) -> Option<StoreEvent> {
-        self.receiver.recv_timeout(timeout).ok()
-    }
-
     /// Block until every ring delivered so far has been processed.
     ///
     /// `ring` returns as soon as the kernel accepts the connection, so a
@@ -160,14 +154,17 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
             if flag.load(Ordering::Relaxed) {
                 return;
             }
-            if is_sync(&mut stream) {
-                // A barrier, not a doorbell: acknowledge that everything
-                // rung before this point is done, and read nothing.
-                let _ = synced_tx.send(());
-                continue;
-            }
-            if !announce_if_moved(&conn, &last_revision, &sender) {
-                return;
+            match identify(&mut stream) {
+                // Acknowledge that everything rung before this point is
+                // done, without inspecting the store.
+                Caller::Barrier => {
+                    let _ = synced_tx.send(());
+                }
+                Caller::Doorbell => {
+                    if !announce_if_moved(&conn, &last_revision, &sender) {
+                        return;
+                    }
+                }
             }
         }
     });
@@ -209,25 +206,37 @@ pub fn ring(data_dir: &Path) {
 /// doorbell goes unread, and a running watch goes deaf without erroring.
 const IDENTIFY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
 
-/// Whether this connection is a [`StoreEvents::sync`] barrier. A doorbell
-/// sends no bytes and closes, which reads as end-of-stream.
+/// What a peer turned out to be. A doorbell is the writers' signal that the
+/// store moved; a barrier is [`StoreEvents::sync`] asking to be let through
+/// once everything before it is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Caller {
+    Doorbell,
+    Barrier,
+}
+
+/// Read one connection's opening move.
 ///
-/// Everything that is not a well-formed barrier is a doorbell: a hangup, a
-/// wrong byte, a read error, or silence past [`IDENTIFY_TIMEOUT`]. That
-/// direction is the safe one. A doorbell misread as a barrier would drop a
-/// real change; a barrier misread as a doorbell costs only a revision check
-/// that announces nothing.
+/// A doorbell sends no bytes and closes, which reads as end-of-stream. A
+/// barrier sends [`SYNC_BYTE`]. Everything else — a wrong byte, a read
+/// error, silence past [`IDENTIFY_TIMEOUT`] — is taken for a doorbell,
+/// because that is the safe direction: a doorbell misread as a barrier drops
+/// a real change, while a barrier misread as a doorbell costs only a
+/// revision check that announces nothing.
 ///
 /// The timeout is best-effort on purpose. A peer that has already hung up
 /// makes `set_read_timeout` fail with `InvalidInput` on macOS, while the
 /// read itself still reports the hangup or the byte correctly — so the
 /// error is ignored rather than treated as an answer.
-fn is_sync(stream: &mut std::os::unix::net::UnixStream) -> bool {
+fn identify(stream: &mut std::os::unix::net::UnixStream) -> Caller {
     use std::io::Read;
 
     let _ = stream.set_read_timeout(Some(IDENTIFY_TIMEOUT));
     let mut byte = [0u8; 1];
-    matches!(stream.read(&mut byte), Ok(1) if byte[0] == SYNC_BYTE)
+    match stream.read(&mut byte) {
+        Ok(1) if byte[0] == SYNC_BYTE => Caller::Barrier,
+        _ => Caller::Doorbell,
+    }
 }
 
 /// One ring's worth of verification: guard, read the revision, announce a
