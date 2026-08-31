@@ -1,5 +1,5 @@
 import { waitFor } from "../harness/wait.js";
-import { enabledButton, firstMatching } from "./dom.js";
+import { firstMatching, pressButton } from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
@@ -174,27 +174,19 @@ export class StagingDriver {
 	/** Marks every conflicted file resolved, the button on the conflicted
 	 *  section's header. */
 	async markAllResolved(): Promise<void> {
-		await this.press(MARK_ALL_RESOLVED);
+		await pressButton(MARK_ALL_RESOLVED);
 	}
 
 	/** Continues the stopped rebase. The button holds itself disabled while
 	 *  anything is still conflicted, so waiting for it is the resolve gate. */
 	async continueRebase(): Promise<void> {
-		await this.press(CONTINUE_REBASE);
+		await pressButton(CONTINUE_REBASE);
 	}
 
 	/** Abandons the stopped rebase. The confirmation goes to the dialog Fake,
 	 *  which dismisses unless the test has said otherwise. */
 	async abortRebase(): Promise<void> {
-		await this.press(ABORT_REBASE);
-	}
-
-	private async press(label: string): Promise<void> {
-		const button = await waitFor(`an enabled ${label} button`, () =>
-			enabledButton(label),
-		);
-
-		button.click();
+		await pressButton(ABORT_REBASE);
 	}
 
 	async commit(subject: string): Promise<void> {

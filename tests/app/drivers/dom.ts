@@ -24,6 +24,15 @@ export function enabledButton(label: string): HTMLButtonElement | null {
 	return button.disabled ? null : button;
 }
 
+/** Waits out a button's enabled gate and clicks it. */
+export async function pressButton(label: string): Promise<void> {
+	const button = await waitFor(`an enabled ${label} button`, () =>
+		enabledButton(label),
+	);
+
+	button.click();
+}
+
 /**
  * Right-clicks `target` and returns once the menu it opens is showing. The
  * native menu never enters the DOM, so the Fake is the only thing that can say
