@@ -49,6 +49,10 @@ pub struct StoreEvents {
     /// Rung by [`StoreEvents::sync`] and acknowledged by the listener once it
     /// has finished the ring that carried it.
     synced: mpsc::Receiver<()>,
+    /// The revision the subscriber has accounted for: read once at subscribe
+    /// and advanced by the listener as it announces. Shared with the listener
+    /// thread, which is the only writer.
+    last_revision: Arc<Mutex<Option<i64>>>,
 }
 
 impl StoreEvents {
@@ -61,6 +65,14 @@ impl StoreEvents {
     /// this answers "was an event produced" without a deadline.
     pub fn try_recv(&self) -> Option<StoreEvent> {
         self.receiver.try_recv().ok()
+    }
+
+    /// The revision this subscriber has accounted for, whether by reading it
+    /// at subscribe or by announcing its way up to it. A commit at or below
+    /// this revision needs no event; one above it has been lost. That is what
+    /// separates "nothing to announce" from "the startup window dropped it".
+    pub fn baseline(&self) -> Option<i64> {
+        *self.last_revision.lock().unwrap()
     }
 
     /// `recv` with a deadline, for tests and impatient callers. Production
@@ -136,7 +148,8 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
     let listener = std::os::unix::net::UnixListener::bind(&socket_path)
         .map_err(|e| TrunkError::new("watch", e.to_string()))?;
 
-    let last_revision = Mutex::new(super::revision(&conn).ok());
+    let last_revision = Arc::new(Mutex::new(super::revision(&conn).ok()));
+    let baseline = Arc::clone(&last_revision);
     let (sender, receiver) = mpsc::channel();
     let (synced_tx, synced) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
@@ -165,6 +178,7 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
         socket_path,
         thread: Some(thread),
         synced,
+        last_revision: baseline,
     })
 }
 
@@ -188,11 +202,30 @@ pub fn ring(data_dir: &Path) {
     }
 }
 
+/// How long the listener waits for a connection to identify itself. A
+/// barrier writes its byte before `sync` returns, so an honest peer needs
+/// none of this. It exists so that a peer which connects and says nothing
+/// cannot park the listener: `accept` is never reached again, every later
+/// doorbell goes unread, and a running watch goes deaf without erroring.
+const IDENTIFY_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(250);
+
 /// Whether this connection is a [`StoreEvents::sync`] barrier. A doorbell
 /// sends no bytes and closes, which reads as end-of-stream.
+///
+/// Everything that is not a well-formed barrier is a doorbell: a hangup, a
+/// wrong byte, a read error, or silence past [`IDENTIFY_TIMEOUT`]. That
+/// direction is the safe one. A doorbell misread as a barrier would drop a
+/// real change; a barrier misread as a doorbell costs only a revision check
+/// that announces nothing.
+///
+/// The timeout is best-effort on purpose. A peer that has already hung up
+/// makes `set_read_timeout` fail with `InvalidInput` on macOS, while the
+/// read itself still reports the hangup or the byte correctly — so the
+/// error is ignored rather than treated as an answer.
 fn is_sync(stream: &mut std::os::unix::net::UnixStream) -> bool {
     use std::io::Read;
 
+    let _ = stream.set_read_timeout(Some(IDENTIFY_TIMEOUT));
     let mut byte = [0u8; 1];
     matches!(stream.read(&mut byte), Ok(1) if byte[0] == SYNC_BYTE)
 }

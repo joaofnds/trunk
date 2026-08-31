@@ -633,6 +633,13 @@ fn store_events_ignore_a_ring_with_no_commit_behind_it() {
 /// subscriber starting up and its listener first running. Here the socket is
 /// bound before the baseline revision is read, so such a write is either
 /// already in the baseline or queued in the socket backlog — never lost.
+///
+/// The assertion is the invariant, not the event. A test that accepted both
+/// an event and no event would pass with the window reopened, because a lost
+/// commit and a commit already in the baseline both show up as no event. What
+/// separates them is the baseline itself: if nothing was announced, the
+/// commit must already be inside it. `baseline` exposes that, so the two
+/// cases are told apart rather than both waved through.
 #[test]
 fn store_events_survive_a_commit_racing_the_subscribe() {
     let ctx = TestContext::builder()
@@ -641,6 +648,10 @@ fn store_events_survive_a_commit_racing_the_subscribe() {
         .build();
     let canonical = ctx.repo_path().canonicalize().unwrap();
     reviewdb::open(ctx.data_dir()).unwrap();
+    let before = reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .read(reviewdb::revision)
+        .unwrap();
     let foreign = reviewdb::open(ctx.data_dir()).unwrap();
 
     let writing = std::thread::spawn(move || {
@@ -654,6 +665,10 @@ fn store_events_survive_a_commit_racing_the_subscribe() {
         .unwrap()
         .read(reviewdb::revision)
         .unwrap();
+    assert_ne!(
+        revision, before,
+        "the racing commit must have bumped the revision, or this test races nothing",
+    );
     match events.try_recv() {
         // The commit landed after the baseline: it must have been announced.
         Some(reviewdb::events::StoreEvent::Changed { revision: seen }) => {
@@ -662,11 +677,81 @@ fn store_events_survive_a_commit_racing_the_subscribe() {
                 "the announced revision must be the current one"
             );
         }
-        // The commit landed before the baseline, so there was nothing to
-        // announce. Either way the subscriber's view matches the store.
-        None => {}
+        // Nothing was announced, so the only way the commit was not lost is
+        // that the baseline already contained it. This is the arm that fails
+        // when the socket binds after the baseline is read.
+        None => {
+            assert_eq!(
+                events.baseline(),
+                Some(revision),
+                "a commit that produced no event must already be in the baseline",
+            );
+        }
         other => panic!("unexpected event: {other:?}"),
     }
+}
+
+/// A peer that connects and never writes must not be able to stall the feed.
+/// `is_sync` reads the connection to tell a barrier from a doorbell, and a
+/// read with no deadline would park the listener thread forever: the loop
+/// never reaches `accept` again, every later doorbell goes unread, and a
+/// running watch goes deaf without erroring. The read therefore gives up,
+/// and a peer that says nothing in time is treated as the doorbell it
+/// most likely is.
+#[test]
+fn store_events_survive_a_peer_that_connects_and_says_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    let socket = std::fs::read_dir(ctx.data_dir().join("w"))
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
+        .expect("the subscriber's socket");
+    let mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+
+    // A real commit behind the mute peer. If the listener is stuck on it,
+    // this doorbell is never processed and the event never arrives.
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &foreign,
+        &canonical,
+        submission("behind a mute peer"),
+        1_000,
+    )
+    .unwrap();
+
+    // The barrier is the assertion everywhere else in this file, but here it
+    // is the thing under test: a wedged listener never acknowledges, so a
+    // bare `sync()` would hang instead of failing. Run it on its own thread
+    // and give it a deadline, so the wedge is reported rather than waited on.
+    let (done, settled) = std::sync::mpsc::channel();
+    let barrier = std::thread::spawn(move || {
+        let live = events.sync();
+        let event = events.try_recv();
+        let _ = done.send(());
+        (live, event)
+    });
+    assert!(
+        settled
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .is_ok(),
+        "a silent peer must not stall the listener: the feed stopped answering",
+    );
+    let (live, event) = barrier.join().unwrap();
+
+    assert!(live, "the feed must still be live");
+    assert!(
+        matches!(event, Some(reviewdb::events::StoreEvent::Changed { .. })),
+        "a commit behind a silent peer must still be announced",
+    );
+    drop(mute);
 }
 
 #[test]
