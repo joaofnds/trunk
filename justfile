@@ -90,9 +90,14 @@ clippy:
 clippy-shipped:
     cargo clippy --manifest-path {{manifest}} --lib --bins -- -D warnings
 
-# Run Rust tests
+# Run Rust tests (needs: cargo install cargo-nextest). nextest runs every test
+# binary in parallel where `cargo test` runs them serially — measured 7.2s
+# against 17s on the same suites (TRUNK-67). It cannot run doctests, so those
+# ride on a second invocation; the two together still run every test `cargo
+# test` ran, verified by name against `cargo test -- --list`.
 cargo-test:
-    {{scrubbed_env}} cargo test --manifest-path {{manifest}}
+    {{scrubbed_env}} cargo nextest run --manifest-path {{manifest}}
+    {{scrubbed_env}} cargo test --doc --manifest-path {{manifest}}
 
 # Run Rust tests with coverage
 cargo-test-cov:

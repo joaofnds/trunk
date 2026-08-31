@@ -158,6 +158,9 @@ jobs:
         with:
           workspaces: "src-tauri -> target"
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2.84.1
+        with:
+          tool: cargo-nextest
       # The Linux jobs cfg out macos_traffic_lights and the macOS shell_env
       # branches entirely; this is the only job that compiles them.
       - run: just clippy
