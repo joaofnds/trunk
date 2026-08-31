@@ -535,6 +535,57 @@ fn cli_has_no_verb_for_done_or_reopen() {
     }
 }
 
+/// Criterion 2's CLI clause: any operation on one review leaves the others'
+/// CLI-printed content unchanged, byte for byte.
+#[test]
+fn mutating_one_review_leaves_anothers_cli_output_byte_identical() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published_a) = seed_reviews(&ctx);
+    let published_b = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        let b = store
+            .write(|tx| reviews::create(tx, &canonical, Some("the other review"), 700))
+            .unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &b,
+                    threads::NewThread {
+                        text: "b's thread".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    800,
+                )?;
+                reviews::publish(tx, &canonical, &b, 900)
+            })
+            .unwrap();
+        b
+    };
+    let before = trunk_review_in(ctx.repo_path(), &["show", &published_a], ctx.data_dir());
+
+    let b_thread = published_thread_id(&ctx, &published_b);
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &b_thread, "mutating B"],
+        ctx.data_dir(),
+    );
+    trunk_review_in(ctx.repo_path(), &["address", &b_thread], ctx.data_dir());
+
+    let after = trunk_review_in(ctx.repo_path(), &["show", &published_a], ctx.data_dir());
+    assert_eq!(
+        String::from_utf8_lossy(&before.stdout),
+        String::from_utf8_lossy(&after.stdout),
+        "operations on review B must leave A's printed content byte-identical",
+    );
+}
+
 #[test]
 fn the_review_subcommand_exits_without_a_window() {
     let scratch = tempfile::TempDir::new().unwrap();

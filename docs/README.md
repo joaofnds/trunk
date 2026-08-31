@@ -12,6 +12,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 | [architecture/diff-virtualization.md](architecture/diff-virtualization.md) | How all three diff views render through one row model and one virtual list: why heights are computed and never measured, the sticky-row plus shared-`--pan-x` mechanism split view pans with, and the four ways that mechanism has been re-derived wrongly. Read before touching a diff view's geometry. |
 | [architecture/scrollbars.md](architecture/scrollbars.md) | Why every native scrollbar is hidden and a themed thumb is painted from JS instead, why the thumb shows only while scrolling, how dragging it works, and the viewport-padding trap that made lists which fit still scroll. Read before touching `scrollbar-activity.ts`, the `::-webkit-scrollbar` rule, or `VirtualList`'s height measurement. |
 | [architecture/overview.md](architecture/overview.md) | Whole-system map — component tree, Rust command modules, state ownership. A 2026-05-14 snapshot, not kept current. |
+| [review-cli.md](review-cli.md) | The `trunk review` CLI: the four verbs, repo and store discovery, the agent-attribution and no-leak rules, the error contract, and how live reflection reaches the running app. Read before extending the CLI or changing the review store's schema. |
 
 ## Decisions
 
