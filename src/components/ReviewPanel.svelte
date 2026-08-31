@@ -412,9 +412,16 @@ $effect(() => {
 	loadResolutions();
 });
 
+// Keyed on the failure, NOT on revision: a refused store fails every read and
+// the store poll refreshes on every change, so a revision-keyed toast stacked
+// one identical copy per refresh until they covered the panel. A failure is a
+// condition, so it is announced when it arrives and when it returns after a
+// clean refresh — not once per attempt to read through it.
+let toastedError: string | null = null;
 $effect(() => {
-	void reviewComments.revision;
 	const failure = reviewComments.lastError;
+	if (failure === toastedError) return;
+	toastedError = failure;
 	if (failure === null) return;
 	reportReadFailure(failure);
 });

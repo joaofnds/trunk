@@ -1558,6 +1558,67 @@ describe("read failures", () => {
 
 		expect(vi.mocked(showToast)).not.toHaveBeenCalled();
 	});
+
+	// A store the build refuses fails every read, and the store poll re-fires
+	// on every change, so an unchanged failure arrived once per refresh and
+	// stacked one identical toast per arrival — a wall of them over the panel.
+	// The failure is one condition, so it is told once.
+	it("toasts an unchanged failure once across many refreshes", async () => {
+		installReads({ commits, comments: [] });
+		reviewComments.seed({ lastError: "Repository is not open" });
+		await reviewComments.refresh();
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		for (let i = 0; i < 5; i++) {
+			await reviewComments.refresh();
+			await flush();
+		}
+
+		const errorToasts = vi
+			.mocked(showToast)
+			.mock.calls.filter((c) => c[1] === "error");
+		expect(errorToasts).toHaveLength(1);
+	});
+
+	// Silencing the repeat must not silence the recurrence: a failure that
+	// clears and returns is news again.
+	it("toasts again when a failure clears and then returns", async () => {
+		installReads({ commits, comments: [] });
+		reviewComments.seed({ lastError: "Repository is not open" });
+		await reviewComments.refresh();
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		reviewComments.seed({ lastError: null });
+		await reviewComments.refresh();
+		await flush();
+
+		reviewComments.seed({ lastError: "Repository is not open" });
+		await reviewComments.refresh();
+		await flush();
+
+		const errorToasts = vi
+			.mocked(showToast)
+			.mock.calls.filter((c) => c[1] === "error");
+		expect(errorToasts).toHaveLength(2);
+	});
 });
 
 // The panel is a {#if} sibling of DiffPanel, so every jump from the panel into
