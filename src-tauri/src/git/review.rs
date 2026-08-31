@@ -232,9 +232,12 @@ fn emit_fence(out: &mut String, body: &str, info: &str) {
 
 /// Emits the delimited reviewer-text block — the `**Reviewer:**`/`**Agent
 /// reviewer:**` label (picked from the thread's channel, mirroring
-/// `emit_replies` below), verbatim comment text, and the trailing blank-line
+/// `emit_replies` below), the comment text, and the trailing blank-line
 /// separator. Shared by all four comment-rendering sites so the delimiter
-/// convention has one place to change.
+/// convention has one place to change. Comment text runs through
+/// `neutralize_leading_hashes` for the reason reply text does: it is spliced
+/// into a document handed to an agent as its whole prompt, where a leading
+/// `#` run would read as this document's own structure.
 fn emit_reviewer_text(out: &mut String, text: &str, channel: Channel) {
     use std::fmt::Write;
     let label = match channel {
@@ -242,7 +245,8 @@ fn emit_reviewer_text(out: &mut String, text: &str, channel: Channel) {
         Channel::Agent => "Agent reviewer",
     };
     let _ = writeln!(out, "**{label}:**");
-    out.push_str(text);
+    let text = neutralize_leading_hashes(text);
+    out.push_str(&text);
     if !text.ends_with('\n') {
         out.push('\n');
     }

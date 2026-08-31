@@ -886,6 +886,14 @@ fn render_threads_json(
     Ok(out)
 }
 
+/// The line dividing a thread's document section from the CLI's own trailer.
+/// Comment and reply text is reproduced above it and may say anything,
+/// including "Review:", so a reader that splits on the trailer's prose splits
+/// wherever a replier chose. This marker is safe only when matched at the
+/// start of a line: the renderer escapes a leading `#` run in comment and
+/// reply text to `\####`, so a forged copy never begins one.
+const TRAILER_RULE: &str = "#### --- end of comment ---";
+
 /// One thread in full, as the document renders it, followed by the state and
 /// the moves the agent channel may make from it. The section comes from the
 /// document's own per-thread renderer (`git::review::render_thread_section`),
@@ -945,7 +953,7 @@ fn render_thread(
 
     let mut out = crate::git::review::render_thread_section(&session, &doc_thread);
     out.push_str(&format!(
-        "Review: {review}\nState: {state}\nYou can: {actions}\n",
+        "{TRAILER_RULE}\nReview: {review}\nState: {state}\nYou can: {actions}\n",
         review = thread.review_id,
         state = thread.state.as_str(),
         actions = agent_actions(thread.state),
