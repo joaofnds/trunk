@@ -65,14 +65,25 @@ The sweep decides and records in one transaction, then deletes refs after that
 transaction closes, so git I/O never runs under the store lock. That leaves a
 window: between the decision and the deletion, the row can be written again —
 handed out afresh, or anchored by a thread that landed. So each deletion
-re-checks, under the store lock, that the row's **grant counter** still matches
-what the decision read, and skips it otherwise.
+re-checks, under the store lock, that the row still carries the **grant id** the
+decision read, and skips it otherwise.
 
-A counter, not a timestamp. Anchoring writes no timestamp at all, and the clock
-has one-second granularity, so a mint time answers "how long ago" and cannot
-answer "did this change". Deciding once and acting later is the staleness this
-design keeps running into, and the counter is what makes the deferred action
-safe.
+The grant id comes from a per-repo sequence that only moves forward, and every
+hand-out and every anchoring stamps a fresh one. Two weaker versions of this
+were tried and both lost comments:
+
+- A **mint timestamp** is blind twice over. Anchoring writes no timestamp at
+  all, and the clock has one-second granularity, so it answers "how long ago"
+  rather than "did this change".
+- A **per-row counter** dies with its row. `forget` deletes the row and the next
+  hand-out inserts a fresh one starting over, so a value the decision read can
+  recur and the stale deletion looks valid again.
+
+What the guard needs is identity, not change-count: proof that the row in front
+of it is the one condemned, not a replacement that happens to look alike. Only a
+value never reused for the repo gives that. Deciding once and acting later is
+the staleness this design keeps running into, and this is what makes the
+deferred action safe.
 
 The repo's two current pins are never candidates. They are what the next comment
 will anchor to.
@@ -141,9 +152,9 @@ Two ordering rules fall out of it, and both are load-bearing:
   re-adopts the ref with a fresh mint time, protecting it again on every pass —
   it would never be reclaimed at all.
 - Because a row therefore outlives the decision that condemned it, the check
-  guarding the deletion compares the *grant counter* against the one the
-  decision saw, not merely whether a row exists. A row not yet cleared and a
-  genuine regrant are otherwise indistinguishable.
+  guarding the deletion compares the *grant id* against the one the decision
+  saw, not merely whether a row exists. A row not yet cleared and a genuine
+  regrant are otherwise indistinguishable.
 
 A failing deletion does not abort the batch.
 

@@ -3977,3 +3977,105 @@ fn reconciliation_keeps_the_row_of_a_ref_minted_after_the_walk() {
         "a row minted after the ref walk must outlive reconciliation",
     );
 }
+
+/// The guard must identify the row it condemned, not merely notice it changed.
+/// A row dropped and re-created between the decision and the deletion — a
+/// second sweep reclaiming it, then the user reverting — would restart a
+/// per-row counter at its first value, and the stale deletion would then unpin
+/// a snapshot that had just been handed to a composer.
+#[test]
+fn a_pin_dropped_and_reminted_inside_the_window_keeps_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let victim =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    trunk_lib::commands::review::sweep_unanchored_pins_between(
+        &store,
+        &canonical,
+        ctx.path(),
+        SWEEP_NOW,
+        || {
+            // A concurrent sweep reclaims the row, then the user reverts and a
+            // composer is handed the same oid again.
+            store
+                .write(|tx| reviewdb::pins::forget(tx, &canonical, std::slice::from_ref(&victim)))
+                .unwrap();
+            std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+            let again = ensure_review_snapshot_inner(
+                &store,
+                &canonical,
+                ctx.path(),
+                SnapshotKind::Workdir,
+                SWEEP_NOW,
+            )
+            .unwrap();
+            assert_eq!(again, victim, "the revert hands out the same oid");
+        },
+    )
+    .unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{victim}")).is_ok(),
+        "a re-created row must not look like the one the decision condemned",
+    );
+}
+
+/// Handing out a snapshot again inside the sweep's window stands its pending
+/// deletion down. The plain regrant, where the row survives.
+#[test]
+fn a_regrant_inside_the_sweeps_window_keeps_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let s =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    trunk_lib::commands::review::sweep_unanchored_pins_between(
+        &store,
+        &canonical,
+        ctx.path(),
+        SWEEP_NOW,
+        || {
+            std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+            let again = ensure_review_snapshot_inner(
+                &store,
+                &canonical,
+                ctx.path(),
+                SnapshotKind::Workdir,
+                SWEEP_NOW,
+            )
+            .unwrap();
+            assert_eq!(again, s, "the revert hands out the same oid");
+        },
+    )
+    .unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{s}")).is_ok(),
+        "a snapshot handed out again must not be unpinned",
+    );
+}
