@@ -109,7 +109,17 @@ pub fn sweep_once(
     }
 
     let now = crate::reviewdb::now_secs();
-    if let Err(e) = sweep_unanchored_pins(store, canonical, repo_path, now) {
+    report_sweep(
+        sweep_unanchored_pins(store, canonical, repo_path, now),
+        canonical,
+    );
+}
+
+/// Reclaiming pins is housekeeping: it is never the purpose of the command it
+/// rides on, and the caller's own work has already committed by the time it
+/// runs. A failure goes to stderr so the command still reports what it did.
+fn report_sweep(result: Result<usize, TrunkError>, canonical: &Path) {
+    if let Err(e) = result {
         eprintln!(
             "snapshot pin sweep failed for {}: {}",
             canonical.display(),
@@ -150,6 +160,11 @@ pub fn submit_thread_inner(
 ) -> Result<String, TrunkError> {
     store.write(|tx| {
         let review_id = reviews::ensure_active(tx, canonical, now)?;
+        let anchor_oid = req
+            .anchor
+            .as_ref()
+            .map(|a| a.commit_oid.clone())
+            .or_else(|| req.commit_oid.clone());
         let thread_id = threads::insert(
             tx,
             &review_id,
@@ -161,6 +176,11 @@ pub fn submit_thread_inner(
             },
             now,
         )?;
+        // Same transaction as the thread: a pin can never be reclaimed between
+        // the thread landing and its snapshot being marked as used.
+        if let Some(oid) = anchor_oid {
+            pins::mark_anchored(tx, canonical, &oid)?;
+        }
         if req.clears_draft {
             drafts::delete(tx, canonical)?;
         }
@@ -642,9 +662,15 @@ pub async fn delete_review<R: Runtime>(
     blocking_store(move || {
         store.write(|tx| reviews::delete(tx, &target, &review_id))?;
         // Deleting a review is when a batch of pins becomes garbage: the
-        // threads that anchored them are gone with it.
+        // threads that anchored them go with it. The deletion has already
+        // committed, so a failure here is not this command's failure — the
+        // review is gone either way, and reporting an error would tell the
+        // user a delete that happened did not.
         let now = crate::reviewdb::now_secs();
-        sweep_unanchored_pins(&store, &target, &repo_path, now)?;
+        report_sweep(
+            sweep_unanchored_pins(&store, &target, &repo_path, now),
+            &target,
+        );
         Ok(())
     })
     .await?;
@@ -919,25 +945,29 @@ pub fn ensure_review_snapshot_inner(
     keep_snapshot_ref(&repo, oid)?;
 
     let oid = oid.to_string();
-    store.write(|tx| snapshots::set(tx, canonical, kind, &oid, now))?;
+    store.write(|tx| {
+        snapshots::set(tx, canonical, kind, &oid, now)?;
+        pins::mark_minted(tx, canonical, &oid, now)
+    })?;
 
     Ok(oid)
 }
 
-/// Delete the keepalive refs of snapshots nothing anchors to, and record the
-/// ones that must wait for the next sweep.
+/// Delete the keepalive refs of snapshots that are finished with.
 ///
-/// Two passes, never one. A submit mints its snapshot and lands its thread in
-/// two separate calls, so an unanchored pin may belong to a submit still in
-/// flight; deleting on a single observation is the TRUNK-61 race. A pin is
-/// reclaimed only when the previous sweep saw it unanchored too, by which time
-/// any in-flight submit has landed its thread or died with the process.
+/// A pin is reclaimable only when a thread once anchored to it and no thread
+/// anchors to it now. "Nothing anchors to it" alone is not enough: a comment is
+/// submitted as two separate calls, so a snapshot minted for a submit still in
+/// flight looks identical to an abandoned one, and reclaiming it unpins the
+/// commit that submit is about to name (TRUNK-61). A snapshot that has carried
+/// a thread can never be named again once its threads are gone, because a fresh
+/// comment mints a fresh snapshot.
 ///
-/// The repo's two current pins are never candidates: they are the snapshots a
-/// new comment will anchor to, and they carry no thread until someone comments.
-///
-/// Store reads and the git deletions do not overlap: every oid is decided
-/// before the first ref is touched, so the store's connection lock is never
+/// The decision and its record commit together, so a thread landing during the
+/// sweep either marks its snapshot before the sweep reads (and is protected) or
+/// after the sweep commits (and finds the pin already gone from the record,
+/// which `ensure_review_snapshot` re-mints on the next gesture). The refs are
+/// deleted after that transaction closes: the store's connection lock is never
 /// held across git I/O.
 pub fn sweep_unanchored_pins(
     store: &Store,
@@ -950,32 +980,32 @@ pub fn sweep_unanchored_pins(
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let pinned = pinned_snapshot_oids(&repo)?;
 
-    let (anchored, current, seen_before) = store.read(|conn| {
-        Ok((
-            threads::anchored_oids(conn, canonical)?,
-            snapshots::get(conn, canonical)?.oids(),
-            pins::seen_unanchored(conn, canonical)?,
-        ))
+    let reclaimable = store.write(|tx| {
+        let anchored = threads::anchored_oids(tx, canonical)?;
+        let eligible = pins::reclaimable(tx, canonical, now)?;
+        let current = snapshots::get(tx, canonical)?.oids();
+
+        let reclaimable: Vec<String> = pinned
+            .iter()
+            .filter(|oid| {
+                eligible.contains(*oid) && !anchored.contains(*oid) && !current.contains(*oid)
+            })
+            .cloned()
+            .collect();
+
+        pins::forget(tx, canonical, &reclaimable)?;
+
+        Ok(reclaimable)
     })?;
 
-    let unanchored: std::collections::HashSet<String> = pinned
-        .into_iter()
-        .filter(|oid| !anchored.contains(oid) && !current.contains(oid))
-        .collect();
-
-    let reclaimable: Vec<&String> = unanchored
-        .iter()
-        .filter(|o| seen_before.contains(*o))
-        .collect();
-
     let mut reclaimed = 0;
-    for oid in reclaimable {
-        let parsed = git2::Oid::from_str(oid).map_err(TrunkError::from)?;
+    for oid in &reclaimable {
+        let Ok(parsed) = git2::Oid::from_str(oid) else {
+            continue;
+        };
         prune_snapshot_ref(&repo, parsed)?;
         reclaimed += 1;
     }
-
-    store.write(|tx| pins::record_unanchored(tx, canonical, &unanchored, now))?;
 
     Ok(reclaimed)
 }

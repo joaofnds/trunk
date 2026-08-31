@@ -9,6 +9,10 @@ use trunk_lib::commands::review::{
 };
 use trunk_lib::git::types::{Anchor, Side, Source};
 use trunk_lib::review_types::{Channel, ThreadState};
+
+/// A sweep clock past every test's mint time plus the in-flight grace window,
+/// so a test that wants the grace window's protection asks for it explicitly.
+const SWEEP_NOW: i64 = 10_000 + trunk_lib::reviewdb::pins::IN_FLIGHT_GRACE_SECS;
 use trunk_lib::reviewdb::{self, reviews::ReviewState};
 
 /// A commit-set member with the subject a test stores it under.
@@ -952,8 +956,8 @@ fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
         .unwrap();
     }
 
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let refs: Vec<String> = repo
         .references_glob(&format!(
@@ -1048,8 +1052,8 @@ fn a_thread_in_one_repo_does_not_pin_another_repos_snapshot() {
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
@@ -1090,8 +1094,8 @@ fn the_sweep_leaves_the_untouched_kinds_pin_alone() {
     std::fs::write(ctx.repo_path().join("a.txt"), "staged edit\nmore").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
@@ -2763,11 +2767,12 @@ fn a_thread_landing_during_supersession_keeps_its_pin() {
     );
 }
 
-/// The two-pass rule, which is what makes the sweep safe without coordinating
-/// with writers. One observation cannot tell an abandoned pin from one whose
-/// submit is still in flight, so the first sweep only records.
+/// A snapshot handed to a caller is protected until a thread anchors to it,
+/// however many times the sweep runs. The submit that asked for it may still
+/// be in flight, and nothing the sweep can observe distinguishes that from an
+/// abandoned snapshot.
 #[test]
-fn one_sweep_records_an_unanchored_pin_without_deleting_it() {
+fn a_snapshot_that_never_carried_a_thread_survives_repeated_sweeps() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -2777,21 +2782,51 @@ fn one_sweep_records_an_unanchored_pin_without_deleting_it() {
     let repo = git2::Repository::open(ctx.path()).unwrap();
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
-    let superseded =
+    let in_flight =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
 
-    let reclaimed = sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_002).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_003).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_004).unwrap();
 
-    assert_eq!(reclaimed, 0, "the first sweep reclaims nothing");
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
-        repo.find_reference(&format!("{prefix}{superseded}"))
-            .is_ok(),
-        "a pin seen unanchored only once must survive",
+        repo.find_reference(&format!("{prefix}{in_flight}")).is_ok(),
+        "a snapshot no thread has ever named must not be reclaimed",
+    );
+}
+
+/// The grace window is what stops an abandoned submit's snapshot leaking
+/// forever. Past it, no submit can still be holding the oid.
+#[test]
+fn an_abandoned_snapshot_is_reclaimed_once_the_grace_window_passes() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let abandoned =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{abandoned}"))
+            .is_err(),
+        "a snapshot no submit can still hold must eventually be reclaimed",
     );
 }
 
@@ -2816,14 +2851,14 @@ fn a_thread_landing_between_sweeps_saves_its_pin() {
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
 
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_002).unwrap();
     let mut late = submission("landed between the two sweeps");
     late.anchor = Some(Anchor {
         commit_oid: in_flight.clone(),
         ..diff_anchor()
     });
-    submit_thread_inner(&store, &canonical, late, 2_001).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_002).unwrap();
+    submit_thread_inner(&store, &canonical, late, 1_003).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
@@ -2863,8 +2898,8 @@ fn the_sweep_reclaims_a_pin_whose_review_was_deleted() {
     store
         .write(|tx| reviewdb::reviews::delete(tx, &canonical, &review_id))
         .unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
@@ -2891,9 +2926,9 @@ fn the_sweep_never_reclaims_a_current_pin() {
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
 
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
-    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_002).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
@@ -2985,8 +3020,9 @@ fn listing_threads_reclaims_a_stranded_pin() {
     );
 }
 
-/// Once per process, not once per command: the sweep must not ride along on
-/// every panel read, or ref I/O returns to the comment gesture's path.
+/// Once per process, not once per command: sweeping on every panel read would
+/// put ref I/O back on the comment gesture's path. Observed through the work it
+/// does — the second call must find the repo already claimed and do nothing.
 #[test]
 fn the_sweep_runs_once_per_process_per_repo() {
     let ctx = TestContext::builder()
@@ -2998,21 +3034,141 @@ fn the_sweep_runs_once_per_process_per_repo() {
     let repo = git2::Repository::open(ctx.path()).unwrap();
     let swept = trunk_lib::state::SweptRepos::default();
 
+    // A pin that is genuinely garbage: anchored once, then its review deleted.
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
-    let stranded =
+    let garbage =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
+    let mut thread = submission("anchored, then abandoned with its review");
+    thread.anchor = Some(Anchor {
+        commit_oid: garbage.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, thread, 1_000).unwrap();
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
+    let review_id = only_review(&store, &canonical).id;
+    store
+        .write(|tx| reviewdb::reviews::delete(tx, &canonical, &review_id))
+        .unwrap();
 
-    sweep_once(&store, &canonical, ctx.path(), &swept);
+    // The repo was already claimed, so no sweep runs and the garbage stays.
+    swept.claim(&canonical);
     sweep_once(&store, &canonical, ctx.path(), &swept);
     sweep_once(&store, &canonical, ctx.path(), &swept);
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
-        repo.find_reference(&format!("{prefix}{stranded}")).is_ok(),
-        "repeated reads in one process must not advance the sweep past its first pass",
+        repo.find_reference(&format!("{prefix}{garbage}")).is_ok(),
+        "a repo already claimed this process must not be swept again",
+    );
+}
+
+#[test]
+fn a_submit_spanning_two_sweeps_keeps_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let in_flight =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_002).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_003).unwrap();
+
+    let mut late = submission("submitted before either sweep, landed after both");
+    late.anchor = Some(Anchor {
+        commit_oid: in_flight.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, late, 2_002).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{in_flight}")).is_ok(),
+        "a pin must survive any number of sweeps while a submit that resolved it is unfinished",
+    );
+}
+
+/// `mark_anchored` is what turns a protected snapshot into a collectable one.
+/// Without it a snapshot that carried a thread stays protected for the whole
+/// grace window after the thread is gone, which is the leak the window exists
+/// to bound, not to cause.
+#[test]
+fn a_pin_becomes_collectable_as_soon_as_its_thread_is_deleted() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut thread = submission("the only thread on this snapshot");
+    thread.anchor = Some(Anchor {
+        commit_oid: oid.clone(),
+        ..diff_anchor()
+    });
+    let thread_id = submit_thread_inner(&store, &canonical, thread, 1_000).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    store
+        .write(|tx| reviewdb::threads::delete(tx, &canonical, &thread_id))
+        .unwrap();
+    // Well inside the grace window: only the anchored mark can make this
+    // pin collectable this soon.
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_002).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{oid}")).is_err(),
+        "a snapshot whose thread is deleted is finished with, grace window or not",
+    );
+}
+
+/// Reclaiming pins is housekeeping riding on a command that has already
+/// committed its own work. A sweep failure must not report that work as failed:
+/// git ref locking contends with a concurrent gc or another window routinely.
+#[test]
+fn a_sweep_failure_does_not_fail_the_delete_that_carried_it() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_thread_inner(&store, &canonical, submission("x"), 1_000).unwrap();
+    let review_id = only_review(&store, &canonical).id;
+
+    // A repo path the sweep cannot open is the simplest total sweep failure.
+    let deleted = store.write(|tx| reviewdb::reviews::delete(tx, &canonical, &review_id));
+    let swept = sweep_unanchored_pins(&store, &canonical, "/nonexistent/repo", 1_001);
+
+    assert!(deleted.is_ok(), "the deletion itself must succeed");
+    assert!(swept.is_err(), "the sweep must genuinely fail here");
+    let reviews = store
+        .read(|c| reviewdb::reviews::list(c, &canonical))
+        .unwrap();
+    assert!(
+        reviews.is_empty(),
+        "the review is gone, so the command must not report failure",
     );
 }

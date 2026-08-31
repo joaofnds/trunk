@@ -105,16 +105,22 @@ CREATE TABLE store_meta (revision INTEGER NOT NULL);
 INSERT INTO store_meta (revision) VALUES (0);
 "#;
 
-/// The pins a sweep found unanchored, so the next sweep can delete them (D8,
-/// TRUNK-61). A pin is reclaimed only when two sweeps in a row agree nothing
-/// anchors to it: a thread is written to the store after its snapshot is
-/// minted, so a single observation cannot distinguish an abandoned pin from
-/// one whose thread has not landed yet.
+/// Every snapshot this repo has handed to a caller, and whether a thread ever
+/// anchored to it (D8, TRUNK-61).
+///
+/// `ensure_review_snapshot` records the snapshot here in the same breath as it
+/// pins it, before any caller can act on the oid. A comment is submitted as two
+/// separate calls, so between them the snapshot has no thread; this row is what
+/// says the snapshot was handed out and may still be in use. `anchored` flips
+/// the first time a thread names the oid, and only an anchored snapshot can
+/// ever become garbage — once its threads are gone, nothing will name it again,
+/// because a fresh comment gets a fresh snapshot.
 const V5: &str = r#"
-CREATE TABLE unanchored_pins (
-    repo_path  TEXT NOT NULL,
-    oid        TEXT NOT NULL,
-    seen_at    INTEGER NOT NULL,
+CREATE TABLE snapshot_pins (
+    repo_path TEXT    NOT NULL,
+    oid       TEXT    NOT NULL,
+    anchored  INTEGER NOT NULL DEFAULT 0,
+    minted_at INTEGER NOT NULL,
     PRIMARY KEY (repo_path, oid)
 );
 "#;
