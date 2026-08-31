@@ -48,6 +48,12 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 # no new compiled dependency, which is why id minting samples it directly.
 getrandom = "0.3"
 
+[target.'cfg(windows)'.dependencies]
+# AttachConsole for the `trunk review` argv branch: the release binary is
+# windows_subsystem = "windows", so an interactive invocation has no console
+# until it attaches to its parent's.
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = [

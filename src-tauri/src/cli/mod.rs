@@ -18,6 +18,19 @@ pub mod review;
 /// stdout, errors to stderr with a nonzero exit and no partial write (§5.1).
 /// Usage mistakes exit 2, store and repo failures exit 1.
 pub fn run_review(args: &[String]) -> i32 {
+    // The release binary is `windows_subsystem = "windows"` (main.rs): no
+    // console is allocated, so `trunk.exe review list` typed into cmd.exe
+    // would print nothing and exit, while a piped invocation still worked.
+    // Attaching to the parent's console (when there is one) is what makes
+    // the interactive case behave; without it, D4's "packaging dissolves"
+    // is false on Windows. Interactive Windows use is unverified on the
+    // development host — the CI Windows job compiles this.
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+
     let cmd = match review::parse(args) {
         Ok(cmd) => cmd,
         Err(usage) => {
