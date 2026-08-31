@@ -113,6 +113,32 @@ app-test:
     cargo build --manifest-path {{manifest}} --example app_host
     TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
 
+# Repeat the two frontend suites to catch a wait that only fails sometimes (`just flake-hunt 20`)
+flake-hunt runs="10":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    cargo build --manifest-path {{manifest}} --example app_host
+    failures=0
+    for i in $(seq {{runs}}); do
+        if ! TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app >/tmp/flake-app-$i.log 2>&1; then
+            failures=$((failures + 1))
+            echo "::group::app-test run $i failed"
+            cat /tmp/flake-app-$i.log
+            echo "::endgroup::"
+        fi
+        if ! bun run test >/tmp/flake-vitest-$i.log 2>&1; then
+            failures=$((failures + 1))
+            echo "::group::vitest run $i failed"
+            cat /tmp/flake-vitest-$i.log
+            echo "::endgroup::"
+        fi
+    done
+    echo "{{runs}} runs of each suite, $failures failed"
+    if [ "$failures" -ne 0 ]; then
+        echo "::error::a frontend suite failed $failures time(s) over {{runs}} runs; a wait that fails under contention is the defect, not the runner"
+        exit 1
+    fi
+
 # Serve the real app to a browser so its rendered DOM can be measured (jsdom has no layout)
 measure:
     #!/usr/bin/env bash

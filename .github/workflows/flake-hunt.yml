@@ -1,0 +1,65 @@
+name: Flake Hunt
+
+# The two frontend suites have failed on wall-clock waits under contention
+# (TRUNK-62). A single green run proves nothing about a wait that only expires
+# sometimes, so this repeats them and fails if any run does.
+#
+# A shared CI runner is the loaded machine this needs. Reproducing the condition
+# by saturating a developer's own laptop was tried and withdrawn: TRUNK-44 leaked
+# 36 spinner processes doing it, and load is a worse instrument than the targeted
+# TRUNK_HOST_STALL_CMD knob in any case.
+#
+# Deliberately not part of `just check` or the CI gate: repeated runs cost minutes,
+# and a flake is a signal to investigate rather than a reason to block a merge.
+# Adding it to `check` would also fail the check-parity job.
+
+on:
+  schedule:
+    # 04:00 UTC daily, off João's working hours.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many times to repeat each suite"
+        required: false
+        default: "10"
+
+concurrency:
+  group: flake-hunt-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  flake-hunt:
+    name: Repeat Frontend Suites
+    runs-on: ubuntu-latest
+    # Ten runs of both suites, plus the Rust example build on a cold cache.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: "src-tauri -> target"
+          # Read-only: a scheduled job that never gates a merge should not be the
+          # one deciding what the shared cache holds.
+          save-if: "false"
+      - run: bun install --frozen-lockfile
+      # Builds a Rust example and runs vitest over it, so this job needs both
+      # toolchains, as the Application Harness job does.
+      - run: just flake-hunt ${{ github.event.inputs.runs || '10' }}
