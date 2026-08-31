@@ -11,6 +11,14 @@ export class ToolbarDriver {
 	async redo(): Promise<void> {
 		await press("Redo");
 	}
+
+	async stash(): Promise<void> {
+		await press("Stash");
+	}
+
+	async pop(): Promise<void> {
+		await press("Pop");
+	}
 }
 
 async function press(label: string): Promise<void> {

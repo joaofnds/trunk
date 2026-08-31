@@ -89,6 +89,9 @@ Branch mutation, in `tests/app/branch-mutation.test.ts`: a branch created throug
 sidebar's + input lands as a graph pill with HEAD on it, and deleting it through the
 confirmation dialog removes the row and the pill.
 
+Stash, in `tests/app/stash.test.ts`: the toolbar stash clears the WIP row into a graph
+stash and restores the committed file on disk; the pop reverses all three observations.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease
