@@ -125,6 +125,18 @@ pub fn reclaimable(
         .map_err(sqlite_error)
 }
 
+/// Whether this repo has a record for `oid`. A record the sweep just forgot,
+/// present again, means the snapshot was handed out afresh after the sweep
+/// decided it was garbage: the deletion that decision authorised is stale.
+pub fn seen(conn: &Connection, repo_path: &Path, oid: &str) -> Result<bool, TrunkError> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2)",
+        rusqlite::params![repo_key(repo_path), oid],
+        |row| row.get(0),
+    )
+    .map_err(sqlite_error)
+}
+
 /// Drop the records for pins that have been reclaimed.
 pub fn forget(conn: &Connection, repo_path: &Path, oids: &[String]) -> Result<(), TrunkError> {
     let key = repo_key(repo_path);

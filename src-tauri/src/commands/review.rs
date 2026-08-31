@@ -175,12 +175,38 @@ pub fn submit_thread_into(
 ) -> Result<String, TrunkError> {
     let (thread_id, restored) = submit_thread_write(store, canonical, req, now)?;
 
+    // The thread has committed. Re-pinning is a repair on top of it, so its
+    // failure is never this submit's failure: the comment exists either way,
+    // and an error here would tell the user their comment was lost and invite
+    // them to send it twice. The commit may even be gone already, in which case
+    // there is nothing to re-pin and the thread renders from its stored
+    // excerpt, which is what a superseded anchor has always done.
     if let (Some(repo), Some(oid)) = (repo, restored) {
-        let parsed = git2::Oid::from_str(&oid).map_err(TrunkError::from)?;
-        crate::git::workdir_snapshot::keep_snapshot_ref(repo, parsed)?;
+        repin_restored(repo, &oid, canonical);
     }
 
     Ok(thread_id)
+}
+
+/// Put back the keepalive ref for a snapshot the sweep reclaimed under an
+/// in-flight submit. Reports rather than propagates: see `submit_thread_into`.
+fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
+    let parsed = match git2::Oid::from_str(oid) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            eprintln!("re-pin skipped for {} in {}: {e}", oid, canonical.display());
+            return;
+        }
+    };
+
+    if let Err(e) = crate::git::workdir_snapshot::keep_snapshot_ref(repo, parsed) {
+        eprintln!(
+            "re-pin failed for {} in {}: {}",
+            oid,
+            canonical.display(),
+            e.message
+        );
+    }
 }
 
 /// The store half of a submit. Returns the thread id, and the anchor oid when
@@ -1019,6 +1045,34 @@ pub fn sweep_unanchored_pins(
     repo_path: &str,
     now: i64,
 ) -> Result<usize, TrunkError> {
+    sweep_between(store, canonical, repo_path, now, || {})
+}
+
+/// The sweep, with `between` run at the seam its two phases leave open: after
+/// the decision commits, before the deferred ref deletions. A snapshot can be
+/// handed out again in that window, and a test needs to drive that interleaving
+/// against the real code rather than a copy of it.
+///
+/// Gated behind `test-util` so it never ships, per
+/// `docs/decisions/2026-08-31-test-only-api-on-production-types.md`.
+#[cfg(feature = "test-util")]
+pub fn sweep_unanchored_pins_between(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    now: i64,
+    between: impl FnOnce(),
+) -> Result<usize, TrunkError> {
+    sweep_between(store, canonical, repo_path, now, between)
+}
+
+fn sweep_between(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    now: i64,
+    between: impl FnOnce(),
+) -> Result<usize, TrunkError> {
     use crate::git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
@@ -1049,11 +1103,30 @@ pub fn sweep_unanchored_pins(
         Ok(reclaimable)
     })?;
 
-    for (oid, _) in &reclaimable {
+    // Delete only what is still garbage. Between the decision committing and
+    // this loop, `ensure_review_snapshot` can hand out one of these oids again
+    // — a snapshot oid is derived from its tree, so reverting the working tree
+    // re-mints it — and that regrant re-pins the ref and re-records the row. A
+    // stale deletion would then unpin a snapshot a new submit is holding, which
+    // is the loss this whole design prevents. Re-checking under the store's
+    // lock, with the deletion itself outside it, keeps git I/O off that lock.
+    between();
+
+    let mut reclaimed = 0;
+    for (oid, text) in &reclaimable {
+        let still_garbage = store.read(|conn| {
+            let regranted = pins::seen(conn, canonical, text)?;
+            Ok(!regranted)
+        })?;
+        if !still_garbage {
+            continue;
+        }
+
         prune_snapshot_ref(&repo, *oid)?;
+        reclaimed += 1;
     }
 
-    Ok(reclaimable.len())
+    Ok(reclaimed)
 }
 
 pub fn read_snapshots_inner(

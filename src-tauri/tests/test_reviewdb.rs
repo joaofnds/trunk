@@ -2984,10 +2984,12 @@ fn a_thread_that_landed_during_supersession_survives_gc() {
     );
 }
 
-/// The wiring, not just the sweep: `list_threads` is what the panel calls, and
-/// it is what reclaims a stranded pin. Without a caller the sweep is dead code.
+/// The sweep needs a caller or it is dead code. `sweep_once` is what
+/// `list_threads` runs, and it must reclaim a pin whose thread is gone —
+/// through the anchored path, not by waiting out the grace window, so the test
+/// does not depend on the clock.
 #[test]
-fn listing_threads_reclaims_a_stranded_pin() {
+fn opening_the_panel_reclaims_a_pin_whose_thread_is_gone() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -3001,23 +3003,26 @@ fn listing_threads_reclaims_a_stranded_pin() {
     let stranded =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
+    let mut thread = submission("anchored, then deleted");
+    thread.anchor = Some(Anchor {
+        commit_oid: stranded.clone(),
+        ..diff_anchor()
+    });
+    let thread_id = submit_thread_inner(&store, &canonical, thread, 1_000).unwrap();
+    store
+        .write(|tx| reviewdb::threads::delete(tx, &canonical, &thread_id))
+        .unwrap();
+
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
 
-    // Two processes' worth of panel opens: the first marks, the second reclaims.
     sweep_once(&store, &canonical, ctx.path(), &swept);
-    sweep_once(
-        &store,
-        &canonical,
-        ctx.path(),
-        &trunk_lib::state::SweptRepos::default(),
-    );
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{stranded}")).is_err(),
-        "opening the panel must eventually reclaim a stranded pin",
+        "opening the panel must reclaim a pin whose thread is gone",
     );
 }
 
@@ -3440,5 +3445,209 @@ fn forgetting_one_repos_pin_leaves_anothers_record_alone() {
     assert!(
         theirs.contains(&shared),
         "forgetting one repo's record must leave another repo's alone",
+    );
+}
+
+/// A submit whose anchor commit gc already collected still succeeds. The thread
+/// is written before the pin is repaired, so failing the submit would tell the
+/// user their comment was lost while it sits in the store, and invite them to
+/// send it a second time.
+#[test]
+fn a_submit_succeeds_even_when_its_anchor_is_beyond_saving() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let stale =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut late = submission("submitted after gc destroyed the anchor");
+    late.anchor = Some(Anchor {
+        commit_oid: stale.clone(),
+        ..diff_anchor()
+    });
+
+    submit_thread_into(&store, &canonical, Some(&repo), late, SWEEP_NOW + 1)
+        .expect("a submit must not fail because its pin could not be repaired");
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+    assert_eq!(threads.len(), 1, "the comment is kept, not lost");
+}
+
+/// The two snapshot kinds are tracked in one table keyed by oid alone.
+/// Superseding one kind must not offer the other kind's current pin as garbage.
+#[test]
+fn superseding_one_kind_does_not_expose_the_others_current_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "staged and unstaged agree").unwrap();
+    {
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a.txt")).unwrap();
+        idx.write().unwrap();
+    }
+    let index_oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Index, 1_000)
+            .unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+        .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "only the workdir moves on").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{index_oid}")).is_ok(),
+        "the index kind's current pin must survive the workdir kind's supersession",
+    );
+}
+
+/// The sweep's ref deletions run after its decision commits. A snapshot can be
+/// handed out again inside that window — reverting the working tree re-mints the
+/// same oid — and the deletion the earlier decision authorised must not then
+/// unpin a snapshot a new submit is holding.
+#[test]
+fn a_regrant_during_the_sweeps_window_keeps_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    // S: anchored once, its thread deleted, so genuinely reclaimable.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let s =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut first = submission("comment on state A");
+    first.anchor = Some(Anchor {
+        commit_oid: s.clone(),
+        ..diff_anchor()
+    });
+    let first_id = submit_thread_inner(&store, &canonical, first, 1_000).unwrap();
+    store
+        .write(|tx| reviewdb::threads::delete(tx, &canonical, &first_id))
+        .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    // The user reverts and starts a new comment inside the sweep's window.
+    trunk_lib::commands::review::sweep_unanchored_pins_between(
+        &store,
+        &canonical,
+        ctx.path(),
+        1_002,
+        || {
+            std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+            store
+                .write(|tx| {
+                    reviewdb::snapshots::set(tx, &canonical, SnapshotKind::Workdir, &s, 1_003)
+                })
+                .unwrap();
+            let reused = ensure_review_snapshot_inner(
+                &store,
+                &canonical,
+                ctx.path(),
+                SnapshotKind::Workdir,
+                1_003,
+            )
+            .unwrap();
+            assert_eq!(reused, s, "the reverted tree yields S again");
+        },
+    )
+    .unwrap();
+
+    // The new comment lands.
+    let mut second = submission("new comment on the reused snapshot");
+    second.anchor = Some(Anchor {
+        commit_oid: s.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), second, 1_004).unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    assert!(
+        fresh.find_commit(git2::Oid::from_str(&s).unwrap()).is_ok(),
+        "a snapshot handed out again mid-sweep must survive the deferred deletion",
+    );
+}
+
+/// Marking an anchor is scoped by repo like every other query over the record.
+/// Two repos with identical trees mint the same oid, so an unscoped mark would
+/// flip another repo's row and make its in-flight snapshot reclaimable at once.
+#[test]
+fn anchoring_in_one_repo_does_not_mark_anothers_snapshot() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let other = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let other_canonical = other.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    // The same oid on record for both repos, neither anchored yet.
+    let shared = "2222222222222222222222222222222222222222".to_string();
+    store
+        .write(|tx| {
+            reviewdb::pins::mark_minted(tx, &canonical, &shared, 1_000)?;
+            reviewdb::pins::mark_minted(tx, &other_canonical, &shared, 1_000)?;
+            Ok(())
+        })
+        .unwrap();
+
+    store
+        .write(|tx| {
+            reviewdb::pins::mark_anchored(tx, &canonical, &shared, 1_001)?;
+            Ok(())
+        })
+        .unwrap();
+
+    // Inside the grace window, only an anchored row is reclaimable.
+    let theirs = store
+        .read(|c| reviewdb::pins::reclaimable(c, &other_canonical, 1_002))
+        .unwrap();
+    assert!(
+        !theirs.contains(&shared),
+        "anchoring in one repo must not make another repo's snapshot reclaimable",
     );
 }
