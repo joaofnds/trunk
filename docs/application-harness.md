@@ -70,7 +70,7 @@ that stops with the toast it owes the user, and the fork-point entry point. Case
 document, the greyed-out menu item, stays deliberately outside: it is a predicate over
 already-loaded data that crosses no boundary.
 
-The stopped-rebase recovery workflow, in the same file: a drop that leaves the next commit
+The stopped-rebase recovery workflow, in `tests/app/stopped-rebase.test.ts`: a drop that leaves the next commit
 unappliable, the Abort that returns HEAD to `main` with the graph it started from, and the
 same rebase retried and resolved — the conflicted file rewritten on disk, Mark All Resolved,
 Continue Rebase — landing the graph with the dropped commit gone. Skip is offered on the
@@ -229,12 +229,18 @@ of in-test time, and it moved the suite's wall clock to roughly 9 s: measured 20
 outliers that are the contention, not the suite. A quiet-machine median was not obtainable
 that day.
 
-With all eleven TRUNK-41 workflows in, the quiet-machine measurement (2026-08-31, load
-average ~2 at start, eight serial runs, all exit 0) is **10.2 s median**, a 9.9–10.6 s
-cluster with two unexplained outliers at 19.0 s and 29.6 s that did not repeat — outlier
-territory is tracked as TRUNK-44. **The 10 s ceiling is breached on a quiet machine.** The
-budget decision (TRUNK-63) is the owner's; the first lever remains the compile floor above,
-not trimming a workflow.
+With all eleven TRUNK-41 workflows in, the quiet-machine measurement (2026-08-31, eight
+serial runs) came to 10.2 s median — over the ceiling. The owner chose to bring the number
+down rather than raise it (TRUNK-63), and the fix followed from a correction to the model:
+**with cores to spare, the wall clock is the import floor plus the slowest file's serial
+test time**, not the boot count. `interactive-rebase.test.ts` had accumulated 5.3 s of
+serial tests against every other file's ≤2.1 s; moving the stopped-rebase scenario into its
+own file put the halves in parallel and brought the suite to **9.2 s median** (9.2 / 9.2 /
+8.9, same day, same machine). Keep workflow files small: a file's tests run serially, so a
+file that collects scenarios becomes the critical path. Two negative results from the same
+investigation: `isolate: false` is *slower* (12.5 s — the shared module graph buys nothing
+when each file already gets its own core, and contention costs), and the 19–29 s outliers
+seen once that day did not repeat (TRUNK-44 territory). About 0.8 s of headroom remains.
 
 ## Measuring the rendered DOM
 
