@@ -52,8 +52,8 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev
-      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
-      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "src-tauri -> target"
           # Read-only: a scheduled job that never gates a merge should not be the
