@@ -126,7 +126,7 @@ pub(crate) fn fence_language(file_path: &str) -> &'static str {
 
 /// L-04-safe 7-char short SHA: returns at most the first 7 chars, never
 /// panicking on a shorter input. `Option::unwrap_or` is NOT `Result::unwrap`.
-fn short_sha(oid: &str) -> &str {
+pub(crate) fn short_sha(oid: &str) -> &str {
     oid.get(..7).unwrap_or(oid)
 }
 

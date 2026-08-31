@@ -844,7 +844,7 @@ fn thread_location(thread: &crate::reviewdb::threads::Thread) -> String {
             "{}:{}-{}",
             anchor.file_path, anchor.start_line, anchor.end_line
         ),
-        (None, Some(oid)) => short_oid(oid).to_string(),
+        (None, Some(oid)) => crate::git::review::short_sha(oid).to_string(),
         (None, None) => "no target".to_string(),
     }
 }
@@ -853,10 +853,6 @@ fn thread_location(thread: &crate::reviewdb::threads::Thread) -> String {
 /// long the comment runs.
 fn first_line(text: &str) -> &str {
     text.lines().next().unwrap_or("").trim()
-}
-
-fn short_oid(oid: &str) -> &str {
-    oid.get(..7).unwrap_or(oid)
 }
 
 /// The `threads` index as NDJSON, one `thread` object per line, in `watch`'s

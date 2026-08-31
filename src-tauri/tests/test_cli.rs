@@ -544,6 +544,56 @@ fn cli_threads_indexes_a_published_reviews_threads() {
     );
 }
 
+/// The index carries one location spelling per thread shape, and an agent
+/// reads the shape off that column: `file:start-end` anchored, the short oid
+/// for a commit-level note, `no target` for neither.
+#[test]
+fn cli_threads_names_each_thread_shapes_location() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+    let untargeted = published_thread_id(&ctx, &published);
+    let commit_level = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this commit needs a why".to_string(),
+                        anchor: None,
+                        commit_oid: Some("abc123def4567890".to_string()),
+                        cached_excerpt: None,
+                    },
+                    800,
+                )
+            })
+            .unwrap()
+    };
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line_for = |id: &str| {
+        stdout
+            .lines()
+            .find(|l| l.contains(id))
+            .unwrap_or_else(|| panic!("{id} must be indexed, got {stdout:?}"))
+            .to_string()
+    };
+    assert!(line_for(&anchored).contains("a.txt:3-5"));
+    let commit_line = line_for(&commit_level);
+    assert!(
+        commit_line.contains("abc123d") && !commit_line.contains("abc123def4567890"),
+        "a commit-level thread shows the short oid, got {commit_line:?}",
+    );
+    assert!(line_for(&untargeted).contains("no target"));
+}
+
 #[test]
 fn cli_threads_filters_by_state() {
     let ctx = TestContext::builder()
