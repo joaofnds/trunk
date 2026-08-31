@@ -415,7 +415,7 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         let _ = writeln!(out, "{exe} review show <review-id>");
         let _ = writeln!(out, "{exe} review reply <thread-id> <text> | --stdin");
         let _ = writeln!(out, "{exe} review address <thread-id>");
-        let _ = writeln!(out, "{exe} review watch");
+        let _ = writeln!(out, "{exe} review watch [--json]");
         let _ = writeln!(out, "```");
         let _ = writeln!(out);
         let _ = writeln!(

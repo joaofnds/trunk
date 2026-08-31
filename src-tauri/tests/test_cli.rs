@@ -596,8 +596,16 @@ struct WatchChild {
 
 impl WatchChild {
     fn spawn(ctx: &TestContext) -> WatchChild {
+        WatchChild::spawn_with(ctx, &["review", "watch"])
+    }
+
+    fn spawn_json(ctx: &TestContext) -> WatchChild {
+        WatchChild::spawn_with(ctx, &["review", "watch", "--json"])
+    }
+
+    fn spawn_with(ctx: &TestContext, args: &[&str]) -> WatchChild {
         let mut child = Command::new(env!("CARGO_BIN_EXE_trunk"))
-            .args(["review", "watch"])
+            .args(args)
             .current_dir(ctx.repo_path())
             .env("TRUNK_DATA_DIR", ctx.data_dir())
             .stdin(Stdio::null())
@@ -712,6 +720,75 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
         watch.next_line(Duration::from_secs(10)).as_deref(),
         Some(published.as_str()),
     );
+}
+
+/// `--json` exists so a harness never refetches and rediffs: each line is one
+/// self-contained event carrying the change's full data.
+#[test]
+fn watch_json_streams_the_events_full_data() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let watch = WatchChild::spawn_json(&ctx);
+
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "here is what I did"],
+        ctx.data_dir(),
+    );
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["event"], "reply_added");
+    assert_eq!(event["review"], published.as_str());
+    assert_eq!(event["thread"], thread_id.as_str());
+    assert_eq!(event["channel"], "agent");
+    assert_eq!(event["text"], "here is what I did");
+
+    trunk_review_in(ctx.repo_path(), &["address", &thread_id], ctx.data_dir());
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["event"], "thread_state_changed");
+    assert_eq!(event["thread"], thread_id.as_str());
+    assert_eq!(event["from"], "open");
+    assert_eq!(event["to"], "addressed");
+
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "new comment on a line".to_string(),
+                        anchor: Some(trunk_lib::git::types::Anchor {
+                            commit_oid: "abc123def456".to_string(),
+                            file_path: "src/deep/file.rs".to_string(),
+                            source: trunk_lib::git::types::Source::Diff,
+                            side: trunk_lib::git::types::Side::New,
+                            start_line: 4,
+                            end_line: 9,
+                        }),
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    5_000,
+                )
+            })
+            .unwrap();
+    }
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["event"], "thread_added");
+    assert_eq!(event["review"], published.as_str());
+    assert_eq!(event["text"], "new comment on a line");
+    assert_eq!(event["state"], "open");
+    assert_eq!(event["anchor"]["file_path"], "src/deep/file.rs");
+    assert_eq!(event["anchor"]["start_line"], 4);
+    assert_eq!(event["anchor"]["end_line"], 9);
 }
 
 #[test]

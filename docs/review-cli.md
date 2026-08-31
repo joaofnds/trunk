@@ -41,12 +41,35 @@ trunk review watch [--repo <path>]
 - **address** — claim an `open` thread as `addressed` after acting on it. This
   is the only state the CLI can set: `done`, `dismissed`, and reopening are
   the human's, in the app, so an agent can never settle a review.
-- **watch** — block and print one line per published review of the repo whose
-  content changes (id only; the line format is unstable while the loop is
-  young). After a `# watching …` readiness line, output arrives as changes
-  land — event-driven, no polling: every Trunk process that writes the store
-  rings the watcher over a local socket. macOS/Linux only for now. Composing
-  reviews and draft typing never produce output.
+- **watch** — block and stream changes to the repo's published reviews. After
+  a `# watching …` readiness line, output arrives as changes land —
+  event-driven, no polling: every Trunk process that writes the store rings
+  the watcher over a local socket. macOS/Linux only for now. Composing
+  reviews and draft typing never produce output. Plain mode prints the
+  changed review's id, one per line (format unstable). `--json` prints one
+  self-contained NDJSON event per change, so a harness never refetches or
+  rediffs.
+
+### `watch --json` events
+
+One JSON object per line, discriminated by `event`. Evolution is additive:
+new fields and event kinds may appear; existing ones keep their meaning.
+
+| `event` | carries |
+|---------|---------|
+| `review_published` | `review`, `title`, `state` — followed by `thread_added`/`reply_added` for its full content |
+| `review_retitled` | `review`, `title` |
+| `review_state_changed` | `review`, `from`, `to` (`ready`/`settled`) |
+| `review_deleted` | `review` |
+| `thread_added` | `review`, `thread`, `state`, `text`, and `anchor` (`file_path`, `start_line`, `end_line`, `commit_oid`, `source`, `side`) or `commit_oid` for a commit-level note |
+| `thread_edited` | `review`, `thread`, `text` |
+| `thread_state_changed` | `review`, `thread`, `from`, `to` |
+| `thread_stale_changed` | `review`, `thread`, `stale` |
+| `reply_added` | `review`, `thread`, `reply`, `channel` (`human`/`agent`), `text` |
+| `reply_edited` | `review`, `thread`, `reply`, `text` |
+
+Post-publish permanence means nothing below a review ever disappears; the
+only removal event is `review_deleted`.
 
 The repository is discovered from the working directory (any subdirectory
 works) or named with `--repo`; symlinked paths resolve to the same reviews the
