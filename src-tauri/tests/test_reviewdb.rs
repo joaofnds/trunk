@@ -705,7 +705,7 @@ fn poll_announces_a_foreign_commit_on_the_next_cycle() {
     reviewdb::open(ctx.data_dir()).unwrap();
     let (emitted, changes) = std::sync::mpsc::channel();
     let (ticker, driver) = reviewdb::poll::ManualTicker::new();
-    let poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, move || {
+    let _poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, move || {
         let _ = emitted.send(());
     });
 
@@ -722,7 +722,6 @@ fn poll_announces_a_foreign_commit_on_the_next_cycle() {
     changes
         .try_recv()
         .expect("a foreign revision-bumping commit must be announced");
-    poll.stop();
 }
 
 #[test]
@@ -735,7 +734,7 @@ fn a_draft_write_triggers_no_emit() {
     reviewdb::open(ctx.data_dir()).unwrap();
     let (emitted, changes) = std::sync::mpsc::channel();
     let (ticker, driver) = reviewdb::poll::ManualTicker::new();
-    let poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, move || {
+    let _poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, move || {
         let _ = emitted.send(());
     });
 
@@ -748,7 +747,6 @@ fn a_draft_write_triggers_no_emit() {
         changes.try_recv().is_err(),
         "the draft autosave moves data_version but not the revision — no emit",
     );
-    poll.stop();
 }
 
 /// D4/grilled §7: an open-time-only check would let a still-running old app
@@ -781,10 +779,16 @@ fn a_newer_store_refuses_open_write_and_poll() {
     );
 
     let (ticker, driver) = reviewdb::poll::ManualTicker::new();
-    let _poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, || {});
+    let poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, || {});
     assert!(
         !driver.run_cycle(),
         "the poll must stop on a refused store, not loop on the refusal",
+    );
+    // `run_cycle` alone is false for any missing loop, including one that never
+    // spawned. Only a thread that started and then exited pins the refusal.
+    assert!(
+        poll.ran_and_stopped(),
+        "the loop must have run and exited, not failed to start",
     );
 }
 

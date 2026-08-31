@@ -54,8 +54,9 @@ impl Ticker for ClockTicker {
 /// cycle was going to do has already happened.
 ///
 /// The loop parks in `recv` between cycles, where the stop flag cannot reach
-/// it. Stopping therefore works by hanging up: [`PollHandle::stop`] drops the
-/// driver's sender, `recv` fails, and the loop exits.
+/// it, so [`PollHandle::stop`] does not stop a ticked loop. Stopping works by
+/// hanging up instead: drop the [`PollDriver`], `recv` fails, and the loop
+/// exits. A test that lets its driver fall out of scope has already done this.
 pub struct ManualTicker {
     ticks: Receiver<()>,
     done: SyncSender<()>,
@@ -123,11 +124,22 @@ impl PollHandle {
     }
 
     /// Whether the loop has exited on its own — the refused-store posture a
-    /// test observes without joining.
+    /// test observes without joining. True as well when no loop was ever
+    /// spawned, so a test that means "the loop ran and then stopped" wants
+    /// [`PollHandle::ran_and_stopped`] instead.
     pub fn is_stopped(&self) -> bool {
         self.thread
             .as_ref()
             .is_none_or(std::thread::JoinHandle::is_finished)
+    }
+
+    /// Whether a loop was spawned and has since exited. Distinguishes the
+    /// refused-store posture from a poll that never started, which
+    /// [`PollHandle::is_stopped`] reports alike.
+    pub fn ran_and_stopped(&self) -> bool {
+        self.thread
+            .as_ref()
+            .is_some_and(std::thread::JoinHandle::is_finished)
     }
 
     fn halt(&mut self) {
