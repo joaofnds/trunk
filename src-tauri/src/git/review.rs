@@ -2601,6 +2601,13 @@ mod tests {
     /// The CLI's `thread` verb prints one thread on its own, and an agent must
     /// see the same section it would read in the document. Extraction is only
     /// safe while every doc section is literally this function's output.
+    ///
+    /// Both sides of the assertion come from the same renderer, so this pins
+    /// that `render` has not forked a second implementation — nothing about
+    /// what a section *says*. Change the heading format or a label and both
+    /// sides move together and this still passes. The content is pinned by the
+    /// built-binary tests in `tests/test_cli.rs` instead. Do not read a green
+    /// result here as coverage of the section's text.
     #[test]
     fn each_docs_thread_section_is_the_shared_per_thread_renderer() {
         let (_dir, repo) = make_repo();
