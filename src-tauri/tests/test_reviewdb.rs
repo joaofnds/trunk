@@ -424,7 +424,7 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
 use trunk_lib::commands::review::{
-    ensure_review_snapshot_inner, read_snapshots_inner, sweep_unanchored_pins,
+    ensure_review_snapshot_inner, read_snapshots_inner, sweep_once, sweep_unanchored_pins,
 };
 use trunk_lib::git::workdir_snapshot::SnapshotKind;
 
@@ -2945,5 +2945,74 @@ fn a_thread_that_landed_during_supersession_survives_gc() {
     assert!(
         repo.find_commit(oid).is_ok(),
         "the thread's anchor commit must survive gc, or its inline diff resolves CommitGone",
+    );
+}
+
+/// The wiring, not just the sweep: `list_threads` is what the panel calls, and
+/// it is what reclaims a stranded pin. Without a caller the sweep is dead code.
+#[test]
+fn listing_threads_reclaims_a_stranded_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let swept = trunk_lib::state::SweptRepos::default();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let stranded =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    // Two processes' worth of panel opens: the first marks, the second reclaims.
+    sweep_once(&store, &canonical, ctx.path(), &swept);
+    sweep_once(
+        &store,
+        &canonical,
+        ctx.path(),
+        &trunk_lib::state::SweptRepos::default(),
+    );
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{stranded}")).is_err(),
+        "opening the panel must eventually reclaim a stranded pin",
+    );
+}
+
+/// Once per process, not once per command: the sweep must not ride along on
+/// every panel read, or ref I/O returns to the comment gesture's path.
+#[test]
+fn the_sweep_runs_once_per_process_per_repo() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let swept = trunk_lib::state::SweptRepos::default();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let stranded =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_once(&store, &canonical, ctx.path(), &swept);
+    sweep_once(&store, &canonical, ctx.path(), &swept);
+    sweep_once(&store, &canonical, ctx.path(), &swept);
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{stranded}")).is_ok(),
+        "repeated reads in one process must not advance the sweep past its first pass",
     );
 }

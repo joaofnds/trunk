@@ -98,7 +98,12 @@ async fn prepare<R: Runtime>(
 /// this emits nothing. A sweep failure is not the caller's failure — the
 /// command it rode in on has nothing to do with pins — so it is reported to
 /// stderr and swallowed.
-fn sweep_once(store: &Store, canonical: &Path, repo_path: &str, swept: &crate::state::SweptRepos) {
+pub fn sweep_once(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    swept: &crate::state::SweptRepos,
+) {
     if !swept.claim(canonical) {
         return;
     }
