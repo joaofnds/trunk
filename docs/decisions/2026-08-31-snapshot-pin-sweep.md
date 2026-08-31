@@ -47,8 +47,13 @@ What distinguishes the two is whether a thread has *ever* anchored:
 
 - **Never anchored.** The snapshot may belong to an unfinished submit. Keep it.
 - **Anchored once, no threads now.** Its comments were deleted, or the review
-  holding them was. Nothing will ever name it again, because a new comment mints
-  a new snapshot. Garbage.
+  holding them was. Garbage — but only until it is handed out again.
+
+A snapshot oid is derived from the tree it captures, so reverting the working
+tree to an earlier state hands out the same oid a second time. Handing an oid to
+a caller therefore always clears the anchored flag: whatever that oid's history,
+the caller holding it now is a submit in flight, and a flag left over from the
+history would let the sweep reclaim the pin underneath it.
 
 Both facts are written by the operations they describe, in the transactions that
 perform them. `ensure_review_snapshot` records the snapshot in the same

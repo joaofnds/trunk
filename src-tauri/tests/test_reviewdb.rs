@@ -3195,3 +3195,64 @@ fn the_sweep_does_not_bump_the_store_revision() {
 
     assert_eq!(before, after, "a sweep must not wake every other window");
 }
+
+/// A snapshot oid is derived from the tree, so reverting the working tree to an
+/// earlier state hands out the same oid again. The design leans on a snapshot
+/// that once carried a thread never being named by a new comment; this is the
+/// case where that is false, and it must not let the pin go.
+#[test]
+fn a_snapshot_reused_after_a_revert_is_protected_again() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    // A comment on state A, later deleted: S has carried a thread and carries
+    // none now, which is what makes a pin collectable.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let s =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut first = submission("comment on state A");
+    first.anchor = Some(Anchor {
+        commit_oid: s.clone(),
+        ..diff_anchor()
+    });
+    let first_id = submit_thread_inner(&store, &canonical, first, 1_000).unwrap();
+    store
+        .write(|tx| reviewdb::threads::delete(tx, &canonical, &first_id))
+        .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "state B").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    // The user reverts and starts a new comment, which is handed S again.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    let reused =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_002)
+            .unwrap();
+    assert_eq!(reused, s, "a reverted tree yields the same snapshot oid");
+
+    // Another window supersedes it and sweeps while that comment is unsent.
+    std::fs::write(ctx.repo_path().join("a.txt"), "state C").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_003)
+        .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_004).unwrap();
+
+    let mut second = submission("new comment against the reused snapshot");
+    second.anchor = Some(Anchor {
+        commit_oid: s.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, second, 1_005).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{s}")).is_ok(),
+        "handing out a snapshot again must protect it again, whatever its history",
+    );
+}

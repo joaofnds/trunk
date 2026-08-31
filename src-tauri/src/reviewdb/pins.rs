@@ -21,6 +21,13 @@ use std::path::Path;
 
 /// Record a snapshot as handed out. Called in the same transaction that stores
 /// the snapshot oid, before the oid reaches any caller.
+///
+/// Handing out an oid always clears `anchored`, even for a row that already
+/// exists. A snapshot oid is derived from the tree, so reverting the working
+/// tree to an earlier state yields the same oid again: the caller receiving it
+/// is a fresh submit in flight, whatever the oid's history, and a stale
+/// `anchored = 1` from that history would let the sweep reclaim the pin while
+/// that submit is still unfinished.
 pub fn mark_minted(
     conn: &Connection,
     repo_path: &Path,
@@ -30,7 +37,9 @@ pub fn mark_minted(
     conn.execute(
         "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at)
          VALUES (?1, ?2, 0, ?3)
-         ON CONFLICT(repo_path, oid) DO NOTHING",
+         ON CONFLICT(repo_path, oid) DO UPDATE SET
+             anchored = 0,
+             minted_at = excluded.minted_at",
         rusqlite::params![repo_key(repo_path), oid, now],
     )
     .map_err(sqlite_error)?;
