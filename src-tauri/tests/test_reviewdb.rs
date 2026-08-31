@@ -874,6 +874,51 @@ fn a_pin_survives_supersession_while_a_thread_anchors_to_it() {
     );
 }
 
+/// The gate scopes by repo: one database holds every repo, so a thread in one
+/// repo must not keep another repo's superseded pin alive. Without the
+/// `repo_path` clause in `any_anchored_to` this passes on the oid alone.
+#[test]
+fn a_thread_in_one_repo_does_not_pin_another_repos_snapshot() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let other = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let other_canonical = other.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    // The snapshot to be superseded lives in `ctx`, and nothing in `ctx`
+    // anchors to it.
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let superseded =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    // The only thread anchored to that oid belongs to the OTHER repo.
+    let mut foreign = submission("another repo's thread, same oid");
+    foreign.anchor = Some(Anchor {
+        commit_oid: superseded.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &other_canonical, foreign, 1_000).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{superseded}"))
+            .is_err(),
+        "a foreign repo's thread must not keep this repo's superseded pin alive",
+    );
+}
+
 #[test]
 fn pruning_one_kind_leaves_the_other_pinned() {
     let ctx = TestContext::builder()
