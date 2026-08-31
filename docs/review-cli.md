@@ -6,7 +6,7 @@ the same store the GUI uses, fully offline. The running app reflects CLI writes
 within about a second, no restart.
 
 The published review document teaches agents everything below automatically:
-its header names the absolute binary path and the verbs. This page is the
+its header names the absolute binary path and every verb. This page is the
 human-facing reference.
 
 ## Invocation

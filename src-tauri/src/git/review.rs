@@ -417,6 +417,7 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         let _ = writeln!(out, "```");
         let _ = writeln!(out, "{exe} review list");
         let _ = writeln!(out, "{exe} review show <review-id>");
+        let _ = writeln!(out, "{exe} review threads <review-id> [--state <state>]");
         let _ = writeln!(out, "{exe} review thread <thread-id> [--json]");
         let _ = writeln!(out, "{exe} review reply <thread-id> <text> | --stdin");
         let _ = writeln!(out, "{exe} review address <thread-id>");
@@ -425,7 +426,7 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "`thread` prints one comment's section — the same text you see below — with its replies and the state you may claim, for when you have a comment id and not this document. `reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. `watch` blocks and prints a review id per change, one line each, for harnesses that wait on the reviewer (line format unstable). The trailer below remains the fallback when you cannot run the binary."
+            "`threads` lists this review's comments one per line, and `thread` prints one comment's section — the same text you see below — with its replies and the state you may claim, for when you have a comment id and not this document. `reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. `watch` blocks and prints a review id per change, one line each, for harnesses that wait on the reviewer (line format unstable). The trailer below remains the fallback when you cannot run the binary."
         );
         let _ = writeln!(out);
     }
@@ -1831,6 +1832,7 @@ mod tests {
         for needle in [
             "/Applications/trunk.app/Contents/MacOS/trunk review list",
             "review show <review-id>",
+            "review threads <review-id> [--state <state>]",
             "review thread <thread-id> [--json]",
             "review reply <thread-id> <text> | --stdin",
             "review address <thread-id>",
