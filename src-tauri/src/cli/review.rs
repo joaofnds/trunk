@@ -177,15 +177,24 @@ impl Flags {
             rest = match rest {
                 [] => return Ok(flags),
                 ["--repo", path, tail @ ..] if !is_flag(path) => {
+                    if flags.repo.is_some() {
+                        return Err(twice("--repo"));
+                    }
                     flags.repo = Some(PathBuf::from(path));
                     tail
                 }
                 ["--repo", ..] => return Err(format!("--repo needs a path\n{}", usage())),
                 ["--json", tail @ ..] => {
+                    if flags.json {
+                        return Err(twice("--json"));
+                    }
                     flags.json = true;
                     tail
                 }
                 ["--state", word, tail @ ..] if !is_flag(word) => {
+                    if flags.state.is_some() {
+                        return Err(twice("--state"));
+                    }
                     flags.state = Some(word.parse().map_err(|_| {
                         format!("--state takes open|addressed|done|dismissed, not `{word}`")
                     })?);
@@ -203,6 +212,13 @@ impl Flags {
             Some(_) => Err(format!("--state filters `threads` only\n{}", usage())),
         }
     }
+}
+
+/// A flag given twice is a usage error, not last-wins: `--state done --state
+/// open` would otherwise answer a differently-narrowed question in silence,
+/// the same defect as ignoring the flag outright.
+fn twice(flag: &str) -> String {
+    format!("{flag} given twice\n{}", usage())
 }
 
 fn usage() -> String {
@@ -318,10 +334,13 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
         ReviewCmd::Thread { id, json, repo } => {
             let canonical = discover_repo(repo)?;
             let thread = published_thread(&store, &canonical, &id)?;
+            // Keyed by thread id, and one id went in, so the chain is that
+            // one key's value. Draining the map instead would interleave on
+            // `HashMap`'s unspecified order the day a second id is passed.
             let replies = store.read(|conn| {
                 crate::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
             })?;
-            let replies: Vec<_> = replies.into_values().flatten().collect();
+            let replies = replies.get(&thread.id).cloned().unwrap_or_default();
 
             if json {
                 render_thread_json(&thread, &replies)
@@ -978,11 +997,14 @@ fn render_thread(
 ) -> Result<String, TrunkError> {
     use crate::git::review::{DocCommit, DocReply, DocThread, RenderInput};
 
-    let (title, commits, snapshots) = store.read(|conn| {
-        let review = crate::reviewdb::reviews::get(conn, &thread.review_id)?
-            .ok_or_else(|| TrunkError::new("not_found", "no review with that id"))?;
+    // One read, because two would let the store move underneath them: the
+    // heading's state and the trailer's would come from different instants.
+    // The review row is deliberately not fetched — `render_thread_section`
+    // never reaches `emit_header`, the only reader of `title`, so looking it
+    // up would buy nothing but a `not_found` naming a review the caller never
+    // typed.
+    let (commits, snapshots) = store.read(|conn| {
         Ok((
-            review.title,
             crate::reviewdb::commits::list(conn, &thread.review_id)?,
             crate::reviewdb::snapshots::get(conn, canonical)?,
         ))
@@ -991,7 +1013,7 @@ fn render_thread(
     let paths = RepoPaths::of(canonical);
     let session = RenderInput {
         review_id: thread.review_id.clone(),
-        title,
+        title: String::new(),
         cli_binary: None,
         workdir: paths.workdir,
         repo_dir: paths.repo_dir,
@@ -1198,6 +1220,31 @@ mod tests {
             assert!(
                 err.contains("--state filters `threads` only"),
                 "{verb:?} must refuse --state, got {err:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn a_repeated_flag_is_a_usage_error() {
+        // Last-wins is the same defect as ignoring the flag: `--state done
+        // --state open` answers a differently-narrowed question with no
+        // signal, and `--repo a --repo b` would read the wrong repository.
+        for (verb, flag) in [
+            (
+                argv(&["threads", "3F7K", "--state", "done", "--state", "open"]),
+                "--state",
+            ),
+            (argv(&["threads", "3F7K", "--json", "--json"]), "--json"),
+            (
+                argv(&["threads", "3F7K", "--repo", "/a", "--repo", "/b"]),
+                "--repo",
+            ),
+        ] {
+            let err = parse(&verb).unwrap_err();
+
+            assert!(
+                err.contains(&format!("{flag} given twice")),
+                "{verb:?} must refuse a repeated {flag}, got {err:?}",
             );
         }
     }
