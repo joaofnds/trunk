@@ -468,6 +468,116 @@ enum ThreadTarget<'c> {
     NoTarget { thread: &'c DocThread },
 }
 
+/// Which shape a thread's stored row gives it. The partition `render` builds
+/// per document and the CLI builds for a single thread both come through here,
+/// so one thread cannot render in one section from the doc and another from
+/// the `thread` verb.
+fn classify(thread: &DocThread) -> ThreadTarget<'_> {
+    match (&thread.anchor, &thread.commit_oid) {
+        (Some(anchor), _) => {
+            let info: &'static str = match anchor.source {
+                Source::Diff => "diff",
+                Source::FullFile => fence_language(&anchor.file_path),
+            };
+            ThreadTarget::Anchored {
+                thread,
+                anchor,
+                info,
+            }
+        }
+        (None, Some(commit_oid)) => ThreadTarget::CommitLevel {
+            thread,
+            commit_oid: commit_oid.clone(),
+        },
+        (None, None) => ThreadTarget::NoTarget { thread },
+    }
+}
+
+/// One thread's section of the review document: its heading, the excerpt or
+/// commit label its shape calls for, the comment text, and the replies. The
+/// CLI's `thread` verb serves this same string, so an agent reading one thread
+/// and an agent reading the whole document see one format (TRUNK-56).
+pub fn render_thread_section(session: &RenderInput, thread: &DocThread) -> String {
+    let mut out = String::new();
+    emit_thread_section(&mut out, session, &classify(thread));
+
+    out
+}
+
+/// The per-thread body all three document sections and the CLI's `thread`
+/// verb emit. Heading depth is the section's, not a parameter: an anchored
+/// thread sits under its `### file (sha)` group heading, the other two shapes
+/// under their `##` section.
+fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadTarget) {
+    use std::fmt::Write;
+
+    let thread = match target {
+        ThreadTarget::Anchored { thread, .. }
+        | ThreadTarget::CommitLevel { thread, .. }
+        | ThreadTarget::NoTarget { thread } => thread,
+    };
+
+    match target {
+        ThreadTarget::Anchored {
+            anchor,
+            info,
+            thread,
+        } => {
+            let short = short_sha(&anchor.commit_oid);
+            let _ = writeln!(
+                out,
+                "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side}) — {state}",
+                id = thread.id,
+                file_path = sanitize_heading_text(&anchor.file_path),
+                start = anchor.start_line,
+                end = anchor.end_line,
+                side = side_label(&anchor.side),
+                state = thread.state.as_str(),
+            );
+            let _ = writeln!(out);
+            if anchor.side == Side::Old {
+                let _ = writeln!(
+                    out,
+                    "This is the code as it stood before {short}; if it is gone from the current file, the comment is about its removal or replacement — answer it, do not restore the old text."
+                );
+                let _ = writeln!(out);
+            }
+            // D-06: excerpt FIRST, comment text after — straight from the
+            // stored row, never re-resolved from the repository.
+            match &thread.excerpt {
+                Some(excerpt) => emit_fence(out, excerpt, info),
+                None => {
+                    let _ = writeln!(out, "No excerpt was captured for this thread.");
+                    let _ = writeln!(out);
+                }
+            }
+        }
+        ThreadTarget::CommitLevel { thread, commit_oid } => {
+            let short = short_sha(commit_oid);
+            let subject = sanitize_heading_text(&commit_subject(session, commit_oid));
+            let _ = writeln!(
+                out,
+                "### [{id}] {short} -- {subject} — {state}",
+                id = thread.id,
+                state = thread.state.as_str(),
+            );
+            let _ = writeln!(out);
+        }
+        ThreadTarget::NoTarget { thread } => {
+            let _ = writeln!(
+                out,
+                "### [{id}] Comment with no anchor — {state}",
+                id = thread.id,
+                state = thread.state.as_str(),
+            );
+            let _ = writeln!(out);
+        }
+    }
+
+    emit_reviewer_text(out, &thread.text, thread.channel);
+    emit_replies(out, &thread.replies);
+}
+
 /// Top-level pure renderer (L-01, L-04, L-09, L-10). Returns a single `String`
 /// containing the full markdown document; never panics. Per D-11, the caller
 /// is responsible for the ≥1 thread gate — render does NOT defend against
@@ -476,28 +586,7 @@ pub fn render(session: &RenderInput) -> String {
     use std::fmt::Write;
 
     // ── 1. Partition threads by the shape of their own stored data ──────
-    let resolved: Vec<ThreadTarget> = session
-        .threads
-        .iter()
-        .map(|thread| match (&thread.anchor, &thread.commit_oid) {
-            (Some(anchor), _) => {
-                let info: &'static str = match anchor.source {
-                    Source::Diff => "diff",
-                    Source::FullFile => fence_language(&anchor.file_path),
-                };
-                ThreadTarget::Anchored {
-                    thread,
-                    anchor,
-                    info,
-                }
-            }
-            (None, Some(commit_oid)) => ThreadTarget::CommitLevel {
-                thread,
-                commit_oid: commit_oid.clone(),
-            },
-            (None, None) => ThreadTarget::NoTarget { thread },
-        })
-        .collect();
+    let resolved: Vec<ThreadTarget> = session.threads.iter().map(classify).collect();
 
     let mut out = String::new();
 
@@ -554,42 +643,7 @@ pub fn render(session: &RenderInput) -> String {
             });
 
             for r in sorted {
-                if let ThreadTarget::Anchored {
-                    thread,
-                    anchor,
-                    info,
-                } = r
-                {
-                    let _ = writeln!(
-                        out,
-                        "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side}) — {state}",
-                        id = thread.id,
-                        file_path = sanitize_heading_text(&anchor.file_path),
-                        start = anchor.start_line,
-                        end = anchor.end_line,
-                        side = side_label(&anchor.side),
-                        state = thread.state.as_str(),
-                    );
-                    let _ = writeln!(out);
-                    if anchor.side == Side::Old {
-                        let _ = writeln!(
-                            out,
-                            "This is the code as it stood before {short}; if it is gone from the current file, the comment is about its removal or replacement — answer it, do not restore the old text."
-                        );
-                        let _ = writeln!(out);
-                    }
-                    // D-06: excerpt FIRST, comment text after — straight from
-                    // the stored row, never re-resolved from the repository.
-                    match &thread.excerpt {
-                        Some(excerpt) => emit_fence(&mut out, excerpt, info),
-                        None => {
-                            let _ = writeln!(out, "No excerpt was captured for this thread.");
-                            let _ = writeln!(out);
-                        }
-                    }
-                    emit_reviewer_text(&mut out, &thread.text, thread.channel);
-                    emit_replies(&mut out, &thread.replies);
-                }
+                emit_thread_section(&mut out, session, r);
             }
         }
     }
@@ -608,19 +662,7 @@ pub fn render(session: &RenderInput) -> String {
         );
         let _ = writeln!(out);
         for r in &commit_levels {
-            if let ThreadTarget::CommitLevel { thread, commit_oid } = r {
-                let short = short_sha(commit_oid);
-                let subject = sanitize_heading_text(&commit_subject(session, commit_oid));
-                let _ = writeln!(
-                    out,
-                    "### [{id}] {short} -- {subject} — {state}",
-                    id = thread.id,
-                    state = thread.state.as_str(),
-                );
-                let _ = writeln!(out);
-                emit_reviewer_text(&mut out, &thread.text, thread.channel);
-                emit_replies(&mut out, &thread.replies);
-            }
+            emit_thread_section(&mut out, session, r);
         }
     }
 
@@ -638,17 +680,7 @@ pub fn render(session: &RenderInput) -> String {
         );
         let _ = writeln!(out);
         for r in &no_targets {
-            if let ThreadTarget::NoTarget { thread } = r {
-                let _ = writeln!(
-                    out,
-                    "### [{id}] Comment with no anchor — {state}",
-                    id = thread.id,
-                    state = thread.state.as_str(),
-                );
-                let _ = writeln!(out);
-                emit_reviewer_text(&mut out, &thread.text, thread.channel);
-                emit_replies(&mut out, &thread.replies);
-            }
+            emit_thread_section(&mut out, session, r);
         }
     }
 
@@ -2553,5 +2585,51 @@ mod tests {
     fn _empty_commit_helper_is_used() {
         let (_dir, repo) = make_repo();
         let _ = empty_commit(&repo, "R", &[]);
+    }
+
+    /// The CLI's `thread` verb prints one thread on its own, and an agent must
+    /// see the same section it would read in the document. Extraction is only
+    /// safe while every doc section is literally this function's output.
+    #[test]
+    fn each_docs_thread_section_is_the_shared_per_thread_renderer() {
+        let (_dir, repo) = make_repo();
+        let parent = commit_with_file(&repo, "A", &[], "foo.rs", b"hello\nworld\n");
+        let child = commit_with_file(&repo, "B", &[parent], "foo.rs", b"hello\nMARK\n");
+        let threads = vec![
+            line_comment(
+                "d1",
+                "diff comment",
+                child,
+                "foo.rs",
+                Source::Diff,
+                Side::New,
+                2,
+                2,
+                Some("+MARK\n"),
+            ),
+            commit_level_comment("c1", "this commit needs review", child),
+            DocThread {
+                id: "nt".to_string(),
+                text: "no target comment".to_string(),
+                state: ThreadState::Open,
+                anchor: None,
+                commit_oid: None,
+                excerpt: None,
+                channel: Channel::Human,
+                replies: vec![],
+            },
+        ];
+        let session = make_session(&repo, vec![parent.to_string(), child.to_string()], threads);
+
+        let md = render(&session);
+
+        for thread in &session.threads {
+            let section = render_thread_section(&session, thread);
+            assert!(
+                md.contains(&section),
+                "the doc's section for {} must be the shared renderer's output verbatim;\nsection: {section}\ndoc: {md}",
+                thread.id,
+            );
+        }
     }
 }
