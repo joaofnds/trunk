@@ -88,6 +88,12 @@ original rule was not: it bounds how long a *single unfinished submit* may hold
 a snapshot, not how long the whole system may take to notice something. Generous
 on purpose — waiting costs a ref file, being early costs a comment.
 
+A submit can still outlive it: a machine asleep with the composer open, or a
+clock stepped forward. So the window is a heuristic, not the guarantee. The
+guarantee is that submitting a thread whose snapshot is no longer on record puts
+the record back and re-pins the ref, so a late submit repairs what the sweep
+took rather than losing its comment.
+
 ## What this costs
 
 A pin outlives its threads until a sweep runs, so in the common case until the
@@ -108,5 +114,10 @@ submitting its text, which is a user typing a comment. A day is far past that.
 ## Also fixed
 
 Nothing had ever reclaimed a pin. Deleting a review or a thread left its pins
-alive permanently; TRUNK-18 recorded the leak and deferred it. The sweep closes it
-with the same mechanism.
+alive permanently; TRUNK-18 recorded the leak and deferred it. The sweep closes
+it for every snapshot minted from this version on.
+
+Pins minted by earlier versions have no record, so the sweep leaves them alone
+rather than guessing. They stay until removed by hand. Reclaiming them would
+mean treating an unknown pin as garbage, which is the assumption this whole
+design exists to avoid.

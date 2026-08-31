@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 5;
+pub const CURRENT_VERSION: i64 = 6;
 
 const V1: &str = r#"
 CREATE TABLE reviews (
@@ -125,6 +125,27 @@ CREATE TABLE snapshot_pins (
 );
 "#;
 
+/// Reconcile the two shapes `user_version = 5` ever meant.
+///
+/// An earlier, unreleased build stamped 5 for a different table
+/// (`unanchored_pins`, a two-pass sweep record that no longer exists). A store
+/// migrated by it would otherwise skip the V5 above and reach this build with
+/// no `snapshot_pins` at all, which fails every snapshot write. Both shapes
+/// converge here: create the table if it is missing, drop the dead one if it is
+/// present. Losing the old table costs nothing — its rows recorded sweep
+/// observations, which the current design does not use.
+const V6: &str = r#"
+CREATE TABLE IF NOT EXISTS snapshot_pins (
+    repo_path TEXT    NOT NULL,
+    oid       TEXT    NOT NULL,
+    anchored  INTEGER NOT NULL DEFAULT 0,
+    minted_at INTEGER NOT NULL,
+    PRIMARY KEY (repo_path, oid)
+);
+
+DROP TABLE IF EXISTS unanchored_pins;
+"#;
+
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sqlite_error)
@@ -187,6 +208,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 5 {
         conn.execute_batch(&format!("{V5} PRAGMA user_version = 5;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 6 {
+        conn.execute_batch(&format!("{V6} PRAGMA user_version = 6;"))
             .map_err(sqlite_error)?;
     }
 

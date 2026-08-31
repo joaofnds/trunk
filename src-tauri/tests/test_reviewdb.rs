@@ -428,7 +428,8 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
 use trunk_lib::commands::review::{
-    ensure_review_snapshot_inner, read_snapshots_inner, sweep_once, sweep_unanchored_pins,
+    ensure_review_snapshot_inner, read_snapshots_inner, submit_thread_into, sweep_once,
+    sweep_unanchored_pins,
 };
 use trunk_lib::git::workdir_snapshot::SnapshotKind;
 
@@ -3230,8 +3231,16 @@ fn a_snapshot_reused_after_a_revert_is_protected_again() {
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
 
-    // The user reverts and starts a new comment, which is handed S again.
+    // The user reverts and starts a new comment. Point the store back at S
+    // first: `decide_snapshot` reuses the stored prior when the tree matches,
+    // which is the path a revert takes once the store has caught up. Driving it
+    // this way keeps the test off the wall clock — a snapshot commit embeds a
+    // timestamp, so minting the identical commit twice only collides inside one
+    // second.
     std::fs::write(ctx.repo_path().join("a.txt"), "state A").unwrap();
+    store
+        .write(|tx| reviewdb::snapshots::set(tx, &canonical, SnapshotKind::Workdir, &s, 1_002))
+        .unwrap();
     let reused =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_002)
             .unwrap();
@@ -3254,5 +3263,182 @@ fn a_snapshot_reused_after_a_revert_is_protected_again() {
     assert!(
         repo.find_reference(&format!("{prefix}{s}")).is_ok(),
         "handing out a snapshot again must protect it again, whatever its history",
+    );
+}
+
+/// An earlier, unreleased build stamped `user_version = 5` for a different
+/// table. A store it migrated must still work: without a reconciling step the
+/// ladder skips v5 and every snapshot write fails on a missing table.
+#[test]
+fn a_store_from_the_earlier_v5_is_reconciled() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    // Reproduce that store: a current one, wound back to exactly what the
+    // earlier v5 produced — its table gone, the dead one present, stamped 5.
+    reviewdb::open(ctx.data_dir()).unwrap();
+    {
+        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        conn.execute_batch(
+            "DROP TABLE snapshot_pins;
+             CREATE TABLE unanchored_pins (
+                 repo_path TEXT NOT NULL, oid TEXT NOT NULL, seen_at INTEGER NOT NULL,
+                 PRIMARY KEY (repo_path, oid));
+             PRAGMA user_version = 5;",
+        )
+        .unwrap();
+    }
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+        .expect("a store from the earlier v5 must still take a comment");
+}
+
+/// A submit that outlives the grace window — a machine asleep with the composer
+/// open — finds its pin already reclaimed. The thread must not land on a commit
+/// gc will collect: submitting restores the pin it needs.
+#[test]
+fn a_submit_outliving_the_grace_window_restores_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let stale =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    let mut late = submission("typed before the machine slept");
+    late.anchor = Some(Anchor {
+        commit_oid: stale.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), late, SWEEP_NOW + 1).unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    let oid = git2::Oid::from_str(&stale).unwrap();
+    assert!(
+        fresh.find_commit(oid).is_ok(),
+        "a late submit's anchor must survive gc, not be lost silently",
+    );
+}
+
+/// Reclaiming a pin must drop its row too. A row left behind for a ref that is
+/// gone can never be removed by anything, so the table grows without bound.
+#[test]
+fn reclaiming_a_pin_forgets_its_record() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let gone =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    let rows = store
+        .read(|c| reviewdb::pins::reclaimable(c, &canonical, SWEEP_NOW))
+        .unwrap();
+    assert!(
+        !rows.contains(&gone),
+        "a reclaimed pin's record must go with it",
+    );
+}
+
+/// One database holds every repo, so the sweep's record must be scoped by repo
+/// like every other query over it. An unscoped read would offer another repo's
+/// oids as this repo's garbage.
+#[test]
+fn one_repos_pin_records_do_not_leak_into_another() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let other = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let other_canonical = other.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let mine =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    let theirs = store
+        .read(|c| reviewdb::pins::reclaimable(c, &other_canonical, SWEEP_NOW))
+        .unwrap();
+
+    assert!(
+        !theirs.contains(&mine),
+        "another repo's snapshot must not appear among this repo's records",
+    );
+}
+
+/// The same scoping on the write side: forgetting this repo's pin must not
+/// delete another repo's record of the same oid.
+#[test]
+fn forgetting_one_repos_pin_leaves_anothers_record_alone() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let other = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let other_canonical = other.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    // The same oid on record for two repos: snapshots are content-derived, so
+    // two repos with identical trees genuinely produce one oid.
+    let shared = "1111111111111111111111111111111111111111".to_string();
+    store
+        .write(|tx| {
+            reviewdb::pins::mark_minted(tx, &canonical, &shared, 1_000)?;
+            reviewdb::pins::mark_minted(tx, &other_canonical, &shared, 1_000)?;
+            Ok(())
+        })
+        .unwrap();
+
+    store
+        .write(|tx| reviewdb::pins::forget(tx, &canonical, std::slice::from_ref(&shared)))
+        .unwrap();
+
+    let theirs = store
+        .read(|c| reviewdb::pins::reclaimable(c, &other_canonical, SWEEP_NOW))
+        .unwrap();
+    assert!(
+        theirs.contains(&shared),
+        "forgetting one repo's record must leave another repo's alone",
     );
 }

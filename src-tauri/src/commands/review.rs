@@ -158,6 +158,39 @@ pub fn submit_thread_inner(
     req: SubmitThreadRequest,
     now: i64,
 ) -> Result<String, TrunkError> {
+    submit_thread_into(store, canonical, None, req, now)
+}
+
+/// `submit_thread_inner` with the repo available, so a thread landing against a
+/// snapshot whose pin was already reclaimed can restore it. That happens when a
+/// submit outlives `IN_FLIGHT_GRACE_SECS` — a machine asleep with the composer
+/// open. Without this the thread lands on a commit gc will collect, silently,
+/// which is the loss this design exists to prevent.
+pub fn submit_thread_into(
+    store: &Store,
+    canonical: &Path,
+    repo: Option<&git2::Repository>,
+    req: SubmitThreadRequest,
+    now: i64,
+) -> Result<String, TrunkError> {
+    let (thread_id, restored) = submit_thread_write(store, canonical, req, now)?;
+
+    if let (Some(repo), Some(oid)) = (repo, restored) {
+        let parsed = git2::Oid::from_str(&oid).map_err(TrunkError::from)?;
+        crate::git::workdir_snapshot::keep_snapshot_ref(repo, parsed)?;
+    }
+
+    Ok(thread_id)
+}
+
+/// The store half of a submit. Returns the thread id, and the anchor oid when
+/// it named a snapshot whose pin had already been reclaimed.
+fn submit_thread_write(
+    store: &Store,
+    canonical: &Path,
+    req: SubmitThreadRequest,
+    now: i64,
+) -> Result<(String, Option<String>), TrunkError> {
     store.write(|tx| {
         let review_id = reviews::ensure_active(tx, canonical, now)?;
         let anchor_oid = req
@@ -178,14 +211,17 @@ pub fn submit_thread_inner(
         )?;
         // Same transaction as the thread: a pin can never be reclaimed between
         // the thread landing and its snapshot being marked as used.
-        if let Some(oid) = anchor_oid {
-            pins::mark_anchored(tx, canonical, &oid)?;
+        let mut restored = None;
+        if let Some(oid) = anchor_oid
+            && pins::mark_anchored(tx, canonical, &oid, now)? == pins::Anchored::Restored
+        {
+            restored = Some(oid);
         }
         if req.clears_draft {
             drafts::delete(tx, canonical)?;
         }
 
-        Ok(thread_id)
+        Ok((thread_id, restored))
     })
 }
 
@@ -309,7 +345,11 @@ pub async fn add_thread<R: Runtime>(
     };
     let target = canonical.clone();
     let now = crate::reviewdb::now_secs();
-    blocking_store(move || submit_thread_inner(&store, &target, req, now)).await?;
+    blocking_store(move || {
+        let repo = git2::Repository::open(&path).ok();
+        submit_thread_into(&store, &target, repo.as_ref(), req, now)
+    })
+    .await?;
 
     emit_reviews_changed(&app, &canonical);
     Ok(())
@@ -335,7 +375,11 @@ pub async fn add_commit_thread<R: Runtime>(
     };
     let target = canonical.clone();
     let now = crate::reviewdb::now_secs();
-    blocking_store(move || submit_thread_inner(&store, &target, req, now)).await?;
+    blocking_store(move || {
+        let repo = git2::Repository::open(&path).ok();
+        submit_thread_into(&store, &target, repo.as_ref(), req, now)
+    })
+    .await?;
 
     emit_reviews_changed(&app, &canonical);
     Ok(())

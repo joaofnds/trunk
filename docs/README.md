@@ -19,7 +19,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 | Doc | Outcome |
 |-----|---------|
 | [decisions/2026-06-20-pierre-diffs.md](decisions/2026-06-20-pierre-diffs.md) | Rejected `@pierre/diffs`; closed the syntax-highlighting gap natively in Rust with the `two-face` syntect crate. |
-| [decisions/2026-08-31-snapshot-pin-sweep.md](decisions/2026-08-31-snapshot-pin-sweep.md) | Why a snapshot's keepalive ref is reclaimed by a sweep instead of pruned when the snapshot is superseded, and why only a snapshot a thread has actually anchored to may be reclaimed: a comment is submitted as two calls, so anything that judges a pin by what anchors to it right now unpins the commit an in-flight comment is about to name. Read before changing snapshot pinning, `ensure_review_snapshot`, or the sweep. |
+| [decisions/2026-08-31-snapshot-pin-sweep.md](decisions/2026-08-31-snapshot-pin-sweep.md) | Why a snapshot's keepalive ref is reclaimed by a sweep instead of pruned when the snapshot is superseded, and why only a snapshot a thread has anchored to since it was last handed out may be reclaimed: a comment is submitted as two calls, so anything that judges a pin by what anchors to it right now unpins the commit an in-flight comment is about to name. Read before changing snapshot pinning, `ensure_review_snapshot`, or the sweep. |
 
 ## Research
 
