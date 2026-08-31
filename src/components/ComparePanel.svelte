@@ -1,5 +1,8 @@
 <script lang="ts">
-import { ArrowDown, ArrowUpDown, FolderTree, List } from "@lucide/svelte";
+import ArrowDown from "@lucide/svelte/icons/arrow-down";
+import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
+import FolderTree from "@lucide/svelte/icons/folder-tree";
+import List from "@lucide/svelte/icons/list";
 import { copySha } from "../lib/clipboard.js";
 import { exactDate } from "../lib/exact-date.js";
 import { toFileStatusList } from "../lib/file-status.js";

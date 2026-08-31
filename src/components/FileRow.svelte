@@ -1,5 +1,6 @@
 <script lang="ts">
-import { Minus, Plus } from "@lucide/svelte";
+import Minus from "@lucide/svelte/icons/minus";
+import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus } from "../lib/types.js";

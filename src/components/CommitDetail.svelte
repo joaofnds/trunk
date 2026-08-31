@@ -1,13 +1,11 @@
 <script lang="ts">
-import {
-	ArrowDown,
-	ArrowUp,
-	ChevronDown,
-	ChevronUp,
-	FolderTree,
-	List,
-	MessageSquarePlus,
-} from "@lucide/svelte";
+import ArrowDown from "@lucide/svelte/icons/arrow-down";
+import ArrowUp from "@lucide/svelte/icons/arrow-up";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronUp from "@lucide/svelte/icons/chevron-up";
+import FolderTree from "@lucide/svelte/icons/folder-tree";
+import List from "@lucide/svelte/icons/list";
+import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";

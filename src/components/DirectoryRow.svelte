@@ -1,5 +1,8 @@
 <script lang="ts">
-import { ChevronDown, ChevronRight, Minus, Plus } from "@lucide/svelte";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import Minus from "@lucide/svelte/icons/minus";
+import Plus from "@lucide/svelte/icons/plus";
 import type { DirectoryNode } from "../lib/build-tree.js";
 import { countFiles, sumCommentsInSubtree } from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";

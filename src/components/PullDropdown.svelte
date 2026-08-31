@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronDown } from "@lucide/svelte";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 

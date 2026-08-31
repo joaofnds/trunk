@@ -1,13 +1,11 @@
 <script lang="ts">
-import {
-	Check,
-	ChevronDown,
-	ChevronUp,
-	CircleCheck,
-	CircleX,
-	RotateCcw,
-	X,
-} from "@lucide/svelte";
+import Check from "@lucide/svelte/icons/check";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronUp from "@lucide/svelte/icons/chevron-up";
+import CircleCheck from "@lucide/svelte/icons/circle-check";
+import CircleX from "@lucide/svelte/icons/circle-x";
+import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
+import X from "@lucide/svelte/icons/x";
 import { tick } from "svelte";
 import { BAR_HEIGHT } from "../lib/chrome-heights.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";

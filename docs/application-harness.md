@@ -188,8 +188,10 @@ follows times out five seconds later saying only that the state never arrived (T
 
 ## Budget
 
-`just app-test` runs in **7.5 s** of wall time against a 10 s ceiling, with the host binary
-already built: the median of twelve runs, each alternated against a run on the `forks` pool so
+`just app-test` runs in **5.9 s** of wall time against a 10 s ceiling; the end of this
+section carries the current measurement, and the paragraphs between it and here hold the
+cost model and its corrections. The pool measurement first. 7.5 s with the host binary
+already built was the median of twelve runs, each alternated against a run on the `forks` pool so
 machine drift hit both arms. The same twelve runs on `forks` measured 9.4 s, and one of them
 came in at 10.25 s — the ceiling was already being breached occasionally before the pool
 changed. That is the recipe's own wall clock, not the `Duration` vitest prints, which comes out
@@ -240,7 +242,14 @@ own file put the halves in parallel and brought the suite to **9.2 s median** (9
 file that collects scenarios becomes the critical path. Two negative results from the same
 investigation: `isolate: false` is *slower* (12.5 s — the shared module graph buys nothing
 when each file already gets its own core, and contention costs), and the 19–29 s outliers
-seen once that day did not repeat (TRUNK-44 territory). About 0.8 s of headroom remains.
+seen once that day did not repeat (TRUNK-44 territory).
+
+The import floor itself then fell (TRUNK-65). `@lucide/svelte`'s barrel re-exports every
+icon — about 3,700 modules — and seventeen source files imported it, so every worker loaded
+the entire icon set to render a dozen icons. Rewriting those imports to deep per-icon paths
+(`@lucide/svelte/icons/git-branch`) took the suite from 9.41 s ± 0.66 to **5.90 s ± 0.26**
+(hyperfine, 5 runs each, same machine, same day). Import the barrel again and the floor
+comes back: new icon imports use the deep path. About 4 s of headroom remains.
 
 ## Measuring the rendered DOM
 

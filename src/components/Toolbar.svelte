@@ -1,15 +1,13 @@
 <script lang="ts">
-import {
-	Archive,
-	ArchiveRestore,
-	ArrowDown,
-	ArrowUp,
-	ClipboardCheck,
-	GitBranch,
-	MessageSquare,
-	Redo2,
-	Undo2,
-} from "@lucide/svelte";
+import Archive from "@lucide/svelte/icons/archive";
+import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
+import ArrowDown from "@lucide/svelte/icons/arrow-down";
+import ArrowUp from "@lucide/svelte/icons/arrow-up";
+import ClipboardCheck from "@lucide/svelte/icons/clipboard-check";
+import GitBranch from "@lucide/svelte/icons/git-branch";
+import MessageSquare from "@lucide/svelte/icons/message-square";
+import Redo2 from "@lucide/svelte/icons/redo-2";
+import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";

@@ -1,15 +1,13 @@
 <script lang="ts">
-import {
-	Code2,
-	Columns2,
-	Eye,
-	FoldVertical,
-	Pilcrow,
-	Rows2,
-	Space,
-	TextWrap,
-	UnfoldVertical,
-} from "@lucide/svelte";
+import Code2 from "@lucide/svelte/icons/code-2";
+import Columns2 from "@lucide/svelte/icons/columns-2";
+import Eye from "@lucide/svelte/icons/eye";
+import FoldVertical from "@lucide/svelte/icons/fold-vertical";
+import Pilcrow from "@lucide/svelte/icons/pilcrow";
+import Rows2 from "@lucide/svelte/icons/rows-2";
+import Space from "@lucide/svelte/icons/space";
+import TextWrap from "@lucide/svelte/icons/text-wrap";
+import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import { onMount } from "svelte";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";

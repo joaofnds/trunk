@@ -1,5 +1,7 @@
 <script lang="ts">
-import { ArrowDown, ArrowUp, Tag } from "@lucide/svelte";
+import ArrowDown from "@lucide/svelte/icons/arrow-down";
+import ArrowUp from "@lucide/svelte/icons/arrow-up";
+import Tag from "@lucide/svelte/icons/tag";
 
 interface Props {
 	name: string;

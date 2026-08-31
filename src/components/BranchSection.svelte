@@ -1,5 +1,7 @@
 <script lang="ts">
-import { ChevronDown, ChevronRight, Plus } from "@lucide/svelte";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import Plus from "@lucide/svelte/icons/plus";
 import type { Snippet } from "svelte";
 
 interface Props {

@@ -4,7 +4,10 @@
 // and jump-to-anchor with read-only orphan rows (D-07 / D-08). The panel lives
 // in the center pane (UI-SPEC:133); jump is driven by the host via onJump.
 
-import { Check, Clipboard, MessageSquarePlus, Trash2 } from "@lucide/svelte";
+import Check from "@lucide/svelte/icons/check";
+import Clipboard from "@lucide/svelte/icons/clipboard";
+import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
+import Trash2 from "@lucide/svelte/icons/trash-2";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";

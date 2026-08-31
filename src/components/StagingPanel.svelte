@@ -1,13 +1,11 @@
 <script lang="ts">
-import {
-	AlertTriangle,
-	ChevronDown,
-	ChevronRight,
-	ChevronsDownUp,
-	ChevronsUpDown,
-	FolderTree,
-	List,
-} from "@lucide/svelte";
+import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
+import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
+import FolderTree from "@lucide/svelte/icons/folder-tree";
+import List from "@lucide/svelte/icons/list";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";

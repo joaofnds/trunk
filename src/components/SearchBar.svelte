@@ -1,5 +1,7 @@
 <script lang="ts">
-import { ChevronDown, ChevronUp, X } from "@lucide/svelte";
+import ChevronDown from "@lucide/svelte/icons/chevron-down";
+import ChevronUp from "@lucide/svelte/icons/chevron-up";
+import X from "@lucide/svelte/icons/x";
 import { slide } from "svelte/transition";
 
 interface Props {

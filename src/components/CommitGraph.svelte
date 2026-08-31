@@ -1,5 +1,8 @@
 <script lang="ts">
-import { Archive, Globe, Laptop, Tag } from "@lucide/svelte";
+import Archive from "@lucide/svelte/icons/archive";
+import Globe from "@lucide/svelte/icons/globe";
+import Laptop from "@lucide/svelte/icons/laptop";
+import Tag from "@lucide/svelte/icons/tag";
 import { listen } from "@tauri-apps/api/event";
 import {
 	CheckMenuItem,

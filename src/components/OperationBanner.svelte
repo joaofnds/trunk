@@ -1,5 +1,6 @@
 <script lang="ts">
-import { GitBranch, GitMerge } from "@lucide/svelte";
+import GitBranch from "@lucide/svelte/icons/git-branch";
+import GitMerge from "@lucide/svelte/icons/git-merge";
 import { reportErrorToast } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { showToast } from "../lib/toast.svelte.js";

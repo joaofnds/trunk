@@ -1,5 +1,6 @@
 <script lang="ts">
-import { Archive, Search } from "@lucide/svelte";
+import Archive from "@lucide/svelte/icons/archive";
+import Search from "@lucide/svelte/icons/search";
 import {
 	mergeBranch,
 	rebaseBranch,
