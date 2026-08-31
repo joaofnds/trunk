@@ -1019,18 +1019,34 @@ fn render_thread(
 
 /// The verbs the agent may run against a thread in `state`, named as verbs
 /// because a state is not something an agent can type. `reply` is always
-/// available; `address` appears only while the one transition matrix says the
-/// agent channel may claim this thread (TRUNK-17), so a `done` thread offers
-/// the reply alone. `addressed` is the agent channel's only reachable state
-/// by §5.1, which is what makes this a single question of the matrix.
+/// available; the rest are whatever the one transition matrix legalizes for
+/// the agent channel (TRUNK-17), each named by the verb that reaches it, so a
+/// `done` thread offers the reply alone. Legalizing a second agent transition
+/// adds it here on its own, so this line and `--json`'s `allowed_transitions`
+/// cannot drift apart.
 fn agent_actions(state: ThreadState) -> String {
-    if state
-        .allowed_transitions(Channel::Agent)
-        .contains(&ThreadState::Addressed)
-    {
-        "reply, address".to_string()
-    } else {
-        "reply".to_string()
+    let verbs: Vec<&str> = std::iter::once("reply")
+        .chain(
+            state
+                .allowed_transitions(Channel::Agent)
+                .into_iter()
+                .map(claiming_verb),
+        )
+        .collect();
+
+    verbs.join(", ")
+}
+
+/// The CLI verb that moves a thread into `next`. `address` is the agent
+/// channel's only claim by §5.1, so it is the only arm the matrix reaches
+/// today; the human's resolutions have no CLI verb at all, which is what
+/// stops an agent settling a review. A state with no verb names itself rather
+/// than panicking — this line is printed by a verb an agent runs, and a wrong
+/// word there costs less than a crash.
+fn claiming_verb(next: ThreadState) -> &'static str {
+    match next {
+        ThreadState::Addressed => "address",
+        ThreadState::Open | ThreadState::Done | ThreadState::Dismissed => next.as_str(),
     }
 }
 
@@ -1166,6 +1182,29 @@ mod tests {
                 "{verb:?} must refuse --state, got {err:?}",
             );
         }
+    }
+
+    #[test]
+    fn the_actions_line_follows_the_transition_matrix() {
+        // The plain line and --json's allowed_transitions answer the same
+        // question, so they must not be able to disagree.
+        for state in [
+            ThreadState::Open,
+            ThreadState::Addressed,
+            ThreadState::Done,
+            ThreadState::Dismissed,
+        ] {
+            let claims = state.allowed_transitions(Channel::Agent).len();
+            let line = agent_actions(state);
+
+            assert_eq!(
+                line.split(", ").count(),
+                claims + 1,
+                "{state:?} allows {claims} claims plus the reply, got {line:?}",
+            );
+        }
+        assert_eq!(agent_actions(ThreadState::Open), "reply, address");
+        assert_eq!(agent_actions(ThreadState::Done), "reply");
     }
 
     #[test]
