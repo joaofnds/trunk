@@ -36,6 +36,28 @@ interface Pending {
 const DEFAULT_HOST = "src-tauri/target/debug/examples/app_host";
 
 /**
+ * Starves a chosen host command, so a wait that only fails on a loaded machine
+ * can be made to fail on demand. Seeing a test fail for the reason claimed is
+ * the only thing that makes a fix for it trustworthy (TRUNK-62), and these three
+ * waits could previously be reproduced only by loading the whole machine.
+ *
+ * `TRUNK_HOST_STALL_MS` sets the delay; `TRUNK_HOST_STALL_CMD` narrows it to the
+ * commands whose name contains that substring, defaulting to all of them. Both
+ * are unset in the gate. A stall is paid per command, so a wait costing several
+ * round trips pays it several times over.
+ */
+const STALL_MS = Number(process.env.TRUNK_HOST_STALL_MS ?? "0");
+const STALL_CMD = process.env.TRUNK_HOST_STALL_CMD ?? "";
+
+function stalls(cmd: string): boolean {
+	return STALL_MS > 0 && cmd.includes(STALL_CMD);
+}
+
+function stall(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * A spawned host process: the real Trunk application on `MockRuntime`, reached
  * over newline-delimited JSON. One client is one process is one test.
  */
@@ -98,6 +120,7 @@ export class HostClient {
 		this.inFlight += 1;
 		this.lastStartedAt = performance.now();
 		try {
+			if (stalls(cmd)) await stall(STALL_MS);
 			return (await this.request({ verb: "invoke", cmd, args })) as T;
 		} finally {
 			this.inFlight -= 1;
