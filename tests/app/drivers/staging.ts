@@ -1,5 +1,5 @@
 import { waitFor } from "../harness/wait.js";
-import { firstMatching } from "./dom.js";
+import { enabledButton, firstMatching } from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
@@ -84,6 +84,17 @@ export class StagingDriver {
 			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
 				text.includes(path),
 			),
+		);
+
+		row.click();
+	}
+
+	/** Opens a conflicted file, the click that mounts the merge editor. The
+	 *  unstaged section is hidden during an operation, so the bare row lookup
+	 *  cannot land on the wrong section. */
+	async openConflictedFile(path: string): Promise<void> {
+		const row = await waitFor(`the conflicted ${path} row`, () =>
+			firstMatching(FILE_ROW, (text) => text.includes(path)),
 		);
 
 		row.click();
@@ -244,15 +255,6 @@ function offeredAnywhere(label: string): HTMLButtonElement | null {
 	}
 
 	return null;
-}
-
-/** The button reading exactly `label`, or null while it is absent or
- *  disabled — jsdom dispatches no click on a disabled button. */
-function enabledButton(label: string): HTMLButtonElement | null {
-	const button = firstMatching("button", (text) => text === label);
-	if (!(button instanceof HTMLButtonElement)) return null;
-
-	return button.disabled ? null : button;
 }
 
 function grip(content: string): HTMLElement | null {

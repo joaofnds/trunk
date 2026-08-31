@@ -11,6 +11,7 @@ import { waitFor } from "../harness/wait.js";
 import { BranchesDriver } from "./branches.js";
 import { DiffPaneDriver } from "./diff-pane.js";
 import { EventsDriver } from "./events.js";
+import { MergeEditorDriver } from "./merge-editor.js";
 import { MessageEditorDriver } from "./message-editor.js";
 import { RebaseEditorDriver } from "./rebase-editor.js";
 import { RemoteDriver } from "./remote.js";
@@ -51,6 +52,7 @@ export class AppDriver {
 	readonly toolbar: ToolbarDriver;
 	readonly messageEditor: MessageEditorDriver;
 	readonly diffPane: DiffPaneDriver;
+	readonly mergeEditor: MergeEditorDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
 	readonly dialog: FakeDialog;
@@ -76,6 +78,7 @@ export class AppDriver {
 		this.toolbar = new ToolbarDriver();
 		this.messageEditor = new MessageEditorDriver();
 		this.diffPane = new DiffPaneDriver();
+		this.mergeEditor = new MergeEditorDriver();
 		this.events = new EventsDriver(host, internals);
 		this.contextMenu = fakes.menu;
 		this.dialog = fakes.dialog;

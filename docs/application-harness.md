@@ -97,6 +97,10 @@ paragraph read from the plain diff, then the rendered toggle, and the same parag
 back from the red and green blocks. A paragraph merely reworded would collapse to word-level
 marks inside one block, so the fixture keeps the two changes structurally apart.
 
+The merge editor, in `tests/app/merge-editor.test.ts`: a rebase conflict opened from the
+conflicted row, the incoming side taken whole, and the save that leaves that side's content
+on disk with the file in the resolved section.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease

@@ -15,6 +15,15 @@ export function firstMatching(
 	return null;
 }
 
+/** The button reading exactly `label`, or null while it is absent or
+ *  disabled — jsdom dispatches no click on a disabled button. */
+export function enabledButton(label: string): HTMLButtonElement | null {
+	const button = firstMatching("button", (text) => text === label);
+	if (!(button instanceof HTMLButtonElement)) return null;
+
+	return button.disabled ? null : button;
+}
+
 /**
  * Right-clicks `target` and returns once the menu it opens is showing. The
  * native menu never enters the DOM, so the Fake is the only thing that can say
