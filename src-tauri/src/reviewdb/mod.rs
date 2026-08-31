@@ -12,6 +12,7 @@ pub mod drafts;
 #[cfg(unix)]
 pub mod events;
 pub mod ids;
+pub mod pins;
 pub mod poll;
 pub mod replies;
 pub mod reviews;

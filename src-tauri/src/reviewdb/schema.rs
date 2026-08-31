@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 4;
+pub const CURRENT_VERSION: i64 = 5;
 
 const V1: &str = r#"
 CREATE TABLE reviews (
@@ -105,6 +105,20 @@ CREATE TABLE store_meta (revision INTEGER NOT NULL);
 INSERT INTO store_meta (revision) VALUES (0);
 "#;
 
+/// The pins a sweep found unanchored, so the next sweep can delete them (D8,
+/// TRUNK-61). A pin is reclaimed only when two sweeps in a row agree nothing
+/// anchors to it: a thread is written to the store after its snapshot is
+/// minted, so a single observation cannot distinguish an abandoned pin from
+/// one whose thread has not landed yet.
+const V5: &str = r#"
+CREATE TABLE unanchored_pins (
+    repo_path  TEXT NOT NULL,
+    oid        TEXT NOT NULL,
+    seen_at    INTEGER NOT NULL,
+    PRIMARY KEY (repo_path, oid)
+);
+"#;
+
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sqlite_error)
@@ -163,6 +177,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 4 {
         conn.execute_batch(&format!("{V4} PRAGMA user_version = 4;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 5 {
+        conn.execute_batch(&format!("{V5} PRAGMA user_version = 5;"))
             .map_err(sqlite_error)?;
     }
 

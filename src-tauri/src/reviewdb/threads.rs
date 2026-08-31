@@ -11,6 +11,7 @@ use crate::git::types::Anchor;
 use crate::review_types::{Channel, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -149,6 +150,24 @@ pub fn any_anchored_to(
         |row| row.get(0),
     )
     .map_err(sqlite_error)
+}
+
+/// Every distinct commit oid the repo's threads anchor to, across every review.
+/// The sweep's other half: a pin whose oid is absent here is unanchored.
+pub fn anchored_oids(conn: &Connection, repo_path: &Path) -> Result<HashSet<String>, TrunkError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT commit_oid FROM threads
+             WHERE commit_oid IS NOT NULL
+               AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
+        )
+        .map_err(sqlite_error)?;
+    let rows = stmt
+        .query_map([repo_key(repo_path)], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?;
+
+    rows.collect::<Result<HashSet<String>, _>>()
+        .map_err(sqlite_error)
 }
 
 /// Move a thread's state, enforcing `ThreadState::transition` inside the same

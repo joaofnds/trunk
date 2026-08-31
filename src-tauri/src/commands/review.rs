@@ -12,7 +12,7 @@ use crate::error::TrunkError;
 use crate::git::review_range::{compute_range_oids, intersect_graph_order, validate_range};
 use crate::git::review_resolution::{CommentResolution, resolve_all};
 use crate::git::types::SessionCommit;
-use crate::reviewdb::{Store, commits, drafts, replies, reviews, snapshots, threads};
+use crate::reviewdb::{Store, commits, drafts, pins, replies, reviews, snapshots, threads};
 use crate::state::{CommitCache, RepoState, ReviewStoreState};
 use reviews::Review;
 use serde::Serialize;
@@ -847,8 +847,11 @@ pub async fn list_session_commits<R: Runtime>(
 ///
 /// The stored OID is `decide_snapshot`'s `prior`: on an unchanged tree it is
 /// reused, so a submit does not mint a redundant snapshot commit. The snapshot
-/// is pinned by a keepalive ref; a superseded pin is pruned here, but only
-/// when no thread anchors to it (TRUNK-18 ruling — see the gate below).
+/// is pinned by a keepalive ref and this function never unpins anything. A
+/// superseded pin outlives its snapshot until `sweep_unanchored_pins` reclaims
+/// it: a submit resolves its snapshot and lands its thread in two separate
+/// calls, so pruning on the supersession that falls between them would unpin
+/// the commit an in-flight thread is about to anchor to (TRUNK-61).
 pub fn ensure_review_snapshot_inner(
     store: &Store,
     canonical: &Path,
@@ -856,7 +859,7 @@ pub fn ensure_review_snapshot_inner(
     kind: crate::git::workdir_snapshot::SnapshotKind,
     now: i64,
 ) -> Result<String, TrunkError> {
-    use crate::git::workdir_snapshot::{decide_snapshot, keep_snapshot_ref, prune_snapshot_ref};
+    use crate::git::workdir_snapshot::{decide_snapshot, keep_snapshot_ref};
 
     let prior = store.read(|conn| {
         Ok(snapshots::get(conn, canonical)?
@@ -869,28 +872,66 @@ pub fn ensure_review_snapshot_inner(
         Some(s) => Some(git2::Oid::from_str(&s).map_err(TrunkError::from)?),
         None => None,
     };
-    let (oid, created) = decide_snapshot(&repo, kind, prior_oid)?;
+    let (oid, _) = decide_snapshot(&repo, kind, prior_oid)?;
     keep_snapshot_ref(&repo, oid)?;
 
     let oid = oid.to_string();
     store.write(|tx| snapshots::set(tx, canonical, kind, &oid, now))?;
 
-    // A new snapshot supersedes the prior one — prune its pin so gc can
-    // reclaim it (D8), unless a thread still anchors to it: an anchored
-    // snapshot stays pinned or gc collects the commit its inline diff renders
-    // from (TRUNK-18 ruling). Reuse (created == false) means oid == prior_oid,
-    // so pruning here would delete the ref just pinned above. Pruning only
-    // after the store write is durable keeps a failed or interrupted write
-    // from leaving the old pin gone while the store still names it.
-    if created && let Some(old) = prior_oid {
-        let anchored =
-            store.read(|conn| threads::any_anchored_to(conn, canonical, &old.to_string()))?;
-        if !anchored {
-            prune_snapshot_ref(&repo, old)?;
-        }
+    Ok(oid)
+}
+
+/// Delete the keepalive refs of snapshots nothing anchors to, and record the
+/// ones that must wait for the next sweep.
+///
+/// Two passes, never one. A submit mints its snapshot and lands its thread in
+/// two separate calls, so an unanchored pin may belong to a submit still in
+/// flight; deleting on a single observation is the TRUNK-61 race. A pin is
+/// reclaimed only when the previous sweep saw it unanchored too, by which time
+/// any in-flight submit has landed its thread or died with the process.
+///
+/// The repo's two current pins are never candidates: they are the snapshots a
+/// new comment will anchor to, and they carry no thread until someone comments.
+///
+/// Store reads and the git deletions do not overlap: every oid is decided
+/// before the first ref is touched, so the store's connection lock is never
+/// held across git I/O.
+pub fn sweep_unanchored_pins(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    now: i64,
+) -> Result<usize, TrunkError> {
+    use crate::git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
+
+    let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
+    let pinned = pinned_snapshot_oids(&repo)?;
+
+    let (anchored, current, seen_before) = store.read(|conn| {
+        Ok((
+            threads::anchored_oids(conn, canonical)?,
+            snapshots::get(conn, canonical)?.oids(),
+            pins::seen_unanchored(conn, canonical)?,
+        ))
+    })?;
+
+    let unanchored: std::collections::HashSet<String> = pinned
+        .into_iter()
+        .filter(|oid| !anchored.contains(oid) && !current.contains(oid))
+        .collect();
+
+    let reclaimable: Vec<&String> = unanchored.iter().filter(|o| seen_before.contains(*o)).collect();
+
+    let mut reclaimed = 0;
+    for oid in reclaimable {
+        let parsed = git2::Oid::from_str(oid).map_err(TrunkError::from)?;
+        prune_snapshot_ref(&repo, parsed)?;
+        reclaimed += 1;
     }
 
-    Ok(oid)
+    store.write(|tx| pins::record_unanchored(tx, canonical, &unanchored, now))?;
+
+    Ok(reclaimed)
 }
 
 pub fn read_snapshots_inner(

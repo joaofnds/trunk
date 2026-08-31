@@ -423,7 +423,9 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
-use trunk_lib::commands::review::{ensure_review_snapshot_inner, read_snapshots_inner};
+use trunk_lib::commands::review::{
+    ensure_review_snapshot_inner, read_snapshots_inner, sweep_unanchored_pins,
+};
 use trunk_lib::git::workdir_snapshot::SnapshotKind;
 
 #[test]
@@ -928,7 +930,7 @@ fn a_newer_store_refuses_open_write_and_poll() {
 // ── Milestone 2, Task 10: snapshot ref pruning at supersession ──────────────
 
 #[test]
-fn superseding_a_snapshot_deletes_the_old_pin() {
+fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -950,6 +952,9 @@ fn superseding_a_snapshot_deletes_the_old_pin() {
         .unwrap();
     }
 
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
+
     let refs: Vec<String> = repo
         .references_glob(&format!(
             "{}*",
@@ -967,7 +972,7 @@ fn superseding_a_snapshot_deletes_the_old_pin() {
             trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX,
             last_oid
         )],
-        "only the current pin survives",
+        "only the current pin survives the sweep",
     );
 }
 
@@ -1043,6 +1048,8 @@ fn a_thread_in_one_repo_does_not_pin_another_repos_snapshot() {
     std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
@@ -1053,7 +1060,7 @@ fn a_thread_in_one_repo_does_not_pin_another_repos_snapshot() {
 }
 
 #[test]
-fn pruning_one_kind_leaves_the_other_pinned() {
+fn the_sweep_leaves_the_untouched_kinds_pin_alone() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -1083,16 +1090,18 @@ fn pruning_one_kind_leaves_the_other_pinned() {
     std::fs::write(ctx.repo_path().join("a.txt"), "staged edit\nmore").unwrap();
     ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
         .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_000).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 2_001).unwrap();
 
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     assert!(
         repo.find_reference(&format!("{prefix}{index_oid}")).is_ok(),
-        "the untouched kind's pin must survive",
+        "the untouched kind's current pin must survive the sweep",
     );
     assert!(
         repo.find_reference(&format!("{prefix}{workdir_oid_1}"))
             .is_err(),
-        "the superseded kind's old pin must be pruned",
+        "the superseded kind's old pin must be reclaimed",
     );
 }
 
@@ -2712,4 +2721,44 @@ fn a_prefix_holding_a_sql_wildcard_matches_nothing() {
             "{wildcard:?} reaches a LIKE pattern and must not act as a wildcard",
         );
     }
+}
+
+// ── TRUNK-61: pins are reclaimed by a sweep, never pruned at supersession ────
+
+/// The race TRUNK-61 exists to close. A submit resolves its snapshot, then
+/// lands its thread in a second call; a concurrent writer superseding that
+/// snapshot in between sees nothing anchored to it. Pruning at that moment
+/// leaves the thread anchored to an unpinned commit, which gc then collects.
+#[test]
+fn a_thread_landing_during_supersession_keeps_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let in_flight_oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let mut late = submission("submitted before the supersession, landed after");
+    late.anchor = Some(Anchor {
+        commit_oid: in_flight_oid.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, late, 1_002).unwrap();
+
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    assert!(
+        repo.find_reference(&format!("{prefix}{in_flight_oid}"))
+            .is_ok(),
+        "a snapshot whose thread was still in flight must keep its pin",
+    );
 }

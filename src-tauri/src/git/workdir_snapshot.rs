@@ -159,6 +159,20 @@ pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), 
     Ok(())
 }
 
+/// Every snapshot oid this repo currently pins.
+pub fn pinned_snapshot_oids(repo: &git2::Repository) -> Result<Vec<String>, TrunkError> {
+    let mut refs = repo.references_glob(&format!("{SNAPSHOT_REF_PREFIX}*"))?;
+
+    let mut oids = Vec::new();
+    for name in refs.names() {
+        if let Some(oid) = name?.strip_prefix(SNAPSHOT_REF_PREFIX) {
+            oids.push(oid.to_owned());
+        }
+    }
+
+    Ok(oids)
+}
+
 /// Drop the keepalive ref for one specific superseded snapshot oid (D8).
 /// Named pruning, not glob-based: `refs/trunk/review-snapshots/` holds the
 /// two CURRENT pins, one per kind, plus superseded pins threads still anchor
