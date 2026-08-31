@@ -18,6 +18,9 @@ const ADDED_LINE = `.diff-line-add ${LINE_CONTENT}`;
 const GRIP = ".gutter-selectable";
 const STAGE_HUNK = "Stage Hunk";
 const DISCARD_LINES = "Discard Lines";
+const MARK_ALL_RESOLVED = "Mark All Resolved";
+const CONTINUE_REBASE = "Continue Rebase";
+const ABORT_REBASE = "Abort Rebase";
 
 /** The working-tree view: what the graph's top row opens onto, and the commit
  *  the user builds there. */
@@ -122,6 +125,32 @@ export class StagingDriver {
 		);
 	}
 
+	/** Marks every conflicted file resolved, the button on the conflicted
+	 *  section's header. */
+	async markAllResolved(): Promise<void> {
+		await this.press(MARK_ALL_RESOLVED);
+	}
+
+	/** Continues the stopped rebase. The button holds itself disabled while
+	 *  anything is still conflicted, so waiting for it is the resolve gate. */
+	async continueRebase(): Promise<void> {
+		await this.press(CONTINUE_REBASE);
+	}
+
+	/** Abandons the stopped rebase. The confirmation goes to the dialog Fake,
+	 *  which dismisses unless the test has said otherwise. */
+	async abortRebase(): Promise<void> {
+		await this.press(ABORT_REBASE);
+	}
+
+	private async press(label: string): Promise<void> {
+		const button = await waitFor(`an enabled ${label} button`, () =>
+			enabledButton(label),
+		);
+
+		button.click();
+	}
+
 	async commit(subject: string): Promise<void> {
 		const field = await waitFor("the commit subject field", () =>
 			document.querySelector<HTMLInputElement>(SUBJECT),
@@ -174,6 +203,15 @@ function offeredAnywhere(label: string): HTMLButtonElement | null {
 	}
 
 	return null;
+}
+
+/** The button reading exactly `label`, or null while it is absent or
+ *  disabled — jsdom dispatches no click on a disabled button. */
+function enabledButton(label: string): HTMLButtonElement | null {
+	const button = firstMatching("button", (text) => text === label);
+	if (!(button instanceof HTMLButtonElement)) return null;
+
+	return button.disabled ? null : button;
 }
 
 function grip(content: string): HTMLElement | null {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
@@ -96,6 +96,13 @@ export class RepoDriver {
 	 *  and what the diff pane is a re-read of. */
 	workingTreeFile(relativePath: string): string {
 		return readFileSync(join(this.path, relativePath), "utf8");
+	}
+
+	/** Writes a working-tree file, the edit a user makes in their own editor.
+	 *  Nothing refreshes on it — the watcher is off — so the panel reads the
+	 *  content at the next gesture that reloads status. */
+	writeWorkingTreeFile(relativePath: string, content: string): void {
+		writeFileSync(join(this.path, relativePath), content);
 	}
 
 	/** The short hash the graph shows for one commit. */

@@ -26,6 +26,14 @@ export class BranchesDriver {
 		target?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
 	}
 
+	/** The branch the sidebar tags HEAD, or null while none carries the tag —
+	 *  a stopped rebase detaches HEAD and the tag disappears with it. */
+	headBranch(): string | null {
+		const row = firstMatching(BRANCH_ROW, (text) => text.endsWith("HEAD"));
+
+		return row?.textContent?.trim().split(/\s/)[0] ?? null;
+	}
+
 	/** What the sidebar is telling the user about `name`, or null while it is
 	 *  telling them nothing. */
 	refusal(name: string): string | null {

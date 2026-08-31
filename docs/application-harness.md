@@ -70,6 +70,12 @@ that stops with the toast it owes the user, and the fork-point entry point. Case
 document, the greyed-out menu item, stays deliberately outside: it is a predicate over
 already-loaded data that crosses no boundary.
 
+The stopped-rebase recovery workflow, in the same file: a drop that leaves the next commit
+unappliable, the Abort that returns HEAD to `main` with the graph it started from, and the
+same rebase retried and resolved — the conflicted file rewritten on disk, Mark All Resolved,
+Continue Rebase — landing the graph with the dropped commit gone. Skip is offered on the
+banner and deliberately not pressed; it is the same join as Continue with nothing staged.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease
@@ -89,7 +95,7 @@ every thread a second time inside a hidden `.comment-probe` to measure its heigh
 naming `.comment-card` alone answers with the probe's copy whether or not the panel ever
 opened.
 
-`backlog/docs/doc-26` ranks what still has no end-to-end test — 42 of the 115 registered
+`backlog/docs/doc-26` ranks what still has no end-to-end test — 45 of the 115 registered
 commands are driven here — and is the queue new scenarios come off.
 
 ## What it does not cover
@@ -187,7 +193,14 @@ cores to spare; on a smaller machine the boots stop being free and file count st
 real time. And CI wall time is a different number (the job runs about six minutes) on a
 2-core runner, and is not what this budget measures.
 
-About 2.5 s of headroom is left. The ceiling is the design constraint, not a target to
+The boot count is not the whole marginal cost when a scenario is long. The stopped-rebase
+recovery scenario (TRUNK-41.4) runs two full rebases, an abort and a `settle()`, about 4.5 s
+of in-test time, and it moved the suite's wall clock to roughly 9 s: measured 2026-08-31 as an
+8.9 / 9.0 / 9.2 s cluster across six runs on a machine at load average 8, with 16–21 s
+outliers that are the contention, not the suite. A quiet-machine median was not obtainable
+that day; treat 9 s as the standing number until one is.
+
+About 1 s of headroom is left. The ceiling is the design constraint, not a target to
 negotiate: a suite that outgrows it is a decision for the repository's owner — and the first
 lever to reach for is the compile floor above, not trimming a workflow.
 

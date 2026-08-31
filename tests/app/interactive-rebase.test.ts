@@ -141,6 +141,53 @@ describe("an interactive rebase", () => {
 		).resolves.toEqual(["Continue Rebase", "Skip", "Abort Rebase"]);
 	});
 
+	it("aborts a stopped rebase back to the pre-rebase graph, then lands the resolution on Continue", async () => {
+		const app = await setup({ repo: ONE_REWRITTEN_FILE });
+		await app.repo.open();
+		const before = app.repo.commitShas();
+		await app.repo.contextMenu("G-two");
+		app.contextMenu.choose("Interactive Rebase...");
+		await app.rebaseEditor.setAction(1, "drop");
+		await app.rebaseEditor.start();
+		await waitFor("the rebase banner", () => app.staging.banner());
+
+		app.dialog.confirms();
+		await app.staging.abortRebase();
+
+		await waitFor("the banner to clear", () =>
+			app.staging.banner() ? null : true,
+		);
+		await app.settle();
+		expect(app.branches.headBranch()).toBe("main");
+		expect(app.repo.commitRows()).toEqual([
+			"G-four",
+			"G-three",
+			"G-two",
+			"G-one",
+		]);
+		expect(app.repo.commitShas()).toEqual(before);
+
+		await app.repo.contextMenu("G-two");
+		app.contextMenu.choose("Interactive Rebase...");
+		await app.rebaseEditor.setAction(1, "drop");
+		await app.rebaseEditor.start();
+		await waitFor("the rebase banner", () => app.staging.banner());
+
+		app.repo.writeWorkingTreeFile("g.txt", "four");
+		await app.staging.markAllResolved();
+		await app.staging.continueRebase();
+
+		await waitFor("the banner to clear", () =>
+			app.staging.banner() ? null : true,
+		);
+		await expect(
+			waitFor("the rebased graph", () => {
+				const rows = app.repo.commitRows();
+				return rows.length === 3 ? rows : null;
+			}),
+		).resolves.toEqual(["G-four", "G-two", "G-one"]);
+	});
+
 	it("lists what a branch is ahead of its fork point by", async () => {
 		const app = await setup({ repo: FORKED });
 		await app.repo.open();
