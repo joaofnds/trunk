@@ -17,6 +17,7 @@ import { RebaseEditorDriver } from "./rebase-editor.js";
 import { RemoteDriver } from "./remote.js";
 import { RepoDriver } from "./repo.js";
 import { ReviewDriver } from "./review.js";
+import { SearchDriver } from "./search.js";
 import { StagingDriver } from "./staging.js";
 import { ToolbarDriver } from "./toolbar.js";
 
@@ -53,6 +54,7 @@ export class AppDriver {
 	readonly messageEditor: MessageEditorDriver;
 	readonly diffPane: DiffPaneDriver;
 	readonly mergeEditor: MergeEditorDriver;
+	readonly search: SearchDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
 	readonly dialog: FakeDialog;
@@ -79,6 +81,7 @@ export class AppDriver {
 		this.messageEditor = new MessageEditorDriver();
 		this.diffPane = new DiffPaneDriver();
 		this.mergeEditor = new MergeEditorDriver();
+		this.search = new SearchDriver();
 		this.events = new EventsDriver(host, internals);
 		this.contextMenu = fakes.menu;
 		this.dialog = fakes.dialog;

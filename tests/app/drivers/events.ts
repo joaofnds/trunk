@@ -20,6 +20,14 @@ export class EventsDriver {
 		await this.host.emit("repo-changed", path);
 	}
 
+	/** The Cmd+F accelerator: a native menu item registered in Rust emits
+	 *  `search-toggle`, so the harness's stand-in is the host making the same
+	 *  emit. */
+	async searchToggle(): Promise<void> {
+		await this.internals.registrationsSettled();
+		await this.host.emit("search-toggle", null);
+	}
+
 	/** How many filesystem watches the application holds. */
 	watchers(): Promise<number> {
 		return this.host.watcherCount();

@@ -101,6 +101,10 @@ The merge editor, in `tests/app/merge-editor.test.ts`: a rebase conflict opened 
 conflicted row, the incoming side taken whole, and the save that leaves that side's content
 on disk with the file in the resolved section.
 
+History search, in `tests/app/history-search.test.ts`: the search bar opened through the
+accelerator's `search-toggle` event (the host makes the same emit the native menu item
+does), a query typed, and the match count and auto-selected first match read back.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease
@@ -223,11 +227,14 @@ recovery scenario (TRUNK-41.4) runs two full rebases, an abort and a `settle()`,
 of in-test time, and it moved the suite's wall clock to roughly 9 s: measured 2026-08-31 as an
 8.9 / 9.0 / 9.2 s cluster across six runs on a machine at load average 8, with 16–21 s
 outliers that are the contention, not the suite. A quiet-machine median was not obtainable
-that day; treat 9 s as the standing number until one is.
+that day.
 
-About 1 s of headroom is left. The ceiling is the design constraint, not a target to
-negotiate: a suite that outgrows it is a decision for the repository's owner — and the first
-lever to reach for is the compile floor above, not trimming a workflow.
+With all eleven TRUNK-41 workflows in — seven more scenarios landed after that measurement —
+a single run on the same loaded machine came in at 10.1 s. **The 10 s ceiling is breached, at
+least under load**; the owner deferred the budget decision (raise the ceiling or move the
+suite out of `just check`) until after TRUNK-41, and it is now due. Re-measure on a quiet
+machine before deciding; the first lever remains the compile floor above, not trimming a
+workflow.
 
 ## Measuring the rendered DOM
 
