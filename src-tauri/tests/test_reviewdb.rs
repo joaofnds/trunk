@@ -1012,9 +1012,9 @@ fn a_pin_survives_supersession_while_a_thread_anchors_to_it() {
     );
 }
 
-/// The gate scopes by repo: one database holds every repo, so a thread in one
+/// The sweep scopes by repo: one database holds every repo, so a thread in one
 /// repo must not keep another repo's superseded pin alive. Without the
-/// `repo_path` clause in `any_anchored_to` this passes on the oid alone.
+/// `repo_path` clause in `anchored_oids` this passes on the oid alone.
 #[test]
 fn a_thread_in_one_repo_does_not_pin_another_repos_snapshot() {
     let ctx = TestContext::builder()

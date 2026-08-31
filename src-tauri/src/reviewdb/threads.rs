@@ -132,28 +132,12 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
     })
 }
 
-/// Whether any of the repo's threads anchors to `commit_oid`, across every
-/// review. Gates snapshot-pin pruning: a superseded snapshot stays pinned
-/// while a thread still anchors to it, or gc collects the commit its inline
-/// diff renders from.
-pub fn any_anchored_to(
-    conn: &Connection,
-    repo_path: &Path,
-    commit_oid: &str,
-) -> Result<bool, TrunkError> {
-    conn.query_row(
-        "SELECT EXISTS(
-            SELECT 1 FROM threads
-            WHERE commit_oid = ?2
-              AND review_id IN (SELECT id FROM reviews WHERE repo_path = ?1))",
-        rusqlite::params![repo_key(repo_path), commit_oid],
-        |row| row.get(0),
-    )
-    .map_err(sqlite_error)
-}
-
 /// Every distinct commit oid the repo's threads anchor to, across every review.
 /// The sweep's other half: a pin whose oid is absent here is unanchored.
+///
+/// Scoped by repo because one database holds every repo: without the
+/// `repo_path` clause another repo's thread would keep this repo's pin alive
+/// on an oid collision.
 pub fn anchored_oids(conn: &Connection, repo_path: &Path) -> Result<HashSet<String>, TrunkError> {
     let mut stmt = conn
         .prepare(
