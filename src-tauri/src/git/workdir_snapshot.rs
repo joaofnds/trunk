@@ -118,14 +118,18 @@ pub fn snapshot(repo: &git2::Repository, kind: SnapshotKind) -> Result<git2::Oid
     let parents: Vec<&git2::Commit> = head_commit.iter().collect();
 
     // 5. Descriptive message only — the snapshot is tracked by OID in the session
-    //    field, never by parsing this string.
-    let sig = git2::Signature::now("Trunk", "review@trunk.local")?;
-    let msg = format!("{} — {}", kind.label(), sig.when().seconds());
+    //    field, never by parsing this string. The signature time is fixed, not the
+    //    clock: the pin design (reviewdb::pins) relies on a reverted tree handing
+    //    out the same oid again, so the oid must be a function of tree, parent,
+    //    and kind alone. A wall-clock signature broke that at every second
+    //    boundary.
+    let sig = git2::Signature::new("Trunk", "review@trunk.local", &git2::Time::new(0, 0))?;
+    let msg = kind.label();
 
     // 6. `None` target ref => the commit is created dangling. The session command
     //    (ensure_review_snapshot) then pins it via keep_snapshot_ref so gc can't
     //    prune a snapshot that still has comments anchored to it (260531-l02 C3).
-    let oid = repo.commit(None, &sig, &sig, &msg, &tree, &parents)?;
+    let oid = repo.commit(None, &sig, &sig, msg, &tree, &parents)?;
     Ok(oid)
 }
 

@@ -241,7 +241,7 @@ describe("ReviewPanel", () => {
 				{
 					oid: COMMIT_A,
 					short_oid: "aaaaaaa",
-					summary: "Uncommitted changes — 1",
+					summary: "Uncommitted changes",
 					is_snapshot: true,
 				},
 				{

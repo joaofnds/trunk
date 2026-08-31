@@ -3975,9 +3975,9 @@ fn a_snapshot_handed_out_under_a_concurrent_sweep_is_pinned() {
         })
     };
 
-    // Never assert WHICH oid comes back: a snapshot commit embeds a timestamp,
-    // so a revert reproduces an earlier oid only inside the same second. The
-    // property is that whatever is handed out is pinned when it is handed out.
+    // Never assert WHICH oid comes back: identity across a revert is the
+    // sibling test's property. The property here is that whatever is handed
+    // out is pinned when it is handed out.
     let repo_path = ctx.repo_path().to_path_buf();
     let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
     for i in 0..40 {
