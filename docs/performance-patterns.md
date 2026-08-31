@@ -97,12 +97,19 @@ Recorded so they aren't re-tried:
   behind a 3.7 s `trunk_lib` compile, 10 s wall total; a leaf-crate edit still rebuilds
   `trunk_lib` and still relinks every test binary, so the split moves ~2 s inside a 10 s
   parallel phase and leaves the dominant relink-and-scan cost intact.
-- **`cargo nextest`** (not adopted, measured): runs test binaries in parallel where
-  `cargo test` runs them serially — 899 tests done in ~7.5 s vs 17 s. But
-  `store_events_survive_a_commit_racing_the_subscribe` (test_reviewdb) hung for 8+ minutes
-  under its process-per-test model until SIGTERM (measured with another session's
-  test_reviewdb edits in the tree, so re-verify on a clean tree), it doesn't run doctests,
-  and swapping the runner is a gate change that needs direction.
+- **`cargo nextest`** (adopted, TRUNK-67): runs test binaries in parallel where
+  `cargo test` runs them serially — warm `just cargo-test` went 17 s → 9.5 s (7.2 s
+  nextest + 1.6 s `cargo test --doc`, six consecutive clean runs), post-edit `just check`
+  62 s → 49 s. The 8-minute hang of
+  `store_events_survive_a_commit_racing_the_subscribe` seen on the first try did not
+  reproduce on a clean tree (six runs); it coincided with another session's in-flight
+  reviewdb race fix. nextest cannot run doctests, so the recipe runs `cargo test --doc`
+  after it; the union was verified name-by-name against `cargo test -- --list`, which
+  differs only by the one doctest.
+- **Two-lane `just check`** (measured, not adopted): running the Rust chain
+  (clippy → clippy-shipped → cargo-test → app-test) concurrently with the frontend chain
+  measured 41.6 s post-edit against 49.4 s serial — about 8 s, for a wrapper script,
+  buffered logs, and failure reporting the serial gate gets for free. Decision open.
 - **Already fixed before TRUNK-12 ran**: `biome ci` traversal (25–84 s in the 2026-08-26
   note) now 0.12 s after the `files.includes` exclusions; `test_integ_watcher.rs`
   (21.6 s in the card) now 1.67 s.
