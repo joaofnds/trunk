@@ -624,8 +624,13 @@ fn store_events_stay_silent_for_a_draft_autosave() {
     );
 }
 
+/// The poll tests below drive the loop rather than waiting on it: the test
+/// supplies the ticker, so `run_cycle` returns only once that cycle's work is
+/// done and every assertion is about what the loop did, not about how fast the
+/// scheduler got to it. The wall clock made these fail under `cargo mutants`,
+/// which saturates the machine (João 2026-08-31).
 #[test]
-fn poll_detects_a_foreign_commit_within_two_intervals() {
+fn poll_announces_a_foreign_commit_on_the_next_cycle() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -633,7 +638,8 @@ fn poll_detects_a_foreign_commit_within_two_intervals() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     reviewdb::open(ctx.data_dir()).unwrap();
     let (emitted, changes) = std::sync::mpsc::channel();
-    let poll = reviewdb::poll::spawn(ctx.data_dir(), move || {
+    let (ticker, driver) = reviewdb::poll::ManualTicker::new();
+    let poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, move || {
         let _ = emitted.send(());
     });
 
@@ -646,8 +652,9 @@ fn poll_detects_a_foreign_commit_within_two_intervals() {
     )
     .unwrap();
 
+    assert!(driver.run_cycle(), "the poll must keep running");
     changes
-        .recv_timeout(reviewdb::poll::INTERVAL * 5)
+        .try_recv()
         .expect("a foreign revision-bumping commit must be announced");
     poll.stop();
 }
@@ -661,7 +668,8 @@ fn a_draft_write_triggers_no_emit() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
     reviewdb::open(ctx.data_dir()).unwrap();
     let (emitted, changes) = std::sync::mpsc::channel();
-    let poll = reviewdb::poll::spawn(ctx.data_dir(), move || {
+    let (ticker, driver) = reviewdb::poll::ManualTicker::new();
+    let poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, move || {
         let _ = emitted.send(());
     });
 
@@ -669,8 +677,9 @@ fn a_draft_write_triggers_no_emit() {
     trunk_lib::commands::review::save_draft_inner(&foreign, &canonical, "typing…", None, 1_000)
         .unwrap();
 
+    assert!(driver.run_cycle(), "the poll must keep running");
     assert!(
-        changes.recv_timeout(reviewdb::poll::INTERVAL * 3).is_err(),
+        changes.try_recv().is_err(),
         "the draft autosave moves data_version but not the revision — no emit",
     );
     poll.stop();
@@ -705,13 +714,10 @@ fn a_newer_store_refuses_open_write_and_poll() {
         err.message,
     );
 
-    let poll = reviewdb::poll::spawn(ctx.data_dir(), || {});
-    let deadline = std::time::Instant::now() + reviewdb::poll::INTERVAL * 5;
-    while !poll.is_stopped() && std::time::Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    let (ticker, driver) = reviewdb::poll::ManualTicker::new();
+    let _poll = reviewdb::poll::spawn_ticked(ctx.data_dir(), ticker, || {});
     assert!(
-        poll.is_stopped(),
+        !driver.run_cycle(),
         "the poll must stop on a refused store, not loop on the refusal",
     );
 }
