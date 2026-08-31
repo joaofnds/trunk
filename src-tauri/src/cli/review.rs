@@ -1093,6 +1093,26 @@ mod tests {
     }
 
     #[test]
+    fn only_threads_takes_a_state_filter() {
+        // Silently ignoring --state on the other verbs would answer a
+        // narrowed question with the unnarrowed result.
+        for verb in [
+            argv(&["list", "--state", "open"]),
+            argv(&["show", "3F7K", "--state", "open"]),
+            argv(&["thread", "ab12", "--state", "open"]),
+            argv(&["watch", "--state", "open"]),
+            argv(&["address", "ab12", "--state", "open"]),
+        ] {
+            let err = parse(&verb).unwrap_err();
+
+            assert!(
+                err.contains("--state filters `threads` only"),
+                "{verb:?} must refuse --state, got {err:?}",
+            );
+        }
+    }
+
+    #[test]
     fn threads_rejects_a_state_outside_the_matrix() {
         let err = parse(&argv(&["threads", "3F7K", "--state", "pending"])).unwrap_err();
 
@@ -1131,6 +1151,53 @@ mod tests {
         let err = parse(&argv(&["thread"])).unwrap_err();
 
         assert!(err.contains("thread needs a thread id"), "got {err:?}");
+    }
+
+    fn resolve(candidates: &[&str], raw: &str) -> Result<String, TrunkError> {
+        let owned: Vec<String> = candidates.iter().map(|s| (*s).to_string()).collect();
+        resolve_unique(owned, |s| s.as_str(), raw, "review")
+    }
+
+    #[test]
+    fn an_id_resolves_from_an_unambiguous_prefix() {
+        assert_eq!(
+            resolve(&["3F7K2QAB", "9XJ4M1TT"], "3F7").unwrap(),
+            "3F7K2QAB"
+        );
+    }
+
+    #[test]
+    fn an_exact_id_wins_over_a_longer_candidate_it_prefixes() {
+        // `3F7K` is a whole id AND a prefix of `3F7K2QAB`. Without the exact
+        // check the pair reads as ambiguous and neither resolves.
+        assert_eq!(resolve(&["3F7K2QAB", "3F7K"], "3F7K").unwrap(), "3F7K");
+    }
+
+    #[test]
+    fn a_prefix_matching_two_candidates_is_ambiguous_not_a_silent_pick() {
+        // Ambiguity is judged after the caller's published filter, so this
+        // arm is what stops a colliding prefix from resolving to whichever
+        // row the store happened to return first.
+        let err = resolve(&["3F7K2QAB", "3F7K9ZZZ"], "3F7").unwrap_err();
+
+        assert_eq!(err.code, "ambiguous_id");
+        assert!(
+            err.message.contains("3F7K2QAB") && err.message.contains("3F7K9ZZZ"),
+            "the error must name both candidates, got {:?}",
+            err.message,
+        );
+    }
+
+    #[test]
+    fn a_prefix_matching_nothing_is_not_found() {
+        assert_eq!(resolve(&["3F7K2QAB"], "ZZZ").unwrap_err().code, "not_found",);
+    }
+
+    #[test]
+    fn an_empty_id_matches_nothing_rather_than_everything() {
+        // Every id starts with "", so without the emptiness guard a bare
+        // prefix would resolve to the only review a repo has.
+        assert_eq!(resolve(&["3F7K2QAB"], "").unwrap_err().code, "not_found");
     }
 
     #[test]
