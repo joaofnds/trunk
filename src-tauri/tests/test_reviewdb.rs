@@ -2901,3 +2901,49 @@ fn the_sweep_never_reclaims_a_current_pin() {
         "the repo's current pin must survive any number of sweeps",
     );
 }
+
+/// The end of the chain, observed rather than reasoned about: a thread that
+/// lands during a supersession still renders after `git gc --prune=now`.
+///
+/// Every other test here asserts on refs. This one asserts on the outcome the
+/// refs exist to produce — the commit surviving collection — because the whole
+/// premise is that an unpinned snapshot is collected and a pinned one is not.
+#[test]
+fn a_thread_that_landed_during_supersession_survives_gc() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let in_flight_oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    let mut late = submission("submitted before the supersession, landed after");
+    late.anchor = Some(Anchor {
+        commit_oid: in_flight_oid.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, late, 1_002).unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let oid = git2::Oid::from_str(&in_flight_oid).unwrap();
+    assert!(
+        repo.find_commit(oid).is_ok(),
+        "the thread's anchor commit must survive gc, or its inline diff resolves CommitGone",
+    );
+}
