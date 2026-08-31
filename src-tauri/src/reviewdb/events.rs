@@ -26,6 +26,10 @@ use std::sync::{Arc, Mutex, mpsc};
 /// socket paths cap near 104 bytes on macOS.
 const RING_DIR: &str = "w";
 
+/// Written by [`StoreEvents::sync`] to mark its connection as a barrier
+/// rather than a doorbell. A writer's `ring` sends nothing and hangs up.
+const SYNC_BYTE: u8 = b's';
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreEvent {
     /// Another connection committed a revision-bumping write.
@@ -42,6 +46,9 @@ pub struct StoreEvents {
     stop: Arc<AtomicBool>,
     socket_path: PathBuf,
     thread: Option<std::thread::JoinHandle<()>>,
+    /// Rung by [`StoreEvents::sync`] and acknowledged by the listener once it
+    /// has finished the ring that carried it.
+    synced: mpsc::Receiver<()>,
 }
 
 impl StoreEvents {
@@ -50,10 +57,50 @@ impl StoreEvents {
         self.receiver.recv().ok()
     }
 
+    /// The event already queued, if any. Paired with [`StoreEvents::sync`]
+    /// this answers "was an event produced" without a deadline.
+    pub fn try_recv(&self) -> Option<StoreEvent> {
+        self.receiver.try_recv().ok()
+    }
+
     /// `recv` with a deadline, for tests and impatient callers. Production
     /// consumers use `recv`; the deadline here is the caller's, not ours.
     pub fn recv_timeout(&self, timeout: std::time::Duration) -> Option<StoreEvent> {
         self.receiver.recv_timeout(timeout).ok()
+    }
+
+    /// Block until every ring delivered so far has been processed.
+    ///
+    /// `ring` returns as soon as the kernel accepts the connection, so a
+    /// writer's return says the doorbell is queued, not that this subscriber
+    /// has looked at it. That gap is why a test asserting "no event" would
+    /// otherwise have to guess at a duration. The listener takes connections
+    /// in order, so a marked connection that has been processed proves every
+    /// earlier ring has been too: after `sync` returns, `try_recv` is a sound
+    /// way to ask whether an event was produced.
+    ///
+    /// The mark matters. A plain self-ring would be indistinguishable from a
+    /// writer's, so the listener would check the revision on its account and
+    /// announce a change the doorbell never reported — the barrier would
+    /// manufacture the event it exists to observe, and a test using it would
+    /// pass even with ringing disabled entirely. Writing [`SYNC_BYTE`] tells
+    /// the listener to acknowledge without inspecting the store.
+    ///
+    /// `false` means the feed has ended and no further events can arrive.
+    pub fn sync(&self) -> bool {
+        use std::io::Write;
+
+        // Every sync acknowledges, so an ack from an earlier one may be
+        // waiting. Discarding it first means this call blocks on its own.
+        while self.synced.try_recv().is_ok() {}
+        let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&self.socket_path) else {
+            return false;
+        };
+        if stream.write_all(&[SYNC_BYTE]).is_err() {
+            return false;
+        }
+        drop(stream);
+        self.synced.recv().is_ok()
     }
 }
 
@@ -91,13 +138,20 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
 
     let last_revision = Mutex::new(super::revision(&conn).ok());
     let (sender, receiver) = mpsc::channel();
+    let (synced_tx, synced) = mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
 
     let flag = Arc::clone(&stop);
     let thread = std::thread::spawn(move || {
-        while let Ok((_stream, _)) = listener.accept() {
+        while let Ok((mut stream, _)) = listener.accept() {
             if flag.load(Ordering::Relaxed) {
                 return;
+            }
+            if is_sync(&mut stream) {
+                // A barrier, not a doorbell: acknowledge that everything
+                // rung before this point is done, and read nothing.
+                let _ = synced_tx.send(());
+                continue;
             }
             if !announce_if_moved(&conn, &last_revision, &sender) {
                 return;
@@ -110,6 +164,7 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
         stop,
         socket_path,
         thread: Some(thread),
+        synced,
     })
 }
 
@@ -131,6 +186,15 @@ pub fn ring(data_dir: &Path) {
             let _ = std::fs::remove_file(&path);
         }
     }
+}
+
+/// Whether this connection is a [`StoreEvents::sync`] barrier. A doorbell
+/// sends no bytes and closes, which reads as end-of-stream.
+fn is_sync(stream: &mut std::os::unix::net::UnixStream) -> bool {
+    use std::io::Read;
+
+    let mut byte = [0u8; 1];
+    matches!(stream.read(&mut byte), Ok(1) if byte[0] == SYNC_BYTE)
 }
 
 /// One ring's worth of verification: guard, read the revision, announce a

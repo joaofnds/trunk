@@ -570,10 +570,12 @@ fn every_write_bumps_the_revision_except_the_draft_autosave() {
 
 // ── Milestone 3, watch verb: the store's event feed ─────────────────────────
 
-/// The event-driven counterpart of the poll (João 2026-08-31): OS file events
-/// wake the subscriber, `store_revision` decides whether the wakeup means
-/// anything. No timer anywhere in the production path — the timeouts below
-/// belong to the test.
+/// The event-driven counterpart of the poll (João 2026-08-31): the writer
+/// rings a unix-socket doorbell, `store_revision` decides whether the wakeup
+/// means anything. No timer anywhere in the production path, and none in
+/// these tests either: `sync` blocks until every ring delivered so far has
+/// been processed, so each assertion below is about what the subscriber did
+/// rather than about how long the test was willing to wait.
 #[test]
 fn store_events_fire_on_a_foreign_commit() {
     let ctx = TestContext::builder()
@@ -593,13 +595,78 @@ fn store_events_fire_on_a_foreign_commit() {
     )
     .unwrap();
 
+    assert!(events.sync(), "the feed must still be live");
     assert!(
         matches!(
-            events.recv_timeout(std::time::Duration::from_secs(3)),
+            events.try_recv(),
             Some(reviewdb::events::StoreEvent::Changed { .. }),
         ),
         "a foreign revision-bumping commit must produce an event",
     );
+}
+
+/// The listener's half of the contract, which the two tests above cannot
+/// reach: they assert that a quiet write never rings, so the listener never
+/// runs. Here the doorbell is rung with no write behind it at all. The
+/// module's promise is that a coalesced or spurious ring is verified against
+/// `store_meta.revision` and discarded, so nothing is announced.
+#[test]
+fn store_events_ignore_a_ring_with_no_commit_behind_it() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    reviewdb::events::ring(ctx.data_dir());
+    reviewdb::events::ring(ctx.data_dir());
+
+    assert!(events.sync(), "the feed must still be live");
+    assert!(
+        events.try_recv().is_none(),
+        "a ring with no revision movement behind it must announce nothing",
+    );
+}
+
+/// The window TRUNK-57 found open in the poll: a write landing between the
+/// subscriber starting up and its listener first running. Here the socket is
+/// bound before the baseline revision is read, so such a write is either
+/// already in the baseline or queued in the socket backlog — never lost.
+#[test]
+fn store_events_survive_a_commit_racing_the_subscribe() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let writing = std::thread::spawn(move || {
+        submit_thread_inner(&foreign, &canonical, submission("racing"), 1_000).unwrap();
+    });
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+    writing.join().unwrap();
+
+    assert!(events.sync(), "the feed must still be live");
+    let revision = reviewdb::open(ctx.data_dir())
+        .unwrap()
+        .read(reviewdb::revision)
+        .unwrap();
+    match events.try_recv() {
+        // The commit landed after the baseline: it must have been announced.
+        Some(reviewdb::events::StoreEvent::Changed { revision: seen }) => {
+            assert_eq!(
+                seen, revision,
+                "the announced revision must be the current one"
+            );
+        }
+        // The commit landed before the baseline, so there was nothing to
+        // announce. Either way the subscriber's view matches the store.
+        None => {}
+        other => panic!("unexpected event: {other:?}"),
+    }
 }
 
 #[test]
@@ -616,10 +683,9 @@ fn store_events_stay_silent_for_a_draft_autosave() {
     trunk_lib::commands::review::save_draft_inner(&foreign, &canonical, "typing…", None, 1_000)
         .unwrap();
 
+    assert!(events.sync(), "the feed must still be live");
     assert!(
-        events
-            .recv_timeout(std::time::Duration::from_millis(900))
-            .is_none(),
+        events.try_recv().is_none(),
         "a draft autosave commits without bumping the revision — no event",
     );
 }
