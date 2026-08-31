@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 6;
+pub const CURRENT_VERSION: i64 = 7;
 
 const V1: &str = r#"
 CREATE TABLE reviews (
@@ -146,6 +146,19 @@ CREATE TABLE IF NOT EXISTS snapshot_pins (
 DROP TABLE IF EXISTS unanchored_pins;
 "#;
 
+/// A counter bumped by every write to a `snapshot_pins` row.
+///
+/// The sweep decides which pins are garbage, then deletes their refs after its
+/// transaction commits so git I/O stays off the store lock. Anything that
+/// happens to a row in that window — a regrant, a thread anchoring — must make
+/// the pending deletion stand down. A timestamp cannot carry that: `now_secs`
+/// has one-second granularity, so a regrant in the same second is invisible,
+/// and `mark_anchored` does not write `minted_at` at all. A counter changes on
+/// every write, which is the only property the guard needs.
+const V7: &str = r#"
+ALTER TABLE snapshot_pins ADD COLUMN grants INTEGER NOT NULL DEFAULT 0;
+"#;
+
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sqlite_error)
@@ -212,6 +225,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 6 {
         conn.execute_batch(&format!("{V6} PRAGMA user_version = 6;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 7 {
+        conn.execute_batch(&format!("{V7} PRAGMA user_version = 7;"))
             .map_err(sqlite_error)?;
     }
 

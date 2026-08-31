@@ -1103,8 +1103,8 @@ fn sweep_between(
                 eligible.contains(text) && !anchored.contains(text) && !current.contains(text)
             })
             .map(|(oid, text)| {
-                let minted = pins::minted_at(tx, canonical, text)?;
-                Ok((*oid, text.clone(), minted))
+                let grants = pins::grants(tx, canonical, text)?;
+                Ok((*oid, text.clone(), grants))
             })
             .collect::<Result<Vec<_>, TrunkError>>()?;
 
@@ -1121,10 +1121,10 @@ fn sweep_between(
     between();
 
     let mut reclaimed = 0;
-    for (oid, text, decided_at) in &reclaimable {
+    for (oid, text, decided_grants) in &reclaimable {
         let still_garbage = store.read(|conn| {
-            let now_minted = pins::minted_at(conn, canonical, text)?;
-            Ok(now_minted == *decided_at)
+            let now_grants = pins::grants(conn, canonical, text)?;
+            Ok(now_grants == *decided_grants)
         })?;
         if !still_garbage {
             continue;
@@ -1140,7 +1140,19 @@ fn sweep_between(
             // next reconciliation with a fresh mint time, protecting it afresh
             // every pass, so it would never be reclaimed at all.
             Ok(()) => {
-                store.write_quiet(|tx| pins::forget(tx, canonical, std::slice::from_ref(text)))?;
+                // Same reasoning as the arm below: the ref is already gone, so
+                // failing here would strand every later oid over a row the next
+                // reconciliation drops anyway.
+                if let Err(e) =
+                    store.write_quiet(|tx| pins::forget(tx, canonical, std::slice::from_ref(text)))
+                {
+                    eprintln!(
+                        "pin {} in {} was unpinned but its record remains: {}",
+                        text,
+                        canonical.display(),
+                        e.message
+                    );
+                }
                 reclaimed += 1;
             }
             Err(e) => eprintln!(

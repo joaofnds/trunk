@@ -3738,7 +3738,7 @@ fn a_record_with_no_ref_is_dropped() {
     sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_001).unwrap();
 
     let still_recorded = store
-        .read(|c| reviewdb::pins::minted_at(c, &canonical, &oid))
+        .read(|c| reviewdb::pins::grants(c, &canonical, &oid))
         .unwrap();
     assert!(
         still_recorded.is_none(),
@@ -3888,4 +3888,58 @@ fn one_undeletable_ref_does_not_strand_the_rest_of_the_batch() {
             "a later sweep must reclaim what an earlier one could not",
         );
     }
+}
+
+/// The defect a timestamp guard cannot see: a comment landing inside the
+/// sweep's window anchors its snapshot, but anchoring does not change when the
+/// snapshot was minted. The pending deletion must still stand down.
+#[test]
+fn a_thread_landing_inside_the_sweeps_window_keeps_its_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 1").unwrap();
+    let in_flight =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edit 2").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+
+    // Past the grace window, so the snapshot is genuinely condemned, and the
+    // submit lands between the decision and the deletion.
+    trunk_lib::commands::review::sweep_unanchored_pins_between(
+        &store,
+        &canonical,
+        ctx.path(),
+        SWEEP_NOW,
+        || {
+            let mut late = submission("landed inside the sweep's window");
+            late.anchor = Some(Anchor {
+                commit_oid: in_flight.clone(),
+                ..diff_anchor()
+            });
+            submit_thread_inner(&store, &canonical, late, SWEEP_NOW).unwrap();
+        },
+    )
+    .unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now", "--aggressive"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    assert!(
+        fresh
+            .find_commit(git2::Oid::from_str(&in_flight).unwrap())
+            .is_ok(),
+        "a comment landing mid-sweep must keep its anchor commit",
+    );
 }

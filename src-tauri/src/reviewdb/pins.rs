@@ -37,11 +37,12 @@ pub fn mark_minted(
     now: i64,
 ) -> Result<(), TrunkError> {
     conn.execute(
-        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at)
-         VALUES (?1, ?2, 0, ?3)
+        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at, grants)
+         VALUES (?1, ?2, 0, ?3, 1)
          ON CONFLICT(repo_path, oid) DO UPDATE SET
              anchored = 0,
-             minted_at = excluded.minted_at",
+             minted_at = excluded.minted_at,
+             grants = grants + 1",
         rusqlite::params![repo_key(repo_path), oid, now],
     )
     .map_err(sqlite_error)?;
@@ -65,7 +66,8 @@ pub fn mark_anchored(
 ) -> Result<Anchored, TrunkError> {
     let updated = conn
         .execute(
-            "UPDATE snapshot_pins SET anchored = 1 WHERE repo_path = ?1 AND oid = ?2",
+            "UPDATE snapshot_pins SET anchored = 1, grants = grants + 1
+             WHERE repo_path = ?1 AND oid = ?2",
             rusqlite::params![repo_key(repo_path), oid],
         )
         .map_err(sqlite_error)?;
@@ -74,8 +76,8 @@ pub fn mark_anchored(
     }
 
     conn.execute(
-        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at)
-         VALUES (?1, ?2, 1, ?3)",
+        "INSERT INTO snapshot_pins (repo_path, oid, anchored, minted_at, grants)
+         VALUES (?1, ?2, 1, ?3, 1)",
         rusqlite::params![repo_key(repo_path), oid, now],
     )
     .map_err(sqlite_error)?;
@@ -165,18 +167,19 @@ pub fn reconcile(
     Ok(())
 }
 
-/// When this repo's record for `oid` was last minted, if it has one.
+/// This repo's grant count for `oid`, if it has a row.
 ///
-/// The sweep compares this against the mint time it decided on: a newer one
-/// means the snapshot was handed out again after that decision, so the deletion
-/// it authorised is stale and must not run.
-pub fn minted_at(
-    conn: &Connection,
-    repo_path: &Path,
-    oid: &str,
-) -> Result<Option<i64>, TrunkError> {
+/// The sweep reads this when it decides, and again before it deletes: any
+/// change means the row was written in between — handed out again, or anchored
+/// by a thread that landed — so the deletion it authorised is stale.
+///
+/// A counter, not a timestamp. `now_secs` has one-second granularity, so a
+/// regrant inside the same second leaves the mint time unchanged, and
+/// `mark_anchored` does not write the mint time at all. Either case would
+/// delete a pin a live comment is holding.
+pub fn grants(conn: &Connection, repo_path: &Path, oid: &str) -> Result<Option<i64>, TrunkError> {
     conn.query_row(
-        "SELECT minted_at FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2",
+        "SELECT grants FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2",
         rusqlite::params![repo_key(repo_path), oid],
         |row| row.get(0),
     )
