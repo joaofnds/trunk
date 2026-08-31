@@ -229,12 +229,12 @@ of in-test time, and it moved the suite's wall clock to roughly 9 s: measured 20
 outliers that are the contention, not the suite. A quiet-machine median was not obtainable
 that day.
 
-With all eleven TRUNK-41 workflows in — seven more scenarios landed after that measurement —
-a single run on the same loaded machine came in at 10.1 s. **The 10 s ceiling is breached, at
-least under load**; the owner deferred the budget decision (raise the ceiling or move the
-suite out of `just check`) until after TRUNK-41, and it is now due. Re-measure on a quiet
-machine before deciding; the first lever remains the compile floor above, not trimming a
-workflow.
+With all eleven TRUNK-41 workflows in, the quiet-machine measurement (2026-08-31, load
+average ~2 at start, eight serial runs, all exit 0) is **10.2 s median**, a 9.9–10.6 s
+cluster with two unexplained outliers at 19.0 s and 29.6 s that did not repeat — outlier
+territory is tracked as TRUNK-44. **The 10 s ceiling is breached on a quiet machine.** The
+budget decision (TRUNK-63) is the owner's; the first lever remains the compile floor above,
+not trimming a workflow.
 
 ## Measuring the rendered DOM
 
