@@ -114,13 +114,35 @@ only for repos a review command touches.
 to exceed the longest plausible gap between a comment resolving its snapshot and
 submitting its text, which is a user typing a comment. A day is far past that.
 
+## Reconciling the record with the refs
+
+The record and the refs on disk drift. A pin minted before the record existed
+has no row. A row survives a ref removed by a manual `gc` or another tool. A
+crash between the sweep's decision and its deletions leaves both at once.
+
+So the sweep reconciles first. A ref with no row is **adopted**: it gets a row
+with the current mint time, and the ordinary anchor and grace rules decide it
+from there. Adoption is not deletion, and the distinction is the whole point —
+treating an unknown ref as garbage is exactly the assumption that lost comments
+three times over. A row with no ref describes a pin already gone and is dropped.
+
+This is also what reclaims pins from before this feature existed, without ever
+assuming an unrecognised ref is safe to delete.
+
+Two ordering rules fall out of it, and both are load-bearing:
+
+- A row is forgotten only after its ref is actually gone, one at a time. Forget
+  first and a deletion that fails loses its row, so the next reconciliation
+  re-adopts the ref with a fresh mint time, protecting it again on every pass —
+  it would never be reclaimed at all.
+- Because a row therefore outlives the decision that condemned it, the check
+  guarding the deletion compares the *mint time* against the one the decision
+  saw, not merely whether a row exists. A row not yet cleared and a genuine
+  regrant are otherwise indistinguishable.
+
+A failing deletion does not abort the batch.
+
 ## Also fixed
 
 Nothing had ever reclaimed a pin. Deleting a review or a thread left its pins
-alive permanently; TRUNK-18 recorded the leak and deferred it. The sweep closes
-it for every snapshot minted from this version on.
-
-Pins minted by earlier versions have no record, so the sweep leaves them alone
-rather than guessing. They stay until removed by hand. Reclaiming them would
-mean treating an unknown pin as garbage, which is the assumption this whole
-design exists to avoid.
+alive permanently; TRUNK-18 recorded the leak and deferred it.
