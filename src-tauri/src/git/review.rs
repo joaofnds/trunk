@@ -415,11 +415,12 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         let _ = writeln!(out, "{exe} review show <review-id>");
         let _ = writeln!(out, "{exe} review reply <thread-id> <text> | --stdin");
         let _ = writeln!(out, "{exe} review address <thread-id>");
+        let _ = writeln!(out, "{exe} review watch");
         let _ = writeln!(out, "```");
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "`reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. The trailer below remains the fallback when you cannot run the binary."
+            "`reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. `watch` blocks and prints a review id per change, one line each, for harnesses that wait on the reviewer (line format unstable). The trailer below remains the fallback when you cannot run the binary."
         );
         let _ = writeln!(out);
     }
@@ -1795,6 +1796,7 @@ mod tests {
             "review show <review-id>",
             "review reply <thread-id> <text> | --stdin",
             "review address <thread-id>",
+            "review watch",
         ] {
             assert!(
                 published.contains(needle),

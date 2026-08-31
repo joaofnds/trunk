@@ -29,6 +29,7 @@ trunk review list [--repo <path>]
 trunk review show <review-id> [--repo <path>]
 trunk review reply <thread-id> <text> | --stdin [--repo <path>]
 trunk review address <thread-id> [--repo <path>]
+trunk review watch [--repo <path>]
 ```
 
 - **list** — the repository's published reviews: id, state
@@ -40,6 +41,12 @@ trunk review address <thread-id> [--repo <path>]
 - **address** — claim an `open` thread as `addressed` after acting on it. This
   is the only state the CLI can set: `done`, `dismissed`, and reopening are
   the human's, in the app, so an agent can never settle a review.
+- **watch** — block and print one line per published review of the repo whose
+  content changes (id only; the line format is unstable while the loop is
+  young). After a `# watching …` readiness line, output arrives as changes
+  land — event-driven, no polling: every Trunk process that writes the store
+  rings the watcher over a local socket. macOS/Linux only for now. Composing
+  reviews and draft typing never produce output.
 
 The repository is discovered from the working directory (any subdirectory
 works) or named with `--repo`; symlinked paths resolve to the same reviews the

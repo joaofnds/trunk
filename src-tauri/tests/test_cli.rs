@@ -586,6 +586,134 @@ fn mutating_one_review_leaves_anothers_cli_output_byte_identical() {
     );
 }
 
+/// A running `trunk review watch` child whose stdout arrives line by line
+/// over a channel, so a test can wait on output with a deadline while the
+/// process itself blocks on the store's doorbell.
+struct WatchChild {
+    child: Child,
+    lines: std::sync::mpsc::Receiver<String>,
+}
+
+impl WatchChild {
+    fn spawn(ctx: &TestContext) -> WatchChild {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_trunk"))
+            .args(["review", "watch"])
+            .current_dir(ctx.repo_path())
+            .env("TRUNK_DATA_DIR", ctx.data_dir())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let stdout = child.stdout.take().unwrap();
+        let (sender, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stdout).lines() {
+                let Ok(line) = line else { return };
+                if sender.send(line).is_err() {
+                    return;
+                }
+            }
+        });
+
+        let watch = WatchChild { child, lines };
+        assert!(
+            watch
+                .next_line(Duration::from_secs(10))
+                .is_some_and(|l| l.starts_with("# watching")),
+            "the readiness line must come first",
+        );
+        watch
+    }
+
+    fn next_line(&self, timeout: Duration) -> Option<String> {
+        self.lines.recv_timeout(timeout).ok()
+    }
+}
+
+impl Drop for WatchChild {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn watch_emits_the_review_id_when_a_published_review_changes() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let watch = WatchChild::spawn(&ctx);
+
+    let reply = trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "waking the watcher"],
+        ctx.data_dir(),
+    );
+    assert_eq!(reply.status.code(), Some(0));
+
+    assert_eq!(
+        watch.next_line(Duration::from_secs(10)).as_deref(),
+        Some(published.as_str()),
+        "the changed review's id, one line, nothing else",
+    );
+}
+
+#[test]
+fn watch_stays_silent_for_composing_changes_and_drafts() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (composing, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let watch = WatchChild::spawn(&ctx);
+
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &composing,
+                    threads::NewThread {
+                        text: "unpublished edit".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    600,
+                )
+            })
+            .unwrap();
+        trunk_lib::commands::review::save_draft_inner(&store, &canonical, "typing…", None, 700)
+            .unwrap();
+    }
+
+    assert_eq!(
+        watch.next_line(Duration::from_millis(900)),
+        None,
+        "composing edits and drafts must print nothing",
+    );
+
+    // Liveness, not deafness: the same watcher still reports a real change.
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "now a real one"],
+        ctx.data_dir(),
+    );
+    assert_eq!(
+        watch.next_line(Duration::from_secs(10)).as_deref(),
+        Some(published.as_str()),
+    );
+}
+
 #[test]
 fn the_review_subcommand_exits_without_a_window() {
     let scratch = tempfile::TempDir::new().unwrap();

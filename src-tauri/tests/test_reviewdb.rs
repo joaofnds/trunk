@@ -568,6 +568,62 @@ fn every_write_bumps_the_revision_except_the_draft_autosave() {
     );
 }
 
+// ── Milestone 3, watch verb: the store's event feed ─────────────────────────
+
+/// The event-driven counterpart of the poll (João 2026-08-31): OS file events
+/// wake the subscriber, `store_revision` decides whether the wakeup means
+/// anything. No timer anywhere in the production path — the timeouts below
+/// belong to the test.
+#[test]
+fn store_events_fire_on_a_foreign_commit() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(
+        &foreign,
+        &canonical,
+        submission("from another process"),
+        1_000,
+    )
+    .unwrap();
+
+    assert!(
+        matches!(
+            events.recv_timeout(std::time::Duration::from_secs(3)),
+            Some(reviewdb::events::StoreEvent::Changed { .. }),
+        ),
+        "a foreign revision-bumping commit must produce an event",
+    );
+}
+
+#[test]
+fn store_events_stay_silent_for_a_draft_autosave() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    trunk_lib::commands::review::save_draft_inner(&foreign, &canonical, "typing…", None, 1_000)
+        .unwrap();
+
+    assert!(
+        events
+            .recv_timeout(std::time::Duration::from_millis(900))
+            .is_none(),
+        "a draft autosave commits without bumping the revision — no event",
+    );
+}
+
 #[test]
 fn poll_detects_a_foreign_commit_within_two_intervals() {
     let ctx = TestContext::builder()

@@ -29,6 +29,9 @@ pub enum ReviewCmd {
         id: String,
         repo: Option<PathBuf>,
     },
+    Watch {
+        repo: Option<PathBuf>,
+    },
 }
 
 /// Where the reply body comes from: an argv word, or stdin for multi-line
@@ -81,6 +84,10 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
                 repo,
             })
         }
+        "watch" => {
+            let repo = take_repo_flag(&rest)?;
+            Ok(ReviewCmd::Watch { repo })
+        }
         "address" => {
             let [id, rest @ ..] = rest.as_slice() else {
                 return Err(format!("address needs a thread id\n{}", usage()));
@@ -106,7 +113,7 @@ fn take_repo_flag(rest: &[&str]) -> Result<Option<PathBuf>, String> {
 }
 
 fn usage() -> String {
-    "usage: trunk review <list|show|reply|address> [--repo <path>]".to_string()
+    "usage: trunk review <list|show|reply|address|watch> [--repo <path>]".to_string()
 }
 
 /// Run a parsed command against the store the compiled-in identifier names.
@@ -188,7 +195,108 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
 
             Ok(format!("{} claimed as addressed\n", thread.id))
         }
+        ReviewCmd::Watch { repo } => {
+            let canonical = discover_repo(repo)?;
+            watch(&store, &canonical)
+        }
     }
+}
+
+/// Block on the store's doorbell (`reviewdb::events`) and print one line per
+/// published review whose content changed — id only, format unstable by
+/// declaration. Composing reviews never reach the fingerprint, so their
+/// edits wake the process and print nothing. Streams directly to stdout,
+/// unlike the other verbs: output is unbounded.
+#[cfg(unix)]
+fn watch(store: &reviewdb::Store, canonical: &std::path::Path) -> Result<String, TrunkError> {
+    use std::io::Write;
+
+    // Subscribe before the baseline: a commit before the baseline is already
+    // inside it, one after leaves a queued ring — no ordering loses a change.
+    let events = reviewdb::events::subscribe(store.data_dir())?;
+    let mut seen = published_fingerprint(store, canonical)?;
+
+    // The readiness line: a harness (and the tests) must know the doorbell
+    // is bound before mutating, or the change precedes the watch.
+    println!("# watching {}", canonical.display());
+    std::io::stdout().flush().ok();
+
+    while let Some(event) = events.recv() {
+        match event {
+            reviewdb::events::StoreEvent::Refused => {
+                return Err(TrunkError::new(
+                    "store_newer",
+                    "the store was migrated by a newer Trunk — restart this watch with that binary",
+                ));
+            }
+            reviewdb::events::StoreEvent::Changed { .. } => {
+                let current = published_fingerprint(store, canonical)?;
+                let mut changed: Vec<&String> = current
+                    .iter()
+                    .filter(|(id, hash)| seen.get(*id) != Some(hash))
+                    .map(|(id, _)| id)
+                    .chain(seen.keys().filter(|id| !current.contains_key(*id)))
+                    .collect();
+                changed.sort();
+                changed.dedup();
+
+                for id in changed {
+                    println!("{id}");
+                }
+                std::io::stdout().flush().ok();
+                seen = current;
+            }
+        }
+    }
+
+    Ok(String::new())
+}
+
+#[cfg(not(unix))]
+fn watch(_store: &reviewdb::Store, _canonical: &std::path::Path) -> Result<String, TrunkError> {
+    Err(TrunkError::new(
+        "unsupported",
+        "watch is not supported on this platform yet",
+    ))
+}
+
+/// What "changed" means for the watch verb: a stable digest per published
+/// review over everything the CLI can print about it — title, state, its
+/// threads' ids, states, staleness and text, and every reply. Composing
+/// reviews are excluded here, which is the no-leak rule again.
+#[cfg(unix)]
+fn published_fingerprint(
+    store: &reviewdb::Store,
+    canonical: &std::path::Path,
+) -> Result<std::collections::HashMap<String, u64>, TrunkError> {
+    use std::hash::{Hash, Hasher};
+
+    store.read(|conn| {
+        let mut digests = std::collections::HashMap::new();
+        for review in reviews::list(conn, canonical)? {
+            if !review.published {
+                continue;
+            }
+
+            let mut digest = std::collections::hash_map::DefaultHasher::new();
+            review.title.hash(&mut digest);
+            state_word(review.state).hash(&mut digest);
+            for (thread, replies) in crate::reviewdb::threads::list_with_replies(conn, &review.id)?
+            {
+                thread.id.hash(&mut digest);
+                thread.state.as_str().hash(&mut digest);
+                thread.stale.hash(&mut digest);
+                thread.text.hash(&mut digest);
+                for reply in replies {
+                    reply.id.hash(&mut digest);
+                    reply.text.hash(&mut digest);
+                }
+            }
+
+            digests.insert(review.id.clone(), digest.finish());
+        }
+        Ok(digests)
+    })
 }
 
 /// Resolve `raw` against this repo's published-review *threads*, with the

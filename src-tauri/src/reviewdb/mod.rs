@@ -9,6 +9,8 @@
 pub mod anchor;
 pub mod commits;
 pub mod drafts;
+#[cfg(unix)]
+pub mod events;
 pub mod ids;
 pub mod poll;
 pub mod replies;
@@ -33,6 +35,7 @@ pub const DB_FILE: &str = "reviews.db";
 #[derive(Debug)]
 pub struct Store {
     conn: Mutex<Connection>,
+    data_dir: PathBuf,
 }
 
 /// The store's data directory for a compiled-in app identifier — the CLI's
@@ -84,17 +87,17 @@ pub fn open(data_dir: &Path) -> Result<Store, TrunkError> {
     // read-only volume, EACCES on the data dir, fd exhaustion — is transient, and
     // renaming the one database that holds every repo's reviews aside is
     // destruction from the user's point of view.
-    match open_at(&path) {
+    match open_at(&path, data_dir) {
         Ok(store) => Ok(store),
         Err(e) if e.code == CORRUPT => {
             quarantine_db(&path)?;
-            open_at(&path)
+            open_at(&path, data_dir)
         }
         Err(e) => Err(e),
     }
 }
 
-fn open_at(path: &Path) -> Result<Store, TrunkError> {
+fn open_at(path: &Path, data_dir: &Path) -> Result<Store, TrunkError> {
     let conn = Connection::open(path).map_err(sqlite_error)?;
     conn.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS as u64))
         .map_err(sqlite_error)?;
@@ -117,6 +120,7 @@ fn open_at(path: &Path) -> Result<Store, TrunkError> {
 
     Ok(Store {
         conn: Mutex::new(conn),
+        data_dir: data_dir.to_path_buf(),
     })
 }
 
@@ -151,6 +155,11 @@ fn sidecar_path(path: &Path, sidecar: &str) -> PathBuf {
 }
 
 impl Store {
+    /// Where this store lives — what a subscriber hands to `events::subscribe`.
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     /// Run `f` inside one `BEGIN IMMEDIATE` transaction.
     ///
     /// `Connection::transaction()` defaults to `Deferred`, which takes its write
@@ -199,6 +208,13 @@ impl Store {
                 .map_err(sqlite_error)?;
         }
         tx.commit().map_err(sqlite_error)?;
+
+        // Ring only after the commit is durable: a subscriber woken early
+        // would read the pre-commit revision and swallow the ring.
+        #[cfg(unix)]
+        if bump {
+            events::ring(&self.data_dir);
+        }
 
         Ok(value)
     }
