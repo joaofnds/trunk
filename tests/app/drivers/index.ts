@@ -10,11 +10,13 @@ import type { InvokeRecord, TauriInternals } from "../harness/internals.js";
 import { waitFor } from "../harness/wait.js";
 import { BranchesDriver } from "./branches.js";
 import { EventsDriver } from "./events.js";
+import { MessageEditorDriver } from "./message-editor.js";
 import { RebaseEditorDriver } from "./rebase-editor.js";
 import { RemoteDriver } from "./remote.js";
 import { RepoDriver } from "./repo.js";
 import { ReviewDriver } from "./review.js";
 import { StagingDriver } from "./staging.js";
+import { ToolbarDriver } from "./toolbar.js";
 
 /**
  * `RepoView.svelte:838-847` clears and re-arms a 200 ms timer on `repo-changed`
@@ -45,6 +47,8 @@ export class AppDriver {
 	readonly remote: RemoteDriver;
 	readonly review: ReviewDriver;
 	readonly rebaseEditor: RebaseEditorDriver;
+	readonly toolbar: ToolbarDriver;
+	readonly messageEditor: MessageEditorDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
 	readonly dialog: FakeDialog;
@@ -67,6 +71,8 @@ export class AppDriver {
 		this.remote = new RemoteDriver();
 		this.review = new ReviewDriver();
 		this.rebaseEditor = new RebaseEditorDriver();
+		this.toolbar = new ToolbarDriver();
+		this.messageEditor = new MessageEditorDriver();
 		this.events = new EventsDriver(host, internals);
 		this.contextMenu = fakes.menu;
 		this.dialog = fakes.dialog;

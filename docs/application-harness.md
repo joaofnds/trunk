@@ -76,6 +76,10 @@ same rebase retried and resolved — the conflicted file rewritten on disk, Mark
 Continue Rebase — landing the graph with the dropped commit gone. Skip is offered on the
 banner and deliberately not pressed; it is the same join as Continue with nothing staged.
 
+The commit-actions workflow, in `tests/app/commit-actions.test.ts`: a revert whose message
+rides the host-owned MessageEditor, the undo that removes it, and the redo that restores it
+with the message it had — the message survives through the Redo stack, not the commit form.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease
@@ -95,8 +99,8 @@ every thread a second time inside a hidden `.comment-probe` to measure its heigh
 naming `.comment-card` alone answers with the probe's copy whether or not the panel ever
 opened.
 
-`backlog/docs/doc-26` ranks what still has no end-to-end test — 45 of the 115 registered
-commands are driven here — and is the queue new scenarios come off.
+`backlog/docs/doc-26` ranks what still has no end-to-end test and is the queue new scenarios
+come off; its §2 table carries the driven-command count and how to re-derive it.
 
 ## What it does not cover
 
