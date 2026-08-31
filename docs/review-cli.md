@@ -6,7 +6,7 @@ the same store the GUI uses, fully offline. The running app reflects CLI writes
 within about a second, no restart.
 
 The published review document teaches agents everything below automatically:
-its header names the absolute binary path and the four verbs. This page is the
+its header names the absolute binary path and the verbs. This page is the
 human-facing reference.
 
 ## Invocation
@@ -27,6 +27,8 @@ and the CLI; it exists for tests.
 ```
 trunk review list [--repo <path>]
 trunk review show <review-id> [--repo <path>]
+trunk review threads <review-id> [--state <state>] [--json] [--repo <path>]
+trunk review thread <thread-id> [--json] [--repo <path>]
 trunk review reply <thread-id> <text> | --stdin [--repo <path>]
 trunk review address <thread-id> [--repo <path>]
 trunk review watch [--repo <path>]
@@ -36,6 +38,15 @@ trunk review watch [--repo <path>]
   (`ready`/`settled`), title, thread count.
 - **show** — one review in full, as the same markdown document the app's
   Copy-as-markdown produces: threads, states, excerpts, replies.
+- **threads** — the review's threads as an index, one line each: id, state,
+  location (`file:start-end`, a commit-level thread's short oid, or `no
+  target`), and the comment's first line. `--state` keeps only threads in that
+  state.
+- **thread** — one thread in full: the document's own section for it (anchor
+  coordinates, stored excerpt, root comment, replies with their channel),
+  then its review id, its state, and what the agent channel may do from
+  there. This is the route in when you hold a thread id from a `watch --json`
+  event or a review document, without dumping the whole review.
 - **reply** — post to a thread. `--stdin` reads the body from stdin for
   multi-line text. CLI writes are attributed as **agent**, whoever drove them.
 - **address** — claim an `open` thread as `addressed` after acting on it. This
@@ -49,6 +60,15 @@ trunk review watch [--repo <path>]
   changed review's id, one per line (format unstable). `--json` prints one
   self-contained NDJSON event per change, so a harness never refetches or
   rediffs.
+
+### `--json` on `threads` and `thread`
+
+Both reuse `watch`'s field names, so one reader parses every stream. `threads`
+prints one object per line — `review`, `thread`, `state`, `stale`, `text`, and
+`anchor` or `commit_oid`. `thread` prints a single object with those fields
+plus `channel`, `excerpt`, `replies` (each `reply`, `channel`, `text`), and
+`allowed_transitions`: the states the agent channel may move this thread to,
+taken from the same matrix the writes enforce, never restated.
 
 ### `watch --json` events
 

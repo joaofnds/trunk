@@ -1,6 +1,6 @@
-//! The four review verbs (§5.1). Parsing is hand-rolled over the argv slice:
-//! four verbs, at most two positionals and one flag, and the parse function is
-//! a pure unit under test.
+//! The review verbs (§5.1). Parsing is hand-rolled over the argv slice: a
+//! handful of verbs, at most two positionals and three flags, and the parse
+//! function is a pure unit under test.
 //!
 //! The CLI reads the store, never the repository — repo *discovery* may touch
 //! the filesystem to find and canonicalize the repo root, rendering may not
@@ -8,6 +8,7 @@
 //! (`std::fs::canonicalize`) or the `repo_path` keys miss.
 
 use crate::error::TrunkError;
+use crate::review_types::{Channel, ThreadState};
 use crate::reviewdb::{self, reviews};
 use std::path::PathBuf;
 
@@ -33,6 +34,17 @@ pub enum ReviewCmd {
         repo: Option<PathBuf>,
         json: bool,
     },
+    Threads {
+        review: String,
+        state: Option<ThreadState>,
+        json: bool,
+        repo: Option<PathBuf>,
+    },
+    Thread {
+        id: String,
+        json: bool,
+        repo: Option<PathBuf>,
+    },
 }
 
 /// Where the reply body comes from: an argv word, or stdin for multi-line
@@ -52,17 +64,19 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
 
     match verb {
         "list" => {
-            let repo = take_repo_flag(&rest)?;
-            Ok(ReviewCmd::List { repo })
+            let flags = Flags::parse(&rest)?;
+            flags.reject_state()?;
+            Ok(ReviewCmd::List { repo: flags.repo })
         }
         "show" => {
             let [id, rest @ ..] = rest.as_slice() else {
                 return Err(format!("show needs a review id\n{}", usage()));
             };
-            let repo = take_repo_flag(rest)?;
+            let flags = Flags::parse(rest)?;
+            flags.reject_state()?;
             Ok(ReviewCmd::Show {
                 id: (*id).to_string(),
-                repo,
+                repo: flags.repo,
             })
         }
         "reply" => {
@@ -78,47 +92,109 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
                     ));
                 }
             };
-            let repo = take_repo_flag(rest)?;
+            let flags = Flags::parse(rest)?;
+            flags.reject_state()?;
             Ok(ReviewCmd::Reply {
                 id: (*id).to_string(),
                 text,
-                repo,
+                repo: flags.repo,
             })
         }
         "watch" => {
-            let (json, rest): (bool, Vec<&str>) = {
-                let without: Vec<&str> = rest.iter().copied().filter(|w| *w != "--json").collect();
-                (without.len() != rest.len(), without)
+            let flags = Flags::parse(&rest)?;
+            flags.reject_state()?;
+            Ok(ReviewCmd::Watch {
+                repo: flags.repo,
+                json: flags.json,
+            })
+        }
+        "threads" => {
+            let [review, rest @ ..] = rest.as_slice() else {
+                return Err(format!("threads needs a review id\n{}", usage()));
             };
-            let repo = take_repo_flag(&rest)?;
-            Ok(ReviewCmd::Watch { repo, json })
+            let flags = Flags::parse(rest)?;
+            Ok(ReviewCmd::Threads {
+                review: (*review).to_string(),
+                state: flags.state,
+                json: flags.json,
+                repo: flags.repo,
+            })
+        }
+        "thread" => {
+            let [id, rest @ ..] = rest.as_slice() else {
+                return Err(format!("thread needs a thread id\n{}", usage()));
+            };
+            let flags = Flags::parse(rest)?;
+            flags.reject_state()?;
+            Ok(ReviewCmd::Thread {
+                id: (*id).to_string(),
+                json: flags.json,
+                repo: flags.repo,
+            })
         }
         "address" => {
             let [id, rest @ ..] = rest.as_slice() else {
                 return Err(format!("address needs a thread id\n{}", usage()));
             };
-            let repo = take_repo_flag(rest)?;
+            let flags = Flags::parse(rest)?;
+            flags.reject_state()?;
             Ok(ReviewCmd::Address {
                 id: (*id).to_string(),
-                repo,
+                repo: flags.repo,
             })
         }
         other => Err(format!("unknown verb `{other}`\n{}", usage())),
     }
 }
 
-/// `[--repo <path>]` and nothing else.
-fn take_repo_flag(rest: &[&str]) -> Result<Option<PathBuf>, String> {
-    match rest {
-        [] => Ok(None),
-        ["--repo", path] => Ok(Some(PathBuf::from(path))),
-        ["--repo"] => Err(format!("--repo needs a path\n{}", usage())),
-        other => Err(format!("unexpected arguments {other:?}\n{}", usage())),
+/// Every flag any verb takes, parsed in one place so a stray word is one
+/// usage error wherever it appears. A verb that does not take `--state`
+/// refuses it through `reject_state` rather than ignoring it.
+#[derive(Default)]
+struct Flags {
+    repo: Option<PathBuf>,
+    json: bool,
+    state: Option<ThreadState>,
+}
+
+impl Flags {
+    fn parse(mut rest: &[&str]) -> Result<Flags, String> {
+        let mut flags = Flags::default();
+
+        loop {
+            rest = match rest {
+                [] => return Ok(flags),
+                ["--repo", path, tail @ ..] => {
+                    flags.repo = Some(PathBuf::from(path));
+                    tail
+                }
+                ["--repo"] => return Err(format!("--repo needs a path\n{}", usage())),
+                ["--json", tail @ ..] => {
+                    flags.json = true;
+                    tail
+                }
+                ["--state", word, tail @ ..] => {
+                    flags.state = Some(word.parse().map_err(|_| {
+                        format!("--state takes open|addressed|done|dismissed, not `{word}`")
+                    })?);
+                    tail
+                }
+                ["--state"] => return Err(format!("--state needs a state\n{}", usage())),
+                other => return Err(format!("unexpected arguments {other:?}\n{}", usage())),
+            };
+        }
+    }
+
+    fn reject_state(&self) -> Result<(), String> {
+        match self.state {
+            None => Ok(()),
+            Some(_) => Err(format!("--state filters `threads` only\n{}", usage())),
+        }
     }
 }
 
 fn usage() -> String {
-    "usage: trunk review <list|show|reply|address|watch> [--repo <path>]".to_string()
+    "usage: trunk review <list|show|threads|thread|reply|address|watch> [--repo <path>]".to_string()
 }
 
 /// Run a parsed command against the store the compiled-in identifier names.
@@ -203,6 +279,41 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
         ReviewCmd::Watch { repo, json } => {
             let canonical = discover_repo(repo)?;
             watch(&store, &canonical, json)
+        }
+        ReviewCmd::Threads {
+            review,
+            state,
+            json,
+            repo,
+        } => {
+            let canonical = discover_repo(repo)?;
+            let review = published_review(&store, &canonical, &review)?;
+            let listed =
+                store.read(|conn| crate::reviewdb::threads::list_for_review(conn, &review.id))?;
+            let matching: Vec<_> = listed
+                .into_iter()
+                .filter(|t| state.is_none_or(|wanted| t.state == wanted))
+                .collect();
+
+            if json {
+                render_threads_json(&review.id, &matching)
+            } else {
+                Ok(render_threads(&matching))
+            }
+        }
+        ReviewCmd::Thread { id, json, repo } => {
+            let canonical = discover_repo(repo)?;
+            let thread = published_thread(&store, &canonical, &id)?;
+            let replies = store.read(|conn| {
+                crate::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
+            })?;
+            let replies: Vec<_> = replies.into_values().flatten().collect();
+
+            if json {
+                render_thread_json(&thread, &replies)
+            } else {
+                Ok(render_thread(&store, &canonical, &thread, replies)?)
+            }
         }
     }
 }
@@ -685,6 +796,191 @@ fn discover_repo(repo: Option<PathBuf>) -> Result<PathBuf, TrunkError> {
     std::fs::canonicalize(workdir).map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
+/// One line per thread: id, state, where it points, and the first line of its
+/// text — the index an agent scans before asking for a thread in full. The
+/// location is the anchor's `file:start-end`, a commit-level thread's short
+/// oid, or `no target`, mirroring the document's three thread shapes.
+fn render_threads(threads: &[crate::reviewdb::threads::Thread]) -> String {
+    threads
+        .iter()
+        .map(|t| {
+            format!(
+                "- {id} {state} {location} — {summary}\n",
+                id = t.id,
+                state = t.state.as_str(),
+                location = thread_location(t),
+                summary = first_line(&t.text),
+            )
+        })
+        .collect()
+}
+
+/// Where a thread points, in the index's one-line spelling.
+fn thread_location(thread: &crate::reviewdb::threads::Thread) -> String {
+    match (&thread.anchor, &thread.commit_oid) {
+        (Some(anchor), _) => format!(
+            "{}:{}-{}",
+            anchor.file_path, anchor.start_line, anchor.end_line
+        ),
+        (None, Some(oid)) => short_oid(oid).to_string(),
+        (None, None) => "no target".to_string(),
+    }
+}
+
+/// The comment's opening line, so one thread is one line of the index however
+/// long the comment runs.
+fn first_line(text: &str) -> &str {
+    text.lines().next().unwrap_or("").trim()
+}
+
+fn short_oid(oid: &str) -> &str {
+    oid.get(..7).unwrap_or(oid)
+}
+
+/// The `threads` index as NDJSON, one `thread` object per line, in `watch`'s
+/// field vocabulary so a harness parses both streams with one reader.
+fn render_threads_json(
+    review_id: &str,
+    threads: &[crate::reviewdb::threads::Thread],
+) -> Result<String, TrunkError> {
+    let mut out = String::new();
+    for thread in threads {
+        let line = serde_json::to_string(&serde_json::json!({
+            "review": review_id,
+            "thread": thread.id,
+            "state": thread.state,
+            "stale": thread.stale,
+            "text": thread.text,
+            "anchor": thread.anchor,
+            "commit_oid": thread.commit_oid,
+        }))
+        .map_err(|e| TrunkError::new("json", e.to_string()))?;
+        out.push_str(&line);
+        out.push('\n');
+    }
+
+    Ok(out)
+}
+
+/// One thread in full, as the document renders it, followed by the state and
+/// the moves the agent channel may make from it. The section comes from the
+/// document's own per-thread renderer (`git::review::render_thread_section`),
+/// so a thread read alone and the same thread read in `show` are one format.
+fn render_thread(
+    store: &reviewdb::Store,
+    canonical: &std::path::Path,
+    thread: &crate::reviewdb::threads::Thread,
+    replies: Vec<crate::reviewdb::replies::Reply>,
+) -> Result<String, TrunkError> {
+    use crate::git::review::{DocCommit, DocReply, DocThread, RenderInput};
+
+    let (title, commits, snapshots) = store.read(|conn| {
+        let review = crate::reviewdb::reviews::get(conn, &thread.review_id)?
+            .ok_or_else(|| TrunkError::new("not_found", "no review with that id"))?;
+        Ok((
+            review.title,
+            crate::reviewdb::commits::list(conn, &thread.review_id)?,
+            crate::reviewdb::snapshots::get(conn, canonical)?,
+        ))
+    })?;
+
+    let session = RenderInput {
+        review_id: thread.review_id.clone(),
+        title,
+        cli_binary: None,
+        workdir: Some(canonical.to_path_buf()),
+        repo_dir: canonical.join(".git"),
+        commits: commits
+            .into_iter()
+            .map(|c| DocCommit {
+                oid: c.oid,
+                subject: c.subject,
+            })
+            .collect(),
+        threads: vec![],
+        working_tree_snapshot: snapshots.working_tree_snapshot,
+        index_snapshot: snapshots.index_snapshot,
+    };
+    let doc_thread = DocThread {
+        id: thread.id.clone(),
+        text: thread.text.clone(),
+        state: thread.state,
+        anchor: thread.anchor.clone(),
+        commit_oid: thread.commit_oid.clone(),
+        excerpt: thread.cached_excerpt.clone(),
+        channel: thread.channel,
+        replies: replies
+            .into_iter()
+            .map(|r| DocReply {
+                text: r.text,
+                channel: r.channel,
+            })
+            .collect(),
+    };
+
+    let mut out = crate::git::review::render_thread_section(&session, &doc_thread);
+    out.push_str(&format!(
+        "Review: {review}\nState: {state}\nYou can: {actions}\n",
+        review = thread.review_id,
+        state = thread.state.as_str(),
+        actions = agent_actions(thread.state),
+    ));
+
+    Ok(out)
+}
+
+/// The verbs the agent may run against a thread in `state`, named as verbs
+/// because a state is not something an agent can type. `reply` is always
+/// available; `address` appears only while the one transition matrix says the
+/// agent channel may claim this thread (TRUNK-17), so a `done` thread offers
+/// the reply alone. `addressed` is the agent channel's only reachable state
+/// by §5.1, which is what makes this a single question of the matrix.
+fn agent_actions(state: ThreadState) -> String {
+    if state
+        .allowed_transitions(Channel::Agent)
+        .contains(&ThreadState::Addressed)
+    {
+        "reply, address".to_string()
+    } else {
+        "reply".to_string()
+    }
+}
+
+/// One thread in full as a single JSON object, in `watch`'s field vocabulary
+/// with the replies and the agent's available actions alongside.
+fn render_thread_json(
+    thread: &crate::reviewdb::threads::Thread,
+    replies: &[crate::reviewdb::replies::Reply],
+) -> Result<String, TrunkError> {
+    let replies: Vec<_> = replies
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "reply": r.id,
+                "channel": r.channel,
+                "text": r.text,
+            })
+        })
+        .collect();
+
+    let line = serde_json::to_string(&serde_json::json!({
+        "review": thread.review_id,
+        "thread": thread.id,
+        "state": thread.state,
+        "stale": thread.stale,
+        "channel": thread.channel,
+        "text": thread.text,
+        "anchor": thread.anchor,
+        "commit_oid": thread.commit_oid,
+        "excerpt": thread.cached_excerpt,
+        "replies": replies,
+        "allowed_transitions": thread.state.allowed_transitions(Channel::Agent),
+    }))
+    .map_err(|e| TrunkError::new("json", e.to_string()))?;
+
+    Ok(format!("{line}\n"))
+}
+
 /// One markdown bullet per published review, in the store's list order.
 /// `composing` reviews are absent by contract: the CLI does not serve them,
 /// and their existence must not leak (§5.1).
@@ -749,6 +1045,69 @@ mod tests {
         let err = parse(&argv(&["list", "extra"])).unwrap_err();
 
         assert!(err.contains("unexpected arguments"));
+    }
+
+    #[test]
+    fn threads_parses_its_review_id_and_optional_filters() {
+        assert_eq!(
+            parse(&argv(&["threads", "3F7K"])),
+            Ok(ReviewCmd::Threads {
+                review: "3F7K".to_string(),
+                state: None,
+                json: false,
+                repo: None,
+            }),
+        );
+        assert_eq!(
+            parse(&argv(&["threads", "3F7K", "--state", "open", "--json"])),
+            Ok(ReviewCmd::Threads {
+                review: "3F7K".to_string(),
+                state: Some(ThreadState::Open),
+                json: true,
+                repo: None,
+            }),
+        );
+    }
+
+    #[test]
+    fn threads_rejects_a_state_outside_the_matrix() {
+        let err = parse(&argv(&["threads", "3F7K", "--state", "pending"])).unwrap_err();
+
+        assert!(err.contains("pending"), "got {err:?}");
+    }
+
+    #[test]
+    fn threads_without_a_review_id_is_a_usage_error() {
+        let err = parse(&argv(&["threads"])).unwrap_err();
+
+        assert!(err.contains("threads needs a review id"), "got {err:?}");
+    }
+
+    #[test]
+    fn thread_parses_its_id_with_and_without_json() {
+        assert_eq!(
+            parse(&argv(&["thread", "ab12"])),
+            Ok(ReviewCmd::Thread {
+                id: "ab12".to_string(),
+                json: false,
+                repo: None,
+            }),
+        );
+        assert_eq!(
+            parse(&argv(&["thread", "ab12", "--json", "--repo", "/tmp/r"])),
+            Ok(ReviewCmd::Thread {
+                id: "ab12".to_string(),
+                json: true,
+                repo: Some(PathBuf::from("/tmp/r")),
+            }),
+        );
+    }
+
+    #[test]
+    fn thread_without_an_id_is_a_usage_error() {
+        let err = parse(&argv(&["thread"])).unwrap_err();
+
+        assert!(err.contains("thread needs a thread id"), "got {err:?}");
     }
 
     #[test]

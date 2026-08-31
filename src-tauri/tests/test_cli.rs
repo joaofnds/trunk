@@ -461,6 +461,303 @@ fn cli_reply_to_a_composing_thread_answers_as_missing() {
     );
 }
 
+/// Seed the published review with one anchored thread carrying an excerpt and
+/// one agent reply, so the `thread` verb has every part of a chain to print.
+/// Returns the anchored thread's id.
+fn seed_anchored_thread(ctx: &TestContext, published: &str) -> String {
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                published,
+                threads::NewThread {
+                    text: "please rename this\nand mind the second line".to_string(),
+                    anchor: Some(trunk_lib::git::types::Anchor {
+                        commit_oid: "abc123def4567".to_string(),
+                        file_path: "a.txt".to_string(),
+                        source: trunk_lib::git::types::Source::Diff,
+                        side: trunk_lib::git::types::Side::New,
+                        start_line: 3,
+                        end_line: 5,
+                    }),
+                    commit_oid: None,
+                    cached_excerpt: Some("EXCERPT_TOKEN line".to_string()),
+                },
+                500,
+            )
+        })
+        .unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    store
+        .write(|tx| {
+            trunk_lib::reviewdb::replies::add(
+                tx,
+                &canonical,
+                &thread_id,
+                "REPLY_TOKEN body",
+                trunk_lib::review_types::Channel::Agent,
+                700,
+            )
+        })
+        .unwrap();
+
+    thread_id
+}
+
+#[test]
+fn cli_threads_indexes_a_published_reviews_threads() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+    let plain = published_thread_id(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let anchored_line = stdout
+        .lines()
+        .find(|l| l.contains(&anchored))
+        .unwrap_or_else(|| panic!("the anchored thread must be indexed, got {stdout:?}"));
+    for expected in ["open", "a.txt:3-5", "please rename this"] {
+        assert!(
+            anchored_line.contains(expected),
+            "the index line needs id, state, location and the comment's first line; missing {expected:?} in {anchored_line:?}",
+        );
+    }
+    assert!(
+        !anchored_line.contains("and mind the second line"),
+        "one thread is one line, got {anchored_line:?}",
+    );
+    assert!(
+        stdout.lines().any(|l| l.contains(&plain)),
+        "every thread of the review is indexed, got {stdout:?}",
+    );
+}
+
+#[test]
+fn cli_threads_filters_by_state() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+    let still_open = published_thread_id(&ctx, &published);
+    trunk_review_in(ctx.repo_path(), &["address", &anchored], ctx.data_dir());
+
+    let out = trunk_review_in(
+        ctx.repo_path(),
+        &["threads", &published, "--state", "addressed"],
+        ctx.data_dir(),
+    );
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(&anchored) && !stdout.contains(&still_open),
+        "--state must keep only the threads in that state, got {stdout:?}",
+    );
+}
+
+#[test]
+fn cli_threads_answers_a_composing_review_exactly_as_missing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (composing, _) = seed_reviews(&ctx);
+
+    let of_composing = trunk_review_in(ctx.repo_path(), &["threads", &composing], ctx.data_dir());
+    let of_missing = trunk_review_in(ctx.repo_path(), &["threads", "ZZZZZZZZ"], ctx.data_dir());
+
+    assert_eq!(
+        of_composing.status.code(),
+        Some(1),
+        "a served verb refusing a target exits 1, not the usage code 2; stderr: {}",
+        String::from_utf8_lossy(&of_composing.stderr),
+    );
+    assert_eq!(of_composing.status.code(), of_missing.status.code());
+    assert_eq!(
+        String::from_utf8_lossy(&of_composing.stderr).replace(&composing, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_missing.stderr),
+        "a composing review must be indistinguishable from a missing one",
+    );
+    assert!(of_composing.stdout.is_empty(), "no partial write");
+}
+
+#[test]
+fn cli_thread_prints_the_chain_from_one_thread() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+
+    let out = trunk_review_in(ctx.repo_path(), &["thread", &anchored], ctx.data_dir());
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for expected in [
+        "a.txt:L3-L5",
+        "after",
+        "abc123d",
+        "EXCERPT_TOKEN line",
+        "please rename this",
+        "**Agent reply:**",
+        "REPLY_TOKEN body",
+        "State: open",
+        "You can: reply, address",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "the chain needs anchor, excerpt, root, attributed replies, state and actions; missing {expected:?} in {stdout:?}",
+        );
+    }
+}
+
+/// The `thread` verb's whole reason for existing: an agent that reads one
+/// thread sees exactly the section it would have read in the document.
+#[test]
+fn cli_thread_markdown_matches_the_documents_section() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+
+    let one = trunk_review_in(ctx.repo_path(), &["thread", &anchored], ctx.data_dir());
+    let doc = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+
+    assert_eq!(
+        one.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&one.stderr)
+    );
+    let one = String::from_utf8_lossy(&one.stdout);
+    let doc = String::from_utf8_lossy(&doc.stdout);
+    let section = one
+        .split("Review: ")
+        .next()
+        .expect("the section precedes the trailer");
+    assert!(
+        section.contains("EXCERPT_TOKEN line"),
+        "the section must be the thread's real content, got {section:?}",
+    );
+    assert!(
+        doc.contains(section),
+        "the thread's markdown must be the doc's section verbatim;\nsection: {section:?}\ndoc: {doc:?}",
+    );
+}
+
+#[test]
+fn cli_thread_json_speaks_the_watch_field_vocabulary() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+
+    let threads = trunk_review_in(
+        ctx.repo_path(),
+        &["threads", &published, "--json"],
+        ctx.data_dir(),
+    );
+    let one = trunk_review_in(
+        ctx.repo_path(),
+        &["thread", &anchored, "--json"],
+        ctx.data_dir(),
+    );
+
+    let indexed: serde_json::Value = String::from_utf8_lossy(&threads.stdout)
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("each line is one object"))
+        .find(|v| v["thread"] == anchored.as_str())
+        .expect("the anchored thread is in the index");
+    assert_eq!(indexed["review"], published.as_str());
+    assert_eq!(indexed["state"], "open");
+    assert_eq!(indexed["anchor"]["file_path"], "a.txt");
+    assert_eq!(indexed["anchor"]["start_line"], 3);
+
+    let chain: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&one.stdout).trim()).unwrap();
+    assert_eq!(chain["review"], published.as_str());
+    assert_eq!(chain["thread"], anchored.as_str());
+    assert_eq!(
+        chain["text"],
+        "please rename this\nand mind the second line"
+    );
+    assert_eq!(chain["anchor"]["side"], "New");
+    assert_eq!(chain["replies"][0]["channel"], "agent");
+    assert_eq!(chain["replies"][0]["text"], "REPLY_TOKEN body");
+    assert_eq!(chain["allowed_transitions"][0], "addressed");
+}
+
+#[test]
+fn cli_thread_answers_a_composing_thread_exactly_as_missing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (composing, _) = seed_reviews(&ctx);
+    let composing_thread = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &composing,
+                    threads::NewThread {
+                        text: "unpublished".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    600,
+                )
+            })
+            .unwrap()
+    };
+
+    let of_composing = trunk_review_in(
+        ctx.repo_path(),
+        &["thread", &composing_thread],
+        ctx.data_dir(),
+    );
+    let of_missing = trunk_review_in(ctx.repo_path(), &["thread", "ZZZZZZZZ"], ctx.data_dir());
+
+    assert_eq!(
+        of_composing.status.code(),
+        Some(1),
+        "a served verb refusing a target exits 1, not the usage code 2; stderr: {}",
+        String::from_utf8_lossy(&of_composing.stderr),
+    );
+    assert_eq!(of_composing.status.code(), of_missing.status.code());
+    assert_eq!(
+        String::from_utf8_lossy(&of_composing.stderr).replace(&composing_thread, "ZZZZZZZZ"),
+        String::from_utf8_lossy(&of_missing.stderr),
+        "an unpublished review's thread must not leak through the thread verb",
+    );
+    assert!(of_composing.stdout.is_empty(), "no partial write");
+}
+
 fn thread_state(ctx: &TestContext, review_id: &str, thread_id: &str) -> ThreadState {
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     store

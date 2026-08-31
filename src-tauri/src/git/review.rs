@@ -413,6 +413,7 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         let _ = writeln!(out, "```");
         let _ = writeln!(out, "{exe} review list");
         let _ = writeln!(out, "{exe} review show <review-id>");
+        let _ = writeln!(out, "{exe} review thread <thread-id> [--json]");
         let _ = writeln!(out, "{exe} review reply <thread-id> <text> | --stdin");
         let _ = writeln!(out, "{exe} review address <thread-id>");
         let _ = writeln!(out, "{exe} review watch [--json]");
@@ -420,7 +421,7 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         let _ = writeln!(out);
         let _ = writeln!(
             out,
-            "`reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. `watch` blocks and prints a review id per change, one line each, for harnesses that wait on the reviewer (line format unstable). The trailer below remains the fallback when you cannot run the binary."
+            "`thread` prints one comment's section — the same text you see below — with its replies and the state you may claim, for when you have a comment id and not this document. `reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. `watch` blocks and prints a review id per change, one line each, for harnesses that wait on the reviewer (line format unstable). The trailer below remains the fallback when you cannot run the binary."
         );
         let _ = writeln!(out);
     }
@@ -1809,8 +1810,8 @@ mod tests {
     #[test]
     fn header_names_the_current_exe_and_verbs() {
         // §5.5 / criterion 11: a published review's doc teaches the exact
-        // binary path and the four verbs; a composing review's doc omits the
-        // CLI instructions entirely, since the CLI cannot serve it.
+        // binary path and the verbs it may run; a composing review's doc omits
+        // the CLI instructions entirely, since the CLI cannot serve it.
         let (_dir, repo) = make_repo();
         let b = commit_with_file(&repo, "B", &[], "f.rs", b"x\n");
         let mut session = make_session(
@@ -1826,6 +1827,7 @@ mod tests {
         for needle in [
             "/Applications/trunk.app/Contents/MacOS/trunk review list",
             "review show <review-id>",
+            "review thread <thread-id> [--json]",
             "review reply <thread-id> <text> | --stdin",
             "review address <thread-id>",
             "review watch",
