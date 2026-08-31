@@ -953,6 +953,85 @@ fn cli_thread_json_speaks_the_watch_field_vocabulary() {
     assert_eq!(chain["allowed_transitions"][0], "addressed");
 }
 
+/// `watch` omits an absent `anchor` or `commit_oid` rather than sending null,
+/// so a reader tells a thread's shape by which key is present. The docs
+/// promise one reader parses both streams, which only holds if these verbs
+/// omit them too.
+#[test]
+fn json_omits_absent_anchor_and_commit_keys_like_watch_does() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let anchored = seed_anchored_thread(&ctx, &published);
+    let untargeted = published_thread_id(&ctx, &published);
+    let commit_level = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "commit note".to_string(),
+                        anchor: None,
+                        commit_oid: Some("deadbeefcafebabe1234".to_string()),
+                        cached_excerpt: None,
+                    },
+                    970,
+                )
+            })
+            .unwrap()
+    };
+
+    let index = trunk_review_in(
+        ctx.repo_path(),
+        &["threads", &published, "--json"],
+        ctx.data_dir(),
+    );
+
+    let stdout = String::from_utf8_lossy(&index.stdout);
+    let object_for = |id: &str| -> serde_json::Map<String, serde_json::Value> {
+        stdout
+            .lines()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("one object per line"))
+            .find(|v| v["thread"] == id)
+            .expect("the thread is indexed")
+            .as_object()
+            .expect("each line is an object")
+            .clone()
+    };
+    let anchored_json = object_for(&anchored);
+    assert!(
+        anchored_json.contains_key("anchor") && !anchored_json.contains_key("commit_oid"),
+        "an anchored thread carries anchor alone, got {anchored_json:?}",
+    );
+    let commit_json = object_for(&commit_level);
+    assert!(
+        commit_json.contains_key("commit_oid") && !commit_json.contains_key("anchor"),
+        "a commit-level thread carries commit_oid alone, got {commit_json:?}",
+    );
+    let untargeted_json = object_for(&untargeted);
+    assert!(
+        !untargeted_json.contains_key("anchor") && !untargeted_json.contains_key("commit_oid"),
+        "a thread with no target carries neither, got {untargeted_json:?}",
+    );
+
+    let one = trunk_review_in(
+        ctx.repo_path(),
+        &["thread", &untargeted, "--json"],
+        ctx.data_dir(),
+    );
+    let chain: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&one.stdout).trim()).unwrap();
+    let chain = chain.as_object().unwrap();
+    assert!(
+        !chain.contains_key("anchor") && !chain.contains_key("commit_oid"),
+        "the thread verb must omit them too, got {chain:?}",
+    );
+}
+
 #[test]
 fn cli_thread_answers_a_composing_thread_exactly_as_missing() {
     let ctx = TestContext::builder()

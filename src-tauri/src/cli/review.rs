@@ -69,13 +69,11 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
             Ok(ReviewCmd::List { repo: flags.repo })
         }
         "show" => {
-            let [id, rest @ ..] = rest.as_slice() else {
-                return Err(format!("show needs a review id\n{}", usage()));
-            };
+            let (id, rest) = take_id(&rest, "show", "a review id")?;
             let flags = Flags::parse(rest)?;
             flags.reject_state()?;
             Ok(ReviewCmd::Show {
-                id: (*id).to_string(),
+                id: id.to_string(),
                 repo: flags.repo,
             })
         }
@@ -95,7 +93,7 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
             let flags = Flags::parse(rest)?;
             flags.reject_state()?;
             Ok(ReviewCmd::Reply {
-                id: (*id).to_string(),
+                id: id.to_string(),
                 text,
                 repo: flags.repo,
             })
@@ -109,42 +107,56 @@ pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
             })
         }
         "threads" => {
-            let [review, rest @ ..] = rest.as_slice() else {
-                return Err(format!("threads needs a review id\n{}", usage()));
-            };
+            let (review, rest) = take_id(&rest, "threads", "a review id")?;
             let flags = Flags::parse(rest)?;
             Ok(ReviewCmd::Threads {
-                review: (*review).to_string(),
+                review: review.to_string(),
                 state: flags.state,
                 json: flags.json,
                 repo: flags.repo,
             })
         }
         "thread" => {
-            let [id, rest @ ..] = rest.as_slice() else {
-                return Err(format!("thread needs a thread id\n{}", usage()));
-            };
+            let (id, rest) = take_id(&rest, "thread", "a thread id")?;
             let flags = Flags::parse(rest)?;
             flags.reject_state()?;
             Ok(ReviewCmd::Thread {
-                id: (*id).to_string(),
+                id: id.to_string(),
                 json: flags.json,
                 repo: flags.repo,
             })
         }
         "address" => {
-            let [id, rest @ ..] = rest.as_slice() else {
-                return Err(format!("address needs a thread id\n{}", usage()));
-            };
+            let (id, rest) = take_id(&rest, "address", "a thread id")?;
             let flags = Flags::parse(rest)?;
             flags.reject_state()?;
             Ok(ReviewCmd::Address {
-                id: (*id).to_string(),
+                id: id.to_string(),
                 repo: flags.repo,
             })
         }
         other => Err(format!("unknown verb `{other}`\n{}", usage())),
     }
+}
+
+/// The leading positional a verb needs, and the words after it. A word
+/// starting with `--` is a flag the user typed instead of the id, not an id
+/// that happens to look like one: reading it as an id turns a forgotten
+/// argument into a `not_found` for something nobody named.
+fn take_id<'a>(
+    rest: &'a [&'a str],
+    verb: &str,
+    noun: &str,
+) -> Result<(&'a str, &'a [&'a str]), String> {
+    match rest {
+        [id, tail @ ..] if !is_flag(id) => Ok((id, tail)),
+        _ => Err(format!("{verb} needs {noun}\n{}", usage())),
+    }
+}
+
+/// A word the parser must never consume as a value.
+fn is_flag(word: &str) -> bool {
+    word.starts_with("--")
 }
 
 /// Every flag any verb takes, parsed in one place so a stray word is one
@@ -164,22 +176,22 @@ impl Flags {
         loop {
             rest = match rest {
                 [] => return Ok(flags),
-                ["--repo", path, tail @ ..] => {
+                ["--repo", path, tail @ ..] if !is_flag(path) => {
                     flags.repo = Some(PathBuf::from(path));
                     tail
                 }
-                ["--repo"] => return Err(format!("--repo needs a path\n{}", usage())),
+                ["--repo", ..] => return Err(format!("--repo needs a path\n{}", usage())),
                 ["--json", tail @ ..] => {
                     flags.json = true;
                     tail
                 }
-                ["--state", word, tail @ ..] => {
+                ["--state", word, tail @ ..] if !is_flag(word) => {
                     flags.state = Some(word.parse().map_err(|_| {
                         format!("--state takes open|addressed|done|dismissed, not `{word}`")
                     })?);
                     tail
                 }
-                ["--state"] => return Err(format!("--state needs a state\n{}", usage())),
+                ["--state", ..] => return Err(format!("--state needs a state\n{}", usage())),
                 other => return Err(format!("unexpected arguments {other:?}\n{}", usage())),
             };
         }
@@ -861,6 +873,57 @@ fn first_line(text: &str) -> String {
     crate::git::review::sanitize_heading_text(text.lines().next().unwrap_or("").trim())
 }
 
+/// One `threads --json` line. Optional fields are skipped rather than sent as
+/// null, exactly as `watch`'s `ThreadAdded` does: a reader tells a thread's
+/// shape by which of `anchor` and `commit_oid` is present, and a null would
+/// read as an anchor.
+#[derive(serde::Serialize)]
+struct ThreadLine<'a> {
+    review: &'a str,
+    thread: &'a str,
+    state: ThreadState,
+    stale: bool,
+    text: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    anchor: Option<&'a crate::git::types::Anchor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit_oid: Option<&'a str>,
+}
+
+/// One `thread --json` object: the index line's fields plus everything the
+/// chain adds.
+#[derive(serde::Serialize)]
+struct ThreadChain<'a> {
+    #[serde(flatten)]
+    thread: ThreadLine<'a>,
+    channel: Channel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    excerpt: Option<&'a str>,
+    replies: Vec<ChainReply<'a>>,
+    allowed_transitions: Vec<ThreadState>,
+}
+
+#[derive(serde::Serialize)]
+struct ChainReply<'a> {
+    reply: &'a str,
+    channel: Channel,
+    text: &'a str,
+}
+
+impl<'a> ThreadLine<'a> {
+    fn of(review: &'a str, thread: &'a crate::reviewdb::threads::Thread) -> ThreadLine<'a> {
+        ThreadLine {
+            review,
+            thread: &thread.id,
+            state: thread.state,
+            stale: thread.stale,
+            text: &thread.text,
+            anchor: thread.anchor.as_ref(),
+            commit_oid: thread.commit_oid.as_deref(),
+        }
+    }
+}
+
 /// The `threads` index as NDJSON, one `thread` object per line, in `watch`'s
 /// field vocabulary so a harness parses both streams with one reader.
 fn render_threads_json(
@@ -869,16 +932,8 @@ fn render_threads_json(
 ) -> Result<String, TrunkError> {
     let mut out = String::new();
     for thread in threads {
-        let line = serde_json::to_string(&serde_json::json!({
-            "review": review_id,
-            "thread": thread.id,
-            "state": thread.state,
-            "stale": thread.stale,
-            "text": thread.text,
-            "anchor": thread.anchor,
-            "commit_oid": thread.commit_oid,
-        }))
-        .map_err(|e| TrunkError::new("json", e.to_string()))?;
+        let line = serde_json::to_string(&ThreadLine::of(review_id, thread))
+            .map_err(|e| TrunkError::new("json", e.to_string()))?;
         out.push_str(&line);
         out.push('\n');
     }
@@ -985,31 +1040,22 @@ fn render_thread_json(
     thread: &crate::reviewdb::threads::Thread,
     replies: &[crate::reviewdb::replies::Reply],
 ) -> Result<String, TrunkError> {
-    let replies: Vec<_> = replies
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "reply": r.id,
-                "channel": r.channel,
-                "text": r.text,
+    let chain = ThreadChain {
+        thread: ThreadLine::of(&thread.review_id, thread),
+        channel: thread.channel,
+        excerpt: thread.cached_excerpt.as_deref(),
+        replies: replies
+            .iter()
+            .map(|r| ChainReply {
+                reply: &r.id,
+                channel: r.channel,
+                text: &r.text,
             })
-        })
-        .collect();
+            .collect(),
+        allowed_transitions: thread.state.allowed_transitions(Channel::Agent),
+    };
 
-    let line = serde_json::to_string(&serde_json::json!({
-        "review": thread.review_id,
-        "thread": thread.id,
-        "state": thread.state,
-        "stale": thread.stale,
-        "channel": thread.channel,
-        "text": thread.text,
-        "anchor": thread.anchor,
-        "commit_oid": thread.commit_oid,
-        "excerpt": thread.cached_excerpt,
-        "replies": replies,
-        "allowed_transitions": thread.state.allowed_transitions(Channel::Agent),
-    }))
-    .map_err(|e| TrunkError::new("json", e.to_string()))?;
+    let line = serde_json::to_string(&chain).map_err(|e| TrunkError::new("json", e.to_string()))?;
 
     Ok(format!("{line}\n"))
 }
@@ -1120,6 +1166,38 @@ mod tests {
                 "{verb:?} must refuse --state, got {err:?}",
             );
         }
+    }
+
+    #[test]
+    fn a_flag_is_never_taken_as_a_missing_positional() {
+        // `trunk review thread --json` is a forgotten id, not a request for a
+        // thread named `--json`. Reading it as an id spends the store lookup
+        // and answers not_found, which sends the agent hunting for an id it
+        // never had.
+        for args in [
+            argv(&["thread", "--json"]),
+            argv(&["threads", "--json"]),
+            argv(&["threads", "--state", "open"]),
+            argv(&["show", "--repo", "/tmp/r"]),
+            argv(&["address", "--repo", "/tmp/r"]),
+        ] {
+            let err = parse(&args).unwrap_err();
+
+            assert!(
+                err.contains("needs a") && err.contains("usage:"),
+                "{args:?} must read as a missing positional, got {err:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn repo_does_not_swallow_the_flag_after_it() {
+        // Taking the next word unconditionally turns a forgotten path into a
+        // repo named `--json`, and the failure names a git path rather than
+        // the usage mistake it is.
+        let err = parse(&argv(&["threads", "3F7K", "--repo", "--json"])).unwrap_err();
+
+        assert!(err.contains("--repo needs a path"), "got {err:?}");
     }
 
     #[test]
