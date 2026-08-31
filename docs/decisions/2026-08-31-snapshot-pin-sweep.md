@@ -35,45 +35,70 @@ commit is genuinely collected.
 ## The rule
 
 **Supersession never unpins anything.** A pin is deleted only by the sweep, and
-only when two consecutive sweeps both find that nothing anchors to it.
+only when the store can prove the snapshot is finished with.
 
-One observation cannot distinguish an abandoned pin from one whose submit is
-still in flight. Two can: between two sweeps, an in-flight submit has either
-landed its thread or died with the process. This needs no coordination between
-the app's windows and the CLI, which is why it was chosen over proving no write
-is in flight — that would need a quiescence signal the store does not have, and
-would couple the git side to the store's concurrency model.
+"Nothing anchors to it right now" is not that proof, and this is the subtle
+part. A snapshot minted for a submit still in flight looks exactly like an
+abandoned one: in both cases no thread names it. Any rule that judges a pin by
+what anchors to it at the moment of looking will eventually delete a pin whose
+comment is on its way.
+
+What distinguishes the two is whether a thread has *ever* anchored:
+
+- **Never anchored.** The snapshot may belong to an unfinished submit. Keep it.
+- **Anchored once, no threads now.** Its comments were deleted, or the review
+  holding them was. Nothing will ever name it again, because a new comment mints
+  a new snapshot. Garbage.
+
+Both facts are written by the operations they describe, in the transactions that
+perform them. `ensure_review_snapshot` records the snapshot in the same
+transaction that stores its oid, before the oid is returned to any caller.
+`submit_thread` marks it anchored in the same transaction that writes the
+thread. So a pin cannot be judged against a stale view of either fact.
+
+The sweep decides and records in one transaction, then deletes refs after that
+transaction closes. A thread landing during a sweep either marks its snapshot
+before the sweep reads it, and is protected, or after the sweep commits, by
+which point the pin is gone from the record and the next gesture re-mints it.
 
 The repo's two current pins are never candidates. They are what the next comment
-will anchor to, and they carry no thread until someone comments.
+will anchor to.
 
-## Where it runs
+### Why not two passes
 
-At the first review command to touch a repo in a process, and on review deletion.
+The first version of this required two consecutive sweeps to agree a pin was
+unanchored, reasoning that between two sweeps an in-flight submit must have
+landed or died. That is false, and QA caught it: a submit that starts after the
+first sweep and finishes after the second spans both, so both observations fall
+inside one submit's window and the comment still loses its pin. Counting
+observations cannot work, because the sweep has no way to see that a submit is
+in flight. Only the submit can say so, which is what the record above does.
 
-"App start" means the first command because the review store opens lazily and per
-repo. Once per process is deliberate: sweeping on every command would put ref I/O
-back on the comment gesture's latency path, which is the shape this change
-removed. Review deletion is included because that is when a batch of pins becomes
-garbage at once.
+### The one bound that is time
 
-The store's connection lock is never held across a git call. Every oid is decided
-from the store first, the lock is released, and only then are refs deleted.
+A snapshot that is never anchored would otherwise be protected forever, so an
+abandoned submit would leak a pin. Past `IN_FLIGHT_GRACE_SECS` (one day) a
+snapshot that has never carried a thread is reclaimed. This is safe where the
+original rule was not: it bounds how long a *single unfinished submit* may hold
+a snapshot, not how long the whole system may take to notice something. Generous
+on purpose — waiting costs a ref file, being early costs a comment.
 
 ## What this costs
 
-A pin outlives its threads until two sweeps have seen it unanchored, so in the
-common case until the next app start. A pin is a ref file and a retained commit,
-and snapshots are only minted when the tree actually changes, so the cost is
-bounded and small. Correctness runs the other way: the failure this replaces
-silently deletes a comment.
+A pin outlives its threads until a sweep runs, so in the common case until the
+next app start, and an abandoned submit's snapshot is held for a day. A pin is a
+ref file and a retained commit, and snapshots are only minted when the tree
+actually changes, so the cost is bounded and small. Correctness runs the other
+way: the failure this replaces silently deletes a comment.
+
+Pins in a repo the user never reopens are never reclaimed, since the sweep runs
+only for repos a review command touches.
 
 ## Left open
 
-How long a comment should remain renderable after nothing anchors to it is a
-product question this decision does not settle. The answer here — until the second
-sweep after the last anchor goes — falls out of the safety rule rather than being
-chosen. Reopen this if a different answer is wanted.
+`IN_FLIGHT_GRACE_SECS` is set to a day by judgement, not measurement. It only has
+to exceed the longest plausible gap between a comment resolving its snapshot and
+submitting its text, which is a user typing a comment. A day is far past that.
 
 ## Also fixed
 

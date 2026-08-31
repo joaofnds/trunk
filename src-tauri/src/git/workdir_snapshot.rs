@@ -160,13 +160,17 @@ pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), 
 }
 
 /// Every snapshot oid this repo currently pins.
-pub fn pinned_snapshot_oids(repo: &git2::Repository) -> Result<Vec<String>, TrunkError> {
-    let mut refs = repo.references_glob(&format!("{SNAPSHOT_REF_PREFIX}*"))?;
+///
+/// Read from each ref's target, not parsed out of its name. The two agree by
+/// `keep_snapshot_ref`'s construction, but nothing enforces that, and a name
+/// that is not a valid oid would otherwise have to be parsed and could fail.
+pub fn pinned_snapshot_oids(repo: &git2::Repository) -> Result<Vec<git2::Oid>, TrunkError> {
+    let refs = repo.references_glob(&format!("{SNAPSHOT_REF_PREFIX}*"))?;
 
     let mut oids = Vec::new();
-    for name in refs.names() {
-        if let Some(oid) = name?.strip_prefix(SNAPSHOT_REF_PREFIX) {
-            oids.push(oid.to_owned());
+    for reference in refs {
+        if let Some(target) = reference?.target() {
+            oids.push(target);
         }
     }
 

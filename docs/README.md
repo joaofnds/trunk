@@ -19,6 +19,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 | Doc | Outcome |
 |-----|---------|
 | [decisions/2026-06-20-pierre-diffs.md](decisions/2026-06-20-pierre-diffs.md) | Rejected `@pierre/diffs`; closed the syntax-highlighting gap natively in Rust with the `two-face` syntect crate. |
+| [decisions/2026-08-31-snapshot-pin-sweep.md](decisions/2026-08-31-snapshot-pin-sweep.md) | Why a snapshot's keepalive ref is reclaimed by a sweep instead of pruned when the snapshot is superseded, and why only a snapshot a thread has actually anchored to may be reclaimed: a comment is submitted as two calls, so anything that judges a pin by what anchors to it right now unpins the commit an in-flight comment is about to name. Read before changing snapshot pinning, `ensure_review_snapshot`, or the sweep. |
 
 ## Research
 
@@ -63,7 +64,6 @@ fixed, one file each. Delete the file when the fix lands. Paid-down and pending 
 
 | Doc | What it covers |
 |-----|----------------|
-| [decisions/2026-08-31-snapshot-pin-sweep.md](decisions/2026-08-31-snapshot-pin-sweep.md) | Why a superseded snapshot's keepalive ref is reclaimed by a two-pass sweep instead of pruned when the snapshot is superseded: a comment is submitted as two calls, so a prune in between unpins the commit the arriving thread anchors to and gc collects the comment. Read before changing snapshot pinning, `ensure_review_snapshot`, or the sweep's call sites. |
 | [decisions/2026-08-31-test-only-api-on-production-types.md](decisions/2026-08-31-test-only-api-on-production-types.md) | How a test waits on async production code without a wall-clock deadline: put the affordance on the production type behind a non-default `test-util` cargo feature, as tokio does for `time::pause` and Go does for `synctest.Wait`. Why `cfg(test)` cannot serve the suites in `src-tauri/tests/`, and how to verify such a gate — check the release rlib's symbols, never a dev target. Read before adding a test-only method or waiting on a duration. |
 | [application-harness.md](application-harness.md) | `just app-test`: how a test drives the real component tree into the real command handlers against a real repository, what the host process and the transport seam do, what is deliberately faked (the watcher, the traffic lights, three Tauri surfaces), and the per-scenario budget. Read before adding a test under `tests/app/`. |
 | [commit-graph-mutation-ledger.md](commit-graph-mutation-ledger.md) | What the commit-graph suite's mutation coverage actually is: every measured site, its verdict, and a construction proof for each survivor that cannot be killed. A dated audit, not a gate — `just graph-sweep` regenerates the table, `just graph-sweep-check` is the alarm that runs in `just check`. |

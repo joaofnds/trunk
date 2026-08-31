@@ -3172,3 +3172,26 @@ fn a_sweep_failure_does_not_fail_the_delete_that_carried_it() {
         "the review is gone, so the command must not report failure",
     );
 }
+
+/// The sweep changes nothing the panel renders, so it must not bump the store
+/// revision. It runs on `list_threads`, a read: bumping there would make every
+/// other window and the CLI refetch every thread on a panel open.
+#[test]
+fn the_sweep_does_not_bump_the_store_revision() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+        .unwrap();
+
+    let before = store.read(reviewdb::revision).unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    let after = store.read(reviewdb::revision).unwrap();
+
+    assert_eq!(before, after, "a sweep must not wake every other window");
+}

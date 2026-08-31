@@ -978,36 +978,38 @@ pub fn sweep_unanchored_pins(
     use crate::git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let pinned = pinned_snapshot_oids(&repo)?;
+    let pinned: Vec<(git2::Oid, String)> = pinned_snapshot_oids(&repo)?
+        .into_iter()
+        .map(|oid| (oid, oid.to_string()))
+        .collect();
 
-    let reclaimable = store.write(|tx| {
+    // write_quiet: reclaiming a pin changes nothing the panel renders, and a
+    // revision bump here would make every other window and the CLI refetch
+    // every thread on a panel open where nothing changed.
+    let reclaimable = store.write_quiet(|tx| {
         let anchored = threads::anchored_oids(tx, canonical)?;
         let eligible = pins::reclaimable(tx, canonical, now)?;
         let current = snapshots::get(tx, canonical)?.oids();
 
-        let reclaimable: Vec<String> = pinned
+        let reclaimable: Vec<(git2::Oid, String)> = pinned
             .iter()
-            .filter(|oid| {
-                eligible.contains(*oid) && !anchored.contains(*oid) && !current.contains(*oid)
+            .filter(|(_, text)| {
+                eligible.contains(text) && !anchored.contains(text) && !current.contains(text)
             })
             .cloned()
             .collect();
 
-        pins::forget(tx, canonical, &reclaimable)?;
+        let texts: Vec<String> = reclaimable.iter().map(|(_, text)| text.clone()).collect();
+        pins::forget(tx, canonical, &texts)?;
 
         Ok(reclaimable)
     })?;
 
-    let mut reclaimed = 0;
-    for oid in &reclaimable {
-        let Ok(parsed) = git2::Oid::from_str(oid) else {
-            continue;
-        };
-        prune_snapshot_ref(&repo, parsed)?;
-        reclaimed += 1;
+    for (oid, _) in &reclaimable {
+        prune_snapshot_ref(&repo, *oid)?;
     }
 
-    Ok(reclaimed)
+    Ok(reclaimable.len())
 }
 
 pub fn read_snapshots_inner(
