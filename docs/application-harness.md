@@ -249,7 +249,16 @@ icon — about 3,700 modules — and seventeen source files imported it, so ever
 the entire icon set to render a dozen icons. Rewriting those imports to deep per-icon paths
 (`@lucide/svelte/icons/git-branch`) took the suite from 9.41 s ± 0.66 to **5.90 s ± 0.26**
 (hyperfine, 5 runs each, same machine, same day). Import the barrel again and the floor
-comes back: new icon imports use the deep path. About 4 s of headroom remains.
+comes back: new icon imports use the deep path.
+
+One more balance pass (TRUNK-66) moved the two base-resolution tests (root and fork point)
+into `tests/app/rebase-base-resolution.test.ts`: 5.60 s ± 0.22. Two negatives from the same
+round: dropping the Tailwind/PostCSS block from the test config changes nothing measurable
+(5.55 s vs 5.57 s vitest-only — vitest does not process the CSS import by default), and the
+`waitFor` poll is already 5 ms. The critical path is now `interactive-rebase.test.ts` at
+about 3.2 s including its import; the next split would buy under half a second and was not
+taken. About 4.4 s of headroom remains. The measured rules distilled from all of this live
+in `docs/performance-patterns.md`.
 
 ## Measuring the rendered DOM
 

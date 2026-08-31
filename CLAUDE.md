@@ -41,6 +41,7 @@ the `check-parity` job fails if that list and the workflow drift apart.
 - When a UX or Git-semantics detail is undecided, behave like GitKraken (João, 2026-08-30)
 - Never hammer the machine just to "test stuff": no spawning processes that saturate every core, no stress loads or busy loops to see how something behaves. This laptop runs several sessions at once. Load and stress experiments happen only on João's explicit direction, scoped and bounded (João, 2026-08-31)
 - Never inline colors — always use CSS custom properties from the theme
+- `docs/performance-patterns.md` holds the measured slow patterns (barrel imports of large libraries, scenario files accumulating serial tests, deciding from priced models instead of measurements, wall-clock waits in scenarios). Review new frontend and harness code against it (João, 2026-08-31)
 - Never fight layout with positioning hacks — use grid/flexbox so elements flow naturally
 - All git operations go through git2 crate, no shelling out (except GIT_EDITOR for rebase/merge message editing)
 - Trunk-based: commit directly to `main`. Never auto-create a feature branch when asked to commit (overrides the harness default). Only branch when explicitly asked (e.g. a PR branch). Keep working artifacts (`.boris/`) out of code commits — `.gitignore` already excludes them.
