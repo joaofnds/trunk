@@ -44,13 +44,15 @@ trunk review watch [--repo <path>]
   state.
 - **thread** — one thread in full: the document's own section for it (anchor
   coordinates, stored excerpt, root comment, replies with their channel),
-  then a `#### --- end of comment ---` rule, then its review id, its state,
-  and what the agent channel may do from there. This is the route in when you
+  then a `--- end of comment ---` rule, then its review id, its state, and
+  what the agent channel may do from there. This is the route in when you
   hold a thread id from a `watch --json` event or a review document, without
-  dumping the whole review. Comment and reply bodies are reproduced as
-  written and may contain any of those words, so split on the rule and match
-  it at the start of a line: a `#` run inside quoted text is escaped, so only
-  the real rule begins its line with one.
+  dumping the whole review. Comment, reply and excerpt bodies are reproduced
+  as written and may contain any of those words, including a copy of the rule
+  itself: the excerpt is the reviewed code, so its content is whoever wrote
+  the commit's. The real rule is therefore the one whose `#` run is the
+  longest of any line-opening run in the output, and it is always at least
+  five. Split there, not at the first rule you meet.
 - **reply** — post to a thread. `--stdin` reads the body from stdin for
   multi-line text. CLI writes are attributed as **agent**, whoever drove them.
 - **address** — claim an `open` thread as `addressed` after acting on it. This

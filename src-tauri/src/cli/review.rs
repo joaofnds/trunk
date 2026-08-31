@@ -941,13 +941,30 @@ fn render_threads_json(
     Ok(out)
 }
 
-/// The line dividing a thread's document section from the CLI's own trailer.
-/// Comment and reply text is reproduced above it and may say anything,
-/// including "Review:", so a reader that splits on the trailer's prose splits
-/// wherever a replier chose. This marker is safe only when matched at the
-/// start of a line: the renderer escapes a leading `#` run in comment and
-/// reply text to `\####`, so a forged copy never begins one.
-const TRAILER_RULE: &str = "#### --- end of comment ---";
+/// The text of the line dividing a thread's document section from the CLI's
+/// own trailer, without its leading `#` run. Comment and reply text is
+/// reproduced above it and may say anything, including "Review:", so a reader
+/// that splits on the trailer's prose splits wherever a replier chose.
+const TRAILER_RULE_TEXT: &str = " --- end of comment ---";
+
+/// The rule closing `section`, with a `#` run one longer than the longest one
+/// opening a line inside it. Comment and reply text has its leading `#` runs
+/// escaped, but the stored excerpt does not: it is fenced, and a fence
+/// reproduces the reviewed code verbatim — including a line that is itself a
+/// copy of this rule. Whoever wrote the commit under review chooses that
+/// content, so a fixed run length lets a source file forge the rule, and an
+/// agent splitting at the first one reads the forged `State:` under it as the
+/// CLI's answer and skips real work. Outrunning every run in the section
+/// leaves the real rule the only line that can open with its own length.
+fn trailer_rule_for(section: &str) -> String {
+    let longest = section
+        .lines()
+        .map(|line| line.chars().take_while(|c| *c == '#').count())
+        .max()
+        .unwrap_or(0);
+
+    format!("{}{TRAILER_RULE_TEXT}", "#".repeat(longest.max(4) + 1))
+}
 
 /// One thread in full, as the document renders it, followed by the state and
 /// the moves the agent channel may make from it. The section comes from the
@@ -1007,8 +1024,9 @@ fn render_thread(
     };
 
     let mut out = crate::git::review::render_thread_section(&session, &doc_thread);
+    let rule = trailer_rule_for(&out);
     out.push_str(&format!(
-        "{TRAILER_RULE}\nReview: {review}\nState: {state}\nYou can: {actions}\n",
+        "{rule}\nReview: {review}\nState: {state}\nYou can: {actions}\n",
         review = thread.review_id,
         state = thread.state.as_str(),
         actions = agent_actions(thread.state),
