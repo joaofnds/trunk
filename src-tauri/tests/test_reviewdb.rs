@@ -3651,3 +3651,241 @@ fn anchoring_in_one_repo_does_not_mark_anothers_snapshot() {
         "anchoring in one repo must not make another repo's snapshot reclaimable",
     );
 }
+
+// ── TRUNK-64: reconciling the pin record against the refs on disk ────────────
+
+/// Every ref under the snapshot prefix, as git sees it.
+fn pin_refs(repo: &git2::Repository) -> Vec<String> {
+    let prefix = trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX;
+    repo.references_glob(&format!("{prefix}*"))
+        .unwrap()
+        .names()
+        .filter_map(|n| n.ok().map(|n| n.trim_start_matches(prefix).to_owned()))
+        .collect()
+}
+
+/// A pin minted before the record existed has no row, so the sweep has no
+/// grounds to reclaim it and would otherwise keep it forever. Every pin in a
+/// store that predates this feature is in that state.
+#[test]
+fn a_pin_with_no_record_is_eventually_reclaimed() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    // A pin exactly as an older build left it: a ref, and no row.
+    std::fs::write(ctx.repo_path().join("a.txt"), "legacy").unwrap();
+    let legacy =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "current").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+    store
+        .write(|tx| pins_forget_one(tx, &canonical, &legacy))
+        .unwrap();
+
+    // Adopting it must not delete it on sight: an unknown ref is not proof of
+    // garbage, which is the assumption that caused the original defect.
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_002).unwrap();
+    assert!(
+        pin_refs(&repo).contains(&legacy),
+        "an unknown pin must be adopted, not deleted on sight",
+    );
+
+    // Once adopted it ages out like any other never-anchored snapshot.
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    assert!(
+        !pin_refs(&repo).contains(&legacy),
+        "an adopted pin must age out like any other",
+    );
+}
+
+fn pins_forget_one(
+    tx: &rusqlite::Transaction,
+    canonical: &std::path::Path,
+    oid: &str,
+) -> Result<(), trunk_lib::error::TrunkError> {
+    reviewdb::pins::forget(tx, canonical, std::slice::from_ref(&oid.to_string()))
+}
+
+/// A row whose ref is gone — removed by a manual gc, another tool, or a sweep
+/// whose deletion never ran — describes a pin that no longer exists. Nothing
+/// else would ever remove it.
+#[test]
+fn a_record_with_no_ref_is_dropped() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let oid =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    // Someone else removes the ref, leaving the row behind.
+    trunk_lib::git::workdir_snapshot::prune_snapshot_ref(&repo, git2::Oid::from_str(&oid).unwrap())
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), 1_001).unwrap();
+
+    let still_recorded = store
+        .read(|c| reviewdb::pins::minted_at(c, &canonical, &oid))
+        .unwrap();
+    assert!(
+        still_recorded.is_none(),
+        "a record for a ref that is gone must be dropped",
+    );
+}
+
+/// Reconciliation adopts unknown refs, so it must not adopt one into being
+/// reclaimed: a pin a thread anchors to stays, whatever the record said.
+#[test]
+fn reconciliation_never_reclaims_an_anchored_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "commented").unwrap();
+    let anchored =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let mut thread = submission("a live comment");
+    thread.anchor = Some(Anchor {
+        commit_oid: anchored.clone(),
+        ..diff_anchor()
+    });
+    submit_thread_inner(&store, &canonical, thread, 1_000).unwrap();
+
+    // Wipe the record, so reconciliation meets this pin as an unknown one.
+    store
+        .write(|tx| pins_forget_one(tx, &canonical, &anchored))
+        .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "moved on").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_001)
+        .unwrap();
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    assert!(
+        pin_refs(&repo).contains(&anchored),
+        "a pin a thread anchors to must survive reconciliation and the sweep",
+    );
+}
+
+/// The same for the repo's current snapshots, which carry no thread until
+/// someone comments and must never be adopted into garbage.
+#[test]
+fn reconciliation_never_reclaims_a_current_pin() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let current =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+
+    store
+        .write(|tx| pins_forget_one(tx, &canonical, &current))
+        .unwrap();
+
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+
+    assert!(
+        pin_refs(&repo).contains(&current),
+        "the repo's current pin must survive reconciliation and the sweep",
+    );
+}
+
+/// A ref that will not delete — locked by a concurrent gc, or a permission
+/// problem — must not strand the rest of the batch. Those would keep their refs
+/// with no record, needing another reconciliation pass to be seen again.
+#[test]
+fn one_undeletable_ref_does_not_strand_the_rest_of_the_batch() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+
+    // Three superseded pins, none anchored: all three are garbage.
+    let mut garbage = Vec::new();
+    for (i, content) in ["one", "two", "three"].iter().enumerate() {
+        std::fs::write(ctx.repo_path().join("a.txt"), content).unwrap();
+        garbage.push(
+            ensure_review_snapshot_inner(
+                &store,
+                &canonical,
+                ctx.path(),
+                SnapshotKind::Workdir,
+                1_000 + i as i64,
+            )
+            .unwrap(),
+        );
+    }
+    std::fs::write(ctx.repo_path().join("a.txt"), "current").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_003)
+        .unwrap();
+
+    // Pack the refs, then make the loose-ref directory unwritable: deleting a
+    // packed ref rewrites packed-refs and needs a lock file in that directory,
+    // so every deletion in this batch fails.
+    std::process::Command::new("git")
+        .args(["pack-refs", "--all"])
+        .current_dir(ctx.repo_path())
+        .output()
+        .unwrap();
+    let refs_dir = ctx.repo_path().join(".git");
+    let original = std::fs::metadata(&refs_dir).unwrap().permissions();
+    let mut locked = original.clone();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        locked.set_mode(0o500);
+    }
+    std::fs::set_permissions(&refs_dir, locked).unwrap();
+
+    let swept = sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW);
+
+    std::fs::set_permissions(&refs_dir, original).unwrap();
+
+    assert!(
+        swept.is_ok(),
+        "a batch of failing deletions must not fail the sweep: {swept:?}",
+    );
+    for oid in &garbage {
+        assert!(
+            pin_refs(&repo).contains(oid),
+            "every ref survives when none could be deleted",
+        );
+    }
+
+    // With the directory writable again, the next sweep clears all three: none
+    // was stranded without a record.
+    sweep_unanchored_pins(&store, &canonical, ctx.path(), SWEEP_NOW).unwrap();
+    for oid in &garbage {
+        assert!(
+            !pin_refs(&repo).contains(oid),
+            "a later sweep must reclaim what an earlier one could not",
+        );
+    }
+}

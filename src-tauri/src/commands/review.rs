@@ -1085,20 +1085,28 @@ fn sweep_between(
     // revision bump here would make every other window and the CLI refetch
     // every thread on a panel open where nothing changed.
     let reclaimable = store.write_quiet(|tx| {
+        // The record and the refs drift: a pin minted before this table
+        // existed has no row, and a row whose deletion never ran describes a
+        // ref that is gone. Reconcile first so the decision below sees every
+        // pin that actually exists, and only those.
+        let on_disk: std::collections::HashSet<String> =
+            pinned.iter().map(|(_, text)| text.clone()).collect();
+        pins::reconcile(tx, canonical, &on_disk, now)?;
+
         let anchored = threads::anchored_oids(tx, canonical)?;
         let eligible = pins::reclaimable(tx, canonical, now)?;
         let current = snapshots::get(tx, canonical)?.oids();
 
-        let reclaimable: Vec<(git2::Oid, String)> = pinned
+        let reclaimable: Vec<(git2::Oid, String, Option<i64>)> = pinned
             .iter()
             .filter(|(_, text)| {
                 eligible.contains(text) && !anchored.contains(text) && !current.contains(text)
             })
-            .cloned()
-            .collect();
-
-        let texts: Vec<String> = reclaimable.iter().map(|(_, text)| text.clone()).collect();
-        pins::forget(tx, canonical, &texts)?;
+            .map(|(oid, text)| {
+                let minted = pins::minted_at(tx, canonical, text)?;
+                Ok((*oid, text.clone(), minted))
+            })
+            .collect::<Result<Vec<_>, TrunkError>>()?;
 
         Ok(reclaimable)
     })?;
@@ -1113,17 +1121,35 @@ fn sweep_between(
     between();
 
     let mut reclaimed = 0;
-    for (oid, text) in &reclaimable {
+    for (oid, text, decided_at) in &reclaimable {
         let still_garbage = store.read(|conn| {
-            let regranted = pins::seen(conn, canonical, text)?;
-            Ok(!regranted)
+            let now_minted = pins::minted_at(conn, canonical, text)?;
+            Ok(now_minted == *decided_at)
         })?;
         if !still_garbage {
             continue;
         }
 
-        prune_snapshot_ref(&repo, *oid)?;
-        reclaimed += 1;
+        // One ref that will not delete — locked by a concurrent gc, a
+        // permission problem — must not strand every oid after it. Those would
+        // keep their refs with no record, and only the next reconciliation
+        // would find them again. Report and carry on.
+        match prune_snapshot_ref(&repo, *oid) {
+            // Forget only what is actually gone, and only after it is gone. A
+            // row dropped for a ref that survived would be re-adopted by the
+            // next reconciliation with a fresh mint time, protecting it afresh
+            // every pass, so it would never be reclaimed at all.
+            Ok(()) => {
+                store.write_quiet(|tx| pins::forget(tx, canonical, std::slice::from_ref(text)))?;
+                reclaimed += 1;
+            }
+            Err(e) => eprintln!(
+                "pin {} in {} could not be unpinned: {}",
+                text,
+                canonical.display(),
+                e.message
+            ),
+        }
     }
 
     Ok(reclaimed)

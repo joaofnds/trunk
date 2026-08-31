@@ -17,7 +17,7 @@
 
 use super::{repo_key, sqlite_error};
 use crate::error::TrunkError;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -125,15 +125,62 @@ pub fn reclaimable(
         .map_err(sqlite_error)
 }
 
-/// Whether this repo has a record for `oid`. A record the sweep just forgot,
-/// present again, means the snapshot was handed out afresh after the sweep
-/// decided it was garbage: the deletion that decision authorised is stale.
-pub fn seen(conn: &Connection, repo_path: &Path, oid: &str) -> Result<bool, TrunkError> {
+/// Bring the record into line with the refs that actually exist.
+///
+/// Two drifts, both of which leave a pin nothing will ever reclaim. A ref with
+/// no row was minted before this table existed, or its row was dropped by a
+/// sweep whose deletion never ran; either way it is adopted with `now` as its
+/// mint time, so the ordinary anchor and grace rules decide it from here.
+/// Adoption is deliberately not deletion: an unrecorded ref is not evidence of
+/// garbage, and treating it as such is the assumption that lost comments in the
+/// first place. A row with no ref describes a pin that is already gone, so it
+/// is dropped.
+///
+/// Returns nothing: the caller re-reads the reconciled state in the same
+/// transaction.
+pub fn reconcile(
+    conn: &Connection,
+    repo_path: &Path,
+    refs: &HashSet<String>,
+    now: i64,
+) -> Result<(), TrunkError> {
+    let key = repo_key(repo_path);
+
+    let mut stmt = conn
+        .prepare("SELECT oid FROM snapshot_pins WHERE repo_path = ?1")
+        .map_err(sqlite_error)?;
+    let recorded: HashSet<String> = stmt
+        .query_map([&key], |row| row.get::<_, String>(0))
+        .map_err(sqlite_error)?
+        .collect::<Result<HashSet<String>, _>>()
+        .map_err(sqlite_error)?;
+
+    for oid in refs.difference(&recorded) {
+        mark_minted(conn, repo_path, oid, now)?;
+    }
+
+    let vanished: Vec<String> = recorded.difference(refs).cloned().collect();
+    forget(conn, repo_path, &vanished)?;
+
+    Ok(())
+}
+
+/// When this repo's record for `oid` was last minted, if it has one.
+///
+/// The sweep compares this against the mint time it decided on: a newer one
+/// means the snapshot was handed out again after that decision, so the deletion
+/// it authorised is stale and must not run.
+pub fn minted_at(
+    conn: &Connection,
+    repo_path: &Path,
+    oid: &str,
+) -> Result<Option<i64>, TrunkError> {
     conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2)",
+        "SELECT minted_at FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2",
         rusqlite::params![repo_key(repo_path), oid],
         |row| row.get(0),
     )
+    .optional()
     .map_err(sqlite_error)
 }
 
