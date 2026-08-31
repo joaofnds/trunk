@@ -62,9 +62,12 @@ transaction that stores its oid, before the oid is returned to any caller.
 thread. So a pin cannot be judged against a stale view of either fact.
 
 The sweep decides and records in one transaction, then deletes refs after that
-transaction closes. A thread landing during a sweep either marks its snapshot
-before the sweep reads it, and is protected, or after the sweep commits, by
-which point the pin is gone from the record and the next gesture re-mints it.
+transaction closes, so git I/O never runs under the store lock. That leaves a
+window: between the decision and the deletion, `ensure_review_snapshot` can hand
+out one of the condemned oids again and re-pin it. So each deletion re-checks,
+under the store lock, that the oid is still absent from the record, and skips it
+otherwise. Deciding once and acting later is exactly the staleness this design
+keeps running into; the re-check is what makes the deferred action safe.
 
 The repo's two current pins are never candidates. They are what the next comment
 will anchor to.
