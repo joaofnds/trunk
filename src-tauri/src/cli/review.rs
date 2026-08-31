@@ -214,12 +214,14 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
             let canonical = discover_repo(repo)?;
             let review = published_review(&store, &canonical, &id)?;
 
+            let paths = RepoPaths::of(&canonical);
+
             crate::commands::review::render_review_doc(
                 &store,
                 &canonical,
                 &review.id,
-                Some(canonical.clone()),
-                canonical.join(".git"),
+                paths.workdir,
+                paths.repo_dir,
             )
         }
         ReviewCmd::Reply { id, text, repo } => {
@@ -778,6 +780,26 @@ fn resolve_unique<T>(
     }
 }
 
+/// The renderer's two path facts, derived from the canonical workdir the
+/// store keys by. Deriving them at each render site let the CLI's answer for
+/// one thread disagree with its answer for the whole document, which is the
+/// one thing the `thread` verb exists to rule out.
+struct RepoPaths {
+    workdir: Option<PathBuf>,
+    repo_dir: PathBuf,
+}
+
+impl RepoPaths {
+    /// `discover_repo` rejects a bare repository before any render, so the
+    /// workdir the CLI renders against is always present.
+    fn of(canonical: &std::path::Path) -> RepoPaths {
+        RepoPaths {
+            workdir: Some(canonical.to_path_buf()),
+            repo_dir: canonical.join(".git"),
+        }
+    }
+}
+
 /// The canonical repo path the store keys by: `--repo` or the working
 /// directory, resolved to the repo's workdir root through the same
 /// `std::fs::canonicalize` the app uses. A symlinked or subdirectory
@@ -884,12 +906,13 @@ fn render_thread(
         ))
     })?;
 
+    let paths = RepoPaths::of(canonical);
     let session = RenderInput {
         review_id: thread.review_id.clone(),
         title,
         cli_binary: None,
-        workdir: Some(canonical.to_path_buf()),
-        repo_dir: canonical.join(".git"),
+        workdir: paths.workdir,
+        repo_dir: paths.repo_dir,
         commits: commits
             .into_iter()
             .map(|c| DocCommit {
