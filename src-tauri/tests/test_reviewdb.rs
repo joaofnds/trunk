@@ -1368,6 +1368,21 @@ fn renders_a_stored_review() {
         doc.contains("first note"),
         "both thread bodies must reach the doc"
     );
+    assert!(
+        !doc.contains("review reply"),
+        "a composing review's doc must omit the CLI instructions (criterion 11)",
+    );
+
+    store
+        .write(|tx| reviewdb::reviews::publish(tx, &canonical, &review.id, 2_000))
+        .unwrap();
+    let published_doc =
+        generate_review_doc_inner(&store, &canonical, ctx.path(), &review.id).unwrap();
+    let exe = std::env::current_exe().unwrap().display().to_string();
+    assert!(
+        published_doc.contains(&format!("{exe} review reply")),
+        "a published review's doc must teach the generating binary's own path and verbs",
+    );
     assert!(doc.contains("second note"));
     assert!(
         doc.contains(&review.id),

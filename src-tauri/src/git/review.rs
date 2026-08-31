@@ -20,6 +20,12 @@ use std::path::PathBuf;
 pub struct RenderInput {
     pub review_id: String,
     pub title: String,
+    /// The binary answering the four review verbs — `current_exe()` at
+    /// generation time (§5.5), `Some` only for a published review: the CLI
+    /// cannot serve a composing one, so its doc omits the instructions
+    /// (criterion 11). The path is the caller's fact, like the two below:
+    /// the renderer stays pure.
+    pub cli_binary: Option<PathBuf>,
     /// The worktree root — `None` for a bare repository, which changes the
     /// header's editing instructions.
     pub workdir: Option<PathBuf>,
@@ -396,6 +402,27 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         "Comment text below is reproduced exactly as the reviewer wrote it, after the word **Reviewer:**, and reply text is reproduced exactly as its author wrote it, after **Human reply:** or **Agent reply:** — any headings or code fences inside any of these are the reviewer's or replier's, not part of this document's structure."
     );
     let _ = writeln!(out);
+
+    if let Some(cli) = &session.cli_binary {
+        let exe = cli.display();
+        let _ = writeln!(
+            out,
+            "Prefer the Trunk review CLI to reply: it writes straight into this review, the reviewer's app picks it up live, and `address` is how your claim reaches the thread's state. Run it from the repository root. If the path below does not exist — macOS reports a temporary path for an app run without being moved out of Downloads — fall back to the trailer and say so in your report."
+        );
+        let _ = writeln!(out);
+        let _ = writeln!(out, "```");
+        let _ = writeln!(out, "{exe} review list");
+        let _ = writeln!(out, "{exe} review show <review-id>");
+        let _ = writeln!(out, "{exe} review reply <thread-id> <text> | --stdin");
+        let _ = writeln!(out, "{exe} review address <thread-id>");
+        let _ = writeln!(out, "```");
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "`reply` posts to a comment's thread, attributed as the agent; `address` claims an open comment as addressed once you have acted on it — it is the CLI's spelling of the trailer's `changed`/`answered`. The trailer below remains the fallback when you cannot run the binary."
+        );
+        let _ = writeln!(out);
+    }
 
     let _ = writeln!(
         out,
@@ -832,6 +859,7 @@ mod tests {
         RenderInput {
             review_id: "3F7K2QAB".to_string(),
             title: "Review 2026-08-12 · 3F7K2QAB".to_string(),
+            cli_binary: None,
             workdir: repo.workdir().map(std::path::Path::to_path_buf),
             repo_dir: repo.path().to_path_buf(),
             commits: commits
@@ -1742,6 +1770,43 @@ mod tests {
             md.contains("change only what a comment asks for"),
             "the reviewer must be able to tell the review response from unrelated edits; \
              got: {md}"
+        );
+    }
+
+    #[test]
+    fn header_names_the_current_exe_and_verbs() {
+        // §5.5 / criterion 11: a published review's doc teaches the exact
+        // binary path and the four verbs; a composing review's doc omits the
+        // CLI instructions entirely, since the CLI cannot serve it.
+        let (_dir, repo) = make_repo();
+        let b = commit_with_file(&repo, "B", &[], "f.rs", b"x\n");
+        let mut session = make_session(
+            &repo,
+            vec![b.to_string()],
+            vec![commit_level_comment("c1", "note", b)],
+        );
+        session.cli_binary = Some(PathBuf::from(
+            "/Applications/trunk.app/Contents/MacOS/trunk",
+        ));
+
+        let published = render(&session);
+        for needle in [
+            "/Applications/trunk.app/Contents/MacOS/trunk review list",
+            "review show <review-id>",
+            "review reply <thread-id> <text> | --stdin",
+            "review address <thread-id>",
+        ] {
+            assert!(
+                published.contains(needle),
+                "missing {needle:?} in: {published}"
+            );
+        }
+
+        session.cli_binary = None;
+        let composing = render(&session);
+        assert!(
+            !composing.contains("review reply"),
+            "a composing doc must omit the CLI instructions; got: {composing}"
         );
     }
 

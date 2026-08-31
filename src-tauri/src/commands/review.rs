@@ -1066,6 +1066,14 @@ pub fn render_review_doc(
         Ok(RenderInput {
             review_id: review.id.clone(),
             title: review.title,
+            // The CLI serves published reviews only, so only their docs
+            // teach it (criterion 11). `current_exe` at generation time is
+            // §5.5's ruling: the doc names the binary that will answer.
+            cli_binary: if review.published {
+                std::env::current_exe().ok()
+            } else {
+                None
+            },
             workdir: workdir.clone(),
             repo_dir: repo_dir.clone(),
             commits: commits::list(conn, &review.id)?
