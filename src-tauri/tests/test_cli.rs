@@ -1498,3 +1498,69 @@ fn excerpt_text_cannot_forge_the_thread_verbs_trailer() {
         "the trailer must be the CLI's own, got {trailer:?}",
     );
 }
+
+/// Every other markdown `thread` test seeds an anchored thread, so the other
+/// two shapes reach the verb only through `--json`. A commit-level or
+/// no-target thread losing its comment body would print a heading and a
+/// trailer with nothing between them, and no test would notice.
+#[test]
+fn cli_thread_prints_the_comment_for_every_thread_shape() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    let (commit_level, no_target) = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        let commit_level = store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "COMMIT_LEVEL_BODY".to_string(),
+                        anchor: None,
+                        commit_oid: Some("b918e53abcdef0123456789".to_string()),
+                        cached_excerpt: None,
+                    },
+                    960,
+                )
+            })
+            .unwrap();
+        let no_target = store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "NO_TARGET_BODY".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        cached_excerpt: None,
+                    },
+                    970,
+                )
+            })
+            .unwrap();
+        store
+            .write(|tx| reviews::publish(tx, &canonical, &published, 975))
+            .unwrap();
+        (commit_level, no_target)
+    };
+
+    for (id, body) in [
+        (&commit_level, "COMMIT_LEVEL_BODY"),
+        (&no_target, "NO_TARGET_BODY"),
+    ] {
+        let out = trunk_review_in(ctx.repo_path(), &["thread", id], ctx.data_dir());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let section = section_of(&stdout);
+
+        assert!(
+            section.contains("**Reviewer:**") && section.contains(body),
+            "the section for {id} must carry its comment, got {section:?}",
+        );
+    }
+}

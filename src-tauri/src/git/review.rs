@@ -6,9 +6,12 @@
 //! doc says comes from stored rows plus the two path facts in the input, so
 //! the CLI renders it with the repo closed.
 //!
-//! This module is `tauri`-free and exposes ONE public function: [`render`].
-//! All resolution failures are routed INTO the returned markdown (per L-04 +
-//! L-09); the renderer NEVER returns an error.
+//! This module is `tauri`-free. It exposes [`render`] for the whole document
+//! and [`render_thread_section`] for one thread's section of it, so the CLI's
+//! `thread` verb prints the same bytes the document carries rather than a
+//! second implementation that has to agree. All resolution failures are
+//! routed INTO the returned markdown (per L-04 + L-09); the renderer NEVER
+//! returns an error.
 
 use crate::git::types::{Anchor, Side, Source};
 use crate::review_types::{Channel, ThreadState};
@@ -503,7 +506,7 @@ fn classify(thread: &DocThread) -> ThreadTarget<'_> {
 /// commit label its shape calls for, the comment text, and the replies. The
 /// CLI's `thread` verb serves this same string, so an agent reading one thread
 /// and an agent reading the whole document see one format (TRUNK-56).
-pub fn render_thread_section(session: &RenderInput, thread: &DocThread) -> String {
+pub(crate) fn render_thread_section(session: &RenderInput, thread: &DocThread) -> String {
     let mut out = String::new();
     emit_thread_section(&mut out, session, &classify(thread));
 
