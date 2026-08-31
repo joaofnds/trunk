@@ -92,6 +92,11 @@ confirmation dialog removes the row and the pill.
 Stash, in `tests/app/stash.test.ts`: the toolbar stash clears the WIP row into a graph
 stash and restores the committed file on disk; the pop reverses all three observations.
 
+The rendered markdown diff, in `tests/app/markdown-diff.test.ts`: a deleted and an added
+paragraph read from the plain diff, then the rendered toggle, and the same paragraphs read
+back from the red and green blocks. A paragraph merely reworded would collapse to word-level
+marks inside one block, so the fixture keeps the two changes structurally apart.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease

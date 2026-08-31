@@ -9,6 +9,7 @@ import type { HostClient } from "../harness/host-client.js";
 import type { InvokeRecord, TauriInternals } from "../harness/internals.js";
 import { waitFor } from "../harness/wait.js";
 import { BranchesDriver } from "./branches.js";
+import { DiffPaneDriver } from "./diff-pane.js";
 import { EventsDriver } from "./events.js";
 import { MessageEditorDriver } from "./message-editor.js";
 import { RebaseEditorDriver } from "./rebase-editor.js";
@@ -49,6 +50,7 @@ export class AppDriver {
 	readonly rebaseEditor: RebaseEditorDriver;
 	readonly toolbar: ToolbarDriver;
 	readonly messageEditor: MessageEditorDriver;
+	readonly diffPane: DiffPaneDriver;
 	readonly events: EventsDriver;
 	readonly contextMenu: FakeMenu;
 	readonly dialog: FakeDialog;
@@ -73,6 +75,7 @@ export class AppDriver {
 		this.rebaseEditor = new RebaseEditorDriver();
 		this.toolbar = new ToolbarDriver();
 		this.messageEditor = new MessageEditorDriver();
+		this.diffPane = new DiffPaneDriver();
 		this.events = new EventsDriver(host, internals);
 		this.contextMenu = fakes.menu;
 		this.dialog = fakes.dialog;

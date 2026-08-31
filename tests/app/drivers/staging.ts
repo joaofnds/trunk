@@ -15,6 +15,7 @@ const HUNK_HEADER = `${HUNK_TOOLBAR} .hunk-header-text`;
 const DIFF_LINE = ".diff-line";
 const LINE_CONTENT = ".diff-line-content";
 const ADDED_LINE = `.diff-line-add ${LINE_CONTENT}`;
+const REMOVED_LINE = `.diff-line-delete ${LINE_CONTENT}`;
 const GRIP = ".gutter-selectable";
 const STAGE_HUNK = "Stage Hunk";
 const DISCARD_LINES = "Discard Lines";
@@ -107,9 +108,12 @@ export class StagingDriver {
 
 	/** The content of every added row in the diff pane, topmost first. */
 	addedLines(): string[] {
-		const rows = document.querySelectorAll<HTMLElement>(ADDED_LINE);
+		return contentsOf(ADDED_LINE);
+	}
 
-		return [...rows].map((row) => row.textContent?.trim() ?? "");
+	/** The content of every removed row in the diff pane, topmost first. */
+	removedLines(): string[] {
+		return contentsOf(REMOVED_LINE);
 	}
 
 	/** Stages the hunk at `ordinal`, topmost first. */
@@ -195,6 +199,12 @@ export class StagingDriver {
 		});
 		submit.click();
 	}
+}
+
+function contentsOf(selector: string): string[] {
+	const rows = document.querySelectorAll<HTMLElement>(selector);
+
+	return [...rows].map((row) => row.textContent?.trim() ?? "");
 }
 
 function filesIn(section: string): string[] {
