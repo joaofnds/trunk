@@ -67,10 +67,16 @@ test binary (2.4 MB) took 1.03 s on first exec at 0% CPU and 5 ms on the second;
 trivial C binary took 271 ms, then 2 ms. `cargo test` after one `src/lib.rs` edit relinks
 all 28 test binaries, so the run phase went 58.3 s on the first pass and 16.9 s on the
 second — about 41 s of scan per relink, and it comes back after every Rust edit.
-Attribution to Gatekeeper's first-exec check is inference from that signature (wall time
-at ~0% CPU on new files only); the exemption that would remove it (Privacy & Security →
-Developer Tools for the terminal hosting the sessions) is a machine setting, not a repo
-change.
+The fix is verified: the Privacy & Security → Developer Tools exemption removes the scan
+entirely (fresh-binary first exec 277 ms → 2 ms; post-edit `just check` 91.3 s at load ~7
+→ 62.1 s at load ~4). Three things it needed, each measured failing without: the exempted
+entry must be the *responsible process* — Claude.app's helper disclaims responsibility
+for the Claude Code runtime, so the toggle on Claude.app alone covered nothing and the
+nested bundle (`~/Library/Application Support/Claude/claude-code/<version>/claude.app`)
+had to be added itself; the host process had to be restarted after toggling; and the
+bundle path carries the version number, so a Claude Code update will silently bring the
+scan back until the new bundle is re-added — if the gate suddenly gains ~30 s after an
+update, check this list first.
 
 **Rule:** when timing anything that runs freshly built binaries, run it twice and report
 both numbers — the first-run number is the scan, not the workload. Don't split test
