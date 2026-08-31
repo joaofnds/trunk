@@ -80,6 +80,11 @@ The commit-actions workflow, in `tests/app/commit-actions.test.ts`: a revert who
 rides the host-owned MessageEditor, the undo that removes it, and the redo that restores it
 with the message it had — the message survives through the Redo stack, not the commit form.
 
+The diff surfaces, in `tests/app/diff-surfaces.test.ts`: an unstaged edit read from the
+panel, then a second file staged and its staged side read back. The two files carry different
+edits, so the runtime choice between `diff_staged` and `diff_unstaged` cannot drift and still
+show the right lines.
+
 The remote workflow, in `tests/app/remote.test.ts`: a push refused by a remote that has moved,
 the recovery prompt it raises, and the pull (rebase) and second push that leave the branch
 level with its upstream. Force Push is offered there and deliberately not pressed — the lease

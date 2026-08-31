@@ -57,6 +57,37 @@ export class StagingDriver {
 		row.click();
 	}
 
+	/** Stages one file with its row's + action, which only shows on hover.
+	 *  Returns once the file has crossed into the staged section. */
+	async stageFile(path: string): Promise<void> {
+		const row = await waitFor(`the unstaged ${path} row`, () =>
+			firstMatching(`${UNSTAGED_SECTION} ${FILE_ROW}`, (text) =>
+				text.includes(path),
+			),
+		);
+		row.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+		const button = await waitFor(`the stage action on ${path}`, () =>
+			row.querySelector<HTMLButtonElement>('[aria-label="Stage file"]'),
+		);
+		button.click();
+
+		await waitFor(`${path} in the staged section`, () =>
+			this.stagedFiles().some((file) => file.includes(path)) ? true : null,
+		);
+	}
+
+	/** Opens the staged file's diff in the center pane. */
+	async openStagedFile(path: string): Promise<void> {
+		const row = await waitFor(`the staged ${path} row`, () =>
+			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
+				text.includes(path),
+			),
+		);
+
+		row.click();
+	}
+
 	/** The `@@` header of each hunk the diff pane is showing, topmost first. */
 	hunkHeaders(): string[] {
 		const headers = document.querySelectorAll<HTMLElement>(HUNK_HEADER);
