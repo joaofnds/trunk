@@ -759,58 +759,92 @@ fn emit_run(out: &mut String, open: &mut Vec<String>, units: &[Unit], tag: &str,
     let _ = write!(out, "</{tag}>");
 }
 
-/// Walk the unit diff into one merged fragment: `Equal` runs pass through (adjusting
-/// the open-context), `Delete`/`Insert`/`Replace` runs become balanced
-/// `md-word-delete`/`md-word-add` wrappers.
-fn merge_emit(ops: &[similar::DiffOp], before: &[Unit], after: &[Unit]) -> String {
+/// The unit diff regrouped for emission. A `Changed` run carries every unit of
+/// a contiguous rewritten region, both sides, including the whitespace-only
+/// equal runs between its change ops: the spaces between rewritten words
+/// survive an edit, and diffing past them one op at a time shattered one
+/// rewrite into single-word del/ins pairs jammed back to back.
+enum MergeRun {
+    Equal {
+        old_index: usize,
+        new_index: usize,
+        len: usize,
+    },
+    Changed {
+        before: Vec<Unit>,
+        after: Vec<Unit>,
+    },
+}
+
+/// Regroup the unit diff's ops into `MergeRun`s, coalescing change ops across
+/// the whitespace-only equal runs that separate them. An equal run bridges
+/// only when a change op follows it; a trailing space after the last change
+/// stays equal.
+fn coalesce_runs(ops: &[similar::DiffOp], before: &[Unit], after: &[Unit]) -> Vec<MergeRun> {
+    let mut runs: Vec<MergeRun> = Vec::new();
+    for (i, op) in ops.iter().enumerate() {
+        let old = op.old_range();
+        let new = op.new_range();
+        if !matches!(op, similar::DiffOp::Equal { .. }) {
+            push_changed(&mut runs, &before[old], &after[new]);
+            continue;
+        }
+
+        let bridges = matches!(runs.last(), Some(MergeRun::Changed { .. }))
+            && ops
+                .get(i + 1)
+                .is_some_and(|next| !matches!(next, similar::DiffOp::Equal { .. }))
+            && run_is_whitespace(&after[new.clone()]);
+        if bridges {
+            push_changed(&mut runs, &before[old], &after[new]);
+        } else {
+            runs.push(MergeRun::Equal {
+                old_index: old.start,
+                new_index: new.start,
+                len: new.len(),
+            });
+        }
+    }
+    runs
+}
+
+fn push_changed(runs: &mut Vec<MergeRun>, before: &[Unit], after: &[Unit]) {
+    match runs.last_mut() {
+        Some(MergeRun::Changed {
+            before: del,
+            after: ins,
+        }) => {
+            del.extend_from_slice(before);
+            ins.extend_from_slice(after);
+        }
+        _ => runs.push(MergeRun::Changed {
+            before: before.to_vec(),
+            after: after.to_vec(),
+        }),
+    }
+}
+
+/// Walk the regrouped diff into one merged fragment: `Equal` runs pass through
+/// (adjusting the open-context), each `Changed` run becomes one balanced
+/// `md-word-delete` wrapper and one `md-word-add` wrapper, separated by a
+/// space so struck text never renders jammed against inserted text.
+fn merge_emit(runs: &[MergeRun], after: &[Unit]) -> String {
     let mut out = String::new();
     let mut open: Vec<String> = Vec::new();
-    for op in ops {
-        match *op {
-            similar::DiffOp::Equal { new_index, len, .. } => {
-                for unit in &after[new_index..new_index + len] {
+    for run in runs {
+        match run {
+            MergeRun::Equal { new_index, len, .. } => {
+                for unit in &after[*new_index..new_index + len] {
                     transition(&mut out, &mut open, &unit.context);
                     out.push_str(&unit.text);
                 }
             }
-            similar::DiffOp::Delete {
-                old_index, old_len, ..
-            } => emit_run(
-                &mut out,
-                &mut open,
-                &before[old_index..old_index + old_len],
-                "del",
-                "md-word-delete",
-            ),
-            similar::DiffOp::Insert {
-                new_index, new_len, ..
-            } => emit_run(
-                &mut out,
-                &mut open,
-                &after[new_index..new_index + new_len],
-                "ins",
-                "md-word-add",
-            ),
-            similar::DiffOp::Replace {
-                old_index,
-                old_len,
-                new_index,
-                new_len,
-            } => {
-                emit_run(
-                    &mut out,
-                    &mut open,
-                    &before[old_index..old_index + old_len],
-                    "del",
-                    "md-word-delete",
-                );
-                emit_run(
-                    &mut out,
-                    &mut open,
-                    &after[new_index..new_index + new_len],
-                    "ins",
-                    "md-word-add",
-                );
+            MergeRun::Changed { before, after } => {
+                emit_run(&mut out, &mut open, before, "del", "md-word-delete");
+                if !run_is_whitespace(before) && !run_is_whitespace(after) {
+                    out.push(' ');
+                }
+                emit_run(&mut out, &mut open, after, "ins", "md-word-add");
             }
         }
     }
@@ -899,15 +933,16 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
 /// the caller then falls back to the shipped block-level `Removed`+`Added` pair.
 /// The output is UNsanitized; `changed_fragments` sanitizes it before it crosses IPC.
 fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
-    let (before_units, after_units, ops) = merge_units(before_raw, after_raw)?;
-    let merged = merge_emit(&ops, &before_units, &after_units);
+    let (_, after_units, runs) = merge_units(before_raw, after_raw)?;
+    let merged = merge_emit(&runs, &after_units);
     merged_is_balanced(&merged).then_some(merged)
 }
 
 /// The guarded front half every word merge shares: size, token, and density
-/// fences, then units and their diff. `None` means the pair is not merge
-/// material and the caller falls back to its block- or leaf-level rendering.
-type MergeUnits = (Vec<Unit>, Vec<Unit>, Vec<similar::DiffOp>);
+/// fences, then units, their diff, and the coalesced runs. `None` means the
+/// pair is not merge material and the caller falls back to its block- or
+/// leaf-level rendering.
+type MergeUnits = (Vec<Unit>, Vec<Unit>, Vec<MergeRun>);
 fn merge_units(before_raw: &str, after_raw: &str) -> Option<MergeUnits> {
     if before_raw.len() > MAX_MERGE_BYTES || after_raw.len() > MAX_MERGE_BYTES {
         return None;
@@ -923,7 +958,8 @@ fn merge_units(before_raw: &str, after_raw: &str) -> Option<MergeUnits> {
     let before_units = build_units(&before_tokens)?;
     let after_units = build_units(&after_tokens)?;
     let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &before_units, &after_units);
-    Some((before_units, after_units, ops))
+    let runs = coalesce_runs(&ops, &before_units, &after_units);
+    Some((before_units, after_units, runs))
 }
 
 /// Which copy of a `Changed` row a side-specific merge feeds.
@@ -938,69 +974,33 @@ enum MergeSide {
 /// copy, `ins` on the after), and the other side's runs are omitted — the
 /// before copy shows what left, the after copy what arrived.
 fn merge_emit_one_side(
-    ops: &[similar::DiffOp],
+    runs: &[MergeRun],
     before: &[Unit],
     after: &[Unit],
     side: MergeSide,
 ) -> String {
     let mut out = String::new();
     let mut open: Vec<String> = Vec::new();
-    for op in ops {
-        match *op {
-            similar::DiffOp::Equal {
+    for run in runs {
+        match run {
+            MergeRun::Equal {
                 old_index,
                 new_index,
                 len,
             } => {
                 let units = match side {
-                    MergeSide::Before => &before[old_index..old_index + len],
-                    MergeSide::After => &after[new_index..new_index + len],
+                    MergeSide::Before => &before[*old_index..old_index + len],
+                    MergeSide::After => &after[*new_index..new_index + len],
                 };
                 for unit in units {
                     transition(&mut out, &mut open, &unit.context);
                     out.push_str(&unit.text);
                 }
             }
-            similar::DiffOp::Delete {
-                old_index, old_len, ..
-            } if side == MergeSide::Before => emit_run(
-                &mut out,
-                &mut open,
-                &before[old_index..old_index + old_len],
-                "del",
-                "md-word-delete",
-            ),
-            similar::DiffOp::Insert {
-                new_index, new_len, ..
-            } if side == MergeSide::After => emit_run(
-                &mut out,
-                &mut open,
-                &after[new_index..new_index + new_len],
-                "ins",
-                "md-word-add",
-            ),
-            similar::DiffOp::Replace {
-                old_index,
-                old_len,
-                new_index,
-                new_len,
-            } => match side {
-                MergeSide::Before => emit_run(
-                    &mut out,
-                    &mut open,
-                    &before[old_index..old_index + old_len],
-                    "del",
-                    "md-word-delete",
-                ),
-                MergeSide::After => emit_run(
-                    &mut out,
-                    &mut open,
-                    &after[new_index..new_index + new_len],
-                    "ins",
-                    "md-word-add",
-                ),
+            MergeRun::Changed { before, after } => match side {
+                MergeSide::Before => emit_run(&mut out, &mut open, before, "del", "md-word-delete"),
+                MergeSide::After => emit_run(&mut out, &mut open, after, "ins", "md-word-add"),
             },
-            similar::DiffOp::Delete { .. } | similar::DiffOp::Insert { .. } => {}
         }
     }
     transition(&mut out, &mut open, &[]);
@@ -1011,9 +1011,9 @@ fn merge_emit_one_side(
 /// fragments, both balance-checked. `None` sends the pair back to the
 /// whole-leaf tint.
 fn leaf_word_merge(before_raw: &str, after_raw: &str) -> Option<(String, String)> {
-    let (before_units, after_units, ops) = merge_units(before_raw, after_raw)?;
-    let before_marked = merge_emit_one_side(&ops, &before_units, &after_units, MergeSide::Before);
-    let after_marked = merge_emit_one_side(&ops, &before_units, &after_units, MergeSide::After);
+    let (before_units, after_units, runs) = merge_units(before_raw, after_raw)?;
+    let before_marked = merge_emit_one_side(&runs, &before_units, &after_units, MergeSide::Before);
+    let after_marked = merge_emit_one_side(&runs, &before_units, &after_units, MergeSide::After);
     if !before_marked.contains("md-word-") && !after_marked.contains("md-word-") {
         // Nothing visible changed between the renders (a markup-only edit the
         // renderer omits); unmarked copies would hide the change entirely,
@@ -2083,6 +2083,42 @@ mod tests {
         assert!(
             !merged.contains("md-word-delete\">brown") && !merged.contains("md-word-add\">brown"),
             "unchanged words are not wrapped in any diff marker: {merged}"
+        );
+    }
+
+    // The dotfiles 1787ba8 repro: the equal spaces between rewritten words
+    // anchored the unit diff, shattering one sentence rewrite into
+    // single-word del/ins pairs jammed back to back ("workreply",
+    // "getsstates"). Change runs coalesce across whitespace-only equal runs
+    // into one del and one ins per rewritten region.
+    #[test]
+    fn a_sentence_rewrite_merges_into_one_del_and_one_ins_run() {
+        let merged = html_token_merge(
+            "<p>A question about the state of work gets the position now, never the story of how it got there. What blocks it, the one thing worth doing, what the rest waits on, one question if one is open. Sessions of investigation collapse into one clause or stay on the card. Retelling the card is the failure this style exists to stop.</p>",
+            "<p>Every reply states the position now, never the story of how it got there. Asked about the state of work: what blocks it, the one thing worth doing, what the rest waits on, one question if one is open. Sessions of investigation collapse into one clause or stay on the card. A check that cleared, a risk that didn't materialize, and a mistake you caught and undid are the transcript's business: together they get one clause, however much of the work they took. Retelling the record to prove the work happened is the failure this style exists to stop.</p>",
+        )
+        .expect("the repro paragraph merges, not None");
+
+        assert!(
+            merged.contains(
+                r#"<del class="md-word-delete">A question about the state of work gets</del> <ins class="md-word-add">Every reply states</ins>"#
+            ),
+            "the rewritten sentence opening is one del run and one ins run: {merged}"
+        );
+        assert!(is_tag_balanced(&merged), "output is tag-balanced: {merged}");
+    }
+
+    #[test]
+    fn struck_text_never_jams_against_inserted_text() {
+        let merged = html_token_merge(
+            "<p>Retelling the card is the failure this style exists to stop, every single time.</p>",
+            "<p>Retelling the record to prove the work happened is the failure this style exists to stop, every single time.</p>",
+        )
+        .expect("a one-word replacement merges, not None");
+
+        assert!(
+            !merged.contains("</del><ins"),
+            "a del run is separated from the ins run that follows it: {merged}"
         );
     }
 
