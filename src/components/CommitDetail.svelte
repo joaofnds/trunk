@@ -11,6 +11,7 @@ import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
 import { createDraft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
+import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
@@ -77,25 +78,21 @@ let fileCommentCounts = $derived(
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
 
-async function showFileContextMenu(e: MouseEvent, filePath: string) {
+async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 	e.preventDefault();
 	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
-	const absPath = `${repoPath}/${filePath}`;
 	const menu = await Menu.new({
-		items: [
-			await MenuItem.new({
-				text: "Copy Relative Path",
-				action: () => {
-					writeText(filePath).catch(() => {});
-				},
-			}),
-			await MenuItem.new({
-				text: "Copy Absolute Path",
-				action: () => {
-					writeText(absPath).catch(() => {});
-				},
-			}),
-		],
+		items: await Promise.all(
+			pathMenuEntriesOf(repoPath, file.path, file.old_path ?? null).map(
+				(entry) =>
+					MenuItem.new({
+						text: entry.text,
+						action: () => {
+							writeText(entry.value).catch(() => {});
+						},
+					}),
+			),
+		),
 	});
 	await menu.popup();
 }
@@ -458,7 +455,7 @@ async function saveNote() {
         actionLabel=""
         onfileaction={() => {}}
         onfileclick={(path) => onfileselect(path)}
-        onfilecontextmenu={(e, path) => showFileContextMenu(e, path)}
+        onfilecontextmenu={(e, _path, file) => showFileContextMenu(e, file)}
         commentCounts={fileCommentCounts}
       />
     </div>
