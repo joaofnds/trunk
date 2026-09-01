@@ -20,8 +20,10 @@ pub(crate) fn is_head_unborn(repo: &git2::Repository) -> bool {
 }
 
 /// Every diff Trunk computes starts here. The indent heuristic matches git
-/// CLI's default hunk boundaries; staging must build from the same options,
-/// or its hunk indices drift from what the view shows.
+/// CLI's default hunk boundaries; staging builds from the same base so its
+/// hunk indices agree with the view under default view options (view-only
+/// options like ignore-whitespace are applied on top and staging does not
+/// see them — TRUNK-73 tracks that mismatch).
 pub(crate) fn new_diff_options() -> git2::DiffOptions {
     let mut opts = git2::DiffOptions::new();
     opts.indent_heuristic(true);
@@ -650,9 +652,7 @@ pub fn diff_unstaged_raw_for_bench(
     options: &DiffRequestOptions,
 ) -> Result<(Vec<FileDiff>, Vec<SideContent>), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
-    let mut opts = new_diff_options();
-    opts.pathspec(file_path);
-    opts.disable_pathspec_match(true);
+    let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
     let (file_diffs, delta_sides) = walk_diff_raw_for_bench(diff)?;
@@ -827,7 +827,11 @@ pub fn compare_stat_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
-    let mut diff = repo.diff_tree_to_tree(base_tree.as_ref(), target_tree.as_ref(), None)?;
+    let mut diff = repo.diff_tree_to_tree(
+        base_tree.as_ref(),
+        target_tree.as_ref(),
+        Some(&mut new_diff_options()),
+    )?;
     diff.find_similar(None)?;
     let stats = diff.stats()?;
     Ok(crate::git::types::DiffStat {
