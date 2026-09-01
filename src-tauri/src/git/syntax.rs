@@ -217,8 +217,9 @@ pub fn merge_spans(
 /// Re-express merged span offsets as UTF-16 code units, in place. Rust-side
 /// span math is UTF-8 byte-based; the frontend renders with
 /// `content.slice(start, end)`, which indexes UTF-16 code units, so spans
-/// convert here, once, before they ship. Requires spans sorted by start, as
-/// `merge_spans` emits them.
+/// convert here, once, before they ship. Requires spans sorted and
+/// non-overlapping, as `merge_spans` emits them: the walker only moves
+/// forward, so an offset behind a previously visited one converts wrong.
 pub fn merged_spans_to_utf16(spans: &mut [MergedSpan], content: &str) {
     if content.is_ascii() {
         return;

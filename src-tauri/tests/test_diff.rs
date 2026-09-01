@@ -715,11 +715,11 @@ fn word_span_context_lines_have_no_emphasis() {
 #[test]
 fn word_span_covers_entire_content() {
     let ctx = TestContext::builder()
-        .with_file("cover.txt", "hello world\n")
+        .with_file("cover.txt", "olá velho mundo 🎉\n")
         .with_commit("Initial commit")
         .build();
 
-    std::fs::write(ctx.repo_path().join("cover.txt"), "hello mars\n").unwrap();
+    std::fs::write(ctx.repo_path().join("cover.txt"), "olá novo mundo 🎉\n").unwrap();
 
     let file_diffs = ctx
         .diff_unstaged_enriched("cover.txt")
@@ -738,12 +738,13 @@ fn word_span_covers_entire_content() {
         );
         assert_eq!(line.spans[0].start, 0, "First span should start at 0");
         let last_span = line.spans.last().unwrap();
+        let utf16_len = line.content.encode_utf16().count();
         assert_eq!(
             last_span.end as usize,
-            line.content.len(),
-            "Last span end ({}) should equal content byte length ({}) for line '{}'",
+            utf16_len,
+            "Last span end ({}) should equal the content's UTF-16 unit count ({}) for line '{}'",
             last_span.end,
-            line.content.len(),
+            utf16_len,
             line.content.trim()
         );
         // No gaps between spans

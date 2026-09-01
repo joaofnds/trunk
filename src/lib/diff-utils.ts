@@ -152,8 +152,9 @@ export function trailingWhitespaceStart(text: string): number {
  * presentation glyph (space -> middle dot U+00B7, tab -> rightwards arrow
  * U+2192) in `glyph`. Only spaces and tabs are handled -- no line ending markers.
  *
- * CRITICAL: This function must be called AFTER slicing line.content by span offsets.
- * Never call it before slicing -- that would break byte offset alignment.
+ * CRITICAL: This function must be called AFTER slicing line.content by span
+ * offsets. Span offsets index the whole line (UTF-16 code units), so slicing
+ * a segment this function produced would misalign them.
  *
  * @param text - Already-sliced text segment
  * @param isTrailingRegion - Whether this segment falls within trailing whitespace
