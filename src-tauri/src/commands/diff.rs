@@ -727,12 +727,12 @@ pub fn list_commit_files_inner(
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
     let commit_tree = commit.tree()?;
-    let opts = new_diff_options();
+    let mut opts = new_diff_options();
     let diff = if commit.parent_count() == 0 {
-        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut { opts }))?
+        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
     } else {
         let parent_tree = commit.parent(0)?.tree()?;
-        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut { opts }))?
+        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
     Ok(file_metadata_list(&diff))
 }
