@@ -15,22 +15,42 @@ export interface LaneSpan {
 }
 
 /**
- * The vertical runs of each lane, taken from the connections that produced the
- * drawn paths. Only same-column connections hold a lane; a fork or a merge
- * crosses columns and belongs to neither.
+ * The extent of each lane, merged from the connections that hold it.
+ *
+ * One connection spans a single child-parent pair, so a column carrying a run of
+ * commits produces a chain of short connections rather than one long span. They
+ * are unioned per column: a lane is the column, not any one link in it, and a
+ * label has to be able to look past the link it happens to sit on to find the
+ * ref that names the whole run.
+ *
+ * Only same-column connections hold a lane; a fork or a merge crosses columns
+ * and belongs to neither.
  */
 export function laneSpans(connections: OverlayConnection[]): LaneSpan[] {
-	const spans: LaneSpan[] = [];
+	const byColumn = new Map<number, LaneSpan>();
+
 	for (const c of connections) {
 		if (c.childX !== c.parentX) continue;
-		spans.push({
-			column: c.childX,
-			minRow: Math.min(c.childY, c.parentY),
-			maxRow: Math.max(c.childY, c.parentY),
-			colorIndex: c.colorIndex,
-		});
+
+		const minRow = Math.min(c.childY, c.parentY);
+		const maxRow = Math.max(c.childY, c.parentY);
+		const existing = byColumn.get(c.childX);
+
+		if (!existing) {
+			byColumn.set(c.childX, {
+				column: c.childX,
+				minRow,
+				maxRow,
+				colorIndex: c.colorIndex,
+			});
+			continue;
+		}
+
+		existing.minRow = Math.min(existing.minRow, minRow);
+		existing.maxRow = Math.max(existing.maxRow, maxRow);
 	}
-	return spans;
+
+	return [...byColumn.values()];
 }
 
 /**

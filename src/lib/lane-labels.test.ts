@@ -161,6 +161,47 @@ describe("buildLaneLabels", () => {
 		expect(buildLaneLabels(nodes, commits, paths, 2, 2)).toHaveLength(0);
 	});
 
+	it("finds a ref several rows above, across a chain of connections", () => {
+		const commits = [
+			makeCommit({ oid: "A", column: 0, refs: [makeRef()] }),
+			makeCommit({ oid: "B", column: 0 }),
+			makeCommit({ oid: "C", column: 0 }),
+			makeCommit({ oid: "D", column: 0 }),
+		];
+		const nodes = commits.map((c, y) => makeNode({ oid: c.oid, x: 0, y }));
+		const spans = laneSpans([
+			{
+				childX: 0,
+				childY: 0,
+				parentX: 0,
+				parentY: 1,
+				colorIndex: 0,
+				dashed: false,
+			},
+			{
+				childX: 0,
+				childY: 1,
+				parentX: 0,
+				parentY: 2,
+				colorIndex: 0,
+				dashed: false,
+			},
+			{
+				childX: 0,
+				childY: 2,
+				parentX: 0,
+				parentY: 3,
+				colorIndex: 0,
+				dashed: false,
+			},
+		]);
+
+		const labels = buildLaneLabels(nodes, commits, spans, 3, 3);
+
+		expect(labels).toHaveLength(1);
+		expect(labels[0].label).toBe("main");
+	});
+
 	it("takes the nearest ref above the viewport when a lane has several", () => {
 		const commits = [
 			makeCommit({
@@ -226,6 +267,40 @@ describe("laneSpans", () => {
 		]);
 
 		expect(spans).toEqual([{ column: 0, minRow: 0, maxRow: 5, colorIndex: 0 }]);
+	});
+
+	it("unions a column's connections into one lane", () => {
+		// A run of commits in one column yields a chain of one-row connections.
+		// Kept separate, a label search bounded by a span gives up at the first
+		// link instead of walking up the column to the ref that names the run.
+		const spans = laneSpans([
+			{
+				childX: 0,
+				childY: 0,
+				parentX: 0,
+				parentY: 1,
+				colorIndex: 0,
+				dashed: false,
+			},
+			{
+				childX: 0,
+				childY: 1,
+				parentX: 0,
+				parentY: 2,
+				colorIndex: 0,
+				dashed: false,
+			},
+			{
+				childX: 0,
+				childY: 2,
+				parentX: 0,
+				parentY: 3,
+				colorIndex: 0,
+				dashed: false,
+			},
+		]);
+
+		expect(spans).toEqual([{ column: 0, minRow: 0, maxRow: 3, colorIndex: 0 }]);
 	});
 
 	it("orders the span whichever way the connection runs", () => {
