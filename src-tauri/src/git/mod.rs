@@ -11,4 +11,5 @@ pub mod review_resolution;
 pub mod status;
 pub mod syntax;
 pub mod types;
+pub mod word_spans;
 pub mod workdir_snapshot;
