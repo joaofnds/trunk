@@ -215,8 +215,9 @@ impl Default for DiffRequestOptions {
 /// How the split view should seat a changed line relative to the other side,
 /// decided by the run-level word diff. `Partner` names the hunk-line index of
 /// the homologous opposite-side line; `Alone` is a line the word diff decided
-/// has no counterpart; `Unknown` means no word diff ran over the line's run,
-/// and the view falls back to positional pairing.
+/// has no counterpart; `Unknown` means no word diff ran over the line's run.
+/// The verdict is per run: a run the word diff skipped is all `Unknown` and
+/// the view pairs it positionally, as before the word diff existed.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LinePairing {

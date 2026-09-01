@@ -114,6 +114,7 @@ fn emphasize_run(
     let mut options = similar::InlineChangeOptions::new();
     options.semantic_cleanup(true);
 
+    let mut raw_coverage = vec![1.0_f32; lines.len()];
     for op in diff.ops() {
         let mut op_has_emphasis = false;
         for change in diff.iter_inline_changes_with_options_deadline(op, options, Some(deadline)) {
@@ -126,10 +127,12 @@ fn emphasize_run(
 
             let mut spans = Vec::new();
             let mut offset: u32 = 0;
+            let mut emphasized_bytes: u32 = 0;
             for (emphasized, segment) in change.values() {
                 let len = segment.len() as u32;
                 if *emphasized && len > 0 {
                     op_has_emphasis = true;
+                    emphasized_bytes += len;
                     spans.push(WordSpan {
                         start: offset,
                         end: offset + len,
@@ -139,54 +142,81 @@ fn emphasize_run(
                 offset += len;
             }
 
-            result.spans[line_idx] = polish_spans(spans, &lines[line_idx].content);
+            let content = &lines[line_idx].content;
+            let line_len = content.trim_end_matches(['\n', '\r']).len();
+            if line_len > 0 {
+                raw_coverage[line_idx] = emphasized_bytes as f32 / line_len as f32;
+            }
+            result.spans[line_idx] = polish_spans(spans, content);
         }
 
-        pair_op_lines(op, op_has_emphasis, &del, &add, &mut result.pairing);
+        pair_op_lines(
+            op,
+            op_has_emphasis,
+            &raw_coverage,
+            &del,
+            &add,
+            &mut result.pairing,
+        );
+    }
+
+    // The budget ran out inside this run: whatever verdicts the coarse,
+    // deadline-cut refinement produced depend on machine timing, so the run
+    // falls back to positional pairing rather than seating lines by them.
+    if deadline <= Instant::now() {
+        for pairing in &mut result.pairing[del.start..add.end] {
+            *pairing = LinePairing::Unknown;
+        }
     }
 }
 
 /// Seat one op's lines. `Equal` lines are identical across the runs and pair
-/// outright. A `Replace` whose refinement produced emphasis pairs its lines
-/// positionally within the op — the refinement found shared words, so the
-/// lines are homologous — with the uneven tail left alone; a refused `Replace`
-/// (similar's ratio gate found the sides unrelated) leaves every line alone,
-/// so the split view never seats unrelated lines side by side. One-sided ops
-/// have nothing to pair with.
+/// outright. An accepted `Replace` (its refinement produced emphasis) pairs
+/// positionally within the op, but only the pairs where at least one side
+/// keeps a substantial share of its line unemphasized — shared words are what
+/// makes the lines homologous, and a pair emphasized nearly whole on both
+/// sides is two unrelated lines (the initiative's rule: an uncertain pairing
+/// stays unpaired). A refused `Replace` (similar's ratio gate found the sides
+/// unrelated) leaves every line alone; without the acceptance check its lines
+/// would read as zero-coverage and pair. The uneven tail of an op is alone;
+/// one-sided ops have nothing to pair with.
 fn pair_op_lines(
     op: &similar::DiffOp,
     op_has_emphasis: bool,
+    raw_coverage: &[f32],
     del: &std::ops::Range<usize>,
     add: &std::ops::Range<usize>,
     pairing: &mut [LinePairing],
 ) {
     let old = op.old_range();
     let new = op.new_range();
-    let paired = match op.tag() {
-        DiffTag::Equal => old.len(),
-        DiffTag::Replace if op_has_emphasis => old.len().min(new.len()),
-        DiffTag::Replace | DiffTag::Delete | DiffTag::Insert => 0,
-    };
 
-    for k in 0..old.len() {
-        let old_idx = del.start + old.start + k;
-        pairing[old_idx] = if k < paired {
-            LinePairing::Partner {
-                line: (add.start + new.start + k) as u32,
+    for k in 0..old.len().max(new.len()) {
+        let old_idx = (k < old.len()).then(|| del.start + old.start + k);
+        let new_idx = (k < new.len()).then(|| add.start + new.start + k);
+
+        let homologous = match (op.tag(), old_idx, new_idx) {
+            (DiffTag::Equal, _, _) => true,
+            (DiffTag::Replace, Some(o), Some(n)) => {
+                op_has_emphasis
+                    && (raw_coverage[o] <= WORD_DIFF_COVERAGE_MAX
+                        || raw_coverage[n] <= WORD_DIFF_COVERAGE_MAX)
             }
-        } else {
-            LinePairing::Alone
+            _ => false,
         };
-    }
-    for k in 0..new.len() {
-        let new_idx = add.start + new.start + k;
-        pairing[new_idx] = if k < paired {
-            LinePairing::Partner {
-                line: (del.start + old.start + k) as u32,
-            }
-        } else {
-            LinePairing::Alone
-        };
+
+        if let Some(o) = old_idx {
+            pairing[o] = match (homologous, new_idx) {
+                (true, Some(n)) => LinePairing::Partner { line: n as u32 },
+                _ => LinePairing::Alone,
+            };
+        }
+        if let Some(n) = new_idx {
+            pairing[n] = match (homologous, old_idx) {
+                (true, Some(o)) => LinePairing::Partner { line: o as u32 },
+                _ => LinePairing::Alone,
+            };
+        }
     }
 }
 
@@ -437,6 +467,27 @@ mod word_span_tests {
         assert_eq!(
             pairings(&lines, word_diff_budget()),
             vec![LinePairing::Alone; 4]
+        );
+    }
+
+    #[test]
+    fn an_unrelated_line_inside_an_accepted_replace_stays_alone() {
+        let lines = vec![
+            del("let total = sum(values);\n"),
+            del("zebra quantum harpsichord velvet\n"),
+            add("let total = sum(values) + 1;\n"),
+            add("mitochondria asphalt trombone glacier\n"),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![
+                LinePairing::Partner { line: 2 },
+                LinePairing::Alone,
+                LinePairing::Partner { line: 0 },
+                LinePairing::Alone,
+            ],
+            "a pair sharing no words is never seated side by side"
         );
     }
 

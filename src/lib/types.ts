@@ -166,8 +166,9 @@ export interface MergeSides {
  * How the split view should seat a changed line, decided by the backend's
  * run-level word diff. `partner` names the hunk-line index of the homologous
  * opposite-side line; `alone` has no counterpart; `unknown` (or an absent
- * field, in fixtures) means no word diff ran and the view falls back to
- * positional pairing.
+ * field, in fixtures) means no word diff ran. The verdict is per run: a
+ * block whose lines are all unknown pairs positionally, as before the word
+ * diff existed.
  */
 export type LinePairing =
 	| { kind: "partner"; line: number }
