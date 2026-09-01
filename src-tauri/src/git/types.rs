@@ -144,9 +144,13 @@ pub enum FileStatusType {
     Conflicted,
 }
 
+/// One file in the working-tree status. `old_path` names where a renamed file
+/// came from and is `None` for every other status, mirroring `FileDiff` — the
+/// file lists render both from the same shape.
 #[derive(Debug, Serialize, Clone)]
 pub struct FileStatus {
     pub path: String,
+    pub old_path: Option<String>,
     pub status: FileStatusType,
     pub is_binary: bool,
 }

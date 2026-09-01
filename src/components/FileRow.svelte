@@ -41,7 +41,7 @@ let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 // would sit beside a bare filename in a row that shows neither in full.
 let renamedFrom = $derived.by(() => {
 	const from = file.old_path;
-	if (from === null || from === undefined) return null;
+	if (from === null) return null;
 
 	return displayName === undefined ? from : (from.split("/").pop() ?? from);
 });
