@@ -28,6 +28,19 @@ pub(crate) fn new_diff_options() -> git2::DiffOptions {
     opts
 }
 
+/// Diff options for one file's workdir diff, untracked content included.
+/// Display (`diff_unstaged_inner`) and staging both build from here; the two
+/// must see the same deltas for staging's hunk indices to match the view.
+pub(crate) fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
+    let mut opts = new_diff_options();
+    opts.pathspec(file_path);
+    opts.disable_pathspec_match(true);
+    opts.include_untracked(true);
+    opts.recurse_untracked_dirs(true);
+    opts.show_untracked_content(true);
+    opts
+}
+
 fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
     let context = if req.show_full_file {
         100_000 // practical cap for full-file view
@@ -654,12 +667,7 @@ pub fn diff_unstaged_inner(
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
-    let mut opts = new_diff_options();
-    opts.pathspec(file_path);
-    opts.disable_pathspec_match(true);
-    opts.include_untracked(true);
-    opts.recurse_untracked_dirs(true);
-    opts.show_untracked_content(true);
+    let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
     walk_diff(diff, &repo, NewSideSource::Workdir)

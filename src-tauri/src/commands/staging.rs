@@ -1,3 +1,4 @@
+use crate::commands::diff::workdir_diff_opts;
 use crate::error::TrunkError;
 use crate::git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
 use crate::git::types::{FileStatus, FileStatusType, WorkingTreeStatus};
@@ -185,17 +186,6 @@ pub fn stage_files_inner(
     }
     index.write()?;
     Ok(())
-}
-
-/// Build diff options for workdir diffs that include untracked files.
-fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
-    let mut opts = crate::commands::diff::new_diff_options();
-    opts.pathspec(file_path);
-    opts.disable_pathspec_match(true);
-    opts.include_untracked(true);
-    opts.recurse_untracked_dirs(true);
-    opts.show_untracked_content(true);
-    opts
 }
 
 /// Ensure the index has an entry for `file_path` so that `repo.apply(Index)` works
