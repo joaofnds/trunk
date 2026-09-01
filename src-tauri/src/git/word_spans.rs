@@ -13,8 +13,10 @@ use std::time::{Duration, Instant};
 /// noise and the diff cost is unbounded.
 const WORD_DIFF_RUN_BYTES_MAX: usize = 100_000;
 const WORD_DIFF_LINE_BYTES_MAX: usize = 500;
-/// Past this share of a line emphasized, the line reads as rewritten, not
-/// edited: plain add/delete coloring says that better than near-total marks.
+/// Past this share of an op's changed lines emphasized, the op reads as
+/// rewritten, not edited: plain add/delete coloring says that better than
+/// near-total marks. One verdict per op — judging lines one by one left the
+/// most-changed lines as the only unmarked ones.
 const WORD_DIFF_COVERAGE_MAX: f32 = 0.7;
 /// An unemphasized whitespace gap this short between two emphasized spans is
 /// visual confetti; bridging it yields fewer, larger spans.
@@ -115,7 +117,8 @@ fn emphasize_run(
     options.semantic_cleanup(true);
 
     for op in diff.ops() {
-        let mut op_has_emphasis = false;
+        let mut refined = false;
+        let mut op_spans: Vec<(usize, Vec<WordSpan>)> = Vec::new();
         for change in diff.iter_inline_changes_with_options_deadline(op, options, Some(deadline)) {
             let line_idx = match change.tag() {
                 ChangeTag::Delete => change.old_index().map(|k| del.start + k),
@@ -129,7 +132,7 @@ fn emphasize_run(
             for (emphasized, segment) in change.values() {
                 let len = segment.len() as u32;
                 if *emphasized && len > 0 {
-                    op_has_emphasis = true;
+                    refined = true;
                     spans.push(WordSpan {
                         start: offset,
                         end: offset + len,
@@ -139,10 +142,24 @@ fn emphasize_run(
                 offset += len;
             }
 
-            result.spans[line_idx] = polish_spans(spans, &lines[line_idx].content);
+            op_spans.push((line_idx, polish_spans(spans, &lines[line_idx].content)));
         }
 
-        pair_op_lines(op, op_has_emphasis, lines, &del, &add, &mut result.pairing);
+        let reads_as_edit = emphasis_coverage(&op_spans, lines) <= WORD_DIFF_COVERAGE_MAX;
+        if reads_as_edit {
+            for (line_idx, spans) in op_spans {
+                result.spans[line_idx] = spans;
+            }
+        }
+
+        pair_op_lines(
+            op,
+            refined && reads_as_edit,
+            lines,
+            &del,
+            &add,
+            &mut result.pairing,
+        );
     }
 
     // The budget ran out inside this run: whatever verdicts the coarse,
@@ -156,7 +173,8 @@ fn emphasize_run(
 }
 
 /// Seat one op's lines. `Equal` lines are identical across the runs and pair
-/// outright. An accepted `Replace` (its refinement produced emphasis) pairs
+/// outright. An accepted `Replace` (its refinement produced emphasis and the
+/// op reads as an edit, not a rewrite) pairs
 /// positionally within the op, but each pair must also pass a direct
 /// similarity check of its own two lines — the run-level refinement can
 /// vouch for the run while a positional pair inside it shares nothing (its
@@ -166,7 +184,7 @@ fn emphasize_run(
 /// of an op is alone; one-sided ops have nothing to pair with.
 fn pair_op_lines(
     op: &similar::DiffOp,
-    op_has_emphasis: bool,
+    op_accepted: bool,
     lines: &[DiffLine],
     del: &std::ops::Range<usize>,
     add: &std::ops::Range<usize>,
@@ -182,7 +200,7 @@ fn pair_op_lines(
         let homologous = match (op.tag(), old_idx, new_idx) {
             (DiffTag::Equal, _, _) => true,
             (DiffTag::Replace, Some(o), Some(n)) => {
-                op_has_emphasis && lines_similar(&lines[o].content, &lines[n].content)
+                op_accepted && lines_similar(&lines[o].content, &lines[n].content)
             }
             _ => false,
         };
@@ -250,10 +268,29 @@ fn word_bytes(words: &std::collections::HashMap<&str, u32>) -> usize {
         .sum()
 }
 
+/// The share of the op's changed lines that its polished spans emphasize.
+/// The edit-vs-rewrite verdict compares this once per op, so a run keeps
+/// either coherent emphasis on every changed region or plain coloring
+/// throughout, never marked lines beside unmarked more-changed ones.
+fn emphasis_coverage(op_spans: &[(usize, Vec<WordSpan>)], lines: &[DiffLine]) -> f32 {
+    let changed: usize = op_spans
+        .iter()
+        .map(|(i, _)| lines[*i].content.trim_end_matches(['\n', '\r']).len())
+        .sum();
+    let emphasized: u32 = op_spans
+        .iter()
+        .flat_map(|(_, spans)| spans)
+        .map(|s| s.end - s.start)
+        .sum();
+
+    if changed == 0 {
+        return 0.0;
+    }
+    emphasized as f32 / changed as f32
+}
+
 /// Apply the readability rules to one line's emphasized spans: bridge tiny
-/// whitespace gaps into fewer larger spans, drop whitespace-only slivers, and
-/// drop everything when emphasis covers so much of the line that plain
-/// coloring reads better.
+/// whitespace gaps into fewer larger spans and drop whitespace-only slivers.
 fn polish_spans(spans: Vec<WordSpan>, content: &str) -> Vec<WordSpan> {
     let mut merged: Vec<WordSpan> = Vec::with_capacity(spans.len());
     for span in spans {
@@ -263,12 +300,6 @@ fn polish_spans(spans: Vec<WordSpan>, content: &str) -> Vec<WordSpan> {
         }
     }
     merged.retain(|s| !content[s.start as usize..s.end as usize].trim().is_empty());
-
-    let line_len = content.trim_end_matches(['\n', '\r']).len() as f32;
-    let emphasized_len: u32 = merged.iter().map(|s| s.end - s.start).sum();
-    if line_len > 0.0 && emphasized_len as f32 / line_len > WORD_DIFF_COVERAGE_MAX {
-        return Vec::new();
-    }
 
     merged
 }
@@ -427,6 +458,59 @@ mod word_span_tests {
                 );
             }
         }
+    }
+
+    // The dotfiles a113532 repro: a bullet whose head and tail survive while
+    // the middle grows by two whole lines. A per-line coverage verdict marked
+    // the lightly-changed lines and left the fully-added middle unmarked, so
+    // the biggest change read as untouched. The edit-vs-rewrite verdict is one
+    // per run: a run that reads as an edit emphasizes all its changed regions.
+    #[test]
+    fn an_edited_run_emphasizes_its_fully_added_middle_lines() {
+        let lines = vec![
+            del(
+                "- **Carried**: our corpus already answers the need. Cite where, and say which side\n",
+            ),
+            del("  answers it better; when the subject's side does, that difference is a gap\n"),
+            del("  observed here, judged under Import.\n"),
+            add("- **Carried**: our corpus already answers the need. Cite where, test the\n"),
+            add("  citation against the worst case the mechanism guarded (a mechanism guarding\n"),
+            add("  drift rather than a case is tested by comparison alone), and say which side\n"),
+            add("  answers the need better. A citation that fails its case, and a need the\n"),
+            add("  subject answers better, are both gaps observed here, judged under Import.\n"),
+        ];
+
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
+
+        let added = [
+            (4, "citation against the worst case the mechanism guarded"),
+            (5, "drift rather than a case is tested by comparison alone"),
+        ];
+        for (i, text) in added {
+            let marked = emphasized(&lines[i], &spans[i]).join("");
+            assert!(
+                marked.contains(text),
+                "added middle line {i} must emphasize {text:?}, got {marked:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rewrite_dominated_run_drops_its_small_edits_too() {
+        let lines = vec![
+            del("let total = 1;\n"),
+            del("The quick brown fox jumps over the lazy dog near the river bank.\n"),
+            add("let total = 2;\n"),
+            add("Metrics are flushed every thirty seconds unless the buffer fills.\n"),
+        ];
+
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
+
+        assert_eq!(
+            all_emphasized(&lines, &spans),
+            vec![Vec::<String>::new(); 4],
+            "a run that reads as a rewrite carries plain coloring throughout, not islands of marks"
+        );
     }
 
     #[test]
