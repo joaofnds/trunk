@@ -158,11 +158,14 @@ struct Block {
 }
 
 /// A direct-child leaf of a container (a table row or list item): its signature
-/// for the inner diff and its `data-sourcepos` value, which uniquely identifies its
-/// element in the sourcepos-annotated fragment so the tint lands on the right row.
+/// for the inner diff, its `data-sourcepos` value, which uniquely identifies its
+/// element in the sourcepos-annotated fragment so a tint or a word-marked
+/// replacement lands on the right row, and its raw (pre-sanitize) HTML, the
+/// word merge's input.
 struct Leaf {
     signature: String,
     sourcepos: String,
+    raw_html: String,
 }
 
 /// Diff two markdown documents, returning an aligned row per top-level block in
@@ -722,7 +725,21 @@ fn transition(out: &mut String, current: &mut Vec<String>, target: &[String]) {
 /// never straddle an element boundary), then wrap the run — reconstructing each
 /// unit's own context inside the wrapper so a struck `<code>`/`<strong>` keeps its
 /// tags and the fragment stays balanced.
+/// A changed run of nothing but whitespace is reflow, not content. Marking it
+/// paints a blank sliver on the screen; the caller emits it unmarked instead.
+fn run_is_whitespace(units: &[Unit]) -> bool {
+    units.iter().all(|u| u.text.trim().is_empty())
+}
+
 fn emit_run(out: &mut String, open: &mut Vec<String>, units: &[Unit], tag: &str, class: &str) {
+    if run_is_whitespace(units) {
+        for unit in units {
+            transition(out, open, &unit.context);
+            out.push_str(&unit.text);
+        }
+        return;
+    }
+
     transition(out, open, &[]);
     let _ = write!(out, "<{tag} class=\"{class}\">");
     let mut local: Vec<String> = Vec::new();
@@ -874,6 +891,16 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
 /// the caller then falls back to the shipped block-level `Removed`+`Added` pair.
 /// The output is UNsanitized; `changed_fragments` sanitizes it before it crosses IPC.
 fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
+    let (before_units, after_units, ops) = merge_units(before_raw, after_raw)?;
+    let merged = merge_emit(&ops, &before_units, &after_units);
+    merged_is_balanced(&merged).then_some(merged)
+}
+
+/// The guarded front half every word merge shares: size, token, and density
+/// fences, then units and their diff. `None` means the pair is not merge
+/// material and the caller falls back to its block- or leaf-level rendering.
+type MergeUnits = (Vec<Unit>, Vec<Unit>, Vec<similar::DiffOp>);
+fn merge_units(before_raw: &str, after_raw: &str) -> Option<MergeUnits> {
     if before_raw.len() > MAX_MERGE_BYTES || after_raw.len() > MAX_MERGE_BYTES {
         return None;
     }
@@ -888,8 +915,149 @@ fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
     let before_units = build_units(&before_tokens)?;
     let after_units = build_units(&after_tokens)?;
     let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &before_units, &after_units);
-    let merged = merge_emit(&ops, &before_units, &after_units);
-    merged_is_balanced(&merged).then_some(merged)
+    Some((before_units, after_units, ops))
+}
+
+/// Which copy of a `Changed` row a side-specific merge feeds.
+#[derive(Clone, Copy, PartialEq)]
+enum MergeSide {
+    Before,
+    After,
+}
+
+/// One copy's view of the word merge: `Equal` runs pass through from this
+/// side's units, this side's changed runs are marked (`del` on the before
+/// copy, `ins` on the after), and the other side's runs are omitted — the
+/// before copy shows what left, the after copy what arrived.
+fn merge_emit_one_side(
+    ops: &[similar::DiffOp],
+    before: &[Unit],
+    after: &[Unit],
+    side: MergeSide,
+) -> String {
+    let mut out = String::new();
+    let mut open: Vec<String> = Vec::new();
+    for op in ops {
+        match *op {
+            similar::DiffOp::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                let units = match side {
+                    MergeSide::Before => &before[old_index..old_index + len],
+                    MergeSide::After => &after[new_index..new_index + len],
+                };
+                for unit in units {
+                    transition(&mut out, &mut open, &unit.context);
+                    out.push_str(&unit.text);
+                }
+            }
+            similar::DiffOp::Delete {
+                old_index, old_len, ..
+            } if side == MergeSide::Before => emit_run(
+                &mut out,
+                &mut open,
+                &before[old_index..old_index + old_len],
+                "del",
+                "md-word-delete",
+            ),
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } if side == MergeSide::After => emit_run(
+                &mut out,
+                &mut open,
+                &after[new_index..new_index + new_len],
+                "ins",
+                "md-word-add",
+            ),
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => match side {
+                MergeSide::Before => emit_run(
+                    &mut out,
+                    &mut open,
+                    &before[old_index..old_index + old_len],
+                    "del",
+                    "md-word-delete",
+                ),
+                MergeSide::After => emit_run(
+                    &mut out,
+                    &mut open,
+                    &after[new_index..new_index + new_len],
+                    "ins",
+                    "md-word-add",
+                ),
+            },
+            similar::DiffOp::Delete { .. } | similar::DiffOp::Insert { .. } => {}
+        }
+    }
+    transition(&mut out, &mut open, &[]);
+    out
+}
+
+/// Word-merge one pair of container leaves into the two side-specific marked
+/// fragments, both balance-checked. `None` sends the pair back to the
+/// whole-leaf tint.
+fn leaf_word_merge(before_raw: &str, after_raw: &str) -> Option<(String, String)> {
+    let (before_units, after_units, ops) = merge_units(before_raw, after_raw)?;
+    let before_marked = merge_emit_one_side(&ops, &before_units, &after_units, MergeSide::Before);
+    let after_marked = merge_emit_one_side(&ops, &before_units, &after_units, MergeSide::After);
+    (merged_is_balanced(&before_marked) && merged_is_balanced(&after_marked))
+        .then_some((before_marked, after_marked))
+}
+
+/// Replace one leaf's whole element in a sourcepos-annotated container
+/// fragment, matched by its unique `data-sourcepos` and closed by scanning
+/// same-tag nesting (a list item can hold a nested list of more items).
+/// `None` when the element cannot be located; the caller falls back to the
+/// tint, which degrades gracefully rather than corrupt the fragment.
+fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Option<String> {
+    let needle = format!("data-sourcepos=\"{sourcepos}\"");
+    let attr = sourcepos_html.find(&needle)?;
+    let start = sourcepos_html[..attr].rfind('<')?;
+    let tag: String = sourcepos_html[start + 1..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if tag.is_empty() {
+        return None;
+    }
+
+    let open_marker = format!("<{tag}");
+    let close_marker = format!("</{tag}>");
+    let mut depth = 1usize;
+    let mut pos = start + open_marker.len();
+    while depth > 0 {
+        let rest = &sourcepos_html[pos..];
+        let next_open = rest.find(&open_marker).map(|i| {
+            let after = rest[i + open_marker.len()..].chars().next();
+            (i, matches!(after, Some(' ') | Some('>') | Some('/')))
+        });
+        let next_close = rest.find(&close_marker)?;
+        match next_open {
+            Some((i, true)) if i < next_close => {
+                depth += 1;
+                pos += i + open_marker.len();
+            }
+            Some((i, false)) if i < next_close => {
+                pos += i + open_marker.len();
+            }
+            _ => {
+                depth -= 1;
+                pos += next_close + close_marker.len();
+            }
+        }
+    }
+
+    let mut out = String::with_capacity(sourcepos_html.len() + replacement.len());
+    out.push_str(&sourcepos_html[..start]);
+    out.push_str(replacement);
+    out.push_str(&sourcepos_html[pos..]);
+    Some(out)
 }
 
 /// The before/after fragments for a `Changed` row, plus an optional inline
@@ -925,6 +1093,9 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
 
     let mut before_tints: Vec<(&str, &str)> = Vec::new();
     let mut after_tints: Vec<(&str, &str)> = Vec::new();
+    let mut before_frag = before.sourcepos_html.clone();
+    let mut after_frag = after.sourcepos_html.clone();
+    let mut word_marked = false;
     for op in similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs) {
         match op {
             similar::DiffOp::Equal { .. } => {}
@@ -948,21 +1119,57 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
                 new_index,
                 new_len,
             } => {
-                for l in &before.leaves[old_index..old_index + old_len] {
-                    before_tints.push((&l.sourcepos, "md-removed"));
-                }
-                for l in &after.leaves[new_index..new_index + new_len] {
-                    after_tints.push((&l.sourcepos, "md-added"));
+                // Positional pairs word-merge like a paragraph does; a pair
+                // the guards refuse, the uneven tail, and a pair whose
+                // element the splice cannot find keep the whole-leaf wash.
+                for k in 0..old_len.max(new_len) {
+                    let b = (k < old_len).then(|| &before.leaves[old_index + k]);
+                    let a = (k < new_len).then(|| &after.leaves[new_index + k]);
+                    let swapped = match (b, a) {
+                        (Some(b), Some(a)) => {
+                            try_leaf_swap(b, a, &mut before_frag, &mut after_frag)
+                        }
+                        _ => false,
+                    };
+                    if swapped {
+                        word_marked = true;
+                        continue;
+                    }
+                    if let Some(b) = b {
+                        before_tints.push((&b.sourcepos, "md-removed"));
+                    }
+                    if let Some(a) = a {
+                        after_tints.push((&a.sourcepos, "md-added"));
+                    }
                 }
             }
         }
     }
     ChangedFragments {
-        before_html: sanitize_html(&tint_leaves(&before.sourcepos_html, &before_tints)),
-        after_html: sanitize_html(&tint_leaves(&after.sourcepos_html, &after_tints)),
+        before_html: sanitize_html(&tint_leaves(&before_frag, &before_tints)),
+        after_html: sanitize_html(&tint_leaves(&after_frag, &after_tints)),
         word_html: None,
-        has_tints: !before_tints.is_empty() || !after_tints.is_empty(),
+        has_tints: !before_tints.is_empty() || !after_tints.is_empty() || word_marked,
     }
+}
+
+/// Word-merge one leaf pair and splice both marked copies into their
+/// fragments. Both splices must land or neither does: a half-applied pair
+/// would mark one copy and wash the other.
+fn try_leaf_swap(b: &Leaf, a: &Leaf, before_frag: &mut String, after_frag: &mut String) -> bool {
+    let Some((before_marked, after_marked)) = leaf_word_merge(&b.raw_html, &a.raw_html) else {
+        return false;
+    };
+    let Some(next_before) = replace_leaf(before_frag, &b.sourcepos, &before_marked) else {
+        return false;
+    };
+    let Some(next_after) = replace_leaf(after_frag, &a.sourcepos, &after_marked) else {
+        return false;
+    };
+
+    *before_frag = next_before;
+    *after_frag = next_after;
+    true
 }
 
 /// Inject an `md-*` class onto each leaf element in a sourcepos-annotated fragment,
@@ -1161,6 +1368,7 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                     .map(|c| Leaf {
                         signature: block_signature(c),
                         sourcepos: c.data.borrow().sourcepos.to_string(),
+                        raw_html: format_node(c, &options),
                     })
                     .collect();
                 (leaves, format_node(n, &options_sp), String::new())
@@ -1891,15 +2099,17 @@ mod tests {
 
     #[test]
     fn tinted_fragment_strips_sourcepos_and_keeps_only_the_tint_class() {
-        let before = "| a | b |\n|---|---|\n| 1 | 2 |";
-        let after = "| a | b |\n|---|---|\n| 9 | 2 |";
+        // The changed row is a rewrite (over the density fence), so it keeps
+        // the whole-leaf tint rather than word marks.
+        let before = "| quick brown fox jumps | keep |\n|---|---|\n| 1 | 2 |";
+        let after = "| totally different words here | keep |\n|---|---|\n| 1 | 2 |";
         let rows = diff_rows(before, after);
         let DiffRow::Changed { after_html, .. } = &rows[0] else {
             panic!("{rows:?}");
         };
         assert!(
             after_html.contains("md-added"),
-            "the after leaf tints added (Source parity), tint survives: {after_html}"
+            "the rewritten leaf tints added (Source parity), tint survives: {after_html}"
         );
         assert!(
             !after_html.contains("data-sourcepos"),
@@ -1921,7 +2131,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_table_tints_only_the_changed_row() {
+    fn changed_table_word_marks_only_the_changed_cell() {
         let before = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |";
         let after = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 99 |";
         let rows = diff_rows(before, after);
@@ -1939,28 +2149,30 @@ mod tests {
             after_html.contains("<table"),
             "table stays intact: {after_html}"
         );
-        assert_eq!(
-            after_html.matches("md-added").count(),
-            1,
-            "exactly the changed row tints added, not the whole table: {after_html}"
+        assert!(
+            after_html.contains(r#"<ins class="md-word-add">99</ins>"#),
+            "exactly the changed value is marked added inside its row: {after_html}"
         );
-        assert_eq!(
-            before_html.matches("md-removed").count(),
-            1,
-            "the before fragment tints the same row removed: {before_html}"
+        assert!(
+            before_html.contains(r#"<del class="md-word-delete">4</del>"#),
+            "the before fragment marks the old value removed: {before_html}"
+        );
+        assert!(
+            !after_html.contains("md-added") && !before_html.contains("md-removed"),
+            "a cleanly pairing row carries word marks, not the whole-row wash"
         );
         assert!(
             word_html.is_none(),
-            "a container never word-merges (leaf-tint only): {word_html:?}"
+            "a container still has no merged single copy: {word_html:?}"
         );
     }
 
     #[test]
-    fn changed_table_keeps_before_and_after_as_separate_leaf_tinted_fragments() {
-        // A container's Changed carries the before table (removed rows, red) and
-        // the after table (added rows, green) as separate fields — the split view
-        // pairs them into columns, inline stacks them. word_html stays None (row
-        // interleave inside one <table> is P3).
+    fn changed_table_keeps_before_and_after_as_separate_fragments() {
+        // A container's Changed carries the before table and the after table
+        // as separate fields — the split view pairs them into columns, inline
+        // stacks them. word_html stays None (row interleave inside one
+        // <table> is TRUNK-72's merged view, not this field).
         let before = "| a | b |\n|---|---|\n| 1 | 2 |";
         let after = "| a | b |\n|---|---|\n| 9 | 2 |";
         let rows = diff_rows(before, after);
@@ -1979,18 +2191,18 @@ mod tests {
             panic!("a one-cell table edit is a Changed row: {rows:?}");
         };
         assert!(
-            before_html.contains("md-removed") && before_html.contains(">1<"),
-            "before fragment: removed-tinted row with the old value: {before_html}"
+            before_html.contains("md-word-delete") && before_html.contains(">1<"),
+            "before fragment: the old value word-marked in place: {before_html}"
         );
         assert!(
-            after_html.contains("md-added") && after_html.contains(">9<"),
-            "after fragment: added-tinted row with the new value: {after_html}"
+            after_html.contains("md-word-add") && after_html.contains(">9<"),
+            "after fragment: the new value word-marked in place: {after_html}"
         );
-        assert!(word_html.is_none(), "no word merge for a container");
+        assert!(word_html.is_none(), "no merged single copy for a container");
     }
 
     #[test]
-    fn changed_list_tints_only_the_changed_item() {
+    fn changed_list_word_marks_only_the_changed_item() {
         let before = "- keep one\n- keep two\n- old third";
         let after = "- keep one\n- keep two\n- new third";
         let rows = diff_rows(before, after);
@@ -1998,10 +2210,149 @@ mod tests {
         let DiffRow::Changed { after_html, .. } = &rows[0] else {
             panic!("a one-item list edit is a Changed row: {rows:?}");
         };
+        assert!(
+            after_html.contains(r#"<ins class="md-word-add">new</ins>"#),
+            "exactly the changed word is marked inside the item: {after_html}"
+        );
+        assert!(
+            !after_html.contains("md-added"),
+            "a cleanly pairing item carries word marks, not the item wash: {after_html}"
+        );
+    }
+
+    // The dotfiles baccec9 repro, rendered view: one clause removed from the
+    // first bullet washed the whole item red/green. A cleanly pairing leaf
+    // now carries word marks inside the item instead.
+    #[test]
+    fn changed_list_item_word_marks_exactly_the_removed_clause() {
+        let before = "- On conflict, the more specific rule governs. The repo's own file wins over this skill. A language file wins over this core file.\n- Resolve conflicts out loud.\n- Apply these patterns in proportion.";
+        let after = "- On conflict, the more specific rule governs. A language file wins over this core file.\n- Resolve conflicts out loud.\n- Apply these patterns in proportion.";
+        let rows = diff_rows(before, after);
+        assert_eq!(rows.len(), 1, "the whole list is one row: {rows:?}");
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("a one-clause list edit is a Changed row: {rows:?}");
+        };
+
+        assert!(
+            before_html.contains("md-word-delete"),
+            "the removed clause carries a word mark in the before copy: {before_html}"
+        );
+        assert!(
+            !before_html.contains("md-removed"),
+            "no whole-item wash when the leaf word-merges: {before_html}"
+        );
+        let marked = before_html
+            .split("md-word-delete")
+            .nth(1)
+            .expect("a marked clause");
+        assert!(
+            marked.contains("repo's own file wins over this skill"),
+            "the mark covers the removed clause: {before_html}"
+        );
+        assert!(
+            !after_html.contains("md-word-add") && !after_html.contains("md-added"),
+            "a pure deletion leaves the after copy clean: {after_html}"
+        );
+    }
+
+    // The reflowed real repro moves line breaks around; the resulting
+    // whitespace-only del/ins slivers must not survive to the screen.
+    #[test]
+    fn whitespace_only_slivers_never_reach_a_word_mark() {
+        let before = "- On conflict, the more specific rule governs. The repo's own AGENTS.md or CLAUDE.md\n  wins over this skill. A language file wins over this core file. The doctrine holds\n  the reasons at principle level and wins where this skill seems to differ from it.\n- Resolve conflicts out loud.";
+        let after = "- On conflict, the more specific rule governs. A language file wins over this core\n  file. The doctrine holds the reasons at principle level and wins where this skill\n  seems to differ from it.\n- Resolve conflicts out loud.";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("the edited list is a Changed row: {rows:?}");
+        };
+
+        for html in [before_html, after_html] {
+            for text in regex_lite_marks(html) {
+                assert!(
+                    !text.trim().is_empty(),
+                    "whitespace-only mark {text:?} must not survive: {html}"
+                );
+            }
+        }
+    }
+
+    /// The text inside every del/ins word mark of a fragment.
+    fn regex_lite_marks(html: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for open in [
+            "<del class=\"md-word-delete\">",
+            "<ins class=\"md-word-add\">",
+        ] {
+            let close = if open.starts_with("<del") {
+                "</del>"
+            } else {
+                "</ins>"
+            };
+            let mut rest = html;
+            while let Some(i) = rest.find(open) {
+                rest = &rest[i + open.len()..];
+                let Some(j) = rest.find(close) else { break };
+                out.push(rest[..j].to_string());
+                rest = &rest[j..];
+            }
+        }
+        out
+    }
+
+    // A leaf rewritten past the density fence keeps the whole-item wash: no
+    // emphasis is better than wrong emphasis.
+    #[test]
+    fn a_rewritten_leaf_keeps_the_whole_item_wash() {
+        let before = "- keep one\n- the quick brown fox jumps over the lazy dog";
+        let after = "- keep one\n- metrics are flushed every thirty seconds regardless";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("a rewritten item is a Changed row: {rows:?}");
+        };
+
+        assert!(
+            before_html.contains("md-removed") && after_html.contains("md-added"),
+            "a rewrite keeps the leaf wash: {before_html} / {after_html}"
+        );
+        assert!(
+            !before_html.contains("md-word-delete") && !after_html.contains("md-word-add"),
+            "no word marks on a rewrite: {before_html} / {after_html}"
+        );
+    }
+
+    // AC2: whole items inserted or deleted keep the per-item tint.
+    #[test]
+    fn an_inserted_item_keeps_the_per_item_tint() {
+        let before = "- keep one\n- keep two";
+        let after = "- keep one\n- brand new item\n- keep two";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("an inserted item is a Changed row: {rows:?}");
+        };
+
         assert_eq!(
             after_html.matches("md-added").count(),
             1,
-            "exactly the changed item tints added: {after_html}"
+            "exactly the inserted item tints added: {after_html}"
+        );
+        assert!(
+            !after_html.contains("md-word-add"),
+            "an inserted item is a tint, not word marks: {after_html}"
         );
     }
 
@@ -2689,7 +3040,7 @@ mod tests {
     }
 
     #[test]
-    fn frontmatter_only_change_shows_as_a_changed_table_row_added_tint() {
+    fn frontmatter_only_change_marks_the_changed_value() {
         let before = "---\nname: doc\ndescription: old summary\n---\n\n# Body\n\nsame para";
         let after = "---\nname: doc\ndescription: new summary\n---\n\n# Body\n\nsame para";
         let rows = diff_rows(before, after);
@@ -2701,13 +3052,14 @@ mod tests {
             "front matter renders as a table: {after_html}"
         );
         assert!(
-            after_html.contains("new summary"),
+            after_html.contains("new summary")
+                || after_html.contains(r#"<ins class="md-word-add">new</ins>"#),
             "shows the changed value: {after_html}"
         );
         assert_eq!(
-            after_html.matches("md-added").count(),
+            after_html.matches("md-word-add").count(),
             1,
-            "only the changed field's row tints added: {after_html}"
+            "only the changed field's value is marked added: {after_html}"
         );
         assert!(
             rows.iter()
