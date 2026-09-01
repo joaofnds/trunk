@@ -6,6 +6,7 @@
 
 use crate::git::types::{DiffLine, DiffOrigin, WordSpan};
 use similar::{ChangeTag, TextDiff};
+use std::time::{Duration, Instant};
 
 /// A run's worth of old or new text may not be word-diffed past these bounds:
 /// beyond them the content is a rewrite or generated text, where emphasis is
@@ -19,13 +20,22 @@ const WORD_DIFF_COVERAGE_MAX: f32 = 0.7;
 /// visual confetti; bridging it yields fewer, larger spans.
 const WORD_DIFF_GAP_BRIDGE_MAX: u32 = 2;
 
-/// Compute word spans for all Delete/Add lines within a hunk.
+/// The refinement budget one file shares across all its hunks. A file whose
+/// budget runs out finishes with plain coloring on the remaining runs rather
+/// than arriving seconds late: runs bound their own cost per run, so without
+/// a shared budget a many-run file stacks them into seconds.
+pub fn word_diff_budget() -> Instant {
+    Instant::now() + Duration::from_millis(500)
+}
+
+/// Compute word spans for all Delete/Add lines within a hunk, spending no
+/// refinement time past `deadline`.
 /// Returns a Vec parallel to `lines`, each entry being the word_spans for that
 /// line index. Each delete run and the add run that follows it are diffed as
 /// two whole texts (the way git --word-diff, delta, and VS Code do), so an
 /// edit that reflows lines still emphasizes only the words that changed.
 /// Positional per-line pairing emphasized nearly everything on reflowed prose.
-pub fn compute_word_spans_for_hunk(lines: &[DiffLine]) -> Vec<Vec<WordSpan>> {
+pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Vec<Vec<WordSpan>> {
     let mut word_spans: Vec<Vec<WordSpan>> = vec![Vec::new(); lines.len()];
     let mut i = 0;
 
@@ -47,7 +57,13 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine]) -> Vec<Vec<WordSpan>> {
         if add_start == del_start || i == add_start {
             continue;
         }
-        emphasize_run(lines, del_start..add_start, add_start..i, &mut word_spans);
+        emphasize_run(
+            lines,
+            del_start..add_start,
+            add_start..i,
+            deadline,
+            &mut word_spans,
+        );
     }
 
     word_spans
@@ -59,11 +75,13 @@ fn emphasize_run(
     lines: &[DiffLine],
     del: std::ops::Range<usize>,
     add: std::ops::Range<usize>,
+    deadline: Instant,
     word_spans: &mut [Vec<WordSpan>],
 ) {
     let run_lines = || lines[del.clone()].iter().chain(lines[add.clone()].iter());
     let run_bytes: usize = run_lines().map(|l| l.content.len()).sum();
-    if run_bytes > WORD_DIFF_RUN_BYTES_MAX
+    if deadline <= Instant::now()
+        || run_bytes > WORD_DIFF_RUN_BYTES_MAX
         || run_lines().any(|l| l.content.len() > WORD_DIFF_LINE_BYTES_MAX)
     {
         return;
@@ -80,7 +98,6 @@ fn emphasize_run(
     let diff = TextDiff::from_lines(old_text.as_str(), new_text.as_str());
     let mut options = similar::InlineChangeOptions::new();
     options.semantic_cleanup(true);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
 
     for op in diff.ops() {
         for change in diff.iter_inline_changes_with_options_deadline(op, options, Some(deadline)) {
@@ -189,7 +206,7 @@ mod word_span_tests {
             add("expect(cat.permissions.length).toBe(63);\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines);
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
 
         assert_eq!(emphasized(&lines[0], &spans[0]), vec!["64"]);
         assert_eq!(emphasized(&lines[1], &spans[1]), vec!["63"]);
@@ -199,7 +216,7 @@ mod word_span_tests {
     fn emphasizes_changed_words_on_both_sides() {
         let lines = vec![del("const a = foo(1);\n"), add("const b = foo(2);\n")];
 
-        let spans = compute_word_spans_for_hunk(&lines);
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
 
         assert_eq!(emphasized(&lines[0], &spans[0]), vec!["a", "1"]);
         assert_eq!(emphasized(&lines[1], &spans[1]), vec!["b", "2"]);
@@ -230,7 +247,7 @@ mod word_span_tests {
             add("  seems to differ from it.\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines);
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
 
         for (i, line) in lines.iter().enumerate().skip(3) {
             assert_eq!(
@@ -274,7 +291,7 @@ mod word_span_tests {
             add("  seems to differ from it.\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines);
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
 
         for (line, line_spans) in lines.iter().zip(spans.iter()) {
             for text in emphasized(line, line_spans) {
@@ -296,7 +313,7 @@ mod word_span_tests {
             add("Retry budgets cap exponential backoff so queues drain before clients give up.\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines);
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
 
         assert_eq!(
             all_emphasized(&lines, &spans),
@@ -306,10 +323,26 @@ mod word_span_tests {
     }
 
     #[test]
+    fn a_spent_budget_yields_plain_coloring_instead_of_late_emphasis() {
+        let lines = vec![
+            del("expect(cat.permissions.length).toBe(64);\n"),
+            add("expect(cat.permissions.length).toBe(63);\n"),
+        ];
+
+        let spans = compute_word_spans_for_hunk(&lines, Instant::now());
+
+        assert_eq!(
+            all_emphasized(&lines, &spans),
+            vec![Vec::<String>::new(); 2],
+            "a file whose refinement budget is spent gets no further emphasis"
+        );
+    }
+
+    #[test]
     fn unpaired_runs_get_no_emphasis() {
         let lines = vec![del("gone\n"), del("also gone\n")];
 
-        let spans = compute_word_spans_for_hunk(&lines);
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
 
         assert_eq!(
             all_emphasized(&lines, &spans),

@@ -416,8 +416,9 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
             .as_deref()
             .map(|text| build_side_lines(text, ext, &new_needed));
 
+        let word_diff_deadline = crate::git::word_spans::word_diff_budget();
         for hunk in &mut fd.hunks {
-            let word_spans_per_line = compute_word_spans_for_hunk(&hunk.lines);
+            let word_spans_per_line = compute_word_spans_for_hunk(&hunk.lines, word_diff_deadline);
             for (i, line) in hunk.lines.iter_mut().enumerate() {
                 let ws = &word_spans_per_line[i];
                 let syntax_tokens =
