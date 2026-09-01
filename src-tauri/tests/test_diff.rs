@@ -470,6 +470,40 @@ fn ambiguous_slider_lands_on_the_boundary_git_cli_picks() {
 }
 
 #[test]
+fn reflowed_paragraph_lines_carry_their_partner() {
+    let old = "- On conflict, the more specific rule governs. The repo's own AGENTS.md or CLAUDE.md\n  wins over this skill. A language file wins over this core file. The doctrine holds\n  the reasons at principle level and wins where this skill seems to differ from it.\n";
+    let new = "- On conflict, the more specific rule governs. A language file wins over this core\n  file. The doctrine holds the reasons at principle level and wins where this skill\n  seems to differ from it.\n";
+    let ctx = TestContext::builder()
+        .with_file("core.md", old)
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("core.md"), new).unwrap();
+
+    let file_diffs = ctx.diff_unstaged_enriched("core.md").expect("diff failed");
+    let pairings: Vec<_> = file_diffs[0].hunks[0]
+        .lines
+        .iter()
+        .filter(|l| !matches!(l.origin, trunk_lib::git::types::DiffOrigin::Context))
+        .map(|l| l.pairing)
+        .collect();
+
+    use trunk_lib::git::types::LinePairing;
+    assert_eq!(
+        pairings,
+        vec![
+            LinePairing::Partner { line: 3 },
+            LinePairing::Partner { line: 4 },
+            LinePairing::Partner { line: 5 },
+            LinePairing::Partner { line: 0 },
+            LinePairing::Partner { line: 1 },
+            LinePairing::Partner { line: 2 },
+        ],
+        "each reflowed line names its homologous counterpart"
+    );
+}
+
+#[test]
 fn word_span_basic_pair() {
     let ctx = TestContext::builder()
         .with_file("greet.txt", "hello world\n")

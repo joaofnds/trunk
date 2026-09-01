@@ -4,8 +4,8 @@
 //! texts (the way git --word-diff, delta, and VS Code do), so an edit that
 //! reflows lines still emphasizes only the words that changed.
 
-use crate::git::types::{DiffLine, DiffOrigin, WordSpan};
-use similar::ChangeTag;
+use crate::git::types::{DiffLine, DiffOrigin, LinePairing, WordSpan};
+use similar::{ChangeTag, DiffTag};
 use std::time::{Duration, Instant};
 
 /// A run's worth of old or new text may not be word-diffed past these bounds:
@@ -28,19 +28,29 @@ pub fn word_diff_budget() -> Instant {
     Instant::now() + Duration::from_millis(500)
 }
 
-/// Compute word spans for all Delete/Add lines within a hunk, spending no
-/// refinement time past `deadline`.
-/// Returns a Vec parallel to `lines`, each entry being the word_spans for that
-/// line index. Each delete run and the add run that follows it are diffed as
-/// two whole texts (the way git --word-diff, delta, and VS Code do), so an
-/// edit that reflows lines still emphasizes only the words that changed.
-/// Positional per-line pairing emphasized nearly everything on reflowed prose.
-pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Vec<Vec<WordSpan>> {
-    let mut word_spans: Vec<Vec<WordSpan>> = vec![Vec::new(); lines.len()];
+/// What the run-level word diff learned about a hunk: the emphasized spans
+/// per line, and how the split view should seat each line (`LinePairing`).
+pub struct HunkWordDiff {
+    pub spans: Vec<Vec<WordSpan>>,
+    pub pairing: Vec<LinePairing>,
+}
+
+/// Word-diff all Delete/Add runs within a hunk, spending no refinement time
+/// past `deadline`. Both result Vecs are parallel to `lines`.
+/// Each delete run and the add run that follows it are diffed as two whole
+/// texts (the way git --word-diff, delta, and VS Code do), so an edit that
+/// reflows lines still emphasizes only the words that changed. The same diff
+/// decides the pairing; positional per-line pairing emphasized nearly
+/// everything on reflowed prose and seated unrelated lines side by side.
+pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> HunkWordDiff {
+    let mut result = HunkWordDiff {
+        spans: vec![Vec::new(); lines.len()],
+        pairing: vec![LinePairing::Unknown; lines.len()],
+    };
     let mut i = 0;
 
     while i < lines.len() {
-        if !matches!(lines[i].origin, DiffOrigin::Delete) {
+        if matches!(lines[i].origin, DiffOrigin::Context) {
             i += 1;
             continue;
         }
@@ -54,7 +64,10 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Vec
             i += 1;
         }
 
-        if i == add_start {
+        if del_start == add_start || add_start == i {
+            for pairing in &mut result.pairing[del_start..i] {
+                *pairing = LinePairing::Alone;
+            }
             continue;
         }
         emphasize_run(
@@ -62,11 +75,11 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Vec
             del_start..add_start,
             add_start..i,
             deadline,
-            &mut word_spans,
+            &mut result,
         );
     }
 
-    word_spans
+    result
 }
 
 /// Word-diff one delete run against the add run that follows it and write the
@@ -76,7 +89,7 @@ fn emphasize_run(
     del: std::ops::Range<usize>,
     add: std::ops::Range<usize>,
     deadline: Instant,
-    word_spans: &mut [Vec<WordSpan>],
+    result: &mut HunkWordDiff,
 ) {
     let run_lines = || lines[del.clone()].iter().chain(lines[add.clone()].iter());
     let run_bytes: usize = run_lines().map(|l| l.content.len()).sum();
@@ -102,6 +115,7 @@ fn emphasize_run(
     options.semantic_cleanup(true);
 
     for op in diff.ops() {
+        let mut op_has_emphasis = false;
         for change in diff.iter_inline_changes_with_options_deadline(op, options, Some(deadline)) {
             let line_idx = match change.tag() {
                 ChangeTag::Delete => change.old_index().map(|k| del.start + k),
@@ -115,6 +129,7 @@ fn emphasize_run(
             for (emphasized, segment) in change.values() {
                 let len = segment.len() as u32;
                 if *emphasized && len > 0 {
+                    op_has_emphasis = true;
                     spans.push(WordSpan {
                         start: offset,
                         end: offset + len,
@@ -124,8 +139,54 @@ fn emphasize_run(
                 offset += len;
             }
 
-            word_spans[line_idx] = polish_spans(spans, &lines[line_idx].content);
+            result.spans[line_idx] = polish_spans(spans, &lines[line_idx].content);
         }
+
+        pair_op_lines(op, op_has_emphasis, &del, &add, &mut result.pairing);
+    }
+}
+
+/// Seat one op's lines. `Equal` lines are identical across the runs and pair
+/// outright. A `Replace` whose refinement produced emphasis pairs its lines
+/// positionally within the op — the refinement found shared words, so the
+/// lines are homologous — with the uneven tail left alone; a refused `Replace`
+/// (similar's ratio gate found the sides unrelated) leaves every line alone,
+/// so the split view never seats unrelated lines side by side. One-sided ops
+/// have nothing to pair with.
+fn pair_op_lines(
+    op: &similar::DiffOp,
+    op_has_emphasis: bool,
+    del: &std::ops::Range<usize>,
+    add: &std::ops::Range<usize>,
+    pairing: &mut [LinePairing],
+) {
+    let old = op.old_range();
+    let new = op.new_range();
+    let paired = match op.tag() {
+        DiffTag::Equal => old.len(),
+        DiffTag::Replace if op_has_emphasis => old.len().min(new.len()),
+        DiffTag::Replace | DiffTag::Delete | DiffTag::Insert => 0,
+    };
+
+    for k in 0..old.len() {
+        let old_idx = del.start + old.start + k;
+        pairing[old_idx] = if k < paired {
+            LinePairing::Partner {
+                line: (add.start + new.start + k) as u32,
+            }
+        } else {
+            LinePairing::Alone
+        };
+    }
+    for k in 0..new.len() {
+        let new_idx = add.start + new.start + k;
+        pairing[new_idx] = if k < paired {
+            LinePairing::Partner {
+                line: (del.start + old.start + k) as u32,
+            }
+        } else {
+            LinePairing::Alone
+        };
     }
 }
 
@@ -172,6 +233,7 @@ mod word_span_tests {
             old_lineno: Some(1),
             new_lineno: None,
             spans: vec![],
+            pairing: LinePairing::Unknown,
         }
     }
 
@@ -182,6 +244,7 @@ mod word_span_tests {
             old_lineno: None,
             new_lineno: Some(1),
             spans: vec![],
+            pairing: LinePairing::Unknown,
         }
     }
 
@@ -208,7 +271,7 @@ mod word_span_tests {
             add("expect(cat.permissions.length).toBe(63);\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
 
         assert_eq!(emphasized(&lines[0], &spans[0]), vec!["64"]);
         assert_eq!(emphasized(&lines[1], &spans[1]), vec!["63"]);
@@ -218,7 +281,7 @@ mod word_span_tests {
     fn emphasizes_changed_words_on_both_sides() {
         let lines = vec![del("const a = foo(1);\n"), add("const b = foo(2);\n")];
 
-        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
 
         assert_eq!(emphasized(&lines[0], &spans[0]), vec!["a", "1"]);
         assert_eq!(emphasized(&lines[1], &spans[1]), vec!["b", "2"]);
@@ -249,7 +312,7 @@ mod word_span_tests {
             add("  seems to differ from it.\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
 
         for (i, line) in lines.iter().enumerate().skip(3) {
             assert_eq!(
@@ -293,7 +356,7 @@ mod word_span_tests {
             add("  seems to differ from it.\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
 
         for (line, line_spans) in lines.iter().zip(spans.iter()) {
             for text in emphasized(line, line_spans) {
@@ -315,12 +378,104 @@ mod word_span_tests {
             add("Retry budgets cap exponential backoff so queues drain before clients give up.\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
 
         assert_eq!(
             all_emphasized(&lines, &spans),
             vec![Vec::<String>::new(); 4],
             "dissimilar lines must show plain add/delete coloring, never scattered emphasis"
+        );
+    }
+
+    fn pairings(lines: &[DiffLine], deadline: Instant) -> Vec<LinePairing> {
+        compute_word_spans_for_hunk(lines, deadline).pairing
+    }
+
+    #[test]
+    fn reflowed_prose_pairs_each_line_with_its_reflowed_counterpart() {
+        let lines = vec![
+            del(
+                "- On conflict, the more specific rule governs. The repo's own AGENTS.md or CLAUDE.md\n",
+            ),
+            del(
+                "  wins over this skill. A language file wins over this core file. The doctrine holds\n",
+            ),
+            del(
+                "  the reasons at principle level and wins where this skill seems to differ from it.\n",
+            ),
+            add(
+                "- On conflict, the more specific rule governs. A language file wins over this core\n",
+            ),
+            add(
+                "  file. The doctrine holds the reasons at principle level and wins where this skill\n",
+            ),
+            add("  seems to differ from it.\n"),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![
+                LinePairing::Partner { line: 3 },
+                LinePairing::Partner { line: 4 },
+                LinePairing::Partner { line: 5 },
+                LinePairing::Partner { line: 0 },
+                LinePairing::Partner { line: 1 },
+                LinePairing::Partner { line: 2 },
+            ]
+        );
+    }
+
+    #[test]
+    fn dense_rewrite_lines_stay_alone() {
+        let lines = vec![
+            del("The quick brown fox jumps over the lazy dog near the river bank today.\n"),
+            del("Server configuration lives in a YAML file loaded at startup by the daemon.\n"),
+            add("Metrics are flushed every thirty seconds unless the buffer fills up first.\n"),
+            add("Retry budgets cap exponential backoff so queues drain before clients give up.\n"),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![LinePairing::Alone; 4]
+        );
+    }
+
+    #[test]
+    fn a_one_sided_run_is_alone() {
+        let lines = vec![del("gone\n"), del("also gone\n")];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![LinePairing::Alone; 2]
+        );
+    }
+
+    #[test]
+    fn a_guarded_run_leaves_pairing_unknown() {
+        let long = "x".repeat(600) + "\n";
+        let lines = vec![del(&long), add(&long.replace('x', "y"))];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![LinePairing::Unknown; 2]
+        );
+    }
+
+    #[test]
+    fn leftover_lines_of_an_uneven_replace_stay_alone() {
+        let lines = vec![
+            del("let total = sum(values);\n"),
+            del("return total;\n"),
+            add("let total = sum(values) + 1;\n"),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![
+                LinePairing::Partner { line: 2 },
+                LinePairing::Alone,
+                LinePairing::Partner { line: 0 },
+            ]
         );
     }
 
@@ -331,7 +486,7 @@ mod word_span_tests {
             add("expect(cat.permissions.length).toBe(63);\n"),
         ];
 
-        let spans = compute_word_spans_for_hunk(&lines, Instant::now());
+        let spans = compute_word_spans_for_hunk(&lines, Instant::now()).spans;
 
         assert_eq!(
             all_emphasized(&lines, &spans),
@@ -344,7 +499,7 @@ mod word_span_tests {
     fn unpaired_runs_get_no_emphasis() {
         let lines = vec![del("gone\n"), del("also gone\n")];
 
-        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget());
+        let spans = compute_word_spans_for_hunk(&lines, word_diff_budget()).spans;
 
         assert_eq!(
             all_emphasized(&lines, &spans),

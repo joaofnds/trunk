@@ -47,7 +47,13 @@ export function pairLines(lines: DiffLine[]): PairedRow[] {
 			i++;
 		}
 
-		// Pair them up, phantom rows fill the shorter side
+		if (blockHasPairingInfo(deletes, adds)) {
+			pairByPartner(deletes, adds, rows);
+			continue;
+		}
+
+		// No word-diff verdict for this block: pair positionally, phantom
+		// rows fill the shorter side.
 		const maxLen = Math.max(deletes.length, adds.length);
 		for (let j = 0; j < maxLen; j++) {
 			rows.push({
@@ -58,6 +64,59 @@ export function pairLines(lines: DiffLine[]): PairedRow[] {
 	}
 
 	return rows;
+}
+
+type Seat = { line: DiffLine; lineIdx: number };
+
+function blockHasPairingInfo(deletes: Seat[], adds: Seat[]): boolean {
+	return [...deletes, ...adds].some(
+		(seat) => seat.line.pairing && seat.line.pairing.kind !== "unknown",
+	);
+}
+
+function partnerOf(seat: Seat): number | null {
+	return seat.line.pairing?.kind === "partner" ? seat.line.pairing.line : null;
+}
+
+/**
+ * Seat a block by the word diff's verdict: partnered lines share a row,
+ * alone lines sit against a phantom. Partner indices are monotonic on both
+ * sides (they come from ordered diff ops), so a two-pointer merge preserves
+ * each side's order.
+ */
+function pairByPartner(deletes: Seat[], adds: Seat[], rows: PairedRow[]): void {
+	let d = 0;
+	let a = 0;
+
+	while (d < deletes.length || a < adds.length) {
+		const del = d < deletes.length ? deletes[d] : null;
+		const add = a < adds.length ? adds[a] : null;
+
+		if (del && partnerOf(del) === null) {
+			rows.push({ left: del, right: null });
+			d++;
+			continue;
+		}
+		if (add && partnerOf(add) === null) {
+			rows.push({ left: null, right: add });
+			a++;
+			continue;
+		}
+		if (del && add) {
+			rows.push({ left: del, right: add });
+			d++;
+			a++;
+			continue;
+		}
+
+		if (del) {
+			rows.push({ left: del, right: null });
+			d++;
+		} else if (add) {
+			rows.push({ left: null, right: add });
+			a++;
+		}
+	}
 }
 
 /**

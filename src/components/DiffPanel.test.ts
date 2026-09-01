@@ -1272,6 +1272,74 @@ describe("pairLines", () => {
 		expect(rows[1].left).toBeNull();
 		expect(rows[1].right?.line.content).toBe("b");
 	});
+
+	it("seats each line beside its partner when the word diff paired them", () => {
+		const lines: DiffLine[] = [
+			{
+				origin: "Delete",
+				content: "intro sentence",
+				old_lineno: 1,
+				new_lineno: null,
+				spans: [],
+				pairing: { kind: "alone" },
+			},
+			{
+				origin: "Delete",
+				content: "let total = sum(values);",
+				old_lineno: 2,
+				new_lineno: null,
+				spans: [],
+				pairing: { kind: "partner", line: 2 },
+			},
+			{
+				origin: "Add",
+				content: "let total = sum(values) + 1;",
+				old_lineno: null,
+				new_lineno: 1,
+				spans: [],
+				pairing: { kind: "partner", line: 1 },
+			},
+		];
+
+		const rows = pairLines(lines);
+
+		expect(rows).toHaveLength(2);
+		expect(rows[0].left?.line.content).toBe("intro sentence");
+		expect(rows[0].right).toBeNull();
+		expect(rows[1].left?.line.content).toBe("let total = sum(values);");
+		expect(rows[1].right?.line.content).toBe("let total = sum(values) + 1;");
+		expect(rows[1].left?.lineIdx).toBe(1);
+		expect(rows[1].right?.lineIdx).toBe(2);
+	});
+
+	it("never seats alone lines side by side", () => {
+		const lines: DiffLine[] = [
+			{
+				origin: "Delete",
+				content: "old prose, fully rewritten",
+				old_lineno: 1,
+				new_lineno: null,
+				spans: [],
+				pairing: { kind: "alone" },
+			},
+			{
+				origin: "Add",
+				content: "new prose, nothing shared",
+				old_lineno: null,
+				new_lineno: 1,
+				spans: [],
+				pairing: { kind: "alone" },
+			},
+		];
+
+		const rows = pairLines(lines);
+
+		expect(rows).toHaveLength(2);
+		expect(rows[0].left?.line.content).toBe("old prose, fully rewritten");
+		expect(rows[0].right).toBeNull();
+		expect(rows[1].left).toBeNull();
+		expect(rows[1].right?.line.content).toBe("new prose, nothing shared");
+	});
 });
 
 // ---- VIEW-02: Split view layout ----

@@ -4,7 +4,7 @@ use crate::error::TrunkError;
 use crate::git::syntax;
 use crate::git::types::{
     CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
-    SyntaxToken,
+    LinePairing, SyntaxToken,
 };
 use crate::git::word_spans::compute_word_spans_for_hunk;
 use crate::state::RepoState;
@@ -230,6 +230,7 @@ fn walk_diff(
                     old_lineno,
                     new_lineno,
                     spans: vec![],
+                    pairing: LinePairing::Unknown,
                 });
             }
             true
@@ -418,9 +419,10 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
 
         let word_diff_deadline = crate::git::word_spans::word_diff_budget();
         for hunk in &mut fd.hunks {
-            let word_spans_per_line = compute_word_spans_for_hunk(&hunk.lines, word_diff_deadline);
+            let word_diff = compute_word_spans_for_hunk(&hunk.lines, word_diff_deadline);
             for (i, line) in hunk.lines.iter_mut().enumerate() {
-                let ws = &word_spans_per_line[i];
+                line.pairing = word_diff.pairing[i];
+                let ws = &word_diff.spans[i];
                 let syntax_tokens =
                     pick_side_line(line, old_lines.as_ref(), new_lines.as_ref(), new_available)
                         .filter(|sl| sl.content == strip_diff_newline(&line.content))
@@ -500,6 +502,7 @@ fn walk_diff_raw_for_bench(
                     old_lineno: line.old_lineno(),
                     new_lineno: line.new_lineno(),
                     spans: vec![],
+                    pairing: LinePairing::Unknown,
                 });
             }
             true
@@ -937,6 +940,7 @@ mod enrich_tests {
                 old_lineno,
                 new_lineno,
                 spans: vec![],
+                pairing: LinePairing::Unknown,
             }],
         }
     }
@@ -983,6 +987,7 @@ mod enrich_tests {
                         old_lineno: Some(1),
                         new_lineno: None,
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                     DiffLine {
                         origin: DiffOrigin::Add,
@@ -990,6 +995,7 @@ mod enrich_tests {
                         old_lineno: None,
                         new_lineno: Some(1),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                 ],
             }],
@@ -1046,6 +1052,7 @@ mod enrich_tests {
                         old_lineno: Some(3),
                         new_lineno: Some(3),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                     DiffLine {
                         origin: DiffOrigin::Add,
@@ -1053,6 +1060,7 @@ mod enrich_tests {
                         old_lineno: None,
                         new_lineno: Some(4),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                 ],
             }],
@@ -1110,6 +1118,7 @@ mod enrich_tests {
                         old_lineno: Some(2),
                         new_lineno: None,
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                     DiffLine {
                         origin: DiffOrigin::Add,
@@ -1117,6 +1126,7 @@ mod enrich_tests {
                         old_lineno: None,
                         new_lineno: Some(2),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                 ],
             }],
@@ -1177,6 +1187,7 @@ mod enrich_tests {
                         old_lineno: Some(2),
                         new_lineno: Some(2),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     }],
                 },
                 DiffHunk {
@@ -1191,6 +1202,7 @@ mod enrich_tests {
                         old_lineno: Some(5),
                         new_lineno: Some(5),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     }],
                 },
             ],
@@ -1244,6 +1256,7 @@ mod enrich_tests {
                         old_lineno: Some(1),
                         new_lineno: None,
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                     DiffLine {
                         origin: DiffOrigin::Add,
@@ -1251,6 +1264,7 @@ mod enrich_tests {
                         old_lineno: None,
                         new_lineno: Some(1),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                 ],
             }],
@@ -1297,6 +1311,7 @@ mod enrich_tests {
                         old_lineno: None,
                         new_lineno: Some(2),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                     DiffLine {
                         origin: DiffOrigin::Add,
@@ -1306,6 +1321,7 @@ mod enrich_tests {
                         old_lineno: None,
                         new_lineno: Some(3),
                         spans: vec![],
+                        pairing: LinePairing::Unknown,
                     },
                 ],
             }],
@@ -1458,6 +1474,7 @@ mod enrich_tests {
                 old_lineno: None,
                 new_lineno: Some(lineno),
                 spans: vec![],
+                pairing: LinePairing::Unknown,
             })
             .collect();
         let mut file_diffs = vec![rust_file_diff(vec![DiffHunk {
