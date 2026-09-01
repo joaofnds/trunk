@@ -111,11 +111,11 @@ describe("staging while whitespace changes are ignored", () => {
 			const showing = app.staging.hunkHeaders();
 			return showing.length === 2 ? showing : null;
 		});
-		expect(shown).toEqual(["@@ -7,7 +7,7 @@ line 6", "@@ -17,7 +17,7 @@ line 16"]);
-		expect(app.staging.addedLines()).toEqual([
-			"REAL line 10",
-			"REAL line 20",
+		expect(shown).toEqual([
+			"@@ -7,7 +7,7 @@ line 6",
+			"@@ -17,7 +17,7 @@ line 16",
 		]);
+		expect(app.staging.addedLines()).toEqual(["REAL line 10", "REAL line 20"]);
 
 		await app.staging.stageHunk(0);
 		await app.events.externalChange(app.repo.path);
