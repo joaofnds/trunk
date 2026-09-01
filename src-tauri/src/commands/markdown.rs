@@ -1301,20 +1301,95 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
 /// Deliberately text-only. A markup-only edit — unbolding a phrase, changing a
 /// link target — keeps the same text but renders visibly differently, and must
 /// not be called identical: the reader needs its wash to find it.
-fn renders_same(before_html: &str, after_html: &str) -> bool {
-    fn visible(html: &str) -> Vec<String> {
-        let mut text = String::new();
-        let mut in_tag = false;
-        for c in html.chars() {
-            match c {
-                '<' => in_tag = true,
-                '>' => in_tag = false,
-                _ if !in_tag => text.push(c),
-                _ => {}
-            }
+/// Every changed row the reader cannot recognize as changed, as
+/// `(row index, what is wrong)`. Empty means the diff is legible.
+///
+/// This is the rendered view's acceptance criterion, written as a check. The
+/// feature is judged by what a reader sees, and a suite that asserts on fields
+/// and HTML fragments can only confirm what its author already expected; it
+/// cannot report a block that arrived on screen saying nothing. Every defect
+/// this feature has shipped to a reader has been a violation of one of the two
+/// rules below.
+///
+/// **Legibility.** A changed row must carry at least one of: a word mark, a
+/// leaf tint, a `renders_identically` declaration, or a before/after pair
+/// whose two sides visibly differ. The pair is itself a signal — the reader
+/// sees two copies and compares them — which is why a code block or a dense
+/// rewrite is legible with no marks at all.
+///
+/// **Folds keep the change.** A folded copy never empties a block that had
+/// content. Hiding unchanged leaves is the point; hiding all of them means the
+/// fold could not tell which leaf changed, and the reader is left with an
+/// empty container.
+///
+/// Test-gated: this is the suite's oracle, not a runtime check. The pipeline
+/// must satisfy it, never consult it.
+#[cfg(test)]
+fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for (i, row) in rows.iter().enumerate() {
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            merged_html,
+            hunk_merged_html,
+            has_tints,
+            renders_identically,
+            ..
+        } = row
+        else {
+            continue;
+        };
+
+        // What the inline view actually puts on screen: the merged copy when
+        // one exists, otherwise the before/after pair.
+        let (shown, is_pair) = match merged_html {
+            Some(m) => (m.clone(), false),
+            None => (format!("{before_html}{after_html}"), true),
+        };
+        let marked = shown.contains("md-word-")
+            || shown.contains("md-added")
+            || shown.contains("md-removed");
+        let pair_differs = is_pair && visible(before_html) != visible(after_html);
+
+        if !marked && !has_tints && !renders_identically && !pair_differs {
+            out.push((
+                i,
+                "changed, but carries no mark, no tint, no identical-render \
+                 declaration, and no visibly differing before/after pair"
+                    .to_string(),
+            ));
         }
-        text.split_whitespace().map(str::to_string).collect()
+
+        if let (Some(folded), Some(full)) = (hunk_merged_html, merged_html.as_ref())
+            && visible(folded).is_empty()
+            && !visible(full).is_empty()
+        {
+            out.push((i, "the fold emptied a block that had content".to_string()));
+        }
     }
+    out
+}
+
+/// The words a fragment puts on screen: tags stripped, whitespace runs
+/// collapsed the way HTML collapses them when it displays them. This is the
+/// reader's view of a fragment, and every check about what the reader can see
+/// is expressed over it.
+fn visible(html: &str) -> Vec<String> {
+    let mut text = String::new();
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    text.split_whitespace().map(str::to_string).collect()
+}
+
+fn renders_same(before_html: &str, after_html: &str) -> bool {
     // Tag structure must match too, or an unbold would read as identical.
     fn tags(html: &str) -> Vec<String> {
         let mut out = Vec::new();
@@ -2564,6 +2639,285 @@ mod tests {
         // source phrase never appears whole — assert on the word itself.
         assert!(folded.contains(">new</ins>"), "{folded}");
         assert_eq!(*hunk_hidden_leaves, 14, "{folded}");
+    }
+
+    /// The gate's own subject: a row the reader cannot tell from unchanged
+    /// content must be reported. Exercised here on the shape that shipped —
+    /// a rewrap, whose two sides render the same words — with the declaration
+    /// removed, which is exactly the state the defect was in.
+    #[test]
+    fn illegible_rows_reports_a_changed_row_the_reader_cannot_see() {
+        let rows = vec![DiffRow::Changed {
+            before_html: "<p>one two three</p>".into(),
+            after_html: "<p>one two three</p>".into(),
+            merged_html: Some("<p>one two three</p>".into()),
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
+            has_tints: false,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 1,
+        }];
+        let found = illegible_rows(&rows);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].0, 0, "reports the row index: {found:?}");
+    }
+
+    /// Each of the four ways a row earns its place on screen clears the gate.
+    /// Table-driven because the invariant is a disjunction: any one suffices,
+    /// and a regression that drops one arm must fail here.
+    #[test]
+    fn illegible_rows_accepts_every_legible_shape() {
+        let base = |merged: Option<&str>, before: &str, after: &str, tints: bool, ident: bool| {
+            vec![DiffRow::Changed {
+                before_html: before.into(),
+                after_html: after.into(),
+                merged_html: merged.map(str::to_string),
+                hunk_merged_html: None,
+                hunk_before_html: None,
+                hunk_after_html: None,
+                hunk_hidden_leaves: 0,
+                has_tints: tints,
+                renders_identically: ident,
+                after_start: 1,
+                after_end: 1,
+            }]
+        };
+        let cases: Vec<(&str, Vec<DiffRow>)> = vec![
+            (
+                "a word mark",
+                base(
+                    Some(
+                        "<p>one <del class=\"md-word-delete\">a</del><ins class=\"md-word-add\">b</ins></p>",
+                    ),
+                    "<p>one a</p>",
+                    "<p>one b</p>",
+                    false,
+                    false,
+                ),
+            ),
+            (
+                "a leaf tint",
+                base(
+                    Some("<ul><li class=\"md-added\">x</li></ul>"),
+                    "<ul></ul>",
+                    "<ul><li>x</li></ul>",
+                    true,
+                    false,
+                ),
+            ),
+            (
+                "a renders-identically declaration",
+                base(
+                    Some("<p>same</p>"),
+                    "<p>same</p>",
+                    "<p>same</p>",
+                    false,
+                    true,
+                ),
+            ),
+            (
+                "a before/after pair whose sides differ",
+                base(None, "<p>old text</p>", "<p>new text</p>", false, false),
+            ),
+        ];
+        for (name, rows) in cases {
+            assert!(
+                illegible_rows(&rows).is_empty(),
+                "{name} should read as legible: {:?}",
+                illegible_rows(&rows)
+            );
+        }
+    }
+
+    /// A before/after pair is legible only because the reader sees two copies
+    /// and can compare them. When both copies render the same words there is
+    /// nothing to compare, and the pair proves nothing — the markup-only edit
+    /// inside a container is exactly this shape (TRUNK-101). Without this
+    /// test, `pair_differs` could ignore the text entirely and stay green.
+    #[test]
+    fn illegible_rows_rejects_a_before_after_pair_whose_sides_read_the_same() {
+        let rows = vec![DiffRow::Changed {
+            before_html: "<ul><li><strong>x</strong> item</li></ul>".into(),
+            after_html: "<ul><li>x item</li></ul>".into(),
+            merged_html: None,
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
+            has_tints: false,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 1,
+        }];
+        let found = illegible_rows(&rows);
+        assert_eq!(
+            found.len(),
+            1,
+            "two copies reading the same words tell the reader nothing: {found:?}"
+        );
+    }
+
+    /// A fold must never leave the reader with an empty block where the
+    /// unfolded copy had content — yesterday's defect, as an invariant.
+    #[test]
+    fn illegible_rows_reports_a_fold_that_emptied_its_block() {
+        let rows = vec![DiffRow::Changed {
+            before_html: "<ol><li>a</li></ol>".into(),
+            after_html: "<ol><li>a</li></ol>".into(),
+            merged_html: Some("<ol><li>a</li><li>b</li></ol>".into()),
+            hunk_merged_html: Some("<ol>\n\n</ol>".into()),
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 2,
+            has_tints: true,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 2,
+        }];
+        let found = illegible_rows(&rows);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].1.contains("fold"), "{found:?}");
+    }
+
+    /// The gate over the fixture corpus: every markdown scenario in
+    /// `trunk-test-cases` diffed through the real pipeline, asserting that a
+    /// reader can see what changed in each.
+    ///
+    /// Scenarios are matched by commit SUBJECT, never by OID. The corpus is
+    /// generated (`./build 02-diff-scenarios`) and re-pinning its dates moves
+    /// every hash while leaving content byte-identical, so an ID-keyed gate
+    /// would go red on an unrelated generator edit.
+    ///
+    /// Skips when the corpus is absent — a fresh clone has not built it — and
+    /// says so, because a silent skip is a gate that quietly stops gating.
+    #[test]
+    fn every_fixture_scenario_renders_legibly() {
+        let Some(repo) = fixture_repo() else {
+            eprintln!(
+                "SKIP: fixture corpus absent. Build it with \
+                 `cd ~/code/trunk-test-cases && ./build 02-diff-scenarios`"
+            );
+            return;
+        };
+
+        let scenarios = markdown_scenarios(&repo);
+        assert!(
+            scenarios.len() >= 14,
+            "expected the 14 markdown scenarios, found {}: has the corpus changed?",
+            scenarios.len()
+        );
+
+        let mut failures = Vec::new();
+        let mut known_seen: Vec<(&str, &str)> = Vec::new();
+        for (subject, path, before, after) in &scenarios {
+            let diff = diff_markdown_blocks(
+                before,
+                after,
+                "/r",
+                path,
+                &RevSpec::Head,
+                &RevSpec::WorkingTree,
+                false,
+            );
+            for (row, why) in illegible_rows(&diff.rows) {
+                // Match on the scenario AND the kind of violation. Suppressing
+                // every violation of a listed scenario would let a NEW defect
+                // hide behind an old one — which it did, the first time this
+                // was written.
+                let kind = violation_kind(&why);
+                match KNOWN_ILLEGIBLE
+                    .iter()
+                    .find(|(s, k)| *s == subject && *k == kind)
+                {
+                    Some((s, k)) => known_seen.push((*s, *k)),
+                    None => failures.push(format!("  {subject} [{path}] row {row}: {why}")),
+                }
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "scenarios whose rendered diff tells the reader nothing:\n{}",
+            failures.join("\n")
+        );
+
+        // An entry that stops firing has been fixed; drop it from the list in
+        // the same change, or the gate silently stops guarding that scenario.
+        for known in KNOWN_ILLEGIBLE {
+            assert!(
+                known_seen.contains(known),
+                "{} no longer violates the invariant ({}) — remove it from \
+                 KNOWN_ILLEGIBLE so the gate holds it",
+                known.0,
+                known.1
+            );
+        }
+    }
+
+    /// Which rule a violation broke, so the known list can name a specific
+    /// defect rather than excusing a whole scenario.
+    fn violation_kind(why: &str) -> &'static str {
+        if why.contains("fold") {
+            "fold-emptied"
+        } else {
+            "unmarked"
+        }
+    }
+
+    /// `(scenario subject, violation kind)` pairs that fail the legibility
+    /// invariant today, each with an open card. The gate fails on any
+    /// violation NOT listed here — including a different violation of a listed
+    /// scenario — and fails again when a listed one starts passing, so the
+    /// list can only shrink.
+    ///
+    /// - `md: unbold a phrase, formatting only` / `unmarked` — TRUNK-101. A
+    ///   markup-only edit inside a container leaves every leaf comparing
+    ///   equal, so no tint lands and no word mark is produced; the reader sees
+    ///   a plain list with nothing marking the change.
+    const KNOWN_ILLEGIBLE: &[(&str, &str)] =
+        &[("md: unbold a phrase, formatting only", "unmarked")];
+
+    /// The built fixture repository, or `None` when it has not been built.
+    fn fixture_repo() -> Option<PathBuf> {
+        let repo = PathBuf::from(std::env::var("HOME").ok()?)
+            .join("code/trunk-test-cases/repos/diff-scenarios");
+        repo.join(".git").exists().then_some(repo)
+    }
+
+    /// Every `md:` scenario as `(subject, path, before, after)`: the file the
+    /// commit touched, at its parent and at itself.
+    fn markdown_scenarios(repo: &Path) -> Vec<(String, String, String, String)> {
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(repo)
+                .args(args)
+                .output()
+                .expect("git runs");
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+
+        let mut out = Vec::new();
+        for line in git(&["log", "--format=%H %s", "--reverse"]).lines() {
+            let Some((oid, subject)) = line.split_once(' ') else {
+                continue;
+            };
+            if !subject.starts_with("md: ") {
+                continue;
+            }
+            for path in git(&["diff-tree", "--no-commit-id", "--name-only", "-r", oid])
+                .lines()
+                .filter(|p| p.ends_with(".md"))
+            {
+                let before = git(&["show", &format!("{oid}^:{path}")]);
+                let after = git(&["show", &format!("{oid}:{path}")]);
+                out.push((subject.to_string(), path.to_string(), before, after));
+            }
+        }
+        out
     }
 
     /// Independent oracle for "the fragment's tags nest correctly" — deliberately
