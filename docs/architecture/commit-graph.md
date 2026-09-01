@@ -40,12 +40,12 @@ git repo
   │
   ▼
 [TypeScript: overlay-visible.ts] getVisibleOverlayElements()
-  │  Drops paths, dots and pills outside the scrolled viewport, and keeps
-  │  a ghost pill against each lane whose ref scrolled above it.
+  │  Drops paths, dots and pills outside the scrolled viewport.
   │
   ▼
 [Svelte: CommitGraph.svelte]
-   Renders SVG: dots, paths, pills (a ghost pill drawn dimmed).
+   Renders SVG: dots, paths, pills, and the hovered row's lane name as a
+   dimmed pill built through the same path.
 ```
 
 `capture()` is the one stage that reads the repository; every stage after it is a pure
@@ -369,6 +369,36 @@ partially-visible connector instead of clipping it.
 
 ---
 
+## Layer 3b: TypeScript — `lane-ref.ts`
+
+### `laneRefForRow(commits, row): RefLabel | undefined`
+
+The ref naming the lane a row sits in: the nearest one at or above that row in its
+own column. Drives the hover pill.
+
+A commit is usually reachable from several branches, and asking which ones is a walk
+of the whole graph. The lane is the cheap and honest answer: placement has already put
+the commit on one line of history and coloured it accordingly, so the ref at the top of
+that lane is the name the colour already implies.
+
+- The search stays inside the hovered row's own column. A nearer ref in another column
+  would name a branch the commit is not on.
+- Where a row carries several refs, `sortRefs` picks the same primary the ref pill
+  shows, so hovering and reading a pill agree.
+- A stash names a state rather than a line of history and never names a lane.
+
+The pill itself is built by `buildRefPillData` from the hovered row with that ref
+substituted, so it renders through the ordinary pill path and differs only in opacity.
+It takes no pointer events: it names a lane, not a ref on that row.
+
+This depends on the hovered row alone and needs no viewport state. Two earlier attempts
+keyed the same idea off the scroll position — a lane-label stage, then a pill re-pinned
+to the first visible row — and both were reverted (`03015f39`): they answered a question
+about one row by reasoning about the whole viewport, which made them hard to place and
+impossible to test in a harness where nothing scrolls.
+
+---
+
 ## Layer 4: Svelte — `CommitGraph.svelte`
 
 Renders:
@@ -555,9 +585,10 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
 | `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
 | `src/lib/wip-row.ts` | `withWipRow()` — prepends the WIP row at index 0 while the worktree is dirty |
-| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel; `laneSpans()` — each lane's extent |
+| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel |
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
-| `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills, plus the ghost pill kept against a lane whose ref scrolled above |
+| `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
+| `src/lib/lane-ref.ts` | `laneRefForRow()` — the ref naming the lane a row sits in, for the hover pill |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering, lane labels |
 | `src-tauri/tests/test_graph.rs` | Owns the named-rule layout assertions, read from `tests/rule-inputs/`; the set that still builds a repository is enumerated in `.claude/rules/commit-graph.md`, split into the tests bound to stay and the ones merely not yet migrated |
