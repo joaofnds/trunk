@@ -12,6 +12,7 @@ import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
+import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { safeInvoke } from "../lib/invoke.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -393,25 +394,26 @@ async function showUnstagedDirContextMenu(_e: MouseEvent, dirPath: string) {
 	await menu.popup();
 }
 
-async function showStagedContextMenu(_e: MouseEvent, filePath: string) {
+async function showStagedContextMenu(
+	_e: MouseEvent,
+	filePath: string,
+	oldPath: string | null,
+) {
 	const { Menu, MenuItem, PredefinedMenuItem } = await import(
 		"@tauri-apps/api/menu"
 	);
-	const absPath = `${repoPath}/${filePath}`;
 	const menu = await Menu.new({
 		items: [
-			await MenuItem.new({
-				text: "Copy Relative Path",
-				action: () => {
-					writeText(filePath).catch(() => {});
-				},
-			}),
-			await MenuItem.new({
-				text: "Copy Absolute Path",
-				action: () => {
-					writeText(absPath).catch(() => {});
-				},
-			}),
+			...(await Promise.all(
+				pathMenuEntriesOf(repoPath, filePath, oldPath).map((entry) =>
+					MenuItem.new({
+						text: entry.text,
+						action: () => {
+							writeText(entry.value).catch(() => {});
+						},
+					}),
+				),
+			)),
 			await PredefinedMenuItem.new({ item: "Separator" }),
 			await MenuItem.new({
 				text: "Unstage File",
@@ -1230,7 +1232,7 @@ $effect(() => {
           {loadingFiles}
           onfileaction={(path) => unstageFile(path)}
           onfileclick={(path) => onfileselect?.(path, 'staged')}
-          onfilecontextmenu={(e, path) => showStagedContextMenu(e, path)}
+          onfilecontextmenu={(e, path, file) => showStagedContextMenu(e, path, file.old_path ?? null)}
           ondirectoryaction={(dirPath) => unstageDirectory(dirPath)}
           ondirectorycontextmenu={(e, dirPath) => showStagedDirContextMenu(e, dirPath)}
           selectedPath={selectedKind === 'staged' ? selectedPath : null}

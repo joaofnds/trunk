@@ -58,6 +58,22 @@ const RENAMED_WITH_ONE_EDIT: RepoSpec = (() => {
 	};
 })();
 
+/** doc-44's rename, left uncommitted: `git add -A` is what pairs a rename in
+ *  the first place, so this is the smallest fixture that reaches the staged
+ *  section with `old_path` set. */
+const RENAMED_UNCOMMITTED: RepoSpec = {
+	steps: [
+		{ step: "file", path: "src/util.ts", content: "export const value = 1;\n" },
+		{ step: "commit", message: "add util" },
+		{ step: "removeFile", path: "src/util.ts" },
+		{
+			step: "file",
+			path: "src/math-util.ts",
+			content: "export const value = 1;\n",
+		},
+	],
+};
+
 const TWO_EDITED_FILES: RepoSpec = {
 	steps: [
 		{ step: "file", path: "a.txt", content: "a\n" },
@@ -155,6 +171,26 @@ describe("the diff surfaces", () => {
 			"Copy Absolute Path",
 			"Copy Old Relative Path",
 			"Copy Old Absolute Path",
+		]);
+
+		app.contextMenu.choose("Copy Old Relative Path");
+		expect(app.clipboard.text).toBe("src/util.ts");
+	});
+
+	it("offers both of a staged renamed file's paths in its context menu", async () => {
+		const app = await setup({ repo: RENAMED_UNCOMMITTED });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.stageEverything();
+
+		await app.staging.stagedFileContextMenu("math-util.ts");
+
+		expect(app.contextMenu.items().map((item) => item.label)).toEqual([
+			"Copy Relative Path",
+			"Copy Absolute Path",
+			"Copy Old Relative Path",
+			"Copy Old Absolute Path",
+			"Unstage File",
 		]);
 
 		app.contextMenu.choose("Copy Old Relative Path");

@@ -104,7 +104,8 @@ pub fn get_status_inner(
     let mut opts = StatusOptions::new();
     opts.include_untracked(true)
         .include_ignored(false)
-        .recurse_untracked_dirs(true);
+        .recurse_untracked_dirs(true)
+        .renames_head_to_index(true);
 
     let statuses = repo.statuses(Some(&mut opts))?;
 
@@ -127,10 +128,18 @@ pub fn get_status_inner(
             continue;
         }
 
-        // Index (staged) entries
+        // Index (staged) entries. `entry.path()` reads the delta's old side, so a
+        // paired rename needs its current path read from the delta's new side
+        // instead — otherwise the row would carry the same path twice.
         if let Some(status_type) = classify_index(status) {
+            let path = entry
+                .head_to_index()
+                .and_then(|delta| delta.new_file().path())
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| file_path.clone());
+
             staged.push(FileStatus {
-                path: file_path.clone(),
+                path,
                 old_path: renamed_from(entry.head_to_index()),
                 status: status_type,
                 is_binary: false,

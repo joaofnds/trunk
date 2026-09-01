@@ -1415,6 +1415,26 @@ fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
     );
 }
 
+/// The staged file list is a separate libgit2 call from the staged diff
+/// (`repo.statuses()` vs. `diff_tree_to_index`), with its own rename option.
+/// Without it, `head_to_index()` never pairs the two sides, so the row this
+/// list feeds shows as a plain add — the diff pane already read it as a
+/// rename, but the file list next to it did not.
+#[test]
+fn staged_file_list_pairs_a_staged_rename() {
+    let ctx = staged_rename_with_one_edit();
+
+    let status = ctx.get_status().expect("get_status failed");
+
+    assert_eq!(status.staged.len(), 1, "the rename is one entry, not two");
+    assert_eq!(status.staged[0].path, "math-util.ts");
+    assert_eq!(
+        status.staged[0].old_path.as_deref(),
+        Some("util.ts"),
+        "the entry names the path it was renamed from"
+    );
+}
+
 // -- staging under the view's options (TRUNK-73) --
 
 /// A file whose first change is whitespace-only, followed by two real edits.

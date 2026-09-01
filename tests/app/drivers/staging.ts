@@ -1,5 +1,6 @@
+import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
-import { firstMatching, pressButton } from "./dom.js";
+import { firstMatching, openContextMenu, pressButton } from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
@@ -26,6 +27,8 @@ const ABORT_REBASE = "Abort Rebase";
 /** The working-tree view: what the graph's top row opens onto, and the commit
  *  the user builds there. */
 export class StagingDriver {
+	constructor(private readonly menu: FakeMenu) {}
+
 	async open(): Promise<void> {
 		const row = await waitFor("the working-tree row", workingTreeRow);
 
@@ -87,6 +90,17 @@ export class StagingDriver {
 		);
 
 		row.click();
+	}
+
+	/** Right-clicks a staged file, returning once the menu it opens is on screen. */
+	async stagedFileContextMenu(path: string): Promise<void> {
+		const row = await waitFor(`the staged ${path} row`, () =>
+			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
+				text.includes(path),
+			),
+		);
+
+		await openContextMenu(row, this.menu, path);
 	}
 
 	/** Opens a conflicted file, the click that mounts the merge editor. The
