@@ -242,14 +242,16 @@ describe("rendered markdown word marks", () => {
 		expect(deleteRule).toMatch(/text-decoration-color:\s*var\(--err\)/);
 	});
 
-	it("keeps both marks at the same decoration weight, so neither reads louder", () => {
+	/* The rule is the hue, not the weight. A pinned thickness read heavy across
+	   the long marked runs a prose edit produces, so both marks keep the
+	   browser's own hairline: it tracks font size and zoom, and neither mark can
+	   drift heavier than the other. */
+	it("pins no decoration weight on either mark", () => {
 		const addRule = css.match(/\.md-word-add\s*\{([^}]*)\}/)?.[1] ?? "";
 		const deleteRule = css.match(/\.md-word-delete\s*\{([^}]*)\}/)?.[1] ?? "";
-		const thickness = (rule: string) =>
-			rule.match(/text-decoration-thickness:\s*([^;]+);/)?.[1].trim();
 
-		expect(thickness(addRule)).toBe("2px");
-		expect(thickness(deleteRule)).toBe("2px");
+		expect(addRule).not.toMatch(/text-decoration-thickness/);
+		expect(deleteRule).not.toMatch(/text-decoration-thickness/);
 	});
 
 	it("keeps the rendered word tints at an opacity body text clears AAA over", () => {

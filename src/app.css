@@ -627,22 +627,22 @@ li.md-removed::before {
    author's ~~strikethrough~~ (a classless <del>) is never read as a diff deletion.
    Color is NOT the sole carrier (AAA invariant, app.css:490-494): the deletion adds
    line-through, the insertion adds an underline, both surviving grayscale. Each rule
-   takes its own hue at 2px so the mark reads without the source view's row tint
+   takes its own hue so the mark reads without the source view's row tint
    underneath, and so a deletion's strikethrough does not out-shout an insertion's
-   underline. Verified with scripts/contrast/contrast.mjs over --bg-0: body text on
+   underline. Weight is left to the browser: a pinned thickness read heavy across
+   the long marked runs a prose edit produces, and the hairline tracks font size
+   and zoom. Verified with scripts/contrast/contrast.mjs over --bg-0: body text on
    the 30% tints is 7.97:1 (add) and 8.26:1 (delete), both AAA; the rules, non-text
    indicators at a 3:1 floor, are 5.53:1 and 5.32:1. */
 .md-word-delete {
 	background: var(--color-md-word-delete-bg);
 	text-decoration: line-through;
 	text-decoration-color: var(--err);
-	text-decoration-thickness: 2px;
 }
 .md-word-add {
 	background: var(--color-md-word-add-bg);
 	text-decoration: underline;
 	text-decoration-color: var(--ok);
-	text-decoration-thickness: 2px;
 	text-underline-offset: 3px;
 }
 /* Override .markdown-body del's muted color so a struck diff word stays full-
