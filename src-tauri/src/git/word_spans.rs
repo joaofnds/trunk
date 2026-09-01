@@ -5,7 +5,7 @@
 //! reflows lines still emphasizes only the words that changed.
 
 use crate::git::types::{DiffLine, DiffOrigin, WordSpan};
-use similar::{ChangeTag, TextDiff};
+use similar::ChangeTag;
 use std::time::{Duration, Instant};
 
 /// A run's worth of old or new text may not be word-diffed past these bounds:
