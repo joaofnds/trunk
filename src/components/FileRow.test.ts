@@ -35,7 +35,7 @@ describe("FileRow", () => {
 		expect(screen.getByTestId("staging-file")).not.toHaveTextContent("→");
 	});
 
-	it("names a shared directory once and scopes both names under it", () => {
+	it("names both paths in full for a rename inside one folder", () => {
 		render(FileRow, {
 			props: {
 				file: {
@@ -49,7 +49,7 @@ describe("FileRow", () => {
 			},
 		});
 		expect(screen.getByTestId("staging-file")).toHaveTextContent(
-			"code/{util.ts → math-util.ts}",
+			"code/util.ts → code/math-util.ts",
 		);
 	});
 
