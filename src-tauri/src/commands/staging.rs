@@ -1,4 +1,4 @@
-use crate::commands::diff::{apply_request_options, workdir_diff_opts};
+use crate::commands::diff::{staging_staged_diff, staging_workdir_diff};
 use crate::error::TrunkError;
 use crate::git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
 use crate::git::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
@@ -397,10 +397,7 @@ pub fn stage_hunk_inner(
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
-    // Generate diff for this file (index -> workdir), including untracked files
-    let mut diff_opts = workdir_diff_opts(file_path);
-    apply_request_options(&mut diff_opts, options);
-    let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
+    let diff = staging_workdir_diff(&repo, file_path, options, false)?;
 
     // Validate: at least one delta expected
     if diff.deltas().len() == 0 {
@@ -484,14 +481,8 @@ pub fn unstage_hunk_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     // Reversed (index -> HEAD), so applying it to the index undoes the staged
-    // change. Built whole and rename-detected, exactly as `diff_staged_inner`
-    // builds the view: a pathspec would strip a rename's old side before
-    // detection could pair it, leaving this acting on a whole-file add where
-    // the user saw a one-line edit.
-    let mut diff_opts = crate::commands::diff::new_diff_options();
-    apply_request_options(&mut diff_opts, options);
-    diff_opts.reverse(true);
-    let diff = crate::commands::diff::staged_diff(&repo, &mut diff_opts)?;
+    // change.
+    let diff = staging_staged_diff(&repo, options, true)?;
 
     let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
         TrunkError::new(
@@ -540,11 +531,8 @@ pub fn discard_hunk_inner(
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
-    // Generate reversed diff (workdir -> index) so applying to workdir undoes the change
-    let mut diff_opts = workdir_diff_opts(file_path);
-    apply_request_options(&mut diff_opts, options);
-    diff_opts.reverse(true);
-    let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
+    // Reversed (workdir -> index) so applying to the workdir undoes the change.
+    let diff = staging_workdir_diff(&repo, file_path, options, true)?;
 
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
@@ -1095,10 +1083,7 @@ pub fn stage_lines_inner(
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
-    // Generate diff for this file (index -> workdir), including untracked files
-    let mut diff_opts = workdir_diff_opts(file_path);
-    apply_request_options(&mut diff_opts, options);
-    let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
+    let diff = staging_workdir_diff(&repo, file_path, options, false)?;
 
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
@@ -1147,12 +1132,9 @@ pub fn unstage_lines_inner(
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
-    // Generate the staged diff (HEAD -> index), same as what the user sees.
-    // We use the forward diff so line indices match the user's view,
-    // then build a reversed partial patch to undo selected lines.
-    let mut diff_opts = crate::commands::diff::new_diff_options();
-    apply_request_options(&mut diff_opts, options);
-    let diff = crate::commands::diff::staged_diff(&repo, &mut diff_opts)?;
+    // Forward, so line indices match the user's view; the partial patch built
+    // from it is reversed instead, to undo the selected lines.
+    let diff = staging_staged_diff(&repo, options, false)?;
 
     let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
         TrunkError::new(
@@ -1200,12 +1182,9 @@ pub fn discard_lines_inner(
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
-    // Generate the unstaged diff (index -> workdir), same as what the user sees.
-    // We use the forward diff so line indices match the user's view,
-    // then build a reversed partial patch to undo selected lines.
-    let mut diff_opts = workdir_diff_opts(file_path);
-    apply_request_options(&mut diff_opts, options);
-    let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
+    // Forward, so line indices match the user's view; the partial patch built
+    // from it is reversed instead, to undo the selected lines.
+    let diff = staging_workdir_diff(&repo, file_path, options, false)?;
 
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(

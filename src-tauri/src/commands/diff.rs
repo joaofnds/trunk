@@ -114,6 +114,46 @@ pub(crate) fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequ
     opts.ignore_whitespace(req.ignore_whitespace);
 }
 
+/// The unstaged diff a staging gesture acts on: index → workdir, for one file,
+/// built with the same view options the hunk the user clicked was rendered
+/// under. `reverse` flips it, which is how a discard undoes a change by
+/// applying to the workdir.
+///
+/// Staging addresses a hunk by its index, and that index only means the same
+/// hunk on both sides when both diffs are built the same way — which is why
+/// this exists rather than each caller assembling the options itself
+/// (TRUNK-73).
+pub(crate) fn staging_workdir_diff<'r>(
+    repo: &'r git2::Repository,
+    file_path: &str,
+    options: &DiffRequestOptions,
+    reverse: bool,
+) -> Result<git2::Diff<'r>, TrunkError> {
+    let mut opts = workdir_diff_opts(file_path);
+    apply_request_options(&mut opts, options);
+    opts.reverse(reverse);
+    Ok(repo.diff_index_to_workdir(None, Some(&mut opts))?)
+}
+
+/// The staged diff a staging gesture acts on: HEAD → index, whole and
+/// rename-detected exactly as `diff_staged_inner` builds the view, carrying the
+/// view's options for the same reason `staging_workdir_diff` does.
+///
+/// It is deliberately not narrowed by a pathspec: that would strip a rename's
+/// old side before `find_similar` could pair it, leaving a caller acting on a
+/// whole-file add where the user saw a one-line edit. Callers pick their delta
+/// out of the whole diff instead.
+pub(crate) fn staging_staged_diff<'r>(
+    repo: &'r git2::Repository,
+    options: &DiffRequestOptions,
+    reverse: bool,
+) -> Result<git2::Diff<'r>, TrunkError> {
+    let mut opts = new_diff_options();
+    apply_request_options(&mut opts, options);
+    opts.reverse(reverse);
+    staged_diff(repo, &mut opts)
+}
+
 /// Where `walk_diff` should read a delta's *new*-side content from. The old
 /// side is always ODB-backed (index or a tree); the new side depends on what
 /// the diff is against — workdir-backed diffs (`diff_index_to_workdir`) must
