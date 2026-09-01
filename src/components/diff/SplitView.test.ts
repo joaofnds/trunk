@@ -24,6 +24,7 @@ function contextLines(count: number, from = 1): DiffLine[] {
 function fileOf(path: string, lines: DiffLine[]): FileDiff {
 	return {
 		path,
+		old_path: null,
 		status: "Modified",
 		is_binary: false,
 		hunks: [

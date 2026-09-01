@@ -45,6 +45,7 @@ function contextLine(
 function file(status: DiffStatus, path: string, lines: DiffLine[]): FileDiff {
 	return {
 		path,
+		old_path: null,
 		status,
 		is_binary: false,
 		hunks: [
@@ -176,6 +177,7 @@ describe("fileSelectableIndices", () => {
 	it("indices are continuous across multiple hunks (flat over hunks.flatMap)", () => {
 		const f: FileDiff = {
 			path: "src/multi.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [

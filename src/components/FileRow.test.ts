@@ -17,6 +17,24 @@ describe("FileRow", () => {
 		expect(screen.getByText("README.md")).toBeInTheDocument();
 	});
 
+	// The backend sends old_path as JSON null, not an absent key, so a row that
+	// only checks for undefined renders an arrow with nothing before it.
+	it("shows no rename arrow when old_path is null", () => {
+		render(FileRow, {
+			props: {
+				file: {
+					path: "src/added.ts",
+					old_path: null,
+					status: "New",
+					is_binary: false,
+				},
+				actionLabel: "+",
+				onaction: vi.fn(),
+			},
+		});
+		expect(screen.getByTestId("staging-file")).not.toHaveTextContent("→");
+	});
+
 	it("names both paths for a renamed file", () => {
 		render(FileRow, {
 			props: {

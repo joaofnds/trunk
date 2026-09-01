@@ -165,6 +165,7 @@ describe("buildTree", () => {
 		it("file node carries original FileStatus", () => {
 			const file: FileStatus = {
 				path: "test.txt",
+				old_path: null,
 				status: "New",
 				is_binary: true,
 			};

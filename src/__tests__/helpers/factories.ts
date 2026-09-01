@@ -40,7 +40,7 @@ export function makeFile(
 	path: string,
 	status: FileStatus["status"] = "Modified",
 ): FileStatus {
-	return { path, status, is_binary: false };
+	return { path, old_path: null, status, is_binary: false };
 }
 
 export function makeRef(

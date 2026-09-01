@@ -13,6 +13,7 @@ describe("DirectoryRow", () => {
 			path: `${name}/file${i}.ts`,
 			file: {
 				path: `${name}/file${i}.ts`,
+				old_path: null,
 				status: "Modified" as const,
 				is_binary: false,
 			},

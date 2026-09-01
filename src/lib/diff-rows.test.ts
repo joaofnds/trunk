@@ -45,7 +45,13 @@ function hunk(header: string, lines: DiffLine[]): DiffHunk {
 }
 
 function file(path: string, hunks: DiffHunk[], isBinary = false): FileDiff {
-	return { path, status: "Modified", is_binary: isBinary, hunks };
+	return {
+		path,
+		old_path: null,
+		status: "Modified",
+		is_binary: isBinary,
+		hunks,
+	};
 }
 
 function thread(

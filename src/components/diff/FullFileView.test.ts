@@ -29,6 +29,7 @@ afterEach(restoreLayout);
 // Delete line (new_lineno=null) that must NOT be a valid selection endpoint.
 const modifiedFile: FileDiff = {
 	path: "src/main.ts",
+	old_path: null,
 	status: "Modified",
 	is_binary: false,
 	hunks: [
@@ -81,6 +82,7 @@ const modifiedFile: FileDiff = {
 
 const emptyFile: FileDiff = {
 	path: "src/empty.ts",
+	old_path: null,
 	status: "Unknown",
 	is_binary: false,
 	hunks: [],
@@ -356,6 +358,7 @@ describe("FullFileView", () => {
 		stubLayout({ width: 900, height: 400 });
 		const wide: FileDiff = {
 			path: "src/wide.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -418,6 +421,7 @@ describe("FullFileView", () => {
 		}));
 		const long: FileDiff = {
 			path: "src/long.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -466,6 +470,7 @@ describe("FullFileView", () => {
 		}));
 		const long: FileDiff = {
 			path: "src/long.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -598,6 +603,7 @@ describe("FullFileView", () => {
 		}));
 		const huge: FileDiff = {
 			path: "src/huge.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -622,6 +628,7 @@ describe("FullFileView", () => {
 	it("WHSP: with invisibles on, the selectable text is the real whitespace and the glyph is presentational", () => {
 		const wsFile: FileDiff = {
 			path: "src/ws.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [

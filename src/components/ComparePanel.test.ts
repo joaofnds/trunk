@@ -27,7 +27,13 @@ const base = detail("aaaa111a", "base commit");
 const target = detail("bbbb222b", "target commit");
 
 const fileDiffs: FileDiff[] = [
-	{ path: "src/main.ts", status: "Modified", is_binary: false, hunks: [] },
+	{
+		path: "src/main.ts",
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: [],
+	},
 ];
 
 const stat = { insertions: 48, deletions: 102, files_changed: 3 };

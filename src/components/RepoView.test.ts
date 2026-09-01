@@ -469,12 +469,19 @@ describe("RepoView", () => {
 
 	describe("diff-in-view commit navigation", () => {
 		function makeFileDiff(path: string): FileDiff {
-			return { path, status: "Modified", is_binary: false, hunks: [] };
+			return {
+				path,
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [],
+			};
 		}
 
 		function makeFileDiffWithContent(path: string, content: string): FileDiff {
 			return {
 				path,
+				old_path: null,
 				status: "Modified",
 				is_binary: false,
 				hunks: [
@@ -1141,7 +1148,13 @@ describe("RepoView", () => {
 
 	describe("compare selection (TRUNK-1)", () => {
 		function makeFileDiff(path: string): FileDiff {
-			return { path, status: "Modified", is_binary: false, hunks: [] };
+			return {
+				path,
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [],
+			};
 		}
 
 		function makeDetail(

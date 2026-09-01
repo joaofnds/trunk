@@ -26,5 +26,5 @@ export function resolveDiffTarget(
 }
 
 function toMinimalFileStatus(path: string): FileStatus {
-	return { path, status: "Modified", is_binary: false };
+	return { path, old_path: null, status: "Modified", is_binary: false };
 }

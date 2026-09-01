@@ -115,6 +115,7 @@ vi.mock("../lib/store.js", () => {
 
 const testDiff: FileDiff = {
 	path: "src/main.ts",
+	old_path: null,
 	status: "Modified",
 	is_binary: false,
 	hunks: [
@@ -167,6 +168,7 @@ const testDiff: FileDiff = {
 
 const binaryDiff: FileDiff = {
 	path: "image.png",
+	old_path: null,
 	status: "Modified",
 	is_binary: true,
 	hunks: [],
@@ -174,6 +176,7 @@ const binaryDiff: FileDiff = {
 
 const untrackedDiff: FileDiff = {
 	path: "src/new.ts",
+	old_path: null,
 	status: "Untracked",
 	is_binary: false,
 	hunks: [
@@ -198,6 +201,7 @@ const untrackedDiff: FileDiff = {
 
 const testDiffWithMergedSpans: FileDiff = {
 	path: "src/main.rs",
+	old_path: null,
 	status: "Modified",
 	is_binary: false,
 	hunks: [
@@ -907,6 +911,7 @@ describe("VIEW-04: reopening a large file", () => {
 		);
 		const bigFile: FileDiff = {
 			path: "src/huge.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -1734,6 +1739,7 @@ const mergeCommit: CommitDetail = {
 
 const addedFileDiff: FileDiff = {
 	path: "src/new-file.ts",
+	old_path: null,
 	status: "Added",
 	is_binary: false,
 	hunks: [
@@ -1857,6 +1863,7 @@ describe("DiffPanel drag-to-select", () => {
 		}));
 		const long: FileDiff = {
 			path: "src/long.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -2336,6 +2343,7 @@ describe("Discard File button", () => {
 	describe("hunk operation in-flight guard", () => {
 		const twoHunkDiff: FileDiff = {
 			path: "src/main.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [
@@ -2428,6 +2436,7 @@ describe("DiffPanel hunk navigation", () => {
 	// starts at 64 and its lines at 92, 110 and 128.
 	const navDiff: FileDiff = {
 		path: "src/main.ts",
+		old_path: null,
 		status: "Modified",
 		is_binary: false,
 		hunks: [

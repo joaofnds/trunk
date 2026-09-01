@@ -111,8 +111,8 @@ export interface RefsResponse {
 
 export interface FileStatus {
 	path: string;
-	/** Where a renamed file came from. Absent for every other status. */
-	old_path?: string;
+	/** Where a renamed file came from. Null for every other status. */
+	old_path: string | null;
 	status: FileStatusType;
 	is_binary: boolean;
 }
@@ -196,8 +196,8 @@ export type DiffStatus =
 
 export interface FileDiff {
 	path: string;
-	/** Where a renamed file came from. Absent for every other status. */
-	old_path?: string;
+	/** Where a renamed file came from. Null for every other status. */
+	old_path: string | null;
 	status: DiffStatus;
 	is_binary: boolean;
 	hunks: DiffHunk[];

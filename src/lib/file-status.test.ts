@@ -3,7 +3,7 @@ import { patchLoadedDiff, toFileStatusList } from "./file-status.js";
 import type { FileDiff } from "./types.js";
 
 function fd(path: string, status: FileDiff["status"] = "Modified"): FileDiff {
-	return { path, status, is_binary: false, hunks: [] };
+	return { path, old_path: null, status, is_binary: false, hunks: [] };
 }
 
 describe("toFileStatusList", () => {
@@ -34,8 +34,8 @@ describe("toFileStatusList", () => {
 		});
 	});
 
-	it("leaves old_path unset for a file that was not renamed", () => {
-		expect(toFileStatusList([fd("a.ts")])[0].old_path).toBeUndefined();
+	it("leaves old_path null for a file that was not renamed", () => {
+		expect(toFileStatusList([fd("a.ts")])[0].old_path).toBeNull();
 	});
 });
 

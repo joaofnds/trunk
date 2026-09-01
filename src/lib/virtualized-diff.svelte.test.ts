@@ -29,6 +29,7 @@ afterEach(() => {
 // numbers up to two digits — so gutterChars is 3 and columns[0] is 14.
 const modifiedFile: FileDiff = {
 	path: "src/main.ts",
+	old_path: null,
 	status: "Modified",
 	is_binary: false,
 	hunks: [
@@ -249,6 +250,7 @@ describe("createVirtualizedDiff", () => {
 		// with a single-digit line number, so gutterChars is 2.
 		const asymmetric: FileDiff = {
 			path: "src/asym.ts",
+			old_path: null,
 			status: "Modified",
 			is_binary: false,
 			hunks: [

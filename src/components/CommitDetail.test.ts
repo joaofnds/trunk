@@ -29,12 +29,14 @@ const detail: CommitDetail = {
 const fileDiffs: FileDiff[] = [
 	{
 		path: "src/main.ts",
+		old_path: null,
 		status: "Modified",
 		is_binary: false,
 		hunks: [],
 	},
 	{
 		path: "src/lib/utils.ts",
+		old_path: null,
 		status: "Added",
 		is_binary: false,
 		hunks: [],

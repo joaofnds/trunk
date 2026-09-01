@@ -39,6 +39,7 @@ function contextLine(
 function file(status: DiffStatus, path: string, lines: DiffLine[]): FileDiff {
 	return {
 		path,
+		old_path: null,
 		status,
 		is_binary: false,
 		hunks: [

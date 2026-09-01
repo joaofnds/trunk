@@ -20,6 +20,7 @@ const mockedInvoke = vi.mocked(safeInvoke);
 // fixtures below pick line indices into this hunk.
 const modifiedFile: FileDiff = {
 	path: "src/main.ts",
+	old_path: null,
 	status: "Modified",
 	is_binary: false,
 	hunks: [

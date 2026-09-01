@@ -39,13 +39,12 @@ let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 // A rename names both paths. Tree mode already shortens the new path to its
 // basename, so the old one shortens too — otherwise a full directory path
 // would sit beside a bare filename in a row that shows neither in full.
-let renamedFrom = $derived(
-	file.old_path === undefined
-		? undefined
-		: displayName === undefined
-			? file.old_path
-			: (file.old_path.split("/").pop() ?? file.old_path),
-);
+let renamedFrom = $derived.by(() => {
+	const from = file.old_path;
+	if (from === null || from === undefined) return null;
+
+	return displayName === undefined ? from : (from.split("/").pop() ?? from);
+});
 
 let badgeBg = $derived(
 	isLoading
@@ -99,7 +98,7 @@ let badgeBg = $derived(
     gap: var(--space-1);
     font-size: 12px;
   ">
-    {#if renamedFrom !== undefined}
+    {#if renamedFrom !== null}
       <span style="
         overflow: hidden;
         text-overflow: ellipsis;
