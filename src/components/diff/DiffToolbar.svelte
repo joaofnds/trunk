@@ -98,18 +98,9 @@ const renderedActive = $derived(
   </span>
 
   {#if selectedPath && isMarkdownPath(selectedPath)}
-    <button
-      class="toggle-btn"
-      class:active={renderMode === "rendered"}
-      title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
-      onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
-    >
-      {#if renderMode === "source"}
-        <Eye size={14} />
-      {:else}
-        <Code2 size={14} />
-      {/if}
-    </button>
+    <!-- The toolbar is right-anchored, so the merged toggle sits left of the
+         render toggle: appearing there, it grows the row away from the
+         pointer and the render toggle never moves under a double click. -->
     {#if renderedActive}
       <button
         class="toggle-btn"
@@ -123,6 +114,18 @@ const renderedActive = $derived(
         <GitMerge size={14} />
       </button>
     {/if}
+    <button
+      class="toggle-btn"
+      class:active={renderMode === "rendered"}
+      title={renderMode === "source" ? "Show rendered markdown" : "Show source"}
+      onclick={() => onrendermodechange(renderMode === "source" ? "rendered" : "source")}
+    >
+      {#if renderMode === "source"}
+        <Eye size={14} />
+      {:else}
+        <Code2 size={14} />
+      {/if}
+    </button>
   {/if}
 
   <button

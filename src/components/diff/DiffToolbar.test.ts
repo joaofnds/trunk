@@ -138,4 +138,23 @@ describe("DiffToolbar merged-style toggle", () => {
 
 		expect(screen.queryByTitle("Show merged changes")).toBeNull();
 	});
+
+	// The toolbar is right-anchored, so a button appearing after the render
+	// toggle shifts the toggle left under the pointer and the second click
+	// lands on the newcomer. Appearing before it, the toggle stays put.
+	it("appears to the left of the render toggle so the toggle never moves", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "README.md",
+				renderMode: "rendered" as const,
+			},
+		});
+
+		const merged = screen.getByTitle("Show merged changes");
+		const source = screen.getByTitle("Show source");
+		expect(
+			merged.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
 });
