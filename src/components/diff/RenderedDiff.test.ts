@@ -46,7 +46,7 @@ describe("RenderedDiff", () => {
 				kind: "changed",
 				beforeHtml: "<p>the quick fox</p>",
 				afterHtml: "<p>the slow fox</p>",
-				wordHtml:
+				mergedHtml:
 					'<p>the <del class="md-word-delete">quick</del><ins class="md-word-add">slow</ins> fox</p>',
 				afterStart: 1,
 				afterEnd: 1,
@@ -136,7 +136,7 @@ describe("RenderedDiff", () => {
 		expect(container.querySelector("del.md-word-delete")).toBeNull();
 	});
 
-	it("renders a changed row WITHOUT wordHtml as removed-before then added-after (inline)", async () => {
+	it("renders a changed row WITHOUT a merged copy as removed-before then added-after (inline)", async () => {
 		const rows: DiffRow[] = [
 			{ kind: "unchanged", html: "<p>intro</p>", afterStart: 1, afterEnd: 1 },
 			{
@@ -168,7 +168,7 @@ describe("RenderedDiff", () => {
 		expect(blocks[1].textContent).toContain("gone");
 		expect(blocks[2].classList.contains("md-added")).toBe(true);
 		expect(blocks[2].textContent).toContain("fresh");
-		// A container/code/dense changed row (no wordHtml) mirrors Source: removed
+		// A container/code/dense changed row (no merged copy) mirrors Source: removed
 		// before-block, then added after-block — red then green.
 		expect(blocks[3].classList.contains("md-removed")).toBe(true);
 		expect(blocks[3].textContent).toContain("old");
@@ -274,7 +274,7 @@ describe("RenderedDiff", () => {
 				beforeHtml: "<p>bef</p>",
 				afterHtml: "<p>aft</p>",
 				// Even with a word merge available, split stays whole-block red/green.
-				wordHtml: '<p><ins class="md-word-add">aft</ins></p>',
+				mergedHtml: '<p><ins class="md-word-add">aft</ins></p>',
 				afterStart: 5,
 				afterEnd: 5,
 			},
@@ -420,7 +420,7 @@ describe("RenderedDiff", () => {
 
 		// Exactly 3 context lines each side, like Source: u0..u2 (lines 2-4)
 		// after the top change, u7..u9 (lines 9-11) before the bottom one.
-		// Each change (no wordHtml) is 2 inline blocks: 2×2 + 6 = 10.
+		// Each change (no merged copy) is 2 inline blocks: 2×2 + 6 = 10.
 		// Hidden u3..u6 (lines 5-8): 9 − 4 − 1 = 4 lines.
 		expect(container.querySelectorAll(".rendered-block")).toHaveLength(10);
 		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
@@ -908,7 +908,7 @@ describe("RenderedDiff", () => {
 				kind: "changed",
 				beforeHtml: "<p>the quick fox</p>",
 				afterHtml: "<p>the slow fox</p>",
-				wordHtml:
+				mergedHtml:
 					'<p>the <del class="md-word-delete">quick</del><ins class="md-word-add">slow</ins> fox</p>',
 				afterStart: 3,
 				afterEnd: 3,
@@ -938,7 +938,7 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("intro");
 
-		// One jump target per changed row — a no-wordHtml changed row renders two
+		// One jump target per changed row — a changed row with no merged copy renders two
 		// blocks but registers only its first — keyed in document order.
 		expect(Object.keys(hunkElements)).toEqual([
 			"change-0",

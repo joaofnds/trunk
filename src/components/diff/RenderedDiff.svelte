@@ -22,8 +22,8 @@ const colSync = createHorizontalScrollSync();
 // Every layout — inline/split × full/hunk — is a pure frontend projection of the
 // returned rows; toggling never re-invokes Rust. Split pairs each row's
 // before/after cells in one CSS grid row. Inline is a single stream; a changed
-// single-leaf block collapses to ONE block carrying inline `md-word-*` del/ins
-// (`wordHtml`), otherwise it shows before(red)+after(green).
+// block collapses to ONE block carrying inline `md-word-*` del/ins
+// (`mergedHtml`), otherwise it shows before(red)+after(green).
 interface Props {
 	layoutMode: "inline" | "split";
 	selectedPath: string;
@@ -341,18 +341,6 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					type: "block",
 					tint: "unchanged",
 					html: r.mergedHtml,
-					changeIndex,
-					wash: true,
-				},
-			];
-		// changed with a word-level merge (single-leaf): ONE block, no wrapper tint —
-		// the inline md-word-* del/ins marks inside wordHtml carry the signal.
-		if (r.wordHtml)
-			return [
-				{
-					type: "block",
-					tint: "unchanged",
-					html: r.wordHtml,
 					changeIndex,
 					wash: true,
 				},

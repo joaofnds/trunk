@@ -55,9 +55,9 @@ export function beforeRev(
 
 // One row of a block-level markdown diff, in document reading order. Mirrors the
 // Rust `DiffRow` union (serde `kind` tag, camelCase fields). `changed` always
-// carries its before/after fragments (split columns / stacked inline fallback) and,
-// for a single-leaf block that word-merges, an inline `wordHtml` with `md-word-*`
-// del/ins marks (absent for containers, code blocks, and dense rewrites).
+// carries its before/after fragments (the split columns) and, when one can be
+// built, a `mergedHtml`: ONE copy carrying `md-word-*` del/ins marks, which is
+// what the inline view renders.
 //
 // Every row carries its 1-based inclusive source-line span on the AFTER axis so
 // hunk context is budgeted by line distance, matching Source. `removed` has no
@@ -77,7 +77,6 @@ export type DiffRow =
 			kind: "changed";
 			beforeHtml: string;
 			afterHtml: string;
-			wordHtml?: string;
 			// The suggestion-mode fragment: ONE copy carrying del/ins marks and
 			// red/green leaves together; absent when no merged copy could be
 			// built and the merged view falls back to the before/after pair.

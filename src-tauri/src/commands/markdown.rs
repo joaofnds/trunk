@@ -70,9 +70,9 @@ const MD_WORD_CLASSES: &[&str] = &["md-word-delete", "md-word-add"];
 
 /// One row of a rendered-markdown block diff, in document reading order. Mirrors
 /// the frontend `DiffRow` union (serde `kind` tag). `Changed` always carries its
-/// before/after fragments (the split columns / stacked inline fallback) and, for a
-/// single-leaf block that word-merges, an inline `word_html` with `md-word-*`
-/// del/ins marks. `word_html` is `None` for containers, code blocks, and rewrites.
+/// before/after fragments (the split columns) and, when one can be built, a
+/// `merged_html`: ONE copy of the block carrying `md-word-*` del/ins marks, which
+/// is what the inline view renders.
 ///
 /// Every row carries its 1-based inclusive source-line span so the frontend can
 /// budget hunk context by line distance, matching Source's `diff_context_lines`.
@@ -105,8 +105,6 @@ pub enum DiffRow {
     Changed {
         before_html: String,
         after_html: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        word_html: Option<String>,
         /// The suggestion-mode fragment: ONE copy of the block carrying del
         /// and ins marks (and red/green leaves for whole-item changes)
         /// together. `None` when no merged copy can be built — code blocks,
@@ -515,7 +513,6 @@ fn flush_runs(
             rows.push(DiffRow::Changed {
                 before_html: cf.before_html,
                 after_html: cf.after_html,
-                word_html: cf.word_html,
                 merged_html: cf.merged_html,
                 has_tints: cf.has_tints,
                 after_start: a.start_line,
@@ -1127,24 +1124,24 @@ fn element_span(sourcepos_html: &str, sourcepos: &str) -> Option<(usize, usize)>
     Some((start, pos))
 }
 
-/// The before/after fragments for a `Changed` row, plus an optional inline
-/// word-merged `word_html`. `before_html`/`after_html` feed the split columns and
-/// the stacked inline fallback. `word_html` is the GitHub-style inline del/ins
-/// merge — present only for a single-leaf block (paragraph, heading) that merges
-/// cleanly; `None` for `code_block` (never token-merge highlighted `<pre>`,
-/// invariant §4), for containers (table/list stay leaf-tinted), and for rewrites
-/// the density/balance guards reject.
+/// The before/after fragments for a `Changed` row, plus the optional merged copy.
+/// `before_html`/`after_html` feed the split columns. `merged_html` is the single
+/// copy the inline view renders: for a single-leaf block (paragraph, heading) it
+/// is the GitHub-style inline del/ins token merge, and for a container it is the
+/// after skeleton with removed leaves spliced back in. `None` for `code_block`
+/// (never token-merge highlighted `<pre>`, invariant §4), for rewrites the
+/// density/balance guards reject, and on any structural failure — the inline view
+/// then falls back to the before/after pair.
 struct ChangedFragments {
     before_html: String,
     after_html: String,
-    word_html: Option<String>,
     merged_html: Option<String>,
     has_tints: bool,
 }
 
 fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     if before.leaves.is_empty() {
-        let word_html = if before.kind == "code_block" || after.kind == "code_block" {
+        let merged_html = if before.kind == "code_block" || after.kind == "code_block" {
             None
         } else {
             html_token_merge(&before.raw_html, &after.raw_html).map(|m| sanitize_html(&m))
@@ -1152,8 +1149,7 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
         return ChangedFragments {
             before_html: before.html.clone(),
             after_html: after.html.clone(),
-            merged_html: word_html.clone(),
-            word_html,
+            merged_html,
             has_tints: false,
         };
     }
@@ -1218,7 +1214,6 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     ChangedFragments {
         before_html: sanitize_html(&tint_leaves(&before_frag, &before_tints)),
         after_html: sanitize_html(&tint_leaves(&after_frag, &after_tints)),
-        word_html: None,
         merged_html: merged_container(before, after, &ops),
         has_tints: !before_tints.is_empty() || !after_tints.is_empty() || word_marked,
     }
@@ -2411,7 +2406,7 @@ mod tests {
         let DiffRow::Changed {
             before_html,
             after_html,
-            word_html,
+            merged_html,
             ..
         } = &rows[0]
         else {
@@ -2433,9 +2428,13 @@ mod tests {
             !after_html.contains("md-added") && !before_html.contains("md-removed"),
             "a cleanly pairing row carries word marks, not the whole-row wash"
         );
+        let merged = merged_html
+            .as_deref()
+            .expect("a container builds its merged copy from the after skeleton");
         assert!(
-            word_html.is_none(),
-            "a container still has no merged single copy: {word_html:?}"
+            merged.contains(r#"<del class="md-word-delete">4</del>"#)
+                && merged.contains(r#"<ins class="md-word-add">99</ins>"#),
+            "the single merged copy carries both marks: {merged}"
         );
     }
 
@@ -2443,7 +2442,7 @@ mod tests {
     fn changed_table_keeps_before_and_after_as_separate_fragments() {
         // A container's Changed carries the before table and the after table
         // as separate fields — the split view pairs them into columns, inline
-        // stacks them. word_html stays None (row interleave inside one
+        // stacks them. The pair stays (row interleave inside one
         // <table> is TRUNK-72's merged view, not this field).
         let before = "| a | b |\n|---|---|\n| 1 | 2 |";
         let after = "| a | b |\n|---|---|\n| 9 | 2 |";
@@ -2456,7 +2455,7 @@ mod tests {
         let DiffRow::Changed {
             before_html,
             after_html,
-            word_html,
+            merged_html,
             ..
         } = &rows[0]
         else {
@@ -2470,7 +2469,10 @@ mod tests {
             after_html.contains("md-word-add") && after_html.contains(">9<"),
             "after fragment: the new value word-marked in place: {after_html}"
         );
-        assert!(word_html.is_none(), "no merged single copy for a container");
+        assert!(
+            merged_html.is_some(),
+            "the container also builds one merged copy, beside the pair the split view needs"
+        );
     }
 
     #[test]
@@ -2825,47 +2827,47 @@ mod tests {
     }
 
     #[test]
-    fn changed_paragraph_word_merges_into_word_html() {
+    fn changed_paragraph_word_merges_into_merged_html() {
         let before = "the quick brown fox";
         let after = "the slow brown fox";
         let rows = diff_rows(before, after);
         assert_eq!(rows.len(), 1, "a same-kind edit is one row: {rows:?}");
-        let DiffRow::Changed { word_html, .. } = &rows[0] else {
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
             panic!("a small word edit is a Changed row: {rows:?}");
         };
-        let word_html = word_html
+        let merged_html = merged_html
             .as_deref()
-            .expect("a single-leaf paragraph edit produces inline word_html");
+            .expect("a single-leaf paragraph edit produces an inline merged copy");
         assert!(
-            word_html.contains(r#"<del class="md-word-delete">quick</del>"#),
-            "the removed word is wrapped in md-word-delete and survives sanitize: {word_html}"
+            merged_html.contains(r#"<del class="md-word-delete">quick</del>"#),
+            "the removed word is wrapped in md-word-delete and survives sanitize: {merged_html}"
         );
         assert!(
-            word_html.contains(r#"<ins class="md-word-add">slow</ins>"#),
-            "the added word is wrapped in md-word-add and survives sanitize: {word_html}"
+            merged_html.contains(r#"<ins class="md-word-add">slow</ins>"#),
+            "the added word is wrapped in md-word-add and survives sanitize: {merged_html}"
         );
     }
 
     #[test]
-    fn code_block_change_has_before_after_but_no_word_html() {
+    fn code_block_change_has_before_after_but_no_merged_copy() {
         // A fenced code block is single-leaf but must never reach the word-token
-        // merge (invariant §4): word_html stays None so highlighted <pre><code> is
-        // never htmldiff'd — it renders as before/after (columns or stacked).
+        // merge (invariant §4): merged_html stays None so highlighted <pre><code>
+        // is never htmldiff'd — it renders as before/after (columns or stacked).
         let before = "```rust\nlet x = 1;\n```";
         let after = "```rust\nlet x = 2;\n```";
         let rows = diff_rows(before, after);
         let DiffRow::Changed {
             before_html,
             after_html,
-            word_html,
+            merged_html,
             ..
         } = &rows[0]
         else {
             panic!("a code fence edit is a Changed row: {rows:?}");
         };
         assert!(
-            word_html.is_none(),
-            "a code fence never word-merges: {word_html:?}"
+            merged_html.is_none(),
+            "a code fence never word-merges: {merged_html:?}"
         );
         assert!(
             before_html.contains("<pre>") && after_html.contains("<pre>"),
@@ -2874,18 +2876,18 @@ mod tests {
     }
 
     #[test]
-    fn dense_rewrite_has_no_word_html() {
+    fn dense_rewrite_has_no_merged_copy() {
         // A paragraph rewritten to disjoint words trips the density guard, so
-        // word_html is None (no confetti) — it renders as before/after instead.
+        // merged_html is None (no confetti) — it renders as before/after instead.
         let before = "alpha beta gamma delta epsilon zeta";
         let after = "one two three four five six";
         let rows = diff_rows(before, after);
-        let DiffRow::Changed { word_html, .. } = &rows[0] else {
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
             panic!("a same-kind rewrite is still a Changed row: {rows:?}");
         };
         assert!(
-            word_html.is_none(),
-            "a dense rewrite must not emit a confetti word diff: {word_html:?}"
+            merged_html.is_none(),
+            "a dense rewrite must not emit a confetti word diff: {merged_html:?}"
         );
     }
 
