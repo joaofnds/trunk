@@ -246,27 +246,106 @@ fn resolve_side_content(
     SideContent { old, new }
 }
 
-/// Which files a walk keeps. Rename detection needs both sides of a rename in
-/// the same diff to pair them, and libgit2's `pathspec` drops the old path
-/// before `find_similar` ever sees it (probed, git2 0.21: a pathspec on the new
-/// path leaves the delta `Added` no matter what find options follow). So a
-/// single-file request diffs the whole tree, detects, and selects afterwards —
-/// matching by either side's path, since the caller names the new path but the
-/// paired delta may also be reachable by the old one.
-#[derive(Debug, Clone, Copy)]
-enum FileFilter<'a> {
-    All,
-    OnePath(&'a str),
+/// One file's `FileDiff`, read straight from its own delta.
+///
+/// Rename detection needs both sides of a rename in the same diff to pair them,
+/// and libgit2's `pathspec` drops the old path before `find_similar` ever sees
+/// it (probed, git2 0.21: a pathspec on the new path leaves the delta `Added`
+/// no matter what find options follow). So a single-file request diffs the whole
+/// tree and selects the delta afterwards, by either of its paths — the caller
+/// names the new one, but a paired delta is also reachable by the old.
+///
+/// Selecting means `Patch::from_diff` on that one delta, never `Diff::foreach`.
+/// libgit2 generates a delta's patch text before it calls any callback, so a
+/// callback that skips unwanted files still pays for them: measured on a
+/// 1000-file commit, `foreach` with do-nothing callbacks costs 127ms, while
+/// building the diff, pairing renames and reading one delta's patch together
+/// cost under 1ms.
+fn diff_one_file(
+    diff: &git2::Diff<'_>,
+    repo: &git2::Repository,
+    new_side: NewSideSource,
+    file_path: &str,
+) -> Result<Vec<FileDiff>, TrunkError> {
+    let Some((delta_index, mut file_diff)) =
+        diff.deltas().enumerate().find_map(|(index, delta)| {
+            let fd = file_diff_of(&delta);
+            let wanted = fd.path == file_path || fd.old_path.as_deref() == Some(file_path);
+
+            wanted.then_some((index, fd))
+        })
+    else {
+        return Ok(Vec::new());
+    };
+
+    let sides =
+        vec![delta_sides_of(&diff.get_delta(delta_index).expect(
+            "the delta index came from this diff's own delta list",
+        ))];
+
+    if let Some(patch) = git2::Patch::from_diff(diff, delta_index)? {
+        file_diff.hunks = hunks_of(&patch)?;
+    }
+
+    let mut file_diffs = vec![file_diff];
+    let sides = resolve_sides(repo, &file_diffs, &sides, new_side);
+
+    enrich_file_diffs(&mut file_diffs, &sides);
+    Ok(file_diffs)
 }
 
-impl FileFilter<'_> {
-    fn keeps(&self, fd: &FileDiff) -> bool {
-        match self {
-            FileFilter::All => true,
-            FileFilter::OnePath(wanted) => {
-                fd.path == *wanted || fd.old_path.as_deref() == Some(*wanted)
-            }
+/// Every hunk of one patch, with its lines. Mirrors what `walk_diff`'s hunk and
+/// line callbacks build, so a file read through either route looks the same.
+fn hunks_of(patch: &git2::Patch<'_>) -> Result<Vec<DiffHunk>, TrunkError> {
+    let mut hunks = Vec::with_capacity(patch.num_hunks());
+
+    for hunk_index in 0..patch.num_hunks() {
+        let (hunk, _) = patch.hunk(hunk_index)?;
+        let mut lines = Vec::new();
+
+        for line_index in 0..patch.num_lines_in_hunk(hunk_index)? {
+            lines.push(diff_line_of(&patch.line_in_hunk(hunk_index, line_index)?));
         }
+
+        hunks.push(DiffHunk {
+            header: String::from_utf8_lossy(hunk.header()).into_owned(),
+            old_start: hunk.old_start(),
+            old_lines: hunk.old_lines(),
+            new_start: hunk.new_start(),
+            new_lines: hunk.new_lines(),
+            lines,
+        });
+    }
+
+    Ok(hunks)
+}
+
+/// One diff line, however it was read.
+///
+/// EOFNL markers ('<', '>', '=') carry line numbers too (probed, git2 0.21),
+/// which would paint real-code spans onto them; null both linenos for any origin
+/// the frontend doesn't treat as a real diff line, so `pick_side_line` naturally
+/// skips them.
+fn diff_line_of(line: &git2::DiffLine<'_>) -> DiffLine {
+    let raw_origin = line.origin();
+    let origin = match raw_origin {
+        '+' => DiffOrigin::Add,
+        '-' => DiffOrigin::Delete,
+        _ => DiffOrigin::Context,
+    };
+    let (old_lineno, new_lineno) = if matches!(raw_origin, '+' | '-' | ' ') {
+        (line.old_lineno(), line.new_lineno())
+    } else {
+        (None, None)
+    };
+
+    DiffLine {
+        origin,
+        content: String::from_utf8_lossy(line.content()).into_owned(),
+        old_lineno,
+        new_lineno,
+        spans: vec![],
+        pairing: LinePairing::Unknown,
     }
 }
 
@@ -276,7 +355,6 @@ fn walk_diff(
     diff: git2::Diff<'_>,
     repo: &git2::Repository,
     new_side: NewSideSource,
-    filter: FileFilter<'_>,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     use std::cell::RefCell;
 
@@ -304,48 +382,19 @@ fn walk_diff(
             true
         }),
         Some(&mut |_delta, _hunk, line| {
-            let raw_origin = line.origin();
-            let origin = match raw_origin {
-                '+' => DiffOrigin::Add,
-                '-' => DiffOrigin::Delete,
-                _ => DiffOrigin::Context,
-            };
-            let content = String::from_utf8_lossy(line.content()).into_owned();
-            // EOFNL markers ('<', '>', '=') carry line numbers too (probed,
-            // git2 0.21), which would paint real-code spans onto them; null
-            // both linenos for any origin the frontend doesn't treat as a
-            // real diff line, so pick_side_line naturally skips them.
-            let (old_lineno, new_lineno) = if matches!(raw_origin, '+' | '-' | ' ') {
-                (line.old_lineno(), line.new_lineno())
-            } else {
-                (None, None)
-            };
             let mut diffs = file_diffs.borrow_mut();
             if let Some(fd) = diffs.last_mut()
                 && let Some(hunk) = fd.hunks.last_mut()
             {
-                hunk.lines.push(DiffLine {
-                    origin,
-                    content,
-                    old_lineno,
-                    new_lineno,
-                    spans: vec![],
-                    pairing: LinePairing::Unknown,
-                });
+                hunk.lines.push(diff_line_of(&line));
             }
             true
         }),
     )
     .map_err(TrunkError::from)?;
 
-    let (mut file_diffs, delta_sides): (Vec<FileDiff>, Vec<DeltaSides>) = file_diffs
-        .into_inner()
-        .into_iter()
-        .zip(delta_sides.into_inner())
-        .filter(|(fd, _)| filter.keeps(fd))
-        .unzip();
-
-    let sides = resolve_sides(repo, &file_diffs, &delta_sides, new_side);
+    let mut file_diffs = file_diffs.into_inner();
+    let sides = resolve_sides(repo, &file_diffs, &delta_sides.into_inner(), new_side);
 
     enrich_file_diffs(&mut file_diffs, &sides);
     Ok(file_diffs)
@@ -627,7 +676,7 @@ pub fn diff_unstaged_inner(
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    walk_diff(diff, &repo, NewSideSource::Workdir, FileFilter::All)
+    walk_diff(diff, &repo, NewSideSource::Workdir)
 }
 
 pub fn diff_staged_inner(
@@ -640,12 +689,7 @@ pub fn diff_staged_inner(
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
     let diff = staged_diff(&repo, &mut opts)?;
-    walk_diff(
-        diff,
-        &repo,
-        NewSideSource::Odb,
-        FileFilter::OnePath(file_path),
-    )
+    diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
 }
 
 pub fn diff_commit_inner(
@@ -661,7 +705,7 @@ pub fn diff_commit_inner(
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
     let diff = commit_diff(&repo, &commit, &mut opts)?;
-    walk_diff(diff, &repo, NewSideSource::Odb, FileFilter::All)
+    walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
 /// Lightweight commit file listing — returns only metadata (path, status, is_binary),
@@ -695,12 +739,7 @@ pub fn diff_commit_file_inner(
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
     let diff = commit_diff(&repo, &commit, &mut opts)?;
-    walk_diff(
-        diff,
-        &repo,
-        NewSideSource::Odb,
-        FileFilter::OnePath(file_path),
-    )
+    diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
 }
 
 /// Resolve a commit OID to its tree for a compare side; `None` is the empty
@@ -754,12 +793,7 @@ pub fn diff_compare_file_inner(
     let mut diff =
         repo.diff_tree_to_tree(base_tree.as_ref(), target_tree.as_ref(), Some(&mut opts))?;
     detect_renames(&mut diff)?;
-    walk_diff(
-        diff,
-        &repo,
-        NewSideSource::Odb,
-        FileFilter::OnePath(file_path),
-    )
+    diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
 }
 
 /// Whole-compare totals via the cheap `Diff::stats()` path, mirroring

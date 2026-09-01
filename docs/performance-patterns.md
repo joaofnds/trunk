@@ -113,3 +113,29 @@ Recorded so they aren't re-tried:
 - **Already fixed before TRUNK-12 ran**: `biome ci` traversal (25–84 s in the 2026-08-26
   note) now 0.12 s after the `files.includes` exclusions; `test_integ_watcher.rs`
   (21.6 s in the card) now 1.67 s.
+
+## `Diff::foreach` costs the whole diff, whatever the callbacks return (TRUNK-82, 2026-09-01)
+
+Reading one file out of a commit's diff must not go through `Diff::foreach`.
+libgit2 generates each delta's patch text before it calls any callback, so a
+callback that returns early on unwanted files still pays for them in full.
+
+Measured in release on a synthetic commit, asking for one file:
+
+| Files in the commit | `foreach`, do-nothing callbacks | build + `find_similar` + one `Patch::from_diff` |
+|---|---|---|
+| 50 | 5.2 ms | 0.27 ms |
+| 300 | 33.3 ms | 0.49 ms |
+| 1000 | 110.0 ms | 0.73 ms |
+
+The `foreach` column is linear in the commit's total changed content, not in the
+requested file's. Filtering inside the callbacks was tried and changed nothing,
+which is the measurement that identified the cause.
+
+This became live when rename detection removed the `DiffOptions::pathspec` that
+used to narrow single-file diffs — a pathspec strips a rename's other side
+before `find_similar` can pair it, so the narrowing had to go. `diff_one_file`
+in `commands/diff.rs` selects the delta and reads it with `Patch::from_diff`;
+`walk_diff` stays for callers that genuinely want every file. End to end, one
+file out of a 1000-file commit went from 118 ms to 4.5 ms, and stopped scaling
+with the commit's width.
