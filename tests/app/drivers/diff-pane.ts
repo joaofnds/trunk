@@ -2,6 +2,7 @@ import { waitFor } from "../harness/wait.js";
 
 const SHOW_RENDERED = 'button[title="Show rendered markdown"]';
 const SHOW_FULL_FILE = 'button[title="Show full file"]';
+const IGNORE_WHITESPACE = 'button[title="Ignore whitespace changes"]';
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 
@@ -21,6 +22,17 @@ export class DiffPaneDriver {
 	async showFullFile(): Promise<void> {
 		const button = await waitFor("the full-file toggle", () =>
 			document.querySelector<HTMLButtonElement>(SHOW_FULL_FILE),
+		);
+
+		button.click();
+	}
+
+	/** Flips the ignore-whitespace toggle. The view then hides whitespace-only
+	 *  hunks, which is what makes a hunk's position in the view differ from its
+	 *  position in a diff built without the option. */
+	async toggleIgnoreWhitespace(): Promise<void> {
+		const button = await waitFor("the ignore-whitespace toggle", () =>
+			document.querySelector<HTMLButtonElement>(IGNORE_WHITESPACE),
 		);
 
 		button.click();
