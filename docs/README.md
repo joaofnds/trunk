@@ -21,6 +21,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 |-----|---------|
 | [decisions/2026-06-20-pierre-diffs.md](decisions/2026-06-20-pierre-diffs.md) | Rejected `@pierre/diffs`; closed the syntax-highlighting gap natively in Rust with the `two-face` syntect crate. |
 | [decisions/2026-08-31-snapshot-pin-sweep.md](decisions/2026-08-31-snapshot-pin-sweep.md) | Why a snapshot's keepalive ref is reclaimed by a sweep instead of pruned when the snapshot is superseded, and why only a snapshot a thread has anchored to since it was last handed out may be reclaimed: a comment is submitted as two calls, so anything that judges a pin by what anchors to it right now unpins the commit an in-flight comment is about to name. Read before changing snapshot pinning, `ensure_review_snapshot`, or the sweep. |
+| [decisions/2026-09-01-rename-detection-and-the-pathspec-trap.md](decisions/2026-09-01-rename-detection-and-the-pathspec-trap.md) | How a renamed file becomes one entry naming both paths: `find_similar` behind the single `detect_renames`, plus `commit_diff`/`staged_diff`. Two facts that are not visible in the code — a `DiffOptions::pathspec` excludes the delete side before any find option can pair it, so single-file diffs must build whole and select afterwards; and an unstaged workdir rename is deliberately left unpaired, because git leaves it unpaired too, which is what keeps staging clear of the TRUNK-73 divergence. Read before changing rename display, adding a `find_similar` call, or putting a pathspec back on a diff. |
 
 ## Research
 
