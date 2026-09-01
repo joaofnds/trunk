@@ -30,7 +30,8 @@ git repo
   ▼
 [TypeScript: active-lanes.ts] buildGraphData()
   │  Translates GraphCommit[] → OverlayNode[] + OverlayConnection[],
-  │  one connection per loaded parent. No lane state, no coalescing.
+  │  one connection per parent. A parent beyond the loaded page continues
+  │  the lane to the last loaded row. No lane state, no coalescing.
   │
   ▼
 [TypeScript: overlay-paths.ts] buildOverlayPaths()
@@ -42,8 +43,13 @@ git repo
   │  Drops paths, dots and pills outside the scrolled viewport.
   │
   ▼
+[TypeScript: lane-labels.ts] laneSpans() → buildLaneLabels()
+  │  Names each lane crossing the viewport whose ref sits above it.
+  │  Positioned by column against the visible region, not by row.
+  │
+  ▼
 [Svelte: CommitGraph.svelte]
-   Renders SVG: dots, paths, pills.
+   Renders SVG: dots, paths, pills, lane labels.
 ```
 
 `capture()` is the one stage that reads the repository; every stage after it is a pure
@@ -280,8 +286,11 @@ Transforms `GraphCommit[]` into the overlay coordinate system.
 
 **Per-parent connections** (every non-WIP row):
 - One `OverlayConnection` per entry in `parent_oids`, child → parent.
-- A parent that is not on the loaded page is skipped, so the line just stops at the
-  pagination boundary rather than running off the end.
+- A parent beyond the loaded page continues the lane in the child's own column down
+  to the last loaded row, and reaches the parent once that page arrives. Dropping it
+  instead rendered a branch far behind its upstream — whose parent can sit hundreds
+  of rows down — as a dot with nothing leaving it. A child with no straight-through
+  edge does not hold its column below itself, so it gets no lane.
 - Colour selection:
   - Same column: the colour of the Straight edge in the child's own column, falling
     back to the child's `color_index`.
@@ -292,7 +301,8 @@ Transforms `GraphCommit[]` into the overlay coordinate system.
 **There is no lane state and no coalescing.** Each connection spans exactly one
 child→parent pair, however many rows apart they sit, and Layer 3 emits one path for
 each. `commit.edges[]` is read for one purpose only: the same-column colour lookup
-above. Nothing consumes the Rust `EdgeType` variants on this side.
+above, and the off-page continuation, which uses that same edge to decide the child
+holds its column at all. Nothing consumes the Rust `EdgeType` variants on this side.
 
 **`OverlayConnection`** (`types.ts`): `childX/childY` → `parentX/parentY`, plus
 `colorIndex` and `dashed`. Same column and cross-column use the same record; Layer 3
@@ -360,6 +370,35 @@ sub-pixel snapping nor browser zoom takes it near 18; only a smaller
 Every path also carries `minRow`/`maxRow`: the two rows in ascending order, never child
 then parent. `overlay-visible.ts` culls on that interval, and an inverted pair drops a
 partially-visible connector instead of clipping it.
+
+---
+
+## Layer 3b: TypeScript — `lane-labels.ts`
+
+### `laneSpans(connections): LaneSpan[]`
+
+The vertical runs of each lane, taken from the connections Layer 2 produced. Only
+same-column connections hold a lane; a fork or a merge crosses columns and belongs to
+neither.
+
+### `buildLaneLabels(nodes, commits, lanes, visibleStart, visibleEnd): LaneLabel[]`
+
+Names each lane crossing the viewport whose owning ref sits above it. A lane can run
+for hundreds of rows — a branch far behind its upstream holds its column from its tip
+down to a parent well past the first page — and scrolled into the middle of such a
+span the line carries no dot, no name and no visible end.
+
+- The label is the **nearest** ref above the viewport, so a column reused by several
+  branches names the one whose history the visible rows belong to.
+- Where that row carries several refs, `sortRefs` picks the same primary the ref pill
+  shows, so the two readings of a lane agree.
+- A stash and the WIP row name a state, not a line of history, and are skipped as
+  label sources.
+- A lane whose ref row is itself visible gets no label: the ref pill already speaks
+  for it.
+
+Unlike a ref pill, a lane label is positioned by **column against the visible region**
+rather than by row, which is why it is its own stage rather than more `ref-pill-data.ts`.
 
 ---
 
@@ -547,13 +586,14 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src-tauri/src/git/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
-| `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
+| `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`, `LaneLabel`) |
 | `src/lib/wip-row.ts` | `withWipRow()` — prepends the WIP row at index 0 while the worktree is dirty |
-| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, WIP sentinel |
+| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel |
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
+| `src/lib/lane-labels.ts` | `laneSpans()` + `buildLaneLabels()` — names a lane whose ref has scrolled above the viewport |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
-| `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering |
+| `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering, lane labels |
 | `src-tauri/tests/test_graph.rs` | Owns the named-rule layout assertions, read from `tests/rule-inputs/`; the set that still builds a repository is enumerated in `.claude/rules/commit-graph.md`, split into the tests bound to stay and the ones merely not yet migrated |
 | `src-tauri/tests/test_graph_capture.rs` | Captures every named-rule shape into `tests/rule-inputs/`, and holds the fidelity check `just graph-fidelity` runs |
 | `src-tauri/tests/common/graph_shapes.rs` | The one copy of each repository shape, shared by the capture binary and the repository tests that remain |
