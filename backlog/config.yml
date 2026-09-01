@@ -1,4 +1,4 @@
-project_name: "Trunk"
+project_name: "trunk"
 default_status: "To Do"
 statuses: ["To Do", "Shape", "Build", "Review", "Ship", "Done"]
 labels: ["graph", "review", "diff", "ui", "perf", "a11y", "ci", "release"]
