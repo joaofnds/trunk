@@ -63,10 +63,16 @@ vi.mock("../lib/store.js", () => {
 	let currentShowInvisibles = false;
 	let currentWordWrap = false;
 	let currentRenderMode = "source";
+	let currentRenderedStyle = "copies";
 	return {
 		getRenderMode: vi.fn(() => Promise.resolve(currentRenderMode)),
 		setRenderMode: vi.fn((mode: string) => {
 			currentRenderMode = mode;
+			return Promise.resolve(undefined);
+		}),
+		getRenderedDiffStyle: vi.fn(() => Promise.resolve(currentRenderedStyle)),
+		setRenderedDiffStyle: vi.fn((style: string) => {
+			currentRenderedStyle = style;
 			return Promise.resolve(undefined);
 		}),
 		getDiffContextLines: vi.fn(() => Promise.resolve(3)),

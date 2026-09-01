@@ -1,6 +1,11 @@
 import { safeInvoke } from "./invoke.js";
 import type { PersistedTab } from "./tab-types.js";
-import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
+import type {
+	ContentMode,
+	LayoutMode,
+	RenderedDiffStyle,
+	RenderMode,
+} from "./types.js";
 
 export type { PersistedTab } from "./tab-types.js";
 
@@ -339,6 +344,22 @@ export async function getRenderMode(): Promise<RenderMode> {
 
 export async function setRenderMode(mode: RenderMode): Promise<void> {
 	await setPref(DIFF_RENDER_MODE_KEY, mode);
+}
+
+// Copies|Merged presentation for the rendered markdown diff. Defaults to
+// "copies", the shipped behavior.
+const RENDERED_DIFF_STYLE_KEY = "rendered_diff_style";
+
+export async function getRenderedDiffStyle(): Promise<RenderedDiffStyle> {
+	const stored = await getPref<string>(RENDERED_DIFF_STYLE_KEY);
+	if (stored === "copies" || stored === "merged") return stored;
+	return "copies";
+}
+
+export async function setRenderedDiffStyle(
+	style: RenderedDiffStyle,
+): Promise<void> {
+	await setPref(RENDERED_DIFF_STYLE_KEY, style);
 }
 
 const DIFF_SHOW_INVISIBLES_KEY = "diff_show_invisibles";

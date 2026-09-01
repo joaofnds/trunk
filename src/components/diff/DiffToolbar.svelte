@@ -3,6 +3,7 @@ import Code2 from "@lucide/svelte/icons/code-2";
 import Columns2 from "@lucide/svelte/icons/columns-2";
 import Eye from "@lucide/svelte/icons/eye";
 import FoldVertical from "@lucide/svelte/icons/fold-vertical";
+import GitMerge from "@lucide/svelte/icons/git-merge";
 import Pilcrow from "@lucide/svelte/icons/pilcrow";
 import Rows2 from "@lucide/svelte/icons/rows-2";
 import Space from "@lucide/svelte/icons/space";
@@ -11,15 +12,22 @@ import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import { onMount } from "svelte";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
-import type { ContentMode, LayoutMode, RenderMode } from "../../lib/types.js";
+import type {
+	ContentMode,
+	LayoutMode,
+	RenderedDiffStyle,
+	RenderMode,
+} from "../../lib/types.js";
 
 interface Props {
 	contentMode: ContentMode;
 	layoutMode: LayoutMode;
 	renderMode: RenderMode;
+	renderedStyle: RenderedDiffStyle;
 	oncontentmodechange: (mode: ContentMode) => void;
 	onlayoutmodechange: (mode: LayoutMode) => void;
 	onrendermodechange: (mode: RenderMode) => void;
+	onrenderedstylechange: (style: RenderedDiffStyle) => void;
 	selectedPath: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
 	hunkOperationInFlight: boolean;
@@ -41,9 +49,11 @@ let {
 	contentMode,
 	layoutMode,
 	renderMode,
+	renderedStyle,
 	oncontentmodechange,
 	onlayoutmodechange,
 	onrendermodechange,
+	onrenderedstylechange,
 	selectedPath,
 	diffKind,
 	hunkOperationInFlight,
@@ -100,6 +110,19 @@ const renderedActive = $derived(
         <Code2 size={14} />
       {/if}
     </button>
+    {#if renderedActive}
+      <button
+        class="toggle-btn"
+        class:active={renderedStyle === "merged"}
+        title={renderedStyle === "copies"
+          ? "Show merged changes"
+          : "Show before and after copies"}
+        onclick={() =>
+          onrenderedstylechange(renderedStyle === "copies" ? "merged" : "copies")}
+      >
+        <GitMerge size={14} />
+      </button>
+    {/if}
   {/if}
 
   <button

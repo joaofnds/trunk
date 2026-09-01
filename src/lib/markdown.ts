@@ -78,6 +78,10 @@ export type DiffRow =
 			beforeHtml: string;
 			afterHtml: string;
 			wordHtml?: string;
+			// The suggestion-mode fragment: ONE copy carrying del/ins marks and
+			// red/green leaves together; absent when no merged copy could be
+			// built and the merged view falls back to the before/after pair.
+			mergedHtml?: string;
 			// Whether the fragments already point at what changed. True lets the
 			// renderer drop the block-level wash so the tinted leaf carries the
 			// highlight alone; absent (false) means the row has nothing to point

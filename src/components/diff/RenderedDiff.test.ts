@@ -72,6 +72,70 @@ describe("RenderedDiff", () => {
 		);
 	});
 
+	it("renders one merged copy per changed block in merged style, pair when refused", async () => {
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: "<ul><li>old third</li></ul>",
+				afterHtml: "<ul><li>new third</li></ul>",
+				mergedHtml:
+					'<ul><li><del class="md-word-delete">old</del><ins class="md-word-add">new</ins> third</li></ul>',
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			{
+				kind: "changed",
+				beforeHtml: "<pre>let x = 1;</pre>",
+				afterHtml: "<pre>let x = 2;</pre>",
+				afterStart: 3,
+				afterEnd: 3,
+			},
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+
+		const { container } = render(RenderedDiff, {
+			props: { ...baseProps, renderedStyle: "merged" as const },
+		});
+		await screen.findByText(/third/);
+
+		const blocks = container.querySelectorAll(".rendered-block");
+		expect(blocks).toHaveLength(3);
+		expect(blocks[0].querySelector("del.md-word-delete")?.textContent).toBe(
+			"old",
+		);
+		expect(blocks[0].querySelector("ins.md-word-add")?.textContent).toBe("new");
+		expect(blocks[0].classList.contains("md-removed")).toBe(false);
+		expect(blocks[1].classList.contains("md-removed")).toBe(true);
+		expect(blocks[2].classList.contains("md-added")).toBe(true);
+	});
+
+	it("renders the merged style as one inline stream even when layout is split", async () => {
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: "<p>old</p>",
+				afterHtml: "<p>new</p>",
+				mergedHtml:
+					'<p><del class="md-word-delete">old</del><ins class="md-word-add">new</ins></p>',
+				afterStart: 1,
+				afterEnd: 1,
+			},
+		];
+		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "split" as const,
+				renderedStyle: "merged" as const,
+			},
+		});
+		await screen.findByText(/new/);
+
+		expect(container.querySelector(".rendered-diff.split")).toBeNull();
+		expect(container.querySelectorAll(".rendered-block")).toHaveLength(1);
+	});
+
 	it("renders a changed row WITHOUT wordHtml as removed-before then added-after (inline)", async () => {
 		const rows: DiffRow[] = [
 			{ kind: "unchanged", html: "<p>intro</p>", afterStart: 1, afterEnd: 1 },

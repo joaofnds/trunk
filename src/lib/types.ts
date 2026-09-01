@@ -219,6 +219,11 @@ export type ContentMode = "hunk" | "full";
 export type LayoutMode = "inline" | "split";
 export type RenderMode = "source" | "rendered";
 
+// How the rendered markdown diff presents a changed block: two copies
+// (before red, after green) or one merged suggestion-mode copy with del/ins
+// marks, the way docs tools show tracked changes.
+export type RenderedDiffStyle = "copies" | "merged";
+
 export interface HeadCommitMessage {
 	subject: string;
 	body: string | null;

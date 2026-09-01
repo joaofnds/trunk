@@ -85,4 +85,42 @@ describe("the rendered markdown diff", () => {
 			"no block keeps the full wash",
 		).toBe(0);
 	});
+
+	it("shows one merged copy in suggestion mode and keeps the style across files", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					{
+						step: "file",
+						path: "doc.md",
+						content: "- keep one\n- old third here\n- keep two\n",
+					},
+					{ step: "commit", message: "base" },
+					{
+						step: "file",
+						path: "doc.md",
+						content: "- keep one\n- new third here\n- keep two\n",
+					},
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+		await app.diffPane.showMerged();
+
+		const dels = await waitFor("the merged del mark", () => {
+			const texts = app.diffPane.renderedWordDeleted();
+			return texts.length > 0 ? texts : null;
+		});
+		expect(dels).toEqual(["old"]);
+		expect(app.diffPane.renderedWordAdded()).toEqual(["new"]);
+		expect(app.diffPane.renderedRemoved()).toEqual([]);
+		expect(app.diffPane.renderedAdded()).toEqual([]);
+		expect(app.diffPane.mergedActive()).toBe(true);
+	});
 });

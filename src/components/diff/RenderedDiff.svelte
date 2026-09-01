@@ -10,7 +10,7 @@ import {
 	renderMarkdownDiff,
 } from "../../lib/markdown.js";
 import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
-import type { CommitDetail } from "../../lib/types.js";
+import type { CommitDetail, RenderedDiffStyle } from "../../lib/types.js";
 
 // All split columns pan as one under wrap-off (Source's splitColSync model):
 // scrolling any column mirrors its scrollLeft to every other.
@@ -26,6 +26,10 @@ const colSync = createHorizontalScrollSync();
 // (`wordHtml`), otherwise it shows before(red)+after(green).
 interface Props {
 	layoutMode: "inline" | "split";
+	// Copies (before/after pair) or one merged suggestion-mode copy per
+	// changed block. Merged always renders as a single inline stream — a
+	// merged copy has no left/right to split.
+	renderedStyle?: RenderedDiffStyle;
 	selectedPath: string;
 	diffKind: "unstaged" | "staged" | "commit";
 	commitOid: string;
@@ -46,6 +50,7 @@ interface Props {
 
 let {
 	layoutMode,
+	renderedStyle = "copies",
 	selectedPath,
 	diffKind,
 	commitOid,
@@ -58,6 +63,12 @@ let {
 	refreshToken = 0,
 	hunkElements,
 }: Props = $props();
+
+// Merged style has one copy per block; splitting it would show the same copy
+// twice, so the layout collapses to the inline stream.
+const effectiveLayout = $derived(
+	renderedStyle === "merged" ? "inline" : layoutMode,
+);
 
 // Each changed row's first content block, keyed by its document-order change
 // index. An action feeds this; the effect below projects it into the host's
@@ -332,6 +343,19 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					wash: true,
 				},
 			];
+		// merged (suggestion-mode) style: ONE copy carrying del/ins marks and
+		// red/green leaves; a block with no merged copy falls through to the
+		// before/after pair below.
+		if (renderedStyle === "merged" && r.mergedHtml)
+			return [
+				{
+					type: "block",
+					tint: "unchanged",
+					html: r.mergedHtml,
+					changeIndex,
+					wash: true,
+				},
+			];
 		// changed with a word-level merge (single-leaf): ONE block, no wrapper tint —
 		// the inline md-word-* del/ins marks inside wordHtml carry the signal.
 		if (r.wordHtml)
@@ -560,8 +584,8 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
        lives inside the per-row columns. -->
   <div
     class="rendered-content"
-    class:split={layoutMode === "split"}
-    style="min-width: 100%; width: {wordWrap || layoutMode === 'split'
+    class:split={effectiveLayout === "split"}
+    style="min-width: 100%; width: {wordWrap || effectiveLayout === 'split'
       ? '100%'
       : 'max-content'};"
   >
@@ -572,7 +596,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
       <div class="rendered-note rendered-error">{state.message}</div>
     {:else if state.kind === "loading"}
       <div class="rendered-block"></div>
-    {:else if layoutMode === "split" && absentSide === "before"}
+    {:else if effectiveLayout === "split" && absentSide === "before"}
       <div class="split-columns">
         <div class="split-column rendered-note">Not present at this revision</div>
         <div class="split-column" use:colSync>
@@ -584,7 +608,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
           </div>
         </div>
       </div>
-    {:else if layoutMode === "split" && absentSide === "after"}
+    {:else if effectiveLayout === "split" && absentSide === "after"}
       <div class="split-columns">
         <div class="split-column" use:colSync>
           <div
@@ -596,7 +620,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
         </div>
         <div class="split-column rendered-note">Not present at this revision</div>
       </div>
-    {:else if layoutMode === "split"}
+    {:else if effectiveLayout === "split"}
       {#each splitSegments as segment}
         {#if segment.type === "sep"}
           {@render separator(segment.count)}

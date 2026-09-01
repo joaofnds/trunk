@@ -107,6 +107,13 @@ pub enum DiffRow {
         after_html: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         word_html: Option<String>,
+        /// The suggestion-mode fragment: ONE copy of the block carrying del
+        /// and ins marks (and red/green leaves for whole-item changes)
+        /// together. `None` when no merged copy can be built — code blocks,
+        /// dense rewrites, structural failures — and the merged view falls
+        /// back to the before/after pair.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        merged_html: Option<String>,
         /// Whether the fragments already point at what changed, so the frontend
         /// can drop the block-level wash and let the tinted leaf carry the
         /// highlight alone. False on every row shape that has nothing to point
@@ -509,6 +516,7 @@ fn flush_runs(
                 before_html: cf.before_html,
                 after_html: cf.after_html,
                 word_html: cf.word_html,
+                merged_html: cf.merged_html,
                 has_tints: cf.has_tints,
                 after_start: a.start_line,
                 after_end: a.end_line,
@@ -1038,6 +1046,29 @@ fn strip_table_section(raw: &str) -> &str {
 /// `None` when the element cannot be located; the caller falls back to the
 /// tint, which degrades gracefully rather than corrupt the fragment.
 fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Option<String> {
+    let (start, end) = element_span(sourcepos_html, sourcepos)?;
+    let tag: String = sourcepos_html[start + 1..]
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .collect();
+    if !replacement.trim_start().starts_with(&format!("<{tag}")) {
+        // The standalone render wraps some leaves differently than they sit
+        // in the container (a header row gains its own <thead>); splicing
+        // that in would nest sections.
+        return None;
+    }
+
+    let mut out = String::with_capacity(sourcepos_html.len() + replacement.len());
+    out.push_str(&sourcepos_html[..start]);
+    out.push_str(replacement);
+    out.push_str(&sourcepos_html[end..]);
+    Some(out)
+}
+
+/// The byte span of one leaf's whole element in a sourcepos-annotated
+/// fragment, matched by its unique `data-sourcepos` and closed by scanning
+/// same-tag nesting (a list item can hold a nested list of more items).
+fn element_span(sourcepos_html: &str, sourcepos: &str) -> Option<(usize, usize)> {
     let needle = format!("data-sourcepos=\"{sourcepos}\"");
     let attr = sourcepos_html.find(&needle)?;
     let start = sourcepos_html[..attr].rfind('<')?;
@@ -1051,12 +1082,6 @@ fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Opt
 
     let open_marker = format!("<{tag}");
     let close_marker = format!("</{tag}>");
-    if !replacement.trim_start().starts_with(&open_marker) {
-        // The standalone render wraps some leaves differently than they sit
-        // in the container (a header row gains its own <thead>); splicing
-        // that in would nest sections.
-        return None;
-    }
     let mut depth = 1usize;
     let mut pos = start + open_marker.len();
     while depth > 0 {
@@ -1081,11 +1106,7 @@ fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Opt
         }
     }
 
-    let mut out = String::with_capacity(sourcepos_html.len() + replacement.len());
-    out.push_str(&sourcepos_html[..start]);
-    out.push_str(replacement);
-    out.push_str(&sourcepos_html[pos..]);
-    Some(out)
+    Some((start, pos))
 }
 
 /// The before/after fragments for a `Changed` row, plus an optional inline
@@ -1099,6 +1120,7 @@ struct ChangedFragments {
     before_html: String,
     after_html: String,
     word_html: Option<String>,
+    merged_html: Option<String>,
     has_tints: bool,
 }
 
@@ -1112,6 +1134,7 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
         return ChangedFragments {
             before_html: before.html.clone(),
             after_html: after.html.clone(),
+            merged_html: word_html.clone(),
             word_html,
             has_tints: false,
         };
@@ -1124,7 +1147,8 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     let mut before_frag = before.sourcepos_html.clone();
     let mut after_frag = after.sourcepos_html.clone();
     let mut word_marked = false;
-    for op in similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs) {
+    let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs);
+    for op in ops.iter().copied() {
         match op {
             similar::DiffOp::Equal { .. } => {}
             similar::DiffOp::Delete {
@@ -1177,8 +1201,113 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
         before_html: sanitize_html(&tint_leaves(&before_frag, &before_tints)),
         after_html: sanitize_html(&tint_leaves(&after_frag, &after_tints)),
         word_html: None,
+        merged_html: merged_container(before, after, &ops),
         has_tints: !before_tints.is_empty() || !after_tints.is_empty() || word_marked,
     }
+}
+
+/// The suggestion-mode copy of a changed container: the after skeleton with
+/// deleted leaves spliced back in tinted red, inserted leaves tinted green,
+/// and cleanly pairing leaves replaced by their del+ins word merge. `None` on
+/// any structural failure; the merged view then falls back to the
+/// before/after pair.
+fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> Option<String> {
+    let mut frag = after.sourcepos_html.clone();
+    let mut tints: Vec<(&str, &str)> = Vec::new();
+
+    for op in ops.iter().copied() {
+        match op {
+            similar::DiffOp::Equal { .. } => {}
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                for l in &after.leaves[new_index..new_index + new_len] {
+                    tints.push((&l.sourcepos, "md-added"));
+                }
+            }
+            similar::DiffOp::Delete {
+                old_index,
+                old_len,
+                new_index,
+            } => {
+                insert_removed_leaves(
+                    &mut frag,
+                    &before.leaves[old_index..old_index + old_len],
+                    after.leaves.get(new_index).or(after.leaves.last()),
+                    new_index >= after.leaves.len(),
+                )?;
+            }
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                let pairs = old_len.min(new_len);
+                for k in 0..pairs {
+                    let b = &before.leaves[old_index + k];
+                    let a = &after.leaves[new_index + k];
+                    match html_token_merge(&b.raw_html, &a.raw_html) {
+                        Some(merged_leaf) => {
+                            frag = replace_leaf(&frag, &a.sourcepos, &merged_leaf)?;
+                        }
+                        None => {
+                            insert_removed_leaves(
+                                &mut frag,
+                                std::slice::from_ref(b),
+                                Some(a),
+                                false,
+                            )?;
+                            tints.push((&a.sourcepos, "md-added"));
+                        }
+                    }
+                }
+                if old_len > new_len {
+                    let anchor_idx = new_index + new_len;
+                    insert_removed_leaves(
+                        &mut frag,
+                        &before.leaves[old_index + pairs..old_index + old_len],
+                        after.leaves.get(anchor_idx).or(after.leaves.last()),
+                        anchor_idx >= after.leaves.len(),
+                    )?;
+                }
+                for l in &after.leaves[new_index + pairs..new_index + new_len] {
+                    tints.push((&l.sourcepos, "md-added"));
+                }
+            }
+        }
+    }
+
+    Some(sanitize_html(&tint_leaves(&frag, &tints)))
+}
+
+/// Splice removed leaves, tinted red, into the merged copy: before `anchor`'s
+/// element, or right after it when the deletion falls at the container's tail
+/// (`after_anchor`).
+fn insert_removed_leaves(
+    frag: &mut String,
+    removed: &[Leaf],
+    anchor: Option<&Leaf>,
+    after_anchor: bool,
+) -> Option<()> {
+    let anchor = anchor?;
+    let insertion: String = removed
+        .iter()
+        .map(|l| tint_outer(&l.raw_html, "md-removed"))
+        .collect::<Option<Vec<_>>>()?
+        .join("\n");
+
+    let (start, end) = element_span(frag, &anchor.sourcepos)?;
+    let pos = if after_anchor { end } else { start };
+    frag.insert_str(pos, &format!("\n{insertion}\n"));
+    Some(())
+}
+
+/// Tint a leaf's raw render by injecting a class on its outer tag.
+fn tint_outer(raw: &str, class: &str) -> Option<String> {
+    let raw = raw.trim();
+    let gt = raw.find('>')?;
+    Some(format!("{} class=\"{class}\"{}", &raw[..gt], &raw[gt..]))
 }
 
 /// Word-merge one leaf pair and splice both marked copies into their
@@ -2245,6 +2374,104 @@ mod tests {
         assert!(
             !after_html.contains("md-added"),
             "a cleanly pairing item carries word marks, not the item wash: {after_html}"
+        );
+    }
+
+    // The merged (suggestion-mode) fragment: one copy of the changed block
+    // carrying del and ins marks together, the way docs tools show a
+    // suggestion.
+    #[test]
+    fn a_changed_paragraph_carries_a_merged_copy() {
+        let before = "the quick brown fox";
+        let after = "the slow brown fox";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("a word edit is a Changed row: {rows:?}");
+        };
+
+        let merged = merged_html.as_deref().expect("a paragraph edit merges");
+        assert!(
+            merged.contains(r#"<del class="md-word-delete">quick</del>"#)
+                && merged.contains(r#"<ins class="md-word-add">slow</ins>"#),
+            "one copy carries both marks: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_changed_list_carries_a_merged_copy_with_both_marks() {
+        let before = "- keep one\n- old third here\n- keep two";
+        let after = "- keep one\n- new third here\n- keep two";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("a one-word list edit is a Changed row: {rows:?}");
+        };
+
+        let merged = merged_html.as_deref().expect("a clean list edit merges");
+        assert_eq!(
+            merged.matches("<ul").count(),
+            1,
+            "one copy of the list, not two: {merged}"
+        );
+        assert!(
+            merged.contains(r#"<del class="md-word-delete">old</del>"#)
+                && merged.contains(r#"<ins class="md-word-add">new</ins>"#),
+            "the changed item carries del and ins together: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_deleted_item_appears_tinted_inside_the_merged_copy() {
+        let before = "- keep one\n- doomed item\n- keep two";
+        let after = "- keep one\n- keep two";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("an item deletion is a Changed row: {rows:?}");
+        };
+
+        let merged = merged_html.as_deref().expect("an item deletion merges");
+        assert!(
+            merged.contains("doomed item"),
+            "the deleted item is present in the one copy: {merged}"
+        );
+        assert!(
+            merged.contains(r#"class="md-removed""#),
+            "the deleted item is tinted removed: {merged}"
+        );
+        let doomed = merged.find("doomed item").unwrap();
+        let keep_two = merged.find("keep two").unwrap();
+        assert!(
+            doomed < keep_two,
+            "the deleted item sits in reading order: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_code_block_change_has_no_merged_copy() {
+        let before = "```rust\nlet x = 1;\n```";
+        let after = "```rust\nlet x = 2;\n```";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("a code edit is a Changed row: {rows:?}");
+        };
+
+        assert!(
+            merged_html.is_none(),
+            "code blocks fall back to the before/after pair: {merged_html:?}"
+        );
+    }
+
+    #[test]
+    fn a_dense_rewrite_has_no_merged_copy() {
+        let before = "the quick brown fox jumps over the lazy dog";
+        let after = "metrics are flushed every thirty seconds regardless";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("a rewrite is a Changed row: {rows:?}");
+        };
+
+        assert!(
+            merged_html.is_none(),
+            "a rewrite falls back to the before/after pair: {merged_html:?}"
         );
     }
 

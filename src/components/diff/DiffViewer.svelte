@@ -8,6 +8,7 @@ import type {
 	DiffOrigin,
 	FileDiff,
 	LayoutMode,
+	RenderedDiffStyle,
 	RenderMode,
 	Thread,
 } from "../../lib/types.js";
@@ -21,6 +22,7 @@ interface Props {
 	contextLines: number;
 	layoutMode: LayoutMode;
 	renderMode: RenderMode;
+	renderedStyle?: RenderedDiffStyle;
 	fileDiffs: FileDiff[];
 	commitDetail: CommitDetail | null;
 	selectedPath: string | null;
@@ -84,6 +86,7 @@ let {
 	contextLines,
 	layoutMode,
 	renderMode,
+	renderedStyle = "copies",
 	fileDiffs,
 	commitDetail,
 	selectedPath,
@@ -160,6 +163,7 @@ const virtualized = $derived(
     </div>
   {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath)}
     <RenderedDiff
+      {renderedStyle}
       {layoutMode}
       selectedPath={selectedPath}
       {diffKind}

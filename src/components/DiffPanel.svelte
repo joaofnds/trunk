@@ -20,6 +20,7 @@ import {
 	getDiffShowFullFile,
 	getDiffShowInvisibles,
 	getDiffWordWrap,
+	getRenderedDiffStyle,
 	getRenderMode,
 	setDiffContentMode,
 	setDiffIgnoreWhitespace,
@@ -27,6 +28,7 @@ import {
 	setDiffShowFullFile,
 	setDiffShowInvisibles,
 	setDiffWordWrap,
+	setRenderedDiffStyle,
 	setRenderMode,
 } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -38,6 +40,7 @@ import type {
 	DiffRequestOptions,
 	FileDiff,
 	LayoutMode,
+	RenderedDiffStyle,
 	RenderMode,
 	Side,
 	Thread,
@@ -87,6 +90,7 @@ let {
 let contentMode = $state<ContentMode>("hunk");
 let layoutMode = $state<LayoutMode>("inline");
 let renderMode = $state<RenderMode>("source");
+let renderedStyle = $state<RenderedDiffStyle>("copies");
 let contextLines = $state(3);
 let ignoreWhitespace = $state(false);
 let showInvisibles = $state(false);
@@ -298,8 +302,9 @@ $effect(() => {
 		getDiffShowInvisibles(),
 		getDiffWordWrap(),
 		getRenderMode(),
+		getRenderedDiffStyle(),
 	])
-		.then(([cm, lm, cl, iw, si, ww, rm]) => {
+		.then(([cm, lm, cl, iw, si, ww, rm, rs]) => {
 			contentMode = cm;
 			layoutMode = lm;
 			contextLines = cl;
@@ -307,6 +312,7 @@ $effect(() => {
 			showInvisibles = si;
 			wordWrap = ww;
 			renderMode = rm;
+			renderedStyle = rs;
 			prefsLoaded = true;
 		})
 		.catch(() => {
@@ -344,6 +350,11 @@ async function handleLayoutModeChange(mode: LayoutMode) {
 function handleRenderModeChange(mode: RenderMode) {
 	renderMode = mode;
 	setRenderMode(mode);
+}
+
+function handleRenderedStyleChange(style: RenderedDiffStyle) {
+	renderedStyle = style;
+	setRenderedDiffStyle(style);
 }
 
 async function handleIgnoreWhitespaceChange(value: boolean) {
@@ -845,9 +856,11 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{contentMode}
 		{layoutMode}
 		{renderMode}
+		{renderedStyle}
 		oncontentmodechange={handleContentModeChange}
 		onlayoutmodechange={handleLayoutModeChange}
 		onrendermodechange={handleRenderModeChange}
+		onrenderedstylechange={handleRenderedStyleChange}
 		selectedPath={selectedPath}
 		{diffKind}
 		{hunkOperationInFlight}
@@ -870,6 +883,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{contextLines}
 		{layoutMode}
 		{renderMode}
+		{renderedStyle}
 		{fileDiffs}
 		{commitDetail}
 		{selectedPath}
