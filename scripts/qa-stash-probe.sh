@@ -7,7 +7,14 @@
 # The fixtures are built from fixed timestamps, so two runs over an unchanged
 # tree are byte-identical: capture a baseline before a change, capture again
 # after, and `diff -r` the two directories to see exactly which fixtures moved.
+#
+# That byte-identity is why the probe reads under an isolated git config. The
+# layout it dumps includes worktree dirtiness, which consults core.excludesFile,
+# core.fileMode and core.autocrlf — so without this an edit to the operator's
+# global config moves a fixture in the diff with no code change at all.
 set -euo pipefail
+
+SCRUB=(env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null)
 
 OUT="${1:?usage: scripts/qa-stash-probe.sh OUTPUT_DIR [FIXTURE_DIR]}"
 FIXTURES="${2:-${TMPDIR:-/tmp}/trunk-qa-stash}"
@@ -22,7 +29,7 @@ if [ ! -d "$FIXTURES" ]; then
 	exit 1
 fi
 
-cargo build --quiet --manifest-path "$MANIFEST" --example graph_probe
+"${SCRUB[@]}" cargo build --quiet --manifest-path "$MANIFEST" --example graph_probe
 
 mkdir -p "$OUT"
 for repo in "$FIXTURES"/*/; do
@@ -31,7 +38,7 @@ for repo in "$FIXTURES"/*/; do
 	if [ ! -d "$repo/.git" ] && [ ! -f "$repo/HEAD" ]; then
 		continue
 	fi
-	cargo run --quiet --manifest-path "$MANIFEST" --example graph_probe -- "$repo" \
+	"${SCRUB[@]}" cargo run --quiet --manifest-path "$MANIFEST" --example graph_probe -- "$repo" \
 		>"$OUT/$name.txt"
 	printf '  %s\n' "$name"
 done

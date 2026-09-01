@@ -7,7 +7,14 @@
 # Every repository is rebuilt from scratch. Commit timestamps are explicit and
 # spaced a day apart: the graph sorts with TOPOLOGICAL | TIME, so same-second
 # commits sort arbitrarily and can render a coincidentally-correct layout.
+#
+# Global git config is isolated. Without that an ambient commit.gpgsign makes
+# every run produce different OIDs, and hooks and templates leak in. A
+# core.hooksPath pre-commit that writes a file is the case that bites: the build
+# exits 0 and the corpus is silently not the one this script's README describes.
 set -euo pipefail
+
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 
 OUT="${1:-${TMPDIR:-/tmp}/trunk-qa-stash}"
 OUT="${OUT%/}"
