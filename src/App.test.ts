@@ -166,6 +166,10 @@ describe("App", () => {
 		});
 	});
 
+	// Known flake: this test has expired its 1 008 ms `waitFor` deadline under
+	// contention without the application being broken. If it fails, read TRUNK-62
+	// (`backlog task 62 --plain`) before investigating — it records what is already
+	// ruled out, including that raising this deadline is not the fix.
 	it("loads the new repository's graph when a tab swaps repositories in place", async () => {
 		const { getByText } = render(App);
 		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_A));

@@ -140,7 +140,7 @@ flake-hunt runs="10":
     done
     echo "{{runs}} runs of each suite, $failures failed"
     if [ "$failures" -ne 0 ]; then
-        echo "::error::a frontend suite failed $failures time(s) over {{runs}} runs; a wait that fails under contention is the defect, not the runner"
+        echo "::error::a frontend suite failed $failures time(s) over {{runs}} runs; a wait that fails under contention is the defect, not the runner. Read TRUNK-62 (backlog task 62 --plain) before investigating: it records what is already ruled out."
         exit 1
     fi
 
