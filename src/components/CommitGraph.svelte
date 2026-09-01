@@ -1841,7 +1841,7 @@ $effect(() => {
             <g class="overlay-lane-labels" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
               {#each laneLabels as laneLabel}
                 {@const lx = geometry.cx(laneLabel.column)}
-                {@const ly = visibleStart * displaySettings.rowHeight + LANE_LABEL_INSET_Y}
+                {@const ly = geometry.cy(visibleStart) - displaySettings.rowHeight / 2 + LANE_LABEL_INSET_Y}
                 <rect
                   x={lx - LANE_LABEL_DOT_R - LANE_LABEL_PAD_X}
                   y={ly - LANE_LABEL_H / 2}
