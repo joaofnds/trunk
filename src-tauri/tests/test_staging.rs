@@ -1435,6 +1435,28 @@ fn staged_file_list_pairs_a_staged_rename() {
     );
 }
 
+/// A staged rename with a further, unstaged edit on top: `head_to_index` pairs
+/// util.ts -> math-util.ts, so `entry.path()` reads the old side for this entry
+/// too, even though the unstaged row's own delta is `index_to_workdir`. The
+/// unstaged row must still read the current path, not the pre-rename one.
+#[test]
+fn staged_rename_with_a_further_unstaged_edit_shows_the_current_path() {
+    let ctx = staged_rename_with_one_edit();
+    std::fs::write(
+        ctx.repo_path().join("math-util.ts"),
+        "export const value1 = 999;\n",
+    )
+    .unwrap();
+
+    let status = ctx.get_status().expect("get_status failed");
+
+    assert_eq!(status.unstaged.len(), 1);
+    assert_eq!(
+        status.unstaged[0].path, "math-util.ts",
+        "unstaged row should show the current path, not the pre-rename one"
+    );
+}
+
 // -- staging under the view's options (TRUNK-73) --
 
 /// A file whose first change is whitespace-only, followed by two real edits.

@@ -146,10 +146,19 @@ pub fn get_status_inner(
             });
         }
 
-        // Working directory (unstaged) entries — a file can appear in both
+        // Working directory (unstaged) entries — a file can appear in both.
+        // `file_path` reads the same delta's old side when `head_to_index` pairs
+        // a rename, so it needs the same current-path correction as the staged
+        // branch above, even though this branch's own delta is `index_to_workdir`.
         if let Some(status_type) = classify_workdir(status) {
+            let path = entry
+                .head_to_index()
+                .and_then(|delta| delta.new_file().path())
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| file_path.clone());
+
             unstaged.push(FileStatus {
-                path: file_path,
+                path,
                 old_path: renamed_from(entry.index_to_workdir()),
                 status: status_type,
                 is_binary: false,
