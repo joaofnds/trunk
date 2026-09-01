@@ -1,7 +1,7 @@
-use crate::commands::diff::workdir_diff_opts;
+use crate::commands::diff::{apply_request_options, workdir_diff_opts};
 use crate::error::TrunkError;
 use crate::git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
-use crate::git::types::{FileStatus, FileStatusType, WorkingTreeStatus};
+use crate::git::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
 use crate::state::RepoState;
 use git2::{Status, StatusOptions};
 use std::collections::{HashMap, HashSet};
@@ -393,11 +393,13 @@ pub fn stage_hunk_inner(
     file_path: &str,
     hunk_index: u32,
     state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     // Generate diff for this file (index -> workdir), including untracked files
     let mut diff_opts = workdir_diff_opts(file_path);
+    apply_request_options(&mut diff_opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
 
     // Validate: at least one delta expected
@@ -477,6 +479,7 @@ pub fn unstage_hunk_inner(
     file_path: &str,
     hunk_index: u32,
     state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
@@ -486,6 +489,7 @@ pub fn unstage_hunk_inner(
     // detection could pair it, leaving this acting on a whole-file add where
     // the user saw a one-line edit.
     let mut diff_opts = crate::commands::diff::new_diff_options();
+    apply_request_options(&mut diff_opts, options);
     diff_opts.reverse(true);
     let diff = crate::commands::diff::staged_diff(&repo, &mut diff_opts)?;
 
@@ -532,11 +536,13 @@ pub fn discard_hunk_inner(
     file_path: &str,
     hunk_index: u32,
     state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     // Generate reversed diff (workdir -> index) so applying to workdir undoes the change
     let mut diff_opts = workdir_diff_opts(file_path);
+    apply_request_options(&mut diff_opts, options);
     diff_opts.reverse(true);
     let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
 
@@ -796,11 +802,13 @@ pub async fn stage_hunk(
     path: String,
     file_path: String,
     hunk_index: u32,
+    options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        stage_hunk_inner(&path, &file_path, hunk_index, &state_map)
+        stage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -812,11 +820,13 @@ pub async fn unstage_hunk(
     path: String,
     file_path: String,
     hunk_index: u32,
+    options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        unstage_hunk_inner(&path, &file_path, hunk_index, &state_map)
+        unstage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -828,11 +838,13 @@ pub async fn discard_hunk(
     path: String,
     file_path: String,
     hunk_index: u32,
+    options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        discard_hunk_inner(&path, &file_path, hunk_index, &state_map)
+        discard_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -845,11 +857,20 @@ pub async fn stage_lines(
     file_path: String,
     hunk_index: u32,
     line_indices: Vec<u32>,
+    options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        stage_lines_inner(&path, &file_path, hunk_index, line_indices, &state_map)
+        stage_lines_inner(
+            &path,
+            &file_path,
+            hunk_index,
+            line_indices,
+            &state_map,
+            &options,
+        )
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -862,11 +883,20 @@ pub async fn unstage_lines(
     file_path: String,
     hunk_index: u32,
     line_indices: Vec<u32>,
+    options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        unstage_lines_inner(&path, &file_path, hunk_index, line_indices, &state_map)
+        unstage_lines_inner(
+            &path,
+            &file_path,
+            hunk_index,
+            line_indices,
+            &state_map,
+            &options,
+        )
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -879,11 +909,20 @@ pub async fn discard_lines(
     file_path: String,
     hunk_index: u32,
     line_indices: Vec<u32>,
+    options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
+    let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
-        discard_lines_inner(&path, &file_path, hunk_index, line_indices, &state_map)
+        discard_lines_inner(
+            &path,
+            &file_path,
+            hunk_index,
+            line_indices,
+            &state_map,
+            &options,
+        )
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -1052,11 +1091,13 @@ pub fn stage_lines_inner(
     hunk_index: u32,
     line_indices: Vec<u32>,
     state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     // Generate diff for this file (index -> workdir), including untracked files
     let mut diff_opts = workdir_diff_opts(file_path);
+    apply_request_options(&mut diff_opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
 
     if diff.deltas().len() == 0 {
@@ -1102,6 +1143,7 @@ pub fn unstage_lines_inner(
     hunk_index: u32,
     line_indices: Vec<u32>,
     state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
@@ -1109,6 +1151,7 @@ pub fn unstage_lines_inner(
     // We use the forward diff so line indices match the user's view,
     // then build a reversed partial patch to undo selected lines.
     let mut diff_opts = crate::commands::diff::new_diff_options();
+    apply_request_options(&mut diff_opts, options);
     let diff = crate::commands::diff::staged_diff(&repo, &mut diff_opts)?;
 
     let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
@@ -1153,6 +1196,7 @@ pub fn discard_lines_inner(
     hunk_index: u32,
     line_indices: Vec<u32>,
     state_map: &HashMap<String, PathBuf>,
+    options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
@@ -1160,6 +1204,7 @@ pub fn discard_lines_inner(
     // We use the forward diff so line indices match the user's view,
     // then build a reversed partial patch to undo selected lines.
     let mut diff_opts = workdir_diff_opts(file_path);
+    apply_request_options(&mut diff_opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut diff_opts))?;
 
     if diff.deltas().len() == 0 {

@@ -197,8 +197,14 @@ fn bench_stage_hunk(c: &mut Criterion) {
         b.iter_batched(
             make_repo_for_stage_hunk,
             |(_dir, path, state_map)| {
-                trunk_lib::commands::staging::stage_hunk_inner(&path, "README.md", 0, &state_map)
-                    .unwrap();
+                trunk_lib::commands::staging::stage_hunk_inner(
+                    &path,
+                    "README.md",
+                    0,
+                    &state_map,
+                    &trunk_lib::git::types::DiffRequestOptions::default(),
+                )
+                .unwrap();
                 // _dir dropped here, cleaning up temp directory
             },
             BatchSize::SmallInput,

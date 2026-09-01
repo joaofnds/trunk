@@ -569,7 +569,12 @@ async function handleStageHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("stage_hunk", { path: repoPath, filePath, hunkIndex });
+		await safeInvoke("stage_hunk", {
+			path: repoPath,
+			filePath,
+			hunkIndex,
+			options: currentDiffOptions(),
+		});
 		if (isLastHunk(filePath)) {
 			onfileemptied?.(filePath, "stage");
 		} else {
@@ -586,7 +591,12 @@ async function handleUnstageHunk(filePath: string, hunkIndex: number) {
 	if (hunkOperationInFlight) return;
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("unstage_hunk", { path: repoPath, filePath, hunkIndex });
+		await safeInvoke("unstage_hunk", {
+			path: repoPath,
+			filePath,
+			hunkIndex,
+			options: currentDiffOptions(),
+		});
 		if (isLastHunk(filePath)) {
 			onfileemptied?.(filePath, "unstage");
 		} else {
@@ -610,7 +620,12 @@ async function handleDiscardHunk(filePath: string, hunkIndex: number) {
 
 	hunkOperationInFlight = true;
 	try {
-		await safeInvoke("discard_hunk", { path: repoPath, filePath, hunkIndex });
+		await safeInvoke("discard_hunk", {
+			path: repoPath,
+			filePath,
+			hunkIndex,
+			options: currentDiffOptions(),
+		});
 		showToast("Discarded hunk", "success");
 		if (isLastHunk(filePath)) {
 			onfileemptied?.(filePath, "discard");
@@ -779,6 +794,7 @@ async function handleStageLines(filePath: string, hunkIndex: number) {
 			filePath,
 			hunkIndex,
 			lineIndices: Array.from(selectedLineIndices),
+			options: currentDiffOptions(),
 		});
 		await onhunkaction?.(filePath);
 	} catch (e) {
@@ -798,6 +814,7 @@ async function handleUnstageLines(filePath: string, hunkIndex: number) {
 			filePath,
 			hunkIndex,
 			lineIndices: Array.from(selectedLineIndices),
+			options: currentDiffOptions(),
 		});
 		await onhunkaction?.(filePath);
 	} catch (e) {
@@ -828,6 +845,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 			filePath,
 			hunkIndex,
 			lineIndices: Array.from(selectedLineIndices),
+			options: currentDiffOptions(),
 		});
 		showToast(`Discarded ${count} lines`, "success");
 		await onhunkaction?.(filePath);

@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
 use trunk_lib::commands::staging;
 use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::WorkingTreeStatus;
+use trunk_lib::git::types::{DiffRequestOptions, WorkingTreeStatus};
 
 impl TestContext {
     pub fn get_status(&self) -> Result<WorkingTreeStatus, TrunkError> {
@@ -29,15 +29,60 @@ impl TestContext {
     }
 
     pub fn stage_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
-        staging::stage_hunk_inner(self.path(), file_path, hunk_index, self.state_map())
+        self.stage_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
+    }
+
+    pub fn stage_hunk_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        options: &DiffRequestOptions,
+    ) -> Result<(), TrunkError> {
+        staging::stage_hunk_inner(
+            self.path(),
+            file_path,
+            hunk_index,
+            self.state_map(),
+            options,
+        )
     }
 
     pub fn unstage_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
-        staging::unstage_hunk_inner(self.path(), file_path, hunk_index, self.state_map())
+        self.unstage_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
+    }
+
+    pub fn unstage_hunk_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        options: &DiffRequestOptions,
+    ) -> Result<(), TrunkError> {
+        staging::unstage_hunk_inner(
+            self.path(),
+            file_path,
+            hunk_index,
+            self.state_map(),
+            options,
+        )
     }
 
     pub fn discard_hunk(&self, file_path: &str, hunk_index: u32) -> Result<(), TrunkError> {
-        staging::discard_hunk_inner(self.path(), file_path, hunk_index, self.state_map())
+        self.discard_hunk_with_options(file_path, hunk_index, &DiffRequestOptions::default())
+    }
+
+    pub fn discard_hunk_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        options: &DiffRequestOptions,
+    ) -> Result<(), TrunkError> {
+        staging::discard_hunk_inner(
+            self.path(),
+            file_path,
+            hunk_index,
+            self.state_map(),
+            options,
+        )
     }
 
     pub fn unstage_all(&self) -> Result<(), TrunkError> {
@@ -50,12 +95,28 @@ impl TestContext {
         hunk_index: u32,
         line_indices: Vec<u32>,
     ) -> Result<(), TrunkError> {
+        self.stage_lines_with_options(
+            file_path,
+            hunk_index,
+            line_indices,
+            &DiffRequestOptions::default(),
+        )
+    }
+
+    pub fn stage_lines_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        line_indices: Vec<u32>,
+        options: &DiffRequestOptions,
+    ) -> Result<(), TrunkError> {
         staging::stage_lines_inner(
             self.path(),
             file_path,
             hunk_index,
             line_indices,
             self.state_map(),
+            options,
         )
     }
 
@@ -65,12 +126,28 @@ impl TestContext {
         hunk_index: u32,
         line_indices: Vec<u32>,
     ) -> Result<(), TrunkError> {
+        self.unstage_lines_with_options(
+            file_path,
+            hunk_index,
+            line_indices,
+            &DiffRequestOptions::default(),
+        )
+    }
+
+    pub fn unstage_lines_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        line_indices: Vec<u32>,
+        options: &DiffRequestOptions,
+    ) -> Result<(), TrunkError> {
         staging::unstage_lines_inner(
             self.path(),
             file_path,
             hunk_index,
             line_indices,
             self.state_map(),
+            options,
         )
     }
 
@@ -80,12 +157,28 @@ impl TestContext {
         hunk_index: u32,
         line_indices: Vec<u32>,
     ) -> Result<(), TrunkError> {
+        self.discard_lines_with_options(
+            file_path,
+            hunk_index,
+            line_indices,
+            &DiffRequestOptions::default(),
+        )
+    }
+
+    pub fn discard_lines_with_options(
+        &self,
+        file_path: &str,
+        hunk_index: u32,
+        line_indices: Vec<u32>,
+        options: &DiffRequestOptions,
+    ) -> Result<(), TrunkError> {
         staging::discard_lines_inner(
             self.path(),
             file_path,
             hunk_index,
             line_indices,
             self.state_map(),
+            options,
         )
     }
 

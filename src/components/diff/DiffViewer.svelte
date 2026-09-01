@@ -180,7 +180,6 @@ const virtualized = $derived(
       {selectedPath}
       {diffKind}
       {hunkOperationInFlight}
-      {ignoreWhitespace}
       {showInvisibles}
       {wordWrap}
       {selectedHunkKey}
@@ -221,7 +220,7 @@ const virtualized = $derived(
   {:else}
     <SplitView bind:this={diffNav}
       {contentMode} {fileDiffs} {selectedPath} {diffKind}
-      {hunkOperationInFlight} {ignoreWhitespace} {showInvisibles} {wordWrap}
+      {hunkOperationInFlight} {showInvisibles} {wordWrap}
       {selectedHunkKey} {selectedLineIndices} {selectedCount} {isMerge}
       {collapsedFiles}
       {onfilecollapsetoggle} {onlineclick} {onlinemousedown} {onlineenter}

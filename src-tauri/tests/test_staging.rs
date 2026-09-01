@@ -1,7 +1,7 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::git::types::{DiffOrigin, FileStatusType};
+use trunk_lib::git::types::{DiffOrigin, DiffRequestOptions, FileStatusType};
 
 // -- get_status tests --
 
@@ -1194,7 +1194,14 @@ mod pathspec_is_literal {
     fn discard_hunk_leaves_a_glob_matched_sibling_alone() {
         let ctx = context_with_colliding_names();
 
-        discard_hunk_inner(ctx.path(), GLOB_NAME, 0, ctx.state_map()).unwrap();
+        discard_hunk_inner(
+            ctx.path(),
+            GLOB_NAME,
+            0,
+            ctx.state_map(),
+            &DiffRequestOptions::default(),
+        )
+        .unwrap();
 
         assert_eq!(
             read(&ctx, COLLIDING_NAME),
@@ -1405,5 +1412,193 @@ fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
     assert!(
         ctx.repo_path().join("math-util.ts").exists(),
         "the renamed file stays in the working tree"
+    );
+}
+
+// -- staging under the view's options (TRUNK-73) --
+
+/// A file whose first change is whitespace-only, followed by two real edits.
+///
+/// The whitespace change is what makes the two diffs disagree: the view under
+/// ignore-whitespace shows two hunks, while a diff built without the option
+/// shows three, so every hunk index the view hands back is off by one.
+fn whitespace_change_before_real_ones(ctx: &TestContext) -> String {
+    let original = (1..=40)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    std::fs::write(ctx.repo_path().join("ws.txt"), &original).unwrap();
+
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("ws.txt")).unwrap();
+    index.write().unwrap();
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    let sig = repo.signature().unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "add ws.txt", &tree, &[&head])
+        .unwrap();
+
+    let mut lines: Vec<String> = original
+        .trim_end_matches('\n')
+        .split('\n')
+        .map(|s| s.to_string())
+        .collect();
+    lines[1] = "line 2   ".to_string();
+    lines[20] = "REAL line 21".to_string();
+    lines[38] = "REAL line 39".to_string();
+    let modified = lines.join("\n") + "\n";
+    std::fs::write(ctx.repo_path().join("ws.txt"), &modified).unwrap();
+
+    modified
+}
+
+/// What `ws.txt` actually holds in the index, which is the only evidence that
+/// says which lines a staging gesture really wrote.
+fn staged_content(ctx: &TestContext, file_path: &str) -> String {
+    let repo = ctx.repo();
+    let entry = repo
+        .index()
+        .unwrap()
+        .get_path(std::path::Path::new(file_path), 0)
+        .expect("the file is in the index");
+    String::from_utf8(repo.find_blob(entry.id).unwrap().content().to_vec()).unwrap()
+}
+
+fn ignore_whitespace() -> DiffRequestOptions {
+    DiffRequestOptions {
+        ignore_whitespace: true,
+        ..DiffRequestOptions::default()
+    }
+}
+
+#[test]
+fn staging_a_hunk_under_ignore_whitespace_stages_the_lines_the_view_showed() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    whitespace_change_before_real_ones(&ctx);
+
+    let view = ctx
+        .diff_unstaged_with_options("ws.txt", &ignore_whitespace())
+        .expect("diff_unstaged failed");
+    assert_eq!(
+        view[0].hunks.len(),
+        2,
+        "the view hides the whitespace-only change"
+    );
+
+    ctx.stage_hunk_with_options("ws.txt", 0, &ignore_whitespace())
+        .expect("stage_hunk failed");
+
+    let staged = staged_content(&ctx, "ws.txt");
+    assert!(
+        staged.contains("REAL line 21"),
+        "the change the view showed as hunk 0 must be in the index, got:\n{staged}"
+    );
+    assert!(
+        !staged.contains("line 2   "),
+        "the whitespace-only change the view hid must not be in the index, got:\n{staged}"
+    );
+}
+
+#[test]
+fn staging_a_hunk_under_wide_context_stages_only_the_merged_hunk_shown() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    whitespace_change_before_real_ones(&ctx);
+
+    // Wide context merges every change into one displayed hunk, so staging it
+    // must stage all three, not the first of a three-hunk rebuild.
+    let wide = DiffRequestOptions {
+        context_lines: 20,
+        ..DiffRequestOptions::default()
+    };
+
+    let view = ctx
+        .diff_unstaged_with_options("ws.txt", &wide)
+        .expect("diff_unstaged failed");
+    assert_eq!(view[0].hunks.len(), 1, "wide context merges the changes");
+
+    ctx.stage_hunk_with_options("ws.txt", 0, &wide)
+        .expect("stage_hunk failed");
+
+    let staged = staged_content(&ctx, "ws.txt");
+    for expected in ["line 2   ", "REAL line 21", "REAL line 39"] {
+        assert!(
+            staged.contains(expected),
+            "the merged hunk the view showed must be staged whole, missing {expected:?} in:\n{staged}"
+        );
+    }
+}
+
+#[test]
+fn staging_lines_under_ignore_whitespace_stages_the_lines_the_view_showed() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    whitespace_change_before_real_ones(&ctx);
+
+    let view = ctx
+        .diff_unstaged_with_options("ws.txt", &ignore_whitespace())
+        .expect("diff_unstaged failed");
+    let hunk0 = &view[0].hunks[0];
+    let adds: Vec<u32> = hunk0
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
+        .map(|(i, _)| i as u32)
+        .collect();
+
+    ctx.stage_lines_with_options("ws.txt", 0, adds, &ignore_whitespace())
+        .expect("stage_lines failed");
+
+    let staged = staged_content(&ctx, "ws.txt");
+    assert!(
+        staged.contains("REAL line 21"),
+        "the line the view showed must be in the index, got:\n{staged}"
+    );
+    assert!(
+        !staged.contains("line 2   "),
+        "the whitespace-only change the view hid must not be in the index, got:\n{staged}"
+    );
+}
+
+#[test]
+fn unstaging_a_hunk_under_ignore_whitespace_unstages_the_lines_the_view_showed() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    whitespace_change_before_real_ones(&ctx);
+    ctx.stage_file("ws.txt").expect("stage_file failed");
+
+    let view = ctx
+        .diff_staged_with_options("ws.txt", &ignore_whitespace())
+        .expect("diff_staged failed");
+    assert_eq!(
+        view[0].hunks.len(),
+        2,
+        "the view hides the whitespace-only change"
+    );
+
+    ctx.unstage_hunk_with_options("ws.txt", 0, &ignore_whitespace())
+        .expect("unstage_hunk failed");
+
+    let staged = staged_content(&ctx, "ws.txt");
+    assert!(
+        !staged.contains("REAL line 21"),
+        "the change the view showed as hunk 0 must be out of the index, got:\n{staged}"
+    );
+    assert!(
+        staged.contains("line 2   "),
+        "the whitespace-only change the view hid must stay staged, got:\n{staged}"
     );
 }

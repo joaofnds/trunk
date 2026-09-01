@@ -20,10 +20,9 @@ pub(crate) fn is_head_unborn(repo: &git2::Repository) -> bool {
 }
 
 /// Every diff Trunk computes starts here. The indent heuristic matches git
-/// CLI's default hunk boundaries; staging builds from the same base so its
-/// hunk indices agree with the view under default view options (view-only
-/// options like ignore-whitespace are applied on top and staging does not
-/// see them — TRUNK-73 tracks that mismatch).
+/// CLI's default hunk boundaries; staging builds from the same base, and
+/// receives the same `DiffRequestOptions` the view was rendered with, so a
+/// hunk index means the same hunk on both sides (TRUNK-73).
 pub(crate) fn new_diff_options() -> git2::DiffOptions {
     let mut opts = git2::DiffOptions::new();
     opts.indent_heuristic(true);
@@ -31,8 +30,9 @@ pub(crate) fn new_diff_options() -> git2::DiffOptions {
 }
 
 /// Diff options for one file's workdir diff, untracked content included.
-/// Display (`diff_unstaged_inner`) and staging both build from here; the two
-/// must see the same deltas for staging's hunk indices to match the view.
+/// Display (`diff_unstaged_inner`) and staging both build from here, and both
+/// layer the request's options on top; the two must see the same deltas *and*
+/// the same hunk boundaries for staging's hunk indices to match the view.
 pub(crate) fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
     let mut opts = new_diff_options();
     opts.pathspec(file_path);
@@ -47,7 +47,7 @@ pub(crate) fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
 ///
 /// Every diff Trunk shows, counts, or stages against runs through here with the
 /// same options, so one file cannot read as a rename in the view and as an
-/// add-plus-delete in staging — the divergence TRUNK-73 records. libgit2's
+/// add-plus-delete in staging. libgit2's
 /// defaults match git CLI's (50% similarity, renames only), which is what the
 /// reference renderings in doc-44 show; copy detection stays off, as in git.
 pub(crate) fn detect_renames(diff: &mut git2::Diff) -> Result<(), TrunkError> {
@@ -96,7 +96,15 @@ pub(crate) fn staged_diff<'r>(
     Ok(diff)
 }
 
-fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
+/// Layer a request's view options onto a diff's base options.
+///
+/// Both `context_lines` and `ignore_whitespace` move hunk *boundaries*, not
+/// just their line spans: ignoring whitespace drops whitespace-only hunks
+/// entirely, and a wide context merges neighbouring hunks into one. A hunk
+/// index is therefore only meaningful against a diff built with the same
+/// options, which is why every staging path takes the view's options and
+/// comes through here rather than diffing with the defaults (TRUNK-73).
+pub(crate) fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
     let context = if req.show_full_file {
         100_000 // practical cap for full-file view
     } else {
@@ -130,7 +138,7 @@ struct DeltaSides {
 /// The delta → hunkless `FileDiff` mapping every diff walk starts from. It is
 /// the one place a `git2::Delta` becomes a `DiffStatus`, so rename detection
 /// reaches the file list, the hunk views, and the metadata-only listings from a
-/// single definition rather than three that can drift (TRUNK-73).
+/// single definition rather than three that can drift.
 ///
 /// `path` is the new-side path, falling back to the old side for a deletion.
 /// `old_path` is set only when the two sides name different paths, which is

@@ -952,10 +952,10 @@ describe("VIEW-04: reopening a large file", () => {
 	});
 });
 
-// ---- WHSP-02: Staging disabled when whitespace ignore active ----
+// ---- WHSP-02 / TRUNK-73: staging under the view's options ----
 
-describe("WHSP-02: Staging disabled when whitespace ignore active", () => {
-	it("disables Stage Hunk button when whitespace ignore is active", async () => {
+describe("TRUNK-73: staging carries the view's diff options", () => {
+	async function renderWithIgnoreWhitespace() {
 		const storeMock = await import("../lib/store.js");
 		// Reset modes to inline+hunk (previous tests may have changed them)
 		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
@@ -980,80 +980,38 @@ describe("WHSP-02: Staging disabled when whitespace ignore active", () => {
 		await flushPrefs();
 		await flushPrefs();
 
-		const stageBtn = screen.getByText("Stage Hunk");
-		expect(stageBtn.closest("button")).toBeDisabled();
+		return () =>
+			vi
+				.mocked(storeMock.getDiffIgnoreWhitespace)
+				.mockImplementation(() => Promise.resolve(false));
+	}
 
-		// Reset mock
-		vi.mocked(storeMock.getDiffIgnoreWhitespace).mockImplementation(() =>
-			Promise.resolve(false),
-		);
-	});
-
-	it("disables Stage File button when whitespace ignore is active", async () => {
-		const storeMock = await import("../lib/store.js");
-		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
-			Promise.resolve("hunk"),
-		);
-		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
-			Promise.resolve("inline"),
-		);
-		vi.mocked(storeMock.getDiffIgnoreWhitespace).mockImplementation(() =>
-			Promise.resolve(true),
-		);
-
-		render(DiffPanel, {
-			props: {
-				fileDiffs: [testDiff],
-				commitDetail: null,
-				onclose: vi.fn(),
-				diffKind: "unstaged",
-				repoPath: "/test/repo",
-				selectedPath: "src/main.ts",
-			},
-		});
-		await flushPrefs();
-		await flushPrefs();
-
-		const stageFileBtn = screen.getByText("Stage File");
-		expect(stageFileBtn.closest("button")).toBeDisabled();
-
-		vi.mocked(storeMock.getDiffIgnoreWhitespace).mockImplementation(() =>
-			Promise.resolve(false),
-		);
-	});
-
-	it("shows tooltip on disabled staging buttons", async () => {
-		const storeMock = await import("../lib/store.js");
-		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
-			Promise.resolve("hunk"),
-		);
-		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
-			Promise.resolve("inline"),
-		);
-		vi.mocked(storeMock.getDiffIgnoreWhitespace).mockImplementation(() =>
-			Promise.resolve(true),
-		);
-
-		render(DiffPanel, {
-			props: {
-				fileDiffs: [testDiff],
-				commitDetail: null,
-				onclose: vi.fn(),
-				diffKind: "unstaged",
-				repoPath: "/test/repo",
-			},
-		});
-		await flushPrefs();
-		await flushPrefs();
+	// Staging used to be blocked here, because the backend rebuilt the diff
+	// without the view's options and could stage lines the view never showed.
+	// It now receives those options, so the gesture is safe and available.
+	it("keeps Stage Hunk usable while whitespace changes are ignored", async () => {
+		const reset = await renderWithIgnoreWhitespace();
 
 		const stageBtn = screen.getByText("Stage Hunk").closest("button");
-		expect(stageBtn?.title).toBe(
-			"Staging is disabled while whitespace changes are ignored",
-		);
+		expect(stageBtn).not.toBeDisabled();
 
-		vi.mocked(storeMock.getDiffIgnoreWhitespace).mockImplementation(() =>
-			Promise.resolve(false),
-		);
+		reset();
+	});
+
+	it("sends the view's ignore-whitespace setting with the staging request", async () => {
+		const reset = await renderWithIgnoreWhitespace();
+
+		await fireEvent.click(screen.getByText("Stage Hunk"));
+		await flushPrefs();
+
+		const call = vi
+			.mocked(safeInvoke)
+			.mock.calls.find(([cmd]) => cmd === "stage_hunk");
+		expect(call?.[1]).toMatchObject({
+			options: expect.objectContaining({ ignoreWhitespace: true }),
+		});
+
+		reset();
 	});
 });
 
@@ -1553,7 +1511,7 @@ describe("VIEW-05: Staging in split view", () => {
 		);
 	});
 
-	it("disables staging buttons when whitespace ignore is active in split view", async () => {
+	it("keeps staging buttons usable when whitespace ignore is active in split view", async () => {
 		const storeMock = await import("../lib/store.js");
 		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
 			Promise.resolve("hunk"),
@@ -1577,11 +1535,10 @@ describe("VIEW-05: Staging in split view", () => {
 		await flushPrefs();
 		await flushPrefs();
 
+		// Staging now rebuilds the diff with the view's own options, so ignoring
+		// whitespace no longer has to block the gesture (TRUNK-73).
 		const stageBtn = screen.getByText("Stage Hunk").closest("button");
-		expect(stageBtn).toBeDisabled();
-		expect(stageBtn?.title).toBe(
-			"Staging is disabled while whitespace changes are ignored",
-		);
+		expect(stageBtn).not.toBeDisabled();
 
 		// Reset
 		vi.mocked(storeMock.getDiffIgnoreWhitespace).mockImplementation(() =>

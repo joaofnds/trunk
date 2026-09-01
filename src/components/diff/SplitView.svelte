@@ -41,7 +41,6 @@ interface Props {
 	selectedPath: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
 	hunkOperationInFlight: boolean;
-	ignoreWhitespace: boolean;
 	showInvisibles: boolean;
 	wordWrap: boolean;
 	selectedHunkKey: string | null;
@@ -91,7 +90,6 @@ let {
 	selectedPath,
 	diffKind,
 	hunkOperationInFlight,
-	ignoreWhitespace,
 	showInvisibles,
 	wordWrap,
 	selectedHunkKey,
@@ -118,12 +116,12 @@ let {
 
 const FLASH_MS = 600;
 
-const stagingDisabled = $derived(hunkOperationInFlight || ignoreWhitespace);
-const stagingDisabledTitle = $derived(
-	ignoreWhitespace
-		? "Staging is disabled while whitespace changes are ignored"
-		: undefined,
-);
+// Staging rebuilds the diff with the same view options the hunk was rendered
+// under, so a hunk index means the same hunk on both sides and ignoring
+// whitespace no longer has to block the gesture (TRUNK-73). Only an
+// in-flight operation holds the buttons now.
+const stagingDisabled = $derived(hunkOperationInFlight);
+const stagingDisabledTitle: string | undefined = undefined;
 
 let list = $state<{
 	topIndex: () => number;
