@@ -182,6 +182,13 @@
 	   luminance and hue separation, not just the WCAG ratio. */
 	--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 16%, transparent);
 	--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 16%, transparent);
+	/* The rendered markdown pair. Source-view marks stack on an 11% row tint;
+	   a merged rendered block drops its wash by design, so the same 16% sits
+	   alone on the page and reads faint. These carry the mark unaided at 30%:
+	   text over them is 7.97:1 (add) and 8.26:1 (delete), still AAA, where the
+	   source-view stack at 30% would fall to AA. */
+	--color-md-word-add-bg: color-mix(in oklch, var(--ok) 30%, transparent);
+	--color-md-word-delete-bg: color-mix(in oklch, var(--err) 30%, transparent);
 	--color-diff-phantom-bg: color-mix(in oklch, var(--fg-3) 5%, transparent);
 
 	/* Syntax highlighting (Phase 61) — VSCode-dark base, lifted for contrast.
@@ -619,16 +626,24 @@ li.md-removed::before {
    reach. Keyed strictly on the md-word-* classes — never bare <del>/<ins> — so an
    author's ~~strikethrough~~ (a classless <del>) is never read as a diff deletion.
    Color is NOT the sole carrier (AAA invariant, app.css:490-494): the deletion adds
-   line-through, the insertion adds an underline, both surviving grayscale. The low
-   16% translucent tints keep body text at AAA over --bg-0 (verified with the
-   scripts/contrast helper — no colored-text desaturation). */
+   line-through, the insertion adds an underline, both surviving grayscale. Each rule
+   takes its own hue at 2px so the mark reads without the source view's row tint
+   underneath, and so a deletion's strikethrough does not out-shout an insertion's
+   underline. Verified with scripts/contrast/contrast.mjs over --bg-0: body text on
+   the 30% tints is 7.97:1 (add) and 8.26:1 (delete), both AAA; the rules, non-text
+   indicators at a 3:1 floor, are 5.53:1 and 5.32:1. */
 .md-word-delete {
-	background: var(--color-diff-word-delete-bg);
+	background: var(--color-md-word-delete-bg);
 	text-decoration: line-through;
+	text-decoration-color: var(--err);
+	text-decoration-thickness: 2px;
 }
 .md-word-add {
-	background: var(--color-diff-word-add-bg);
+	background: var(--color-md-word-add-bg);
 	text-decoration: underline;
+	text-decoration-color: var(--ok);
+	text-decoration-thickness: 2px;
+	text-underline-offset: 3px;
 }
 /* Override .markdown-body del's muted color so a struck diff word stays full-
    brightness and AAA-legible on the red tint (authored strikethrough stays muted). */

@@ -225,3 +225,53 @@ describe("merge editor conflict header", () => {
 		expect(source).toContain("height: calc(var(--bar-h) + 1px);");
 	});
 });
+
+describe("rendered markdown word marks", () => {
+	/* The source view stacks the word tint on an 11% row tint, so a mark reads
+	   there. A merged rendered block drops its background wash by design, leaving
+	   the tint alone on the page. Both the tint and the rule were lifted so the
+	   mark carries on its own. Measured with scripts/contrast/contrast.mjs
+	   against --bg-0: body text over the 30% tint is 7.97:1 (add) and 8.26:1
+	   (delete), both AAA; the colored rule, a non-text indicator at a 3:1 floor,
+	   is 5.53:1 and 5.32:1. */
+	it("colors the underline with the add/delete hue, not the text color", () => {
+		const addRule = css.match(/\.md-word-add\s*\{([^}]*)\}/)?.[1] ?? "";
+		const deleteRule = css.match(/\.md-word-delete\s*\{([^}]*)\}/)?.[1] ?? "";
+
+		expect(addRule).toMatch(/text-decoration-color:\s*var\(--ok\)/);
+		expect(deleteRule).toMatch(/text-decoration-color:\s*var\(--err\)/);
+	});
+
+	it("keeps both marks at the same decoration weight, so neither reads louder", () => {
+		const addRule = css.match(/\.md-word-add\s*\{([^}]*)\}/)?.[1] ?? "";
+		const deleteRule = css.match(/\.md-word-delete\s*\{([^}]*)\}/)?.[1] ?? "";
+		const thickness = (rule: string) =>
+			rule.match(/text-decoration-thickness:\s*([^;]+);/)?.[1].trim();
+
+		expect(thickness(addRule)).toBe("2px");
+		expect(thickness(deleteRule)).toBe("2px");
+	});
+
+	it("keeps the rendered word tints at an opacity body text clears AAA over", () => {
+		/* 30% measures 7.97:1 / 8.26:1. Going much past it drops below 7:1: at
+		   40% the add tint is 6.10:1, AA only. */
+		expect(css).toContain(
+			"--color-md-word-add-bg: color-mix(in oklch, var(--ok) 30%, transparent)",
+		);
+		expect(css).toContain(
+			"--color-md-word-delete-bg: color-mix(in oklch, var(--err) 30%, transparent)",
+		);
+	});
+
+	it("leaves the source-view word tints alone, where they stack on a row tint", () => {
+		/* The same 30% under a source-view row tint measures 6.49:1 — AA, not the
+		   AAA that view holds. The rendered pair exists so lifting one does not
+		   move the other. */
+		expect(css).toContain(
+			"--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 16%, transparent)",
+		);
+		expect(css).toContain(
+			"--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 16%, transparent)",
+		);
+	});
+});
