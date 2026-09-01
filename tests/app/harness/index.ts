@@ -66,11 +66,25 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 
 	const root = document.createElement("div");
 	document.body.appendChild(root);
-	const untrackScroll = startAppServices();
-	const app = mount(App, { target: root });
 
-	running = { host, internals, root, app, untrackScroll };
-	return new AppDriver(host, internals, fakes, repoPath);
+	// Everything above outlives this function: the layout stubs sit on the
+	// prototypes and the reporting `ResizeObserver` on `globalThis`. A throw here
+	// leaves `running` null, so `teardown()` returns early and hands the next test
+	// a 4000px viewport and an observer that fires, where it expects jsdom's
+	// do-nothing one. Unwind what we installed before letting the failure out.
+	try {
+		const untrackScroll = startAppServices();
+		const app = mount(App, { target: root });
+
+		running = { host, internals, root, app, untrackScroll };
+		return new AppDriver(host, internals, fakes, repoPath);
+	} catch (error) {
+		root.remove();
+		internals.uninstall();
+		restoreDomPolyfills();
+		await host.shutdown();
+		throw error;
+	}
 }
 
 /** Unmounts the application, reaps the host process and removes its tempdir

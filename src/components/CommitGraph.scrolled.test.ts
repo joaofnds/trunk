@@ -111,4 +111,24 @@ describe("the commit graph scrolled", () => {
 
 		expect(Math.min(...dotRows(graph.svg))).toBeGreaterThan(0);
 	});
+
+	/**
+	 * The row indices read back off the overlay are the list's own indices, at any
+	 * row height. Reading them against `ROW_HEIGHT` instead of against the height
+	 * the overlay was painted at scales every index by the ratio between the two,
+	 * silently: at 34px the window starting at row 80 reads back as row 97.
+	 */
+	it("reads back the list's own row indices at a non-default row height", async () => {
+		const MEASURED = ROW_HEIGHT + 6;
+
+		const graph = await scrolledToRow(SCROLL_TO_ROW, { rowHeight: MEASURED });
+
+		const painted = Math.min(...dotRows(graph.svg));
+		const rendered = Number(
+			document.querySelector<HTMLElement>("[data-original-index]")?.dataset
+				.originalIndex,
+		);
+
+		expect(painted).toBe(rendered);
+	});
 });

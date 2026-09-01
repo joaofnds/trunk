@@ -161,6 +161,12 @@ The same stub answers `clientWidth` as well as `clientHeight`, because the diff 
 too: `HunkView` withholds its rows entirely until the pane measures wider than zero, so a diff
 opened without it renders no hunks at all and says nothing about why.
 
+That width reaches `getBoundingClientRect()` as well, where the stub it replaced reported zero.
+Anything measuring text off a rect therefore reads a real number under the harness: `row-metrics.ts`
+now reports a `charWidthPx` of 12 where it reported 0, and the diff pane's computed content width
+moves with it. Nothing asserts on the old zero, but a test that pins a width is pinning this stub's
+arithmetic rather than the application's.
+
 ## Writing a test
 
 ```ts

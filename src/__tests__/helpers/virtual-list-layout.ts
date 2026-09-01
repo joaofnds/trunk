@@ -24,7 +24,7 @@ export const UNSCROLLED_VIEWPORT_HEIGHT = 4000;
 
 /** `HunkView` withholds its rows entirely until the pane measures wider than
  *  zero, so a diff opened under a headless DOM renders no hunks at all. */
-export const VIEWPORT_WIDTH = 1200;
+const VIEWPORT_WIDTH = 1200;
 
 export interface VirtualListLayoutOptions {
 	/** The scroll viewport's height. Shorter than the content means the list
@@ -33,7 +33,6 @@ export interface VirtualListLayoutOptions {
 	/** The height one rendered row measures. The list averages these into the
 	 *  row height it lays every offset out from. */
 	rowHeight?: number;
-	width?: number;
 }
 
 /**
@@ -47,8 +46,8 @@ export function stubVirtualListLayout(
 	const {
 		viewportHeight = UNSCROLLED_VIEWPORT_HEIGHT,
 		rowHeight = ROW_HEIGHT,
-		width = VIEWPORT_WIDTH,
 	} = options;
+	const width = VIEWPORT_WIDTH;
 
 	installReportingResizeObserver();
 	stubLayout({

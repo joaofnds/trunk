@@ -294,8 +294,7 @@ export async function mountScrolledGraph(
 	return {
 		svg,
 		rowHeight: () => overlayRowHeight(svg),
-		scrollTo: (top: number) =>
-			settledScroll(container, viewport, top, rowHeight),
+		scrollTo: (top: number) => settledScroll(container, viewport, top),
 		// Reinstalls the tall stub rather than uninstalling: every other mount in
 		// this module is a render golden and needs it, so returning to jsdom's
 		// zeros here would break the next golden rather than isolate this test.
@@ -317,23 +316,27 @@ export async function mountScrolledGraph(
  * And `CommitGraph` scrolls itself to the HEAD row once per mount, on a deferred
  * frame of its own — landing after an early scroll and resetting it to 0.
  *
- * Both conditions are needed because they arrive separately. The list moves the
+ * Both quantities are needed because they arrive separately. The list moves the
  * window as soon as it reads the scroll position, but it paints at its estimated
  * row height until its own measurement lands a round or more later. Waiting on
- * the position alone returns while the overlay still says `ROW_HEIGHT` — which is
- * exactly the "never measured anything" value the row-height test exists to
- * catch, so the wait would hand that test the failure it is meant to detect.
- * That version passed on an idle machine, where measurement happened to land in
- * the same round, and failed four runs in five on a loaded one.
+ * the position alone returns while the overlay is still mid-flight, and the
+ * row-height tests then read a height that had not settled.
  *
- * Nothing here waits on a duration. Both conditions are readings off the render.
+ * What it waits for is *rest*, not a value: a non-zero first row and an overlay
+ * height that two consecutive rounds agree on. Waiting for the height the caller
+ * asked for would make the row-height assertions unreachable — the loop would
+ * have already required the number they go on to assert, so a wrong height could
+ * only ever surface as this helper's timeout, never as a failed `expect`.
+ *
+ * Nothing here waits on a duration. Every condition is a reading off the render.
  */
 async function settledScroll(
 	container: HTMLElement,
 	viewport: HTMLElement,
 	scrollTop: number,
-	rowHeight: number,
 ): Promise<void> {
+	let settled: number | null = null;
+
 	for (let round = 0; round < SETTLE_ROUNDS; round++) {
 		// Move away first, so the assignment below is always a change the list
 		// can notice. Re-issuing a position it already holds produces no scroll
@@ -351,20 +354,23 @@ async function settledScroll(
 		await flushRound();
 
 		const start = renderedStart(container);
+		const painted = paintedRowHeight(container);
 		if (
 			start !== null &&
 			start > 0 &&
-			paintedRowHeight(container) === rowHeight
+			painted !== null &&
+			painted === settled
 		) {
 			return;
 		}
+		settled = painted;
 	}
 
 	throw new Error(
-		`the scrolled render never settled at ${scrollTop}px: first row ` +
+		`the scrolled render never came to rest at ${scrollTop}px: first row ` +
 			`${renderedStart(container)}, overlay row height ` +
-			`${paintedRowHeight(container)}, wanted a non-zero first row at ` +
-			`${rowHeight}px after ${SETTLE_ROUNDS} rounds`,
+			`${paintedRowHeight(container)}, wanted a non-zero first row at a ` +
+			`height two consecutive rounds agree on, after ${SETTLE_ROUNDS} rounds`,
 	);
 }
 
@@ -441,10 +447,19 @@ function overlayRowHeight(svg: SVGSVGElement): number {
 	return [...gaps][0];
 }
 
-/** Each dot's row index, read back from where the overlay painted it. */
+/**
+ * Each dot's row index, read back from where the overlay painted it.
+ *
+ * The divisor is the height the overlay is actually drawn at, not `ROW_HEIGHT`.
+ * `CommitGraph` paints `cy` from the height `VirtualList` measured, so a mount at
+ * any other row height would make a constant divisor report indices scaled by the
+ * ratio between the two — row 80 read back as row 97 at a 34px mount.
+ */
 export function dotRows(svg: SVGSVGElement): number[] {
+	const rowHeight = overlayRowHeight(svg);
+
 	return dots(svg).map((dot) =>
-		Math.round((rowCentre(dot) - ROW_HEIGHT / 2) / ROW_HEIGHT),
+		Math.round((rowCentre(dot) - rowHeight / 2) / rowHeight),
 	);
 }
 
