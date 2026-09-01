@@ -30,6 +30,34 @@ const REFLOWED_PARAGRAPH: RepoSpec = {
 	],
 };
 
+/** doc-44's "ts: rename a file and edit one line": a file moved to a new path
+ *  with a single line changed. git reports one renamed entry at ~80%
+ *  similarity; without rename detection it reads as a full delete plus a full
+ *  add, and reviewing it means re-reading the whole file. */
+const RENAMED_WITH_ONE_EDIT: RepoSpec = (() => {
+	const original = Array.from(
+		{ length: 20 },
+		(_, at) => `export const value${at + 1} = ${at + 1};`,
+	).join("\n");
+
+	return {
+		steps: [
+			{ step: "file", path: "src/util.ts", content: `${original}\n` },
+			{ step: "commit", message: "add util" },
+			{ step: "removeFile", path: "src/util.ts" },
+			{
+				step: "file",
+				path: "src/math-util.ts",
+				content: `${original.replace(
+					"export const value7 = 7;",
+					"export const value7 = 7 + offset;",
+				)}\n`,
+			},
+			{ step: "commit", message: "rename a file and edit one line" },
+		],
+	};
+})();
+
 const TWO_EDITED_FILES: RepoSpec = {
 	steps: [
 		{ step: "file", path: "a.txt", content: "a\n" },
@@ -89,5 +117,29 @@ describe("the diff surfaces", () => {
 			"The repo's own AGENTS.md or CLAUDE.md wins over this skill.",
 		);
 		expect(app.staging.emphasizedAdded()).toEqual([]);
+	});
+
+	it("lists a renamed file once, naming both paths, and diffs only the changed line", async () => {
+		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
+		await app.repo.open();
+
+		await app.repo.selectCommit("rename a file and edit one line");
+
+		await expect(
+			waitFor("the commit's file list", () => {
+				const files = app.repo.commitFiles();
+				return files.length > 0 ? files : null;
+			}),
+		).resolves.toEqual(["R src/util.ts → src/math-util.ts"]);
+
+		await app.repo.openCommitFile("math-util.ts");
+
+		await expect(
+			waitFor("the renamed file's diff", () => {
+				const added = app.staging.addedLines();
+				return added.length > 0 ? added : null;
+			}),
+		).resolves.toEqual(["export const value7 = 7 + offset;"]);
+		expect(app.staging.removedLines()).toEqual(["export const value7 = 7;"]);
 	});
 });

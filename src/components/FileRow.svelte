@@ -36,6 +36,17 @@ let hovered = $state(false);
 
 let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 
+// A rename names both paths. Tree mode already shortens the new path to its
+// basename, so the old one shortens too — otherwise a full directory path
+// would sit beside a bare filename in a row that shows neither in full.
+let renamedFrom = $derived(
+	file.old_path === undefined
+		? undefined
+		: displayName === undefined
+			? file.old_path
+			: (file.old_path.split("/").pop() ?? file.old_path),
+);
+
 let badgeBg = $derived(
 	isLoading
 		? "transparent"
@@ -79,15 +90,32 @@ let badgeBg = $derived(
     background: {badgeBg};
   ">{badge.letter}</span>
 
-  <!-- Filename -->
+  <!-- Filename, or both paths when the file was renamed -->
   <span style="
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
     font-size: 12px;
   ">
-    {displayName ?? file.path}
+    {#if renamedFrom !== undefined}
+      <span style="
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--color-text-muted);
+      ">{renamedFrom}</span>
+      <span aria-hidden="true" style="
+        flex-shrink: 0;
+        color: var(--color-text-muted);
+      ">→</span>
+    {/if}
+    <span style="
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    ">{displayName ?? file.path}</span>
   </span>
 
   <!-- Review-comment count for this file -->

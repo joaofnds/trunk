@@ -15,6 +15,7 @@ const DIFF_STATUS_MAP: Record<string, FileStatusType> = {
 export function toFileStatusList(fileDiffs: FileDiff[]): FileStatus[] {
 	return fileDiffs.map((fd) => ({
 		path: fd.path,
+		...(fd.old_path === undefined ? {} : { old_path: fd.old_path }),
 		status: DIFF_STATUS_MAP[fd.status] ?? "Modified",
 		is_binary: fd.is_binary,
 	}));

@@ -20,6 +20,23 @@ describe("toFileStatusList", () => {
 		const list = toFileStatusList([fd("a.ts", "Typechange" as never)]);
 		expect(list[0].status).toBe("Modified");
 	});
+
+	it("carries a rename's old path through to the file list", () => {
+		const renamed: FileDiff = {
+			...fd("math-util.ts", "Renamed"),
+			old_path: "util.ts",
+		};
+		expect(toFileStatusList([renamed])[0]).toEqual({
+			path: "math-util.ts",
+			old_path: "util.ts",
+			status: "Renamed",
+			is_binary: false,
+		});
+	});
+
+	it("leaves old_path unset for a file that was not renamed", () => {
+		expect(toFileStatusList([fd("a.ts")])[0].old_path).toBeUndefined();
+	});
 });
 
 describe("patchLoadedDiff", () => {

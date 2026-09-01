@@ -58,6 +58,19 @@ export class RepoDriver {
 		row.click();
 	}
 
+	/**
+	 * The files the selected commit's detail pane is listing, topmost first,
+	 * each as its badge letter and path. Runs of layout whitespace collapse to
+	 * one space, so a row reads as a user sees it however its markup nests.
+	 */
+	commitFiles(): string[] {
+		const rows = document.querySelectorAll<HTMLElement>(FILE_ROW);
+
+		return [...rows].map((row) =>
+			(row.textContent ?? "").replace(/\s+/g, " ").trim(),
+		);
+	}
+
 	/** Right-clicks a commit, returning once the menu it opens is on screen. */
 	async contextMenu(summary: string): Promise<void> {
 		const row = await waitFor(`the ${summary} row`, () => commitRow(summary));

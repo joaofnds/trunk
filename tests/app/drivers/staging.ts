@@ -220,10 +220,18 @@ function contentsOf(selector: string): string[] {
 	return [...rows].map((row) => row.textContent?.trim() ?? "");
 }
 
+/**
+ * A row reads as its badge letter and path separated by single spaces. The
+ * markup nests those in their own elements — a renamed row holds two paths and
+ * an arrow — so runs of layout whitespace collapse to one, leaving the driver
+ * describing what a user sees rather than how the row is built.
+ */
 function filesIn(section: string): string[] {
 	const rows = document.querySelectorAll<HTMLElement>(`${section} ${FILE_ROW}`);
 
-	return [...rows].map((row) => row.textContent?.trim() ?? "");
+	return [...rows].map((row) =>
+		(row.textContent ?? "").replace(/\s+/g, " ").trim(),
+	);
 }
 
 function toolbars(): HTMLElement[] {

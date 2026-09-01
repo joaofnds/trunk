@@ -83,6 +83,11 @@ enum SpecStep {
         path: String,
         content: String,
     },
+    /// Delete a tracked file. Paired with a `File` step under a new name, this
+    /// is how a spec states a rename for git to detect by content similarity.
+    RemoveFile {
+        path: String,
+    },
     /// `at` pins the commit's timestamp; without it the builder's own day
     /// spacing applies, which is what keeps the graph's `TOPOLOGICAL | TIME`
     /// sort from resolving by tie-break.
@@ -253,6 +258,7 @@ fn seed(spec: RepoSpec) -> TestContext {
     for step in spec.steps {
         match step {
             SpecStep::File { path, content } => builder.with_file(&path, &content),
+            SpecStep::RemoveFile { path } => builder.with_removed_file(&path),
             SpecStep::Commit {
                 message,
                 at: Some(secs),

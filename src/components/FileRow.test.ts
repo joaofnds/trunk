@@ -17,6 +17,44 @@ describe("FileRow", () => {
 		expect(screen.getByText("README.md")).toBeInTheDocument();
 	});
 
+	it("names both paths for a renamed file", () => {
+		render(FileRow, {
+			props: {
+				file: {
+					path: "src/math-util.ts",
+					old_path: "src/util.ts",
+					status: "Renamed",
+					is_binary: false,
+				},
+				actionLabel: "+",
+				onaction: vi.fn(),
+			},
+		});
+		const row = screen.getByTestId("staging-file");
+		expect(row).toHaveTextContent("src/util.ts");
+		expect(row).toHaveTextContent("src/math-util.ts");
+	});
+
+	it("shows only the new basename for a rename in tree mode", () => {
+		render(FileRow, {
+			props: {
+				file: {
+					path: "src/math-util.ts",
+					old_path: "src/util.ts",
+					status: "Renamed",
+					is_binary: false,
+				},
+				actionLabel: "+",
+				onaction: vi.fn(),
+				displayName: "math-util.ts",
+			},
+		});
+		const row = screen.getByTestId("staging-file");
+		expect(row).toHaveTextContent("util.ts");
+		expect(row).toHaveTextContent("math-util.ts");
+		expect(row).not.toHaveTextContent("src/");
+	});
+
 	it("renders displayName when provided", () => {
 		render(FileRow, {
 			props: {
