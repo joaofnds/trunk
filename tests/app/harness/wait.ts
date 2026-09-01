@@ -30,9 +30,7 @@ export async function waitFor<T>(
 		const value = condition();
 		if (value !== null) return value;
 		if (Date.now() > deadline) {
-			throw new Error(
-				`timed out waiting for ${description}\n\n${KNOWN_FLAKE}`,
-			);
+			throw new Error(`timed out waiting for ${description}\n\n${KNOWN_FLAKE}`);
 		}
 		await delay(POLL_MS);
 	}
