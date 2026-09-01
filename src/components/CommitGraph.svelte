@@ -1272,9 +1272,17 @@ const ghostPill = $derived.by(() => {
 	const node = graphData.nodes[hoveredRow];
 	if (!node) return undefined;
 
+	// buildRefPillData indexes commits by node.y, so both arrays have to stay in
+	// the row coordinates the rest of the pipeline uses. Passing one node and a
+	// one-element list looks equivalent and is not: the lookup misses and nothing
+	// is built. Give it the real list with only the hovered row carrying the ref.
+	const withLaneRef = displayItems.with(hoveredRow, {
+		...commit,
+		refs: [hoveredLaneRef],
+	});
 	const [pill] = buildRefPillData(
 		[node],
-		[{ ...commit, refs: [hoveredLaneRef] }],
+		withLaneRef,
 		columnWidths.ref,
 		measureTextWidth,
 		svgSettings,

@@ -268,4 +268,23 @@ describe("buildRefPillData", () => {
 			63 + ICON_WIDTH + ICON_GAP + PILL_PADDING_X * 2,
 		);
 	});
+
+	it("indexes commits by the node's row, not by position in the array", () => {
+		// A caller building a single pill may pass one node and forget the commit
+		// list is still indexed by node.y. Passing a one-element list silently
+		// yields no pill, which reads as "the feature is off" rather than as a bug.
+		const ref = makeRef({ short_name: "main" });
+		const nodes = [makeNode({ y: 3 })];
+		const commits = [
+			makeCommit({}),
+			makeCommit({}),
+			makeCommit({}),
+			makeCommit({ refs: [ref] }),
+		];
+
+		const result = buildRefPillData(nodes, commits, 200, mockMeasure);
+
+		expect(result).toHaveLength(1);
+		expect(result[0].rowIndex).toBe(3);
+	});
 });
