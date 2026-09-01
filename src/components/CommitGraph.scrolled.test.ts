@@ -29,10 +29,11 @@ describe("the commit graph scrolled", () => {
 		close = null;
 	});
 
-	async function scrolledToRow(row: number) {
-		const graph = await mountScrolledGraph(tallFixture(FIXTURE_ROWS), {
-			viewportHeight: VIEWPORT_HEIGHT,
-		});
+	async function scrolledToRow(row: number, stashRows: number[] = []) {
+		const graph = await mountScrolledGraph(
+			tallFixture(FIXTURE_ROWS, stashRows),
+			{ viewportHeight: VIEWPORT_HEIGHT },
+		);
 		close = graph.unmount;
 
 		await graph.scrollTo(row * ROW_HEIGHT);
@@ -48,13 +49,22 @@ describe("the commit graph scrolled", () => {
 	it("renders a window sized to the viewport, not to the fixture", async () => {
 		const graph = await scrolledToRow(SCROLL_TO_ROW);
 
-		// The viewport holds ceil(200/28) rows and VirtualList buffers 20 either
-		// side, so a viewport-sized window is about 48 of the fixture's 200 rows.
-		// A window that tracks the fixture instead means the viewport height it
-		// was given never reached the list.
-		const viewportRows = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + 2 * 20;
+		// A window sized to the viewport is a small fraction of this fixture: the
+		// viewport holds about 8 rows, and the list buffers a bounded number more
+		// either side. Half the fixture is far above any of that, and far below
+		// the whole 200 a list that ignored its viewport height would draw. The
+		// bound is deliberately loose about the buffer, which belongs to
+		// VirtualList and is not this test's subject.
+		expect(dots(graph.svg).length).toBeLessThan(FIXTURE_ROWS / 2);
+	});
 
-		expect(dots(graph.svg).length).toBeLessThanOrEqual(viewportRows + 4);
+	// A stash is the one node the overlay draws as a <rect>, whose `y` is the top
+	// edge rather than the centre a <circle> puts in `cy`. A window holding both
+	// shapes is the only place a reader that confuses the two shows up.
+	it("measures the row height across a window mixing a stash with commits", async () => {
+		const graph = await scrolledToRow(SCROLL_TO_ROW, [SCROLL_TO_ROW + 2]);
+
+		expect(graph.rowHeight()).toBe(ROW_HEIGHT);
 	});
 
 	it("moves the rendered window down when the viewport scrolls", async () => {

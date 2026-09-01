@@ -198,24 +198,41 @@ function overlaySvg(container: HTMLElement): SVGSVGElement | null {
  * against it pass while proving nothing. Growing the corpus instead would add
  * render goldens, and these rows exist to be scrolled past rather than to pin a
  * layout, so they are built here and committed nowhere.
+ *
+ * `stashRows` marks rows to paint as stashes, which the overlay draws as a
+ * `<rect>` rather than a `<circle>`. That is the one shape whose row centre is
+ * not in `cy`, so a window mixing the two is what proves a coordinate reader
+ * handles both.
  */
-export function tallFixture(rows: number): LayoutExport {
+export function tallFixture(
+	rows: number,
+	stashRows: number[] = [],
+): LayoutExport {
 	const seed = loadExport("lane-13-tall-linear");
 	const [tip] = seed.layout.commits;
 
 	const oidOf = (row: number) => `${row}`.padStart(40, "0");
-	const commits = Array.from({ length: rows }, (_, row) => ({
-		...tip,
-		oid: oidOf(row),
-		short_oid: oidOf(row).slice(0, 7),
-		summary: `tall ${rows - row}`,
-		body: null,
-		author_timestamp: tip.author_timestamp - row * 86_400,
-		parent_oids: row === rows - 1 ? [] : [oidOf(row + 1)],
-		refs: row === 0 ? tip.refs : [],
-		is_head: row === 0,
-		is_branch_tip: row === 0,
-	}));
+	const commits = Array.from({ length: rows }, (_, row) => {
+		const isRoot = row === rows - 1;
+
+		return {
+			...tip,
+			oid: oidOf(row),
+			short_oid: oidOf(row).slice(0, 7),
+			summary: `tall ${rows - row}`,
+			body: null,
+			author_timestamp: tip.author_timestamp - row * 86_400,
+			parent_oids: isRoot ? [] : [oidOf(row + 1)],
+			// The root has no parent to draw a connection to. Inheriting the tip's
+			// straight edge would leave an edge pointing at a commit the fixture
+			// does not contain, which the seed's own root does not do.
+			edges: isRoot ? [] : tip.edges,
+			refs: row === 0 ? tip.refs : [],
+			is_head: row === 0,
+			is_branch_tip: row === 0,
+			is_stash: stashRows.includes(row),
+		};
+	});
 
 	return {
 		wipCount: 0,
@@ -268,6 +285,9 @@ export async function mountScrolledGraph(
 		svg,
 		rowHeight: () => overlayRowHeight(svg),
 		scrollTo: (top: number) => settledScroll(container, viewport, top),
+		// Reinstalls the tall stub rather than uninstalling: every other mount in
+		// this module is a render golden and needs it, so returning to jsdom's
+		// zeros here would break the next golden rather than isolate this test.
 		unmount: () => {
 			unmount();
 			stubVirtualListLayout({ viewportHeight: UNSCROLLED_VIEWPORT_HEIGHT });
@@ -347,12 +367,11 @@ async function settledScrolledOverlay(
  * is the number a user would see be wrong.
  */
 function overlayRowHeight(svg: SVGSVGElement): number {
-	const ys = dots(svg).map((dot) =>
-		Number.parseFloat(dot.getAttribute("cy") ?? dot.getAttribute("y") ?? ""),
-	);
-	if (ys.length < 2) throw new Error("need two dots to measure the row gap");
+	const centres = dots(svg).map(rowCentre);
+	if (centres.length < 2)
+		throw new Error("need two dots to measure the row gap");
 
-	const gaps = new Set(ys.slice(1).map((y, i) => y - ys[i]));
+	const gaps = new Set(centres.slice(1).map((y, i) => y - centres[i]));
 	if (gaps.size !== 1) {
 		throw new Error(`dots are unevenly spaced: ${[...gaps].join(", ")}`);
 	}
@@ -360,14 +379,30 @@ function overlayRowHeight(svg: SVGSVGElement): number {
 	return [...gaps][0];
 }
 
-/** Each dot's row index, read back from the `cy` the overlay painted it at. */
+/** Each dot's row index, read back from where the overlay painted it. */
 export function dotRows(svg: SVGSVGElement): number[] {
-	return dots(svg).map((dot) => {
-		const cy = Number.parseFloat(
-			dot.getAttribute("cy") ?? dot.getAttribute("y") ?? "",
-		);
-		return Math.round((cy - ROW_HEIGHT / 2) / ROW_HEIGHT);
-	});
+	return dots(svg).map((dot) =>
+		Math.round((rowCentre(dot) - ROW_HEIGHT / 2) / ROW_HEIGHT),
+	);
+}
+
+/**
+ * The row centre a node was painted at, in overlay coordinates.
+ *
+ * The four node shapes do not agree on which attribute holds it. A circle
+ * carries its centre in `cy`, but a stash is a `<rect>` whose `y` is the top
+ * edge, one dot radius above the centre. Reading `cy ?? y` treats the two as the
+ * same number, so any window holding both a stash and a commit measures uneven
+ * gaps and reports a correct render as a broken one.
+ */
+function rowCentre(dot: Element): number {
+	if (dot.tagName === "rect") {
+		const top = Number.parseFloat(dot.getAttribute("y") ?? "");
+		const height = Number.parseFloat(dot.getAttribute("height") ?? "");
+		return top + height / 2;
+	}
+
+	return Number.parseFloat(dot.getAttribute("cy") ?? "");
 }
 
 /** One element per rendered row: a circle for a commit, a rect for a stash. */

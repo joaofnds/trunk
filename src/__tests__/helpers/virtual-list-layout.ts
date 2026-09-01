@@ -15,7 +15,7 @@
  */
 
 import { ROW_HEIGHT } from "../../lib/chrome-heights.js";
-import { type LayoutBox, stubLayout } from "./layout-stub.js";
+import { type LayoutBox, restoreLayout, stubLayout } from "./layout-stub.js";
 
 /** Taller than any fixture's content, so every row fits and nothing is culled.
  *  The render goldens mount at this height and are pinned to the unscrolled
@@ -38,8 +38,8 @@ export interface VirtualListLayoutOptions {
 
 /**
  * Installs the role-aware layout for every element in the document. Pair with
- * `restoreLayout()` from `./layout-stub.js` in a teardown hook: the stubs sit on
- * the prototypes and leak into every later suite.
+ * `restoreVirtualListLayout()` in a teardown hook: the stubs sit on the
+ * prototypes and leak into every later suite.
  */
 export function stubVirtualListLayout(
 	options: VirtualListLayoutOptions = {},
@@ -59,6 +59,29 @@ export function stubVirtualListLayout(
 }
 
 /**
+ * Undoes everything `stubVirtualListLayout` installed, the layout descriptors
+ * and the observer alike.
+ *
+ * `restoreLayout()` alone is not enough and looks like it is. It restores the
+ * five layout descriptors and leaves the reporting observer in place, so a suite
+ * that cleaned up by that route still hands the next one an observer that fires
+ * — and suites elsewhere in this repository are written against jsdom's
+ * do-nothing stub.
+ */
+export function restoreVirtualListLayout(): void {
+	restoreLayout();
+
+	if (!installedObserver) return;
+	installedObserver = false;
+	if (priorObserver === undefined) {
+		Reflect.deleteProperty(globalThis, "ResizeObserver");
+	} else {
+		globalThis.ResizeObserver = priorObserver;
+	}
+	priorObserver = undefined;
+}
+
+/**
  * A `ResizeObserver` that reports its first observation, the way a real one does.
  *
  * The repo-wide stub in `vitest-setup.ts` swallows `observe()` entirely, so
@@ -74,6 +97,7 @@ export function stubVirtualListLayout(
 function installReportingResizeObserver(): void {
 	if (installedObserver) return;
 	installedObserver = true;
+	priorObserver = globalThis.ResizeObserver;
 
 	globalThis.ResizeObserver = class ReportingResizeObserver {
 		#targets = new Set<Element>();
@@ -105,6 +129,7 @@ function installReportingResizeObserver(): void {
 }
 
 let installedObserver = false;
+let priorObserver: typeof ResizeObserver | undefined;
 
 /**
  * The three roles that measure differently. Everything else keeps the shared

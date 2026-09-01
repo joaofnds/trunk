@@ -149,8 +149,10 @@ measures a row as tall as the whole viewport. One row fills the viewport, the vi
 leaves 0, and nothing can be scrolled however short a viewport the test asks for. Both harnesses
 share `src/__tests__/helpers/virtual-list-layout.ts` instead: the viewport measures the height the
 test asked for, a row measures the real row height, and the list's own arithmetic decides the rest.
-That module also installs a `ResizeObserver` that reports its observations, without which the list
-is never told a row has a size and never measures one at all.
+That module also installs a `ResizeObserver` that reports the first observation of each element,
+without which the list is never told a row has a size and never measures one at all. It reports
+that one and nothing after it: nothing watches for a later resize, so a test that changes an
+element's size and waits for a callback waits forever.
 
 The default viewport still fits every fixture unscrolled, so a test that says nothing about scroll
 behaves as it always did. Pass `viewportHeight` to `setup()` for one that should scroll.

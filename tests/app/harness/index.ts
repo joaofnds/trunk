@@ -9,7 +9,7 @@ import { FakeOpener } from "../fakes/opener.js";
 import { FakePath } from "../fakes/path.js";
 import { FakeWebview } from "../fakes/webview.js";
 import { FakeWindow } from "../fakes/window.js";
-import { installDomPolyfills } from "./dom.js";
+import { installDomPolyfills, restoreDomPolyfills } from "./dom.js";
 import { HostClient, type RepoSpec } from "./host-client.js";
 import { TauriInternals } from "./internals.js";
 
@@ -85,6 +85,7 @@ export async function teardown(): Promise<void> {
 	untrackScroll();
 	root.remove();
 	internals.uninstall();
+	restoreDomPolyfills();
 	await host.shutdown();
 }
 

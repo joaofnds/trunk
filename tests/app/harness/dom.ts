@@ -1,4 +1,7 @@
-import { stubVirtualListLayout } from "../../../src/__tests__/helpers/virtual-list-layout.js";
+import {
+	restoreVirtualListLayout,
+	stubVirtualListLayout,
+} from "../../../src/__tests__/helpers/virtual-list-layout.js";
 
 /**
  * The gaps a headless DOM leaves under the real component tree. Each one is a
@@ -79,6 +82,13 @@ function installScrolling(): void {
  */
 function installLayout(options: DomOptions): void {
 	stubVirtualListLayout({ viewportHeight: options.viewportHeight });
+}
+
+/** Undoes the layout stub and the reporting observer, which sit on the
+ *  prototypes and on `globalThis` and outlive the application that installed
+ *  them. `teardown()` is where the harness returns the state it took. */
+export function restoreDomPolyfills(): void {
+	restoreVirtualListLayout();
 }
 
 function installTextMeasurement(): void {
