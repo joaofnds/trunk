@@ -210,7 +210,11 @@ describe("buildGraphData", () => {
 			});
 		});
 
-		it("parent not loaded: connection is skipped", () => {
+		it("parent beyond the loaded page: the lane continues to the last loaded row", () => {
+			// A's parent is real but sits on a later page. Dropping the connection
+			// renders A as a dot with nothing leaving it, which reads as a commit
+			// disconnected from all history (TRUNK-87). The lane runs to the bottom
+			// of what is loaded instead, and reaches the parent once its page loads.
 			const commits = [
 				makeCommit({
 					oid: "A",
@@ -218,8 +222,34 @@ describe("buildGraphData", () => {
 					parent_oids: ["not_loaded"],
 					edges: [makeEdge({ edge_type: "Straight", to_column: 0 })],
 				}),
+				makeCommit({ oid: "B", column: 1 }),
+				makeCommit({ oid: "C", column: 1 }),
 			];
-			const result = buildGraphData(commits, 1);
+			const result = buildGraphData(commits, 2);
+
+			expect(result.connections).toContainEqual({
+				childX: 0,
+				childY: 0,
+				parentX: 0,
+				parentY: 2,
+				colorIndex: 0,
+				dashed: false,
+			});
+		});
+
+		it("parent beyond the page: no lane when the commit holds no straight edge", () => {
+			// Without a straight-through edge the commit does not hold its column
+			// below itself, so there is no lane to continue.
+			const commits = [
+				makeCommit({
+					oid: "A",
+					column: 0,
+					parent_oids: ["not_loaded"],
+					edges: [],
+				}),
+				makeCommit({ oid: "B", column: 1 }),
+			];
+			const result = buildGraphData(commits, 2);
 			expect(result.connections).toHaveLength(0);
 		});
 	});

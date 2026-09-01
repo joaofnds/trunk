@@ -98,7 +98,32 @@ export function buildGraphData(
 		// --- Per-parent connections ---
 		for (const parentOid of commit.parent_oids) {
 			const parentNode = nodeByOid.get(parentOid);
-			if (!parentNode) continue; // parent not loaded (pagination)
+
+			// The parent is real but sits beyond the loaded page. Placement already
+			// decided this commit holds its column all the way down to that parent —
+			// the straight-through edge below says so — so the lane continues to the
+			// last loaded row. Dropping it instead renders the commit as a dot with
+			// nothing leaving it, which reads as history that starts nowhere
+			// (TRUNK-87: a branch far behind its upstream, whose parent is hundreds
+			// of rows down). Once the parent's page loads it becomes a node and the
+			// branch below takes over, so no seam is left at the join.
+			if (!parentNode) {
+				const straightEdge = commit.edges.find(
+					(e) =>
+						e.from_column === commit.column && e.to_column === commit.column,
+				);
+				if (!straightEdge) continue;
+
+				connections.push({
+					childX: commit.column,
+					childY: y,
+					parentX: commit.column,
+					parentY: commits.length - 1,
+					colorIndex: straightEdge.color_index,
+					dashed: commit.is_stash,
+				});
+				continue;
+			}
 
 			// Color selection:
 			// Same-column: use the straight edge in the child's own column (lane color).
