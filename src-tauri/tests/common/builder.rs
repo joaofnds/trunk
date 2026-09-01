@@ -5,6 +5,13 @@ pub struct TestContextBuilder {
     steps: Vec<BuildStep>,
 }
 
+/// One index edit waiting for the next commit, kept in the order the caller
+/// declared it.
+enum PendingChange {
+    Add(String),
+    Remove(String),
+}
+
 enum BuildStep {
     WriteFile {
         path: String,
@@ -226,9 +233,10 @@ impl TestContextBuilder {
         // Set HEAD to point at main branch
         repo.set_head("refs/heads/main").unwrap();
 
-        // Track files written since the last commit so Commit knows what to stage
-        let mut pending_files: Vec<String> = Vec::new();
-        let mut pending_removals: Vec<String> = Vec::new();
+        // Index edits waiting for the next Commit, in declaration order: a step
+        // rewriting a path the same commit removed must land as the caller wrote
+        // it, not be cancelled by a removal replayed afterwards.
+        let mut pending: Vec<PendingChange> = Vec::new();
         let mut stash_counter: usize = 0;
 
         for step in &self.steps {
@@ -240,12 +248,12 @@ impl TestContextBuilder {
                         std::fs::create_dir_all(parent).unwrap();
                     }
                     std::fs::write(&full_path, content).unwrap();
-                    pending_files.push(path.clone());
+                    pending.push(PendingChange::Add(path.clone()));
                 }
 
                 BuildStep::RemoveFile { path } => {
                     std::fs::remove_file(dir.path().join(path)).unwrap();
-                    pending_removals.push(path.clone());
+                    pending.push(PendingChange::Remove(path.clone()));
                 }
 
                 BuildStep::Commit { message, secs } => {
@@ -259,15 +267,18 @@ impl TestContextBuilder {
                     };
                     let mut index = repo.index().unwrap();
 
-                    for file in &pending_files {
-                        index.add_path(std::path::Path::new(file)).unwrap();
-                    }
-                    for file in &pending_removals {
-                        index.remove_path(std::path::Path::new(file)).unwrap();
+                    for change in &pending {
+                        match change {
+                            PendingChange::Add(file) => {
+                                index.add_path(std::path::Path::new(file)).unwrap()
+                            }
+                            PendingChange::Remove(file) => {
+                                index.remove_path(std::path::Path::new(file)).unwrap()
+                            }
+                        }
                     }
                     index.write().unwrap();
-                    pending_files.clear();
-                    pending_removals.clear();
+                    pending.clear();
 
                     let tree_oid = index.write_tree().unwrap();
                     let tree = repo.find_tree(tree_oid).unwrap();

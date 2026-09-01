@@ -1348,6 +1348,18 @@ fn renamed_with_one_edit() -> TestContext {
         .build()
 }
 
+/// The rename commit and the commit before it, as oid strings, for the compare
+/// surfaces that diff any two trees.
+fn head_and_parent(ctx: &TestContext) -> (String, String) {
+    let repo = ctx.repo();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+
+    (
+        head.parent(0).unwrap().id().to_string(),
+        head.id().to_string(),
+    )
+}
+
 fn head_oid(ctx: &TestContext) -> String {
     let repo = ctx.repo();
     let oid = repo.head().unwrap().peel_to_commit().unwrap().id();
@@ -1438,4 +1450,83 @@ fn pure_rename_has_no_hunks() {
         diffed[0].hunks.is_empty(),
         "a pure rename changes no content, so it has no hunks"
     );
+}
+
+/// The builder replays a commit's index edits in declaration order. Removing a
+/// path and writing it again in one commit is a rewrite, and applying every
+/// removal last would drop the file from the tree while leaving it on disk.
+#[test]
+fn rewriting_a_removed_path_in_one_commit_keeps_the_file() {
+    let ctx = TestContext::builder()
+        .with_file("keep.txt", "v1\n")
+        .with_commit("add keep.txt")
+        .with_removed_file("keep.txt")
+        .with_file("keep.txt", "v2\n")
+        .with_commit("rewrite keep.txt")
+        .build();
+
+    let repo = ctx.repo();
+    let tree = repo.head().unwrap().peel_to_tree().unwrap();
+    let entry = tree
+        .get_path(std::path::Path::new("keep.txt"))
+        .expect("the rewritten file must be in the commit");
+    let blob = repo.find_blob(entry.id()).unwrap();
+
+    assert_eq!(blob.content(), b"v2\n");
+}
+
+/// Detection must reach every surface that shows or counts a diff, not only the
+/// commit listing. Dropping `detect_renames` from any one call site leaves the
+/// rest green, which is how a staging defect shipped under a full suite: these
+/// pin the compare and staged paths against that.
+#[test]
+fn compare_lists_a_rename_as_one_entry() {
+    let ctx = renamed_with_one_edit();
+    let (base_oid, head_oid) = head_and_parent(&ctx);
+
+    let files = ctx
+        .list_compare_files(Some(&base_oid), &head_oid)
+        .expect("list_compare_files failed");
+
+    assert_eq!(files.len(), 1, "expected one renamed entry");
+    assert_eq!(files[0].status, DiffStatus::Renamed);
+    assert_eq!(files[0].old_path.as_deref(), Some("util.ts"));
+}
+
+#[test]
+fn comparing_a_renamed_file_diffs_only_the_changed_line() {
+    let ctx = renamed_with_one_edit();
+    let (base_oid, head_oid) = head_and_parent(&ctx);
+
+    let files = ctx
+        .diff_compare_file(Some(&base_oid), &head_oid, "math-util.ts")
+        .expect("diff_compare_file failed");
+
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].status, DiffStatus::Renamed);
+    assert_eq!(files[0].old_path.as_deref(), Some("util.ts"));
+
+    let changed = files[0]
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .count();
+    assert_eq!(changed, 2, "one line replaced, so one delete and one add");
+}
+
+/// A rename collapses to the lines actually edited: 1 insertion and 1 deletion,
+/// not the 20 the file holds. `git show --stat` reports the same.
+#[test]
+fn compare_stats_count_a_rename_as_its_edit_only() {
+    let ctx = renamed_with_one_edit();
+    let (base_oid, head_oid) = head_and_parent(&ctx);
+
+    let stat = ctx
+        .compare_stat(Some(&base_oid), &head_oid)
+        .expect("compare_stat failed");
+
+    assert_eq!(stat.files_changed, 1);
+    assert_eq!(stat.insertions, 1);
+    assert_eq!(stat.deletions, 1);
 }
