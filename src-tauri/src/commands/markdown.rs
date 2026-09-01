@@ -858,13 +858,24 @@ fn run_is_whitespace(units: &[Unit]) -> bool {
     units.iter().all(|u| u.text.trim().is_empty())
 }
 
-fn emit_run(out: &mut String, open: &mut Vec<String>, units: &[Unit], tag: &str, class: &str) {
+/// Returns whether it wrote a mark. A run of pure whitespace passes through
+/// unwrapped, so it marks nothing; callers use this to tell a merge that showed
+/// the reader a change from one that silently showed the same words again.
+/// Asking the output string whether it contains the class name cannot answer
+/// that: a document is free to contain `md-word-delete` as literal prose.
+fn emit_run(
+    out: &mut String,
+    open: &mut Vec<String>,
+    units: &[Unit],
+    tag: &str,
+    class: &str,
+) -> bool {
     if run_is_whitespace(units) {
         for unit in units {
             transition(out, open, &unit.context);
             out.push_str(&unit.text);
         }
-        return;
+        return false;
     }
 
     transition(out, open, &[]);
@@ -876,6 +887,7 @@ fn emit_run(out: &mut String, open: &mut Vec<String>, units: &[Unit], tag: &str,
     }
     transition(out, &mut local, &[]);
     let _ = write!(out, "</{tag}>");
+    true
 }
 
 /// The unit diff regrouped for emission. A `Changed` run carries every unit of
@@ -960,10 +972,14 @@ fn track_preformatted(units: &[Unit], preformatted: &mut bool) {
 /// space so struck text never renders jammed against inserted text. Inside
 /// `<pre>` no space is fabricated: whitespace is preserved there, and the
 /// separator would corrupt the displayed code.
-fn merge_emit(runs: &[MergeRun], after: &[Unit]) -> String {
+/// The flag reports whether any mark was written, so a caller can refuse a merge
+/// that shows the reader nothing without having to search the output for a class
+/// name the document itself might contain.
+fn merge_emit(runs: &[MergeRun], after: &[Unit]) -> (String, bool) {
     let mut out = String::new();
     let mut open: Vec<String> = Vec::new();
     let mut preformatted = false;
+    let mut marked = false;
     for run in runs {
         match run {
             MergeRun::Equal { new_index, len, .. } => {
@@ -975,18 +991,18 @@ fn merge_emit(runs: &[MergeRun], after: &[Unit]) -> String {
                 track_preformatted(units, &mut preformatted);
             }
             MergeRun::Changed { before, after } => {
-                emit_run(&mut out, &mut open, before, "del", "md-word-delete");
+                marked |= emit_run(&mut out, &mut open, before, "del", "md-word-delete");
                 track_preformatted(before, &mut preformatted);
                 if !preformatted && !run_is_whitespace(before) && !run_is_whitespace(after) {
                     out.push(' ');
                 }
-                emit_run(&mut out, &mut open, after, "ins", "md-word-add");
+                marked |= emit_run(&mut out, &mut open, after, "ins", "md-word-add");
                 track_preformatted(after, &mut preformatted);
             }
         }
     }
     transition(&mut out, &mut open, &[]);
-    out
+    (out, marked)
 }
 
 /// Self-check that the merged fragment's tags nest correctly. The merge returns
@@ -1072,8 +1088,8 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
 /// The output is UNsanitized; `changed_fragments` sanitizes it before it crosses IPC.
 fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
     let (_, after_units, runs) = merge_units(before_raw, after_raw)?;
-    let merged = merge_emit(&runs, &after_units);
-    if !merged.contains("md-word-") {
+    let (merged, marked) = merge_emit(&runs, &after_units);
+    if !marked {
         // Nothing visible changed between the two renders, so a single merged
         // copy would state a change it cannot show. The before/after pair at
         // least gives the reader two copies to compare. `leaf_word_merge`
@@ -1123,9 +1139,10 @@ fn merge_emit_one_side(
     before: &[Unit],
     after: &[Unit],
     side: MergeSide,
-) -> String {
+) -> (String, bool) {
     let mut out = String::new();
     let mut open: Vec<String> = Vec::new();
+    let mut marked = false;
     for run in runs {
         match run {
             MergeRun::Equal {
@@ -1142,14 +1159,18 @@ fn merge_emit_one_side(
                     out.push_str(&unit.text);
                 }
             }
-            MergeRun::Changed { before, after } => match side {
-                MergeSide::Before => emit_run(&mut out, &mut open, before, "del", "md-word-delete"),
-                MergeSide::After => emit_run(&mut out, &mut open, after, "ins", "md-word-add"),
-            },
+            MergeRun::Changed { before, after } => {
+                marked |= match side {
+                    MergeSide::Before => {
+                        emit_run(&mut out, &mut open, before, "del", "md-word-delete")
+                    }
+                    MergeSide::After => emit_run(&mut out, &mut open, after, "ins", "md-word-add"),
+                };
+            }
         }
     }
     transition(&mut out, &mut open, &[]);
-    out
+    (out, marked)
 }
 
 /// Word-merge one pair of container leaves into the two side-specific marked
@@ -1157,9 +1178,11 @@ fn merge_emit_one_side(
 /// whole-leaf tint.
 fn leaf_word_merge(before_raw: &str, after_raw: &str) -> Option<(String, String)> {
     let (before_units, after_units, runs) = merge_units(before_raw, after_raw)?;
-    let before_marked = merge_emit_one_side(&runs, &before_units, &after_units, MergeSide::Before);
-    let after_marked = merge_emit_one_side(&runs, &before_units, &after_units, MergeSide::After);
-    if !before_marked.contains("md-word-") && !after_marked.contains("md-word-") {
+    let (before_marked, before_has_mark) =
+        merge_emit_one_side(&runs, &before_units, &after_units, MergeSide::Before);
+    let (after_marked, after_has_mark) =
+        merge_emit_one_side(&runs, &before_units, &after_units, MergeSide::After);
+    if !before_has_mark && !after_has_mark {
         // Nothing visible changed between the renders (a markup-only edit the
         // renderer omits); unmarked copies would hide the change entirely,
         // the tint at least says where it is.
@@ -1443,9 +1466,16 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
             Some(m) => (m.clone(), false),
             None => (format!("{before_html}{after_html}"), true),
         };
-        let marked = shown.contains("md-word-")
-            || shown.contains("md-added")
-            || shown.contains("md-removed");
+        // Keyed on the whole opening tag the emission writes, never on the bare
+        // class name: a document may contain `md-word-delete` as prose, and an
+        // author's own `<del class="md-word-delete">` is sanitized to plain text
+        // (a code span escapes its brackets), so only the merge can produce this.
+        let marked = MD_WORD_CLASSES
+            .iter()
+            .any(|c| shown.contains(&format!("class=\"{c}\">")))
+            || MD_TINT_CLASSES
+                .iter()
+                .any(|c| shown.contains(&format!("class=\"{c}\"")));
         let pair_differs = is_pair && visible(before_html) != visible(after_html);
 
         if !marked && !has_tints && !renders_identically && !pair_differs {
@@ -3914,6 +3944,35 @@ mod tests {
     }
 
     #[test]
+    fn illegible_rows_is_not_fooled_by_a_document_that_names_the_mark_classes() {
+        // The oracle used to ask whether the shown copy contained "md-word-".
+        // This repository's own rule file contains that string, so a document
+        // about the diff view could describe itself as marked and the gate would
+        // pass an unmarked row. Detection keys on the emitted opening tag, which
+        // sanitization strips from author input and a code span escapes.
+        let rows = vec![DiffRow::Changed {
+            before_html: "<p>the md-word-delete class marks removals, see a.png</p>".into(),
+            after_html: "<p>the md-word-delete class marks removals, see b.png</p>".into(),
+            merged_html: Some("<p>the md-word-delete class marks removals, see b.png</p>".into()),
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
+            has_tints: false,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 1,
+        }];
+
+        let found = illegible_rows(&rows);
+        assert_eq!(
+            found.len(),
+            1,
+            "prose naming the class is not a mark: {found:?}"
+        );
+    }
+
+    #[test]
     fn a_merge_that_marks_nothing_falls_back_to_the_visible_pair() {
         // A markup-only edit can diff to all-Equal, and an unmarked merged copy
         // then tells the reader nothing about a row the view calls changed. The
@@ -4013,6 +4072,14 @@ mod tests {
             assert!(
                 illegible_rows(&rows).is_empty(),
                 "a changed rev token in prose stays legible: {before:?} -> {after:?}: {rows:?}"
+            );
+            // Legibility alone would also be satisfied by the merge refusing and
+            // the pair rendering, so assert the words are marked: the reader sees
+            // WHICH word changed, not just two copies to compare.
+            let merged = merged_of(&rows);
+            assert!(
+                merged.contains("md-word-delete") && merged.contains("md-word-add"),
+                "the changed word itself is marked: {before:?} -> {after:?}: {merged}"
             );
         }
     }
