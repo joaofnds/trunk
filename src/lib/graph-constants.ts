@@ -37,3 +37,19 @@ export const BADGE_HEIGHT = 4 * UNIT;
 export const BADGE_FONT_SIZE = 10;
 export const ICON_WIDTH = 10;
 export const ICON_GAP = 2; // flex gap between icon and text in pill foreignObject
+
+// ─── Lane labels ──────────────────────────────────────────────────────────────
+// A lane's ref name, pinned at the top of the viewport while the ref's own row is
+// scrolled above it. Sized like a small ref pill so the two read as the same
+// vocabulary, but positioned by column rather than by row.
+export const LANE_LABEL_H = 4 * UNIT;
+export const LANE_LABEL_PAD_X = 5;
+export const LANE_LABEL_GAP = 4;
+export const LANE_LABEL_DOT_R = 2.5;
+export const LANE_LABEL_FONT_SIZE = 10;
+/** Rough advance width per character at LANE_LABEL_FONT_SIZE, for the capsule
+ *  width. The label is short and the capsule tolerates a pixel either way, so
+ *  this avoids a canvas measure on every scroll frame. */
+export const LANE_LABEL_CHAR_W = 5.6;
+/** Distance from the top of the first visible row to the label's centre. */
+export const LANE_LABEL_INSET_Y = 2 * UNIT;

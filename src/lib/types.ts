@@ -303,6 +303,15 @@ export interface OverlayPath {
 	maxRow: number;
 }
 
+/** A lane's ref name, pinned at the top of the viewport while the ref's own row
+ *  is scrolled above it. Positioned by column, not by row: unlike a ref pill it
+ *  belongs to the visible region rather than to a commit. */
+export interface LaneLabel {
+	column: number;
+	label: string;
+	colorIndex: number;
+}
+
 export interface OverlayRefPill {
 	x: number; // left edge of pill in SVG space
 	y: number; // vertical center (cy(rowIndex))

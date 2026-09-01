@@ -41,12 +41,20 @@ import {
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
 	ICON_WIDTH,
+	LANE_LABEL_CHAR_W,
+	LANE_LABEL_DOT_R,
+	LANE_LABEL_FONT_SIZE,
+	LANE_LABEL_GAP,
+	LANE_LABEL_H,
+	LANE_LABEL_INSET_Y,
+	LANE_LABEL_PAD_X,
 	PILL_FONT_SIZE,
 	PILL_GAP,
 	PILL_HEIGHT,
 	PILL_PADDING_X,
 } from "../lib/graph-constants.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { buildLaneLabels, laneSpans } from "../lib/lane-labels.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
@@ -1761,6 +1769,7 @@ $effect(() => {
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
         {@const refOffset = columnVisibility.ref ? columnWidths.ref : 0}
         {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
+        {@const laneLabels = buildLaneLabels(graphData.nodes, displayItems, laneSpans(graphData.connections), visibleStart, visibleEnd)}
         {@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
         {@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
         <svg
@@ -1823,6 +1832,37 @@ $effect(() => {
               {/if}
             {/each}
           </g>
+          <!-- Lane labels — a lane can run for hundreds of rows, so scrolled into
+               the middle of one the line carries no dot and no name. The label names
+               it at the top of the viewport, and is absent once the ref's own row is
+               on screen (TRUNK-87). Clipped and panned with the rails it labels. -->
+          {#if laneLabels.length > 0}
+          <g clip-path="url(#graph-clip)">
+            <g class="overlay-lane-labels" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
+              {#each laneLabels as laneLabel}
+                {@const lx = geometry.cx(laneLabel.column)}
+                {@const ly = visibleStart * displaySettings.rowHeight + LANE_LABEL_INSET_Y}
+                <rect
+                  x={lx - LANE_LABEL_DOT_R - LANE_LABEL_PAD_X}
+                  y={ly - LANE_LABEL_H / 2}
+                  width={LANE_LABEL_DOT_R * 2 + LANE_LABEL_PAD_X * 2 + laneLabel.label.length * LANE_LABEL_CHAR_W + LANE_LABEL_GAP}
+                  height={LANE_LABEL_H}
+                  rx={LANE_LABEL_H / 2}
+                  fill="var(--bg-2)"
+                  stroke={laneColor(laneLabel.colorIndex)}
+                  stroke-width={displaySettings.pillStroke} />
+                <circle cx={lx} cy={ly} r={LANE_LABEL_DOT_R} fill={laneColor(laneLabel.colorIndex)} />
+                <text
+                  x={lx + LANE_LABEL_DOT_R + LANE_LABEL_GAP}
+                  y={ly}
+                  dominant-baseline="central"
+                  font-size={LANE_LABEL_FONT_SIZE}
+                  fill={laneColor(laneLabel.colorIndex)}
+                  style="font-weight: 500;">{laneLabel.label}</text>
+              {/each}
+            </g>
+          </g>
+          {/if}
           {/if}
           {#if columnVisibility.ref}
             <g class="overlay-pills">
