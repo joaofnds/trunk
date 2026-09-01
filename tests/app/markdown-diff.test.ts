@@ -79,9 +79,7 @@ describe("the rendered markdown diff", () => {
 			return texts.length > 0 ? texts : null;
 		});
 
-		expect(marks.join(" ")).toContain(
-			"repo's own file wins over this skill",
-		);
+		expect(marks.join(" ")).toContain("repo's own file wins over this skill");
 		const washed = document.querySelectorAll(
 			".rendered-diff .md-removed:not(.no-wash), .rendered-diff .md-added:not(.no-wash)",
 		);
