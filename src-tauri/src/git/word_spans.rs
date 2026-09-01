@@ -54,7 +54,7 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Vec
             i += 1;
         }
 
-        if add_start == del_start || i == add_start {
+        if i == add_start {
             continue;
         }
         emphasize_run(
@@ -95,7 +95,9 @@ fn emphasize_run(
         .iter()
         .map(|l| l.content.as_str())
         .collect();
-    let diff = TextDiff::from_lines(old_text.as_str(), new_text.as_str());
+    let diff = similar::TextDiffConfig::default()
+        .deadline(deadline)
+        .diff_lines(old_text.as_str(), new_text.as_str());
     let mut options = similar::InlineChangeOptions::new();
     options.semantic_cleanup(true);
 

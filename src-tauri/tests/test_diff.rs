@@ -624,7 +624,7 @@ fn word_span_dissimilar_skipped() {
     assert!(!file_diffs.is_empty(), "expected file diffs");
     let hunk = &file_diffs[0].hunks[0];
 
-    // Completely different content -- ratio < 0.4, so no emphasis
+    // Completely different content -- emphasis would cover the whole line, so none survives
     for line in &hunk.lines {
         if matches!(
             line.origin,
