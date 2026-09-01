@@ -36,25 +36,6 @@ export class DiffPaneDriver {
 		return textsOf(".rendered-diff ins.md-word-add");
 	}
 
-	/** Switches the rendered view to the merged (suggestion-mode) style. */
-	async showMerged(): Promise<void> {
-		const button = await waitFor("the merged-style toggle", () =>
-			document.querySelector<HTMLButtonElement>(
-				'button[title="Show merged changes"]',
-			),
-		);
-
-		button.click();
-	}
-
-	/** Whether the merged-style toggle currently shows merged as active. */
-	mergedActive(): boolean {
-		return (
-			document.querySelector('button[title="Show before and after copies"]') !==
-			null
-		);
-	}
-
 	/** The rendered blocks still carrying the full background wash. */
 	renderedWashed(): Element[] {
 		return [

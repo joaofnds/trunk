@@ -112,37 +112,25 @@ describe("DiffToolbar word wrap toggle", () => {
 	});
 });
 
-describe("DiffToolbar merged-style toggle", () => {
-	it("disables the layout toggle while merged changes are shown", () => {
+describe("DiffToolbar rendered markdown", () => {
+	// Inline rendered markdown always shows the merged copy now, so there is no
+	// style to choose and no control for it.
+	it("offers no merged-style control", () => {
 		render(DiffToolbar, {
 			props: {
 				...baseProps,
 				selectedPath: "README.md",
 				renderMode: "rendered" as const,
-				renderedStyle: "merged" as const,
 			},
-		});
-
-		expect(
-			screen.getByTitle("Merged changes are a single stream"),
-		).toBeDisabled();
-		expect(
-			screen.getByTitle("Show before and after copies"),
-		).toBeInTheDocument();
-	});
-
-	it("hides the merged toggle while the source view is active", () => {
-		render(DiffToolbar, {
-			props: { ...baseProps, selectedPath: "README.md" },
 		});
 
 		expect(screen.queryByTitle("Show merged changes")).toBeNull();
+		expect(screen.queryByTitle("Show before and after copies")).toBeNull();
 	});
 
-	// The toolbar is right-anchored, so a button appearing after the render
-	// toggle shifts the toggle left under the pointer and the second click
-	// lands on the newcomer. Appearing before it, the toggle stays put.
-	it("appears to the left of the render toggle so the toggle never moves", () => {
+	// Split still shows the before/after columns, so side-by-side stays reachable
+	// for markdown: nothing disables the layout toggle any more.
+	it("leaves the layout toggle enabled for a rendered markdown file", () => {
 		render(DiffToolbar, {
 			props: {
 				...baseProps,
@@ -151,10 +139,6 @@ describe("DiffToolbar merged-style toggle", () => {
 			},
 		});
 
-		const merged = screen.getByTitle("Show merged changes");
-		const source = screen.getByTitle("Show source");
-		expect(
-			merged.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
+		expect(screen.getByTitle("Side-by-side view")).toBeEnabled();
 	});
 });

@@ -86,7 +86,7 @@ describe("the rendered markdown diff", () => {
 		).toBe(0);
 	});
 
-	it("shows one merged copy in suggestion mode and keeps the style across files", async () => {
+	it("shows one merged copy per changed list, with no style to choose", async () => {
 		const app = await setup({
 			repo: {
 				steps: [
@@ -111,7 +111,6 @@ describe("the rendered markdown diff", () => {
 			app.staging.removedLines().length > 0 ? true : null,
 		);
 		await app.diffPane.showRendered();
-		await app.diffPane.showMerged();
 
 		const dels = await waitFor("the merged del mark", () => {
 			const texts = app.diffPane.renderedWordDeleted();
@@ -121,6 +120,5 @@ describe("the rendered markdown diff", () => {
 		expect(app.diffPane.renderedWordAdded()).toEqual(["new"]);
 		expect(app.diffPane.renderedRemoved()).toEqual([]);
 		expect(app.diffPane.renderedAdded()).toEqual([]);
-		expect(app.diffPane.mergedActive()).toBe(true);
 	});
 });

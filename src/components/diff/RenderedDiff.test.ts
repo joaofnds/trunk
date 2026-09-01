@@ -72,7 +72,7 @@ describe("RenderedDiff", () => {
 		);
 	});
 
-	it("renders one merged copy per changed block in merged style, pair when refused", async () => {
+	it("renders one merged copy per changed block inline, pair when refused", async () => {
 		const rows: DiffRow[] = [
 			{
 				kind: "changed",
@@ -94,7 +94,7 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
-			props: { ...baseProps, renderedStyle: "merged" as const },
+			props: { ...baseProps, layoutMode: "inline" as const },
 		});
 		await screen.findByText(/third/);
 
@@ -109,7 +109,11 @@ describe("RenderedDiff", () => {
 		expect(blocks[2].classList.contains("md-added")).toBe(true);
 	});
 
-	it("renders the merged style as one inline stream even when layout is split", async () => {
+	// The merged copy is a single stream with no left and right, so it belongs to
+	// the inline layout alone. Split keeps the before/after columns: that pair IS
+	// what the two-column view is for, and collapsing it would leave markdown
+	// with no side-by-side reading at all.
+	it("keeps the before/after columns in split, ignoring the merged copy", async () => {
 		const rows: DiffRow[] = [
 			{
 				kind: "changed",
@@ -124,16 +128,12 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
 		const { container } = render(RenderedDiff, {
-			props: {
-				...baseProps,
-				layoutMode: "split" as const,
-				renderedStyle: "merged" as const,
-			},
+			props: { ...baseProps, layoutMode: "split" as const },
 		});
 		await screen.findByText(/new/);
 
-		expect(container.querySelector(".rendered-diff.split")).toBeNull();
-		expect(container.querySelectorAll(".rendered-block")).toHaveLength(1);
+		expect(container.querySelector(".rendered-content.split")).not.toBeNull();
+		expect(container.querySelector("del.md-word-delete")).toBeNull();
 	});
 
 	it("renders a changed row WITHOUT wordHtml as removed-before then added-after (inline)", async () => {
