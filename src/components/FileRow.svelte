@@ -2,6 +2,7 @@
 import Minus from "@lucide/svelte/icons/minus";
 import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
+import { renamePartsOf } from "../lib/rename-display.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
 import type { FileStatus } from "../lib/types.js";
 import CommentBadge from "./CommentBadge.svelte";
@@ -36,14 +37,18 @@ let hovered = $state(false);
 
 let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 
-// A rename names both paths. Tree mode already shortens the new path to its
-// basename, so the old one shortens too — otherwise a full directory path
-// would sit beside a bare filename in a row that shows neither in full.
-let renamedFrom = $derived.by(() => {
-	const from = file.old_path;
-	if (from === null) return null;
+// A rename names both paths. Tree mode has already shortened the new path to
+// its basename and the tree's own nesting says where the file is, so the old
+// side shortens to its basename too rather than sitting beside it at full
+// length.
+let rename = $derived.by(() => {
+	const parts = renamePartsOf(file.path, file.old_path ?? null);
+	if (parts === null || displayName === undefined) return parts;
 
-	return displayName === undefined ? from : (from.split("/").pop() ?? from);
+	return {
+		from: parts.from.split("/").pop() ?? parts.from,
+		to: displayName,
+	};
 });
 
 let badgeBg = $derived(
@@ -98,23 +103,34 @@ let badgeBg = $derived(
     gap: var(--space-1);
     font-size: 12px;
   ">
-    {#if renamedFrom !== null}
+    {#if rename !== null}
+      <!-- The old path yields its space first: it shrinks and ellipsizes while
+           the new path, which is where the file is now, keeps its width. -->
       <span style="
+        flex-shrink: 1;
+        min-width: 2ch;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--color-text-muted);
-      ">{renamedFrom}</span>
+      ">{rename.from}</span>
       <span aria-hidden="true" style="
         flex-shrink: 0;
         color: var(--color-text-muted);
       ">→</span>
+      <span style="
+        flex-shrink: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      ">{rename.to}</span>
+    {:else}
+      <span style="
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      ">{displayName ?? file.path}</span>
     {/if}
-    <span style="
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    ">{displayName ?? file.path}</span>
   </span>
 
   <!-- Review-comment count for this file -->

@@ -35,11 +35,29 @@ describe("FileRow", () => {
 		expect(screen.getByTestId("staging-file")).not.toHaveTextContent("→");
 	});
 
-	it("names both paths for a renamed file", () => {
+	it("drops the repeated directory from a rename inside one folder", () => {
 		render(FileRow, {
 			props: {
 				file: {
-					path: "src/math-util.ts",
+					path: "code/math-util.ts",
+					old_path: "code/util.ts",
+					status: "Renamed",
+					is_binary: false,
+				},
+				actionLabel: "+",
+				onaction: vi.fn(),
+			},
+		});
+		expect(screen.getByTestId("staging-file")).toHaveTextContent(
+			"util.ts → code/math-util.ts",
+		);
+	});
+
+	it("keeps both paths whole when the file moved between folders", () => {
+		render(FileRow, {
+			props: {
+				file: {
+					path: "lib/math-util.ts",
 					old_path: "src/util.ts",
 					status: "Renamed",
 					is_binary: false,
@@ -49,8 +67,7 @@ describe("FileRow", () => {
 			},
 		});
 		const row = screen.getByTestId("staging-file");
-		expect(row).toHaveTextContent("src/util.ts");
-		expect(row).toHaveTextContent("src/math-util.ts");
+		expect(row).toHaveTextContent("src/util.ts → lib/math-util.ts");
 	});
 
 	it("shows only the new basename for a rename in tree mode", () => {

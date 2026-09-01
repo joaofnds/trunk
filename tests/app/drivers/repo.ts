@@ -78,6 +78,15 @@ export class RepoDriver {
 		await openContextMenu(row, this.menu, summary);
 	}
 
+	/** Right-clicks a file in the selected commit's detail pane. */
+	async commitFileContextMenu(path: string): Promise<void> {
+		const row = await waitFor(`the ${path} row`, () =>
+			firstMatching(FILE_ROW, (text) => text.includes(path)),
+		);
+
+		await openContextMenu(row, this.menu, path);
+	}
+
 	/** Every commit summary the graph is showing, top row first. */
 	commitRows(): string[] {
 		return this.rows().map((row) => row.textContent?.trim() ?? "");

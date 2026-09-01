@@ -119,7 +119,7 @@ describe("the diff surfaces", () => {
 		expect(app.staging.emphasizedAdded()).toEqual([]);
 	});
 
-	it("lists a renamed file once, naming both paths, and diffs only the changed line", async () => {
+	it("lists a renamed file once, without repeating its directory, and diffs only the changed line", async () => {
 		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
 		await app.repo.open();
 
@@ -130,7 +130,7 @@ describe("the diff surfaces", () => {
 				const files = app.repo.commitFiles();
 				return files.length > 0 ? files : null;
 			}),
-		).resolves.toEqual(["R src/util.ts → src/math-util.ts"]);
+		).resolves.toEqual(["R util.ts → src/math-util.ts"]);
 
 		await app.repo.openCommitFile("math-util.ts");
 
@@ -141,5 +141,23 @@ describe("the diff surfaces", () => {
 			}),
 		).resolves.toEqual(["export const value7 = 7 + offset;"]);
 		expect(app.staging.removedLines()).toEqual(["export const value7 = 7;"]);
+	});
+
+	it("offers both of a renamed file's paths in its context menu", async () => {
+		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
+		await app.repo.open();
+
+		await app.repo.selectCommit("rename a file and edit one line");
+		await app.repo.commitFileContextMenu("math-util.ts");
+
+		expect(app.contextMenu.items().map((item) => item.label)).toEqual([
+			"Copy Relative Path",
+			"Copy Absolute Path",
+			"Copy Old Relative Path",
+			"Copy Old Absolute Path",
+		]);
+
+		app.contextMenu.choose("Copy Old Relative Path");
+		expect(app.clipboard.text).toBe("src/util.ts");
 	});
 });
