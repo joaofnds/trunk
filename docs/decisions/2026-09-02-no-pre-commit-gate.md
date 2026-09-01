@@ -47,9 +47,33 @@ That cost is accepted. The compensating facts:
   which was a formatting miss. It would not catch a failing test. Buying the cheap
   half of the gate is not worth introducing hooks to a repository that has none.
 
+## It recurred the same day
+
+Written into this record on 2026-09-02, hours after the decision above.
+
+`b0ea552b` (2026-09-02 00:51) committed `tests/app/harness/wait.ts` unformatted.
+`bunx biome ci .` failed from a clean tree again, and `just check` was red for
+every session until it was noticed and fixed in `f268acda`. Same failure mode as
+`235e45bd`, same tool, roughly four hours apart.
+
+So this is not a single incident. It is a pattern: two unformatted commits on
+`main` inside one working day, each red for every concurrent session until a human
+or a session happened to run the gate and look at the output.
+
+This does not reverse the decision. João's position on hooks is a standing
+preference, and the redundancy argument against a second CI job still holds. What
+it does is remove the "ordinary variation" reading that the paragraph below
+originally rested on.
+
+Two things are now known that were not when the decision was made:
+
+- The detection point is not reliably the push. Both incidents were found by a
+  session running `just check` for unrelated work, not by CI on a push. The
+  window is as long as it takes someone to run the gate and read it.
+- Both were formatting only, which is exactly what the ~3s static tier catches.
+
 ## What would reopen this
 
-A second incident of the same shape, where a red `main` blocked other sessions for
-long enough to cost real work. One occurrence is ordinary variation; a pattern is a
-signal. If it recurs, the option to revisit is a hook running only the static tier,
-and the thing to measure first is how long the red tree actually stood.
+A third occurrence, or one where the red tree measurably costs someone real work.
+The option to revisit is a hook running only the static tier. The thing to measure
+first is how long each red tree actually stood between the bad commit and its fix.
