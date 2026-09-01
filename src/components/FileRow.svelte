@@ -39,13 +39,13 @@ let badge = $derived(STATUS_BADGES[file.status] ?? UNKNOWN_STATUS_BADGE);
 
 // A rename names both paths. Tree mode has already shortened the new path to
 // its basename and the tree's own nesting says where the file is, so the old
-// side shortens to its basename too rather than sitting beside it at full
-// length.
+// side shortens to its basename too and there is no directory left to scope.
 let rename = $derived.by(() => {
 	const parts = renamePartsOf(file.path, file.old_path ?? null);
 	if (parts === null || displayName === undefined) return parts;
 
 	return {
+		prefix: "",
 		from: parts.from.split("/").pop() ?? parts.from,
 		to: displayName,
 	};
@@ -104,8 +104,10 @@ let badgeBg = $derived(
     font-size: 12px;
   ">
     {#if rename !== null}
-      <!-- The old path yields its space first: it shrinks and ellipsizes while
-           the new path, which is where the file is now, keeps its width. -->
+      <!-- The old name yields space first: it shrinks and ellipsizes while the
+           new name, which is what the file is called now, keeps its width. Each
+           brace shares a span with the name it sits against, so neither can be
+           stranded by the ellipsis or pushed away by the flex gap. -->
       <span style="
         flex-shrink: 1;
         min-width: 2ch;
@@ -113,7 +115,7 @@ let badgeBg = $derived(
         text-overflow: ellipsis;
         white-space: nowrap;
         color: var(--color-text-muted);
-      ">{rename.from}</span>
+      ">{rename.prefix === '' ? rename.from : `${rename.prefix}{${rename.from}`}</span>
       <span aria-hidden="true" style="
         flex-shrink: 0;
         color: var(--color-text-muted);
@@ -123,7 +125,7 @@ let badgeBg = $derived(
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-      ">{rename.to}</span>
+      ">{rename.prefix === '' ? rename.to : `${rename.to}}`}</span>
     {:else}
       <span style="
         overflow: hidden;

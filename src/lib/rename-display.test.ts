@@ -6,25 +6,27 @@ describe("renamePartsOf", () => {
 		expect(renamePartsOf("src/a.ts", null)).toBeNull();
 	});
 
-	// A rename inside one directory: the directory is not news, and dropping it
-	// from the old side leaves the two names next to each other, which is the
-	// comparison the row exists to make.
-	it("drops the directory from the old side when the file did not move", () => {
+	// A rename inside one directory names that directory once and scopes the two
+	// names to it, as `git show --stat` does. Writing the directory on only one
+	// side would read as a move out of the root and into it.
+	it("scopes the two names under the directory they share", () => {
 		expect(renamePartsOf("code/math-util.ts", "code/util.ts")).toEqual({
+			prefix: "code/",
 			from: "util.ts",
-			to: "code/math-util.ts",
+			to: "math-util.ts",
 		});
 	});
 
-	it("drops a deep directory the same way", () => {
+	it("scopes them under a deep directory the same way", () => {
 		expect(renamePartsOf("src/lib/deep/new.ts", "src/lib/deep/old.ts")).toEqual(
-			{ from: "old.ts", to: "src/lib/deep/new.ts" },
+			{ prefix: "src/lib/deep/", from: "old.ts", to: "new.ts" },
 		);
 	});
 
-	// A move is about the directories, so hiding them would hide the change.
+	// A move is about the directories, so both paths stay whole and unscoped.
 	it("keeps both paths whole when the file moved between directories", () => {
 		expect(renamePartsOf("src/new/a.ts", "src/old/a.ts")).toEqual({
+			prefix: "",
 			from: "src/old/a.ts",
 			to: "src/new/a.ts",
 		});
@@ -32,6 +34,7 @@ describe("renamePartsOf", () => {
 
 	it("keeps both paths whole when nothing is shared", () => {
 		expect(renamePartsOf("lib/b.ts", "src/a.ts")).toEqual({
+			prefix: "",
 			from: "src/a.ts",
 			to: "lib/b.ts",
 		});
@@ -39,6 +42,7 @@ describe("renamePartsOf", () => {
 
 	it("keeps both paths whole when a file moves to the root", () => {
 		expect(renamePartsOf("a.ts", "src/a.ts")).toEqual({
+			prefix: "",
 			from: "src/a.ts",
 			to: "a.ts",
 		});
@@ -48,13 +52,15 @@ describe("renamePartsOf", () => {
 	// different directories: this is a move, and both paths stay whole.
 	it("compares whole directories, never a partial segment", () => {
 		expect(renamePartsOf("src/alt/a.ts", "src/a.ts")).toEqual({
+			prefix: "",
 			from: "src/a.ts",
 			to: "src/alt/a.ts",
 		});
 	});
 
-	it("handles a rename at the repository root", () => {
+	it("has no prefix to scope for a rename at the repository root", () => {
 		expect(renamePartsOf("b.ts", "a.ts")).toEqual({
+			prefix: "",
 			from: "a.ts",
 			to: "b.ts",
 		});

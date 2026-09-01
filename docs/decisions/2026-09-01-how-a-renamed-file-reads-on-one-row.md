@@ -1,51 +1,64 @@
-# A renamed file reads `old.ts → new/path.ts`, and drops the directory it kept
+# A renamed file reads `code/{util.ts → math-util.ts}`
 
 Status: accepted, 2026-09-01. Follows the rename detection in
-`2026-09-01-rename-detection-and-the-pathspec-trap.md`.
+`2026-09-01-rename-detection-and-the-pathspec-trap.md`. Supersedes an
+intermediate form that shipped and was wrong; see below.
 
 ## The row has one line and an ellipsis
 
 A changed-file row is a single line in a resizable side panel. Both of a
 rename's paths have to fit there, and whatever does not fit is cut by
-`text-overflow: ellipsis`, which cuts from the **right**. Every option below was
-judged on what survives that cut, because that is the state the row is often in.
+`text-overflow: ellipsis`, which cuts from the right.
 
 ## What it does
 
-A rename inside one directory writes the old side as its filename alone:
+A rename inside one directory names that directory once and scopes the two
+filenames under it, as `git show --stat` does:
 
-    util.ts → code/math-util.ts
+    code/{util.ts → math-util.ts}
 
-A file that moved between directories writes both paths in full, because there
-the directories are the change:
+A file that moved between directories has no shared directory to name, so both
+paths stay whole and unscoped:
 
     src/old/a.ts → src/new/a.ts
 
-The new path is never shortened, and it goes last so it is the part the ellipsis
-keeps. The old name shrinks first: it is the span that yields width, down to
-`2ch`. Measured in the running app at panel widths from 240px to 95px, the new
-path holds its full 97px and stays legible at every width while the old name
-ellipsizes, and the arrow always survives, so the row still reads as a rename.
+The old name yields width first, down to `2ch`; the new name never shrinks. Each
+brace shares a span with the name it sits against, so neither can be stranded by
+the ellipsis. Measured in the running app from 220px down to 80px: only the left
+span ever ellipsizes, and the closing brace stays attached to the new name at
+every width.
 
-This is lazygit's rule (`pkg/gui/presentation/files.go`), the only surveyed
-client that solves the shared-prefix problem for a one-line row. Its own comment
-states the reasoning: shave the prefix when the file stayed in its directory,
-keep both paths whole otherwise.
+## The form this replaced, and why it was wrong
 
-## What was rejected, and on what evidence
+The first attempt dropped the directory from the old side only:
 
-**git's `--stat` braces, `code/{util.ts => math-util.ts}`.** The first shape
-tried, and the worst-behaved of every format measured. `git show --stat=55` on a
-real rename gives `.../NewWidgetName.svelte}`: the opening brace, the old path
-and the arrow are all gone, and what remains is a filename that appears to end in
-a stray brace. The rename is no longer visible at all, and the only surviving
-mark reads as corruption. git gets away with it by truncating from the left; a
-CSS ellipsis truncates from the right, which would be worse still — it would keep
-the old name and hide the new one.
+    util.ts → code/math-util.ts
 
-**Both paths in full, as GitLab's diff header does.** Doubles the row for no
-information when the directory is the same on both sides. GitLab survives it by
-wrapping (`gl-break-all`) rather than ellipsizing, which a one-line row cannot do.
+João rejected it on sight, correctly. It is a well-formed path pair, and read as
+one it says the file moved from the repository root into `code/` and was renamed.
+Nothing marks the left side as abbreviated while the right side is not, so the
+two sides mean different kinds of thing with no way for a reader to tell. The
+scoped form fixes this by making both sides the same kind of thing: names within
+the directory named once on the left.
+
+## An objection that was raised and measured away
+
+The braced form was resisted on truncation grounds. `git show --stat=55` on a
+real rename gives `.../NewWidgetName.svelte}` — a dangling brace that reads as
+corruption with the rename no longer visible — and git truncates from the left
+while a CSS ellipsis truncates from the right, which looked worse still.
+
+That reasoning does not transfer. git ellipsizes one string; this row is three
+spans, and the ellipsis applies to the old name alone. With each brace glued to
+its neighbouring name, the failure git exhibits cannot occur here. Measured
+before this was accepted, not assumed.
+
+## Other options, and the evidence against them
+
+**Both paths in full, as GitLab's diff header does.** Never ambiguous, but it
+repeats the directory for no information and crowds out the two names the row
+exists to compare. GitLab affords it by wrapping (`gl-break-all`), which a
+one-line row cannot do.
 
 **The new path alone with a badge, as GitHub, VS Code and GitButler do.** The old
 path is then nowhere in the list: GitHub does not put it in the DOM, the tooltip
@@ -61,5 +74,5 @@ open; nothing here claims GitKraken parity.
 ## Tree mode
 
 The tree's nesting already says where the file is, so the row shows the new
-basename, and the old side shortens to its own basename rather than sitting
-beside it at full length.
+basename and the old side shortens to its own basename. There is no directory
+left to name, so no braces are drawn.

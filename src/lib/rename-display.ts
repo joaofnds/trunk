@@ -1,8 +1,12 @@
 /** How a renamed file's two paths are written on one row. */
 export interface RenameParts {
-	/** The old path, shortened to its filename when the file did not move. */
+	/**
+	 * The directory both paths share, trailing slash included, written once and
+	 * scoping the two names. `""` when the file moved, and then `from` and `to`
+	 * are whole paths.
+	 */
+	prefix: string;
 	from: string;
-	/** The new path, always written in full. */
 	to: string;
 }
 
@@ -16,25 +20,18 @@ function directoryOf(path: string): string {
 /**
  * Write a rename's two paths for a single-line row.
  *
- * A rename within one directory repeats that directory on both sides, which
- * says nothing and crowds out the two names the reader is comparing, so the old
- * side drops to its filename: `util.ts → code/math-util.ts`. A file that moved
- * between directories keeps both paths whole, because there the directories are
- * the change.
+ * A rename inside one directory names that directory once and scopes the two
+ * filenames under it, which is what `git show --stat` does:
+ * `code/{util.ts => math-util.ts}`. The two sides then mean the same kind of
+ * thing — both are names within that directory.
  *
- * This is lazygit's rule, which is the only surveyed client that solves the
- * shared-prefix problem for a one-line row. Two alternatives were rejected on
- * evidence. git's `--stat` braces, `code/{util.ts => math-util.ts}`, are the
- * shape João first suggested, but they survive truncation worst of every format
- * measured: `git show --stat=55` on a real rename gives
- * `.../NewWidgetName.svelte}`, a dangling brace that reads as corruption with
- * the rename itself no longer visible. A CSS ellipsis truncates right rather
- * than left, which would be worse still — it would keep the old name and hide
- * the new one. Repeating both paths in full, as GitLab does, doubles the row
- * and only works there because GitLab wraps instead of ellipsizing.
+ * Writing the directory on only one side is the shape this replaced, and it was
+ * wrong: `util.ts → code/math-util.ts` is a well-formed path pair, and read as
+ * one it says the file moved from the repository root into `code/`. A reader has
+ * no way to tell that the left side was abbreviated and the right side was not.
  *
- * The new path goes last so that it is the part an ellipsis keeps under
- * pressure, and it is never shortened: it is where the file is now.
+ * A file that genuinely moved between directories has no shared directory to
+ * name, so both paths stay whole and unscoped.
  */
 export function renamePartsOf(
 	path: string,
@@ -42,10 +39,14 @@ export function renamePartsOf(
 ): RenameParts | null {
 	if (oldPath === null) return null;
 
-	const moved = directoryOf(path) !== directoryOf(oldPath);
+	const directory = directoryOf(path);
+	const shared = directory !== "" && directory === directoryOf(oldPath);
+
+	if (!shared) return { prefix: "", from: oldPath, to: path };
 
 	return {
-		from: moved ? oldPath : (oldPath.split("/").pop() ?? oldPath),
-		to: path,
+		prefix: `${directory}/`,
+		from: oldPath.slice(directory.length + 1),
+		to: path.slice(directory.length + 1),
 	};
 }

@@ -119,7 +119,7 @@ describe("the diff surfaces", () => {
 		expect(app.staging.emphasizedAdded()).toEqual([]);
 	});
 
-	it("lists a renamed file once, without repeating its directory, and diffs only the changed line", async () => {
+	it("lists a renamed file once, scoped under its directory, and diffs only the changed line", async () => {
 		const app = await setup({ repo: RENAMED_WITH_ONE_EDIT });
 		await app.repo.open();
 
@@ -130,7 +130,7 @@ describe("the diff surfaces", () => {
 				const files = app.repo.commitFiles();
 				return files.length > 0 ? files : null;
 			}),
-		).resolves.toEqual(["R util.ts → src/math-util.ts"]);
+		).resolves.toEqual(["R src/{util.ts → math-util.ts}"]);
 
 		await app.repo.openCommitFile("math-util.ts");
 

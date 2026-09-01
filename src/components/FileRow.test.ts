@@ -35,7 +35,7 @@ describe("FileRow", () => {
 		expect(screen.getByTestId("staging-file")).not.toHaveTextContent("→");
 	});
 
-	it("drops the repeated directory from a rename inside one folder", () => {
+	it("names a shared directory once and scopes both names under it", () => {
 		render(FileRow, {
 			props: {
 				file: {
@@ -49,7 +49,7 @@ describe("FileRow", () => {
 			},
 		});
 		expect(screen.getByTestId("staging-file")).toHaveTextContent(
-			"util.ts → code/math-util.ts",
+			"code/{util.ts → math-util.ts}",
 		);
 	});
 
