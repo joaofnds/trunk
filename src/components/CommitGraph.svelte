@@ -1259,6 +1259,28 @@ let hoveredRow = $state<number | null>(null);
 const hoveredLaneRef = $derived(
 	hoveredRow === null ? undefined : laneRefForRow(displayItems, hoveredRow),
 );
+
+/** The hovered row's lane name, as a real ref pill so it renders through the
+ *  pill path rather than a second lookalike. Built from a copy of the hovered
+ *  commit carrying that ref, which is what a pill is: a ref on a row. */
+const ghostPill = $derived.by(() => {
+	if (hoveredRow === null || !hoveredLaneRef) return undefined;
+
+	const commit = displayItems[hoveredRow];
+	if (!commit || commit.refs.length > 0) return undefined;
+
+	const node = graphData.nodes[hoveredRow];
+	if (!node) return undefined;
+
+	const [pill] = buildRefPillData(
+		[node],
+		[{ ...commit, refs: [hoveredLaneRef] }],
+		columnWidths.ref,
+		measureTextWidth,
+		svgSettings,
+	);
+	return pill ? { ...pill, rowIndex: hoveredRow, isGhost: true } : undefined;
+});
 let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function pillMouseEnter(pill: OverlayRefPill) {
@@ -1835,45 +1857,8 @@ $effect(() => {
           </g>
           {/if}
           {#if columnVisibility.ref}
-            <!-- The hovered row's lane, named. A commit is usually reachable from
-                 several branches; the lane is the one placement put it on, and the
-                 one its colour already implies. Skipped when the row carries its
-                 own pill, which says the same thing louder. -->
-            {#if hoveredLaneRef && hoveredRow !== null && !displayItems[hoveredRow]?.refs.length}
-              {@const ghostY = geometry.cy(hoveredRow)}
-              {@const ghostW = PILL_PADDING_X * 2 + ICON_WIDTH + ICON_GAP + measureTextWidth(hoveredLaneRef.short_name, PILL_FONT)}
-              <g class="overlay-ghost-pill" opacity="0.55">
-                <line
-                  x1={PILL_MARGIN_LEFT + ghostW}
-                  y1={ghostY}
-                  x2={refOffset + COLUMN_PADDING_X + geometry.cx(displayItems[hoveredRow].column)}
-                  y2={ghostY}
-                  stroke={laneColor(hoveredLaneRef.color_index)}
-                  stroke-width={displaySettings.pillStroke}
-                  stroke-dasharray="2 2" />
-                <rect
-                  x={PILL_MARGIN_LEFT}
-                  y={ghostY - PILL_HEIGHT / 2}
-                  width={ghostW}
-                  height={PILL_HEIGHT}
-                  rx={PILL_HEIGHT / 2}
-                  ry={PILL_HEIGHT / 2}
-                  fill="var(--bg-2)"
-                  stroke={laneColor(hoveredLaneRef.color_index)}
-                  stroke-opacity="0.5"
-                  stroke-dasharray="2 2" />
-                <foreignObject
-                  x={PILL_MARGIN_LEFT + PILL_PADDING_X}
-                  y={ghostY - PILL_HEIGHT / 2}
-                  width={ghostW - PILL_PADDING_X * 2}
-                  height={PILL_HEIGHT}
-                >
-                  <span style="display: block; line-height: {PILL_HEIGHT}px; color: {laneColor(hoveredLaneRef.color_index)}; font-size: {PILL_FONT_SIZE}px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden;">{hoveredLaneRef.short_name}</span>
-                </foreignObject>
-              </g>
-            {/if}
             <g class="overlay-pills">
-              {#each visible.pills as pill}
+              {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
                 {@const overflowBadgeWidth = pill.overflowCount > 0 ? `+${pill.overflowCount}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2 : 0}
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
@@ -1887,7 +1872,7 @@ $effect(() => {
                     y2={pill.dotCy}
                     stroke={laneColor(pill.commitColorIndex)}
                     stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                    opacity={pill.isRemoteOnly ? 0.67 : 1}
+                    opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
                     style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                   />
                   {#if pill.overflowCount > 0}
@@ -1899,7 +1884,7 @@ $effect(() => {
                       y2={pill.y}
                       stroke={laneColor(pill.commitColorIndex)}
                       stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                      opacity={pill.isRemoteOnly ? 0.67 : 1}
+                      opacity={pill.isGhost ? 0.45 : pill.isRemoteOnly ? 0.67 : 1}
                       style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                     />
                   {/if}
@@ -1914,10 +1899,10 @@ $effect(() => {
                   rx={PILL_HEIGHT / 2}
                   ry={PILL_HEIGHT / 2}
                   fill={laneColor(pill.colorIndex)}
-                  fill-opacity={pill.isRemoteOnly ? 0.1 : 0.14}
+                  fill-opacity={pill.isGhost ? 0.06 : pill.isRemoteOnly ? 0.1 : 0.14}
                   stroke={laneColor(pill.colorIndex)}
-                  stroke-opacity="0.5"
-                  pointer-events="auto"
+                  stroke-opacity={pill.isGhost ? 0.25 : 0.5}
+                  pointer-events={pill.isGhost ? "none" : "auto"}
                   style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
                   onmouseenter={() => pillMouseEnter(pill)}
                   onmouseleave={pillMouseLeave}
@@ -1928,7 +1913,7 @@ $effect(() => {
                 <!-- Icon rendered directly in SVG at a fixed position (no CSS layout) -->
                 {#if PILL_ICONS[pill.refType]}
                   {@const PillIcon = PILL_ICONS[pill.refType]}
-                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity="0.9" style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
+                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity={pill.isGhost ? 0.45 : 0.9} style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
                     <PillIcon size={ICON_WIDTH} />
                   </g>
                 {/if}
@@ -1945,7 +1930,7 @@ $effect(() => {
                     style="
                       display: block;
                       line-height: {PILL_HEIGHT}px;
-                      color: {laneColor(pill.colorIndex)};
+                      color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.5;' : ''}
                       font-size: {PILL_FONT_SIZE}px;
                       font-family: var(--font-sans);
                       font-weight: {pill.isHead ? 700 : 500};
@@ -1971,8 +1956,8 @@ $effect(() => {
                     fill={laneColor(pill.colorIndex)}
                     fill-opacity="0.14"
                     stroke={laneColor(pill.colorIndex)}
-                    stroke-opacity="0.5"
-                    pointer-events="auto"
+                    stroke-opacity={pill.isGhost ? 0.25 : 0.5}
+                    pointer-events={pill.isGhost ? "none" : "auto"}
                     onmouseenter={() => pillMouseEnter(pill)}
                     onmouseleave={pillMouseLeave}
                   />
@@ -1984,7 +1969,7 @@ $effect(() => {
                   >
                     <span
                       style="
-                        color: {laneColor(pill.colorIndex)};
+                        color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.5;' : ''}
                         font-size: {BADGE_FONT_SIZE}px;
                         font-family: var(--font-sans);
                         font-weight: 500;

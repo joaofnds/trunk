@@ -318,6 +318,8 @@ export interface OverlayRefPill {
 	isRemoteOnly: boolean; // 65-70% opacity dimming
 	isNonHead: boolean; // brightness(0.75)
 	overflowCount: number; // 0 = no badge, >0 = "+N" badge
+	/** The hovered row's lane name: a real pill, drawn dimmed. */
+	isGhost?: boolean;
 	allRefs: RefLabel[]; // all refs on this commit (for hover expansion)
 	dotCx: number; // target commit dot X coordinate
 	dotCy: number; // target commit dot Y coordinate
