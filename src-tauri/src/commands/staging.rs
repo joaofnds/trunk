@@ -79,6 +79,22 @@ fn conflict_is_binary(repo: &git2::Repository, file_path: &str) -> bool {
     false
 }
 
+/// Where a renamed entry came from, taken from the status delta that carries
+/// both sides. `None` whenever the two sides name the same path, which is every
+/// status but a rename — the same rule `commands::diff::file_diff_of` applies,
+/// so a file list renders a rename identically whether it came from the status
+/// or from a diff.
+fn renamed_from(delta: Option<git2::DiffDelta<'_>>) -> Option<String> {
+    let delta = delta?;
+    let old = delta.old_file().path()?;
+
+    if Some(old) == delta.new_file().path() {
+        return None;
+    }
+
+    Some(old.to_string_lossy().into_owned())
+}
+
 pub fn get_status_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
@@ -104,6 +120,7 @@ pub fn get_status_inner(
         if status.contains(Status::CONFLICTED) {
             conflicted.push(FileStatus {
                 path: file_path.clone(),
+                old_path: None,
                 status: FileStatusType::Conflicted,
                 is_binary: conflict_is_binary(&repo, &file_path),
             });
@@ -114,6 +131,7 @@ pub fn get_status_inner(
         if let Some(status_type) = classify_index(status) {
             staged.push(FileStatus {
                 path: file_path.clone(),
+                old_path: renamed_from(entry.head_to_index()),
                 status: status_type,
                 is_binary: false,
             });
@@ -123,6 +141,7 @@ pub fn get_status_inner(
         if let Some(status_type) = classify_workdir(status) {
             unstaged.push(FileStatus {
                 path: file_path,
+                old_path: renamed_from(entry.index_to_workdir()),
                 status: status_type,
                 is_binary: false,
             });
@@ -422,6 +441,37 @@ pub fn stage_hunk_inner(
     Ok(())
 }
 
+/// Locate the delta the user's file belongs to in a whole-repository diff.
+///
+/// The view names a file by its new-side path, so that is what the frontend
+/// sends back for a staging gesture; a rename is also reachable by its old
+/// path, which is what a caller working from the pre-rename name has. Matching
+/// both mirrors the display's own selection, so staging and the view always
+/// pick the same delta.
+fn delta_index_of(diff: &git2::Diff, file_path: &str) -> Option<usize> {
+    let wanted = Path::new(file_path);
+
+    diff.deltas().position(|delta| {
+        delta.new_file().path() == Some(wanted) || delta.old_file().path() == Some(wanted)
+    })
+}
+
+/// Restrict an apply to one delta of a whole-repository diff.
+///
+/// `repo.apply` writes every delta it is handed. These diffs are no longer
+/// narrowed by a pathspec — that would break rename pairing — so without this
+/// gate a hunk gesture on one file would also apply every other staged file's
+/// changes.
+fn only_delta(apply_opts: &mut git2::ApplyOptions, delta_index: usize) {
+    let mut seen: usize = 0;
+
+    apply_opts.delta_callback(move |_delta| {
+        let apply = seen == delta_index;
+        seen += 1;
+        apply
+    });
+}
+
 pub fn unstage_hunk_inner(
     path: &str,
     file_path: &str,
@@ -430,30 +480,23 @@ pub fn unstage_hunk_inner(
 ) -> Result<(), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
-    // Generate reversed diff (index -> HEAD) so applying it to index undoes the staged change
+    // Reversed (index -> HEAD), so applying it to the index undoes the staged
+    // change. Built whole and rename-detected, exactly as `diff_staged_inner`
+    // builds the view: a pathspec would strip a rename's old side before
+    // detection could pair it, leaving this acting on a whole-file add where
+    // the user saw a one-line edit.
     let mut diff_opts = crate::commands::diff::new_diff_options();
-    diff_opts
-        .pathspec(file_path)
-        .disable_pathspec_match(true)
-        .reverse(true);
+    diff_opts.reverse(true);
+    let diff = crate::commands::diff::staged_diff(&repo, &mut diff_opts)?;
 
-    let diff = if is_head_unborn(&repo) {
-        repo.diff_tree_to_index(None, None, Some(&mut diff_opts))?
-    } else {
-        let head_tree = repo.head()?.peel_to_tree()?;
-        repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut diff_opts))?
-    };
-
-    // Validate delta exists
-    if diff.deltas().len() == 0 {
-        return Err(TrunkError::new(
+    let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
+        TrunkError::new(
             "file_not_found",
             format!("No staged changes for: {}", file_path),
-        ));
-    }
+        )
+    })?;
 
-    // Validate hunk_index
-    let patch = git2::Patch::from_diff(&diff, 0)?
+    let patch = git2::Patch::from_diff(&diff, delta_index)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
     let num_hunks = patch.num_hunks();
     if (hunk_index as usize) >= num_hunks {
@@ -476,6 +519,7 @@ pub fn unstage_hunk_inner(
         current += 1;
         apply
     });
+    only_delta(&mut apply_opts, delta_index);
 
     repo.apply(&diff, git2::ApplyLocation::Index, Some(&mut apply_opts))
         .map_err(|e| TrunkError::new("hunk_apply_failed", e.message().to_owned()))?;
@@ -953,28 +997,43 @@ fn build_partial_patch_text(
         (hunk.old_start(), hunk.new_start())
     };
 
-    // Check delta status for diff header
-    let delta_status = patch.delta().status();
+    // Each side names its own path. They differ for a rename, and a header
+    // that repeats one of them is rejected outright ("mismatched new path
+    // names"). Reversing the patch swaps which side is which.
+    let delta = patch.delta();
+    let delta_status = delta.status();
+    let path_of = |file: git2::DiffFile<'_>| {
+        file.path()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| file_path.to_string())
+    };
+    let (old_path, new_path) = if reverse {
+        (path_of(delta.new_file()), path_of(delta.old_file()))
+    } else {
+        (path_of(delta.old_file()), path_of(delta.new_file()))
+    };
+
     let old_header = if (!reverse && delta_status == git2::Delta::Added)
         || (reverse && delta_status == git2::Delta::Deleted)
     {
         "--- /dev/null".to_string()
     } else {
-        format!("--- a/{}", file_path)
+        format!("--- a/{}", old_path)
     };
     let new_header = if (!reverse && delta_status == git2::Delta::Deleted)
         || (reverse && delta_status == git2::Delta::Added)
     {
         "+++ /dev/null".to_string()
     } else {
-        format!("+++ b/{}", file_path)
+        format!("+++ b/{}", new_path)
     };
 
     let lines_joined = patch_lines.join("");
 
     let patch_text = format!(
-        "diff --git a/{path} b/{path}\n{old_header}\n{new_header}\n@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
-        path = file_path,
+        "diff --git a/{old_path} b/{new_path}\n{old_header}\n{new_header}\n@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
+        old_path = old_path,
+        new_path = new_path,
         old_header = old_header,
         new_header = new_header,
         old_start = old_start,
@@ -1050,23 +1109,16 @@ pub fn unstage_lines_inner(
     // We use the forward diff so line indices match the user's view,
     // then build a reversed partial patch to undo selected lines.
     let mut diff_opts = crate::commands::diff::new_diff_options();
-    diff_opts.pathspec(file_path).disable_pathspec_match(true);
+    let diff = crate::commands::diff::staged_diff(&repo, &mut diff_opts)?;
 
-    let diff = if is_head_unborn(&repo) {
-        repo.diff_tree_to_index(None, None, Some(&mut diff_opts))?
-    } else {
-        let head_tree = repo.head()?.peel_to_tree()?;
-        repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut diff_opts))?
-    };
-
-    if diff.deltas().len() == 0 {
-        return Err(TrunkError::new(
+    let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
+        TrunkError::new(
             "file_not_found",
             format!("No staged changes for: {}", file_path),
-        ));
-    }
+        )
+    })?;
 
-    let patch = git2::Patch::from_diff(&diff, 0)?
+    let patch = git2::Patch::from_diff(&diff, delta_index)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
 
     if (hunk_index as usize) >= patch.num_hunks() {

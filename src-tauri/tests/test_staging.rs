@@ -1306,3 +1306,104 @@ fn staging_many_keeps_a_symlink_that_now_dangles_in_the_index() {
         "link must stay in the index"
     );
 }
+
+// -- staged renames (TRUNK-82) --
+
+/// A rename staged in the index, with one line of the file also changed. The
+/// staged view pairs the two sides into a single renamed entry carrying one
+/// hunk, so every staging gesture must act on that same pairing: a diff rebuilt
+/// without rename detection sees a whole-file add instead, and its hunk 0 is the
+/// entire file rather than the line the user clicked (TRUNK-73's failure mode).
+fn staged_rename_with_one_edit() -> TestContext {
+    let original = (1..=20)
+        .map(|n| format!("export const value{n} = {n};\n"))
+        .collect::<String>();
+    let edited = original.replace(
+        "export const value7 = 7;",
+        "export const value7 = 7 + offset;",
+    );
+
+    let ctx = TestContext::builder()
+        .with_file("util.ts", &original)
+        .with_commit("add util.ts")
+        .with_removed_file("util.ts")
+        .with_file("math-util.ts", &edited)
+        .build();
+
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    index.remove_path(std::path::Path::new("util.ts")).unwrap();
+    index
+        .add_path(std::path::Path::new("math-util.ts"))
+        .unwrap();
+    index.write().unwrap();
+
+    ctx
+}
+
+fn staged_paths(ctx: &TestContext) -> Vec<String> {
+    let repo = ctx.repo();
+    let index = repo.index().unwrap();
+
+    index
+        .iter()
+        .map(|entry| String::from_utf8_lossy(&entry.path).into_owned())
+        .collect()
+}
+
+/// A staged rename is one delta: its hunks describe the edit, and reversing any
+/// of them reverses the rename that carries them. git behaves the same way —
+/// `git restore --staged` on the new path leaves `D old` and `?? new`. What must
+/// not happen is the pre-fix outcome, where the index came back empty because
+/// staging rebuilt the diff without rename detection and reversed a whole-file
+/// add it invented.
+#[test]
+fn unstaging_a_hunk_of_a_staged_rename_reverts_the_rename_without_losing_the_file() {
+    let ctx = staged_rename_with_one_edit();
+
+    let view = ctx.diff_staged("math-util.ts").expect("diff_staged failed");
+    assert_eq!(view.len(), 1, "the view pairs the rename into one entry");
+    assert_eq!(view[0].hunks.len(), 1, "one edited line, so one hunk");
+
+    ctx.unstage_hunk("math-util.ts", 0)
+        .expect("unstage_hunk failed");
+
+    assert_eq!(
+        staged_paths(&ctx),
+        vec!["util.ts".to_string()],
+        "the index holds the pre-rename file, as after git restore --staged"
+    );
+    assert!(
+        ctx.repo_path().join("math-util.ts").exists(),
+        "the renamed file stays in the working tree"
+    );
+}
+
+/// The reversed patch names each side's own path. A header repeating one path
+/// on both sides is rejected by libgit2 outright ("mismatched new path names"),
+/// which is what a rename hit before the fix: a legitimate gesture failed with
+/// an internal parser message.
+#[test]
+fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
+    let ctx = staged_rename_with_one_edit();
+
+    let view = ctx.diff_staged("math-util.ts").expect("diff_staged failed");
+    let added = view[0].hunks[0]
+        .lines
+        .iter()
+        .position(|line| matches!(line.origin, DiffOrigin::Add))
+        .expect("the hunk holds the added line");
+
+    ctx.unstage_lines("math-util.ts", 0, vec![added as u32])
+        .expect("unstage_lines failed");
+
+    let staged = staged_paths(&ctx);
+    assert!(
+        staged.contains(&"util.ts".to_string()),
+        "the pre-rename file is back in the index, got {staged:?}"
+    );
+    assert!(
+        ctx.repo_path().join("math-util.ts").exists(),
+        "the renamed file stays in the working tree"
+    );
+}
