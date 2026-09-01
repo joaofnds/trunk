@@ -14,7 +14,7 @@ import {
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { tick, untrack } from "svelte";
-import { buildGraphData, laneSpans } from "../lib/active-lanes.js";
+import { buildGraphData } from "../lib/active-lanes.js";
 import {
 	mergeBranch,
 	rebaseBranch,
@@ -1760,7 +1760,7 @@ $effect(() => {
       <!-- SVG overlay snippet - renders inside virtual list scroll container -->
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
         {@const refOffset = columnVisibility.ref ? columnWidths.ref : 0}
-        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData, laneSpans(graphData.connections), svgRowHeight)}
+        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
         {@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
         {@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
         <svg
@@ -1829,7 +1829,6 @@ $effect(() => {
               {#each visible.pills as pill}
                 {@const overflowBadgeWidth = pill.overflowCount > 0 ? `+${pill.overflowCount}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2 : 0}
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
-
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
                   {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
@@ -1841,7 +1840,7 @@ $effect(() => {
                     y2={pill.dotCy}
                     stroke={laneColor(pill.commitColorIndex)}
                     stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                    opacity={pill.isGhost ? 0.5 : pill.isRemoteOnly ? 0.67 : 1}
+                    opacity={pill.isRemoteOnly ? 0.67 : 1}
                     style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                   />
                   {#if pill.overflowCount > 0}
@@ -1853,7 +1852,7 @@ $effect(() => {
                       y2={pill.y}
                       stroke={laneColor(pill.commitColorIndex)}
                       stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                      opacity={pill.isGhost ? 0.5 : pill.isRemoteOnly ? 0.67 : 1}
+                      opacity={pill.isRemoteOnly ? 0.67 : 1}
                       style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                     />
                   {/if}
@@ -1868,9 +1867,9 @@ $effect(() => {
                   rx={PILL_HEIGHT / 2}
                   ry={PILL_HEIGHT / 2}
                   fill={laneColor(pill.colorIndex)}
-                  fill-opacity={pill.isGhost ? 0.07 : pill.isRemoteOnly ? 0.1 : 0.14}
+                  fill-opacity={pill.isRemoteOnly ? 0.1 : 0.14}
                   stroke={laneColor(pill.colorIndex)}
-                  stroke-opacity={pill.isGhost ? 0.3 : 0.5}
+                  stroke-opacity="0.5"
                   pointer-events="auto"
                   style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
                   onmouseenter={() => pillMouseEnter(pill)}
@@ -1882,7 +1881,7 @@ $effect(() => {
                 <!-- Icon rendered directly in SVG at a fixed position (no CSS layout) -->
                 {#if PILL_ICONS[pill.refType]}
                   {@const PillIcon = PILL_ICONS[pill.refType]}
-                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity={pill.isGhost ? 0.5 : 0.9} style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
+                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity="0.9" style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
                     <PillIcon size={ICON_WIDTH} />
                   </g>
                 {/if}
@@ -1899,7 +1898,7 @@ $effect(() => {
                     style="
                       display: block;
                       line-height: {PILL_HEIGHT}px;
-                      color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.6;' : ''}
+                      color: {laneColor(pill.colorIndex)};
                       font-size: {PILL_FONT_SIZE}px;
                       font-family: var(--font-sans);
                       font-weight: {pill.isHead ? 700 : 500};
@@ -1925,7 +1924,7 @@ $effect(() => {
                     fill={laneColor(pill.colorIndex)}
                     fill-opacity="0.14"
                     stroke={laneColor(pill.colorIndex)}
-                    stroke-opacity={pill.isGhost ? 0.3 : 0.5}
+                    stroke-opacity="0.5"
                     pointer-events="auto"
                     onmouseenter={() => pillMouseEnter(pill)}
                     onmouseleave={pillMouseLeave}
@@ -1938,7 +1937,7 @@ $effect(() => {
                   >
                     <span
                       style="
-                        color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.6;' : ''}
+                        color: {laneColor(pill.colorIndex)};
                         font-size: {BADGE_FONT_SIZE}px;
                         font-family: var(--font-sans);
                         font-weight: 500;

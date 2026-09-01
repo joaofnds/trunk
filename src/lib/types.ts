@@ -213,6 +213,11 @@ export type ContentMode = "hunk" | "full";
 export type LayoutMode = "inline" | "split";
 export type RenderMode = "source" | "rendered";
 
+// How the rendered markdown diff presents a changed block: two copies
+// (before red, after green) or one merged suggestion-mode copy with del/ins
+// marks, the way docs tools show tracked changes.
+export type RenderedDiffStyle = "copies" | "merged";
+
 export interface HeadCommitMessage {
 	subject: string;
 	body: string | null;
@@ -313,8 +318,6 @@ export interface OverlayRefPill {
 	isRemoteOnly: boolean; // 65-70% opacity dimming
 	isNonHead: boolean; // brightness(0.75)
 	overflowCount: number; // 0 = no badge, >0 = "+N" badge
-	/** Kept against its lane after its own row scrolled above; drawn dimmed. */
-	isGhost?: boolean;
 	allRefs: RefLabel[]; // all refs on this commit (for hover expansion)
 	dotCx: number; // target commit dot X coordinate
 	dotCy: number; // target commit dot Y coordinate
