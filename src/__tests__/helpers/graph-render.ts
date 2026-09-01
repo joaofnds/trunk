@@ -243,6 +243,16 @@ export function tallFixture(
 export interface ScrolledGraphOptions {
 	/** Shorter than the fixture's content, so the list scrolls and culls. */
 	viewportHeight: number;
+	/**
+	 * The height one rendered row measures, which the list averages into the
+	 * height the overlay lays every offset out from.
+	 *
+	 * Defaults to the real `ROW_HEIGHT`, which is also what the component falls
+	 * back to when it never measures anything. A test that wants to prove the
+	 * measurement actually ran has to ask for a height the fallback cannot
+	 * produce.
+	 */
+	rowHeight?: number;
 	wipCount?: number;
 }
 
@@ -269,8 +279,8 @@ export async function mountScrolledGraph(
 	fixture: LayoutExport,
 	options: ScrolledGraphOptions,
 ): Promise<ScrolledGraph> {
-	const { viewportHeight, wipCount = 0 } = options;
-	stubVirtualListLayout({ viewportHeight });
+	const { viewportHeight, rowHeight = ROW_HEIGHT, wipCount = 0 } = options;
+	stubVirtualListLayout({ viewportHeight, rowHeight });
 
 	const { container, unmount } = await renderGraph(fixture, wipCount);
 

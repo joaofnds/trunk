@@ -111,10 +111,7 @@ function installReportingResizeObserver(): void {
 			this.#targets.add(target);
 			queueMicrotask(() => {
 				if (!this.#targets.has(target)) return;
-				this.#callback(
-					[{ target } as ResizeObserverEntry],
-					this as unknown as ResizeObserver,
-				);
+				this.#callback([entryFor(target)], this as unknown as ResizeObserver);
 			});
 		}
 
@@ -130,6 +127,26 @@ function installReportingResizeObserver(): void {
 
 let installedObserver = false;
 let priorObserver: typeof ResizeObserver | undefined;
+
+/**
+ * A resize entry carrying the box the layout stub reports for the element.
+ *
+ * The list's own callbacks re-measure off `target` and ignore the rest, but
+ * `contentRect` is the idiomatic way to read a `ResizeObserver`, so an entry
+ * without one hands the next consumer `undefined` on a line that looks right.
+ */
+function entryFor(target: Element): ResizeObserverEntry {
+	const rect = target.getBoundingClientRect();
+	const box = { blockSize: rect.height, inlineSize: rect.width };
+
+	return {
+		target,
+		contentRect: rect,
+		borderBoxSize: [box],
+		contentBoxSize: [box],
+		devicePixelContentBoxSize: [box],
+	} as ResizeObserverEntry;
+}
 
 /**
  * The three roles that measure differently. Everything else keeps the shared

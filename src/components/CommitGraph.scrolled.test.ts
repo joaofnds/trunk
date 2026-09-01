@@ -29,16 +29,39 @@ describe("the commit graph scrolled", () => {
 		close = null;
 	});
 
-	async function scrolledToRow(row: number, stashRows: number[] = []) {
+	async function scrolledToRow(
+		row: number,
+		{ stashRows = [], rowHeight = ROW_HEIGHT } = {} as {
+			stashRows?: number[];
+			rowHeight?: number;
+		},
+	) {
 		const graph = await mountScrolledGraph(
 			tallFixture(FIXTURE_ROWS, stashRows),
-			{ viewportHeight: VIEWPORT_HEIGHT },
+			{ viewportHeight: VIEWPORT_HEIGHT, rowHeight },
 		);
 		close = graph.unmount;
 
-		await graph.scrollTo(row * ROW_HEIGHT);
+		await graph.scrollTo(row * rowHeight);
 		return graph;
 	}
+
+	/**
+	 * The rows are given a height the component cannot arrive at by guessing.
+	 *
+	 * `defaultEstimatedItemHeight` is `ROW_HEIGHT`, so a list that never measures
+	 * anything still lays out at 28 and an assertion of 28 passes either way. It
+	 * cannot tell a correct measurement from no measurement at all, which is the
+	 * failure this whole card exists to close. Ask for 34 and only a list that
+	 * really read the DOM can produce it.
+	 */
+	it("lays the rows out at the height it measured, not at its own estimate", async () => {
+		const MEASURED = ROW_HEIGHT + 6;
+
+		const graph = await scrolledToRow(SCROLL_TO_ROW, { rowHeight: MEASURED });
+
+		expect(graph.rowHeight()).toBe(MEASURED);
+	});
 
 	it("lays the rows out at the real row height, not the viewport height", async () => {
 		const graph = await scrolledToRow(SCROLL_TO_ROW);
@@ -62,7 +85,9 @@ describe("the commit graph scrolled", () => {
 	// edge rather than the centre a <circle> puts in `cy`. A window holding both
 	// shapes is the only place a reader that confuses the two shows up.
 	it("measures the row height across a window mixing a stash with commits", async () => {
-		const graph = await scrolledToRow(SCROLL_TO_ROW, [SCROLL_TO_ROW + 2]);
+		const graph = await scrolledToRow(SCROLL_TO_ROW, {
+			stashRows: [SCROLL_TO_ROW + 2],
+		});
 
 		expect(graph.rowHeight()).toBe(ROW_HEIGHT);
 	});
