@@ -119,6 +119,13 @@ pub enum DiffRow {
         /// edit — which must keep the wash or render as two identical copies.
         #[serde(skip_serializing_if = "is_false")]
         has_tints: bool,
+        /// Whether the two sides render to the same visible text. A rewrap
+        /// changes the source lines but not one rendered word, so the row is
+        /// `Changed` with nothing to tint and would otherwise draw as an
+        /// untinted paragraph the reader cannot tell from an unchanged one.
+        /// The frontend says so instead of showing an unexplained block.
+        #[serde(skip_serializing_if = "is_false")]
+        renders_identically: bool,
         /// The hunk-mode copy of a changed CONTAINER: `merged_html` with every
         /// run of unchanged leaves outside the context window removed, so a
         /// twenty-item list whose one item changed does not render whole
@@ -541,6 +548,7 @@ fn flush_runs(
                 hunk_after_html: cf.hunk_after_html,
                 hunk_hidden_leaves: cf.hunk_hidden_leaves,
                 has_tints: cf.has_tints,
+                renders_identically: cf.renders_identically,
                 after_start: a.start_line,
                 after_end: a.end_line,
             });
@@ -1170,6 +1178,7 @@ struct ChangedFragments {
     hunk_after_html: Option<String>,
     hunk_hidden_leaves: u32,
     has_tints: bool,
+    renders_identically: bool,
 }
 
 fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
@@ -1190,6 +1199,7 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
             hunk_after_html: None,
             hunk_hidden_leaves: 0,
             has_tints: false,
+            renders_identically: renders_same(&before.html, &after.html),
         };
     }
     let before_sigs: Vec<String> = before.leaves.iter().map(|l| l.signature.clone()).collect();
@@ -1279,7 +1289,45 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
         hunk_after_html: folded_after.as_ref().map(|(f, _)| sanitize_html(f)),
         hunk_hidden_leaves: folded_merged.map_or(0, |(_, n)| n),
         has_tints: !before_tints.is_empty() || !after_tints.is_empty() || word_marked,
+        renders_identically: renders_same(&before.html, &after.html),
     }
+}
+
+/// Whether two rendered fragments show the same visible text. Compares the
+/// text with tags stripped and whitespace runs collapsed: a rewrap changes
+/// where the line breaks fall inside the html, and HTML collapses those to one
+/// space when it displays them, so the reader sees no difference at all.
+///
+/// Deliberately text-only. A markup-only edit — unbolding a phrase, changing a
+/// link target — keeps the same text but renders visibly differently, and must
+/// not be called identical: the reader needs its wash to find it.
+fn renders_same(before_html: &str, after_html: &str) -> bool {
+    fn visible(html: &str) -> Vec<String> {
+        let mut text = String::new();
+        let mut in_tag = false;
+        for c in html.chars() {
+            match c {
+                '<' => in_tag = true,
+                '>' => in_tag = false,
+                _ if !in_tag => text.push(c),
+                _ => {}
+            }
+        }
+        text.split_whitespace().map(str::to_string).collect()
+    }
+    // Tag structure must match too, or an unbold would read as identical.
+    fn tags(html: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = html;
+        while let Some(open) = rest.find('<') {
+            rest = &rest[open..];
+            let Some(close) = rest.find('>') else { break };
+            out.push(rest[..=close].to_string());
+            rest = &rest[close + 1..];
+        }
+        out
+    }
+    visible(before_html) == visible(after_html) && tags(before_html) == tags(after_html)
 }
 
 /// The suggestion-mode copy of a changed container: the after skeleton with
@@ -1405,8 +1453,15 @@ enum Side {
 }
 
 /// Which leaves of one side must stay visible: every leaf an op touched on that
-/// side, widened by `LEAF_CONTEXT`. `None` when they all must, which is the
-/// signal that there is nothing to fold.
+/// side, widened by `LEAF_CONTEXT`. `None` when there is nothing to fold —
+/// either every leaf must stay, or NO leaf changed at all.
+///
+/// The no-leaf-changed case is not a container that folds to nothing: it is a
+/// container the leaf diff cannot speak about. A leaf's signature is its
+/// visible text, so a markup-only edit — unbolding a phrase, relinking a URL —
+/// leaves every leaf `Equal` while the block is genuinely changed. Folding
+/// there would hide the changed item and leave an empty container, so the
+/// whole container renders and its wash points at it instead.
 ///
 /// An op that touches no leaf on this side — an insertion read from the before
 /// side, a deletion from the after — still anchors one position, so the fold
@@ -1432,7 +1487,8 @@ fn leaves_to_keep(ops: &[similar::DiffOp], n: usize, side: Side) -> Option<Vec<b
             *k = true;
         }
     }
-    (!keep.iter().all(|&k| k)).then_some(keep)
+    let kept = keep.iter().filter(|&&k| k).count();
+    (kept > 0 && kept < n).then_some(keep)
 }
 
 /// Drop every not-kept leaf's element from a sourcepos-annotated fragment,
@@ -2348,6 +2404,56 @@ mod tests {
         assert!(fb.contains("item 11"), "{fb}");
         assert!(fb.contains("item 13"), "{fb}");
         assert!(is_tag_balanced(fb), "{fb}");
+    }
+
+    /// A container whose leaves all compare EQUAL — a markup-only edit like
+    /// unbolding a phrase, where the leaf signature is the visible text — must
+    /// never fold. Every leaf being equal means the leaf diff cannot say which
+    /// one changed, so a fold would hide the changed item and leave an empty
+    /// container. Regression: it did exactly that.
+    #[test]
+    fn a_container_whose_leaves_all_compare_equal_never_folds() {
+        let doc = |emphasis: &str| {
+            let mut md = String::new();
+            for i in 0..3 {
+                if i == 2 {
+                    md.push_str(&format!(
+                        "{}. compare against {emphasis}the baseline{emphasis} first\n",
+                        i + 1
+                    ));
+                } else {
+                    md.push_str(&format!("{}. plain step {i}\n", i + 1));
+                }
+            }
+            md
+        };
+        let rows = diff_rows(&doc("**"), &doc(""));
+        let DiffRow::Changed {
+            merged_html,
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = rows
+            .iter()
+            .find(|r| matches!(r, DiffRow::Changed { .. }))
+            .expect("the list is changed")
+        else {
+            unreachable!()
+        };
+        assert!(
+            hunk_merged_html.is_none(),
+            "a markup-only edit must not fold: {hunk_merged_html:?}"
+        );
+        assert_eq!(*hunk_hidden_leaves, 0);
+        // The reader still gets every item, with the block wash pointing at it.
+        assert_eq!(
+            merged_html
+                .as_ref()
+                .expect("merged copy")
+                .matches("<li")
+                .count(),
+            3
+        );
     }
 
     /// Nothing to fold: every leaf is within the window, so the row carries no
@@ -3381,6 +3487,63 @@ mod tests {
             diff.whitespace_only,
             "the invisible change is flagged so the frontend can say so"
         );
+    }
+
+    /// A rewrap changes the source lines but not one rendered word, so the row
+    /// is `Changed` with nothing to tint and renders as an untinted paragraph
+    /// the reader cannot tell from an unchanged one. The row says so instead.
+    #[test]
+    fn a_rewrapped_paragraph_reports_that_it_renders_identically() {
+        let before = "State a finding as fact. No headline in front of it,\nand no account of how or when you found it.";
+        let after = "State a finding as fact. No headline in\nfront of it, and no account of how or when\nyou found it.";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed {
+            renders_identically,
+            has_tints,
+            ..
+        } = &rows[0]
+        else {
+            panic!("a reflow stays a Changed row: {rows:?}");
+        };
+        assert!(!has_tints, "nothing to tint: {rows:?}");
+        assert!(
+            *renders_identically,
+            "the row must say the two sides render the same: {rows:?}"
+        );
+    }
+
+    /// The flag is about the RENDERED text, not the source: a real word edit
+    /// renders differently and must never claim otherwise, or the note would
+    /// tell the reader to ignore a change that matters.
+    #[test]
+    fn a_real_word_edit_never_reports_rendering_identically() {
+        let rows = diff_rows("the quick fox", "the slow fox");
+        let DiffRow::Changed {
+            renders_identically,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        assert!(!*renders_identically, "{rows:?}");
+    }
+
+    /// A markup-only edit DOES render differently — the bold is gone — so it
+    /// keeps its wash and must not be called identical.
+    #[test]
+    fn a_markup_only_edit_never_reports_rendering_identically() {
+        let rows = diff_rows(
+            "compare **the baseline** first",
+            "compare the baseline first",
+        );
+        let DiffRow::Changed {
+            renders_identically,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        assert!(!*renders_identically, "{rows:?}");
     }
 
     #[test]

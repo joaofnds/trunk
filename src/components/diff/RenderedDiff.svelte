@@ -305,6 +305,11 @@ type InlineItem =
 			// Leaves the backend folded out of this block's hunk-mode copy, for
 			// the "N items hidden" note under it. 0 when nothing was folded.
 			hiddenLeaves: number;
+			// The note under a block whose two sides render the same text: a
+			// reflow has nothing to tint, so without this it draws as an
+			// untinted block with no reason to be there. Null when it changed
+			// visibly and the tints already say so.
+			note: string | null;
 	  }
 	| { type: "sep"; count: number };
 
@@ -312,6 +317,14 @@ type InlineItem =
 // (unchanged leaves outside the context window dropped, TRUNK-93), full mode
 // always shows every leaf. A row with no folded copy — a single-leaf block, or
 // a container with nothing to fold — renders its merged copy in both modes.
+// What to say under a block whose two sides render the same visible text. Only
+// a reflow reaches this: the source lines moved, no rendered word did, so there
+// is nothing to tint and the block would otherwise look unchanged for no
+// stated reason.
+function reflowNote(r: DiffRow & { kind: "changed" }): string | null {
+	return r.rendersIdentically ? "Reflowed — renders identically" : null;
+}
+
 function mergedCopy(r: DiffRow & { kind: "changed" }): {
 	html: string | undefined;
 	hiddenLeaves: number;
@@ -335,6 +348,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					changeIndex: null,
 					wash: true,
 					hiddenLeaves: 0,
+					note: null,
 				},
 			];
 		if (r.kind === "added")
@@ -346,6 +360,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					changeIndex,
 					wash: true,
 					hiddenLeaves: 0,
+					note: null,
 				},
 			];
 		if (r.kind === "removed")
@@ -357,6 +372,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					changeIndex,
 					wash: true,
 					hiddenLeaves: 0,
+					note: null,
 				},
 			];
 		// The suggestion-mode copy: ONE block carrying del/ins marks and
@@ -372,6 +388,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					changeIndex,
 					wash: true,
 					hiddenLeaves: merged.hiddenLeaves,
+					note: reflowNote(r),
 				},
 			];
 		// changed without a merge (code / dense rewrite / structural failure):
@@ -388,6 +405,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 				changeIndex,
 				wash,
 				hiddenLeaves: 0,
+				note: null,
 			},
 			{
 				type: "block",
@@ -396,6 +414,7 @@ const inlineItems = $derived.by((): InlineItem[] =>
 				changeIndex: null,
 				wash,
 				hiddenLeaves: 0,
+				note: reflowNote(r),
 			},
 		];
 	}),
@@ -672,6 +691,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
           {@render separator(item.count)}
         {:else}
           {@render block(item.tint, item.html, item.changeIndex, item.wash)}
+          {#if item.note}<div class="rendered-fold">{item.note}</div>{/if}
           {#if item.hiddenLeaves > 0}{@render foldNote(item.hiddenLeaves)}{/if}
         {/if}
       {/each}

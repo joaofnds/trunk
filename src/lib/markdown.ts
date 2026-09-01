@@ -91,6 +91,11 @@ export type DiffRow =
 			// twenty-item list whose one item changed does not render whole.
 			// Absent for single-leaf blocks and whenever nothing was folded — the
 			// merged copy then serves both modes.
+			// The two sides render to the same visible text. A rewrap changes the
+			// source lines but not one rendered word, so the row has nothing to
+			// tint and would draw as an untinted block the reader cannot tell
+			// from an unchanged one. The view says so instead.
+			rendersIdentically?: boolean;
 			hunkMergedHtml?: string;
 			// The same fold applied to the two split-column fragments. Absent
 			// under the same conditions as `hunkMergedHtml`.

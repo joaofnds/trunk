@@ -132,6 +132,81 @@ describe("the rendered markdown diff", () => {
 		expect(app.diffPane.renderedFoldNotes()).toEqual([]);
 	});
 
+	// A markup-only edit inside one list item: the leaf signature is visible
+	// text, so every leaf compares equal and the fold has no changed leaf to
+	// keep. It must not fold — hiding all three items left an empty list.
+	it("keeps every item of a list whose only edit is markup", async () => {
+		const doc = (emphasis: string) =>
+			[
+				"1. plain step one",
+				"2. plain step two",
+				`3. compare against ${emphasis}the stored baseline${emphasis} first`,
+			].join("\n");
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${doc("**")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${doc("")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		const items = await waitFor("the rendered list", () => {
+			const rendered = app.diffPane.renderedListItems();
+			return rendered.length > 0 ? rendered : null;
+		});
+		expect(items).toHaveLength(3);
+		expect(items[2]).toContain("the stored baseline");
+		expect(app.diffPane.renderedFoldNotes()).toEqual([]);
+	});
+
+	// A reflow moves the source lines without changing one rendered word, so
+	// the block has nothing to tint. Without a note it draws as an untinted
+	// paragraph the reader cannot tell from an unchanged one.
+	it("says a rewrapped paragraph renders identically", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					{
+						step: "file",
+						path: "doc.md",
+						content:
+							"State a finding as fact. No headline in front of it,\nand no account of how or when you found it.\n",
+					},
+					{ step: "commit", message: "base" },
+					{
+						step: "file",
+						path: "doc.md",
+						content:
+							"State a finding as fact. No headline in\nfront of it, and no account of how or when\nyou found it.\n",
+					},
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		await expect(
+			waitFor("the reflow note", () => {
+				const notes = app.diffPane.renderedFoldNotes();
+				return notes.length > 0 ? notes : null;
+			}),
+		).resolves.toEqual(["Reflowed — renders identically"]);
+	});
+
 	it("shows one merged copy per changed list, with no style to choose", async () => {
 		const app = await setup({
 			repo: {

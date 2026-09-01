@@ -475,6 +475,32 @@ describe("RenderedDiff", () => {
 		expect(container.textContent).not.toContain("tail");
 	});
 
+	it("says a rewrapped block renders identically, instead of showing it untinted", async () => {
+		safeInvoke.mockResolvedValue({
+			rows: [
+				{
+					kind: "changed",
+					beforeHtml: "<p>one two three four</p>",
+					afterHtml: "<p>one two three four</p>",
+					mergedHtml: "<p>one two three four</p>",
+					rendersIdentically: true,
+					afterStart: 1,
+					afterEnd: 2,
+				},
+			],
+			whitespaceOnly: false,
+		});
+
+		const { container } = render(RenderedDiff, {
+			props: { ...baseProps, layoutMode: "inline" },
+		});
+		await screen.findByText(/one two three four/);
+
+		expect(container.querySelector(".rendered-fold")?.textContent).toBe(
+			"Reflowed — renders identically",
+		);
+	});
+
 	it("keeps unchanged rows within contextLines of a change, folding the rest into a line-counted separator (inline)", async () => {
 		safeInvoke.mockResolvedValue({
 			rows: changeSandwich(),
