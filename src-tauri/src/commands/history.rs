@@ -71,15 +71,8 @@ pub async fn refresh_commit_graph(
 /// path, never the line-walking enrichment in `walk_diff`.
 fn commit_stat_from_repo(repo: &git2::Repository, oid: git2::Oid) -> Result<DiffStat, TrunkError> {
     let commit = repo.find_commit(oid)?;
-    let commit_tree = commit.tree()?;
     let mut opts = crate::commands::diff::new_diff_options();
-    let mut diff = if commit.parent_count() == 0 {
-        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
-    } else {
-        let parent_tree = commit.parent(0)?.tree()?;
-        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
-    };
-    crate::commands::diff::detect_renames(&mut diff)?;
+    let diff = crate::commands::diff::commit_diff(repo, &commit, &mut opts)?;
     let stats = diff.stats()?;
     Ok(DiffStat {
         insertions: stats.insertions(),
@@ -137,13 +130,7 @@ pub fn wip_diff_stats_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     let mut staged_opts = crate::commands::diff::new_diff_options();
-    let mut staged = if crate::commands::diff::is_head_unborn(&repo) {
-        repo.diff_tree_to_index(None, None, Some(&mut staged_opts))?
-    } else {
-        let head_tree = repo.head()?.peel_to_tree()?;
-        repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut staged_opts))?
-    };
-    crate::commands::diff::detect_renames(&mut staged)?;
+    let staged = crate::commands::diff::staged_diff(&repo, &mut staged_opts)?;
 
     let mut unstaged_opts = crate::commands::diff::new_diff_options();
     unstaged_opts.include_untracked(true);

@@ -58,6 +58,44 @@ pub(crate) fn detect_renames(diff: &mut git2::Diff) -> Result<(), TrunkError> {
     Ok(())
 }
 
+/// A commit's diff against its first parent, or against the empty tree when it
+/// is a root. Renames are already paired, so callers see the same deltas
+/// whether they walk the lines or only read `stats()`.
+pub(crate) fn commit_diff<'r>(
+    repo: &'r git2::Repository,
+    commit: &git2::Commit<'r>,
+    opts: &mut git2::DiffOptions,
+) -> Result<git2::Diff<'r>, TrunkError> {
+    let commit_tree = commit.tree()?;
+
+    let mut diff = if commit.parent_count() == 0 {
+        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(opts))?
+    } else {
+        let parent_tree = commit.parent(0)?.tree()?;
+        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(opts))?
+    };
+    detect_renames(&mut diff)?;
+
+    Ok(diff)
+}
+
+/// The index's diff against HEAD, or against the empty tree on an unborn
+/// branch. Renames are already paired, as in `commit_diff`.
+pub(crate) fn staged_diff<'r>(
+    repo: &'r git2::Repository,
+    opts: &mut git2::DiffOptions,
+) -> Result<git2::Diff<'r>, TrunkError> {
+    let mut diff = if is_head_unborn(repo) {
+        repo.diff_tree_to_index(None, None, Some(opts))?
+    } else {
+        let head_tree = repo.head()?.peel_to_tree()?;
+        repo.diff_tree_to_index(Some(&head_tree), None, Some(opts))?
+    };
+    detect_renames(&mut diff)?;
+
+    Ok(diff)
+}
+
 fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
     let context = if req.show_full_file {
         100_000 // practical cap for full-file view
@@ -601,13 +639,7 @@ pub fn diff_staged_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
-    let mut diff = if is_head_unborn(&repo) {
-        repo.diff_tree_to_index(None, None, Some(&mut opts))?
-    } else {
-        let head_tree = repo.head()?.peel_to_tree()?;
-        repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut opts))?
-    };
-    detect_renames(&mut diff)?;
+    let diff = staged_diff(&repo, &mut opts)?;
     walk_diff(
         diff,
         &repo,
@@ -626,16 +658,9 @@ pub fn diff_commit_inner(
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
-    let commit_tree = commit.tree()?;
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
-    let mut diff = if commit.parent_count() == 0 {
-        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
-    } else {
-        let parent_tree = commit.parent(0)?.tree()?;
-        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
-    };
-    detect_renames(&mut diff)?;
+    let diff = commit_diff(&repo, &commit, &mut opts)?;
     walk_diff(diff, &repo, NewSideSource::Odb, FileFilter::All)
 }
 
@@ -650,15 +675,8 @@ pub fn list_commit_files_inner(
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
-    let commit_tree = commit.tree()?;
     let mut opts = new_diff_options();
-    let mut diff = if commit.parent_count() == 0 {
-        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
-    } else {
-        let parent_tree = commit.parent(0)?.tree()?;
-        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
-    };
-    detect_renames(&mut diff)?;
+    let diff = commit_diff(&repo, &commit, &mut opts)?;
     Ok(file_metadata_list(&diff))
 }
 
@@ -674,16 +692,9 @@ pub fn diff_commit_file_inner(
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
-    let commit_tree = commit.tree()?;
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
-    let mut diff = if commit.parent_count() == 0 {
-        repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
-    } else {
-        let parent_tree = commit.parent(0)?.tree()?;
-        repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
-    };
-    detect_renames(&mut diff)?;
+    let diff = commit_diff(&repo, &commit, &mut opts)?;
     walk_diff(
         diff,
         &repo,
