@@ -7,6 +7,14 @@
  *
  * Call `restoreLayout()` in `afterEach`: the stubs sit on the prototypes and
  * would otherwise leak into every later suite.
+ *
+ * Calls nest. The prototypes are shared by every caller in a test file, so the
+ * descriptors go back only when the last one restores; an inner caller finishing
+ * leaves an outer caller's box in place. Tearing them off on the first restore
+ * collapsed `graph-render.ts`'s 4000px viewport — it installs at module load and
+ * has no teardown to reinstall from — and every render golden after that point
+ * truncated to 22 rows and went red for a reason that was not a defect in the
+ * graph (TRUNK-52).
  */
 
 export interface LayoutBox {
@@ -21,19 +29,46 @@ export interface LayoutStubOptions extends Partial<LayoutBox> {
 	 *  differently from another without holding a reference to it — a probe
 	 *  span created and thrown away inside the code under test, say. */
 	measure?: (el: Element) => Partial<LayoutBox> | undefined;
+	/** Change the box this caller already installed, instead of taking a frame of
+	 *  its own. For a suite that re-stubs mid-test and restores exactly once; a
+	 *  new frame there would never be popped. Leave it off when stubbing on behalf
+	 *  of someone else, so that restoring uncovers their box (TRUNK-52). */
+	replace?: boolean;
 }
 
 const EMPTY: LayoutBox = { width: 0, height: 0, top: 0, left: 0 };
 
 const overrides = new WeakMap<Element, Partial<LayoutBox>>();
-let fallback: LayoutBox = EMPTY;
-let measure: LayoutStubOptions["measure"];
 let uninstall: (() => void) | null = null;
+
+/** One frame per caller holding the stubs installed, innermost last. The
+ *  innermost frame answers, and popping it uncovers the one beneath. */
+interface LayoutFrame {
+	fallback: LayoutBox;
+	measure: LayoutStubOptions["measure"];
+}
+const frames: LayoutFrame[] = [];
+
+function current(): LayoutFrame | undefined {
+	return frames[frames.length - 1];
+}
 
 export function stubLayout(options: LayoutStubOptions = {}): void {
 	const { measure: measureOption, ...defaults } = options;
-	fallback = { ...EMPTY, ...defaults };
-	measure = measureOption;
+	const frame: LayoutFrame = {
+		fallback: { ...EMPTY, ...defaults },
+		measure: measureOption,
+	};
+
+	// `replace` is one caller changing its own box: several suites re-stub mid-test
+	// to widen it and restore exactly once, and pushing a frame for those would
+	// leave frames nothing ever pops. Everything else takes a frame of its own, so
+	// that restoring uncovers whatever was underneath rather than stripping it
+	// (TRUNK-52). Defaulting the other way would make the dangerous case the quiet
+	// one.
+	if (options.replace && frames.length > 0) frames[frames.length - 1] = frame;
+	else frames.push(frame);
+
 	if (uninstall) return;
 
 	const savedClientWidth = descriptor(HTMLElement.prototype, "clientWidth");
@@ -69,14 +104,20 @@ export function setLayout(el: Element, box: Partial<LayoutBox>): void {
 }
 
 export function restoreLayout(): void {
+	if (frames.length === 0) return;
+
+	frames.pop();
+	if (frames.length > 0) return;
+
 	uninstall?.();
 	uninstall = null;
-	fallback = EMPTY;
-	measure = undefined;
 }
 
 function boxFor(el: Element): LayoutBox {
-	return { ...fallback, ...measure?.(el), ...overrides.get(el) };
+	const frame = current();
+	if (!frame) return { ...EMPTY, ...overrides.get(el) };
+
+	return { ...frame.fallback, ...frame.measure?.(el), ...overrides.get(el) };
 }
 
 function defineGetter(name: string, read: (box: LayoutBox) => number): void {

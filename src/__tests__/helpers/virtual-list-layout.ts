@@ -50,6 +50,9 @@ export function stubVirtualListLayout(
 	const width = VIEWPORT_WIDTH;
 
 	installReportingResizeObserver();
+	// Takes a frame of its own: this installs on behalf of a suite that may already
+	// be stubbing for itself, and `restoreVirtualListLayout()` must uncover what it
+	// found rather than strip it (TRUNK-52).
 	stubLayout({
 		width,
 		height: viewportHeight,

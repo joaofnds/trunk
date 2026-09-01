@@ -253,7 +253,7 @@ describe("FullFileView", () => {
 	it("withholds the list until every comment row has a measured height", async () => {
 		// Every element measures zero, so the hidden comment probe cannot report a
 		// height — the case invariant 8 exists for.
-		stubLayout({ width: 900, height: 0 });
+		stubLayout({ width: 900, height: 0, replace: true });
 		const commented = aThread({
 			id: "t1",
 			anchor: {
@@ -306,6 +306,7 @@ describe("FullFileView", () => {
 		// widths mean the font advances per glyph, so column arithmetic — and with
 		// it every wrapped row's height — stops being derivable.
 		stubLayout({
+			replace: true,
 			width: 900,
 			height: 400,
 			measure: (el) =>
@@ -355,7 +356,7 @@ describe("FullFileView", () => {
 				disconnect() {}
 			},
 		);
-		stubLayout({ width: 900, height: 400 });
+		stubLayout({ width: 900, height: 400, replace: true });
 		const wide: FileDiff = {
 			path: "src/wide.ts",
 			old_path: null,

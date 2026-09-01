@@ -124,7 +124,7 @@ describe("createVirtualizedDiff", () => {
 	it("withholds the list until metrics, a pane width and every probed thread height exist", async () => {
 		// Every element measures zero-height, so the hidden comment probe cannot
 		// report a height — the case the readiness gate exists for.
-		stubLayout({ width: 900, height: 0 });
+		stubLayout({ width: 900, height: 0, replace: true });
 		const { container, rerender, props, vd } = mount({
 			comments: [anchoredThread()],
 		});
@@ -144,6 +144,7 @@ describe("createVirtualizedDiff", () => {
 		// The "W" run measures wider than the "i" run, which is the condition
 		// under which character-count arithmetic stops being exact.
 		stubLayout({
+			replace: true,
 			width: 900,
 			height: 400,
 			measure: (el) =>
@@ -213,6 +214,7 @@ describe("createVirtualizedDiff", () => {
 			},
 		);
 		stubLayout({
+			replace: true,
 			width: 900,
 			height: 400,
 			measure: (el) =>
