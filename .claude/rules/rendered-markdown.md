@@ -64,6 +64,12 @@ Two defect classes recurred because the lesson lived only in a commit message:
   on rendered HTML sees two different `<img>` tags for one unchanged image
   (TRUNK-102).
 
+  The word merge has no raw markdown to fall back on — rendered HTML is its only
+  input — so `Unit` carries a rev-independent `key` alongside the `text` it
+  emits, and its `Eq`/`Hash`/`Ord` compare the key. Any new code that compares
+  rendered content across the two sides must answer: does this string carry a
+  rev? Comparing raw rendered HTML across sides is the defect, in any code path.
+
 ## Adding to the gate
 
 When a defect reaches a reader, add the invariant that would have caught it

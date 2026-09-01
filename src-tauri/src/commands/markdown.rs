@@ -702,12 +702,104 @@ fn classify_tag(tag: &str) -> TagClass {
 /// stack of inline elements open around it (`context`). Folding inline tags into
 /// context is what lets the diff notice a formatting-only change — the same word
 /// under a different context is a different unit — and lets emission reconstruct a
-/// balanced wrapper around any del/ins run. `Ord`/`Hash` are derived for
-/// `capture_diff_slices`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// balanced wrapper around any del/ins run.
+///
+/// `key` is the unit's rev-independent identity and is what the diff compares;
+/// `text` is what emission writes out. They differ only for an asset URL, whose
+/// `rev` query param names the side it was rendered for: the same unchanged image
+/// renders as two different `<img>` tags across a Head/working-tree pair, and
+/// comparing the raw tag marks it deleted-and-re-added (TRUNK-102). This is the
+/// same rule anchor matching follows when it compares `Block.source` and never
+/// `html`. Equality, hashing and ordering skip `text` for this reason — two units
+/// that differ only by rev are the same unit.
+#[derive(Debug, Clone, Eq)]
 struct Unit {
     context: Vec<String>,
     text: String,
+    key: String,
+}
+
+impl Unit {
+    fn new(context: Vec<String>, text: String) -> Self {
+        let key = strip_asset_rev(&text);
+        Self { context, text, key }
+    }
+
+    /// The fields that define identity, in the order `Ord` compares them.
+    fn identity(&self) -> (&[String], &str) {
+        (&self.context, &self.key)
+    }
+}
+
+impl PartialEq for Unit {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity() == other.identity()
+    }
+}
+
+impl std::hash::Hash for Unit {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.identity().hash(state);
+    }
+}
+
+impl PartialOrd for Unit {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Unit {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity().cmp(&other.identity())
+    }
+}
+
+/// Blank the `rev` value of every `trunk-asset://` URL in a fragment, so the two
+/// sides of a diff compare an image by what it points at rather than by which
+/// revision rendered it.
+///
+/// The match is anchored on the whole prefix `build_image_rewrite` emits, up to
+/// and including `rev=`, because `rev=` on its own is ordinary prose in a Git
+/// tool's documentation (`--rev=main`, `prev=`). Matching it loose made a real
+/// edit compare equal and put an unmarked row on screen — the defect class the
+/// asset rewrite itself was working around.
+fn strip_asset_rev(text: &str) -> String {
+    const SCHEME: &str = "trunk-asset://asset/?repo=";
+    /// Where a URL stops: the attribute quote, the tag end, or whitespace. A
+    /// query param separator does not end the URL, only the value before it.
+    fn url_end(s: &str) -> usize {
+        s.find(|c: char| c == '"' || c == '\'' || c == '>' || c.is_whitespace())
+            .unwrap_or(s.len())
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(SCHEME) {
+        out.push_str(&rest[..at]);
+        let url = &rest[at..at + url_end(&rest[at..])];
+        rest = &rest[at + url.len()..];
+
+        // Blank the rev value in this one URL, leaving every other param intact.
+        // `&` is `&amp;` once the URL is an HTML attribute, so accept both.
+        let mut wrote = false;
+        for sep in ["&amp;rev=", "&rev="] {
+            let Some(rev_at) = url.find(sep) else {
+                continue;
+            };
+            let value_at = rev_at + sep.len();
+            let value_len = url[value_at..].find('&').unwrap_or(url.len() - value_at);
+            out.push_str(&url[..value_at]);
+            out.push_str(&url[value_at + value_len..]);
+            wrote = true;
+            break;
+        }
+        if !wrote {
+            out.push_str(url);
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Fold a token stream into content units, resolving inline tags into each unit's
@@ -719,10 +811,9 @@ fn build_units(tokens: &[Token]) -> Option<Vec<Unit>> {
     let mut units = Vec::new();
     for token in tokens {
         match token {
-            Token::Word(text) | Token::Space(text) => units.push(Unit {
-                context: stack.clone(),
-                text: text.clone(),
-            }),
+            Token::Word(text) | Token::Space(text) => {
+                units.push(Unit::new(stack.clone(), text.clone()))
+            }
             Token::Tag(tag) => match classify_tag(tag) {
                 TagClass::InlineOpen => stack.push(tag.clone()),
                 TagClass::InlineClose => match stack.last() {
@@ -731,10 +822,7 @@ fn build_units(tokens: &[Token]) -> Option<Vec<Unit>> {
                     }
                     _ => return None,
                 },
-                TagClass::Passthrough => units.push(Unit {
-                    context: stack.clone(),
-                    text: tag.clone(),
-                }),
+                TagClass::Passthrough => units.push(Unit::new(stack.clone(), tag.clone())),
             },
         }
     }
@@ -2293,6 +2381,70 @@ mod tests {
         )
     }
 
+    /// The single merged copy of the one `Changed` row a test produced — what
+    /// the inline view puts on screen.
+    fn merged_of(rows: &[DiffRow]) -> String {
+        let merged: Vec<&String> = rows
+            .iter()
+            .filter_map(|r| match r {
+                DiffRow::Changed { merged_html, .. } => merged_html.as_ref(),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(merged.len(), 1, "exactly one merged Changed row: {rows:?}");
+        merged[0].clone()
+    }
+
+    /// Whether any `<img>` sits inside a del/ins word-mark run — the reader
+    /// seeing an image struck through or freshly inserted.
+    fn marks_an_image(html: &str) -> bool {
+        for (open, close, element) in [
+            ("<del class=\"md-word-delete\">", "</del>", "<del"),
+            ("<ins class=\"md-word-add\">", "</ins>", "<ins"),
+        ] {
+            let mut rest = html;
+            while let Some(start) = rest.find(open) {
+                // A mark run can wrap the same element it is made of
+                // (`~~strike~~` renders `<del>`), so track depth rather than
+                // stopping at the first close, which may be an inner one.
+                let mut depth = 1usize;
+                let mut scan = &rest[start + open.len()..];
+                loop {
+                    let next_open = scan.find(element);
+                    let next_close = scan.find(close);
+                    match (next_open, next_close) {
+                        (Some(o), Some(c)) if o < c => {
+                            if scan[..o].contains("<img") {
+                                return true;
+                            }
+                            depth += 1;
+                            scan = &scan[o + element.len()..];
+                        }
+                        (_, Some(c)) => {
+                            if scan[..c].contains("<img") {
+                                return true;
+                            }
+                            depth -= 1;
+                            scan = &scan[c + close.len()..];
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        (_, None) => {
+                            if scan.contains("<img") {
+                                return true;
+                            }
+                            scan = "";
+                            break;
+                        }
+                    }
+                }
+                rest = scan;
+            }
+        }
+        false
+    }
+
     fn diff_rows(before: &str, after: &str) -> Vec<DiffRow> {
         diff_md(before, after).rows
     }
@@ -3750,6 +3902,145 @@ mod tests {
         assert!(
             rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. })),
             "identical docs are all-unchanged regardless of image rev URLs: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn marks_an_image_sees_through_a_nested_del() {
+        // The helper decides whether the image tests pass, so its own blind
+        // spots are theirs. A mark run can wrap the element it is made of.
+        assert!(marks_an_image(
+            "<del class=\"md-word-delete\"><del>x</del> <img src=\"y\"></del>"
+        ));
+        assert!(marks_an_image(
+            "<ins class=\"md-word-add\"><ins>x</ins><img src=\"y\"></ins>"
+        ));
+        assert!(marks_an_image(
+            "<del class=\"md-word-delete\"><img src=\"x\"></del>"
+        ));
+        assert!(!marks_an_image(
+            "<del class=\"md-word-delete\">word</del><img src=\"x\">"
+        ));
+        assert!(!marks_an_image("<p><img src=\"x\"> plain</p>"));
+        assert!(marks_an_image(
+            "<del class=\"md-word-delete\">a</del>b<del class=\"md-word-delete\"><img></del>"
+        ));
+    }
+
+    #[test]
+    fn strip_asset_rev_blanks_only_the_rev_and_leaves_other_text() {
+        // The value runs to the next param, quote or tag end — never past it,
+        // or the path that follows would be swallowed and two different images
+        // would compare equal.
+        let img = |rev: &str, path: &str| {
+            format!("<img src=\"trunk-asset://asset/?repo=%2Fr&amp;rev={rev}&amp;path={path}\">")
+        };
+
+        assert_eq!(
+            strip_asset_rev(&img("head", "a.png")),
+            strip_asset_rev(&img("working-tree", "a.png")),
+            "the same image across two revs shares one key"
+        );
+        assert_ne!(
+            strip_asset_rev(&img("head", "a.png")),
+            strip_asset_rev(&img("head", "b.png")),
+            "a different path is a different key"
+        );
+        assert_eq!(
+            strip_asset_rev("plain words, no url"),
+            "plain words, no url",
+            "ordinary text is untouched"
+        );
+        for prose in ["say rev=head aloud", "the prev=old flag", "`--rev=main`"] {
+            assert_eq!(
+                strip_asset_rev(prose),
+                prose,
+                "a rev token outside an asset URL is ordinary prose"
+            );
+        }
+        assert_ne!(
+            strip_asset_rev(&format!("{} alt=\"rev=1\"", img("head", "a.png"))),
+            strip_asset_rev(&format!("{} alt=\"rev=2\"", img("head", "a.png"))),
+            "a rev token in visible alt text is content, not the asset rev"
+        );
+
+        let two = |rev: &str| format!("{} and {}", img(rev, "a.png"), img(rev, "b.png"));
+        assert_eq!(
+            strip_asset_rev(&two("head")),
+            strip_asset_rev(&two("working-tree")),
+            "every asset URL in the fragment is normalized, not just the first"
+        );
+        assert!(
+            strip_asset_rev(&two("head")).contains("path=a.png")
+                && strip_asset_rev(&two("head")).contains("path=b.png"),
+            "blanking a rev never swallows the params after it"
+        );
+    }
+
+    #[test]
+    fn a_rev_token_in_prose_is_not_mistaken_for_an_asset_rev() {
+        // `rev=` is only meaningful as a query param of a trunk-asset URL. A Git
+        // GUI's own docs are full of `--rev=` in prose and code spans; treating
+        // those as rev noise makes a real edit compare equal and land on screen
+        // with nothing marking it.
+        for (before, after) in [
+            ("The prev=old flag stays", "The prev=new flag stays"),
+            ("Set rev=abc here", "Set rev=def here"),
+            ("`--rev=old` matters", "`--rev=new` matters"),
+        ] {
+            let rows = diff_rows(before, after);
+            assert!(
+                illegible_rows(&rows).is_empty(),
+                "a changed rev token in prose stays legible: {before:?} -> {after:?}: {rows:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_image_whose_alt_text_changed_is_still_marked() {
+        // The rev rides in the src attribute. Alt text is visible words, so a
+        // change to it is a change the reader must see, even when the alt text
+        // happens to contain `rev=`.
+        let rows = diff_rows("![rev=1 logo](a.png) tail", "![rev=2 logo](a.png) tail");
+        assert!(
+            illegible_rows(&rows).is_empty(),
+            "a changed caption stays legible: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn unchanged_image_is_not_struck_when_a_neighbouring_word_changes() {
+        // The asset URL embeds each side's rev, so one unchanged image renders
+        // as two different <img> tags. A word merge that diffs the raw tag marks
+        // the image deleted-and-re-added: a README badge, edited anywhere in its
+        // paragraph, shows struck through and duplicated beside itself.
+        let rows = diff_rows("![logo](a.png) caption old", "![logo](a.png) caption new");
+        let merged = merged_of(&rows);
+
+        assert!(
+            !marks_an_image(&merged),
+            "an unchanged image carries no del/ins marks: {merged}"
+        );
+        assert!(
+            merged.contains("<del class=\"md-word-delete\">old</del>"),
+            "the changed word is still struck: {merged}"
+        );
+        assert!(
+            merged.contains("<ins class=\"md-word-add\">new</ins>"),
+            "the added word is still marked: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_genuinely_changed_image_is_still_marked() {
+        // The rev is noise; the path is the image's identity. Swapping the file
+        // must survive the normalization that hides the rev.
+        let rows = diff_rows("![logo](a.png) caption", "![logo](b.png) caption");
+        let merged = merged_of(&rows);
+
+        assert!(
+            marks_an_image(&merged),
+            "a different image path still marks as changed: {merged}"
         );
     }
 
