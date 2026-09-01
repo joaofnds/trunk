@@ -13,7 +13,7 @@ Changed goldens:
 
 ## 2026-08-05
 
-milestone 2: adds scripts/qa-graph-merge-fixtures.sh (13 fixtures) covering spec AC-2's gap list, widened to target named mutation survivors — MergeLeft, ForkLeft and the leftward spiral had no fixture in the corpus. New goldens only; no existing layout changed.
+milestone 2: adds the 05-graph-merges fixture generator (13 fixtures) covering spec AC-2's gap list, widened to target named mutation survivors — MergeLeft, ForkLeft and the leftward spiral had no fixture in the corpus. New goldens only; no existing layout changed.
 
 Changed goldens:
 

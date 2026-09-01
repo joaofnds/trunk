@@ -17,7 +17,7 @@ set -euo pipefail
 SCRUB=(env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null)
 
 OUT="${1:?usage: scripts/qa-stash-probe.sh OUTPUT_DIR [FIXTURE_DIR]}"
-FIXTURES="${2:-${TMPDIR:-/tmp}/trunk-qa-stash}"
+FIXTURES="${2:-${TRUNK_FIXTURES:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/trunk-test-cases}/repos/stash-lanes}"
 OUT="${OUT%/}"
 FIXTURES="${FIXTURES%/}"
 
@@ -25,7 +25,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$ROOT/src-tauri/Cargo.toml"
 
 if [ ! -d "$FIXTURES" ]; then
-	echo "no fixtures at $FIXTURES — run scripts/qa-stash-fixtures.sh first" >&2
+	echo "no fixtures at $FIXTURES — build them with ./build 06-stash-lanes in the trunk-test-cases repository, or pass their directory as the second argument" >&2
 	exit 1
 fi
 

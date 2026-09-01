@@ -482,9 +482,9 @@ shape, the dirtiness dependency, the post-processing prohibition — is stated o
 Test commands are in `.claude/rules/commit-graph.md`.
 
 For visual checks, `just dev` and open a repo with stashes.
-`scripts/qa-stash-fixtures.sh` builds a set of repos covering inline placement, each flavour
-of dirtiness, the multi-stash, orphan, detached-HEAD, merge-tip and bare cases, and both
-accepted-churn shapes, with a per-scenario checklist. `scripts/qa-stash-probe.sh` dumps each
+The `06-stash-lanes` case in the trunk-test-cases repository builds a set of repos covering
+inline placement, each flavour of dirtiness, the multi-stash, orphan, detached-HEAD,
+merge-tip and bare cases, and both accepted-churn shapes, with a per-scenario checklist. `scripts/qa-stash-probe.sh` dumps each
 fixture's layout as one text file, so a change to Layer 1 can be diffed against a baseline.
 
 For Layer 3, `scripts/graph-connector-render.ts` writes an SVG of the connector shapes
@@ -525,8 +525,10 @@ A red golden is a suspected defect, not a stale artifact. Accept a change only w
 Never set `TRUNK_ACCEPT_GRAPH_GOLDENS` by hand, and never accept a change without the
 user's explicit direction; `.claude/rules/commit-graph.md` is the binding source.
 
-Three scripts build the corpus, offline, behind `just graph-capture`. `scripts/qa-graph-merge-fixtures.sh` covers the merge,
-multi-branch, ordering and column-pressure shapes:
+Three generators build the corpus, offline, behind `just graph-capture`. They live in the
+trunk-test-cases repository, which holds every fixture Trunk is tested against; `just check`
+never needs that checkout, because the captured inputs are committed here. Its
+`05-graph-merges` case covers the merge, multi-branch, ordering and column-pressure shapes:
 
 | Shape | Fixture |
 |---|---|

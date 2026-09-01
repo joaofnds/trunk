@@ -15,7 +15,8 @@
 # goldens, and `test_graph_goldens.rs` demands a golden and an export for everything in
 # `tests/inputs/`.
 #
-# Rerun this after editing any `scripts/qa-*-fixtures.sh`, or any shape in
+# Rerun this after editing a graph fixture generator in the trunk-test-cases
+# repository (`cases/04-graph-lanes`, `05-graph-merges`, `06-stash-lanes`), or any shape in
 # `src-tauri/tests/common/graph_shapes.rs` or `src-tauri/tests/test_graph_capture.rs`.
 # Nothing else notices such an edit: the inputs are committed, and the goldens are computed
 # from the inputs. `just graph-fidelity` is the check that a rule input still equals a fresh
@@ -34,11 +35,33 @@ OUT="$ROOT/src-tauri/tests/inputs"
 # a committed file, so both the build and the read run under one scrubbed environment.
 SCRUB=(env -u GIT_EDITOR -u EDITOR -u VISUAL GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null)
 
+# The fixture generators live in the trunk-test-cases repository, which holds
+# every fixture Trunk is tested against in one place. Only *regenerating* the
+# inputs needs it: the JSON below is committed, so `just check` runs green
+# without that checkout present. Override with TRUNK_FIXTURES.
+FIXTURES="${TRUNK_FIXTURES:-$(cd "$ROOT/.." && pwd)/trunk-test-cases}"
+
 CORPORA=(
-	"qa-stash-fixtures.sh:stash"
-	"qa-graph-lane-fixtures.sh:lane"
-	"qa-graph-merge-fixtures.sh:merge"
+	"06-stash-lanes:stash"
+	"04-graph-lanes:lane"
+	"05-graph-merges:merge"
 )
+
+if [ ! -d "$FIXTURES/cases" ]; then
+	cat >&2 <<-MSG
+		no fixture generators at $FIXTURES
+
+		Capturing rebuilds the graph corpora from their generators, which live in
+		the trunk-test-cases repository:
+
+		    git clone git@github.com:joaofnds/trunk-test-cases.git $FIXTURES
+
+		Point TRUNK_FIXTURES at it if you keep it somewhere else. Nothing else
+		needs it — the captured inputs are committed, so 'just check' passes
+		without this checkout.
+	MSG
+	exit 1
+fi
 
 # The fixture scripts never wipe their target, so a reused directory silently mixes
 # corpora from different runs.
@@ -46,9 +69,9 @@ CORPUS="$(mktemp -d)"
 trap 'rm -rf "$CORPUS"' EXIT
 
 for entry in "${CORPORA[@]}"; do
-	script="${entry%%:*}"
+	case_dir="${entry%%:*}"
 	subdir="${entry##*:}"
-	"${SCRUB[@]}" "$ROOT/scripts/$script" "$CORPUS/$subdir" >/dev/null
+	"${SCRUB[@]}" "$FIXTURES/cases/$case_dir/build.sh" "$CORPUS/$subdir" >/dev/null
 done
 
 "${SCRUB[@]}" cargo build --quiet --manifest-path "$ROOT/src-tauri/Cargo.toml" --example graph_capture
