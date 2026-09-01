@@ -17,18 +17,6 @@ export type FileStatusType =
 	| "Conflicted";
 export type DiffOrigin = "Context" | "Add" | "Delete";
 
-export interface WordSpan {
-	start: number;
-	end: number;
-	emphasized: boolean;
-}
-
-export interface SyntaxToken {
-	start: number;
-	end: number;
-	scope: string;
-}
-
 // start/end are UTF-16 code-unit indices — `content.slice(start, end)` is the
 // intended read; Rust converts from its byte offsets before serializing.
 export interface MergedSpan {
