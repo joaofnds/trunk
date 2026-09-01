@@ -1066,12 +1066,20 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
 /// Merge the raw (unsanitized) before/after HTML of one changed leaf block into a
 /// single word-level diff fragment: removed words wrapped in
 /// `<del class="md-word-delete">`, added in `<ins class="md-word-add">`, tags kept
-/// balanced. `None` when a guard trips (input imbalance, or an unbalanced result) —
-/// the caller then falls back to the shipped block-level `Removed`+`Added` pair.
+/// balanced. `None` when a guard trips (input imbalance, an unbalanced result, or
+/// a merge that marked nothing) — the caller then falls back to the shipped
+/// block-level `Removed`+`Added` pair.
 /// The output is UNsanitized; `changed_fragments` sanitizes it before it crosses IPC.
 fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
     let (_, after_units, runs) = merge_units(before_raw, after_raw)?;
     let merged = merge_emit(&runs, &after_units);
+    if !merged.contains("md-word-") {
+        // Nothing visible changed between the two renders, so a single merged
+        // copy would state a change it cannot show. The before/after pair at
+        // least gives the reader two copies to compare. `leaf_word_merge`
+        // refuses the same shape for the same reason.
+        return None;
+    }
     merged_is_balanced(&merged).then_some(merged)
 }
 
@@ -3902,6 +3910,19 @@ mod tests {
         assert!(
             rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. })),
             "identical docs are all-unchanged regardless of image rev URLs: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_merge_that_marks_nothing_falls_back_to_the_visible_pair() {
+        // A markup-only edit can diff to all-Equal, and an unmarked merged copy
+        // then tells the reader nothing about a row the view calls changed. The
+        // container path already refuses such a merge; the single-leaf path must
+        // too, or the fallback pair the reader could compare never renders.
+        let merged = html_token_merge("<p>same words</p>", "<p>same words</p>");
+        assert!(
+            merged.is_none(),
+            "a merge with no marks is refused so the pair renders: {merged:?}"
         );
     }
 
