@@ -214,6 +214,34 @@ pub fn merge_spans(
     result
 }
 
+/// Re-express merged span offsets as UTF-16 code units, in place. Rust-side
+/// span math is UTF-8 byte-based; the frontend renders with
+/// `content.slice(start, end)`, which indexes UTF-16 code units, so spans
+/// convert here, once, before they ship. Requires spans sorted by start, as
+/// `merge_spans` emits them.
+pub fn merged_spans_to_utf16(spans: &mut [MergedSpan], content: &str) {
+    if content.is_ascii() {
+        return;
+    }
+
+    let mut chars = content.chars();
+    let mut byte: u32 = 0;
+    let mut utf16: u32 = 0;
+    let mut advance_to = |target: u32| {
+        while byte < target {
+            let Some(c) = chars.next() else { break };
+            byte += c.len_utf8() as u32;
+            utf16 += c.len_utf16() as u32;
+        }
+        utf16
+    };
+
+    for span in spans {
+        span.start = advance_to(span.start);
+        span.end = advance_to(span.end);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,6 +379,39 @@ mod tests {
     fn merge_spans_empty_content() {
         let merged = merge_spans(&[], &[], 0);
         assert!(merged.is_empty(), "Empty content should produce no spans");
+    }
+
+    fn span_at(start: u32, end: u32) -> MergedSpan {
+        MergedSpan {
+            start,
+            end,
+            syntax_class: String::new(),
+            emphasized: false,
+        }
+    }
+
+    // Each CJK character is 3 UTF-8 bytes but 1 UTF-16 unit, so byte offsets
+    // triple-count what JS counts once.
+    #[test]
+    fn utf16_conversion_counts_cjk_as_one_unit() {
+        let content = "日本語 code";
+        let mut spans = vec![span_at(0, 9), span_at(9, 14)];
+
+        merged_spans_to_utf16(&mut spans, content);
+
+        assert_eq!((spans[0].start, spans[0].end), (0, 3));
+        assert_eq!((spans[1].start, spans[1].end), (3, 8));
+    }
+
+    #[test]
+    fn utf16_conversion_leaves_ascii_offsets_alone() {
+        let content = "plain ascii";
+        let mut spans = vec![span_at(0, 5), span_at(5, 11)];
+
+        merged_spans_to_utf16(&mut spans, content);
+
+        assert_eq!((spans[0].start, spans[0].end), (0, 5));
+        assert_eq!((spans[1].start, spans[1].end), (5, 11));
     }
 
     #[test]

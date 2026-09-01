@@ -431,6 +431,7 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
 
                 if !syntax_tokens.is_empty() || !ws.is_empty() {
                     line.spans = syntax::merge_spans(syntax_tokens, ws, line.content.len() as u32);
+                    syntax::merged_spans_to_utf16(&mut line.spans, &line.content);
                 }
             }
         }
@@ -1018,6 +1019,112 @@ mod enrich_tests {
             added.spans.iter().any(|s| s.emphasized),
             "word-diff emphasis must survive the dropped highlighting"
         );
+    }
+
+    /// The exact read the Svelte views perform: `content.slice(start, end)`
+    /// indexes UTF-16 code units, so asserting through it proves the shipped
+    /// offsets land on the characters the user sees emphasized.
+    fn utf16_slice(content: &str, start: u32, end: u32) -> String {
+        let units: Vec<u16> = content.encode_utf16().collect();
+        String::from_utf16_lossy(&units[start as usize..end as usize])
+    }
+
+    fn emphasized_utf16(line: &DiffLine) -> Vec<String> {
+        line.spans
+            .iter()
+            .filter(|s| s.emphasized)
+            .map(|s| utf16_slice(&line.content, s.start, s.end))
+            .collect()
+    }
+
+    fn one_word_edit_diff(
+        path: &str,
+        old_line: &str,
+        new_line: &str,
+    ) -> (Vec<FileDiff>, Vec<SideContent>) {
+        let old_content = format!("{old_line}\n");
+        let new_content = format!("{new_line}\n");
+        let file_diffs = vec![FileDiff {
+            path: path.to_string(),
+            status: DiffStatus::Modified,
+            is_binary: false,
+            hunks: vec![DiffHunk {
+                header: "@@ -1 +1 @@".to_string(),
+                old_start: 1,
+                old_lines: 1,
+                new_start: 1,
+                new_lines: 1,
+                lines: vec![
+                    DiffLine {
+                        origin: DiffOrigin::Delete,
+                        content: old_content.clone(),
+                        old_lineno: Some(1),
+                        new_lineno: None,
+                        spans: vec![],
+                        pairing: LinePairing::Unknown,
+                    },
+                    DiffLine {
+                        origin: DiffOrigin::Add,
+                        content: new_content.clone(),
+                        old_lineno: None,
+                        new_lineno: Some(1),
+                        spans: vec![],
+                        pairing: LinePairing::Unknown,
+                    },
+                ],
+            }],
+        }];
+        let sides = vec![SideContent {
+            old: Some(old_content.into_bytes()),
+            new: Some(new_content.into_bytes()),
+        }];
+        (file_diffs, sides)
+    }
+
+    #[test]
+    fn emphasis_lands_on_the_changed_word_after_accented_characters() {
+        let (mut file_diffs, sides) =
+            one_word_edit_diff("notes.txt", "ação já começou aqui", "ação já terminou aqui");
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let lines = &file_diffs[0].hunks[0].lines;
+        assert_eq!(emphasized_utf16(&lines[0]), vec!["começou"]);
+        assert_eq!(emphasized_utf16(&lines[1]), vec!["terminou"]);
+    }
+
+    // An emoji is one code point but two UTF-16 units (a surrogate pair), so a
+    // char-count conversion would still shift; only a code-unit count lands.
+    #[test]
+    fn emphasis_lands_on_the_changed_word_after_an_emoji() {
+        let (mut file_diffs, sides) =
+            one_word_edit_diff("notes.txt", "🎉 muda velho agora", "🎉 muda novo agora");
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let lines = &file_diffs[0].hunks[0].lines;
+        assert_eq!(emphasized_utf16(&lines[0]), vec!["velho"]);
+        assert_eq!(emphasized_utf16(&lines[1]), vec!["novo"]);
+    }
+
+    #[test]
+    fn syntax_spans_land_on_their_tokens_after_accented_characters() {
+        let (mut file_diffs, sides) = one_word_edit_diff(
+            "example.rs",
+            "let saudação = 1; // nota",
+            "let saudação = 2; // nota",
+        );
+
+        enrich_file_diffs(&mut file_diffs, &sides);
+
+        let add_line = &file_diffs[0].hunks[0].lines[1];
+        let comment_texts: Vec<String> = add_line
+            .spans
+            .iter()
+            .filter(|s| s.syntax_class == "syn-comment")
+            .map(|s| utf16_slice(&add_line.content, s.start, s.end))
+            .collect();
+        assert_eq!(comment_texts.concat(), "// nota");
     }
 
     // Reproduces the diagnosed defect (F1): a hunk starting mid multi-line string.

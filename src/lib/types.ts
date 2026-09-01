@@ -29,6 +29,8 @@ export interface SyntaxToken {
 	scope: string;
 }
 
+// start/end are UTF-16 code-unit indices — `content.slice(start, end)` is the
+// intended read; Rust converts from its byte offsets before serializing.
 export interface MergedSpan {
 	start: number;
 	end: number;

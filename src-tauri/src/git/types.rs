@@ -235,6 +235,9 @@ pub struct DiffLine {
     pub content: String,
     pub old_lineno: Option<u32>,
     pub new_lineno: Option<u32>,
+    /// Offsets in UTF-16 code units, not bytes: the frontend renders with
+    /// `content.slice(start, end)`, so `merged_spans_to_utf16` converts at the
+    /// enrich boundary. Rust-side span math elsewhere stays byte-based.
     pub spans: Vec<MergedSpan>,
     #[serde(default)]
     pub pairing: LinePairing,
