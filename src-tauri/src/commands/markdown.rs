@@ -2442,8 +2442,8 @@ mod tests {
     fn changed_table_keeps_before_and_after_as_separate_fragments() {
         // A container's Changed carries the before table and the after table
         // as separate fields — the split view pairs them into columns, inline
-        // stacks them. The pair stays (row interleave inside one
-        // <table> is TRUNK-72's merged view, not this field).
+        // stacks them. Row interleave inside one <table> is merged_html's
+        // job, not these two fields'.
         let before = "| a | b |\n|---|---|\n| 1 | 2 |";
         let after = "| a | b |\n|---|---|\n| 9 | 2 |";
         let rows = diff_rows(before, after);
@@ -2496,24 +2496,8 @@ mod tests {
 
     // The merged (suggestion-mode) fragment: one copy of the changed block
     // carrying del and ins marks together, the way docs tools show a
-    // suggestion.
-    #[test]
-    fn a_changed_paragraph_carries_a_merged_copy() {
-        let before = "the quick brown fox";
-        let after = "the slow brown fox";
-        let rows = diff_rows(before, after);
-        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
-            panic!("a word edit is a Changed row: {rows:?}");
-        };
-
-        let merged = merged_html.as_deref().expect("a paragraph edit merges");
-        assert!(
-            merged.contains(r#"<del class="md-word-delete">quick</del>"#)
-                && merged.contains(r#"<ins class="md-word-add">slow</ins>"#),
-            "one copy carries both marks: {merged}"
-        );
-    }
-
+    // suggestion. The single-leaf case is
+    // changed_paragraph_word_merges_into_merged_html below.
     #[test]
     fn a_changed_list_carries_a_merged_copy_with_both_marks() {
         let before = "- keep one\n- old third here\n- keep two";
@@ -2606,21 +2590,6 @@ mod tests {
         assert!(
             removed > thead_close,
             "the removed row sits after the header section: {merged}"
-        );
-    }
-
-    #[test]
-    fn a_code_block_change_has_no_merged_copy() {
-        let before = "```rust\nlet x = 1;\n```";
-        let after = "```rust\nlet x = 2;\n```";
-        let rows = diff_rows(before, after);
-        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
-            panic!("a code edit is a Changed row: {rows:?}");
-        };
-
-        assert!(
-            merged_html.is_none(),
-            "code blocks fall back to the before/after pair: {merged_html:?}"
         );
     }
 
