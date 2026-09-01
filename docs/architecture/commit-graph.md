@@ -40,16 +40,12 @@ git repo
   │
   ▼
 [TypeScript: overlay-visible.ts] getVisibleOverlayElements()
-  │  Drops paths, dots and pills outside the scrolled viewport.
-  │
-  ▼
-[TypeScript: lane-labels.ts] laneSpans() → buildLaneLabels()
-  │  Names each lane crossing the viewport whose ref sits above it.
-  │  Positioned by column against the visible region, not by row.
+  │  Drops paths, dots and pills outside the scrolled viewport, and keeps
+  │  a ghost pill against each lane whose ref scrolled above it.
   │
   ▼
 [Svelte: CommitGraph.svelte]
-   Renders SVG: dots, paths, pills, lane labels.
+   Renders SVG: dots, paths, pills (a ghost pill drawn dimmed).
 ```
 
 `capture()` is the one stage that reads the repository; every stage after it is a pure
@@ -373,35 +369,6 @@ partially-visible connector instead of clipping it.
 
 ---
 
-## Layer 3b: TypeScript — `lane-labels.ts`
-
-### `laneSpans(connections): LaneSpan[]`
-
-The vertical runs of each lane, taken from the connections Layer 2 produced. Only
-same-column connections hold a lane; a fork or a merge crosses columns and belongs to
-neither.
-
-### `buildLaneLabels(nodes, commits, lanes, visibleStart, visibleEnd): LaneLabel[]`
-
-Names each lane crossing the viewport whose owning ref sits above it. A lane can run
-for hundreds of rows — a branch far behind its upstream holds its column from its tip
-down to a parent well past the first page — and scrolled into the middle of such a
-span the line carries no dot, no name and no visible end.
-
-- The label is the **nearest** ref above the viewport, so a column reused by several
-  branches names the one whose history the visible rows belong to.
-- Where that row carries several refs, `sortRefs` picks the same primary the ref pill
-  shows, so the two readings of a lane agree.
-- A stash and the WIP row name a state, not a line of history, and are skipped as
-  label sources.
-- A lane whose ref row is itself visible gets no label: the ref pill already speaks
-  for it.
-
-Unlike a ref pill, a lane label is positioned by **column against the visible region**
-rather than by row, which is why it is its own stage rather than more `ref-pill-data.ts`.
-
----
-
 ## Layer 4: Svelte — `CommitGraph.svelte`
 
 Renders:
@@ -586,12 +553,11 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src-tauri/src/git/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
-| `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`, `LaneLabel`) |
+| `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
 | `src/lib/wip-row.ts` | `withWipRow()` — prepends the WIP row at index 0 while the worktree is dirty |
-| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel |
+| `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel; `laneSpans()` — each lane's extent |
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
-| `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
-| `src/lib/lane-labels.ts` | `laneSpans()` + `buildLaneLabels()` — names a lane whose ref has scrolled above the viewport |
+| `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills, plus the ghost pill kept against a lane whose ref scrolled above |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering, lane labels |
 | `src-tauri/tests/test_graph.rs` | Owns the named-rule layout assertions, read from `tests/rule-inputs/`; the set that still builds a repository is enumerated in `.claude/rules/commit-graph.md`, split into the tests bound to stay and the ones merely not yet migrated |

@@ -117,8 +117,7 @@
 - Layer 1 (Rust): `graph::walk_commits()` assigns columns, colors, edge types → `GraphCommit[]`
 - Layer 2 (TS): `buildGraphData()` in `src/lib/active-lanes.ts` → `OverlayGraphData` (nodes + connections)
 - Layer 3 (TS): `buildOverlayPaths()` in `src/lib/overlay-paths.ts` → SVG path strings
-- Culling (TS): `getVisibleOverlayElements()` in `src/lib/overlay-visible.ts` drops off-screen paths, dots and pills
-- Lane labels (TS): `buildLaneLabels()` in `src/lib/lane-labels.ts` names each lane crossing the viewport whose ref has scrolled above it
+- Culling (TS): `getVisibleOverlayElements()` in `src/lib/overlay-visible.ts` drops off-screen paths, dots and pills, and keeps a ghost pill against each lane whose ref scrolled above the viewport
 - Layer 4 (Svelte): `CommitGraph.svelte` renders SVG dots, paths, ref pills via `VirtualList.svelte`
 - Binding rules for this pipeline: `.claude/rules/commit-graph.md`
 
