@@ -86,6 +86,19 @@ export type DiffRow =
 			// highlight alone; absent (false) means the row has nothing to point
 			// at and must keep the wash, or it renders as two identical copies.
 			hasTints?: boolean;
+			// The hunk-mode copy of a changed CONTAINER (list, table): the merged
+			// copy with unchanged leaves outside the context window dropped, so a
+			// twenty-item list whose one item changed does not render whole.
+			// Absent for single-leaf blocks and whenever nothing was folded — the
+			// merged copy then serves both modes.
+			hunkMergedHtml?: string;
+			// The same fold applied to the two split-column fragments. Absent
+			// under the same conditions as `hunkMergedHtml`.
+			hunkBeforeHtml?: string;
+			hunkAfterHtml?: string;
+			// How many leaves `hunkMergedHtml` dropped, for the "N items hidden"
+			// note. Absent (0) whenever `hunkMergedHtml` is.
+			hunkHiddenLeaves?: number;
 			afterStart: number;
 			afterEnd: number;
 	  };

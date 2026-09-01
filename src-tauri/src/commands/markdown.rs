@@ -119,9 +119,31 @@ pub enum DiffRow {
         /// edit — which must keep the wash or render as two identical copies.
         #[serde(skip_serializing_if = "is_false")]
         has_tints: bool,
+        /// The hunk-mode copy of a changed CONTAINER: `merged_html` with every
+        /// run of unchanged leaves outside the context window removed, so a
+        /// twenty-item list whose one item changed does not render whole
+        /// (TRUNK-93). `None` for single-leaf blocks, which have nothing to
+        /// fold, and whenever nothing was dropped — the frontend then renders
+        /// `merged_html` in both modes.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hunk_merged_html: Option<String>,
+        /// The same fold applied to the two split-column fragments. Absent
+        /// under the same conditions as `hunk_merged_html`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hunk_before_html: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hunk_after_html: Option<String>,
+        /// How many leaves `hunk_merged_html` dropped, for the frontend's
+        /// "N items hidden" note. Zero whenever `hunk_merged_html` is `None`.
+        #[serde(skip_serializing_if = "is_zero")]
+        hunk_hidden_leaves: u32,
         after_start: u32,
         after_end: u32,
     },
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 fn is_false(b: &bool) -> bool {
@@ -514,6 +536,10 @@ fn flush_runs(
                 before_html: cf.before_html,
                 after_html: cf.after_html,
                 merged_html: cf.merged_html,
+                hunk_merged_html: cf.hunk_merged_html,
+                hunk_before_html: cf.hunk_before_html,
+                hunk_after_html: cf.hunk_after_html,
+                hunk_hidden_leaves: cf.hunk_hidden_leaves,
                 has_tints: cf.has_tints,
                 after_start: a.start_line,
                 after_end: a.end_line,
@@ -1136,6 +1162,13 @@ struct ChangedFragments {
     before_html: String,
     after_html: String,
     merged_html: Option<String>,
+    /// The folded copies for hunk mode — the merged copy for inline, the two
+    /// tinted column fragments for split — and the leaf count the merged fold
+    /// hid. `None`/0 for single-leaf blocks and containers with nothing to fold.
+    hunk_merged_html: Option<String>,
+    hunk_before_html: Option<String>,
+    hunk_after_html: Option<String>,
+    hunk_hidden_leaves: u32,
     has_tints: bool,
 }
 
@@ -1150,6 +1183,12 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
             before_html: before.html.clone(),
             after_html: after.html.clone(),
             merged_html,
+            // A single-leaf block is one unit of prose: there is no inner
+            // structure to fold, so hunk mode renders the same copies.
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
             has_tints: false,
         };
     }
@@ -1211,10 +1250,34 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
             }
         }
     }
+    let merged_raw = merged_container_raw(before, after, &ops);
+    // The fold runs per side, each against its own keep set: the split columns
+    // are the two tinted fragments, the inline view is the merged copy (which
+    // lives on the AFTER skeleton, so it folds by the after side's set).
+    let keep_after = leaves_to_keep(&ops, after.leaves.len(), true);
+    let keep_before = leaves_to_keep(&ops, before.leaves.len(), false);
+    let folded_merged = merged_raw
+        .as_deref()
+        .zip(keep_after.as_deref())
+        .and_then(|(m, keep)| drop_leaves(m, &after.leaves, keep));
+    let folded_before = keep_before.as_deref().and_then(|keep| {
+        drop_leaves(
+            &tint_leaves(&before_frag, &before_tints),
+            &before.leaves,
+            keep,
+        )
+    });
+    let folded_after = keep_after
+        .as_deref()
+        .and_then(|keep| drop_leaves(&tint_leaves(&after_frag, &after_tints), &after.leaves, keep));
     ChangedFragments {
         before_html: sanitize_html(&tint_leaves(&before_frag, &before_tints)),
         after_html: sanitize_html(&tint_leaves(&after_frag, &after_tints)),
-        merged_html: merged_container(before, after, &ops),
+        merged_html: merged_raw.as_deref().map(sanitize_html),
+        hunk_merged_html: folded_merged.as_ref().map(|(f, _)| sanitize_html(f)),
+        hunk_before_html: folded_before.as_ref().map(|(f, _)| sanitize_html(f)),
+        hunk_after_html: folded_after.as_ref().map(|(f, _)| sanitize_html(f)),
+        hunk_hidden_leaves: folded_merged.map_or(0, |(_, n)| n),
         has_tints: !before_tints.is_empty() || !after_tints.is_empty() || word_marked,
     }
 }
@@ -1224,7 +1287,11 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
 /// and cleanly pairing leaves replaced by their del+ins word merge. `None` on
 /// any structural failure; the merged view then falls back to the
 /// before/after pair.
-fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> Option<String> {
+/// The merged fragment before sanitization, where every leaf the merge left
+/// alone still carries its `data-sourcepos`. Callers sanitize what they ship;
+/// the hunk fold needs those attributes to find and drop unchanged leaves, and
+/// sanitization strips them.
+fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> Option<String> {
     let mut frag = after.sourcepos_html.clone();
     let mut tints: Vec<(&str, &str)> = Vec::new();
 
@@ -1305,7 +1372,98 @@ fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> O
         }
     }
 
-    Some(sanitize_html(&tint_leaves(&frag, &tints)))
+    Some(tint_leaves(&frag, &tints))
+}
+
+/// The hunk-mode copy of a changed container: the merged fragment with every
+/// unchanged leaf outside the context window removed, plus how many it dropped.
+/// `None` when there is nothing to fold — a container whose leaves all changed,
+/// or one small enough that the window already covers it — and the frontend
+/// then renders the full merged copy in both modes.
+///
+/// The window mirrors `collapseUnchanged`'s always-keep-the-adjacent rule
+/// (RenderedDiff.svelte): a change is never left bare. Context is counted in
+/// LEAVES, not source lines: inside a container a leaf is the unit the reader
+/// scans, and one list item can be twenty lines on its own.
+///
+/// Only leaves the merge left untouched can be dropped — a spliced or
+/// word-marked leaf no longer carries its `data-sourcepos`, and `element_span`
+/// will not find it. That is exactly the set this fold wants to keep anyway.
+/// How many unchanged leaves stay either side of a changed one. Mirrors
+/// `collapseUnchanged`'s always-keep-the-adjacent rule (RenderedDiff.svelte):
+/// a change is never left bare. Counted in LEAVES, not source lines — inside a
+/// container a leaf is the unit the reader scans, and one list item can be
+/// twenty lines on its own.
+const LEAF_CONTEXT: usize = 1;
+
+/// Which leaves of one side must stay visible: every leaf an op touched on that
+/// side, widened by `LEAF_CONTEXT`. `None` when they all must, which is the
+/// signal that there is nothing to fold.
+fn leaves_to_keep(ops: &[similar::DiffOp], n: usize, side_is_after: bool) -> Option<Vec<bool>> {
+    if n == 0 {
+        return None;
+    }
+    let mut keep = vec![false; n];
+    for op in ops.iter().copied() {
+        let (start, len) = match (op, side_is_after) {
+            (similar::DiffOp::Equal { .. }, _) => continue,
+            (
+                similar::DiffOp::Insert {
+                    new_index, new_len, ..
+                },
+                true,
+            )
+            | (
+                similar::DiffOp::Replace {
+                    new_index, new_len, ..
+                },
+                true,
+            ) => (new_index, new_len),
+            // A pure deletion has no after-side leaf of its own; its removed
+            // copy splices in at `new_index`, so that position anchors it.
+            (similar::DiffOp::Delete { new_index, .. }, true) => (new_index, 1),
+            (
+                similar::DiffOp::Delete {
+                    old_index, old_len, ..
+                },
+                false,
+            )
+            | (
+                similar::DiffOp::Replace {
+                    old_index, old_len, ..
+                },
+                false,
+            ) => (old_index, old_len),
+            // The before side's mirror: an insertion has no before-side leaf.
+            (similar::DiffOp::Insert { old_index, .. }, false) => (old_index, 1),
+        };
+        let lo = start.saturating_sub(LEAF_CONTEXT);
+        let hi = (start + len + LEAF_CONTEXT).min(n);
+        for k in keep.iter_mut().take(hi).skip(lo) {
+            *k = true;
+        }
+    }
+    (!keep.iter().all(|&k| k)).then_some(keep)
+}
+
+/// Drop every not-kept leaf's element from a sourcepos-annotated fragment,
+/// returning the folded copy and how many it removed. A leaf whose element
+/// cannot be located — the merge rewrote it and stripped its sourcepos — is
+/// left in place: degrading to a longer copy beats corrupting the fragment.
+fn drop_leaves(frag: &str, leaves: &[Leaf], keep: &[bool]) -> Option<(String, u32)> {
+    let mut out = frag.to_string();
+    let mut hidden = 0u32;
+    for (i, leaf) in leaves.iter().enumerate() {
+        if keep[i] {
+            continue;
+        }
+        let Some((start, end)) = element_span(&out, &leaf.sourcepos) else {
+            continue;
+        };
+        out.replace_range(start..end, "");
+        hidden += 1;
+    }
+    (hidden > 0).then_some((out, hidden))
 }
 
 /// Splice removed leaves, tinted red, into the merged copy: before `anchor`'s
@@ -2039,6 +2197,246 @@ mod tests {
                 DiffRow::Changed { .. } => 'C',
             })
             .collect()
+    }
+
+    /// A list of `n` items, with item `changed_at` (0-based) carrying `text`.
+    fn list_doc(n: usize, changed_at: usize, text: &str) -> String {
+        (0..n)
+            .map(|i| {
+                if i == changed_at {
+                    format!("- item {i} {text}")
+                } else {
+                    format!("- item {i}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// The reported defect (TRUNK-93): a long list with ONE changed item must
+    /// not ship every item to the hunk view. The changed row carries a folded
+    /// copy holding the changed leaf plus its adjacent context, and a count of
+    /// what it hid — the full copy stays for full mode.
+    #[test]
+    fn changed_container_carries_a_folded_copy_holding_only_the_changed_leaf_and_context() {
+        let before = list_doc(20, 10, "old");
+        let after = list_doc(20, 10, "new");
+        let rows = diff_rows(&before, &after);
+        assert_eq!(kinds(&rows), "C", "{rows:?}");
+        let DiffRow::Changed {
+            merged_html,
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        let full = merged_html.as_ref().expect("merged copy");
+        assert_eq!(
+            full.matches("<li").count(),
+            20,
+            "full copy keeps every item"
+        );
+
+        let folded = hunk_merged_html.as_ref().expect("folded copy");
+        // items 9, 10, 11 survive: the change plus one adjacent leaf each side.
+        assert_eq!(folded.matches("<li").count(), 3, "{folded}");
+        assert!(folded.contains("item 10"), "{folded}");
+        assert!(folded.contains("item 9"), "{folded}");
+        assert!(folded.contains("item 11"), "{folded}");
+        assert!(!folded.contains("item 0"), "{folded}");
+        assert!(!folded.contains("item 19"), "{folded}");
+        assert_eq!(*hunk_hidden_leaves, 17, "{folded}");
+    }
+
+    /// The fold removes whole elements, so its output must nest as cleanly as
+    /// the copy it came from — checked with the independent balance oracle,
+    /// never the fold's own logic.
+    #[test]
+    fn folded_container_copy_stays_tag_balanced() {
+        let before = list_doc(20, 10, "old");
+        let after = list_doc(20, 10, "new");
+        let rows = diff_rows(&before, &after);
+        let DiffRow::Changed {
+            hunk_merged_html, ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        let folded = hunk_merged_html.as_ref().expect("folded copy");
+        assert!(is_tag_balanced(folded), "{folded}");
+    }
+
+    /// Split renders the two tinted column fragments, not the merged copy, so
+    /// the fold must reach them too — otherwise hunk mode folds inline and
+    /// renders the whole container beside it.
+    #[test]
+    fn changed_container_folds_both_split_column_fragments() {
+        let rows = diff_rows(&list_doc(20, 10, "old"), &list_doc(20, 10, "new"));
+        let DiffRow::Changed {
+            hunk_before_html,
+            hunk_after_html,
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        assert_eq!(before_html.matches("<li").count(), 20);
+        assert_eq!(after_html.matches("<li").count(), 20);
+
+        let fb = hunk_before_html.as_ref().expect("folded before");
+        let fa = hunk_after_html.as_ref().expect("folded after");
+        assert_eq!(fb.matches("<li").count(), 3, "{fb}");
+        assert_eq!(fa.matches("<li").count(), 3, "{fa}");
+        // The changed leaf survives the fold. Its text is word-marked, so the
+        // raw source string is split across tags — assert on the changed word,
+        // which is what the reader is there to see.
+        assert!(fb.contains("item 10 ") && fb.contains(">old<"), "{fb}");
+        assert!(fa.contains("item 10 ") && fa.contains(">new<"), "{fa}");
+        assert!(!fb.contains("item 0<"), "{fb}");
+        assert!(is_tag_balanced(fb), "{fb}");
+        assert!(is_tag_balanced(fa), "{fa}");
+    }
+
+    /// A pure insertion has no before-side leaf of its own, so the before
+    /// column's keep set must anchor on the insertion point — or the fold drops
+    /// the very context that shows what the new item sits between.
+    #[test]
+    fn inserted_leaf_keeps_its_neighbours_on_the_before_column() {
+        let before = list_doc(20, 99, "");
+        let mut items: Vec<String> = (0..20).map(|i| format!("- item {i}")).collect();
+        items.insert(10, "- brand new".to_string());
+        let after = items.join("\n");
+
+        let rows = diff_rows(&before, &after);
+        let DiffRow::Changed {
+            hunk_before_html,
+            hunk_after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        let fa = hunk_after_html.as_ref().expect("folded after");
+        assert!(fa.contains("brand new"), "{fa}");
+        let fb = hunk_before_html.as_ref().expect("folded before");
+        // The before side has no inserted leaf; it keeps the items the new one
+        // was placed between, so the reader sees where it landed.
+        assert!(fb.contains("item 9") || fb.contains("item 10"), "{fb}");
+        assert!(is_tag_balanced(fb), "{fb}");
+    }
+
+    /// Nothing to fold: every leaf is within the window, so the row carries no
+    /// folded copy and the frontend renders the full one in both modes.
+    #[test]
+    fn short_container_with_nothing_outside_the_window_carries_no_folded_copy() {
+        let rows = diff_rows(&list_doc(3, 1, "old"), &list_doc(3, 1, "new"));
+        let DiffRow::Changed {
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        assert!(hunk_merged_html.is_none(), "{rows:?}");
+        assert_eq!(*hunk_hidden_leaves, 0, "{rows:?}");
+    }
+
+    /// A changed PARAGRAPH is one unit of prose with no inner structure: it
+    /// must never grow a folded copy, or hunk mode would hide half a sentence.
+    #[test]
+    fn changed_single_leaf_block_carries_no_folded_copy() {
+        let rows = diff_rows("the quick fox", "the slow fox");
+        let DiffRow::Changed {
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        assert!(hunk_merged_html.is_none(), "{rows:?}");
+        assert_eq!(*hunk_hidden_leaves, 0, "{rows:?}");
+    }
+
+    /// A changed table folds by row, and its `<thead>`/`<tbody>` skeleton must
+    /// survive: dropping a `<tr>` is not the same as dropping its section.
+    #[test]
+    fn changed_table_folds_by_row_and_keeps_its_sections() {
+        let table = |changed_at: usize, text: &str| {
+            let mut md = String::from("| a | b |\n| --- | --- |\n");
+            for i in 0..20 {
+                if i == changed_at {
+                    md.push_str(&format!("| r{i} | {text} |\n"));
+                } else {
+                    md.push_str(&format!("| r{i} | v |\n"));
+                }
+            }
+            md
+        };
+        let rows = diff_rows(&table(10, "old"), &table(10, "new"));
+        let DiffRow::Changed {
+            hunk_merged_html, ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        let folded = hunk_merged_html.as_ref().expect("folded copy");
+        assert!(folded.contains("<thead>"), "{folded}");
+        assert!(folded.contains("<tbody>"), "{folded}");
+        assert!(folded.contains("r10"), "{folded}");
+        assert!(!folded.contains("r0<"), "{folded}");
+        assert!(is_tag_balanced(folded), "{folded}");
+    }
+
+    /// TRUNK-93's reported case, reduced to its shape: a rules document whose
+    /// body is one long list, with a single item edited. Before the fold this
+    /// shipped every item to hunk mode.
+    #[test]
+    fn a_long_rules_list_with_one_edited_item_folds_to_that_item_and_its_neighbours() {
+        let doc = |text: &str| {
+            let mut md = String::from("# Rules\n\n");
+            for i in 0..17 {
+                md.push_str(&format!(
+                    "- rule {i}: a long paragraph of prose about the pipeline stage,\n  wrapping onto a second line for realism{}\n",
+                    if i == 2 { text } else { "" }
+                ));
+            }
+            md
+        };
+        let rows = diff_rows(&doc(" and the old clause"), &doc(" and the new clause"));
+        let list = rows
+            .iter()
+            .find(|r| matches!(r, DiffRow::Changed { .. }))
+            .expect("the list is the changed row");
+        let DiffRow::Changed {
+            merged_html,
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = list
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            merged_html
+                .as_ref()
+                .expect("full copy")
+                .matches("<li")
+                .count(),
+            17,
+            "full mode still shows every rule"
+        );
+        let folded = hunk_merged_html.as_ref().expect("folded copy");
+        assert_eq!(folded.matches("<li").count(), 3, "{folded}");
+        // The merge splits the changed word out into its own <ins>, so the
+        // source phrase never appears whole — assert on the word itself.
+        assert!(folded.contains(">new</ins>"), "{folded}");
+        assert_eq!(*hunk_hidden_leaves, 14, "{folded}");
     }
 
     /// Independent oracle for "the fragment's tags nest correctly" — deliberately

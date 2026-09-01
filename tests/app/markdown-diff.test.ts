@@ -86,6 +86,52 @@ describe("the rendered markdown diff", () => {
 		).toBe(0);
 	});
 
+	// TRUNK-93, the reported defect: a rules document whose body is one long
+	// list showed every item in hunk mode when a single item had changed. The
+	// pane opens in hunk mode, so this is the default reading of such a file.
+	it("hides a long list's unchanged items in hunk mode, and shows them all in full mode", async () => {
+		const list = (third: string) =>
+			Array.from({ length: 20 }, (_, i) =>
+				i === 10 ? `- item ${i} ${third}` : `- item ${i}`,
+			).join("\n");
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${list("old")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${list("new")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		const items = await waitFor("the rendered list", () => {
+			const rendered = app.diffPane.renderedListItems();
+			return rendered.length > 0 ? rendered : null;
+		});
+		// The changed item plus one neighbour each side — not all twenty. The
+		// changed item reads "old new": the merged copy carries the del and the
+		// ins together, which is the whole point of the inline view.
+		expect(items).toEqual(["item 9", "item 10 old new", "item 11"]);
+		expect(app.diffPane.renderedFoldNotes()).toEqual(["17 items hidden"]);
+
+		await app.diffPane.showFullFile();
+
+		await expect(
+			waitFor("the full list", () => {
+				const rendered = app.diffPane.renderedListItems();
+				return rendered.length === 20 ? rendered : null;
+			}),
+		).resolves.toContain("item 0");
+		expect(app.diffPane.renderedFoldNotes()).toEqual([]);
+	});
+
 	it("shows one merged copy per changed list, with no style to choose", async () => {
 		const app = await setup({
 			repo: {

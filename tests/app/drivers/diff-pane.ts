@@ -1,6 +1,7 @@
 import { waitFor } from "../harness/wait.js";
 
 const SHOW_RENDERED = 'button[title="Show rendered markdown"]';
+const SHOW_FULL_FILE = 'button[title="Show full file"]';
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 
@@ -11,6 +12,15 @@ export class DiffPaneDriver {
 	async showRendered(): Promise<void> {
 		const button = await waitFor("the rendered-markdown toggle", () =>
 			document.querySelector<HTMLButtonElement>(SHOW_RENDERED),
+		);
+
+		button.click();
+	}
+
+	/** Switches the pane from hunk mode to the whole file. */
+	async showFullFile(): Promise<void> {
+		const button = await waitFor("the full-file toggle", () =>
+			document.querySelector<HTMLButtonElement>(SHOW_FULL_FILE),
 		);
 
 		button.click();
@@ -34,6 +44,16 @@ export class DiffPaneDriver {
 	/** The text of every ins word mark in the rendered view, topmost first. */
 	renderedWordAdded(): string[] {
 		return textsOf(".rendered-diff ins.md-word-add");
+	}
+
+	/** The text of every list item the rendered view shows, topmost first. */
+	renderedListItems(): string[] {
+		return textsOf(".rendered-diff li");
+	}
+
+	/** The container fold's "N items hidden" notes, topmost first. */
+	renderedFoldNotes(): string[] {
+		return textsOf(".rendered-diff .rendered-fold");
 	}
 
 	/** The rendered blocks still carrying the full background wash. */

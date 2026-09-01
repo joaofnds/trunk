@@ -302,8 +302,24 @@ type InlineItem =
 			html: string;
 			changeIndex: number | null;
 			wash: boolean;
+			// Leaves the backend folded out of this block's hunk-mode copy, for
+			// the "N items hidden" note under it. 0 when nothing was folded.
+			hiddenLeaves: number;
 	  }
 	| { type: "sep"; count: number };
+
+// The copy of a changed CONTAINER to render: hunk mode prefers the folded copy
+// (unchanged leaves outside the context window dropped, TRUNK-93), full mode
+// always shows every leaf. A row with no folded copy — a single-leaf block, or
+// a container with nothing to fold — renders its merged copy in both modes.
+function mergedCopy(r: DiffRow & { kind: "changed" }): {
+	html: string | undefined;
+	hiddenLeaves: number;
+} {
+	if (contentMode === "hunk" && r.hunkMergedHtml)
+		return { html: r.hunkMergedHtml, hiddenLeaves: r.hunkHiddenLeaves ?? 0 };
+	return { html: r.mergedHtml, hiddenLeaves: 0 };
+}
 
 const inlineItems = $derived.by((): InlineItem[] =>
 	projected.flatMap((p): InlineItem[] => {
@@ -318,11 +334,19 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					html: r.html,
 					changeIndex: null,
 					wash: true,
+					hiddenLeaves: 0,
 				},
 			];
 		if (r.kind === "added")
 			return [
-				{ type: "block", tint: "added", html: r.html, changeIndex, wash: true },
+				{
+					type: "block",
+					tint: "added",
+					html: r.html,
+					changeIndex,
+					wash: true,
+					hiddenLeaves: 0,
+				},
 			];
 		if (r.kind === "removed")
 			return [
@@ -332,19 +356,22 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					html: r.html,
 					changeIndex,
 					wash: true,
+					hiddenLeaves: 0,
 				},
 			];
 		// The suggestion-mode copy: ONE block carrying del/ins marks and
 		// red/green leaves together. A block with no merged copy (code, dense
 		// rewrite, structural failure) falls through to the before/after pair.
-		if (r.mergedHtml)
+		const merged = mergedCopy(r);
+		if (merged.html)
 			return [
 				{
 					type: "block",
 					tint: "unchanged",
-					html: r.mergedHtml,
+					html: merged.html,
 					changeIndex,
 					wash: true,
+					hiddenLeaves: merged.hiddenLeaves,
 				},
 			];
 		// changed without a merge (code / dense rewrite / structural failure):
@@ -354,13 +381,21 @@ const inlineItems = $derived.by((): InlineItem[] =>
 		// the background; one with nothing to point at needs the full wash.
 		const wash = !r.hasTints;
 		return [
-			{ type: "block", tint: "removed", html: r.beforeHtml, changeIndex, wash },
+			{
+				type: "block",
+				tint: "removed",
+				html: r.beforeHtml,
+				changeIndex,
+				wash,
+				hiddenLeaves: 0,
+			},
 			{
 				type: "block",
 				tint: "added",
 				html: r.afterHtml,
 				changeIndex: null,
 				wash,
+				hiddenLeaves: 0,
 			},
 		];
 	}),
@@ -401,11 +436,22 @@ function toSplitRow(r: DiffRow, changeIndex: number | null): SplitRow {
 		};
 	// changed: whole before(red) on the left, after(green) on the right — split
 	// stays block-level (word-level lives in the inline view). The wash goes only
-	// where the leaf tints already mark what changed.
+	// where the leaf tints already mark what changed. In hunk mode a container
+	// uses its folded column fragments, so both columns hide the same leaves and
+	// stay row-aligned (TRUNK-93).
 	const wash = !r.hasTints;
+	const folded = contentMode === "hunk" && r.hunkBeforeHtml && r.hunkAfterHtml;
 	return {
-		left: { tint: "removed", html: r.beforeHtml, wash },
-		right: { tint: "added", html: r.afterHtml, wash },
+		left: {
+			tint: "removed",
+			html: folded ? (r.hunkBeforeHtml as string) : r.beforeHtml,
+			wash,
+		},
+		right: {
+			tint: "added",
+			html: folded ? (r.hunkAfterHtml as string) : r.afterHtml,
+			wash,
+		},
 		changeIndex,
 	};
 }
@@ -514,6 +560,15 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
   ><div class="markdown-body">{@html html}</div></div>
 {/snippet}
 
+<!-- What the container fold dropped from this block's hunk-mode copy. Sits
+     under the block, reading as part of it rather than as a document-level
+     seam (that is `.rendered-sep`). Non-expandable, like the separator. -->
+{#snippet foldNote(count: number)}
+  <div class="rendered-fold">
+    {count} item{count === 1 ? "" : "s"} hidden
+  </div>
+{/snippet}
+
 {#snippet separator(count: number)}
   <div class="rendered-sep" role="separator">
     <span class="rendered-sep-label"
@@ -617,6 +672,7 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
           {@render separator(item.count)}
         {:else}
           {@render block(item.tint, item.html, item.changeIndex, item.wash)}
+          {#if item.hiddenLeaves > 0}{@render foldNote(item.hiddenLeaves)}{/if}
         {/if}
       {/each}
     {/if}
@@ -720,6 +776,15 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
     flex: 1;
     height: 1px;
     background: var(--color-border);
+  }
+  /* The container fold's note. Muted and indented to the block's own padding,
+     so it reads as a footnote to the block above rather than a divider. */
+  .rendered-fold {
+    padding: 0 var(--space-4) var(--space-2);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: italic;
+    letter-spacing: 0.02em;
   }
   .rendered-sep-label {
     color: var(--color-text-muted);

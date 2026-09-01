@@ -402,6 +402,79 @@ describe("RenderedDiff", () => {
 		return rows;
 	}
 
+	// TRUNK-93: a container block (list/table) whose leaves are mostly unchanged
+	// must not render whole in hunk mode. The backend ships the folded copy; the
+	// frontend picks it only in hunk mode, and notes what it hid.
+	const foldedRow: DiffRow = {
+		kind: "changed",
+		beforeHtml: "<ul><li>a</li><li>old</li><li>c</li></ul>",
+		afterHtml: "<ul><li>a</li><li>new</li><li>c</li></ul>",
+		mergedHtml: "<ul><li>a</li><li>new</li><li>c</li><li>tail</li></ul>",
+		hunkMergedHtml: "<ul><li>a</li><li>new</li><li>c</li></ul>",
+		hunkHiddenLeaves: 1,
+		afterStart: 1,
+		afterEnd: 4,
+	};
+
+	it("renders a container's folded copy in hunk mode and its full copy in full mode (inline)", async () => {
+		safeInvoke.mockResolvedValue({
+			rows: [foldedRow],
+			whitespaceOnly: false,
+		});
+
+		const { container, rerender } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+			},
+		});
+		await screen.findByText("new");
+
+		expect(container.querySelectorAll("li")).toHaveLength(3);
+		expect(container.textContent).not.toContain("tail");
+		expect(container.querySelector(".rendered-fold")?.textContent).toBe(
+			"1 item hidden",
+		);
+
+		await rerender({
+			...baseProps,
+			layoutMode: "inline",
+			contentMode: "full",
+		});
+		expect(container.querySelectorAll("li")).toHaveLength(4);
+		expect(container.textContent).toContain("tail");
+		expect(container.querySelector(".rendered-fold")).toBeNull();
+	});
+
+	it("renders a container's folded copy in hunk mode in split, on both columns", async () => {
+		safeInvoke.mockResolvedValue({
+			rows: [
+				{
+					...foldedRow,
+					beforeHtml: "<ul><li>a</li><li>old</li><li>c</li><li>tail</li></ul>",
+					afterHtml: "<ul><li>a</li><li>new</li><li>c</li><li>tail</li></ul>",
+					hunkBeforeHtml: "<ul><li>a</li><li>old</li><li>c</li></ul>",
+					hunkAfterHtml: "<ul><li>a</li><li>new</li><li>c</li></ul>",
+				},
+			],
+			whitespaceOnly: false,
+		});
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "split",
+				contentMode: "hunk",
+			},
+		});
+		await screen.findByText("new");
+
+		// Three items per column, not four: the fold applies to both sides.
+		expect(container.querySelectorAll("li")).toHaveLength(6);
+		expect(container.textContent).not.toContain("tail");
+	});
+
 	it("keeps unchanged rows within contextLines of a change, folding the rest into a line-counted separator (inline)", async () => {
 		safeInvoke.mockResolvedValue({
 			rows: changeSandwich(),
