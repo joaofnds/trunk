@@ -41,12 +41,15 @@ import {
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
 	ICON_WIDTH,
+	PILL_FONT,
 	PILL_FONT_SIZE,
 	PILL_GAP,
 	PILL_HEIGHT,
+	PILL_MARGIN_LEFT,
 	PILL_PADDING_X,
 } from "../lib/graph-constants.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { laneRefForRow } from "../lib/lane-ref.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
@@ -1249,6 +1252,13 @@ const pillData = $derived.by(() =>
 );
 
 let hoveredPill = $state<OverlayRefPill | null>(null);
+
+/** Row the pointer is over, for the lane's branch name. Naming a branch is a
+ *  property of the hovered commit, so it needs no viewport state. */
+let hoveredRow = $state<number | null>(null);
+const hoveredLaneRef = $derived(
+	hoveredRow === null ? undefined : laneRefForRow(displayItems, hoveredRow),
+);
 let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function pillMouseEnter(pill: OverlayRefPill) {
@@ -1825,6 +1835,43 @@ $effect(() => {
           </g>
           {/if}
           {#if columnVisibility.ref}
+            <!-- The hovered row's lane, named. A commit is usually reachable from
+                 several branches; the lane is the one placement put it on, and the
+                 one its colour already implies. Skipped when the row carries its
+                 own pill, which says the same thing louder. -->
+            {#if hoveredLaneRef && hoveredRow !== null && !displayItems[hoveredRow]?.refs.length}
+              {@const ghostY = geometry.cy(hoveredRow)}
+              {@const ghostW = PILL_PADDING_X * 2 + ICON_WIDTH + ICON_GAP + measureTextWidth(hoveredLaneRef.short_name, PILL_FONT)}
+              <g class="overlay-ghost-pill" opacity="0.55">
+                <line
+                  x1={PILL_MARGIN_LEFT + ghostW}
+                  y1={ghostY}
+                  x2={refOffset + COLUMN_PADDING_X + geometry.cx(displayItems[hoveredRow].column)}
+                  y2={ghostY}
+                  stroke={laneColor(hoveredLaneRef.color_index)}
+                  stroke-width={displaySettings.pillStroke}
+                  stroke-dasharray="2 2" />
+                <rect
+                  x={PILL_MARGIN_LEFT}
+                  y={ghostY - PILL_HEIGHT / 2}
+                  width={ghostW}
+                  height={PILL_HEIGHT}
+                  rx={PILL_HEIGHT / 2}
+                  ry={PILL_HEIGHT / 2}
+                  fill="var(--bg-2)"
+                  stroke={laneColor(hoveredLaneRef.color_index)}
+                  stroke-opacity="0.5"
+                  stroke-dasharray="2 2" />
+                <foreignObject
+                  x={PILL_MARGIN_LEFT + PILL_PADDING_X}
+                  y={ghostY - PILL_HEIGHT / 2}
+                  width={ghostW - PILL_PADDING_X * 2}
+                  height={PILL_HEIGHT}
+                >
+                  <span style="display: block; line-height: {PILL_HEIGHT}px; color: {laneColor(hoveredLaneRef.color_index)}; font-size: {PILL_FONT_SIZE}px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden;">{hoveredLaneRef.short_name}</span>
+                </foreignObject>
+              </g>
+            {/if}
             <g class="overlay-pills">
               {#each visible.pills as pill}
                 {@const overflowBadgeWidth = pill.overflowCount > 0 ? `+${pill.overflowCount}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2 : 0}
@@ -2036,7 +2083,10 @@ $effect(() => {
         overlaySnippet={graphOverlay}
       >
         {#snippet renderItem(commit, index)}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
           <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
+          </div>
         {/snippet}
       </VirtualList>
       {/key}
