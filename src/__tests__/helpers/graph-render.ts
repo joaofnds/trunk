@@ -306,8 +306,8 @@ export async function mountScrolledGraph(
 }
 
 /**
- * Scrolls the viewport and waits for the list to render the window that position
- * implies, re-issuing the scroll each round until it holds.
+ * Scrolls the viewport and waits for the rendered window to come to rest,
+ * re-issuing the scroll each round until it does.
  *
  * Two things make a single assignment insufficient. `VirtualList` handles a
  * scroll event on a `requestAnimationFrame`, which jsdom runs on a ~16ms timer,
@@ -315,15 +315,19 @@ export async function mountScrolledGraph(
  * And `CommitGraph` scrolls itself to the HEAD row once per mount, on a deferred
  * frame of its own — landing after an early scroll and resetting it to 0.
  *
- * So wait on the rendered row index rather than on a duration, and keep asking
- * until the observable agrees. The window's first row is what the scroll is for.
+ * Rest is two consecutive rounds reporting the same non-zero first row. Waiting
+ * for a row index computed from a row height instead would need this helper to
+ * know which height the mount was given, and getting that wrong is invisible:
+ * it exits early on a window that is merely somewhere rather than settled, which
+ * passes on an idle machine and fails under load. Nothing here waits on a
+ * duration to decide.
  */
 async function settledScroll(
 	container: HTMLElement,
 	viewport: HTMLElement,
 	scrollTop: number,
 ): Promise<void> {
-	const target = Math.floor(scrollTop / ROW_HEIGHT);
+	let previous: number | null = null;
 
 	for (let round = 0; round < SETTLE_ROUNDS; round++) {
 		viewport.scrollTop = scrollTop;
@@ -332,14 +336,23 @@ async function settledScroll(
 		await frame();
 		await flushRound();
 
-		const first = container.querySelector<HTMLElement>("[data-original-index]");
-		const start = Number.parseInt(first?.dataset.originalIndex ?? "", 10);
-		if (Number.isFinite(start) && start > 0 && start <= target) return;
+		const start = renderedStart(container);
+		if (start !== null && start > 0 && start === previous) return;
+		previous = start;
 	}
 
 	throw new Error(
-		`the list never left visibleStart 0 after scrolling to row ${target}`,
+		`the rendered window never came to rest after scrolling to ${scrollTop}px; ` +
+			`its first row was ${renderedStart(container)} after ${SETTLE_ROUNDS} rounds`,
 	);
+}
+
+/** The first row index the list is currently rendering, or null if none is. */
+function renderedStart(container: HTMLElement): number | null {
+	const first = container.querySelector<HTMLElement>("[data-original-index]");
+	const start = Number.parseInt(first?.dataset.originalIndex ?? "", 10);
+
+	return Number.isFinite(start) ? start : null;
 }
 
 function frame(): Promise<void> {
