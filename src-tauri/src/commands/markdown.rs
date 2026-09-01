@@ -1006,8 +1006,30 @@ fn leaf_word_merge(before_raw: &str, after_raw: &str) -> Option<(String, String)
     let (before_units, after_units, ops) = merge_units(before_raw, after_raw)?;
     let before_marked = merge_emit_one_side(&ops, &before_units, &after_units, MergeSide::Before);
     let after_marked = merge_emit_one_side(&ops, &before_units, &after_units, MergeSide::After);
+    if !before_marked.contains("md-word-") && !after_marked.contains("md-word-") {
+        // Nothing visible changed between the renders (a markup-only edit the
+        // renderer omits); unmarked copies would hide the change entirely,
+        // the tint at least says where it is.
+        return None;
+    }
     (merged_is_balanced(&before_marked) && merged_is_balanced(&after_marked))
         .then_some((before_marked, after_marked))
+}
+
+/// comrak's standalone render of a table row carries the section tag the row
+/// would open or close in its table — `<thead>…</thead>` around a header
+/// row, an unclosed `<tbody>` before the first body row. The leaf itself is
+/// the `<tr>`; the section belongs to the container and would nest or dangle
+/// if spliced.
+fn strip_table_section(raw: &str) -> &str {
+    let mut rest = raw.trim();
+    for prefix in ["<thead>", "<tbody>"] {
+        rest = rest.strip_prefix(prefix).unwrap_or(rest).trim_start();
+    }
+    for suffix in ["</thead>", "</tbody>"] {
+        rest = rest.strip_suffix(suffix).unwrap_or(rest).trim_end();
+    }
+    rest
 }
 
 /// Replace one leaf's whole element in a sourcepos-annotated container
@@ -1029,6 +1051,12 @@ fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Opt
 
     let open_marker = format!("<{tag}");
     let close_marker = format!("</{tag}>");
+    if !replacement.trim_start().starts_with(&open_marker) {
+        // The standalone render wraps some leaves differently than they sit
+        // in the container (a header row gains its own <thead>); splicing
+        // that in would nest sections.
+        return None;
+    }
     let mut depth = 1usize;
     let mut pos = start + open_marker.len();
     while depth > 0 {
@@ -1368,7 +1396,7 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                     .map(|c| Leaf {
                         signature: block_signature(c),
                         sourcepos: c.data.borrow().sourcepos.to_string(),
-                        raw_html: format_node(c, &options),
+                        raw_html: strip_table_section(&format_node(c, &options)).to_string(),
                     })
                     .collect();
                 (leaves, format_node(n, &options_sp), String::new())
@@ -2307,6 +2335,57 @@ mod tests {
             }
         }
         out
+    }
+
+    // A markup-only edit (an HTML comment, raw inline HTML) renders
+    // identically on both sides, so a word merge has nothing to mark; the
+    // pair keeps the wash so the change stays visible at all.
+    #[test]
+    fn a_markup_only_leaf_change_keeps_the_wash() {
+        let before = "- alpha <!-- old --> beta gamma delta\n- keep";
+        let after = "- alpha <!-- new --> beta gamma delta\n- keep";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("a markup-only edit is a Changed row: {rows:?}");
+        };
+
+        assert!(
+            before_html.contains("md-removed") && after_html.contains("md-added"),
+            "an invisible edit keeps the leaf wash: {before_html} / {after_html}"
+        );
+        assert!(
+            !before_html.contains("md-word-delete"),
+            "nothing to word-mark on identical renders: {before_html}"
+        );
+    }
+
+    // A table row's standalone render carries its section tag (<thead>, an
+    // unclosed <tbody> on the first body row); the splice must strip it so
+    // the marked row sits in the container's own section, never a nested or
+    // duplicate one.
+    #[test]
+    fn a_header_row_edit_word_marks_inside_a_single_thead() {
+        let before = "| old head | b |\n|---|---|\n| 1 | 2 |";
+        let after = "| new head | b |\n|---|---|\n| 1 | 2 |";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("a header edit is a Changed row: {rows:?}");
+        };
+
+        assert_eq!(
+            after_html.matches("<thead").count(),
+            1,
+            "one header section, never a nested or duplicate one: {after_html}"
+        );
+        assert!(
+            after_html.contains(r#"<ins class="md-word-add">new</ins>"#),
+            "the changed header word is marked in place: {after_html}"
+        );
     }
 
     // A leaf rewritten past the density fence keeps the whole-item wash: no
