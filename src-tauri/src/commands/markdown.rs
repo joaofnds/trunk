@@ -1215,16 +1215,11 @@ fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> O
     let mut frag = after.sourcepos_html.clone();
     let mut tints: Vec<(&str, &str)> = Vec::new();
 
+    // Removed leaves splice in first, while every anchor's element is still
+    // pristine — a Replace splice strips its leaf's sourcepos, and a tail
+    // deletion anchored on that leaf would otherwise lose the whole copy.
     for op in ops.iter().copied() {
         match op {
-            similar::DiffOp::Equal { .. } => {}
-            similar::DiffOp::Insert {
-                new_index, new_len, ..
-            } => {
-                for l in &after.leaves[new_index..new_index + new_len] {
-                    tints.push((&l.sourcepos, "md-added"));
-                }
-            }
             similar::DiffOp::Delete {
                 old_index,
                 old_len,
@@ -1236,6 +1231,34 @@ fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> O
                     after.leaves.get(new_index).or(after.leaves.last()),
                     new_index >= after.leaves.len(),
                 )?;
+            }
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } if old_len > new_len => {
+                let anchor_idx = new_index + new_len;
+                insert_removed_leaves(
+                    &mut frag,
+                    &before.leaves[old_index + new_len..old_index + old_len],
+                    after.leaves.get(anchor_idx).or(after.leaves.last()),
+                    anchor_idx >= after.leaves.len(),
+                )?;
+            }
+            _ => {}
+        }
+    }
+
+    for op in ops.iter().copied() {
+        match op {
+            similar::DiffOp::Equal { .. } | similar::DiffOp::Delete { .. } => {}
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                for l in &after.leaves[new_index..new_index + new_len] {
+                    tints.push((&l.sourcepos, "md-added"));
+                }
             }
             similar::DiffOp::Replace {
                 old_index,
@@ -1262,15 +1285,6 @@ fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> O
                         }
                     }
                 }
-                if old_len > new_len {
-                    let anchor_idx = new_index + new_len;
-                    insert_removed_leaves(
-                        &mut frag,
-                        &before.leaves[old_index + pairs..old_index + old_len],
-                        after.leaves.get(anchor_idx).or(after.leaves.last()),
-                        anchor_idx >= after.leaves.len(),
-                    )?;
-                }
                 for l in &after.leaves[new_index + pairs..new_index + new_len] {
                     tints.push((&l.sourcepos, "md-added"));
                 }
@@ -1283,7 +1297,9 @@ fn merged_container(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> O
 
 /// Splice removed leaves, tinted red, into the merged copy: before `anchor`'s
 /// element, or right after it when the deletion falls at the container's tail
-/// (`after_anchor`).
+/// (`after_anchor`). A tail insertion also steps over a closing table-section
+/// tag and into the next section's opening one, so a row anchored on the
+/// header row lands in the body's position, never inside `<thead>`.
 fn insert_removed_leaves(
     frag: &mut String,
     removed: &[Leaf],
@@ -1298,9 +1314,36 @@ fn insert_removed_leaves(
         .join("\n");
 
     let (start, end) = element_span(frag, &anchor.sourcepos)?;
-    let pos = if after_anchor { end } else { start };
+    let pos = if after_anchor {
+        skip_section_boundary(frag, end)
+    } else {
+        start
+    };
     frag.insert_str(pos, &format!("\n{insertion}\n"));
     Some(())
+}
+
+/// Step an insertion point over a closing `</thead>`/`</tbody>` and into a
+/// following `<tbody>` when one opens right there.
+fn skip_section_boundary(frag: &str, mut pos: usize) -> usize {
+    for close in ["</thead>", "</tbody>"] {
+        let rest = &frag[pos..];
+        let trimmed = rest.trim_start();
+        if trimmed.starts_with(close) {
+            pos += (rest.len() - trimmed.len()) + close.len();
+            break;
+        }
+    }
+
+    let rest = &frag[pos..];
+    let trimmed = rest.trim_start();
+    if trimmed.starts_with("<tbody")
+        && let Some(gt) = trimmed.find('>')
+    {
+        pos += (rest.len() - trimmed.len()) + gt + 1;
+    }
+
+    pos
 }
 
 /// Tint a leaf's raw render by injecting a class on its outer tag.
@@ -2442,6 +2485,53 @@ mod tests {
         assert!(
             doomed < keep_two,
             "the deleted item sits in reading order: {merged}"
+        );
+    }
+
+    // Editing the last surviving item and deleting the items after it in one
+    // change: the deletions anchor on a leaf whose element the splice already
+    // replaced, which must not cost the merged copy.
+    #[test]
+    fn tail_deletions_after_an_edited_last_item_keep_the_merged_copy() {
+        let before = "- keep\n- alpha one x\n- beta two y\n- gamma three z";
+        let after = "- keep\n- alpha uno x\n- beta dos y";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("the list edit is a Changed row: {rows:?}");
+        };
+
+        let merged = merged_html
+            .as_deref()
+            .expect("cleanly merging pairs plus a tail deletion still merge");
+        assert!(
+            merged.contains("gamma three z") && merged.contains(r#"class="md-removed""#),
+            "the deleted tail item is present and tinted: {merged}"
+        );
+        assert!(
+            merged.contains(r#"<ins class="md-word-add">uno</ins>"#),
+            "the edited pair keeps its marks: {merged}"
+        );
+    }
+
+    // Deleting a table's only body row anchors on the header; the red row
+    // must land in the table body's position, never inside <thead>.
+    #[test]
+    fn a_deleted_only_body_row_lands_outside_the_header_section() {
+        let before = "| h1 | h2 |\n|---|---|\n| a | b |";
+        let after = "| h1 | h2 |\n|---|---|";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed { merged_html, .. } = &rows[0] else {
+            panic!("the row deletion is a Changed row: {rows:?}");
+        };
+
+        let merged = merged_html.as_deref().expect("a row deletion merges");
+        let thead_close = merged.find("</thead>").expect("a header section");
+        let removed = merged
+            .find(r#"class="md-removed""#)
+            .expect("the deleted row is tinted");
+        assert!(
+            removed > thead_close,
+            "the removed row sits after the header section: {merged}"
         );
     }
 

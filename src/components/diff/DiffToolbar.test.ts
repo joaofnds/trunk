@@ -111,3 +111,31 @@ describe("DiffToolbar word wrap toggle", () => {
 		expect(toggle.disabled).toBe(true);
 	});
 });
+
+describe("DiffToolbar merged-style toggle", () => {
+	it("disables the layout toggle while merged changes are shown", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "README.md",
+				renderMode: "rendered" as const,
+				renderedStyle: "merged" as const,
+			},
+		});
+
+		expect(
+			screen.getByTitle("Merged changes are a single stream"),
+		).toBeDisabled();
+		expect(
+			screen.getByTitle("Show before and after copies"),
+		).toBeInTheDocument();
+	});
+
+	it("hides the merged toggle while the source view is active", () => {
+		render(DiffToolbar, {
+			props: { ...baseProps, selectedPath: "README.md" },
+		});
+
+		expect(screen.queryByTitle("Show merged changes")).toBeNull();
+	});
+});

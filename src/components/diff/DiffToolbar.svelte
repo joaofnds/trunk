@@ -139,7 +139,12 @@ const renderedActive = $derived(
 
   <button
     class="toggle-btn"
-    title={layoutMode === "inline" ? "Side-by-side view" : "Inline view"}
+    disabled={renderedActive && renderedStyle === "merged"}
+    title={renderedActive && renderedStyle === "merged"
+      ? "Merged changes are a single stream"
+      : layoutMode === "inline"
+        ? "Side-by-side view"
+        : "Inline view"}
     onclick={() => onlayoutmodechange(layoutMode === "inline" ? "split" : "inline")}
   >
     {#if layoutMode === "inline"}
