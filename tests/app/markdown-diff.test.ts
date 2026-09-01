@@ -80,9 +80,9 @@ describe("the rendered markdown diff", () => {
 		});
 
 		expect(marks.join(" ")).toContain("repo's own file wins over this skill");
-		const washed = document.querySelectorAll(
-			".rendered-diff .md-removed:not(.no-wash), .rendered-diff .md-added:not(.no-wash)",
-		);
-		expect(washed.length, "no block keeps the full wash").toBe(0);
+		expect(
+			app.diffPane.renderedWashed().length,
+			"no block keeps the full wash",
+		).toBe(0);
 	});
 });

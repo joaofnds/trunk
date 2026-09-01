@@ -35,6 +35,15 @@ export class DiffPaneDriver {
 	renderedWordAdded(): string[] {
 		return textsOf(".rendered-diff ins.md-word-add");
 	}
+
+	/** The rendered blocks still carrying the full background wash. */
+	renderedWashed(): Element[] {
+		return [
+			...document.querySelectorAll(
+				".rendered-diff .md-removed:not(.no-wash), .rendered-diff .md-added:not(.no-wash)",
+			),
+		];
+	}
 }
 
 function textsOf(selector: string): string[] {
