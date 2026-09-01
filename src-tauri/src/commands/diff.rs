@@ -19,6 +19,15 @@ pub(crate) fn is_head_unborn(repo: &git2::Repository) -> bool {
     }
 }
 
+/// Every diff Trunk computes starts here. The indent heuristic matches git
+/// CLI's default hunk boundaries; staging must build from the same options,
+/// or its hunk indices drift from what the view shows.
+pub(crate) fn new_diff_options() -> git2::DiffOptions {
+    let mut opts = git2::DiffOptions::new();
+    opts.indent_heuristic(true);
+    opts
+}
+
 fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
     let context = if req.show_full_file {
         100_000 // practical cap for full-file view
@@ -628,7 +637,7 @@ pub fn diff_unstaged_raw_for_bench(
     options: &DiffRequestOptions,
 ) -> Result<(Vec<FileDiff>, Vec<SideContent>), TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = new_diff_options();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
@@ -645,7 +654,7 @@ pub fn diff_unstaged_inner(
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = new_diff_options();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     opts.include_untracked(true);
@@ -663,7 +672,7 @@ pub fn diff_staged_inner(
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = new_diff_options();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
@@ -687,7 +696,7 @@ pub fn diff_commit_inner(
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
     let commit_tree = commit.tree()?;
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
     let diff = if commit.parent_count() == 0 {
         repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
@@ -710,7 +719,7 @@ pub fn list_commit_files_inner(
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
     let commit_tree = commit.tree()?;
-    let opts = git2::DiffOptions::new();
+    let opts = new_diff_options();
     let diff = if commit.parent_count() == 0 {
         repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut { opts }))?
     } else {
@@ -733,7 +742,7 @@ pub fn diff_commit_file_inner(
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
     let commit_tree = commit.tree()?;
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = new_diff_options();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
@@ -773,7 +782,7 @@ pub fn list_compare_files_inner(
     let diff = repo.diff_tree_to_tree(
         base_tree.as_ref(),
         target_tree.as_ref(),
-        Some(&mut git2::DiffOptions::new()),
+        Some(&mut new_diff_options()),
     )?;
     Ok(file_metadata_list(&diff))
 }
@@ -791,7 +800,7 @@ pub fn diff_compare_file_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = new_diff_options();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);

@@ -435,6 +435,41 @@ fn diff_unstaged_show_full_file_returns_all_lines() {
 }
 
 #[test]
+fn ambiguous_slider_lands_on_the_boundary_git_cli_picks() {
+    // Duplicating the "a\n\nb" stanza lets the inserted run slide: Myers
+    // alone emits +a +blank +b after the context "b" (old_start 3); git CLI's
+    // default indent heuristic emits +b +a +blank before it (old_start 2).
+    // Verified against `git diff --indent-heuristic` / `--no-indent-heuristic`.
+    let ctx = TestContext::builder()
+        .with_file("slider.txt", "1\n2\na\n\nb\n3\n4\n")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(
+        ctx.repo_path().join("slider.txt"),
+        "1\n2\na\n\nb\na\n\nb\n3\n4\n",
+    )
+    .unwrap();
+
+    let file_diffs = ctx
+        .diff_unstaged("slider.txt")
+        .expect("diff_unstaged failed");
+    let added: Vec<&str> = file_diffs[0]
+        .hunks
+        .iter()
+        .flat_map(|h| h.lines.iter())
+        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Add))
+        .map(|l| l.content.trim_end_matches('\n'))
+        .collect();
+
+    assert_eq!(
+        added,
+        vec!["b", "a", ""],
+        "expected the indent-heuristic placement git CLI chooses"
+    );
+}
+
+#[test]
 fn word_span_basic_pair() {
     let ctx = TestContext::builder()
         .with_file("greet.txt", "hello world\n")

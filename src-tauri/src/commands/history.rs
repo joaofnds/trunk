@@ -143,7 +143,7 @@ pub fn wip_diff_stats_inner(
     };
     staged.find_similar(None)?;
 
-    let mut unstaged_opts = git2::DiffOptions::new();
+    let mut unstaged_opts = crate::commands::diff::new_diff_options();
     unstaged_opts.include_untracked(true);
     unstaged_opts.recurse_untracked_dirs(true);
     unstaged_opts.show_untracked_content(true);

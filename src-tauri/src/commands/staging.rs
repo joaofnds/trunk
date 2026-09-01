@@ -189,7 +189,7 @@ pub fn stage_files_inner(
 
 /// Build diff options for workdir diffs that include untracked files.
 fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
-    let mut opts = git2::DiffOptions::new();
+    let mut opts = crate::commands::diff::new_diff_options();
     opts.pathspec(file_path);
     opts.disable_pathspec_match(true);
     opts.include_untracked(true);
@@ -441,7 +441,7 @@ pub fn unstage_hunk_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
 
     // Generate reversed diff (index -> HEAD) so applying it to index undoes the staged change
-    let mut diff_opts = git2::DiffOptions::new();
+    let mut diff_opts = crate::commands::diff::new_diff_options();
     diff_opts
         .pathspec(file_path)
         .disable_pathspec_match(true)
@@ -1059,7 +1059,7 @@ pub fn unstage_lines_inner(
     // Generate the staged diff (HEAD -> index), same as what the user sees.
     // We use the forward diff so line indices match the user's view,
     // then build a reversed partial patch to undo selected lines.
-    let mut diff_opts = git2::DiffOptions::new();
+    let mut diff_opts = crate::commands::diff::new_diff_options();
     diff_opts.pathspec(file_path).disable_pathspec_match(true);
 
     let diff = if is_head_unborn(&repo) {
