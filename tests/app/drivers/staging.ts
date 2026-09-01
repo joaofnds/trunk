@@ -127,6 +127,16 @@ export class StagingDriver {
 		return contentsOf(REMOVED_LINE);
 	}
 
+	/** The word-emphasized text on removed rows, topmost first. */
+	emphasizedRemoved(): string[] {
+		return contentsOf(`${REMOVED_LINE} .word-delete`);
+	}
+
+	/** The word-emphasized text on added rows, topmost first. */
+	emphasizedAdded(): string[] {
+		return contentsOf(`${ADDED_LINE} .word-add`);
+	}
+
 	/** Stages the hunk at `ordinal`, topmost first. */
 	async stageHunk(ordinal: number): Promise<void> {
 		const button = await waitFor(`${STAGE_HUNK} on hunk ${ordinal}`, () =>

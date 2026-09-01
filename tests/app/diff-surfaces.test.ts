@@ -5,6 +5,31 @@ import { waitFor } from "./harness/wait.js";
 
 /** Two committed files, each carrying its own uncommitted edit, so the staged
  *  and unstaged surfaces show different content the moment one is staged. */
+/** A hard-wrapped paragraph whose first sentence is deleted, reflowing the
+ *  lines after it — the dotfiles baccec9 repro. Word emphasis must mark the
+ *  removed sentence and nothing else. */
+const REFLOWED_PARAGRAPH: RepoSpec = {
+	steps: [
+		{
+			step: "file",
+			path: "core.md",
+			content:
+				"- On conflict, the more specific rule governs. The repo's own AGENTS.md or CLAUDE.md\n" +
+				"  wins over this skill. A language file wins over this core file. The doctrine holds\n" +
+				"  the reasons at principle level and wins where this skill seems to differ from it.\n",
+		},
+		{ step: "commit", message: "base" },
+		{
+			step: "file",
+			path: "core.md",
+			content:
+				"- On conflict, the more specific rule governs. A language file wins over this core\n" +
+				"  file. The doctrine holds the reasons at principle level and wins where this skill\n" +
+				"  seems to differ from it.\n",
+		},
+	],
+};
+
 const TWO_EDITED_FILES: RepoSpec = {
 	steps: [
 		{ step: "file", path: "a.txt", content: "a\n" },
@@ -41,5 +66,28 @@ describe("the diff surfaces", () => {
 				return lines[0] === "alpha" ? lines : null;
 			}),
 		).resolves.toEqual(["alpha"]);
+	});
+
+	it("emphasizes only the removed sentence when a deletion reflows a paragraph", async () => {
+		const app = await setup({ repo: REFLOWED_PARAGRAPH });
+		await app.repo.open();
+		await app.staging.open();
+
+		await app.staging.openFile("core.md");
+		await waitFor("the core.md diff", () => {
+			const lines = app.staging.removedLines();
+			return lines.length > 0 ? lines : null;
+		});
+
+		const removedWords = app.staging
+			.emphasizedRemoved()
+			.join(" ")
+			.split(/\s+/)
+			.filter(Boolean)
+			.join(" ");
+		expect(removedWords).toBe(
+			"The repo's own AGENTS.md or CLAUDE.md wins over this skill.",
+		);
+		expect(app.staging.emphasizedAdded()).toEqual([]);
 	});
 });
