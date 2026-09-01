@@ -33,6 +33,10 @@ export interface VirtualListLayoutOptions {
 	/** The height one rendered row measures. The list averages these into the
 	 *  row height it lays every offset out from. */
 	rowHeight?: number;
+	/** Change the box this caller already installed, instead of taking a frame
+	 *  of its own. For a caller that re-stubs to change its own already-stubbed
+	 *  box and restores exactly once; a new frame there would never be popped. */
+	replace?: boolean;
 }
 
 /**
@@ -46,6 +50,7 @@ export function stubVirtualListLayout(
 	const {
 		viewportHeight = UNSCROLLED_VIEWPORT_HEIGHT,
 		rowHeight = ROW_HEIGHT,
+		replace,
 	} = options;
 	const width = VIEWPORT_WIDTH;
 
@@ -57,6 +62,7 @@ export function stubVirtualListLayout(
 		width,
 		height: viewportHeight,
 		measure: (el) => measureByRole(el, viewportHeight, rowHeight, width),
+		replace,
 	});
 }
 

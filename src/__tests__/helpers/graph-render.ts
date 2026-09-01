@@ -298,9 +298,14 @@ export async function mountScrolledGraph(
 		// Reinstalls the tall stub rather than uninstalling: every other mount in
 		// this module is a render golden and needs it, so returning to jsdom's
 		// zeros here would break the next golden rather than isolate this test.
+		// `replace: true` swaps this call's own frame back to the tall box instead
+		// of pushing a new one nothing would ever pop (TRUNK-52).
 		unmount: () => {
 			unmount();
-			stubVirtualListLayout({ viewportHeight: UNSCROLLED_VIEWPORT_HEIGHT });
+			stubVirtualListLayout({
+				viewportHeight: UNSCROLLED_VIEWPORT_HEIGHT,
+				replace: true,
+			});
 		},
 	};
 }
