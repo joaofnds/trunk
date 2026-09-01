@@ -1,3 +1,4 @@
+import type { LaneSpan } from "./overlay-visible.js";
 import type {
 	GraphCommit,
 	OverlayConnection,
@@ -156,4 +157,36 @@ export function buildGraphData(
 	}
 
 	return { nodes, connections, maxColumns };
+}
+
+/**
+ * The extent of each lane, merged from the connections that hold it.
+ *
+ * One connection spans a single child-parent pair, so a column carrying a run of
+ * commits produces a chain of short connections rather than one long span. They
+ * are unioned per column: a lane is the column, not any one link in it.
+ *
+ * Only same-column connections hold a lane; a fork or a merge crosses columns and
+ * belongs to neither.
+ */
+export function laneSpans(connections: OverlayConnection[]): LaneSpan[] {
+	const byColumn = new Map<number, LaneSpan>();
+
+	for (const c of connections) {
+		if (c.childX !== c.parentX) continue;
+
+		const minRow = Math.min(c.childY, c.parentY);
+		const maxRow = Math.max(c.childY, c.parentY);
+		const existing = byColumn.get(c.childX);
+
+		if (!existing) {
+			byColumn.set(c.childX, { column: c.childX, minRow, maxRow });
+			continue;
+		}
+
+		existing.minRow = Math.min(existing.minRow, minRow);
+		existing.maxRow = Math.max(existing.maxRow, maxRow);
+	}
+
+	return [...byColumn.values()];
 }

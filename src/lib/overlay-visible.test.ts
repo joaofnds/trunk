@@ -195,6 +195,118 @@ describe("getVisibleOverlayElements", () => {
 			};
 		}
 
+		it("a lane's pill is kept as a ghost once its row scrolls above", () => {
+			// GitKraken keeps a branch's name against its lane while the lane is on
+			// screen and the branch tip is not. Without it the lane of a branch far
+			// behind its upstream carries no name for hundreds of rows (TRUNK-87).
+			const pills = [makePill(0)];
+			const paths = [makePath({ minRow: 0, maxRow: 40 })];
+
+			const result = getVisibleOverlayElements(
+				paths,
+				[makeNode({ y: 0, x: 0 })],
+				10,
+				20,
+				pills,
+				[{ column: 0, minRow: 0, maxRow: 40 }],
+			);
+
+			expect(result.pills).toHaveLength(1);
+			expect(result.pills[0]).toMatchObject({
+				label: "main",
+				rowIndex: 10,
+				isGhost: true,
+			});
+		});
+
+		it("a ghost pill sits on the first visible row", () => {
+			const pills = [makePill(0)];
+
+			const result = getVisibleOverlayElements(
+				[],
+				[makeNode({ y: 0, x: 0 })],
+				7,
+				20,
+				pills,
+				[{ column: 0, minRow: 0, maxRow: 40 }],
+				36,
+			);
+
+			expect(result.pills[0].y).toBe(7 * 36 + 18);
+			expect(result.pills[0].dotCy).toBe(7 * 36 + 18);
+		});
+
+		it("no ghost while the pill's own row is visible", () => {
+			const pills = [makePill(12)];
+
+			const result = getVisibleOverlayElements(
+				[],
+				[makeNode({ y: 12, x: 0 })],
+				10,
+				20,
+				pills,
+				[{ column: 0, minRow: 0, maxRow: 40 }],
+			);
+
+			expect(result.pills).toHaveLength(1);
+			expect(result.pills[0].rowIndex).toBe(12);
+			expect(result.pills[0].isGhost).toBeFalsy();
+		});
+
+		it("no ghost once the lane itself has ended above", () => {
+			const pills = [makePill(0)];
+
+			const result = getVisibleOverlayElements(
+				[],
+				[makeNode({ y: 0, x: 0 })],
+				10,
+				20,
+				pills,
+				[{ column: 0, minRow: 0, maxRow: 5 }],
+			);
+
+			expect(result.pills).toHaveLength(0);
+		});
+
+		it("only the nearest ref above becomes a lane's ghost", () => {
+			const older = makePill(0);
+			const nearer = { ...makePill(4), label: "near", name: "refs/heads/near" };
+
+			const result = getVisibleOverlayElements(
+				[],
+				[makeNode({ y: 0, x: 0 }), makeNode({ y: 4, x: 0 })],
+				10,
+				20,
+				[older, nearer],
+				[{ column: 0, minRow: 0, maxRow: 40 }],
+			);
+
+			expect(result.pills).toHaveLength(1);
+			expect(result.pills[0].label).toBe("near");
+		});
+
+		it("ghosts on one row are laid out side by side, in lane order", () => {
+			const right = { ...makePill(0), dotCx: 24, width: 40 };
+			const left = { ...makePill(1), dotCx: 8, width: 50, label: "main" };
+
+			const result = getVisibleOverlayElements(
+				[],
+				[makeNode({ y: 0, x: 1 }), makeNode({ y: 1, x: 0 })],
+				10,
+				20,
+				[right, left],
+				[
+					{ column: 0, minRow: 0, maxRow: 40 },
+					{ column: 1, minRow: 0, maxRow: 40 },
+				],
+			);
+
+			const ghosts = result.pills.filter((p) => p.isGhost);
+			expect(ghosts).toHaveLength(2);
+			expect(ghosts[0].dotCx).toBe(8);
+			expect(ghosts[1].x).toBe(ghosts[0].x + ghosts[0].width + 4);
+		});
+
 		it("pills filtered correctly by rowIndex range", () => {
 			const pills = [makePill(2), makePill(5), makePill(8), makePill(12)];
 			const result = getVisibleOverlayElements([], [], 4, 9, pills);

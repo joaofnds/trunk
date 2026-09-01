@@ -298,15 +298,6 @@ export interface OverlayPath {
 	maxRow: number;
 }
 
-/** A lane's ref name, pinned at the top of the viewport while the ref's own row
- *  is scrolled above it. Positioned by column, not by row: unlike a ref pill it
- *  belongs to the visible region rather than to a commit. */
-export interface LaneLabel {
-	column: number;
-	label: string;
-	colorIndex: number;
-}
-
 export interface OverlayRefPill {
 	x: number; // left edge of pill in SVG space
 	y: number; // vertical center (cy(rowIndex))
@@ -322,6 +313,8 @@ export interface OverlayRefPill {
 	isRemoteOnly: boolean; // 65-70% opacity dimming
 	isNonHead: boolean; // brightness(0.75)
 	overflowCount: number; // 0 = no badge, >0 = "+N" badge
+	/** Kept against its lane after its own row scrolled above; drawn dimmed. */
+	isGhost?: boolean;
 	allRefs: RefLabel[]; // all refs on this commit (for hover expansion)
 	dotCx: number; // target commit dot X coordinate
 	dotCy: number; // target commit dot Y coordinate

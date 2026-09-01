@@ -14,7 +14,7 @@ import {
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { tick, untrack } from "svelte";
-import { buildGraphData } from "../lib/active-lanes.js";
+import { buildGraphData, laneSpans } from "../lib/active-lanes.js";
 import {
 	mergeBranch,
 	rebaseBranch,
@@ -41,20 +41,12 @@ import {
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
 	ICON_WIDTH,
-	LANE_LABEL_CHAR_W,
-	LANE_LABEL_DOT_R,
-	LANE_LABEL_FONT_SIZE,
-	LANE_LABEL_GAP,
-	LANE_LABEL_H,
-	LANE_LABEL_INSET_Y,
-	LANE_LABEL_PAD_X,
 	PILL_FONT_SIZE,
 	PILL_GAP,
 	PILL_HEIGHT,
 	PILL_PADDING_X,
 } from "../lib/graph-constants.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
-import { buildLaneLabels, laneSpans } from "../lib/lane-labels.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
@@ -1768,8 +1760,7 @@ $effect(() => {
       <!-- SVG overlay snippet - renders inside virtual list scroll container -->
       {#snippet graphOverlay(contentHeight: number, visibleStart: number, visibleEnd: number)}
         {@const refOffset = columnVisibility.ref ? columnWidths.ref : 0}
-        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData)}
-        {@const laneLabels = buildLaneLabels(graphData.nodes, displayItems, laneSpans(graphData.connections), visibleStart, visibleEnd)}
+        {@const visible = getVisibleOverlayElements(paths, graphData.nodes, visibleStart, visibleEnd, pillData, laneSpans(graphData.connections), svgRowHeight)}
         {@const graphColWidth = columnVisibility.graph ? columnWidths.graph : naturalGraphWidth}
         {@const scrollX = Math.min(graphScrollX, maxGraphScrollX)}
         <svg
@@ -1832,43 +1823,13 @@ $effect(() => {
               {/if}
             {/each}
           </g>
-          <!-- Lane labels — a lane can run for hundreds of rows, so scrolled into
-               the middle of one the line carries no dot and no name. The label names
-               it at the top of the viewport, and is absent once the ref's own row is
-               on screen (TRUNK-87). Clipped and panned with the rails it labels. -->
-          {#if laneLabels.length > 0}
-          <g clip-path="url(#graph-clip)">
-            <g class="overlay-lane-labels" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
-              {#each laneLabels as laneLabel}
-                {@const lx = geometry.cx(laneLabel.column)}
-                {@const ly = geometry.cy(visibleStart) - displaySettings.rowHeight / 2 + LANE_LABEL_INSET_Y}
-                <rect
-                  x={lx - LANE_LABEL_DOT_R - LANE_LABEL_PAD_X}
-                  y={ly - LANE_LABEL_H / 2}
-                  width={LANE_LABEL_DOT_R * 2 + LANE_LABEL_PAD_X * 2 + laneLabel.label.length * LANE_LABEL_CHAR_W + LANE_LABEL_GAP}
-                  height={LANE_LABEL_H}
-                  rx={LANE_LABEL_H / 2}
-                  fill="var(--bg-2)"
-                  stroke={laneColor(laneLabel.colorIndex)}
-                  stroke-width={displaySettings.pillStroke} />
-                <circle cx={lx} cy={ly} r={LANE_LABEL_DOT_R} fill={laneColor(laneLabel.colorIndex)} />
-                <text
-                  x={lx + LANE_LABEL_DOT_R + LANE_LABEL_GAP}
-                  y={ly}
-                  dominant-baseline="central"
-                  font-size={LANE_LABEL_FONT_SIZE}
-                  fill={laneColor(laneLabel.colorIndex)}
-                  style="font-weight: 500;">{laneLabel.label}</text>
-              {/each}
-            </g>
-          </g>
-          {/if}
           {/if}
           {#if columnVisibility.ref}
             <g class="overlay-pills">
               {#each visible.pills as pill}
                 {@const overflowBadgeWidth = pill.overflowCount > 0 ? `+${pill.overflowCount}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2 : 0}
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
+
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
                   {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
@@ -1880,7 +1841,7 @@ $effect(() => {
                     y2={pill.dotCy}
                     stroke={laneColor(pill.commitColorIndex)}
                     stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                    opacity={pill.isRemoteOnly ? 0.67 : 1}
+                    opacity={pill.isGhost ? 0.5 : pill.isRemoteOnly ? 0.67 : 1}
                     style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                   />
                   {#if pill.overflowCount > 0}
@@ -1892,7 +1853,7 @@ $effect(() => {
                       y2={pill.y}
                       stroke={laneColor(pill.commitColorIndex)}
                       stroke-width={pill.isHead ? displaySettings.pillStroke * 2 : displaySettings.pillStroke}
-                      opacity={pill.isRemoteOnly ? 0.67 : 1}
+                      opacity={pill.isGhost ? 0.5 : pill.isRemoteOnly ? 0.67 : 1}
                       style={pill.isNonHead && !pill.isRemoteOnly ? 'filter: brightness(0.75)' : ''}
                     />
                   {/if}
@@ -1907,9 +1868,9 @@ $effect(() => {
                   rx={PILL_HEIGHT / 2}
                   ry={PILL_HEIGHT / 2}
                   fill={laneColor(pill.colorIndex)}
-                  fill-opacity={pill.isRemoteOnly ? 0.1 : 0.14}
+                  fill-opacity={pill.isGhost ? 0.07 : pill.isRemoteOnly ? 0.1 : 0.14}
                   stroke={laneColor(pill.colorIndex)}
-                  stroke-opacity="0.5"
+                  stroke-opacity={pill.isGhost ? 0.3 : 0.5}
                   pointer-events="auto"
                   style:cursor={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'}
                   onmouseenter={() => pillMouseEnter(pill)}
@@ -1921,7 +1882,7 @@ $effect(() => {
                 <!-- Icon rendered directly in SVG at a fixed position (no CSS layout) -->
                 {#if PILL_ICONS[pill.refType]}
                   {@const PillIcon = PILL_ICONS[pill.refType]}
-                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity="0.9" style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
+                  <g transform="translate({pill.x + PILL_PADDING_X}, {pill.y - ICON_WIDTH / 2})" opacity={pill.isGhost ? 0.5 : 0.9} style="pointer-events: auto; cursor: {pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? 'pointer' : 'context-menu'};" oncontextmenu={(e) => showRefContextMenu(e, refFromPill(pill))} ondblclick={pill.refType === 'LocalBranch' || pill.refType === 'RemoteBranch' ? (e: MouseEvent) => handleRefCheckout(e, refFromPill(pill)) : undefined}>
                     <PillIcon size={ICON_WIDTH} />
                   </g>
                 {/if}
@@ -1938,7 +1899,7 @@ $effect(() => {
                     style="
                       display: block;
                       line-height: {PILL_HEIGHT}px;
-                      color: {laneColor(pill.colorIndex)};
+                      color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.6;' : ''}
                       font-size: {PILL_FONT_SIZE}px;
                       font-family: var(--font-sans);
                       font-weight: {pill.isHead ? 700 : 500};
@@ -1964,7 +1925,7 @@ $effect(() => {
                     fill={laneColor(pill.colorIndex)}
                     fill-opacity="0.14"
                     stroke={laneColor(pill.colorIndex)}
-                    stroke-opacity="0.5"
+                    stroke-opacity={pill.isGhost ? 0.3 : 0.5}
                     pointer-events="auto"
                     onmouseenter={() => pillMouseEnter(pill)}
                     onmouseleave={pillMouseLeave}
@@ -1977,7 +1938,7 @@ $effect(() => {
                   >
                     <span
                       style="
-                        color: {laneColor(pill.colorIndex)};
+                        color: {laneColor(pill.colorIndex)};{pill.isGhost ? ' opacity: 0.6;' : ''}
                         font-size: {BADGE_FONT_SIZE}px;
                         font-family: var(--font-sans);
                         font-weight: 500;
