@@ -824,27 +824,45 @@ fn push_changed(runs: &mut Vec<MergeRun>, before: &[Unit], after: &[Unit]) {
     }
 }
 
+/// Whether `units` leaves emission inside a `<pre>` block. `pre` is not an
+/// inline element, so its tags ride through as passthrough content units and
+/// the open-context stack never sees them.
+fn track_preformatted(units: &[Unit], preformatted: &mut bool) {
+    for unit in units {
+        if unit.text.starts_with('<') && tag_name(&unit.text) == "pre" {
+            *preformatted = !unit.text.starts_with("</");
+        }
+    }
+}
+
 /// Walk the regrouped diff into one merged fragment: `Equal` runs pass through
 /// (adjusting the open-context), each `Changed` run becomes one balanced
 /// `md-word-delete` wrapper and one `md-word-add` wrapper, separated by a
-/// space so struck text never renders jammed against inserted text.
+/// space so struck text never renders jammed against inserted text. Inside
+/// `<pre>` no space is fabricated: whitespace is preserved there, and the
+/// separator would corrupt the displayed code.
 fn merge_emit(runs: &[MergeRun], after: &[Unit]) -> String {
     let mut out = String::new();
     let mut open: Vec<String> = Vec::new();
+    let mut preformatted = false;
     for run in runs {
         match run {
             MergeRun::Equal { new_index, len, .. } => {
-                for unit in &after[*new_index..new_index + len] {
+                let units = &after[*new_index..new_index + len];
+                for unit in units {
                     transition(&mut out, &mut open, &unit.context);
                     out.push_str(&unit.text);
                 }
+                track_preformatted(units, &mut preformatted);
             }
             MergeRun::Changed { before, after } => {
                 emit_run(&mut out, &mut open, before, "del", "md-word-delete");
-                if !run_is_whitespace(before) && !run_is_whitespace(after) {
+                track_preformatted(before, &mut preformatted);
+                if !preformatted && !run_is_whitespace(before) && !run_is_whitespace(after) {
                     out.push(' ');
                 }
                 emit_run(&mut out, &mut open, after, "ins", "md-word-add");
+                track_preformatted(after, &mut preformatted);
             }
         }
     }
@@ -2119,6 +2137,24 @@ mod tests {
         assert!(
             !merged.contains("</del><ins"),
             "a del run is separated from the ins run that follows it: {merged}"
+        );
+    }
+
+    // The separator space is a prose affordance; inside <pre> whitespace is
+    // preserved, so an injected space would corrupt the displayed code.
+    #[test]
+    fn no_space_is_fabricated_inside_a_preformatted_block() {
+        let merged = html_token_merge(
+            "<li><p>compute the total</p>\n<pre><code>let x = one();\n</code></pre>\n</li>",
+            "<li><p>compute the total</p>\n<pre><code>let x = uno();\n</code></pre>\n</li>",
+        )
+        .expect("a one-word code change inside a list item merges, not None");
+
+        assert!(
+            merged.contains(
+                r#"<del class="md-word-delete"><code>one();</code></del><ins class="md-word-add"><code>uno();</code></ins>"#
+            ),
+            "del and ins sit adjacent inside pre, no fabricated space: {merged}"
         );
     }
 
