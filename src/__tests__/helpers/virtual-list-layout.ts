@@ -101,6 +101,8 @@ function installReportingResizeObserver(): void {
 
 	globalThis.ResizeObserver = class ReportingResizeObserver {
 		#targets = new Set<Element>();
+		#pending = new Set<Element>();
+		#scheduled = false;
 		#callback: ResizeObserverCallback;
 
 		constructor(callback: ResizeObserverCallback) {
@@ -109,18 +111,34 @@ function installReportingResizeObserver(): void {
 
 		observe(target: Element) {
 			this.#targets.add(target);
+			this.#pending.add(target);
+			if (this.#scheduled) return;
+
+			// One callback for every element observed in this turn, the way a real
+			// observer delivers a batch. Reporting each element in its own callback
+			// instead lets the list's debounced measurement fire on a set of one,
+			// and it discards a one-sample average outright — so the measured height
+			// is computed correctly and then thrown away, and the overlay keeps
+			// painting at the estimate.
+			this.#scheduled = true;
 			queueMicrotask(() => {
-				if (!this.#targets.has(target)) return;
-				this.#callback([entryFor(target)], this as unknown as ResizeObserver);
+				this.#scheduled = false;
+				const batch = [...this.#pending].filter((el) => this.#targets.has(el));
+				this.#pending.clear();
+				if (batch.length === 0) return;
+
+				this.#callback(batch.map(entryFor), this as unknown as ResizeObserver);
 			});
 		}
 
 		unobserve(target: Element) {
 			this.#targets.delete(target);
+			this.#pending.delete(target);
 		}
 
 		disconnect() {
 			this.#targets.clear();
+			this.#pending.clear();
 		}
 	} as unknown as typeof ResizeObserver;
 }

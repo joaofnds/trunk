@@ -92,6 +92,20 @@ describe("the commit graph scrolled", () => {
 		expect(graph.rowHeight()).toBe(ROW_HEIGHT);
 	});
 
+	/**
+	 * A second mount measured its rows one at a time, and the list discards a
+	 * one-sample average, so the overlay silently kept painting at the estimate
+	 * while the first mount in the file passed. Under load the same split reached
+	 * the first mount too. Two mounts is the smallest case that shows it.
+	 */
+	it("measures its rows again on a second mount in the same file", async () => {
+		const MEASURED = ROW_HEIGHT + 6;
+
+		const graph = await scrolledToRow(SCROLL_TO_ROW, { rowHeight: MEASURED });
+
+		expect(graph.rowHeight()).toBe(MEASURED);
+	});
+
 	it("moves the rendered window down when the viewport scrolls", async () => {
 		const graph = await scrolledToRow(SCROLL_TO_ROW);
 
