@@ -25,6 +25,16 @@ export class DiffPaneDriver {
 	renderedRemoved(): string[] {
 		return textsOf(REMOVED_BLOCK);
 	}
+
+	/** The text of every del word mark in the rendered view, topmost first. */
+	renderedWordDeleted(): string[] {
+		return textsOf(".rendered-diff del.md-word-delete");
+	}
+
+	/** The text of every ins word mark in the rendered view, topmost first. */
+	renderedWordAdded(): string[] {
+		return textsOf(".rendered-diff ins.md-word-add");
+	}
 }
 
 function textsOf(selector: string): string[] {

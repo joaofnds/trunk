@@ -45,4 +45,46 @@ describe("the rendered markdown diff", () => {
 		).resolves.toEqual(["fresh paragraph"]);
 		expect(app.diffPane.renderedRemoved()).toEqual(["doomed paragraph"]);
 	});
+
+	it("marks a clause removed from a bullet inside the item, with no wash", async () => {
+		const app = await setup({
+			repo: {
+				steps: [
+					{
+						step: "file",
+						path: "doc.md",
+						content:
+							"- On conflict, the specific rule governs. The repo's own file wins over this skill. A language file wins over this core file.\n- Resolve conflicts out loud.\n",
+					},
+					{ step: "commit", message: "base" },
+					{
+						step: "file",
+						path: "doc.md",
+						content:
+							"- On conflict, the specific rule governs. A language file wins over this core file.\n- Resolve conflicts out loud.\n",
+					},
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		const marks = await waitFor("the del word mark", () => {
+			const texts = app.diffPane.renderedWordDeleted();
+			return texts.length > 0 ? texts : null;
+		});
+
+		expect(marks.join(" ")).toContain(
+			"repo's own file wins over this skill",
+		);
+		const washed = document.querySelectorAll(
+			".rendered-diff .md-removed:not(.no-wash), .rendered-diff .md-added:not(.no-wash)",
+		);
+		expect(washed.length, "no block keeps the full wash").toBe(0);
+	});
 });
