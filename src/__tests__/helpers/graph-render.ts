@@ -294,7 +294,8 @@ export async function mountScrolledGraph(
 	return {
 		svg,
 		rowHeight: () => overlayRowHeight(svg),
-		scrollTo: (top: number) => settledScroll(container, viewport, top),
+		scrollTo: (top: number) =>
+			settledScroll(container, viewport, top, rowHeight),
 		// Reinstalls the tall stub rather than uninstalling: every other mount in
 		// this module is a render golden and needs it, so returning to jsdom's
 		// zeros here would break the next golden rather than isolate this test.
@@ -306,8 +307,9 @@ export async function mountScrolledGraph(
 }
 
 /**
- * Scrolls the viewport and waits for the rendered window to come to rest,
- * re-issuing the scroll each round until it does.
+ * Scrolls the viewport and waits until both things a scrolled test reads have
+ * arrived: the window has moved off row 0, and the overlay is drawn at the row
+ * height the mount was given.
  *
  * Two things make a single assignment insufficient. `VirtualList` handles a
  * scroll event on a `requestAnimationFrame`, which jsdom runs on a ~16ms timer,
@@ -315,21 +317,33 @@ export async function mountScrolledGraph(
  * And `CommitGraph` scrolls itself to the HEAD row once per mount, on a deferred
  * frame of its own — landing after an early scroll and resetting it to 0.
  *
- * Rest is two consecutive rounds reporting the same non-zero first row. Waiting
- * for a row index computed from a row height instead would need this helper to
- * know which height the mount was given, and getting that wrong is invisible:
- * it exits early on a window that is merely somewhere rather than settled, which
- * passes on an idle machine and fails under load. Nothing here waits on a
- * duration to decide.
+ * Both conditions are needed because they arrive separately. The list moves the
+ * window as soon as it reads the scroll position, but it paints at its estimated
+ * row height until its own measurement lands a round or more later. Waiting on
+ * the position alone returns while the overlay still says `ROW_HEIGHT` — which is
+ * exactly the "never measured anything" value the row-height test exists to
+ * catch, so the wait would hand that test the failure it is meant to detect.
+ * That version passed on an idle machine, where measurement happened to land in
+ * the same round, and failed four runs in five on a loaded one.
+ *
+ * Nothing here waits on a duration. Both conditions are readings off the render.
  */
 async function settledScroll(
 	container: HTMLElement,
 	viewport: HTMLElement,
 	scrollTop: number,
+	rowHeight: number,
 ): Promise<void> {
-	let previous: number | null = null;
-
 	for (let round = 0; round < SETTLE_ROUNDS; round++) {
+		// Move away first, so the assignment below is always a change the list
+		// can notice. Re-issuing a position it already holds produces no scroll
+		// the list acts on, and if it arrived there before measuring — which is
+		// what the mount's own deferred scroll-to-HEAD does under load — it would
+		// otherwise sit at its estimated row height forever.
+		viewport.scrollTop = 0;
+		viewport.dispatchEvent(new Event("scroll"));
+		await flushRound();
+
 		viewport.scrollTop = scrollTop;
 		viewport.dispatchEvent(new Event("scroll"));
 
@@ -337,14 +351,39 @@ async function settledScroll(
 		await flushRound();
 
 		const start = renderedStart(container);
-		if (start !== null && start > 0 && start === previous) return;
-		previous = start;
+		if (
+			start !== null &&
+			start > 0 &&
+			paintedRowHeight(container) === rowHeight
+		) {
+			return;
+		}
 	}
 
 	throw new Error(
-		`the rendered window never came to rest after scrolling to ${scrollTop}px; ` +
-			`its first row was ${renderedStart(container)} after ${SETTLE_ROUNDS} rounds`,
+		`the scrolled render never settled at ${scrollTop}px: first row ` +
+			`${renderedStart(container)}, overlay row height ` +
+			`${paintedRowHeight(container)}, wanted a non-zero first row at ` +
+			`${rowHeight}px after ${SETTLE_ROUNDS} rounds`,
 	);
+}
+
+/**
+ * The row height the overlay is currently painted at, or null while it holds
+ * too few dots to measure or is mid-render with uneven spacing.
+ *
+ * This is the quantity the row-height test asserts on, which is why the settle
+ * above waits for it rather than for the window's position.
+ */
+function paintedRowHeight(container: HTMLElement): number | null {
+	const svg = overlaySvg(container);
+	if (!svg) return null;
+
+	try {
+		return overlayRowHeight(svg);
+	} catch {
+		return null;
+	}
 }
 
 /** The first row index the list is currently rendering, or null if none is. */
