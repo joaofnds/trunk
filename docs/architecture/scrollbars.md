@@ -93,10 +93,13 @@ Everything else needs a real browser. `just measure` serves the real app so
 
 Two harness notes:
 
-- `src/__tests__/helpers/graph-render.ts` fakes layout for the commit-graph render goldens,
-  and each property has to be stubbed **by name**. Reading one it does not stub collapses
-  every visible range and turns dozens of goldens red for a reason that has nothing to do
-  with the graph.
+- `src/__tests__/helpers/virtual-list-layout.ts` fakes layout for both the commit-graph render
+  goldens and the application harness, and each property has to be stubbed **by name**. Reading
+  one it does not stub collapses every visible range and turns dozens of goldens red for a
+  reason that has nothing to do with the graph. It measures by role rather than answering one
+  number for everything: answering the viewport's height for a row too makes the list measure a
+  row as tall as the viewport, which pins every visible range at 0 and makes a scrolled state
+  untestable.
 - A backgrounded browser tab throttles `requestAnimationFrame`, so setting `scrollTop` from
   a probe fires no `scroll` event at all. Take a screenshot to force a paint, or drive a
   real wheel scroll, before reading anything scroll-driven.

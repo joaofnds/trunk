@@ -1,3 +1,5 @@
+import { stubVirtualListLayout } from "../../../src/__tests__/helpers/virtual-list-layout.js";
+
 /**
  * The gaps a headless DOM leaves under the real component tree. Each one is a
  * polyfill here, never a change to the component: a component that grows an
@@ -8,42 +10,22 @@
  * so the harness boots the application under any runner (parent AC#10).
  */
 
-/**
- * jsdom lays nothing out, so a `VirtualList` container measures zero high, its
- * visible range collapses to the buffer, and the commit graph renders 22 rows
- * however tall the fixture is. The truncated render is self-consistent, which
- * is what makes it worse than an empty one.
- */
-const VIEWPORT_HEIGHT = 4000;
-
-/**
- * The same gap one step further in: `HunkView` withholds its rows entirely
- * until the pane measures wider than zero, so a diff opened under a headless
- * DOM renders no hunks at all and reports nothing about it.
- */
-const VIEWPORT_WIDTH = 1200;
-
 /** Per-glyph rather than uniform, so two equal-length strings can measure
  *  differently the way they do in a proportional font. */
 const WIDE_GLYPH = /[0-9mwMW]/;
 
-export function installDomPolyfills(): void {
-	installResizeObserver();
+export function installDomPolyfills(options: DomOptions = {}): void {
 	installDialog();
 	installAnimate();
 	installScrolling();
-	installLayout();
+	installLayout(options);
 	installTextMeasurement();
 }
 
-function installResizeObserver(): void {
-	if (typeof globalThis.ResizeObserver !== "undefined") return;
-
-	globalThis.ResizeObserver = class {
-		observe() {}
-		unobserve() {}
-		disconnect() {}
-	} as unknown as typeof ResizeObserver;
+export interface DomOptions {
+	/** The scroll viewport's height. Shorter than the list's content is what
+	 *  makes it scroll and cull; the default fits every fixture unscrolled. */
+	viewportHeight?: number;
 }
 
 function installDialog(): void {
@@ -87,29 +69,16 @@ function installScrolling(): void {
 	}
 }
 
-function installLayout(): void {
-	Element.prototype.getBoundingClientRect = function stubbedRect(): DOMRect {
-		return {
-			x: 0,
-			y: 0,
-			top: 0,
-			left: 0,
-			right: 0,
-			bottom: VIEWPORT_HEIGHT,
-			width: 0,
-			height: VIEWPORT_HEIGHT,
-			toJSON: () => ({}),
-		} as DOMRect;
-	};
-
-	Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-		configurable: true,
-		get: () => VIEWPORT_WIDTH,
-	});
-	Object.defineProperty(HTMLElement.prototype, "clientHeight", {
-		configurable: true,
-		get: () => VIEWPORT_HEIGHT,
-	});
+/**
+ * Measures by role rather than answering one height for every element, and
+ * installs the `ResizeObserver` that reports its observations — see
+ * `src/__tests__/helpers/virtual-list-layout.ts`, which the render-golden mount
+ * shares. A stub that conflates the viewport with the rows it holds makes the
+ * list measure a row as tall as the whole viewport, so one row fills it, the
+ * visible range never leaves 0, and no test here can scroll anything.
+ */
+function installLayout(options: DomOptions): void {
+	stubVirtualListLayout({ viewportHeight: options.viewportHeight });
 }
 
 function installTextMeasurement(): void {

@@ -598,6 +598,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src-tauri/tests/test_graph_input.rs` | Pins `layout()`'s page slice, row hydration and the committed input format |
 | `src-tauri/tests/test_graph_goldens.rs` | Drives the 48 captured inputs against every committed golden and export |
 | `src/components/CommitGraph.render.test.ts` | Pins the rendered SVG against `src/__tests__/goldens/graph-render/`: node shapes, dashed flags, connector geometry |
+| `src/components/CommitGraph.scrolled.test.ts` | Pins the overlay behind a viewport shorter than the fixture: the culled window, its row height, and that it moves on scroll. The render goldens all mount unscrolled and cannot see any of it |
 | `src/components/CommitGraph.test.ts` | Pins the graph column's component behaviour that no golden covers |
 
 This table and the `paths:` list in `.claude/rules/commit-graph.md` are **no longer the same

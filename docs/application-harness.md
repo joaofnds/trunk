@@ -139,13 +139,25 @@ The macOS traffic-light reposition is off too, through `TrafficLights::disabled(
 for the native window there segfaults the process. The command still runs; only the AppKit call
 is skipped.
 
-A headless DOM cannot observe layout and paint, scroll and virtualization, WKWebView-specific
-rendering, native OS chrome, or real pointer gestures. Those still need a human or a render
-golden. In particular jsdom lays nothing out, so `harness/dom.ts` stubs a 4000 px viewport —
-without it the commit graph renders 22 rows however tall the fixture is, coherently and wrongly.
-The same stub answers `clientWidth` as well as `clientHeight`, because the diff pane needs a
-width too: `HunkView` withholds its rows entirely until the pane measures wider than zero, so
-a diff opened without it renders no hunks at all and says nothing about why.
+A headless DOM cannot observe layout and paint, WKWebView-specific rendering, native OS chrome,
+or real pointer gestures. Those still need a human or a render golden.
+
+Scroll and virtualization it *can* observe, since `harness/dom.ts` began measuring by role.
+jsdom lays nothing out, so the harness supplies the layout — but a stub that answers one height
+for every element conflates the scroll viewport with the rows inside it, and a virtual list then
+measures a row as tall as the whole viewport. One row fills the viewport, the visible range never
+leaves 0, and nothing can be scrolled however short a viewport the test asks for. Both harnesses
+share `src/__tests__/helpers/virtual-list-layout.ts` instead: the viewport measures the height the
+test asked for, a row measures the real row height, and the list's own arithmetic decides the rest.
+That module also installs a `ResizeObserver` that reports its observations, without which the list
+is never told a row has a size and never measures one at all.
+
+The default viewport still fits every fixture unscrolled, so a test that says nothing about scroll
+behaves as it always did. Pass `viewportHeight` to `setup()` for one that should scroll.
+
+The same stub answers `clientWidth` as well as `clientHeight`, because the diff pane needs a width
+too: `HunkView` withholds its rows entirely until the pane measures wider than zero, so a diff
+opened without it renders no hunks at all and says nothing about why.
 
 ## Writing a test
 

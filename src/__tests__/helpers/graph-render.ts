@@ -9,9 +9,14 @@ import { join } from "node:path";
 import { render } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { expect, vi } from "vitest";
+import { ROW_HEIGHT } from "../../lib/chrome-heights.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import { resetCache } from "../../lib/text-measure.js";
 import type { GraphResponse } from "../../lib/types.js";
+import {
+	stubVirtualListLayout,
+	UNSCROLLED_VIEWPORT_HEIGHT,
+} from "./virtual-list-layout.js";
 import "./tauri-mock";
 
 vi.mock("../../lib/invoke.js", async () => {
@@ -71,29 +76,12 @@ if (typeof Element.prototype.scrollTo === "undefined") {
 // range collapses to the buffer, and the overlay renders 22 rows however tall the
 // fixture is. The truncated render is self-consistent, so nothing about it looks
 // wrong. Removing this stub silently caps every render golden at 22 rows.
-const VIEWPORT_HEIGHT = 4000;
-
-// VirtualList measures the viewport's content box, so `clientHeight` has to be
-// stubbed alongside the rect: leaving it at jsdom's 0 collapses the visible
-// range and every golden renders the untruncated fallback height instead.
-Object.defineProperty(HTMLElement.prototype, "clientHeight", {
-	configurable: true,
-	get: () => VIEWPORT_HEIGHT,
-});
-
-Element.prototype.getBoundingClientRect = function stubbedRect(): DOMRect {
-	return {
-		x: 0,
-		y: 0,
-		top: 0,
-		left: 0,
-		right: 0,
-		bottom: VIEWPORT_HEIGHT,
-		width: 0,
-		height: VIEWPORT_HEIGHT,
-		toJSON: () => ({}),
-	} as DOMRect;
-};
+//
+// `./virtual-list-layout.js` measures by role rather than answering one number
+// for everything: at `UNSCROLLED_VIEWPORT_HEIGHT` every fixture still fits, which
+// is the state the 121 goldens are pinned to, and `mountScrolledGraph` below is
+// the same mount at a viewport short enough to scroll.
+stubVirtualListLayout({ viewportHeight: UNSCROLLED_VIEWPORT_HEIGHT });
 
 /**
  * Loaded on demand, never as a static import: `./tauri-mock` registers its
@@ -129,10 +117,7 @@ export interface MountedGraph {
 	unmount: () => void;
 }
 
-export async function mountGraph(
-	fixture: LayoutExport,
-	wipCount = 0,
-): Promise<MountedGraph> {
+async function renderGraph(fixture: LayoutExport, wipCount: number) {
 	resetCache();
 	vi.mocked(safeInvoke).mockReset();
 	vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
@@ -147,7 +132,7 @@ export async function mountGraph(
 		}
 	});
 
-	const { container, unmount } = render(await graphComponent(), {
+	const rendered = render(await graphComponent(), {
 		props: {
 			repoPath: "/fixture",
 			wipCount,
@@ -157,6 +142,14 @@ export async function mountGraph(
 	});
 
 	await flush();
+	return rendered;
+}
+
+export async function mountGraph(
+	fixture: LayoutExport,
+	wipCount = 0,
+): Promise<MountedGraph> {
+	const { container, unmount } = await renderGraph(fixture, wipCount);
 
 	const expectedRows = fixture.layout.commits.length + (wipCount > 0 ? 1 : 0);
 	const svg = await settledOverlay(container, expectedRows);
@@ -193,6 +186,188 @@ async function settledOverlay(
 function overlaySvg(container: HTMLElement): SVGSVGElement | null {
 	const layer = container.querySelector(".overlay-dots, .overlay-pills");
 	return layer?.closest("svg") ?? null;
+}
+
+/**
+ * A linear fixture of `rows` commits, built in memory from a committed export's
+ * own commit shape.
+ *
+ * A scrolled mount needs more rows than `VirtualList`'s buffer plus its viewport,
+ * and the tallest committed fixture is 30 — under a 20-row buffer that still
+ * renders every row from any scroll position, which is what makes a scroll test
+ * against it pass while proving nothing. Growing the corpus instead would add
+ * render goldens, and these rows exist to be scrolled past rather than to pin a
+ * layout, so they are built here and committed nowhere.
+ */
+export function tallFixture(rows: number): LayoutExport {
+	const seed = loadExport("lane-13-tall-linear");
+	const [tip] = seed.layout.commits;
+
+	const oidOf = (row: number) => `${row}`.padStart(40, "0");
+	const commits = Array.from({ length: rows }, (_, row) => ({
+		...tip,
+		oid: oidOf(row),
+		short_oid: oidOf(row).slice(0, 7),
+		summary: `tall ${rows - row}`,
+		body: null,
+		author_timestamp: tip.author_timestamp - row * 86_400,
+		parent_oids: row === rows - 1 ? [] : [oidOf(row + 1)],
+		refs: row === 0 ? tip.refs : [],
+		is_head: row === 0,
+		is_branch_tip: row === 0,
+	}));
+
+	return {
+		wipCount: 0,
+		layout: { ...seed.layout, commits },
+	};
+}
+
+export interface ScrolledGraphOptions {
+	/** Shorter than the fixture's content, so the list scrolls and culls. */
+	viewportHeight: number;
+	wipCount?: number;
+}
+
+export interface ScrolledGraph {
+	svg: SVGSVGElement;
+	/** The row height the overlay is painted at, read back from the gap between
+	 *  its dots. The defect this mount exists to catch drew this at the viewport
+	 *  height instead of the row height. */
+	rowHeight: () => number;
+	scrollTo: (top: number) => Promise<void>;
+	unmount: () => void;
+}
+
+/**
+ * The graph behind a viewport shorter than its own content: the state the render
+ * goldens cannot reach, because every one of them mounts tall enough to fit the
+ * whole fixture and so never leaves `visibleStart` 0.
+ *
+ * Restores the goldens' full-height layout on unmount. The stub is on the
+ * prototypes and is shared by every mount in the process, so a scrolled test that
+ * left it installed would silently shrink the viewport under a golden.
+ */
+export async function mountScrolledGraph(
+	fixture: LayoutExport,
+	options: ScrolledGraphOptions,
+): Promise<ScrolledGraph> {
+	const { viewportHeight, wipCount = 0 } = options;
+	stubVirtualListLayout({ viewportHeight });
+
+	const { container, unmount } = await renderGraph(fixture, wipCount);
+
+	const viewport = container.querySelector<HTMLElement>(
+		".virtual-list-viewport",
+	);
+	if (!viewport) throw new Error("no virtual list viewport rendered");
+
+	const svg = await settledScrolledOverlay(container);
+
+	return {
+		svg,
+		rowHeight: () => overlayRowHeight(svg),
+		scrollTo: (top: number) => settledScroll(container, viewport, top),
+		unmount: () => {
+			unmount();
+			stubVirtualListLayout({ viewportHeight: UNSCROLLED_VIEWPORT_HEIGHT });
+		},
+	};
+}
+
+/**
+ * Scrolls the viewport and waits for the list to render the window that position
+ * implies, re-issuing the scroll each round until it holds.
+ *
+ * Two things make a single assignment insufficient. `VirtualList` handles a
+ * scroll event on a `requestAnimationFrame`, which jsdom runs on a ~16ms timer,
+ * so a `setTimeout(0)` flush returns before the list has read the new position.
+ * And `CommitGraph` scrolls itself to the HEAD row once per mount, on a deferred
+ * frame of its own — landing after an early scroll and resetting it to 0.
+ *
+ * So wait on the rendered row index rather than on a duration, and keep asking
+ * until the observable agrees. The window's first row is what the scroll is for.
+ */
+async function settledScroll(
+	container: HTMLElement,
+	viewport: HTMLElement,
+	scrollTop: number,
+): Promise<void> {
+	const target = Math.floor(scrollTop / ROW_HEIGHT);
+
+	for (let round = 0; round < SETTLE_ROUNDS; round++) {
+		viewport.scrollTop = scrollTop;
+		viewport.dispatchEvent(new Event("scroll"));
+
+		await frame();
+		await flushRound();
+
+		const first = container.querySelector<HTMLElement>("[data-original-index]");
+		const start = Number.parseInt(first?.dataset.originalIndex ?? "", 10);
+		if (Number.isFinite(start) && start > 0 && start <= target) return;
+	}
+
+	throw new Error(
+		`the list never left visibleStart 0 after scrolling to row ${target}`,
+	);
+}
+
+function frame(): Promise<void> {
+	return new Promise((resolve) => {
+		requestAnimationFrame(() => resolve());
+	});
+}
+
+/**
+ * A scrolled mount cannot wait on the fixture's full row count the way
+ * `mountGraph` does — culling that count away is the point. Wait for the overlay
+ * to hold any row at all, and let the assertions say what the window should be.
+ */
+async function settledScrolledOverlay(
+	container: HTMLElement,
+): Promise<SVGSVGElement> {
+	for (let round = 0; round < SETTLE_ROUNDS; round++) {
+		const svg = overlaySvg(container);
+		if (svg && dots(svg).length > 0) return svg;
+
+		await flushRound();
+	}
+	throw new Error("graph overlay rendered no rows");
+}
+
+/**
+ * The row height the overlay is actually drawn at: the gap between consecutive
+ * dots, which `CommitGraph` computes from the height `VirtualList` measured off
+ * the rendered rows.
+ *
+ * Read from the painted output rather than from any input. A row's
+ * `getBoundingClientRect` would hand back the stub's own answer and assert
+ * nothing, and the item layer's `translateY` sums mostly *unmeasured* rows, which
+ * fall back to the estimate and hide a wrong measurement behind it. The dot gap
+ * is the number a user would see be wrong.
+ */
+function overlayRowHeight(svg: SVGSVGElement): number {
+	const ys = dots(svg).map((dot) =>
+		Number.parseFloat(dot.getAttribute("cy") ?? dot.getAttribute("y") ?? ""),
+	);
+	if (ys.length < 2) throw new Error("need two dots to measure the row gap");
+
+	const gaps = new Set(ys.slice(1).map((y, i) => y - ys[i]));
+	if (gaps.size !== 1) {
+		throw new Error(`dots are unevenly spaced: ${[...gaps].join(", ")}`);
+	}
+
+	return [...gaps][0];
+}
+
+/** Each dot's row index, read back from the `cy` the overlay painted it at. */
+export function dotRows(svg: SVGSVGElement): number[] {
+	return dots(svg).map((dot) => {
+		const cy = Number.parseFloat(
+			dot.getAttribute("cy") ?? dot.getAttribute("y") ?? "",
+		);
+		return Math.round((cy - ROW_HEIGHT / 2) / ROW_HEIGHT);
+	});
 }
 
 /** One element per rendered row: a circle for a commit, a rect for a stash. */

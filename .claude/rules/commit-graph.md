@@ -11,8 +11,8 @@ paths:
   - "src/lib/wip-row.ts"
   - "src/lib/overlay-paths.ts"
   - "src/lib/overlay-visible.ts"
-  - "src/lib/lane-labels.ts"
-  - "src/lib/lane-labels.test.ts"
+  - "src/lib/lane-ref.ts"
+  - "src/lib/lane-ref.test.ts"
   - "src/lib/chrome-heights.ts"
   - "src/lib/graph-constants.ts"
   - "src/components/CommitGraph.svelte"
@@ -33,6 +33,8 @@ paths:
   - "src-tauri/tests/common/rule_inputs.rs"
   - "src-tauri/tests/common/exports.rs"
   - "src/__tests__/helpers/graph-render.ts"
+  - "src/__tests__/helpers/virtual-list-layout.ts"
+  - "src/components/CommitGraph.scrolled.test.ts"
   - "src/components/CommitGraph.render.test.ts"
   - "scripts/qa-stash-fixtures.sh"
   - "scripts/qa-graph-lane-fixtures.sh"
@@ -58,8 +60,7 @@ paths:
 `wip-row.ts` prepends the WIP row → `active-lanes.ts` maps commits to overlay nodes and per-parent connections →
 `overlay-paths.ts` emits SVG paths →
 `overlay-visible.ts` culls off-screen paths, dots and pills →
-`lane-labels.ts` names each lane crossing the viewport whose ref sits above it →
-`CommitGraph.svelte` renders.
+`CommitGraph.svelte` renders, naming the hovered row's lane via `lane-ref.ts`.
 
 `layout_dump.rs` is not a pipeline stage (it is still pipeline source for the rules below):
 it renders a `GraphResult` as the deterministic
@@ -103,8 +104,7 @@ then mirror the same edit into the changelog.
 - Where a reference doc under `docs/` disagrees with the pipeline source — `graph.rs`,
   `placement.rs`, `graph_input.rs`, `status.rs`, `types.rs`, `layout_dump.rs`, `types.ts`,
   `wip-row.ts`, `active-lanes.ts`, `overlay-paths.ts`, `overlay-visible.ts`,
-  `lane-labels.ts`, `graph-constants.ts` and `CommitGraph.svelte` — or with the graph test
-  suites, the code
+  `graph-constants.ts` and `CommitGraph.svelte` — or with the graph test suites, the code
   wins; correct the doc in the same change.
   The binding rules in *this* file do not yield that way: code that violates one is a bug in
   the code, not a rule to rewrite. Amend a rule's **substance** only when the user directs it,

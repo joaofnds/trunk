@@ -17,6 +17,10 @@ export type { RepoSpec, SpecStep } from "./host-client.js";
 
 export interface SetupOptions {
 	repo?: RepoSpec;
+	/** The scroll viewport's height, for a test that needs a list shorter than
+	 *  its own content so it scrolls and culls. Defaults to a viewport tall
+	 *  enough that nothing does. */
+	viewportHeight?: number;
 }
 
 interface Running {
@@ -57,7 +61,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	};
 	internals.route(Object.values(fakes));
 
-	installDomPolyfills();
+	installDomPolyfills({ viewportHeight: options.viewportHeight });
 	internals.install();
 
 	const root = document.createElement("div");
