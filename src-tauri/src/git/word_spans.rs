@@ -114,7 +114,6 @@ fn emphasize_run(
     let mut options = similar::InlineChangeOptions::new();
     options.semantic_cleanup(true);
 
-    let mut raw_coverage = vec![1.0_f32; lines.len()];
     for op in diff.ops() {
         let mut op_has_emphasis = false;
         for change in diff.iter_inline_changes_with_options_deadline(op, options, Some(deadline)) {
@@ -127,12 +126,10 @@ fn emphasize_run(
 
             let mut spans = Vec::new();
             let mut offset: u32 = 0;
-            let mut emphasized_bytes: u32 = 0;
             for (emphasized, segment) in change.values() {
                 let len = segment.len() as u32;
                 if *emphasized && len > 0 {
                     op_has_emphasis = true;
-                    emphasized_bytes += len;
                     spans.push(WordSpan {
                         start: offset,
                         end: offset + len,
@@ -142,22 +139,10 @@ fn emphasize_run(
                 offset += len;
             }
 
-            let content = &lines[line_idx].content;
-            let line_len = content.trim_end_matches(['\n', '\r']).len();
-            if line_len > 0 {
-                raw_coverage[line_idx] = emphasized_bytes as f32 / line_len as f32;
-            }
-            result.spans[line_idx] = polish_spans(spans, content);
+            result.spans[line_idx] = polish_spans(spans, &lines[line_idx].content);
         }
 
-        pair_op_lines(
-            op,
-            op_has_emphasis,
-            &raw_coverage,
-            &del,
-            &add,
-            &mut result.pairing,
-        );
+        pair_op_lines(op, op_has_emphasis, lines, &del, &add, &mut result.pairing);
     }
 
     // The budget ran out inside this run: whatever verdicts the coarse,
@@ -172,18 +157,17 @@ fn emphasize_run(
 
 /// Seat one op's lines. `Equal` lines are identical across the runs and pair
 /// outright. An accepted `Replace` (its refinement produced emphasis) pairs
-/// positionally within the op, but only the pairs where at least one side
-/// keeps a substantial share of its line unemphasized — shared words are what
-/// makes the lines homologous, and a pair emphasized nearly whole on both
-/// sides is two unrelated lines (the initiative's rule: an uncertain pairing
-/// stays unpaired). A refused `Replace` (similar's ratio gate found the sides
-/// unrelated) leaves every line alone; without the acceptance check its lines
-/// would read as zero-coverage and pair. The uneven tail of an op is alone;
-/// one-sided ops have nothing to pair with.
+/// positionally within the op, but each pair must also pass a direct
+/// similarity check of its own two lines — the run-level refinement can
+/// vouch for the run while a positional pair inside it shares nothing (its
+/// real twin sitting one row further), and an uncertain pairing stays
+/// unpaired (the initiative's rule). A refused `Replace` (similar's ratio
+/// gate found the sides unrelated) leaves every line alone. The uneven tail
+/// of an op is alone; one-sided ops have nothing to pair with.
 fn pair_op_lines(
     op: &similar::DiffOp,
     op_has_emphasis: bool,
-    raw_coverage: &[f32],
+    lines: &[DiffLine],
     del: &std::ops::Range<usize>,
     add: &std::ops::Range<usize>,
     pairing: &mut [LinePairing],
@@ -198,9 +182,7 @@ fn pair_op_lines(
         let homologous = match (op.tag(), old_idx, new_idx) {
             (DiffTag::Equal, _, _) => true,
             (DiffTag::Replace, Some(o), Some(n)) => {
-                op_has_emphasis
-                    && (raw_coverage[o] <= WORD_DIFF_COVERAGE_MAX
-                        || raw_coverage[n] <= WORD_DIFF_COVERAGE_MAX)
+                op_has_emphasis && lines_similar(&lines[o].content, &lines[n].content)
             }
             _ => false,
         };
@@ -218,6 +200,54 @@ fn pair_op_lines(
             };
         }
     }
+}
+
+/// The direct check behind a positional pair: the two lines share at least
+/// 40% of the smaller side's word bytes (multiset intersection of their
+/// words). Words, not characters — English lines share most of their
+/// letters while sharing nothing. Lines with no words on either side
+/// (punctuation, braces) pair; a worded line never pairs with a wordless
+/// one.
+fn lines_similar(old: &str, new: &str) -> bool {
+    let old_words = word_multiset(old);
+    let new_words = word_multiset(new);
+    let old_total: usize = word_bytes(&old_words);
+    let new_total: usize = word_bytes(&new_words);
+
+    if old_total == 0 && new_total == 0 {
+        return true;
+    }
+    if old_total == 0 || new_total == 0 {
+        return false;
+    }
+
+    let shared: usize = old_words
+        .iter()
+        .filter_map(|(word, count)| {
+            let both = (*count).min(*new_words.get(word)?);
+            Some(both as usize * word.len())
+        })
+        .sum();
+
+    shared * 5 >= old_total.min(new_total) * 2
+}
+
+fn word_multiset(content: &str) -> std::collections::HashMap<&str, u32> {
+    let mut words: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+    for word in content
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+    {
+        *words.entry(word).or_insert(0) += 1;
+    }
+    words
+}
+
+fn word_bytes(words: &std::collections::HashMap<&str, u32>) -> usize {
+    words
+        .iter()
+        .map(|(word, count)| word.len() * *count as usize)
+        .sum()
 }
 
 /// Apply the readability rules to one line's emphasized spans: bridge tiny
@@ -488,6 +518,23 @@ mod word_span_tests {
                 LinePairing::Alone,
             ],
             "a pair sharing no words is never seated side by side"
+        );
+    }
+
+    #[test]
+    fn a_line_whose_twin_sits_elsewhere_does_not_pair_with_a_stranger() {
+        let lines = vec![
+            del("aaa bbb ccc\n"),
+            add("xxx yyy zzz\n"),
+            add("aaa bbb ccc extra\n"),
+        ];
+
+        let pairing = pairings(&lines, word_diff_budget());
+
+        assert_ne!(
+            pairing[0],
+            LinePairing::Partner { line: 1 },
+            "the delete shares no words with the first add and must not be seated beside it"
         );
     }
 
