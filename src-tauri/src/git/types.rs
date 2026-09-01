@@ -264,9 +264,14 @@ pub enum DiffStatus {
     Unknown,
 }
 
+/// One file's place in a diff. `path` is the new-side path, and for a delta
+/// libgit2's rename detection paired, `old_path` names where the content came
+/// from; every other status leaves it `None`, so a `Some` is the file list's
+/// signal to render one entry naming both paths.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct FileDiff {
     pub path: String,
+    pub old_path: Option<String>,
     pub status: DiffStatus,
     pub is_binary: bool,
     pub hunks: Vec<DiffHunk>,

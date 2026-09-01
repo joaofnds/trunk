@@ -43,6 +43,21 @@ pub(crate) fn workdir_diff_opts(file_path: &str) -> git2::DiffOptions {
     opts
 }
 
+/// Pair a diff's add/delete deltas into renames, in place.
+///
+/// Every diff Trunk shows, counts, or stages against runs through here with the
+/// same options, so one file cannot read as a rename in the view and as an
+/// add-plus-delete in staging — the divergence TRUNK-73 records. libgit2's
+/// defaults match git CLI's (50% similarity, renames only), which is what the
+/// reference renderings in doc-44 show; copy detection stays off, as in git.
+pub(crate) fn detect_renames(diff: &mut git2::Diff) -> Result<(), TrunkError> {
+    let mut find_opts = git2::DiffFindOptions::new();
+    find_opts.renames(true);
+
+    diff.find_similar(Some(&mut find_opts))?;
+    Ok(())
+}
+
 fn apply_request_options(opts: &mut git2::DiffOptions, req: &DiffRequestOptions) {
     let context = if req.show_full_file {
         100_000 // practical cap for full-file view
@@ -72,6 +87,49 @@ struct DeltaSides {
     old_oid: git2::Oid,
     new_oid: git2::Oid,
     new_path: Option<PathBuf>,
+}
+
+/// The delta → hunkless `FileDiff` mapping every diff walk starts from. It is
+/// the one place a `git2::Delta` becomes a `DiffStatus`, so rename detection
+/// reaches the file list, the hunk views, and the metadata-only listings from a
+/// single definition rather than three that can drift (TRUNK-73).
+///
+/// `path` is the new-side path, falling back to the old side for a deletion.
+/// `old_path` is set only when the two sides name different paths, which is
+/// exactly the renamed and copied deltas `find_similar` pairs.
+fn file_diff_of(delta: &git2::DiffDelta<'_>) -> FileDiff {
+    let old_path = delta
+        .old_file()
+        .path()
+        .map(|p| p.to_string_lossy().into_owned());
+    let new_path = delta
+        .new_file()
+        .path()
+        .map(|p| p.to_string_lossy().into_owned());
+
+    let path = new_path
+        .clone()
+        .or_else(|| old_path.clone())
+        .unwrap_or_default();
+    let renamed_from = old_path.filter(|old| Some(old) != new_path.as_ref());
+
+    let status = match delta.status() {
+        git2::Delta::Added => DiffStatus::Added,
+        git2::Delta::Deleted => DiffStatus::Deleted,
+        git2::Delta::Modified => DiffStatus::Modified,
+        git2::Delta::Renamed => DiffStatus::Renamed,
+        git2::Delta::Copied => DiffStatus::Copied,
+        git2::Delta::Untracked => DiffStatus::Untracked,
+        _ => DiffStatus::Unknown,
+    };
+
+    FileDiff {
+        path,
+        old_path: renamed_from,
+        status,
+        is_binary: delta.old_file().is_binary() || delta.new_file().is_binary(),
+        hunks: Vec::new(),
+    }
 }
 
 /// Capture one delta's oids and new path from inside a `foreach` file callback.
@@ -150,12 +208,37 @@ fn resolve_side_content(
     SideContent { old, new }
 }
 
+/// Which files a walk keeps. Rename detection needs both sides of a rename in
+/// the same diff to pair them, and libgit2's `pathspec` drops the old path
+/// before `find_similar` ever sees it (probed, git2 0.21: a pathspec on the new
+/// path leaves the delta `Added` no matter what find options follow). So a
+/// single-file request diffs the whole tree, detects, and selects afterwards —
+/// matching by either side's path, since the caller names the new path but the
+/// paired delta may also be reachable by the old one.
+#[derive(Debug, Clone, Copy)]
+enum FileFilter<'a> {
+    All,
+    OnePath(&'a str),
+}
+
+impl FileFilter<'_> {
+    fn keeps(&self, fd: &FileDiff) -> bool {
+        match self {
+            FileFilter::All => true,
+            FileFilter::OnePath(wanted) => {
+                fd.path == *wanted || fd.old_path.as_deref() == Some(*wanted)
+            }
+        }
+    }
+}
+
 /// Collect diff lines from git2 and enrich with syntax highlighting + word-level diff.
 /// Single pass: git2 walk → word diff → syntax → merge spans. Returns complete data.
 fn walk_diff(
     diff: git2::Diff<'_>,
     repo: &git2::Repository,
     new_side: NewSideSource,
+    filter: FileFilter<'_>,
 ) -> Result<Vec<FileDiff>, TrunkError> {
     use std::cell::RefCell;
 
@@ -164,29 +247,8 @@ fn walk_diff(
 
     diff.foreach(
         &mut |delta, _progress| {
-            let path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-            let status = match delta.status() {
-                git2::Delta::Added => DiffStatus::Added,
-                git2::Delta::Deleted => DiffStatus::Deleted,
-                git2::Delta::Modified => DiffStatus::Modified,
-                git2::Delta::Renamed => DiffStatus::Renamed,
-                git2::Delta::Copied => DiffStatus::Copied,
-                git2::Delta::Untracked => DiffStatus::Untracked,
-                _ => DiffStatus::Unknown,
-            };
             delta_sides.borrow_mut().push(delta_sides_of(&delta));
-            file_diffs.borrow_mut().push(FileDiff {
-                path,
-                status,
-                is_binary,
-                hunks: Vec::new(),
-            });
+            file_diffs.borrow_mut().push(file_diff_of(&delta));
             true
         },
         None, // skip binary callbacks
@@ -238,8 +300,14 @@ fn walk_diff(
     )
     .map_err(TrunkError::from)?;
 
-    let mut file_diffs = file_diffs.into_inner();
-    let sides = resolve_sides(repo, &file_diffs, &delta_sides.into_inner(), new_side);
+    let (mut file_diffs, delta_sides): (Vec<FileDiff>, Vec<DeltaSides>) = file_diffs
+        .into_inner()
+        .into_iter()
+        .zip(delta_sides.into_inner())
+        .filter(|(fd, _)| filter.keeps(fd))
+        .unzip();
+
+    let sides = resolve_sides(repo, &file_diffs, &delta_sides, new_side);
 
     enrich_file_diffs(&mut file_diffs, &sides);
     Ok(file_diffs)
@@ -447,29 +515,8 @@ fn walk_diff_raw_for_bench(
     let delta_sides: RefCell<Vec<DeltaSides>> = RefCell::new(Vec::new());
     diff.foreach(
         &mut |delta, _progress| {
-            let path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-            let status = match delta.status() {
-                git2::Delta::Added => DiffStatus::Added,
-                git2::Delta::Deleted => DiffStatus::Deleted,
-                git2::Delta::Modified => DiffStatus::Modified,
-                git2::Delta::Renamed => DiffStatus::Renamed,
-                git2::Delta::Copied => DiffStatus::Copied,
-                git2::Delta::Untracked => DiffStatus::Untracked,
-                _ => DiffStatus::Unknown,
-            };
             delta_sides.borrow_mut().push(delta_sides_of(&delta));
-            file_diffs.borrow_mut().push(FileDiff {
-                path,
-                status,
-                is_binary,
-                hunks: Vec::new(),
-            });
+            file_diffs.borrow_mut().push(file_diff_of(&delta));
             true
         },
         None,
@@ -542,7 +589,7 @@ pub fn diff_unstaged_inner(
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    walk_diff(diff, &repo, NewSideSource::Workdir)
+    walk_diff(diff, &repo, NewSideSource::Workdir, FileFilter::All)
 }
 
 pub fn diff_staged_inner(
@@ -553,16 +600,20 @@ pub fn diff_staged_inner(
 ) -> Result<Vec<FileDiff>, TrunkError> {
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let mut opts = new_diff_options();
-    opts.pathspec(file_path);
-    opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
-    let diff = if is_head_unborn(&repo) {
+    let mut diff = if is_head_unborn(&repo) {
         repo.diff_tree_to_index(None, None, Some(&mut opts))?
     } else {
         let head_tree = repo.head()?.peel_to_tree()?;
         repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut opts))?
     };
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    detect_renames(&mut diff)?;
+    walk_diff(
+        diff,
+        &repo,
+        NewSideSource::Odb,
+        FileFilter::OnePath(file_path),
+    )
 }
 
 pub fn diff_commit_inner(
@@ -578,13 +629,14 @@ pub fn diff_commit_inner(
     let commit_tree = commit.tree()?;
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
-    let diff = if commit.parent_count() == 0 {
+    let mut diff = if commit.parent_count() == 0 {
         repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
     } else {
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    detect_renames(&mut diff)?;
+    walk_diff(diff, &repo, NewSideSource::Odb, FileFilter::All)
 }
 
 /// Lightweight commit file listing — returns only metadata (path, status, is_binary),
@@ -600,12 +652,13 @@ pub fn list_commit_files_inner(
     let commit = repo.find_commit(oid)?;
     let commit_tree = commit.tree()?;
     let mut opts = new_diff_options();
-    let diff = if commit.parent_count() == 0 {
+    let mut diff = if commit.parent_count() == 0 {
         repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
     } else {
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
+    detect_renames(&mut diff)?;
     Ok(file_metadata_list(&diff))
 }
 
@@ -623,16 +676,20 @@ pub fn diff_commit_file_inner(
     let commit = repo.find_commit(oid)?;
     let commit_tree = commit.tree()?;
     let mut opts = new_diff_options();
-    opts.pathspec(file_path);
-    opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
-    let diff = if commit.parent_count() == 0 {
+    let mut diff = if commit.parent_count() == 0 {
         repo.diff_tree_to_tree(None, Some(&commit_tree), Some(&mut opts))?
     } else {
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    detect_renames(&mut diff)?;
+    walk_diff(
+        diff,
+        &repo,
+        NewSideSource::Odb,
+        FileFilter::OnePath(file_path),
+    )
 }
 
 /// Resolve a commit OID to its tree for a compare side; `None` is the empty
@@ -659,11 +716,12 @@ pub fn list_compare_files_inner(
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
-    let diff = repo.diff_tree_to_tree(
+    let mut diff = repo.diff_tree_to_tree(
         base_tree.as_ref(),
         target_tree.as_ref(),
         Some(&mut new_diff_options()),
     )?;
+    detect_renames(&mut diff)?;
     Ok(file_metadata_list(&diff))
 }
 
@@ -681,11 +739,16 @@ pub fn diff_compare_file_inner(
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
     let mut opts = new_diff_options();
-    opts.pathspec(file_path);
-    opts.disable_pathspec_match(true);
     apply_request_options(&mut opts, options);
-    let diff = repo.diff_tree_to_tree(base_tree.as_ref(), target_tree.as_ref(), Some(&mut opts))?;
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    let mut diff =
+        repo.diff_tree_to_tree(base_tree.as_ref(), target_tree.as_ref(), Some(&mut opts))?;
+    detect_renames(&mut diff)?;
+    walk_diff(
+        diff,
+        &repo,
+        NewSideSource::Odb,
+        FileFilter::OnePath(file_path),
+    )
 }
 
 /// Whole-compare totals via the cheap `Diff::stats()` path, mirroring
@@ -704,7 +767,7 @@ pub fn compare_stat_inner(
         target_tree.as_ref(),
         Some(&mut new_diff_options()),
     )?;
-    diff.find_similar(None)?;
+    detect_renames(&mut diff)?;
     let stats = diff.stats()?;
     Ok(crate::git::types::DiffStat {
         insertions: stats.insertions(),
@@ -716,33 +779,7 @@ pub fn compare_stat_inner(
 /// The delta → metadata-only `FileDiff` mapping shared by the commit and
 /// compare file listings.
 fn file_metadata_list(diff: &git2::Diff) -> Vec<FileDiff> {
-    let mut file_diffs = Vec::new();
-    for delta_idx in 0..diff.deltas().len() {
-        let delta = diff.get_delta(delta_idx).unwrap();
-        let file_path = delta
-            .new_file()
-            .path()
-            .or_else(|| delta.old_file().path())
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let is_binary = delta.old_file().is_binary() || delta.new_file().is_binary();
-        let status = match delta.status() {
-            git2::Delta::Added => DiffStatus::Added,
-            git2::Delta::Deleted => DiffStatus::Deleted,
-            git2::Delta::Modified => DiffStatus::Modified,
-            git2::Delta::Renamed => DiffStatus::Renamed,
-            git2::Delta::Copied => DiffStatus::Copied,
-            git2::Delta::Untracked => DiffStatus::Untracked,
-            _ => DiffStatus::Unknown,
-        };
-        file_diffs.push(FileDiff {
-            path: file_path,
-            status,
-            is_binary,
-            hunks: Vec::new(),
-        });
-    }
-    file_diffs
+    diff.deltas().map(|delta| file_diff_of(&delta)).collect()
 }
 
 pub fn get_commit_detail_inner(
@@ -949,6 +986,7 @@ mod enrich_tests {
     fn rust_file_diff(hunks: Vec<DiffHunk>) -> FileDiff {
         FileDiff {
             path: "window.rs".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks,
@@ -973,6 +1011,7 @@ mod enrich_tests {
         let new_content = "the value is **bold** `code` here\n";
         let mut file_diffs = vec![FileDiff {
             path: "notes.md".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![DiffHunk {
@@ -1046,6 +1085,7 @@ mod enrich_tests {
         let new_content = format!("{new_line}\n");
         let file_diffs = vec![FileDiff {
             path: path.to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![DiffHunk {
@@ -1144,6 +1184,7 @@ mod enrich_tests {
         );
         let mut file_diffs = vec![FileDiff {
             path: "example.rs".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![DiffHunk {
@@ -1210,6 +1251,7 @@ mod enrich_tests {
         let new_content = "fn main() {\n    let y = 2;\n}\n";
         let mut file_diffs = vec![FileDiff {
             path: "combo.rs".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![DiffHunk {
@@ -1279,6 +1321,7 @@ mod enrich_tests {
         );
         let mut file_diffs = vec![FileDiff {
             path: "gap.rs".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![
@@ -1348,6 +1391,7 @@ mod enrich_tests {
     fn enrich_produces_no_syntax_spans_when_side_content_is_unavailable() {
         let mut file_diffs = vec![FileDiff {
             path: "missing.rs".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![DiffHunk {
@@ -1403,6 +1447,7 @@ mod enrich_tests {
         let new_content = "fn main() {\n    let x = 1;\n    let y = 2;\n}\n";
         let mut file_diffs = vec![FileDiff {
             path: "drift.rs".to_string(),
+            old_path: None,
             status: DiffStatus::Modified,
             is_binary: false,
             hunks: vec![DiffHunk {

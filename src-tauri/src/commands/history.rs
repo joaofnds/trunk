@@ -79,7 +79,7 @@ fn commit_stat_from_repo(repo: &git2::Repository, oid: git2::Oid) -> Result<Diff
         let parent_tree = commit.parent(0)?.tree()?;
         repo.diff_tree_to_tree(Some(&parent_tree), Some(&commit_tree), Some(&mut opts))?
     };
-    diff.find_similar(None)?;
+    crate::commands::diff::detect_renames(&mut diff)?;
     let stats = diff.stats()?;
     Ok(DiffStat {
         insertions: stats.insertions(),
@@ -143,14 +143,14 @@ pub fn wip_diff_stats_inner(
         let head_tree = repo.head()?.peel_to_tree()?;
         repo.diff_tree_to_index(Some(&head_tree), None, Some(&mut staged_opts))?
     };
-    staged.find_similar(None)?;
+    crate::commands::diff::detect_renames(&mut staged)?;
 
     let mut unstaged_opts = crate::commands::diff::new_diff_options();
     unstaged_opts.include_untracked(true);
     unstaged_opts.recurse_untracked_dirs(true);
     unstaged_opts.show_untracked_content(true);
     let mut unstaged = repo.diff_index_to_workdir(None, Some(&mut unstaged_opts))?;
-    unstaged.find_similar(None)?;
+    crate::commands::diff::detect_renames(&mut unstaged)?;
 
     let mut changed_paths = std::collections::HashSet::new();
     for delta in staged.deltas().chain(unstaged.deltas()) {

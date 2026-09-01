@@ -1,7 +1,7 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::git::types::DiffRequestOptions;
+use trunk_lib::git::types::{DiffOrigin, DiffRequestOptions, DiffStatus};
 
 // -- diff_unstaged tests --
 
@@ -1322,4 +1322,120 @@ fn compare_stat_totals_the_two_tree_diff() {
     assert_eq!(stat.files_changed, 2);
     assert_eq!(stat.insertions, 2);
     assert_eq!(stat.deletions, 1);
+}
+
+// -- rename detection (TRUNK-82) --
+
+/// The fixture shape from doc-44's "ts: rename a file and edit one line":
+/// a file moved to a new path with one line changed. Git reports it as one
+/// renamed delta at ~80% similarity; without `find_similar` libgit2 reports
+/// two unrelated deltas and the file list misstates what happened.
+fn renamed_with_one_edit() -> TestContext {
+    let original = (1..=20)
+        .map(|n| format!("export const value{n} = {n};\n"))
+        .collect::<String>();
+    let edited = original.replace(
+        "export const value7 = 7;",
+        "export const value7 = 7 + offset;",
+    );
+
+    TestContext::builder()
+        .with_file("util.ts", &original)
+        .with_commit("add util.ts")
+        .with_removed_file("util.ts")
+        .with_file("math-util.ts", &edited)
+        .with_commit("ts: rename a file and edit one line")
+        .build()
+}
+
+fn head_oid(ctx: &TestContext) -> String {
+    let repo = ctx.repo();
+    let oid = repo.head().unwrap().peel_to_commit().unwrap().id();
+    oid.to_string()
+}
+
+#[test]
+fn renamed_file_lists_as_one_entry_naming_both_paths() {
+    let ctx = renamed_with_one_edit();
+    let oid = head_oid(&ctx);
+
+    let files = ctx
+        .list_commit_files(&oid)
+        .expect("list_commit_files failed");
+
+    assert_eq!(
+        files.len(),
+        1,
+        "expected one renamed entry, got {:?}",
+        files
+            .iter()
+            .map(|f| (&f.path, &f.status))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(files[0].status, DiffStatus::Renamed);
+    assert_eq!(files[0].path, "math-util.ts");
+    assert_eq!(files[0].old_path.as_deref(), Some("util.ts"));
+}
+
+#[test]
+fn renamed_file_diff_shows_only_the_changed_line() {
+    let ctx = renamed_with_one_edit();
+    let oid = head_oid(&ctx);
+
+    let files = ctx
+        .diff_commit_file(&oid, "math-util.ts")
+        .expect("diff_commit_file failed");
+
+    assert_eq!(files.len(), 1, "expected one renamed entry");
+    assert_eq!(files[0].status, DiffStatus::Renamed);
+    assert_eq!(files[0].old_path.as_deref(), Some("util.ts"));
+
+    let changed: Vec<&str> = files[0]
+        .hunks
+        .iter()
+        .flat_map(|h| &h.lines)
+        .filter(|l| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|l| l.content.trim())
+        .collect();
+
+    assert_eq!(
+        changed,
+        vec![
+            "export const value7 = 7;",
+            "export const value7 = 7 + offset;"
+        ],
+        "a renamed file must diff against its old path, not against nothing"
+    );
+}
+
+#[test]
+fn pure_rename_has_no_hunks() {
+    let content = (1..=20)
+        .map(|n| format!("export const value{n} = {n};\n"))
+        .collect::<String>();
+
+    let ctx = TestContext::builder()
+        .with_file("util.ts", &content)
+        .with_commit("add util.ts")
+        .with_removed_file("util.ts")
+        .with_file("renamed.ts", &content)
+        .with_commit("rename with no edit")
+        .build();
+    let oid = head_oid(&ctx);
+
+    let files = ctx
+        .list_commit_files(&oid)
+        .expect("list_commit_files failed");
+    assert_eq!(files.len(), 1, "expected one renamed entry");
+    assert_eq!(files[0].status, DiffStatus::Renamed);
+    assert_eq!(files[0].old_path.as_deref(), Some("util.ts"));
+
+    let diffed = ctx
+        .diff_commit_file(&oid, "renamed.ts")
+        .expect("diff_commit_file failed");
+    assert_eq!(diffed.len(), 1);
+    assert!(
+        diffed[0].hunks.is_empty(),
+        "a pure rename changes no content, so it has no hunks"
+    );
 }

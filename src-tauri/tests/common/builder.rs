@@ -14,6 +14,9 @@ enum BuildStep {
         path: String,
         content: Vec<u8>,
     },
+    RemoveFile {
+        path: String,
+    },
     Commit {
         message: String,
         secs: Option<i64>,
@@ -85,6 +88,16 @@ impl TestContextBuilder {
         self.steps.push(BuildStep::WriteBinaryFile {
             path: path.to_string(),
             content: content.to_vec(),
+        });
+        self
+    }
+
+    /// Delete a tracked file from the workdir and the index, so the next commit
+    /// records the removal. Paired with `with_file` under a new name, this is how
+    /// a fixture states a rename that git must detect by content similarity.
+    pub fn with_removed_file(&mut self, path: &str) -> &mut Self {
+        self.steps.push(BuildStep::RemoveFile {
+            path: path.to_string(),
         });
         self
     }
@@ -215,6 +228,7 @@ impl TestContextBuilder {
 
         // Track files written since the last commit so Commit knows what to stage
         let mut pending_files: Vec<String> = Vec::new();
+        let mut pending_removals: Vec<String> = Vec::new();
         let mut stash_counter: usize = 0;
 
         for step in &self.steps {
@@ -227,6 +241,11 @@ impl TestContextBuilder {
                     }
                     std::fs::write(&full_path, content).unwrap();
                     pending_files.push(path.clone());
+                }
+
+                BuildStep::RemoveFile { path } => {
+                    std::fs::remove_file(dir.path().join(path)).unwrap();
+                    pending_removals.push(path.clone());
                 }
 
                 BuildStep::Commit { message, secs } => {
@@ -243,8 +262,12 @@ impl TestContextBuilder {
                     for file in &pending_files {
                         index.add_path(std::path::Path::new(file)).unwrap();
                     }
+                    for file in &pending_removals {
+                        index.remove_path(std::path::Path::new(file)).unwrap();
+                    }
                     index.write().unwrap();
                     pending_files.clear();
+                    pending_removals.clear();
 
                     let tree_oid = index.write_tree().unwrap();
                     let tree = repo.find_tree(tree_oid).unwrap();
