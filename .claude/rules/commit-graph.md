@@ -35,6 +35,8 @@ paths:
   - "src/__tests__/helpers/graph-render.ts"
   - "src/__tests__/helpers/virtual-list-layout.ts"
   - "src/__tests__/helpers/virtual-list-layout.test.ts"
+  - "src/__tests__/helpers/layout-stub.ts"
+  - "src/__tests__/helpers/layout-stub.test.ts"
   - "src/components/CommitGraph.scrolled.test.ts"
   - "src/components/CommitGraph.render.test.ts"
   - "src-tauri/examples/graph_capture.rs"
