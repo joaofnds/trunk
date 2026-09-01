@@ -274,7 +274,7 @@ describe("buildRefPillData", () => {
 		// list is still indexed by node.y. Passing a one-element list silently
 		// yields no pill, which reads as "the feature is off" rather than as a bug.
 		const ref = makeRef({ short_name: "main" });
-		const nodes = [makeNode({ y: 3 })];
+		const nodes = [makeNode({ x: 0, y: 3 })];
 		const commits = [
 			makeCommit({}),
 			makeCommit({}),
