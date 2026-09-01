@@ -584,6 +584,24 @@ mod word_span_tests {
         );
     }
 
+    // The op's own refinement produced emphasis and "let total" passes the
+    // word-share check, but the rewrite verdict cleared the op: a cleared op
+    // stops vouching for positional pairing entirely.
+    #[test]
+    fn a_rewrite_dominated_run_does_not_vouch_for_its_similar_pair() {
+        let lines = vec![
+            del("let total = 1;\n"),
+            del("The quick brown fox jumps over the lazy dog near the river bank.\n"),
+            add("let total = 2;\n"),
+            add("Metrics are flushed every thirty seconds unless the buffer fills.\n"),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![LinePairing::Alone; 4]
+        );
+    }
+
     #[test]
     fn an_unrelated_line_inside_an_accepted_replace_stays_alone() {
         let lines = vec![
