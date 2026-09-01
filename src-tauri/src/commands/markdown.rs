@@ -1254,8 +1254,8 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // The fold runs per side, each against its own keep set: the split columns
     // are the two tinted fragments, the inline view is the merged copy (which
     // lives on the AFTER skeleton, so it folds by the after side's set).
-    let keep_after = leaves_to_keep(&ops, after.leaves.len(), true);
-    let keep_before = leaves_to_keep(&ops, before.leaves.len(), false);
+    let keep_after = leaves_to_keep(&ops, after.leaves.len(), Side::After);
+    let keep_before = leaves_to_keep(&ops, before.leaves.len(), Side::Before);
     let folded_merged = merged_raw
         .as_deref()
         .zip(keep_after.as_deref())
@@ -1396,49 +1396,38 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
 /// twenty lines on its own.
 const LEAF_CONTEXT: usize = 1;
 
+/// Which side of the leaf diff a fold is reading. The two are mirrors: each
+/// asks for the ranges an op touched on its own side.
+#[derive(Clone, Copy)]
+enum Side {
+    Before,
+    After,
+}
+
 /// Which leaves of one side must stay visible: every leaf an op touched on that
 /// side, widened by `LEAF_CONTEXT`. `None` when they all must, which is the
 /// signal that there is nothing to fold.
-fn leaves_to_keep(ops: &[similar::DiffOp], n: usize, side_is_after: bool) -> Option<Vec<bool>> {
+///
+/// An op that touches no leaf on this side — an insertion read from the before
+/// side, a deletion from the after — still anchors one position, so the fold
+/// keeps the leaves the change landed between and the reader sees where it went.
+fn leaves_to_keep(ops: &[similar::DiffOp], n: usize, side: Side) -> Option<Vec<bool>> {
     if n == 0 {
         return None;
     }
     let mut keep = vec![false; n];
     for op in ops.iter().copied() {
-        let (start, len) = match (op, side_is_after) {
-            (similar::DiffOp::Equal { .. }, _) => continue,
-            (
-                similar::DiffOp::Insert {
-                    new_index, new_len, ..
-                },
-                true,
-            )
-            | (
-                similar::DiffOp::Replace {
-                    new_index, new_len, ..
-                },
-                true,
-            ) => (new_index, new_len),
-            // A pure deletion has no after-side leaf of its own; its removed
-            // copy splices in at `new_index`, so that position anchors it.
-            (similar::DiffOp::Delete { new_index, .. }, true) => (new_index, 1),
-            (
-                similar::DiffOp::Delete {
-                    old_index, old_len, ..
-                },
-                false,
-            )
-            | (
-                similar::DiffOp::Replace {
-                    old_index, old_len, ..
-                },
-                false,
-            ) => (old_index, old_len),
-            // The before side's mirror: an insertion has no before-side leaf.
-            (similar::DiffOp::Insert { old_index, .. }, false) => (old_index, 1),
+        if matches!(op, similar::DiffOp::Equal { .. }) {
+            continue;
+        }
+        let range = match side {
+            Side::Before => op.old_range(),
+            Side::After => op.new_range(),
         };
-        let lo = start.saturating_sub(LEAF_CONTEXT);
-        let hi = (start + len + LEAF_CONTEXT).min(n);
+        // An empty range is a change with no leaf of its own on this side; it
+        // still anchors at its position, so widen from there.
+        let lo = range.start.saturating_sub(LEAF_CONTEXT);
+        let hi = (range.end.max(range.start + 1) + LEAF_CONTEXT).min(n);
         for k in keep.iter_mut().take(hi).skip(lo) {
             *k = true;
         }
@@ -2326,6 +2315,38 @@ mod tests {
         // The before side has no inserted leaf; it keeps the items the new one
         // was placed between, so the reader sees where it landed.
         assert!(fb.contains("item 9") || fb.contains("item 10"), "{fb}");
+        assert!(is_tag_balanced(fb), "{fb}");
+    }
+
+    /// The two columns fold against their OWN side's leaf indices. A deletion
+    /// makes the sides diverge — the before list is longer, and its changed
+    /// leaf sits at a higher index than anything on the after side — so a fold
+    /// that read the after side's ranges for the before column would keep the
+    /// wrong items. This is the test that pins the two sides apart.
+    #[test]
+    fn each_split_column_folds_against_its_own_side_indices() {
+        // 20 items; the after side drops the first 5, so before-index 12 is
+        // after-index 7. A column folding on the wrong side's range keeps the
+        // wrong neighbours.
+        let before: Vec<String> = (0..20).map(|i| format!("- item {i}")).collect();
+        let mut after: Vec<String> = before[5..].to_vec();
+        after[7] = "- item 12 edited".to_string();
+
+        let rows = diff_rows(&before.join("\n"), &after.join("\n"));
+        let DiffRow::Changed {
+            hunk_before_html, ..
+        } = rows
+            .iter()
+            .find(|r| matches!(r, DiffRow::Changed { .. }))
+            .expect("the list is changed")
+        else {
+            unreachable!()
+        };
+        let fb = hunk_before_html.as_ref().expect("folded before");
+        // The before column must keep the edited item's own neighbours, which
+        // live at before-indices 11 and 13 — not the after side's 6 and 8.
+        assert!(fb.contains("item 11"), "{fb}");
+        assert!(fb.contains("item 13"), "{fb}");
         assert!(is_tag_balanced(fb), "{fb}");
     }
 
