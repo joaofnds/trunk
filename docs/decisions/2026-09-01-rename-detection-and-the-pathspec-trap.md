@@ -22,9 +22,13 @@ run. Probed against git2 0.21: with a pathspec naming the new path, the delta is
 delete side was excluded before there was anything to pair it with.
 
 So a single-file request now builds the whole tree's diff, detects, and selects
-the file afterwards, matching either of its paths. The cost is real — the walk
-builds hunks for files the caller will discard — and it is the price of the
-pairing. `FileFilter` in `commands/diff.rs` is that selection.
+the file afterwards, matching either of its paths. `diff_one_file` in
+`commands/diff.rs` is that selection, and it reads the chosen delta with
+`Patch::from_diff` rather than walking the diff: libgit2 generates every delta's
+patch before it calls a `foreach` callback, so a callback that skips unwanted
+files still pays for them. The numbers, and that refuted approach, are in
+`docs/performance-patterns.md`. Selecting this way is faster than the pathspec
+it replaced, so the pairing costs nothing here.
 
 ## An unstaged rename is not a rename yet
 
@@ -34,15 +38,26 @@ and `git diff --stat` reports only the deletion. The pair appears only once the
 change is staged, as `old => new`.
 
 This is why `diff_unstaged_inner` keeps its pathspec and gains no detection, and
-why the four workdir diffs in `commands/staging.rs` were not touched. Renames
-reach the UI through commit, compare and staged diffs, all ODB-backed. Staging
-still narrows with a pathspec, still reads delta zero, and still applies the
-whole diff it built — all of which stay correct precisely because that path sees
-no renames.
+why the four workdir diffs in `commands/staging.rs` were not touched. They still
+narrow with a pathspec, read delta zero, and apply the whole diff they built, all
+of which stay correct precisely because that path sees no renames.
 
-That matters beyond this change: TRUNK-73 records what happens when a staging
-path and a display path disagree about which deltas exist. Keeping detection off
-the unstaged path is what keeps this change clear of that failure.
+The two HEAD-to-index staging paths are a different matter, and the first version
+of this change got them wrong. `diff_staged_inner` gained detection, so the
+staged view began pairing a rename into one entry with a hunk per edited line,
+while `unstage_hunk_inner` and `unstage_lines_inner` rebuilt the diff without it
+and saw a whole-file add. Unstaging the one-line hunk the user clicked reversed
+all twenty lines and emptied the index, with no error. That is exactly TRUNK-73's
+failure mode, found in review.
+
+Both now build through `staged_diff` and select their delta by path instead of
+assuming index zero, and the apply is restricted to that delta — something the
+pathspec used to provide for free. The partial patch names each side's own path,
+since a header repeating one path is rejected outright.
+
+The rule this leaves: a staging path and the display path it acts on must build
+their diff the same way. Adding detection to one side of that pair is a change to
+both.
 
 ## One definition, not one per caller
 
