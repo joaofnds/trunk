@@ -203,6 +203,11 @@ $effect(() => {
 // Reload refs when parent signals a refresh (e.g. context menu actions)
 $effect(() => {
 	if (refreshSignal !== undefined && refreshSignal > 0) {
+		// The refusal names a condition rather than an event: the working tree has
+		// uncommitted changes. A refresh means the repository moved, so committing
+		// or stashing has to take the message with it, not leave it asserting
+		// something no longer true.
+		checkoutError = null;
 		loadRefs(repoPath);
 	}
 });

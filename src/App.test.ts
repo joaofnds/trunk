@@ -114,57 +114,62 @@ describe("App", () => {
 		];
 
 		mockInvoke.mockReset();
-		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-			switch (cmd) {
-				case "prefs_get":
-					return Promise.resolve(prefs[(args as { key: string }).key] ?? null);
-				case "prefs_set": {
-					const { key, value } = args as { key: string; value: unknown };
-					prefs[key] = value;
-					return Promise.resolve(undefined);
-				}
-				case "validate_recent_path":
-					return Promise.resolve(true);
-				case "get_commit_graph":
-					return Promise.resolve({ commits: [], max_columns: 0 });
-				case "list_refs":
-					return Promise.resolve({
-						local: [],
-						remote: [],
-						tags: [],
-						stashes: [],
-					});
-				case "get_operation_state":
-					return Promise.resolve({
-						op_type: "None",
-						source_branch: null,
-						target_branch: null,
-						progress: null,
-						source_color_index: null,
-						target_color_index: null,
-						rebase_message: null,
-					});
-				case "get_push_target":
-					return Promise.resolve({ remote: "origin", branch: "main" });
-				case "get_status":
-					return Promise.resolve({
-						unstaged: [],
-						staged: [],
-						conflicted: [],
-					});
-				case "get_dirty_counts":
-					return Promise.resolve({ staged: 0, unstaged: 0, conflicted: 0 });
-				case "check_undo_available":
-					return Promise.resolve(true);
-				case "undo_commit":
-					return Promise.resolve({ subject: "repo A subject", body: null });
-				case "list_stashes":
-					return Promise.resolve([]);
-				default:
-					return Promise.resolve(undefined);
-			}
-		});
+		mockInvoke.mockImplementation(baseInvoke);
 	});
+
+	/** Every command the app issues on load, answered the same way for both
+	 *  repositories. A test that cares about one command overrides that one and
+	 *  delegates the rest here. */
+	function baseInvoke(cmd: string, args?: unknown) {
+		switch (cmd) {
+			case "prefs_get":
+				return Promise.resolve(prefs[(args as { key: string }).key] ?? null);
+			case "prefs_set": {
+				const { key, value } = args as { key: string; value: unknown };
+				prefs[key] = value;
+				return Promise.resolve(undefined);
+			}
+			case "validate_recent_path":
+				return Promise.resolve(true);
+			case "get_commit_graph":
+				return Promise.resolve({ commits: [], max_columns: 0 });
+			case "list_refs":
+				return Promise.resolve({
+					local: [],
+					remote: [],
+					tags: [],
+					stashes: [],
+				});
+			case "get_operation_state":
+				return Promise.resolve({
+					op_type: "None",
+					source_branch: null,
+					target_branch: null,
+					progress: null,
+					source_color_index: null,
+					target_color_index: null,
+					rebase_message: null,
+				});
+			case "get_push_target":
+				return Promise.resolve({ remote: "origin", branch: "main" });
+			case "get_status":
+				return Promise.resolve({
+					unstaged: [],
+					staged: [],
+					conflicted: [],
+				});
+			case "get_dirty_counts":
+				return Promise.resolve({ staged: 0, unstaged: 0, conflicted: 0 });
+			case "check_undo_available":
+				return Promise.resolve(true);
+			case "undo_commit":
+				return Promise.resolve({ subject: "repo A subject", body: null });
+			case "list_stashes":
+				return Promise.resolve([]);
+			default:
+				return Promise.resolve(undefined);
+		}
+	}
 
 	// Known flake: this test has expired its 1 008 ms `waitFor` deadline under
 	// contention without the application being broken. If it fails, read TRUNK-62
@@ -199,5 +204,33 @@ describe("App", () => {
 		entry.click();
 
 		await waitFor(() => expect(getByLabelText("Redo")).toBeDisabled());
+	});
+
+	// The pull never settles here, which is the point: its in-flight flag belongs
+	// to the outgoing repository. Carried across, it disables the incoming
+	// repository's Pull and Push with nothing left to turn them back on.
+	it("leaves the incoming repository's remote controls usable after swapping mid-pull", async () => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "git_pull") return new Promise<never>(() => {});
+			return baseInvoke(cmd, args);
+		});
+
+		const { getByLabelText, getByText } = render(App);
+		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_A));
+
+		const pull = await waitFor(() => getByLabelText("Pull"));
+		await waitFor(() => expect(pull).not.toBeDisabled());
+		pull.click();
+		await waitFor(() => expect(getByLabelText("Pull")).toBeDisabled());
+
+		window.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "r", metaKey: true }),
+		);
+		const entry = await waitFor(() => getByText("B"));
+		entry.click();
+
+		await waitFor(() => expect(graphPathsRequested()).toContain(REPO_B));
+		await waitFor(() => expect(getByLabelText("Pull")).not.toBeDisabled());
+		expect(getByLabelText("Push")).not.toBeDisabled();
 	});
 });

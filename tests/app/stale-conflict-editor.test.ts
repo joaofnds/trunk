@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
@@ -54,6 +54,29 @@ describe("a pull that stops on a conflict", () => {
 		);
 		await app.elapseUntil("the failure notice to go", () =>
 			app.remote.message() === null ? true : null,
+		);
+	});
+
+	it("closes the conflict editor when the rebase is aborted outside the app", async () => {
+		const app = await setup({ repo: DIVERGED_IN_ONE_FILE });
+		await app.repo.open();
+
+		await app.remote.pullRebase();
+		await waitFor("the pull failure notice", () => app.remote.message());
+		await app.events.externalChange(app.repo.path);
+		await waitFor("the rebase banner", () => app.staging.banner());
+
+		await app.staging.openConflictedFile("shared.txt");
+		await waitFor("the conflict editor", () =>
+			app.mergeEditor.isShowing() ? true : null,
+		);
+
+		// Nobody touched the UI: this is the abort the user ran in a terminal,
+		// which reaches the app only as a change on disk.
+		await app.events.rebaseAbortedElsewhere(app.repo.path);
+
+		await app.elapseUntil("the conflict editor to close", () =>
+			app.mergeEditor.isShowing() ? null : true,
 		);
 	});
 });

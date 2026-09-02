@@ -20,6 +20,13 @@ export class EventsDriver {
 		await this.host.emit("repo-changed", path);
 	}
 
+	/** The rebase the user aborted in a terminal: the repository changes with no
+	 *  gesture in the app, and the only thing that reaches it is the watcher. */
+	async rebaseAbortedElsewhere(path: string): Promise<void> {
+		await this.host.invoke("rebase_abort", { path });
+		await this.externalChange(path);
+	}
+
 	/** The Cmd+F accelerator: a native menu item registered in Rust emits
 	 *  `search-toggle`, so the harness's stand-in is the host making the same
 	 *  emit. */

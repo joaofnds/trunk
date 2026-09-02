@@ -134,6 +134,67 @@ describe("BranchSidebar", () => {
 		});
 	});
 
+	// The message names a condition, not an event: it says the working tree has
+	// uncommitted changes. Once that stops being true it is telling the user
+	// something false, and only typing in the search box took it away.
+	it("takes the checkout refusal down once the working tree is clean again", async () => {
+		let dirty = true;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "list_refs")
+				return Promise.resolve(
+					mockListRefs({
+						local: [
+							{
+								name: "main",
+								is_head: true,
+								upstream: null,
+								ahead: 0,
+								behind: 0,
+								last_commit_timestamp: 1700000000,
+							},
+							{
+								name: "feature",
+								is_head: false,
+								upstream: null,
+								ahead: 0,
+								behind: 0,
+								last_commit_timestamp: 1700000000,
+							},
+						],
+					}),
+				);
+			// Tauri hands an IPC failure back as a JSON string, which safeInvoke
+			// parses; rejecting with an object reaches the handler as unknown_error.
+			if (cmd === "checkout_branch" && dirty)
+				return Promise.reject(
+					JSON.stringify({
+						code: "dirty_workdir",
+						message: "Working tree has uncommitted changes",
+					}),
+				);
+			return Promise.resolve(undefined);
+		});
+
+		const { rerender } = render(BranchSidebar, {
+			props: { repoPath: "/test/repo", refreshSignal: 0 },
+		});
+
+		const label = await waitFor(() => screen.getByText("feature"));
+		const row = label.closest('[role="button"]');
+		if (!row) throw new Error("the feature row offers no control");
+		await fireEvent.dblClick(row);
+		await waitFor(() =>
+			expect(screen.getByText(/Cannot checkout/)).toBeInTheDocument(),
+		);
+
+		dirty = false;
+		await rerender({ repoPath: "/test/repo", refreshSignal: 1 });
+
+		await waitFor(() =>
+			expect(screen.queryByText(/Cannot checkout/)).not.toBeInTheDocument(),
+		);
+	});
+
 	it("renders without crashing", () => {
 		const { container } = render(BranchSidebar, {
 			props: { repoPath: "/test/repo" },

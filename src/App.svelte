@@ -241,6 +241,13 @@ function openRepoInTab(tabId: string, path: string, name: string) {
 
 	const tab = tabs.find((t) => t.id === tabId);
 	if (tab) {
+		// Every field of a tab's state describes the repository it was gathered
+		// in: an in-flight pull, its progress line, its failure, the undone
+		// commit. Dropping the whole thing is what keeps a stale field from
+		// following the tab to a repository it says nothing about — a pull still
+		// marked running would leave the incoming repository's Pull and Push
+		// disabled with no way back.
+		tabStates = new Map([...tabStates].filter(([id]) => id !== tabId));
 		tab.repoPath = path;
 		tab.repoName = name;
 		persistTabs();
