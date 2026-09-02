@@ -1422,17 +1422,32 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     let folded_after = keep_after
         .as_deref()
         .and_then(|keep| drop_leaves(&tint_leaves(&after_frag, &after_tints), &after.leaves, keep));
+    let before_html = sanitize_html(&tint_leaves(&before_frag, &before_tints));
+    let after_html = sanitize_html(&tint_leaves(&after_frag, &after_tints));
     ChangedFragments {
-        before_html: sanitize_html(&tint_leaves(&before_frag, &before_tints)),
-        after_html: sanitize_html(&tint_leaves(&after_frag, &after_tints)),
+        // Read off the SHIPPED fragments, never off the tint list: a tint that
+        // was pushed but never landed (an element the lookup could not find, or
+        // a class sanitize stripped) would otherwise have the row claim a mark
+        // it does not carry. The frontend drops the block wash on this flag and
+        // `illegible_rows` trusts it, so a false claim leaves the reader nothing
+        // and the gate blind to it — which is how TRUNK-112 hid.
+        has_tints: tinted(&before_html) || tinted(&after_html) || word_marked,
+        before_html,
+        after_html,
         merged_html: merged_raw.as_deref().map(sanitize_html),
         hunk_merged_html: folded_merged.as_ref().map(|(f, _)| sanitize_html(f)),
         hunk_before_html: folded_before.as_ref().map(|(f, _)| sanitize_html(f)),
         hunk_after_html: folded_after.as_ref().map(|(f, _)| sanitize_html(f)),
         hunk_hidden_leaves: folded_merged.map_or(0, |(_, n)| n),
-        has_tints: !before_tints.is_empty() || !after_tints.is_empty() || word_marked,
         renders_identically: renders_same(&before.html, &after.html),
     }
+}
+
+/// Whether a shipped fragment actually carries a leaf tint.
+fn tinted(html: &str) -> bool {
+    MD_TINT_CLASSES
+        .iter()
+        .any(|c| html.contains(&format!("class=\"{c}\"")))
 }
 
 /// Whether two rendered fragments show the same visible text. Compares the
@@ -2767,6 +2782,36 @@ mod tests {
             merged.contains("md-word-delete\">old") || merged.contains("md-removed"),
             "the item that changed is marked: {merged}"
         );
+    }
+
+    #[test]
+    fn has_tints_reports_the_shipped_fragments_not_the_intent() {
+        // Derived from the tint LIST, this flag claimed a mark whenever one was
+        // pushed, even where the lookup found no element to put it on and the
+        // reader got a plain copy. The frontend drops the block wash on the
+        // claim and illegible_rows trusts it, so a false one left the reader
+        // nothing and the gate blind to it.
+        let tinted_rows = diff_rows("- one\n- two", "- ONE\n- two");
+        let DiffRow::Changed {
+            has_tints,
+            after_html,
+            ..
+        } = &tinted_rows[0]
+        else {
+            panic!("a changed list: {tinted_rows:?}");
+        };
+        assert!(has_tints, "a landed tint is reported: {after_html}");
+        assert!(
+            after_html.contains("class=\"md-added\""),
+            "and it really is in the shipped fragment: {after_html}"
+        );
+
+        // A code block has no leaves, so no tint is ever pushed or landed.
+        let untinted = diff_rows("```\nlet x = 1;\n```", "```\nlet x = 2;\n```");
+        let DiffRow::Changed { has_tints, .. } = &untinted[0] else {
+            panic!("a changed code block: {untinted:?}");
+        };
+        assert!(!has_tints, "nothing landed, nothing claimed: {untinted:?}");
     }
 
     #[test]
