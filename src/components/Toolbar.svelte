@@ -165,6 +165,7 @@ async function handleRedo() {
 			subject: entry.subject,
 			body: entry.body,
 			expectedHeadOid: entry.headOid,
+			expectedRepoPath: entry.repoPath,
 		});
 	} catch (e) {
 		console.error("redo failed:", e);

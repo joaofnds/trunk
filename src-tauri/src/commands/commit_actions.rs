@@ -588,8 +588,18 @@ pub fn redo_commit_inner(
     subject: &str,
     body: Option<&str>,
     expected_head_oid: &str,
+    expected_path: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<(), TrunkError> {
+    // Two clones of one repository share every oid, so the position alone cannot
+    // tell them apart. `path` names which repository this redo is allowed to
+    // write to; a caller asking to redo on a different one is refused here too.
+    if path != expected_path {
+        return Err(TrunkError::new(
+            "redo_stale",
+            "This redo belongs to a different repository",
+        ));
+    }
     let repo = crate::commands::open_repo_from_state(path, state_map)?;
     let current = repo
         .head()
@@ -674,6 +684,7 @@ pub async fn redo_commit<R: Runtime>(
     subject: String,
     body: Option<String>,
     expected_head_oid: String,
+    expected_repo_path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -688,6 +699,7 @@ pub async fn redo_commit<R: Runtime>(
             &subject,
             body.as_deref(),
             &expected_head_oid,
+            &expected_repo_path,
             &state_map,
         )?;
         let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
@@ -963,14 +975,9 @@ mod tests {
         commit_file(&repo, "moved on", &[base], "f.txt", b"moved\n");
         let map = state_map_for(&dir);
 
-        let err = redo_commit_inner(
-            &path_str(&dir),
-            "undone commit",
-            None,
-            &base.to_string(),
-            &map,
-        )
-        .expect_err("HEAD is not at `base`, so redo must refuse");
+        let path = path_str(&dir);
+        let err = redo_commit_inner(&path, "undone commit", None, &base.to_string(), &path, &map)
+            .expect_err("HEAD is not at `base`, so redo must refuse");
         assert_eq!(err.code, "redo_stale");
 
         assert_eq!(
@@ -986,15 +993,43 @@ mod tests {
         let base = commit_file(&repo, "base", &[], "f.txt", b"base\n");
         let map = state_map_for(&dir);
 
-        redo_commit_inner(
-            &path_str(&dir),
-            "redone commit",
-            None,
-            &base.to_string(),
-            &map,
-        )
-        .expect("HEAD is at `base`, so redo must succeed");
+        let path = path_str(&dir);
+        redo_commit_inner(&path, "redone commit", None, &base.to_string(), &path, &map)
+            .expect("HEAD is at `base`, so redo must succeed");
 
         assert_eq!(head_body(&repo).trim(), "redone commit");
+    }
+
+    #[test]
+    fn redo_refuses_a_matching_oid_in_a_different_repository() {
+        // Two clones of the same history share every oid, so the position check
+        // alone cannot tell them apart. Undoing in one and redoing against the
+        // other's path must still refuse.
+        let (dir_a, repo_a) = make_repo();
+        let base_a = commit_file(&repo_a, "base", &[], "f.txt", b"base\n");
+
+        let (dir_b, repo_b) = make_repo();
+        let base_b = commit_file(&repo_b, "base", &[], "f.txt", b"base\n");
+        assert_eq!(base_a, base_b, "both repos must share the same commit oid");
+
+        let mut map = state_map_for(&dir_a);
+        map.insert(path_str(&dir_b), dir_b.path().to_path_buf());
+
+        let err = redo_commit_inner(
+            &path_str(&dir_b),
+            "undone in a",
+            None,
+            &base_a.to_string(),
+            &path_str(&dir_a),
+            &map,
+        )
+        .expect_err("the redo belongs to dir_a, not dir_b");
+        assert_eq!(err.code, "redo_stale");
+
+        assert_eq!(
+            head_body(&repo_b).trim(),
+            "base",
+            "a refused redo must not write a commit"
+        );
     }
 }

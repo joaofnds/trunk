@@ -129,6 +129,7 @@ impl TestContext {
             subject,
             body,
             expected_head_oid,
+            self.path(),
             self.state_map(),
         )
     }
