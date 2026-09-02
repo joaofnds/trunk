@@ -176,7 +176,11 @@ describe("BranchSidebar", () => {
 		});
 
 		const { rerender } = render(BranchSidebar, {
-			props: { repoPath: "/test/repo", refreshSignal: 0 },
+			props: {
+				repoPath: "/test/repo",
+				refreshSignal: 0,
+				workingTreeDirty: true,
+			},
 		});
 
 		const label = await waitFor(() => screen.getByText("feature"));
@@ -187,8 +191,21 @@ describe("BranchSidebar", () => {
 			expect(screen.getByText(/Cannot checkout/)).toBeInTheDocument(),
 		);
 
+		// A refresh unrelated to the working tree (e.g. creating a tag) must not
+		// take the message down while the tree is still dirty.
+		await rerender({
+			repoPath: "/test/repo",
+			refreshSignal: 1,
+			workingTreeDirty: true,
+		});
+		expect(screen.getByText(/Cannot checkout/)).toBeInTheDocument();
+
 		dirty = false;
-		await rerender({ repoPath: "/test/repo", refreshSignal: 1 });
+		await rerender({
+			repoPath: "/test/repo",
+			refreshSignal: 1,
+			workingTreeDirty: false,
+		});
 
 		await waitFor(() =>
 			expect(screen.queryByText(/Cannot checkout/)).not.toBeInTheDocument(),

@@ -38,6 +38,7 @@ interface Props {
 	onstashselect?: (oid: string) => void;
 	onrefnavigate?: (refNameOrOid: string) => void;
 	refreshSignal?: number;
+	workingTreeDirty?: boolean;
 	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
 	onopenmessageeditor?: (
 		defaultValue: string,
@@ -51,6 +52,7 @@ let {
 	onstashselect,
 	onrefnavigate,
 	refreshSignal,
+	workingTreeDirty,
 	onopenrebaseeditor,
 	onopenmessageeditor,
 }: Props = $props();
@@ -203,13 +205,16 @@ $effect(() => {
 // Reload refs when parent signals a refresh (e.g. context menu actions)
 $effect(() => {
 	if (refreshSignal !== undefined && refreshSignal > 0) {
-		// The refusal names a condition rather than an event: the working tree has
-		// uncommitted changes. A refresh means the repository moved, so committing
-		// or stashing has to take the message with it, not leave it asserting
-		// something no longer true.
-		checkoutError = null;
 		loadRefs(repoPath);
 	}
+});
+
+// The refusal names a condition, not an event: the working tree has
+// uncommitted changes. Clear it only when that condition itself has gone,
+// not on every refresh — an unrelated action (e.g. creating a tag) also
+// bumps refreshSignal without touching the working tree.
+$effect(() => {
+	if (workingTreeDirty === false) checkoutError = null;
 });
 
 // Dismiss error when search changes
