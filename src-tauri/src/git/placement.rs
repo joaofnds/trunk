@@ -209,6 +209,29 @@ fn first_parent_path_to(
     }
 }
 
+/// Open a lane at `col`: take the next colour and record what claimed it.
+///
+/// A lane's colour and its claim are one event seen twice — a new line of history starting
+/// at this column — so they are taken together. Assigning a colour without moving the claim
+/// leaves a reused column drawn in the new branch's colour under the old branch's name.
+///
+/// `claim` is `None` for a stash, which takes a lane without naming one: it is a state
+/// rather than a line of history.
+fn open_lane(
+    lane_colors: &mut HashMap<usize, usize>,
+    lane_claims: &mut HashMap<usize, Oid>,
+    next_color: &mut usize,
+    col: usize,
+    claim: Option<Oid>,
+) {
+    lane_colors.insert(col, *next_color);
+    *next_color += 1;
+
+    if let Some(oid) = claim {
+        lane_claims.insert(col, oid);
+    }
+}
+
 pub fn assign_lanes(input: &PlacementInput) -> Layout {
     // active_lanes[col] = Some((oid, dashed)) → col is tracking that oid's chain
     // The dashed flag is set by the commit that creates/takes over the lane.
@@ -303,14 +326,13 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
                 // Normal placement: find free column near parent's column.
                 let target = parent_col.unwrap_or(0).max(min_col);
                 let c = find_free_column_near(&mut active_lanes, target, min_col);
-                // New branch gets a new color
-                lane_colors.insert(c, next_color);
-                next_color += 1;
-                // A new lane, so a new claim: `c` may be a column an earlier branch released,
-                // and the claim has to move with the colour rather than be inherited.
-                if !is_stash {
-                    lane_claims.insert(c, oid);
-                }
+                open_lane(
+                    &mut lane_colors,
+                    &mut lane_claims,
+                    &mut next_color,
+                    c,
+                    (!is_stash).then_some(oid),
+                );
                 c
             }
         };
@@ -472,12 +494,13 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
                     let c = find_free_column_near(&mut active_lanes, target, min_col);
                     active_lanes[c] = Some((parent_oid, false));
                     pending_parents.insert(parent_oid, c);
-                    // New secondary parent lane gets a new color
-                    lane_colors.insert(c, next_color);
-                    next_color += 1;
-                    // The merged-in branch opens this lane at its own tip: the merge names
-                    // the line it came from, which is the colour drawn there too.
-                    lane_claims.insert(c, parent_oid);
+                    open_lane(
+                        &mut lane_colors,
+                        &mut lane_claims,
+                        &mut next_color,
+                        c,
+                        Some(parent_oid),
+                    );
                     max_columns = max_columns.max(active_lanes.len());
                     c
                 };
