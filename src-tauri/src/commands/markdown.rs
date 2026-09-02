@@ -1251,7 +1251,6 @@ fn element_span(sourcepos_html: &str, tag: &str, sourcepos: &str) -> Option<(usi
         return None;
     }
     let start = sourcepos_html.find(&format!("<{tag} data-sourcepos=\"{sourcepos}\""))?;
-    let tag = tag.to_string();
 
     let open_marker = format!("<{tag}");
     let close_marker = format!("</{tag}>");
@@ -2089,7 +2088,10 @@ fn md_cell(s: &str) -> String {
 /// makes both sourcepos lookups decline rather than guess at the element.
 fn leaf_tag(node: &comrak::nodes::AstNode<'_>) -> &'static str {
     match node.data.borrow().value.xml_node_name() {
-        "item" => "li",
+        // A task-list item is its own comrak node but renders as an ordinary
+        // <li>. Omitting it made both lookups decline, so every mark on a task
+        // list vanished and the fold stopped folding.
+        "item" | "taskitem" => "li",
         "table_row" => "tr",
         _ => "",
     }
@@ -2765,6 +2767,52 @@ mod tests {
             merged.contains("md-word-delete\">old") || merged.contains("md-removed"),
             "the item that changed is marked: {merged}"
         );
+    }
+
+    #[test]
+    fn a_task_list_item_is_marked_like_any_other_item() {
+        // comrak gives a task-list item its own node name, but it renders as an
+        // ordinary <li>. Leaving it out of leaf_tag made both lookups decline,
+        // so a task list lost every mark and stopped folding entirely.
+        let rows = diff_rows("- [ ] one\n- [ ] two", "- [ ] ONE\n- [ ] two");
+        let merged = merged_of(&rows);
+
+        assert!(illegible_rows(&rows).is_empty(), "{rows:?}");
+        assert!(
+            marks(&merged) > 0,
+            "the changed task item is marked: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_long_task_list_still_folds() {
+        let doc = |n: &str| {
+            (0..20)
+                .map(|i| {
+                    if i == 9 {
+                        format!("- [ ] step {n}")
+                    } else {
+                        format!("- [ ] step {i}")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let rows = diff_rows(&doc("nine"), &doc("NINE"));
+        let DiffRow::Changed {
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = &rows[0]
+        else {
+            panic!("one changed task list: {rows:?}");
+        };
+
+        let folded = hunk_merged_html
+            .as_deref()
+            .expect("a twenty-item list folds");
+        assert!(*hunk_hidden_leaves > 0, "items are hidden: {folded}");
+        assert!(marks(folded) > 0, "the fold keeps the mark: {folded}");
     }
 
     #[test]
