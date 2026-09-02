@@ -53,6 +53,24 @@ impl Signature {
     }
 }
 
+/// A merge the fixture expected to stop went through clean.
+#[derive(Debug)]
+pub struct MergeDidNotConflict {
+    pub branch: String,
+}
+
+impl std::fmt::Display for MergeDidNotConflict {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "merging {} did not conflict; the fixture proves nothing",
+            self.branch
+        )
+    }
+}
+
+impl std::error::Error for MergeDidNotConflict {}
+
 pub struct Repo {
     repo: Repository,
     workdir: PathBuf,
@@ -453,6 +471,118 @@ impl Repo {
             .expect("record the remote's HEAD");
     }
 
+    /// `git merge [--no-ff -m <msg>] <branch>` for a merge that conflicts and stops:
+    /// MERGE_HEAD, an index with unmerged stages, and markers reading `<<<<<<< HEAD` and
+    /// `>>>>>>> <branch>` as git writes them (doc-45 §3.3). libgit2's MERGE_MSG text and
+    /// MERGE_MODE differ from git's, so both are overwritten with git's bytes. AUTO_MERGE is
+    /// git-only bookkeeping Trunk never reads and is not written. A merge that does not
+    /// conflict is an error: the fixture asked for a stopped one.
+    ///
+    /// Without a message the subject is git's `Merge branch '<branch>'`, which git only
+    /// writes that way for a local branch merged into main or master; any other shape
+    /// panics rather than guess git's wording.
+    pub fn merge_stopped(
+        &mut self,
+        msg: Option<&str>,
+        branch: &str,
+    ) -> Result<(), MergeDidNotConflict> {
+        if msg.is_none() {
+            self.refuse_unspelled_merge_subject(branch);
+        }
+        let their = self.resolve(branch).id();
+        let annotated = self
+            .repo
+            .find_annotated_commit(their)
+            .expect("annotate the merged head");
+        let mut checkout = CheckoutBuilder::new();
+        checkout
+            .our_label("HEAD")
+            .their_label(branch)
+            .conflict_style_merge(true);
+        self.repo
+            .merge(&[&annotated], None, Some(&mut checkout))
+            .expect("start the merge");
+        let conflicted = self.conflicted_paths();
+        if conflicted.is_empty() {
+            return Err(MergeDidNotConflict {
+                branch: branch.to_owned(),
+            });
+        }
+
+        let subject = msg.map_or_else(|| format!("Merge branch '{branch}'"), str::to_owned);
+        std::fs::write(
+            self.repo.path().join("MERGE_MSG"),
+            merge_msg(&subject, &conflicted),
+        )
+        .expect("write MERGE_MSG");
+        let mode = if msg.is_some() { "no-ff" } else { "" };
+        std::fs::write(self.repo.path().join("MERGE_MODE"), mode).expect("write MERGE_MODE");
+
+        Ok(())
+    }
+
+    /// The distinct conflicted paths, as `git diff --name-only --diff-filter=U` lists them:
+    /// in git's index order, which is bytewise even where libgit2 sorts its index
+    /// case-insensitively.
+    pub fn conflicted_paths(&self) -> Vec<String> {
+        let index = self.index();
+        let mut paths: Vec<String> = Vec::new();
+        for conflict in index.conflicts().expect("list the conflicts") {
+            let conflict = conflict.expect("read a conflict");
+            let entry = [conflict.our, conflict.their, conflict.ancestor]
+                .into_iter()
+                .flatten()
+                .next()
+                .expect("a conflict has an entry");
+            let path = String::from_utf8_lossy(&entry.path).into_owned();
+            if !paths.contains(&path) {
+                paths.push(path);
+            }
+        }
+        paths.sort();
+
+        paths
+    }
+
+    fn refuse_unspelled_merge_subject(&self, branch: &str) {
+        let head = self.repo.head().expect("a merge needs a HEAD");
+        let onto = head.shorthand().unwrap_or_default();
+        assert!(
+            head.is_branch() && (onto == "main" || onto == "master"),
+            "merge_stopped {branch} without a message onto {onto}: git would write \
+             \"into {onto}\" and this verb does not spell that; pass the message"
+        );
+        assert!(
+            self.repo
+                .find_branch(branch, git2::BranchType::Local)
+                .is_ok(),
+            "merge_stopped {branch} without a message: git words a non-branch merge \
+             differently and this verb does not spell that; pass the message"
+        );
+    }
+
+    /// `git checkout -m -- <rel>; git add -- <rel>; git reset -- <rel>` under
+    /// `merge.conflictstyle diff3` (doc-45 §3.4): the file is rewritten with diff3 markers,
+    /// staged, then unstaged, so git calls it resolved while it still holds the markers.
+    pub fn recheckout_diff3(&mut self, rel: &str) {
+        let mut checkout = CheckoutBuilder::new();
+        checkout
+            .force()
+            .conflict_style_diff3(true)
+            .ancestor_label("base")
+            .path(rel);
+        self.repo
+            .checkout_index(None, Some(&mut checkout))
+            .expect("re-check out the conflicted file");
+        let mut index = self.index();
+        index.add_path(Path::new(rel)).expect("stage the file");
+        index.write().expect("write the index");
+        let head = self.head_commit().expect("a merge in progress has a HEAD");
+        self.repo
+            .reset_default(Some(head.as_object()), [rel].iter())
+            .expect("unstage the file again");
+    }
+
     /// `git checkout --detach <revspec>`.
     pub fn checkout_detached(&mut self, revspec: &str) {
         let commit = self.resolve(revspec);
@@ -755,4 +885,15 @@ fn head_branch_of(path: &str) -> Option<String> {
     let target = head.symbolic_target().ok()??;
 
     target.strip_prefix("refs/heads/").map(str::to_owned)
+}
+
+/// git's MERGE_MSG for a stopped merge: the subject, a blank line, and the conflicted
+/// paths under `# Conflicts:`, one tab-indented per line.
+fn merge_msg(subject: &str, conflicted: &[String]) -> String {
+    let mut message = format!("{subject}\n\n# Conflicts:\n");
+    for path in conflicted {
+        message.push_str(&format!("#\t{path}\n"));
+    }
+
+    message
 }

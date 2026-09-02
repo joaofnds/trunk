@@ -50,6 +50,10 @@ trait Build {
     fn clone_bare(&mut self, name: &str);
     /// The bare repository `name` already beside the driver, added as a remote.
     fn remote_existing(&mut self, name: &str);
+    fn config(&mut self, key: &str, value: &str);
+    /// A merge that conflicts and stops; `msg` is `--no-ff -m <msg>`.
+    fn merge_stopped(&mut self, msg: Option<&str>, branch: &str);
+    fn recheckout_diff3(&mut self, rel: &str);
 }
 
 fn remote_path(dir: &Path, name: &str) -> PathBuf {
@@ -143,6 +147,15 @@ impl Build for Repo {
         let bare = remote_path(self.path(), name);
         Repo::remote_add(self, name, &bare);
     }
+    fn config(&mut self, key: &str, value: &str) {
+        Repo::config(self, key, value);
+    }
+    fn merge_stopped(&mut self, msg: Option<&str>, branch: &str) {
+        Repo::merge_stopped(self, msg, branch).expect("the merge conflicts");
+    }
+    fn recheckout_diff3(&mut self, rel: &str) {
+        Repo::recheckout_diff3(self, rel);
+    }
 }
 
 /// The git binary, driven the way lib/fixture.sh drove it: isolated config, identity and
@@ -168,6 +181,19 @@ impl GitCli {
     /// The operator's shell may carry GIT_DIR, GIT_WORK_TREE or injected config; any of
     /// them would point these commands at a foreign repository or change their bytes.
     fn git(&self, args: &[&str], dates: Option<(Signature, Signature)>) {
+        let status = self.git_with(args, dates);
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    fn git_status(&self, args: &[&str]) -> std::process::ExitStatus {
+        self.git_with(args, None)
+    }
+
+    fn git_with(
+        &self,
+        args: &[&str],
+        dates: Option<(Signature, Signature)>,
+    ) -> std::process::ExitStatus {
         let mut command = Command::new("git");
         command
             .arg("-C")
@@ -191,11 +217,11 @@ impl GitCli {
                 .env("GIT_COMMITTER_DATE", format!("@{} +0000", committer.secs()));
         }
         let output = command.output().expect("run git");
-        assert!(
-            output.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        if !output.status.success() {
+            eprintln!("git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+        }
+
+        output.status
     }
 }
 
@@ -305,6 +331,23 @@ impl Build for GitCli {
         let bare = bare.to_str().unwrap().to_owned();
         self.git(&["remote", "add", name, &bare], None);
     }
+    fn config(&mut self, key: &str, value: &str) {
+        self.git(&["config", key, value], None);
+    }
+    fn merge_stopped(&mut self, msg: Option<&str>, branch: &str) {
+        let mut args = vec!["merge", "-q"];
+        if let Some(msg) = msg {
+            args.extend(["--no-ff", "-m", msg]);
+        }
+        args.push(branch);
+        let status = self.git_status(&args);
+        assert!(!status.success(), "git merge {branch} did not stop");
+    }
+    fn recheckout_diff3(&mut self, rel: &str) {
+        self.git(&["checkout", "-m", "--", rel], None);
+        self.git(&["add", "--", rel], None);
+        self.git(&["reset", "-q", "--", rel], None);
+    }
 }
 
 /// Every verb the corpus uses, in the shapes it uses them: doc-45 §3's commits on two
@@ -313,7 +356,7 @@ impl Build for GitCli {
 /// left on disk; a stash taken with HEAD detached; then a gitlink, an orphan branch, a
 /// branch renamed and deleted, rm and mv, a fast-forward merge, a hard reset and a final
 /// detach.
-fn scenario(b: &mut impl Build) {
+fn scenario(b: &mut dyn Build) {
     b.write("README.md", "# Parity\n");
     b.add_all();
     b.commit(day(0), "feat: initial commit");
@@ -473,13 +516,61 @@ fn scenario(b: &mut impl Build) {
     b.clone_bare("mirror");
     b.remote_existing("mirror");
     b.fetch("mirror");
+
+    b.write("a.txt", &regions("base"));
+    b.add_all();
+    b.commit(day(49), "feat: three regions to conflict in");
+    b.branch("conflicting");
+    b.checkout("conflicting");
+    b.write("a.txt", &regions("theirs"));
+    b.write("README.md", "# Parity, theirs\n");
+    b.write("theirs-only.txt", "clean on their side\n");
+    b.add_all();
+    b.commit(day(50), "feat: their side of the conflict");
+    b.checkout("main");
+    b.write("a.txt", &regions("ours"));
+    b.write("README.md", "# Parity, ours\n");
+    b.add_all();
+    b.commit(day(51), "feat: our side of the conflict");
+    b.merge_stopped(Some("Merge branch 'conflicting'"), "conflicting");
+    b.config("merge.conflictstyle", "diff3");
+    b.recheckout_diff3("README.md");
+}
+
+/// Case 08's file shape: three edited regions far enough apart to conflict separately.
+fn regions(side: &str) -> String {
+    let filler = "const FILLER = 0;\n".repeat(5);
+    format!(
+        "VERSION = {side}\n{filler}TIMEOUT = {side}\nRETRIES = {side}\n{filler}THEME = {side}\n"
+    )
+}
+
+/// Case 08's shape: a merge with no message that stops.
+fn stopped_merge_without_message(b: &mut dyn Build) {
+    b.write("settings.txt", "base\n");
+    b.add_all();
+    b.commit(day(0), "Add settings");
+    b.branch("topic");
+    b.checkout("topic");
+    b.write("settings.txt", "topic\n");
+    b.add_all();
+    b.commit(day(1), "Retune on topic");
+    b.checkout("main");
+    b.write("settings.txt", "main\n");
+    b.add_all();
+    b.commit(day(2), "Retune on main");
+    b.merge_stopped(None, "topic");
 }
 
 /// The working repository and every bare repository beside it, as the fingerprint lists
 /// them.
 fn side(root: &Path, name: &str) -> Vec<String> {
-    let mut bare: Vec<String> = std::fs::read_dir(root.join(format!("{name}.remotes")))
-        .unwrap()
+    let remotes = match std::fs::read_dir(root.join(format!("{name}.remotes"))) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return vec![name.to_owned()],
+        Err(e) => panic!("list {name}.remotes: {e}"),
+    };
+    let mut bare: Vec<String> = remotes
         .map(|entry| {
             let file = entry.unwrap().file_name();
             format!("{name}.remotes/{}", file.to_str().unwrap())
@@ -526,8 +617,8 @@ fn assert_same_fingerprint(root: &Path, git_side: &str, repo_side: &str) {
     }
 }
 
-/// The scenario built on both sides, under `root/git` and `root/repo`.
-fn build_both(root: &Path) {
+/// A scenario built on both sides, under `root/git` and `root/repo`.
+fn build_both(root: &Path, scenario: fn(&mut dyn Build)) {
     let mut git = GitCli::init(&root.join("git"), "main", FIXTURE);
     let mut repo = Repo::init(&root.join("repo"), "main", FIXTURE);
     repo.config("commit.gpgsign", "false");
@@ -541,9 +632,58 @@ fn the_repo_verbs_write_the_bytes_git_writes() {
     trunk_fixtures::isolate();
     let root = tempfile::tempdir().unwrap();
 
-    build_both(root.path());
+    build_both(root.path(), scenario);
 
     assert_same_fingerprint(root.path(), "git", "repo");
+}
+
+#[test]
+fn a_stopped_merge_without_a_message_matches_git() {
+    trunk_fixtures::isolate();
+    let root = tempfile::tempdir().unwrap();
+
+    build_both(root.path(), stopped_merge_without_message);
+
+    assert_same_fingerprint(root.path(), "git", "repo");
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("repo/.git/MERGE_MSG")).unwrap(),
+        std::fs::read_to_string(root.path().join("git/.git/MERGE_MSG")).unwrap()
+    );
+}
+
+#[test]
+fn the_stopped_merge_files_are_byte_identical_to_gits() {
+    trunk_fixtures::isolate();
+    let root = tempfile::tempdir().unwrap();
+
+    build_both(root.path(), scenario);
+
+    let read = |side: &str, file: &str| {
+        std::fs::read_to_string(root.path().join(side).join(".git").join(file)).unwrap()
+    };
+    assert_eq!(read("repo", "MERGE_MSG"), read("git", "MERGE_MSG"));
+    assert_eq!(read("repo", "MERGE_MODE"), read("git", "MERGE_MODE"));
+    assert_eq!(read("repo", "MERGE_HEAD"), read("git", "MERGE_HEAD"));
+}
+
+#[test]
+fn a_merge_that_does_not_conflict_is_an_error() {
+    trunk_fixtures::isolate();
+    let root = tempfile::tempdir().unwrap();
+    let mut repo = Repo::init(root.path(), "main", FIXTURE);
+    repo.write("a.txt", "a\n");
+    repo.add_all();
+    repo.commit(day(0), "a");
+    repo.branch("topic");
+    repo.checkout("topic");
+    repo.write("b.txt", "b\n");
+    repo.add_all();
+    repo.commit(day(1), "b");
+    repo.checkout("main");
+
+    let outcome = repo.merge_stopped(None, "topic");
+
+    assert_eq!(outcome.unwrap_err().branch, "topic");
 }
 
 #[test]
@@ -551,7 +691,7 @@ fn the_stash_reflog_is_byte_identical_to_gits() {
     trunk_fixtures::isolate();
     let root = tempfile::tempdir().unwrap();
 
-    build_both(root.path());
+    build_both(root.path(), scenario);
 
     let log = |side: &str| {
         std::fs::read_to_string(root.path().join(side).join(".git/logs/refs/stash")).unwrap()
