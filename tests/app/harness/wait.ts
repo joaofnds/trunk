@@ -3,10 +3,10 @@ const TIMEOUT_MS = 5_000;
 
 /**
  * Points a timeout back at the card that already investigated it. Two sessions
- * ruled out the deadline, `settle()`, splitting the wait, and reproducing by
- * loading the machine (TRUNK-62); a session meeting this failure fresh would
- * otherwise re-derive all of it. The card is parked, not fixed, so this message
- * is how it comes back.
+ * ruled out the deadline, the harness's old quiet window, splitting the wait,
+ * and reproducing by loading the machine (TRUNK-62); a session meeting this
+ * failure fresh would otherwise re-derive all of it. The card is parked, not
+ * fixed, so this message is how it comes back.
  */
 const KNOWN_FLAKE =
 	"This wait has expired before under contention without the application " +

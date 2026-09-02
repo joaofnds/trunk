@@ -68,7 +68,6 @@ export class HostClient {
 	private readonly handlers: EventHandler[] = [];
 	private nextId = 1;
 	private inFlight = 0;
-	private lastStartedAt = 0;
 	private stderr = "";
 	private exited: string | null = null;
 	private closing = false;
@@ -104,11 +103,6 @@ export class HostClient {
 		return this.inFlight;
 	}
 
-	/** When the most recent forwarded command started, on `performance.now()`'s clock. */
-	get lastInvokeStartedAt(): number {
-		return this.lastStartedAt;
-	}
-
 	onEvent(handler: EventHandler): void {
 		this.handlers.push(handler);
 	}
@@ -119,7 +113,6 @@ export class HostClient {
 
 	async invoke<T>(cmd: string, args: unknown = {}): Promise<T> {
 		this.inFlight += 1;
-		this.lastStartedAt = performance.now();
 		try {
 			if (stalls(cmd)) await stall(STALL_MS);
 			return (await this.request({ verb: "invoke", cmd, args })) as T;

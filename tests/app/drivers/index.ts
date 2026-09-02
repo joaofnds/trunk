@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import type { FakeClipboard } from "../fakes/clipboard.js";
 import type { FakeDialog } from "../fakes/dialog.js";
 import type { FakeMenu } from "../fakes/menu.js";
@@ -146,12 +147,24 @@ export class AppDriver {
 	 * Runs every debounced refresh to completion, so the next gesture acts on a
 	 * view that will not re-render under it. A refresh that lands mid-gesture
 	 * discards a selection the test had just made.
+	 *
+	 * Quiet has to hold twice, either side of a Svelte flush. The debounce
+	 * callback only bumps a signal; the invoke it leads to is issued from an
+	 * effect a microtask later, so a single sample can see no timer and no
+	 * invoke while a refresh is already on its way.
 	 */
 	async settled(): Promise<void> {
-		await this.elapseUntil("the application's timers to run out", () =>
-			this.scheduler.pending === 0 && this.host.pendingInvokes === 0
-				? true
-				: null,
-		);
+		for (;;) {
+			await this.elapseUntil("the application's timers to run out", () =>
+				this.quiet() ? true : null,
+			);
+			await tick();
+			if (this.quiet()) return;
+		}
+	}
+
+	/** Nothing armed and nothing in flight, as of this instant. */
+	private quiet(): boolean {
+		return this.scheduler.pending === 0 && this.host.pendingInvokes === 0;
 	}
 }

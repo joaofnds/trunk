@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
-import { waitFor } from "./harness/wait.js";
 
 const THREE_COMMITS: RepoSpec = {
 	steps: [

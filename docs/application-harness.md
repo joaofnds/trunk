@@ -204,8 +204,9 @@ nothing armed means nothing was scheduled to happen.
 when a run goes red. Measured over 448 waits, 336 on a quiet machine and 112 with the CPU
 oversubscribed two to one: the slowest legitimate wait was 849 ms, the mean was 51 ms, and
 none reached one second. That slowest wait was the quiet window the harness paid out before
-the fake scheduler replaced it. Load did not move those figures — the loaded suite took 23 s of wall against a 7.4 s median and its slowest wait
-was 801 ms — because a wait is bounded by a round trip, not by the clock. So a wait that
+the fake scheduler replaced it. Load did not move those figures — the loaded suite took 23 s
+of wall against a 7.4 s median and its slowest wait was 801 ms — because a wait is bounded by
+a round trip, not by the clock. So a wait that
 reaches 5 000 ms is one whose state never arrived, and a longer deadline only makes the same
 failure take longer to report.
 
