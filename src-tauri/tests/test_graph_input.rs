@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use git2::Oid;
-use trunk_lib::git::graph_input::{CapturedGraph, CommitFacts, GraphSource, layout};
+use trunk_lib::git::graph_input::{
+    CapturedGraph, CommitFacts, GraphSource, RefVisibility, apply_visibility, layout,
+};
 use trunk_lib::git::placement::PlacementInput;
 use trunk_lib::git::types::{RefLabel, RefType};
 
@@ -481,4 +483,269 @@ fn a_lane_claim_carrying_several_refs_names_the_local_branch_over_the_tag() {
         tip_row.lane_ref.as_ref().map(|r| r.short_name.as_str()),
         Some("main")
     );
+}
+
+/// A ref the user hid takes its pill and its private history out of the graph, and leaves
+/// every other row exactly where the all-visible layout put it.
+#[test]
+fn a_hidden_ref_drops_its_pill_and_the_commits_only_it_reaches() {
+    let (topic, tip, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![topic, tip, root],
+            parents: HashMap::from([(topic, vec![root]), (tip, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (topic, facts("Topic")),
+            (tip, facts("Tip")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([
+            (
+                tip,
+                vec![RefLabel {
+                    name: "refs/heads/main".to_owned(),
+                    short_name: "main".to_owned(),
+                    ref_type: RefType::LocalBranch,
+                    is_head: true,
+                    color_index: 0,
+                }],
+            ),
+            (
+                topic,
+                vec![ref_label(
+                    "refs/remotes/origin/topic",
+                    "origin/topic",
+                    RefType::RemoteBranch,
+                )],
+            ),
+        ]),
+        stash_order: Vec::new(),
+    };
+
+    let mut hidden = RefVisibility::default();
+    hidden
+        .hidden_refs
+        .insert("refs/remotes/origin/topic".to_owned());
+
+    let visible = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
+
+    let summaries: Vec<&str> = visible.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, ["Tip", "Init"]);
+    assert!(
+        visible
+            .commits
+            .iter()
+            .all(|c| c.refs.iter().all(|r| r.short_name != "origin/topic"))
+    );
+
+    let all = layout(&source, 0, usize::MAX);
+    for (hidden_row, all_row) in visible.commits.iter().zip(all.commits.iter().skip(1)) {
+        assert_eq!(hidden_row.oid, all_row.oid);
+        assert_eq!(hidden_row.column, all_row.column);
+    }
+}
+
+/// Acceptance #4: a commit a visible ref still reaches keeps its row, and both its pill and
+/// the name of its lane fall back to the highest-ranked ref that is still visible.
+#[test]
+fn a_commit_a_visible_ref_still_reaches_keeps_its_row_and_names_itself_by_that_ref() {
+    let (tip, root) = (oid(1), oid(2));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, root],
+            parents: HashMap::from([(tip, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: None,
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([(tip, facts("Tip")), (root, facts("Init"))]),
+        refs: HashMap::from([(
+            tip,
+            vec![
+                ref_label("refs/heads/main", "main", RefType::LocalBranch),
+                ref_label(
+                    "refs/remotes/origin/main",
+                    "origin/main",
+                    RefType::RemoteBranch,
+                ),
+            ],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    let mut hidden = RefVisibility::default();
+    hidden.hidden_refs.insert("refs/heads/main".to_owned());
+
+    let result = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
+
+    let summaries: Vec<&str> = result.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, ["Tip", "Init"]);
+
+    let pills: Vec<&str> = result.commits[0]
+        .refs
+        .iter()
+        .map(|r| r.short_name.as_str())
+        .collect();
+    assert_eq!(pills, ["origin/main"]);
+    assert_eq!(
+        result.commits[0]
+            .lane_ref
+            .as_ref()
+            .map(|r| r.short_name.as_str()),
+        Some("origin/main")
+    );
+}
+
+/// HEAD's own branch survives every rule, including its own section's: column 0, the WIP row
+/// and the head-lane extension all assume `head_tip` is in the walk.
+#[test]
+fn heads_own_branch_survives_hiding_the_whole_local_section() {
+    let (tip, root) = (oid(1), oid(2));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, root],
+            parents: HashMap::from([(tip, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([(tip, facts("Tip")), (root, facts("Init"))]),
+        refs: HashMap::from([(
+            tip,
+            vec![
+                RefLabel {
+                    name: "refs/heads/main".to_owned(),
+                    short_name: "main".to_owned(),
+                    ref_type: RefType::LocalBranch,
+                    is_head: true,
+                    color_index: 0,
+                },
+                ref_label("refs/heads/other", "other", RefType::LocalBranch),
+            ],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    let mut hidden = RefVisibility {
+        hide_local: true,
+        ..RefVisibility::default()
+    };
+    hidden.hidden_refs.insert("refs/heads/main".to_owned());
+
+    let result = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
+
+    let pills: Vec<&str> = result.commits[0]
+        .refs
+        .iter()
+        .map(|r| r.short_name.as_str())
+        .collect();
+    assert_eq!(pills, ["main"]);
+    assert_eq!(result.commits.len(), 2);
+}
+
+/// Hiding a remote group hides every branch under it and nothing under a remote whose name
+/// merely starts the same way.
+#[test]
+fn hiding_a_remote_takes_only_its_own_branches() {
+    let (origin_topic, fork_topic, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![origin_topic, fork_topic, root],
+            parents: HashMap::from([
+                (origin_topic, vec![root]),
+                (fork_topic, vec![root]),
+                (root, vec![]),
+            ]),
+            stashes: HashSet::new(),
+            head_tip: Some(root),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (origin_topic, facts("Origin topic")),
+            (fork_topic, facts("Fork topic")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([
+            (
+                origin_topic,
+                vec![ref_label(
+                    "refs/remotes/origin/topic",
+                    "origin/topic",
+                    RefType::RemoteBranch,
+                )],
+            ),
+            (
+                fork_topic,
+                vec![ref_label(
+                    "refs/remotes/origin-fork/topic",
+                    "origin-fork/topic",
+                    RefType::RemoteBranch,
+                )],
+            ),
+        ]),
+        stash_order: Vec::new(),
+    };
+
+    let mut hidden = RefVisibility::default();
+    hidden.hidden_remotes.insert("origin".to_owned());
+
+    let result = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
+
+    let summaries: Vec<&str> = result.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, ["Fork topic", "Init"]);
+}
+
+/// A stash has no stable name, so it is hidden by its commit OID, and hiding it takes its
+/// row out of the walk.
+#[test]
+fn a_hidden_stash_leaves_the_walk() {
+    let (stash, tip) = (oid(1), oid(2));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![stash, tip],
+            parents: HashMap::from([(stash, vec![tip]), (tip, vec![])]),
+            stashes: HashSet::from([stash]),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([(stash, facts("WIP on main")), (tip, facts("Init"))]),
+        refs: HashMap::new(),
+        stash_order: vec![stash],
+    };
+
+    let mut hidden = RefVisibility::default();
+    hidden.hidden_stashes.insert(stash.to_string());
+
+    let result = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
+
+    let summaries: Vec<&str> = result.commits.iter().map(|c| c.summary.as_str()).collect();
+    assert_eq!(summaries, ["Init"]);
+}
+
+/// The empty value is the identity: a repository with no stored preference lays out exactly
+/// as it did before this stage existed.
+#[test]
+fn an_empty_visibility_changes_nothing() {
+    let source = source_using_every_captured_field();
+
+    let before = layout(&source, 0, usize::MAX);
+    let after = layout(
+        &apply_visibility(&source, &RefVisibility::default()),
+        0,
+        usize::MAX,
+    );
+
+    let oids_before: Vec<&str> = before.commits.iter().map(|c| c.oid.as_str()).collect();
+    let oids_after: Vec<&str> = after.commits.iter().map(|c| c.oid.as_str()).collect();
+    assert_eq!(oids_before, oids_after);
+    assert_eq!(before.max_columns, after.max_columns);
 }

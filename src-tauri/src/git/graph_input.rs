@@ -135,6 +135,184 @@ impl CapturedGraph {
     }
 }
 
+/// Which refs the user has hidden from the graph, as the frontend states it. Empty means
+/// everything is visible, which is what a repository with no stored preference gets.
+///
+/// A label is hidden when any rule matches it. HEAD's own branch is never hidden: column 0,
+/// the WIP row and the head-lane extension all assume `head_tip` is in the walk.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RefVisibility {
+    /// Full ref names, as `RefLabel::name` carries them.
+    pub hidden_refs: HashSet<String>,
+    /// Remote names — `origin` hides every `refs/remotes/origin/*`.
+    pub hidden_remotes: HashSet<String>,
+    /// Stash commit OIDs in hex. A stash has no stable name, so it is keyed by its commit.
+    pub hidden_stashes: HashSet<String>,
+    pub hide_local: bool,
+    pub hide_remote: bool,
+    pub hide_tags: bool,
+    pub hide_stashes: bool,
+}
+
+/// The remote a `refs/remotes/<remote>/<branch>` name belongs to.
+///
+/// A remote name may itself contain slashes, so the branch cannot be split off from the
+/// right. Nothing here knows the configured remotes, so this takes the first segment, which
+/// is what the sidebar groups by.
+fn remote_of(name: &str) -> Option<&str> {
+    name.strip_prefix("refs/remotes/")?.split('/').next()
+}
+
+impl RefVisibility {
+    pub fn is_empty(&self) -> bool {
+        *self == RefVisibility::default()
+    }
+
+    fn hides(&self, label: &RefLabel) -> bool {
+        if label.is_head {
+            return false;
+        }
+
+        let by_type = match label.ref_type {
+            RefType::LocalBranch => self.hide_local,
+            RefType::RemoteBranch => self.hide_remote,
+            RefType::Tag => self.hide_tags,
+            RefType::Stash => self.hide_stashes,
+        };
+
+        let by_remote = match label.ref_type {
+            RefType::RemoteBranch => {
+                remote_of(&label.name).is_some_and(|remote| self.hidden_remotes.contains(remote))
+            }
+            _ => false,
+        };
+
+        by_type || by_remote || self.hidden_refs.contains(&label.name)
+    }
+
+    fn hides_stash(&self, oid: Oid) -> bool {
+        self.hide_stashes || self.hidden_stashes.contains(&oid.to_string())
+    }
+}
+
+/// The pure stage between capture and placement: drop the hidden labels, then drop every
+/// commit only they reached.
+///
+/// The roots are the commits the surviving labels point at, plus the visible stashes, plus
+/// `head_tip` and `tracked_upstream`, which the head lane and its extension are entitled to
+/// whatever the refs say. Reachability is a pass over `PlacementInput::parents`, which
+/// carries a full parent list for every walk member, so no repository is read here.
+///
+/// The surviving OIDs keep the capture's order. A subsequence of a topological order is
+/// still topological over an ancestor-closed subset, so placement sees the walk it expects.
+pub fn apply_visibility(source: &GraphSource, visibility: &RefVisibility) -> GraphSource {
+    if visibility.is_empty() {
+        return source.clone();
+    }
+
+    let mut refs: HashMap<Oid, Vec<RefLabel>> = HashMap::new();
+    for (&oid, labels) in &source.refs {
+        let kept: Vec<RefLabel> = labels
+            .iter()
+            .filter(|label| !visibility.hides(label))
+            .cloned()
+            .collect();
+        if !kept.is_empty() {
+            refs.insert(oid, kept);
+        }
+    }
+
+    let stash_order: Vec<Oid> = source
+        .stash_order
+        .iter()
+        .copied()
+        .filter(|&oid| !visibility.hides_stash(oid))
+        .collect();
+
+    let mut roots: Vec<Oid> = refs.keys().copied().collect();
+    roots.extend(stash_order.iter().copied());
+    roots.extend(source.placement.head_tip);
+    roots.extend(source.placement.tracked_upstream);
+
+    let reachable = reachable_from(&source.placement, &roots);
+
+    let oids: Vec<Oid> = source
+        .placement
+        .oids
+        .iter()
+        .copied()
+        .filter(|oid| reachable.contains(oid))
+        .collect();
+
+    GraphSource {
+        placement: PlacementInput {
+            parents: source
+                .placement
+                .parents
+                .iter()
+                .filter(|(oid, _)| reachable.contains(oid))
+                .map(|(&oid, list)| (oid, list.clone()))
+                .collect(),
+            stashes: source
+                .placement
+                .stashes
+                .iter()
+                .copied()
+                .filter(|oid| reachable.contains(oid))
+                .collect(),
+            oids,
+            head_tip: source.placement.head_tip,
+            tracked_upstream: source.placement.tracked_upstream,
+            worktree_dirty: source.placement.worktree_dirty,
+        },
+        commits: source
+            .commits
+            .iter()
+            .filter(|(oid, _)| reachable.contains(oid))
+            .map(|(&oid, facts)| (oid, facts.clone()))
+            .collect(),
+        refs: refs
+            .into_iter()
+            .filter(|(oid, _)| reachable.contains(oid))
+            .collect(),
+        stash_order: stash_order
+            .into_iter()
+            .filter(|oid| reachable.contains(oid))
+            .collect(),
+    }
+}
+
+/// Every OID reachable from `roots` through `parents`, roots included.
+///
+/// A parent absent from the map is a walk edge, not a defect: `parent_map` closes the
+/// first-parent chains above `head_tip` and `tracked_upstream` past the walk, and every
+/// other list stops at whatever the walk reached. Descending into one and keeping it is what
+/// preserves those chains for the head lane's extension.
+fn reachable_from(placement: &PlacementInput, roots: &[Oid]) -> HashSet<Oid> {
+    let mut seen: HashSet<Oid> = HashSet::new();
+    let mut stack: Vec<Oid> = Vec::new();
+
+    for &root in roots {
+        if placement.parents.contains_key(&root) && seen.insert(root) {
+            stack.push(root);
+        }
+    }
+
+    while let Some(oid) = stack.pop() {
+        let Some(parents) = placement.parents.get(&oid) else {
+            continue;
+        };
+        for &parent in parents {
+            if placement.parents.contains_key(&parent) && seen.insert(parent) {
+                stack.push(parent);
+            }
+        }
+    }
+
+    seen
+}
+
 /// Ref precedence when one commit carries several, matching the frontend's `sortRefs` so a
 /// lane's name and the pill on its tip are always the same ref: HEAD first, then local
 /// branch, tag, stash, remote branch.
