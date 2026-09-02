@@ -126,10 +126,10 @@
         "is_stash": false,
         "in_head_chain": true,
         "lane_ref": {
-          "name": "refs/remotes/origin/main",
-          "short_name": "origin/main",
-          "ref_type": "RemoteBranch",
-          "is_head": false,
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
           "color_index": 0
         }
       },
@@ -152,10 +152,10 @@
         "is_stash": false,
         "in_head_chain": true,
         "lane_ref": {
-          "name": "refs/remotes/origin/main",
-          "short_name": "origin/main",
-          "ref_type": "RemoteBranch",
-          "is_head": false,
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
           "color_index": 0
         }
       }

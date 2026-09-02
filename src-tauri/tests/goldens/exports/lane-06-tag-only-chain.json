@@ -119,10 +119,10 @@
         "is_stash": false,
         "in_head_chain": true,
         "lane_ref": {
-          "name": "refs/tags/v1.0.0",
-          "short_name": "v1.0.0",
-          "ref_type": "Tag",
-          "is_head": false,
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
           "color_index": 0
         }
       },
@@ -145,10 +145,10 @@
         "is_stash": false,
         "in_head_chain": true,
         "lane_ref": {
-          "name": "refs/tags/v1.0.0",
-          "short_name": "v1.0.0",
-          "ref_type": "Tag",
-          "is_head": false,
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
           "color_index": 0
         }
       }

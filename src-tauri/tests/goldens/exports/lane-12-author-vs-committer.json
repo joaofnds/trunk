@@ -132,8 +132,8 @@
         "is_stash": false,
         "in_head_chain": true,
         "lane_ref": {
-          "name": "refs/heads/beta",
-          "short_name": "beta",
+          "name": "refs/heads/main",
+          "short_name": "main",
           "ref_type": "LocalBranch",
           "is_head": false,
           "color_index": 0

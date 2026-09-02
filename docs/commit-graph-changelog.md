@@ -299,3 +299,23 @@ Changed goldens:
      M src-tauri/tests/goldens/exports/stash-19-two-backdated.json
      M src-tauri/tests/goldens/exports/stash-20-stash-on-stash.json
      M src-tauri/tests/goldens/exports/stash-21-tagged-stash.json
+
+## 2026-09-02
+
+review of TRUNK-113 fixed two bugs where a lane's stale claim outlived the row that should have replaced it: a HEAD tip behind its tracked upstream named the upstream instead of itself, and a stash reusing a column a branch just freed left that branch's claim for the row below it to inherit. 13 export goldens changed to reflect the corrected lane_ref on those shapes (lane-01/02/03/04/06/07/08/09/10/11/12-*, stash-12-orphan-stash, stash-20-stash-on-stash).
+
+Changed goldens:
+
+     M src-tauri/tests/goldens/exports/lane-01-behind-only.json
+     M src-tauri/tests/goldens/exports/lane-02-local-ahead-no-remote.json
+     M src-tauri/tests/goldens/exports/lane-03-detached-old.json
+     M src-tauri/tests/goldens/exports/lane-04-tiebreak-upstream-vs-topic.json
+     M src-tauri/tests/goldens/exports/lane-06-tag-only-chain.json
+     M src-tauri/tests/goldens/exports/lane-07-tag-on-unpulled.json
+     M src-tauri/tests/goldens/exports/lane-08-stash-on-tip-behind.json
+     M src-tauri/tests/goldens/exports/lane-09-branch-point-below-head.json
+     M src-tauri/tests/goldens/exports/lane-10-two-remotes.json
+     M src-tauri/tests/goldens/exports/lane-11-merge-in-head-chain.json
+     M src-tauri/tests/goldens/exports/lane-12-author-vs-committer.json
+     M src-tauri/tests/goldens/exports/stash-12-orphan-stash.json
+     M src-tauri/tests/goldens/exports/stash-20-stash-on-stash.json
