@@ -2071,6 +2071,35 @@ fn md_cell(s: &str) -> String {
 /// leaves raw front matter, which comrak parses and this filter suppresses.
 /// Images are rewritten once over the whole tree first, so each fragment
 /// resolves them like the whole-doc render would.
+/// The node whose children are a block's leaves, or `None` when the block has
+/// none and takes the whole-fragment path instead.
+///
+/// A table's and a list's own children are its rows and items. A blockquote's
+/// are whatever it wraps, so a quote holding one list or table lends its leaves
+/// from that: without this a quoted twenty-item list had no leaves, so nothing
+/// to tint and nothing to fold, and it rendered whole while the identical
+/// unquoted list folded to three items (TRUNK-103).
+///
+/// A quote wrapping prose, or several blocks, keeps the single-leaf path: its
+/// children are paragraphs, and the word merge already reads the whole quote as
+/// one fragment.
+fn leaf_parent<'a>(node: &'a comrak::nodes::AstNode<'a>) -> Option<&'a comrak::nodes::AstNode<'a>> {
+    fn is_container(node: &comrak::nodes::AstNode<'_>) -> bool {
+        let kind = node.data.borrow().value.xml_node_name();
+        kind == "table" || kind == "list"
+    }
+
+    if is_container(node) {
+        return Some(node);
+    }
+    if node.data.borrow().value.xml_node_name() != "block_quote" {
+        return None;
+    }
+    let mut children = node.children();
+    let only = children.next().filter(|_| children.next().is_none())?;
+    is_container(only).then_some(only)
+}
+
 fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpec) -> Vec<Block> {
     let arena = comrak::Arena::new();
     let options = build_options();
@@ -2083,10 +2112,9 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
         .filter(|n| !matches!(n.data.borrow().value, NodeValue::FrontMatter(_)))
         .map(|n| {
             let kind = n.data.borrow().value.xml_node_name();
-            let is_container = kind == "table" || kind == "list";
             let raw = format_node(n, &options);
-            let (leaves, sourcepos_html, raw_html) = if is_container {
-                let leaves = n
+            let (leaves, sourcepos_html, raw_html) = if let Some(container) = leaf_parent(n) {
+                let leaves = container
                     .children()
                     .map(|c| Leaf {
                         signature: block_signature(c),
@@ -2627,6 +2655,87 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn a_prose_blockquote_keeps_the_whole_fragment_path() {
+        // Only a quote wrapping ONE container lends its leaves. Prose, or
+        // several blocks, keeps the word merge over the whole quote.
+        for (before, after) in [
+            ("> hello there world", "> hello brave world"),
+            ("> one para\n>\n> two para", "> one para\n>\n> two EDITED"),
+        ] {
+            let rows = diff_rows(before, after);
+            let DiffRow::Changed {
+                has_tints,
+                merged_html,
+                ..
+            } = &rows[0]
+            else {
+                panic!("one changed quote: {rows:?}");
+            };
+
+            assert!(!has_tints, "no leaves, so no leaf tint: {rows:?}");
+            let merged = merged_html.as_deref().expect("the word merge runs");
+            assert!(
+                merged.contains("md-word-add"),
+                "the changed words are marked: {merged}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_changed_quoted_list_still_marks_which_item_changed() {
+        let rows = diff_rows(
+            "> - one\n> - old two\n> - three",
+            "> - one\n> - new two\n> - three",
+        );
+        let merged = merged_of(&rows);
+
+        assert!(illegible_rows(&rows).is_empty(), "{rows:?}");
+        assert!(
+            merged.contains("md-word-delete\">old") || merged.contains("md-removed"),
+            "the item that changed is marked: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_long_quoted_list_folds_like_the_same_list_unquoted() {
+        // A blockquote took the single-leaf path, so a quoted list had no
+        // leaves: nothing to tint and nothing to fold. The reader scanned all
+        // twenty items of a quote to find the one edit, while the identical
+        // unquoted list folded to three.
+        let quoted = |text: &str| {
+            list_doc(20, 9, text)
+                .lines()
+                .map(|l| format!("> {l}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let rows = diff_rows(&quoted("old"), &quoted("new"));
+        let DiffRow::Changed {
+            has_tints,
+            hunk_merged_html,
+            hunk_hidden_leaves,
+            ..
+        } = &rows[0]
+        else {
+            panic!("one changed quote: {rows:?}");
+        };
+
+        assert!(has_tints, "the changed item is marked: {rows:?}");
+        let folded = hunk_merged_html
+            .as_deref()
+            .expect("a twenty-item quoted list folds");
+        assert!(*hunk_hidden_leaves > 0, "items are hidden: {folded}");
+        assert!(
+            folded.contains("item 9"),
+            "the changed item survives the fold: {folded}"
+        );
+        assert!(
+            !folded.contains("item 0"),
+            "a distant unchanged item is hidden: {folded}"
+        );
     }
 
     /// The reported defect (TRUNK-93): a long list with ONE changed item must
