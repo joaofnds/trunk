@@ -2781,7 +2781,9 @@ mod tests {
                 "{before:?} -> {after:?}: {rows:?}"
             );
             let list_open = merged.find("<ul>").expect("a list");
-            let removed = merged.find("md-removed").expect("the removed item is marked");
+            let removed = merged
+                .find("md-removed")
+                .expect("the removed item is marked");
             assert!(
                 removed > list_open,
                 "the removed item sits inside the list: {merged}"
@@ -2811,7 +2813,9 @@ mod tests {
 
         assert!(illegible_rows(&rows).is_empty(), "{rows:?}");
         let body = merged.find("<tbody>").expect("a table body");
-        let removed = merged.find("md-removed").expect("the removed row is marked");
+        let removed = merged
+            .find("md-removed")
+            .expect("the removed row is marked");
         assert!(removed > body, "the removed row sits in the body: {merged}");
     }
 
