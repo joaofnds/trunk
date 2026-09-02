@@ -12,8 +12,11 @@ interface Props {
 	oncheckout: (fullName: string) => void;
 	ondblclick?: (fullName: string) => void;
 	oncontextmenu?: (e: MouseEvent, fullName: string) => void;
-	/** Whether this whole remote is hidden from the graph. */
-	hidden?: boolean;
+	/**
+	 * How much of this remote is hidden, derived from its rows so the icon can never
+	 * contradict them.
+	 */
+	groupState?: "none" | "some" | "all";
 	/** Whether each branch under it is hidden, keyed by branch name. */
 	hiddenBranches?: Record<string, boolean>;
 	ontogglevisibility?: () => void;
@@ -29,11 +32,13 @@ let {
 	oncheckout,
 	ondblclick,
 	oncontextmenu,
-	hidden = false,
+	groupState = "none",
 	hiddenBranches = {},
 	ontogglevisibility,
 	ontogglebranchvisibility,
 }: Props = $props();
+
+let allHidden = $derived(groupState === "all");
 </script>
 
 <div>
@@ -53,9 +58,10 @@ let {
         data-testid="remote-group-visibility-btn"
         onclick={() => ontogglevisibility?.()}
         style="flex-shrink: 0; color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
-        aria-label="{hidden ? 'Show' : 'Hide'} all {remoteName} branches"
+        aria-label="{allHidden ? 'Show' : 'Hide'} all {remoteName} branches"
+        data-group-state={groupState}
       >
-        {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+        {#if allHidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
       </button>
     {/if}
   </div>
@@ -72,7 +78,7 @@ let {
         onclick={() => oncheckout(remoteName + '/' + branch)}
         ondblclick={() => ondblclick?.(remoteName + '/' + branch)}
         oncontextmenu={(e) => oncontextmenu?.(e, remoteName + '/' + branch)}
-        hidden={hidden || (hiddenBranches[remoteName + '/' + branch] ?? false)}
+        hidden={hiddenBranches[remoteName + '/' + branch] ?? false}
         ontogglevisibility={ontogglebranchvisibility
           ? () => ontogglebranchvisibility?.(remoteName + '/' + branch)
           : undefined}

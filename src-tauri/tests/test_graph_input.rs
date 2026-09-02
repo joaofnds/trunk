@@ -633,11 +633,11 @@ fn heads_own_branch_survives_hiding_the_whole_local_section() {
         stash_order: Vec::new(),
     };
 
-    let mut hidden = RefVisibility {
-        hide_local: true,
-        ..RefVisibility::default()
-    };
+    // A bulk "hide the Local section" writes every local branch name, HEAD's among them
+    // if the caller is careless. The filter refuses it at the label either way.
+    let mut hidden = RefVisibility::default();
     hidden.hidden_refs.insert("refs/heads/main".to_owned());
+    hidden.hidden_refs.insert("refs/heads/other".to_owned());
 
     let result = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
 
@@ -694,8 +694,12 @@ fn hiding_a_remote_takes_only_its_own_branches() {
         stash_order: Vec::new(),
     };
 
+    // Hiding a remote group is a bulk write of the names under it, so a remote whose name
+    // merely starts the same way is untouched by construction.
     let mut hidden = RefVisibility::default();
-    hidden.hidden_remotes.insert("origin".to_owned());
+    hidden
+        .hidden_refs
+        .insert("refs/remotes/origin/topic".to_owned());
 
     let result = layout(&apply_visibility(&source, &hidden), 0, usize::MAX);
 
@@ -755,15 +759,8 @@ fn an_empty_visibility_changes_nothing() {
 /// `src/lib/ref-visibility.ts` — a rename on either side silently stops hiding anything.
 #[test]
 fn the_wire_form_matches_the_frontends_field_names() {
-    let mut visibility = RefVisibility {
-        hide_local: true,
-        hide_remote: true,
-        hide_tags: true,
-        hide_stashes: true,
-        ..RefVisibility::default()
-    };
+    let mut visibility = RefVisibility::default();
     visibility.hidden_refs.insert("refs/heads/topic".to_owned());
-    visibility.hidden_remotes.insert("origin".to_owned());
     visibility.hidden_stashes.insert("abc".to_owned());
 
     let json = serde_json::to_value(&visibility).expect("serialize");
@@ -771,18 +768,7 @@ fn the_wire_form_matches_the_frontends_field_names() {
 
     let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
     keys.sort_unstable();
-    assert_eq!(
-        keys,
-        [
-            "hiddenRefs",
-            "hiddenRemotes",
-            "hiddenStashes",
-            "hideLocal",
-            "hideRemote",
-            "hideStashes",
-            "hideTags",
-        ]
-    );
+    assert_eq!(keys, ["hiddenRefs", "hiddenStashes"]);
 
     let back: RefVisibility = serde_json::from_value(json).expect("round trip");
     assert_eq!(back, visibility);
@@ -796,6 +782,5 @@ fn a_partial_wire_form_fills_in_the_visible_default() {
     let parsed: RefVisibility = serde_json::from_value(json).expect("parse");
 
     assert!(parsed.hidden_refs.contains("refs/heads/topic"));
-    assert!(!parsed.hide_local);
-    assert!(parsed.hidden_remotes.is_empty());
+    assert!(parsed.hidden_stashes.is_empty());
 }

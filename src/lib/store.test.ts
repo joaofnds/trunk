@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	EVERYTHING_VISIBLE,
 	toggleRef,
-	toggleSection,
+	toggleStash,
 } from "./ref-visibility.js";
 import type { PersistedTab, TabInfo } from "./tab-types.js";
 import { createTabId } from "./tab-types.js";
@@ -383,7 +383,7 @@ describe("ref visibility", () => {
 	});
 
 	it("keys the hidden set per repository", async () => {
-		const hidden = toggleSection(EVERYTHING_VISIBLE, "Tag");
+		const hidden = toggleStash(EVERYTHING_VISIBLE, "abc123");
 		await setRefVisibility("/one", hidden);
 
 		expect(await getRefVisibility("/two")).toEqual(EVERYTHING_VISIBLE);

@@ -12,14 +12,16 @@ import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	EVERYTHING_VISIBLE,
+	type GroupState,
+	groupState,
 	hidesNothing,
 	isRefHidden,
-	isSectionHidden,
 	isStashHidden,
 	type RefVisibility,
+	setGroupHidden,
+	setStashGroupHidden,
+	stashGroupState,
 	toggleRef,
-	toggleRemote,
-	toggleSection,
 	toggleStash,
 } from "../lib/ref-visibility.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
@@ -163,6 +165,32 @@ let remoteGroups = $derived(
 		acc[remote].push(short);
 		return acc;
 	}, {}),
+);
+
+// The refs each group toggle covers, as `RefLabel`s the visibility functions understand.
+// Built from the filtered rows rather than the full list, so a group toggle acts on exactly
+// the rows the user can see it next to.
+let localMembers = $derived(
+	filteredLocal.map((b) =>
+		refLabel(localRefName(b.name), "LocalBranch", b.is_head),
+	),
+);
+
+let remoteMembers = $derived(
+	Object.fromEntries(
+		Object.entries(remoteGroups).map(([remote, branches]) => [
+			remote,
+			branches.map((b) =>
+				refLabel(remoteRefName(`${remote}/${b}`), "RemoteBranch"),
+			),
+		]),
+	),
+);
+
+let allRemoteMembers = $derived(Object.values(remoteMembers).flat());
+
+let tagMembers = $derived(
+	filteredTags.map((tg) => refLabel(tagRefName(tg.short_name), "Tag")),
 );
 
 // Load refs on mount and when repoPath changes
@@ -670,8 +698,10 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         ontoggle={() => (localExpanded = !localExpanded)}
         showCreateButton={true}
         oncreate={() => { showCreateInput = true; }}
-        hidden={isSectionHidden(visibility, 'LocalBranch')}
-        ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'LocalBranch'))}
+        groupState={groupState(visibility, localMembers)}
+        ontogglevisibility={() => applyVisibility(
+          setGroupHidden(visibility, localMembers, groupState(visibility, localMembers) !== 'all'),
+        )}
       >
         {#if showCreateInput}
           <div style="padding: var(--space-1) var(--space-2) var(--space-1);">
@@ -733,8 +763,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         count={refs?.remote.length ?? 0}
         expanded={remoteExpanded}
         ontoggle={() => (remoteExpanded = !remoteExpanded)}
-        hidden={isSectionHidden(visibility, 'RemoteBranch')}
-        ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'RemoteBranch'))}
+        groupState={groupState(visibility, allRemoteMembers)}
+        ontogglevisibility={() => applyVisibility(
+          setGroupHidden(
+            visibility,
+            allRemoteMembers,
+            groupState(visibility, allRemoteMembers) !== 'all',
+          ),
+        )}
       >
         {#each Object.entries(remoteGroups) as [remoteName, branches] (remoteName)}
           <RemoteGroup
@@ -746,14 +782,20 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
             oncheckout={(fullName) => onrefnavigate?.(fullName)}
             ondblclick={handleCheckoutRemoteBranch}
             oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
-            hidden={isSectionHidden(visibility, 'RemoteBranch') || visibility.hiddenRemotes.includes(remoteName)}
+            groupState={groupState(visibility, remoteMembers[remoteName] ?? [])}
             hiddenBranches={Object.fromEntries(
               branches.map((b) => [
                 remoteName + '/' + b,
                 isRefHidden(visibility, refLabel(remoteRefName(remoteName + '/' + b), 'RemoteBranch')),
               ]),
             )}
-            ontogglevisibility={() => applyVisibility(toggleRemote(visibility, remoteName))}
+            ontogglevisibility={() => applyVisibility(
+              setGroupHidden(
+                visibility,
+                remoteMembers[remoteName] ?? [],
+                groupState(visibility, remoteMembers[remoteName] ?? []) !== 'all',
+              ),
+            )}
             ontogglebranchvisibility={(fullName) =>
               applyVisibility(toggleRef(visibility, refLabel(remoteRefName(fullName), 'RemoteBranch')))}
           />
@@ -768,8 +810,10 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         count={refs?.tags.length ?? 0}
         expanded={tagsExpanded}
         ontoggle={() => (tagsExpanded = !tagsExpanded)}
-        hidden={isSectionHidden(visibility, 'Tag')}
-        ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'Tag'))}
+        groupState={groupState(visibility, tagMembers)}
+        ontogglevisibility={() => applyVisibility(
+          setGroupHidden(visibility, tagMembers, groupState(visibility, tagMembers) !== 'all'),
+        )}
       >
         {#each filteredTags as tag (tag.name)}
           <BranchRow
@@ -790,8 +834,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
       count={filteredStashes.length}
       expanded={stashesExpanded}
       ontoggle={() => (stashesExpanded = !stashesExpanded)}
-      hidden={isSectionHidden(visibility, 'Stash')}
-      ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'Stash'))}
+      groupState={stashGroupState(visibility, filteredStashes)}
+      ontogglevisibility={() => applyVisibility(
+        setStashGroupHidden(
+          visibility,
+          filteredStashes,
+          stashGroupState(visibility, filteredStashes) !== 'all',
+        ),
+      )}
       showCreateButton={true}
       oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; stashesExpanded = true; }}
     >

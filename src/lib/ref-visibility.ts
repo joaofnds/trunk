@@ -1,36 +1,31 @@
-import type { RefLabel, RefType } from "./types.js";
+import type { RefLabel } from "./types.js";
 
 /**
  * Which refs the user has hidden from the graph.
  *
  * Mirrors the Rust `RefVisibility` field for field, because the whole value crosses the
- * `set_ref_visibility` boundary. A ref is hidden when any rule matches it, and hiding one
- * takes its pill and every commit only it reaches out of the graph.
+ * `set_ref_visibility` boundary. Hiding a ref takes its pill and every commit only it
+ * reaches out of the graph.
  *
- * HEAD's own branch is never hidden, whatever the rules say: column 0, the WIP row and the
- * head-lane extension all assume the checked-out branch is in the walk.
+ * Every hidden thing is named here individually. The sidebar's section and remote toggles
+ * are bulk actions over the rows they cover, not rules of their own: a row is hidden if and
+ * only if it appears in one of these lists. That is what keeps the sidebar honest — the eye
+ * on a row always shows that row's own state, and a group icon can never contradict the
+ * rows beneath it (João, 2026-09-02).
+ *
+ * HEAD's own branch is never hidden: column 0, the WIP row and the head-lane extension all
+ * assume the checked-out branch is in the walk.
  */
 export interface RefVisibility {
 	/** Full ref names, as `RefLabel.name` carries them. */
 	hiddenRefs: string[];
-	/** Remote names — `origin` hides every `refs/remotes/origin/*`. */
-	hiddenRemotes: string[];
 	/** Stash commit OIDs. A stash has no stable name, so it is keyed by its commit. */
 	hiddenStashes: string[];
-	hideLocal: boolean;
-	hideRemote: boolean;
-	hideTags: boolean;
-	hideStashes: boolean;
 }
 
 export const EVERYTHING_VISIBLE: RefVisibility = {
 	hiddenRefs: [],
-	hiddenRemotes: [],
 	hiddenStashes: [],
-	hideLocal: false,
-	hideRemote: false,
-	hideTags: false,
-	hideStashes: false,
 };
 
 /**
@@ -56,57 +51,58 @@ export function remoteOf(name: string): string | null {
  */
 export function hidesNothing(visibility: RefVisibility): boolean {
 	return (
-		visibility.hiddenRefs.length === 0 &&
-		visibility.hiddenRemotes.length === 0 &&
-		visibility.hiddenStashes.length === 0 &&
-		!visibility.hideLocal &&
-		!visibility.hideRemote &&
-		!visibility.hideTags &&
-		!visibility.hideStashes
+		visibility.hiddenRefs.length === 0 && visibility.hiddenStashes.length === 0
 	);
 }
 
-const SECTION_KEY = {
-	LocalBranch: "hideLocal",
-	RemoteBranch: "hideRemote",
-	Tag: "hideTags",
-	Stash: "hideStashes",
-} as const satisfies Record<RefType, keyof RefVisibility>;
-
-export function isSectionHidden(
-	visibility: RefVisibility,
-	section: RefType,
-): boolean {
-	return visibility[SECTION_KEY[section]] === true;
+/** A ref the user is not allowed to hide, so no toggle is offered for it. */
+export function isHideable(ref: RefLabel): boolean {
+	return !ref.is_head;
 }
 
 export function isRefHidden(visibility: RefVisibility, ref: RefLabel): boolean {
-	if (ref.is_head) return false;
-	if (isSectionHidden(visibility, ref.ref_type)) return true;
-
-	if (ref.ref_type === "RemoteBranch") {
-		const remote = remoteOf(ref.name);
-		if (remote !== null && visibility.hiddenRemotes.includes(remote)) {
-			return true;
-		}
-	}
-
+	if (!isHideable(ref)) return false;
 	return visibility.hiddenRefs.includes(ref.name);
 }
 
-function withoutOrWith(list: string[], value: string): string[] {
-	return list.includes(value)
-		? list.filter((v) => v !== value)
-		: [...list, value];
+export function isStashHidden(visibility: RefVisibility, oid: string): boolean {
+	return visibility.hiddenStashes.includes(oid);
+}
+
+function withHidden(list: string[], value: string, hidden: boolean): string[] {
+	if (hidden) {
+		return list.includes(value) ? list : [...list, value];
+	}
+	return list.filter((v) => v !== value);
+}
+
+export function setRefHidden(
+	visibility: RefVisibility,
+	ref: RefLabel,
+	hidden: boolean,
+): RefVisibility {
+	if (!isHideable(ref)) return visibility;
+	return {
+		...visibility,
+		hiddenRefs: withHidden(visibility.hiddenRefs, ref.name, hidden),
+	};
 }
 
 export function toggleRef(
 	visibility: RefVisibility,
 	ref: RefLabel,
 ): RefVisibility {
+	return setRefHidden(visibility, ref, !isRefHidden(visibility, ref));
+}
+
+export function setStashHidden(
+	visibility: RefVisibility,
+	oid: string,
+	hidden: boolean,
+): RefVisibility {
 	return {
 		...visibility,
-		hiddenRefs: withoutOrWith(visibility.hiddenRefs, ref.name),
+		hiddenStashes: withHidden(visibility.hiddenStashes, oid, hidden),
 	};
 }
 
@@ -114,30 +110,63 @@ export function toggleStash(
 	visibility: RefVisibility,
 	oid: string,
 ): RefVisibility {
-	return {
-		...visibility,
-		hiddenStashes: withoutOrWith(visibility.hiddenStashes, oid),
-	};
+	return setStashHidden(visibility, oid, !isStashHidden(visibility, oid));
 }
 
-export function toggleRemote(
+/**
+ * How much of a sidebar group is hidden, which is all its toggle needs to render.
+ *
+ * Derived from the rows rather than stored, so the icon on a section or a remote always
+ * agrees with the eyes beneath it.
+ */
+export type GroupState = "none" | "some" | "all";
+
+export function groupState(
 	visibility: RefVisibility,
-	remote: string,
-): RefVisibility {
-	return {
-		...visibility,
-		hiddenRemotes: withoutOrWith(visibility.hiddenRemotes, remote),
-	};
+	members: RefLabel[],
+): GroupState {
+	// HEAD's branch can never be hidden, so counting it would leave its section stuck at
+	// "some" however many times the user clicked.
+	const hideable = members.filter(isHideable);
+	if (hideable.length === 0) return "none";
+
+	const hidden = hideable.filter((ref) => isRefHidden(visibility, ref)).length;
+	if (hidden === 0) return "none";
+	return hidden === hideable.length ? "all" : "some";
 }
 
-export function toggleSection(
+/** Write `hidden` onto every member of a group, which is what a group toggle does. */
+export function setGroupHidden(
 	visibility: RefVisibility,
-	section: RefType,
+	members: RefLabel[],
+	hidden: boolean,
 ): RefVisibility {
-	const key = SECTION_KEY[section];
-	return { ...visibility, [key]: !visibility[key] };
+	return members.reduce(
+		(acc, ref) => setRefHidden(acc, ref, hidden),
+		visibility,
+	);
 }
 
-export function isStashHidden(visibility: RefVisibility, oid: string): boolean {
-	return visibility.hideStashes || visibility.hiddenStashes.includes(oid);
+export type StashGroupMember = { oid: string };
+
+export function stashGroupState(
+	visibility: RefVisibility,
+	stashes: StashGroupMember[],
+): GroupState {
+	if (stashes.length === 0) return "none";
+
+	const hidden = stashes.filter((s) => isStashHidden(visibility, s.oid)).length;
+	if (hidden === 0) return "none";
+	return hidden === stashes.length ? "all" : "some";
+}
+
+export function setStashGroupHidden(
+	visibility: RefVisibility,
+	stashes: StashGroupMember[],
+	hidden: boolean,
+): RefVisibility {
+	return stashes.reduce(
+		(acc, s) => setStashHidden(acc, s.oid, hidden),
+		visibility,
+	);
 }

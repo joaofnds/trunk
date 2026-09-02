@@ -479,6 +479,91 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
+	// The section toggle is a bulk action over the rows it covers, not a rule of its own.
+	// It writes each hideable row's own entry, so the eye on a row always shows that row's
+	// real state (João, 2026-09-02).
+	it("hiding a section writes every hideable row, skipping HEAD's branch", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		// Wait for the rows themselves, not just the section header: the header renders
+		// while the refs are still loading, and a bulk action then covers nothing.
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		await fireEvent.click(screen.getByLabelText("Hide all Local refs"));
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"set_ref_visibility",
+				expect.objectContaining({
+					visibility: { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
+				}),
+			);
+		});
+	});
+
+	// The defect this replaced: the section flag overrode the rows, so a row under a hidden
+	// section showed as hidden while its own state said otherwise, and showing the section
+	// resurrected rows the user had hidden individually.
+	it("shows each row's own state, not the section's", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		await fireEvent.click(screen.getByLabelText("Hide all Local refs"));
+
+		// Every hideable row now reads as hidden, because it really is.
+		await waitFor(() => {
+			expect(screen.getByLabelText("Show topic")).toBeInTheDocument();
+		});
+
+		// Showing one row back leaves the section partly hidden, and the row says so.
+		await fireEvent.click(screen.getByLabelText("Show topic"));
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+	});
+
+	// A section whose rows are all hidden offers to show them, so the icon never lies about
+	// what one more click will do.
+	it("offers to show a section once every row under it is hidden", async () => {
+		prefsStore.set("ref_visibility", {
+			"/test/repo": { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		// main is HEAD and cannot be hidden, so topic alone being hidden makes the whole
+		// section hidden as far as the user can act on it.
+		await waitFor(() => {
+			expect(screen.getByLabelText("Show all Local refs")).toBeInTheDocument();
+		});
+	});
+
+	// Showing a section clears every row it covers, leaving nothing hidden behind it.
+	it("showing a section clears every row under it", async () => {
+		prefsStore.set("ref_visibility", {
+			"/test/repo": { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Show all Local refs")).toBeInTheDocument();
+		});
+		await fireEvent.click(screen.getByLabelText("Show all Local refs"));
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"set_ref_visibility",
+				expect.objectContaining({
+					visibility: { hiddenRefs: [], hiddenStashes: [] },
+				}),
+			);
+		});
+	});
+
 	// Acceptance #5: HEAD's branch row offers no toggle, every other row does.
 	it("offers a toggle on every row but HEAD's branch", async () => {
 		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
@@ -535,12 +620,7 @@ describe("BranchSidebar ref visibility", () => {
 		prefsStore.set("ref_visibility", {
 			"/test/repo": {
 				hiddenRefs: ["refs/heads/topic"],
-				hiddenRemotes: [],
 				hiddenStashes: [],
-				hideLocal: false,
-				hideRemote: false,
-				hideTags: false,
-				hideStashes: false,
 			},
 		});
 
@@ -558,12 +638,7 @@ describe("BranchSidebar ref visibility", () => {
 		prefsStore.set("ref_visibility", {
 			"/test/repo": {
 				hiddenRefs: ["refs/heads/topic"],
-				hiddenRemotes: [],
 				hiddenStashes: [],
-				hideLocal: false,
-				hideRemote: false,
-				hideTags: false,
-				hideStashes: false,
 			},
 		});
 

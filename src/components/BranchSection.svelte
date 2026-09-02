@@ -13,8 +13,11 @@ interface Props {
 	ontoggle: () => void;
 	showCreateButton?: boolean;
 	oncreate?: () => void;
-	/** Whether every ref in this section is hidden from the graph. */
-	hidden?: boolean;
+	/**
+	 * How much of this section is hidden from the graph, derived from the rows beneath it
+	 * so the icon can never contradict them.
+	 */
+	groupState?: "none" | "some" | "all";
 	/** Omitted by a section that offers no visibility toggle. */
 	ontogglevisibility?: () => void;
 	children: Snippet;
@@ -27,10 +30,14 @@ let {
 	ontoggle,
 	showCreateButton = false,
 	oncreate,
-	hidden = false,
+	groupState = "none",
 	ontogglevisibility,
 	children,
 }: Props = $props();
+
+// "some" reads as partly hidden and clicking hides the rest, so it shows the open eye like
+// "none": the icon says what one more click will do.
+let allHidden = $derived(groupState === "all");
 </script>
 
 <div data-testid="branch-section-{label.toLowerCase()}">
@@ -60,9 +67,10 @@ let {
         data-testid="branch-section-visibility-btn"
         onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
         style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
-        aria-label="{hidden ? 'Show' : 'Hide'} all {label} refs"
+        aria-label="{allHidden ? 'Show' : 'Hide'} all {label} refs"
+        data-group-state={groupState}
       >
-        {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+        {#if allHidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
       </button>
     {/if}
     {#if showCreateButton}

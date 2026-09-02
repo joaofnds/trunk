@@ -138,61 +138,34 @@ impl CapturedGraph {
 /// Which refs the user has hidden from the graph, as the frontend states it. Empty means
 /// everything is visible, which is what a repository with no stored preference gets.
 ///
-/// A label is hidden when any rule matches it. HEAD's own branch is never hidden: column 0,
-/// the WIP row and the head-lane extension all assume `head_tip` is in the walk.
+/// Every hidden thing is named here individually. The sidebar's section and remote toggles
+/// are bulk actions over the rows they cover, not rules of their own, so a ref is hidden if
+/// and only if it appears in one of these sets. Holding the group state separately let a row
+/// be hidden by a rule its own eye did not show, which is the defect this shape removes
+/// (João, 2026-09-02).
+///
+/// HEAD's own branch is never hidden: column 0, the WIP row and the head-lane extension all
+/// assume `head_tip` is in the walk.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RefVisibility {
     /// Full ref names, as `RefLabel::name` carries them.
     pub hidden_refs: HashSet<String>,
-    /// Remote names — `origin` hides every `refs/remotes/origin/*`.
-    pub hidden_remotes: HashSet<String>,
     /// Stash commit OIDs in hex. A stash has no stable name, so it is keyed by its commit.
     pub hidden_stashes: HashSet<String>,
-    pub hide_local: bool,
-    pub hide_remote: bool,
-    pub hide_tags: bool,
-    pub hide_stashes: bool,
-}
-
-/// The remote a `refs/remotes/<remote>/<branch>` name belongs to.
-///
-/// A remote name may itself contain slashes, so the branch cannot be split off from the
-/// right. Nothing here knows the configured remotes, so this takes the first segment, which
-/// is what the sidebar groups by.
-fn remote_of(name: &str) -> Option<&str> {
-    name.strip_prefix("refs/remotes/")?.split('/').next()
 }
 
 impl RefVisibility {
     pub fn is_empty(&self) -> bool {
-        *self == RefVisibility::default()
+        self.hidden_refs.is_empty() && self.hidden_stashes.is_empty()
     }
 
     fn hides(&self, label: &RefLabel) -> bool {
-        if label.is_head {
-            return false;
-        }
-
-        let by_type = match label.ref_type {
-            RefType::LocalBranch => self.hide_local,
-            RefType::RemoteBranch => self.hide_remote,
-            RefType::Tag => self.hide_tags,
-            RefType::Stash => self.hide_stashes,
-        };
-
-        let by_remote = match label.ref_type {
-            RefType::RemoteBranch => {
-                remote_of(&label.name).is_some_and(|remote| self.hidden_remotes.contains(remote))
-            }
-            _ => false,
-        };
-
-        by_type || by_remote || self.hidden_refs.contains(&label.name)
+        !label.is_head && self.hidden_refs.contains(&label.name)
     }
 
     fn hides_stash(&self, oid: Oid) -> bool {
-        self.hide_stashes || self.hidden_stashes.contains(&oid.to_string())
+        self.hidden_stashes.contains(&oid.to_string())
     }
 }
 

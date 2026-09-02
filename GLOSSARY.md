@@ -32,7 +32,7 @@ the name.
 
 **Hidden ref** — a ref the user has switched off in the sidebar. It leaves the graph the way GitKraken hides it: its pill goes, and so does every commit reachable only through hidden refs, so the remaining history is laid out and coloured as if the ref did not exist. The repository is untouched. HEAD's own branch cannot be hidden, because column 0, the WIP row and the head-lane extension assume it is in the walk (João, 2026-09-02).
 
-**Ref visibility** — the per-repository set of hidden refs, kept in the preferences file and restored when the repository opens. Anything the sidebar lists can be in it: a local branch, a remote branch, a whole remote, a tag, a stash, or a whole sidebar section.
+**Ref visibility** — the per-repository set of hidden refs, kept in the preferences file and restored when the repository opens. Every hidden ref is named in it individually. The sidebar's section and remote toggles are bulk actions that write each row they cover, not rules of their own, so the eye on a row always shows that row's own state and a group icon can never contradict the rows beneath it. Holding group state separately was tried first and reverted: it let a row be hidden by a rule its own eye did not show, and showing a group resurrected rows the user had hidden individually (João, 2026-09-02).
 
 **Solo** — GitKraken's inverse of hide: show only the soloed refs. Not built; a follow-up card if wanted.
 
