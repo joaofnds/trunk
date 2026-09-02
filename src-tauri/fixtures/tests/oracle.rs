@@ -78,3 +78,8 @@ fn assert_matches_oracle(name: &str) {
 fn stash_lanes_matches_its_oracle() {
     assert_matches_oracle("06-stash-lanes");
 }
+
+#[test]
+fn graph_lanes_matches_its_oracle() {
+    assert_matches_oracle("04-graph-lanes");
+}
