@@ -34,6 +34,14 @@ trait Build {
     fn tag_annotated(&mut self, name: &str, sig: Signature, msg: &str);
     fn stash(&mut self, sig: Signature, msg: &str, include_untracked: bool);
     fn checkout_detached(&mut self, revspec: &str);
+    fn gitlink(&mut self, rel: &str, oid: &str);
+    fn checkout_orphan(&mut self, name: &str);
+    fn rename_branch(&mut self, old: &str, new: &str);
+    fn delete_branch(&mut self, name: &str);
+    fn rm(&mut self, rel: &str);
+    fn mv(&mut self, from: &str, to: &str);
+    fn merge_ff(&mut self, branch: &str);
+    fn reset_hard(&mut self, revspec: &str);
 }
 
 impl Build for Repo {
@@ -75,6 +83,30 @@ impl Build for Repo {
     }
     fn checkout_detached(&mut self, revspec: &str) {
         Repo::checkout_detached(self, revspec);
+    }
+    fn gitlink(&mut self, rel: &str, oid: &str) {
+        Repo::gitlink(self, rel, oid);
+    }
+    fn checkout_orphan(&mut self, name: &str) {
+        Repo::checkout_orphan(self, name);
+    }
+    fn rename_branch(&mut self, old: &str, new: &str) {
+        Repo::rename_branch(self, old, new);
+    }
+    fn delete_branch(&mut self, name: &str) {
+        Repo::delete_branch(self, name);
+    }
+    fn rm(&mut self, rel: &str) {
+        Repo::rm(self, rel);
+    }
+    fn mv(&mut self, from: &str, to: &str) {
+        Repo::mv(self, from, to);
+    }
+    fn merge_ff(&mut self, branch: &str) {
+        Repo::merge_ff(self, branch);
+    }
+    fn reset_hard(&mut self, revspec: &str) {
+        Repo::reset_hard(self, revspec);
     }
 }
 
@@ -183,12 +215,40 @@ impl Build for GitCli {
     fn checkout_detached(&mut self, revspec: &str) {
         self.git(&["checkout", "-q", "--detach", revspec], None);
     }
+    fn gitlink(&mut self, rel: &str, oid: &str) {
+        let entry = format!("160000,{oid},{rel}");
+        self.git(&["update-index", "--add", "--cacheinfo", &entry], None);
+    }
+    fn checkout_orphan(&mut self, name: &str) {
+        self.git(&["checkout", "-q", "--orphan", name], None);
+        self.git(&["rm", "-rqf", "."], None);
+    }
+    fn rename_branch(&mut self, old: &str, new: &str) {
+        self.git(&["branch", "-M", old, new], None);
+    }
+    fn delete_branch(&mut self, name: &str) {
+        self.git(&["branch", "-q", "-D", name], None);
+    }
+    fn rm(&mut self, rel: &str) {
+        self.git(&["rm", "-q", "--", rel], None);
+    }
+    fn mv(&mut self, from: &str, to: &str) {
+        self.git(&["mv", "--", from, to], None);
+    }
+    fn merge_ff(&mut self, branch: &str) {
+        self.git(&["merge", "-q", branch], None);
+    }
+    fn reset_hard(&mut self, revspec: &str) {
+        self.git(&["reset", "-q", "--hard", revspec], None);
+    }
 }
 
 /// Every verb the corpus uses, in the shapes it uses them: doc-45 §3's commits on two
 /// branches, --no-ff merge, tags and split-date commit; case 05-01's three-topic octopus;
 /// a stash of each flavour, with a commit after them that would capture anything a stash
-/// left on disk; and a stash taken with HEAD detached.
+/// left on disk; a stash taken with HEAD detached; then a gitlink, an orphan branch, a
+/// branch renamed and deleted, rm and mv, a fast-forward merge, a hard reset and a final
+/// detach.
 fn scenario(b: &mut impl Build) {
     b.write("README.md", "# Parity\n");
     b.add_all();
@@ -260,6 +320,61 @@ fn scenario(b: &mut impl Build) {
     b.checkout_detached("main~1");
     b.write("b.txt", "b, edited while detached\n");
     b.stash(day(24), "detached work", false);
+
+    b.checkout("main");
+    b.gitlink("vendor/dep", "1111111111111111111111111111111111111111");
+    b.commit(
+        day(25),
+        "sub: add a submodule pointer\n\nSetup only: a gitlink entry.",
+    );
+    b.gitlink("vendor/dep", "2222222222222222222222222222222222222222");
+    b.commit(day(26), "sub: bump the submodule pointer");
+    b.checkout_orphan("gh-pages");
+    b.write("index.html", "<html><body>Hello</body></html>\n");
+    b.add_all();
+    b.commit(day(27), "Initial GitHub Pages commit");
+    b.write("style.css", "body { margin: 0 }\n");
+    b.add_all();
+    b.commit(day(28), "Add styles");
+    b.checkout("main");
+    b.rename_branch("main", "old");
+    b.branch("new");
+    b.checkout("new");
+    b.write("new-one.txt", "new one\n");
+    b.add_all();
+    b.commit(day(29), "new one");
+    b.checkout("old");
+    b.rename_branch("old", "main");
+    b.branch("scratch");
+    b.checkout("scratch");
+    b.write("released.txt", "released\n");
+    b.add_all();
+    b.commit(day(30), "released one");
+    b.tag("v2.0.0", "HEAD");
+    b.checkout("main");
+    b.delete_branch("scratch");
+    b.rm("docs/notes.md");
+    b.commit(day(31), "docs: drop the notes");
+    b.mv("src/lib.rs", "src/library.rs");
+    b.commit(day(32), "refactor: rename the library file");
+    b.branch("quick-fix");
+    b.checkout("quick-fix");
+    b.write("src/fix.rs", "// quick fix\n");
+    b.add_all();
+    b.commit(day(33), "fix: quick patch");
+    b.checkout("main");
+    b.merge_ff("quick-fix");
+    b.write("after-the-fast-forward.txt", "the worktree followed\n");
+    b.add_all();
+    b.commit(day(34), "feat: after the fast-forward");
+    b.write("dropped.txt", "dropped\n");
+    b.add_all();
+    b.commit(day(35), "feat: to be reset away");
+    b.reset_hard("HEAD~1");
+    b.write("after-the-reset.txt", "the index and worktree were reset\n");
+    b.add_all();
+    b.commit(day(36), "feat: after the reset");
+    b.checkout_detached("main~2");
 }
 
 fn assert_same_fingerprint(root: &Path, git_side: &str, repo_side: &str) {

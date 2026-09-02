@@ -251,6 +251,127 @@ impl Repo {
             .expect("create the annotated tag");
     }
 
+    /// `git update-index --add --cacheinfo 160000,<oid>,<rel>`: a submodule pointer in the
+    /// index. The object need not exist anywhere.
+    pub fn gitlink(&mut self, rel: &str, oid: &str) {
+        let mut index = self.index();
+        let id = Oid::from_str(oid).expect("a gitlink target is a hex OID");
+        index
+            .add(&index_entry(0o160000, id, 0, rel))
+            .expect("stage the gitlink");
+        index.write().expect("write the index");
+    }
+
+    /// `git checkout --orphan <name>` followed by the removal of every tracked file, as
+    /// cases 05 and 09 do it: an unborn branch, an empty index and a worktree holding only
+    /// `.git`, so the next commit has no parent. Untracked files go too, which the
+    /// corpus never has at that point.
+    pub fn checkout_orphan(&mut self, name: &str) {
+        self.repo
+            .set_head(&format!("refs/heads/{name}"))
+            .expect("point HEAD at the unborn branch");
+        let mut index = self.index();
+        index.clear().expect("empty the index");
+        index.write().expect("write the index");
+        for entry in std::fs::read_dir(&self.workdir).expect("list the worktree") {
+            let path = entry.expect("read a worktree entry").path();
+            if path.file_name().is_some_and(|name| name == ".git") {
+                continue;
+            }
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path).expect("empty the worktree");
+            } else {
+                std::fs::remove_file(&path).expect("empty the worktree");
+            }
+        }
+    }
+
+    /// `git branch -M <old> <new>`; HEAD follows when it pointed at the old name.
+    pub fn rename_branch(&mut self, old: &str, new: &str) {
+        self.repo
+            .find_branch(old, git2::BranchType::Local)
+            .expect("find the branch to rename")
+            .rename(new, true)
+            .expect("rename the branch");
+    }
+
+    /// `git branch -D <name>`.
+    pub fn delete_branch(&mut self, name: &str) {
+        self.repo
+            .find_branch(name, git2::BranchType::Local)
+            .expect("find the branch to delete")
+            .delete()
+            .expect("delete the branch");
+    }
+
+    /// `git rm -q -- <rel>`: git refuses a path it does not track, and so does this.
+    pub fn rm(&mut self, rel: &str) {
+        let mut index = self.index();
+        assert!(
+            index.get_path(Path::new(rel), 0).is_some(),
+            "rm {rel}: not a tracked path"
+        );
+        let path = self.workdir.join(rel);
+        std::fs::remove_file(&path).expect("remove the file");
+        self.remove_emptied_directories(&path);
+        index
+            .remove_path(Path::new(rel))
+            .expect("unstage the removed file");
+        index.write().expect("write the index");
+    }
+
+    /// `git mv <from> <to>`: git refuses a source it does not track, and so does this.
+    pub fn mv(&mut self, from: &str, to: &str) {
+        let mut index = self.index();
+        assert!(
+            index.get_path(Path::new(from), 0).is_some(),
+            "mv {from}: not a tracked path"
+        );
+        let source = self.workdir.join(from);
+        let target = self.workdir.join(to);
+        std::fs::create_dir_all(target.parent().expect("a file path has a parent"))
+            .expect("create the target's parent directories");
+        std::fs::rename(&source, target).expect("move the file");
+        self.remove_emptied_directories(&source);
+        index
+            .remove_path(Path::new(from))
+            .expect("unstage the old path");
+        index.add_path(Path::new(to)).expect("stage the new path");
+        index.write().expect("write the index");
+    }
+
+    /// `git merge <branch>` where the branch descends from HEAD: the current branch's ref
+    /// moves to the tip and the worktree follows; no commit is made.
+    pub fn merge_ff(&mut self, branch: &str) {
+        let head = self.repo.head().expect("a fast-forward needs a HEAD");
+        let current = head.name().expect("a reference name is utf-8").to_owned();
+        let ours = head.target().expect("HEAD points at a commit");
+        let target = self.resolve(branch).id();
+        assert!(
+            self.repo
+                .graph_descendant_of(target, ours)
+                .expect("compare the two tips"),
+            "{branch} does not descend from HEAD; the fixture asked for a fast-forward"
+        );
+        self.repo
+            .reference(
+                &current,
+                target,
+                true,
+                &format!("merge {branch}: Fast-forward"),
+            )
+            .expect("move the branch to the tip");
+        self.checkout_head();
+    }
+
+    /// `git reset --hard <revspec>`.
+    pub fn reset_hard(&mut self, revspec: &str) {
+        let commit = self.resolve(revspec);
+        self.repo
+            .reset(commit.as_object(), git2::ResetType::Hard, None)
+            .expect("reset to the commit");
+    }
+
     /// `git checkout --detach <revspec>`.
     pub fn checkout_detached(&mut self, revspec: &str) {
         let commit = self.resolve(revspec);
@@ -401,20 +522,7 @@ impl Repo {
             let (mode, bytes) = untracked_blob(&path);
             let blob = self.repo.blob(&bytes).expect("write the untracked blob");
             tree_index
-                .add(&git2::IndexEntry {
-                    ctime: git2::IndexTime::new(0, 0),
-                    mtime: git2::IndexTime::new(0, 0),
-                    dev: 0,
-                    ino: 0,
-                    mode,
-                    uid: 0,
-                    gid: 0,
-                    file_size: bytes.len() as u32,
-                    id: blob,
-                    flags: 0,
-                    flags_extended: 0,
-                    path: rel.into_bytes(),
-                })
+                .add(&index_entry(mode, blob, bytes.len() as u32, &rel))
                 .expect("add the untracked file to the helper tree");
             paths.push(path);
         }
@@ -499,4 +607,22 @@ fn untracked_blob(path: &Path) -> (u32, Vec<u8>) {
     };
 
     (mode, bytes)
+}
+
+/// An index entry with no stat data, as `git update-index --cacheinfo` writes one.
+fn index_entry(mode: u32, id: Oid, file_size: u32, path: &str) -> git2::IndexEntry {
+    git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode,
+        uid: 0,
+        gid: 0,
+        file_size,
+        id,
+        flags: 0,
+        flags_extended: 0,
+        path: path.as_bytes().to_vec(),
+    }
 }
