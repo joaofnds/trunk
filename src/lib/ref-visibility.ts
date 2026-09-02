@@ -55,6 +55,16 @@ export function hidesNothing(visibility: RefVisibility): boolean {
 	);
 }
 
+/**
+ * What clicking a visibility toggle will do, for its accessible name.
+ *
+ * The label states the action, not the state: a crossed-out eye on a hidden row reads
+ * "Show topic", because that is what the click does.
+ */
+export function visibilityVerb(hidden: boolean): "Show" | "Hide" {
+	return hidden ? "Show" : "Hide";
+}
+
 /** A ref the user is not allowed to hide, so no toggle is offered for it. */
 export function isHideable(ref: RefLabel): boolean {
 	return !ref.is_head;

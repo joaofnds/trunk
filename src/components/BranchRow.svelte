@@ -1,9 +1,9 @@
 <script lang="ts">
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
-import Eye from "@lucide/svelte/icons/eye";
-import EyeOff from "@lucide/svelte/icons/eye-off";
 import Tag from "@lucide/svelte/icons/tag";
+import { visibilityVerb } from "../lib/ref-visibility.js";
+import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
 	name: string;
@@ -115,9 +115,9 @@ let actionShown = $derived(hovered || focused || hidden);
         onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
         ondblclick={(e) => e.stopPropagation()}
         style="flex-shrink: 0; margin-left: var(--space-1); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; align-items: center; display: {actionShown ? 'inline-flex' : 'none'};"
-        aria-label="{hidden ? 'Show' : 'Hide'} {name}"
+        aria-label="{visibilityVerb(hidden)} {name}"
       >
-        {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+        <VisibilityIcon {hidden} />
       </button>
     {/if}
   </div>

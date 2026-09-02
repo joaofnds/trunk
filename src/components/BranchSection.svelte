@@ -1,10 +1,10 @@
 <script lang="ts">
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
-import Eye from "@lucide/svelte/icons/eye";
-import EyeOff from "@lucide/svelte/icons/eye-off";
 import Plus from "@lucide/svelte/icons/plus";
 import type { Snippet } from "svelte";
+import { type GroupState, visibilityVerb } from "../lib/ref-visibility.js";
+import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
 	label: string;
@@ -17,7 +17,7 @@ interface Props {
 	 * How much of this section is hidden from the graph, derived from the rows beneath it
 	 * so the icon can never contradict them.
 	 */
-	groupState?: "none" | "some" | "all";
+	groupState?: GroupState;
 	/** Omitted by a section that offers no visibility toggle. */
 	ontogglevisibility?: () => void;
 	children: Snippet;
@@ -67,10 +67,10 @@ let allHidden = $derived(groupState === "all");
         data-testid="branch-section-visibility-btn"
         onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
         style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
-        aria-label="{allHidden ? 'Show' : 'Hide'} all {label} refs"
+        aria-label="{visibilityVerb(allHidden)} all {label} refs"
         data-group-state={groupState}
       >
-        {#if allHidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+        <VisibilityIcon hidden={allHidden} />
       </button>
     {/if}
     {#if showCreateButton}

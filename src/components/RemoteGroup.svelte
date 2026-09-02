@@ -1,7 +1,7 @@
 <script lang="ts">
-import Eye from "@lucide/svelte/icons/eye";
-import EyeOff from "@lucide/svelte/icons/eye-off";
+import { type GroupState, visibilityVerb } from "../lib/ref-visibility.js";
 import BranchRow from "./BranchRow.svelte";
+import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
 	remoteName: string;
@@ -16,7 +16,7 @@ interface Props {
 	 * How much of this remote is hidden, derived from its rows so the icon can never
 	 * contradict them.
 	 */
-	groupState?: "none" | "some" | "all";
+	groupState?: GroupState;
 	/** Whether each branch under it is hidden, keyed by branch name. */
 	hiddenBranches?: Record<string, boolean>;
 	ontogglevisibility?: () => void;
@@ -58,10 +58,10 @@ let allHidden = $derived(groupState === "all");
         data-testid="remote-group-visibility-btn"
         onclick={() => ontogglevisibility?.()}
         style="flex-shrink: 0; color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
-        aria-label="{allHidden ? 'Show' : 'Hide'} all {remoteName} branches"
+        aria-label="{visibilityVerb(allHidden)} all {remoteName} branches"
         data-group-state={groupState}
       >
-        {#if allHidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+        <VisibilityIcon hidden={allHidden} />
       </button>
     {/if}
   </div>

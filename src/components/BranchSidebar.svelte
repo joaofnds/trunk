@@ -1,7 +1,5 @@
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
-import Eye from "@lucide/svelte/icons/eye";
-import EyeOff from "@lucide/svelte/icons/eye-off";
 import Search from "@lucide/svelte/icons/search";
 import {
 	mergeBranch,
@@ -23,6 +21,7 @@ import {
 	stashGroupState,
 	toggleRef,
 	toggleStash,
+	visibilityVerb,
 } from "../lib/ref-visibility.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -31,6 +30,7 @@ import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
 import RemoteGroup from "./RemoteGroup.svelte";
+import VisibilityIcon from "./VisibilityIcon.svelte";
 
 interface Props {
 	repoPath: string;
@@ -884,9 +884,9 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
             class="stash-visibility-btn"
             data-hidden={isStashHidden(visibility, stash.oid)}
             onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
-            aria-label="{isStashHidden(visibility, stash.oid) ? 'Show' : 'Hide'} {stash.short_name}"
+            aria-label="{visibilityVerb(isStashHidden(visibility, stash.oid))} {stash.short_name}"
           >
-            {#if isStashHidden(visibility, stash.oid)}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+            <VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
           </button>
         </div>
         {#if stashEntryErrors[stash.oid]}
