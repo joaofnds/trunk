@@ -13,6 +13,19 @@ use trunk_lib::git::types::GraphResult;
 /// graph before paging, so a slice is not the full golden's rows sliced.
 const PAGED: [(&str, usize, usize); 1] = [("merge-12-pagination-boundary", 1, 4)];
 
+/// Fixtures laid out a second time with a ref hidden, pinned beside their all-visible pair.
+///
+/// `lane-05-diverged` is the shape that makes the difference visible: `origin/main` carries
+/// two commits `main` does not reach, so hiding it has to drop those rows and leave the rest
+/// laid out as before. Each entry is (fixture, full ref name to hide).
+const HIDDEN: [(&str, &str); 1] = [("lane-05-diverged", "refs/remotes/origin/main")];
+
+fn hiding(ref_name: &str) -> graph_input::RefVisibility {
+    let mut visibility = graph_input::RefVisibility::default();
+    visibility.hidden_refs.insert(ref_name.to_owned());
+    visibility
+}
+
 fn inputs_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/inputs")
 }
@@ -165,6 +178,66 @@ fn every_fixture_matches_its_committed_export() {
     let drifted = corpus_drift(exports::path, exports::render);
 
     assert_no_drift("export", &drifted);
+}
+
+/// Acceptance #3: hiding a ref drops its pill and every commit only it reaches, and the
+/// remaining rows keep a valid layout — which is what the committed golden pins.
+#[test]
+fn every_hidden_ref_variant_matches_its_committed_layout() {
+    let mut drifted = Vec::new();
+
+    for (name, ref_name) in HIDDEN {
+        let source = fixture(name).capture.to_source();
+        let filtered = graph_input::apply_visibility(&source, &hiding(ref_name));
+        let result = graph_input::layout(&filtered, 0, usize::MAX);
+
+        // The layout text and the export move together: the export is what the render
+        // goldens mount, and `exportNames()` picks this variant up by its file name.
+        for (committed, rendered) in [
+            (
+                goldens::path(&format!("{name}.hidden")),
+                layout_dump::render(&result),
+            ),
+            (
+                exports::path(&format!("{name}.hidden")),
+                exports::render(&result, 0),
+            ),
+        ] {
+            if goldens::update_requested() {
+                goldens::write(&committed, &rendered);
+                continue;
+            }
+            match std::fs::read_to_string(&committed) {
+                Ok(found) if found == rendered => {}
+                Ok(_) => drifted.push(format!("{name}: changed")),
+                Err(_) => drifted.push(format!("{name}: nothing committed")),
+            }
+        }
+    }
+
+    assert_no_drift("hidden-ref layout", &drifted);
+}
+
+/// The golden above only pins bytes. This states what those bytes have to mean, so a wrong
+/// golden accepted by mistake still fails here.
+#[test]
+fn hiding_a_ref_drops_the_rows_only_it_reached() {
+    let (name, ref_name) = HIDDEN[0];
+    let source = fixture(name).capture.to_source();
+
+    let all = layout_dump::render(&graph_input::layout(&source, 0, usize::MAX));
+    let filtered = graph_input::apply_visibility(&source, &hiding(ref_name));
+    let hidden = layout_dump::render(&graph_input::layout(&filtered, 0, usize::MAX));
+
+    assert!(all.contains("upstream four"), "fixture changed:\n{all}");
+    assert!(
+        !hidden.contains("upstream four") && !hidden.contains("upstream three"),
+        "a commit only the hidden ref reached survived:\n{hidden}"
+    );
+    assert!(
+        hidden.contains("local six") && hidden.contains("base one"),
+        "a commit a visible ref still reaches was dropped:\n{hidden}"
+    );
 }
 
 #[test]

@@ -13,6 +13,8 @@ paths:
   - "src/lib/overlay-visible.ts"
   - "src/lib/lane-ref.ts"
   - "src/lib/lane-ref.test.ts"
+  - "src/lib/ref-visibility.ts"
+  - "src/lib/ref-visibility.test.ts"
   - "src/lib/chrome-heights.ts"
   - "src/lib/graph-constants.ts"
   - "src/components/CommitGraph.svelte"
@@ -56,6 +58,8 @@ paths:
 # Commit Graph Rules
 
 `graph.rs` reads the repository into plain data — every git2 call in the pipeline is here →
+`graph_input::apply_visibility` drops the refs the user hid and every commit only they
+reached, a pure pass that leaves placement ref-free →
 `placement.rs` assigns columns, colours and edges, a pure pass over that data →
 `graph_input.rs` slices the page and hydrates its rows →
 `wip-row.ts` prepends the WIP row → `active-lanes.ts` maps commits to overlay nodes and per-parent connections →

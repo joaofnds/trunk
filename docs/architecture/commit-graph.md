@@ -18,8 +18,10 @@ with code that broke a rule.
 git repo
   │
   ▼
-[Rust: graph.rs] walk_commits() = capture() |> graph_input::layout()
-  │  capture() reads the repository into plain data; placement.rs::assign_lanes()
+[Rust: graph.rs] walk_commits()
+  │    = capture() |> graph_input::apply_visibility() |> graph_input::layout()
+  │  capture() reads the repository into plain data; apply_visibility() drops the
+  │  refs the user hid and every commit only they reached; placement.rs::assign_lanes()
   │  assigns columns, colors, edge types and dashed flags; graph_input.rs hydrates.
   │  Output: GraphCommit[] + max_columns
   │
@@ -606,7 +608,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 |---|---|
 | `src-tauri/src/git/graph.rs` | `capture()` — every git2 read the pipeline makes, into the algorithm's inputs |
 | `src-tauri/src/git/placement.rs` | `assign_lanes()` — the pure lane algorithm, all column/color/edge computation |
-| `src-tauri/src/git/graph_input.rs` | `GraphSource`, `layout()` and the committed input format the golden suite reads |
+| `src-tauri/src/git/graph_input.rs` | `GraphSource`, `RefVisibility`, `apply_visibility()`, `layout()` and the committed input format the golden suite reads |
 | `src-tauri/src/git/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
 | `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
 | `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
@@ -616,6 +618,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
 | `src/lib/lane-ref.ts` | `laneRefForRow()` — reads a row's `lane_ref`, the ref that opened its lane, for the hover pill |
+| `src/lib/ref-visibility.ts` | The frontend's `RefVisibility`, mirroring the Rust value object field for field; which refs the user hid, and the predicates the sidebar reads |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering, lane labels |
 | `src-tauri/tests/test_graph.rs` | Owns the named-rule layout assertions, read from `tests/rule-inputs/`; the set that still builds a repository is enumerated in `.claude/rules/commit-graph.md`, split into the tests bound to stay and the ones merely not yet migrated |
@@ -623,7 +626,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src-tauri/tests/common/graph_shapes.rs` | The one copy of each repository shape, shared by the capture binary and the repository tests that remain |
 | `src-tauri/tests/test_placement.rs` | Pins `assign_lanes()` from literals: the missing-parent contract and the descent rules |
 | `src-tauri/tests/test_graph_input.rs` | Pins `layout()`'s page slice, row hydration and the committed input format |
-| `src-tauri/tests/test_graph_goldens.rs` | Drives the 48 captured inputs against every committed golden and export |
+| `src-tauri/tests/test_graph_goldens.rs` | Drives every captured input against its committed golden and export, including the hidden-ref variant |
 | `src/components/CommitGraph.render.test.ts` | Pins the rendered SVG against `src/__tests__/goldens/graph-render/`: node shapes, dashed flags, connector geometry |
 | `src/components/CommitGraph.scrolled.test.ts` | Pins the overlay behind a viewport shorter than the fixture: the culled window, its row height, and that it moves on scroll. The render goldens all mount unscrolled and cannot see any of it |
 | `src/components/CommitGraph.test.ts` | Pins the graph column's component behaviour that no golden covers |

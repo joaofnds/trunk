@@ -199,10 +199,17 @@ impl RefVisibility {
 /// The pure stage between capture and placement: drop the hidden labels, then drop every
 /// commit only they reached.
 ///
-/// The roots are the commits the surviving labels point at, plus the visible stashes, plus
-/// `head_tip` and `tracked_upstream`, which the head lane and its extension are entitled to
-/// whatever the refs say. Reachability is a pass over `PlacementInput::parents`, which
-/// carries a full parent list for every walk member, so no repository is read here.
+/// The roots are the commits the surviving labels point at, plus the visible stashes and
+/// `head_tip`, which is in the walk whatever the refs say — hiding HEAD's branch is refused
+/// at the label, and column 0, the WIP row and the head-lane extension all assume its tip.
+///
+/// `tracked_upstream` is deliberately **not** a root. It is usually named by a remote ref,
+/// and hiding that ref has to drop the commits only it reached, which is the whole feature.
+/// The upstream chain stays in `parents` regardless, so `head_lane_extension` can still walk
+/// it: a parent list is a lookup, not a row.
+///
+/// Reachability is a pass over `PlacementInput::parents`, which carries a full parent list
+/// for every walk member, so no repository is read here.
 ///
 /// The surviving OIDs keep the capture's order. A subsequence of a topological order is
 /// still topological over an ancestor-closed subset, so placement sees the walk it expects.
@@ -233,7 +240,6 @@ pub fn apply_visibility(source: &GraphSource, visibility: &RefVisibility) -> Gra
     let mut roots: Vec<Oid> = refs.keys().copied().collect();
     roots.extend(stash_order.iter().copied());
     roots.extend(source.placement.head_tip);
-    roots.extend(source.placement.tracked_upstream);
 
     let reachable = reachable_from(&source.placement, &roots);
 
@@ -247,13 +253,11 @@ pub fn apply_visibility(source: &GraphSource, visibility: &RefVisibility) -> Gra
 
     GraphSource {
         placement: PlacementInput {
-            parents: source
-                .placement
-                .parents
-                .iter()
-                .filter(|(oid, _)| reachable.contains(oid))
-                .map(|(&oid, list)| (oid, list.clone()))
-                .collect(),
+            // Every parent list the capture carried, including the chains above `head_tip`
+            // and `tracked_upstream` that `parent_map` closed past the walk's own edge.
+            // Narrowing this to the surviving rows would break `head_lane_extension`, which
+            // follows the upstream chain beyond them.
+            parents: source.placement.parents.clone(),
             stashes: source
                 .placement
                 .stashes
