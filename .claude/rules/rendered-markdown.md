@@ -36,6 +36,13 @@ identical copies tell the reader nothing.
 the point. Hiding all of them means the fold could not tell which leaf changed,
 and the reader is left with an empty container.
 
+**A fold never hides every mark the unfolded copy carries.** Hunk mode is the
+default view, so a fold that drops the marks shows the reader the unfixed
+defect while the full copy looks correct.
+
+**Neither side of a pair is blank.** A side with nothing on it is the content
+missing from the screen, not a difference the reader can compare against.
+
 `illegible_rows` in `markdown.rs` is this rule as code, and
 `every_fixture_scenario_renders_legibly` runs it over the whole fixture corpus.
 Neither is a runtime check: the pipeline must satisfy the rule, never consult
@@ -69,6 +76,18 @@ Two defect classes recurred because the lesson lived only in a commit message:
   emits, and its `Eq`/`Hash`/`Ord` compare the key. Any new code that compares
   rendered content across the two sides must answer: does this string carry a
   rev? Comparing raw rendered HTML across sides is the defect, in any code path.
+
+  `markup_only_change` is the settled form of both questions at once: it asks
+  `renders_same` over rev-stripped leaf HTML. String equality was wrong twice
+  over — the rev made an untouched image differ, and a source rewrap moved
+  newlines HTML collapses when it displays them, tinting a leaf the row also
+  declared renders identically.
+
+- **A block's structure is not its kind.** A blockquote lends its leaves from
+  the single container it wraps (TRUNK-103), so whether a block has leaves
+  follows its content. Two blocks of the same kind can disagree, and code that
+  tested one side and acted for both blanked the whole other side. Anything
+  branching on leaves must test the side it is about to read.
 
 ## Adding to the gate
 
