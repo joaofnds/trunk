@@ -191,8 +191,9 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
 
 /// Ring every subscriber of the store under `data_dir`. Called by
 /// `Store::write` after a revision-bumping commit; best-effort by design — a
-/// dead subscriber's leftover socket is cleaned up here, and no failure of a
-/// doorbell may fail the write that rang it.
+/// dead subscriber's leftover socket is cleaned up here (see [`abandoned`]
+/// for how that is told apart from a live subscriber that is merely busy),
+/// and no failure of a doorbell may fail the write that rang it.
 pub fn ring(data_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(data_dir.join(RING_DIR)) else {
         return;
@@ -203,10 +204,53 @@ pub fn ring(data_dir: &Path) {
         if path.extension().and_then(|e| e.to_str()) != Some("sock") {
             continue;
         }
-        if std::os::unix::net::UnixStream::connect(&path).is_err() {
+        if std::os::unix::net::UnixStream::connect(&path).is_err() && abandoned(&path) {
             let _ = std::fs::remove_file(&path);
         }
     }
+}
+
+/// Whether a socket that refused a doorbell has no owner left.
+///
+/// A failed `connect` does not answer this on its own. A file left behind by
+/// a crashed subscriber refuses with `ECONNREFUSED`, and so does a perfectly
+/// live one whose accept backlog is full (macOS caps that queue at 128) or
+/// whose listener is briefly wedged on a peer that has not identified itself
+/// yet — measured identical, kind and code (TRUNK-114). Deleting on the
+/// error alone therefore unbinds subscribers that are merely busy: `ring`
+/// lists this directory to find them, so once the entry is gone no later
+/// doorbell can reach that subscriber and its feed goes deaf with no error
+/// raised anywhere.
+///
+/// What does separate the two is the owner named in the file name. A live
+/// process still holds its socket however busy it is; a pid that no longer
+/// exists cannot be listening on anything. Sending signal 0 asks the kernel
+/// exactly that question and changes nothing.
+///
+/// A pid is only meaningful on the machine that wrote it, but so is a unix
+/// socket: both sides of this check are local by construction. Reuse of a
+/// dead subscriber's pid is the one wrong answer available, and it errs
+/// toward keeping a stale file — one failed `connect` per ring, against the
+/// lost events that deleting a live socket costs.
+fn abandoned(path: &Path) -> bool {
+    let Some(pid) = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.split('-').next())
+        .and_then(|pid| pid.parse::<i32>().ok())
+    else {
+        // Not a name this module wrote; leave it alone.
+        return false;
+    };
+
+    // SAFETY: `kill` with signal 0 performs the permission and existence
+    // check without delivering anything.
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return false;
+    }
+    // EPERM means the process exists and belongs to someone else, which is
+    // still alive; only ESRCH says there is nobody there.
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
 }
 
 /// How long the listener waits for a connection to identify itself. A

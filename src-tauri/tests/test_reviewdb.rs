@@ -809,6 +809,121 @@ fn store_events_survive_a_peer_that_connects_and_says_nothing() {
     );
 }
 
+/// TRUNK-114: a live subscriber's socket must survive a failed doorbell.
+///
+/// `ring` deletes the socket of a peer it cannot connect to, reading the
+/// failure as a subscriber that died without cleaning up. But a listener
+/// that is merely busy refuses connections too: a bound socket whose accept
+/// backlog is full answers `ECONNREFUSED`, measured here at the 128th
+/// pending connection on macOS. Deleting on that answer unbinds a live
+/// subscriber — no later `ring` can find it, because `ring` lists the
+/// directory the entry was just removed from, and the feed goes deaf with
+/// no error anywhere.
+///
+/// The backlog is filled deliberately rather than waited on: the pending
+/// connections are the observable state that makes the next `connect` fail,
+/// so the race is driven, not raced.
+#[test]
+fn store_events_survive_a_doorbell_that_cannot_connect() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    let socket = std::fs::read_dir(ctx.data_dir().join("w"))
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
+        .expect("the subscriber's socket");
+
+    // Wedge the listener on a peer that says nothing, so it stops draining
+    // the backlog, then fill the backlog until a connect is refused. That
+    // refusal is exactly what a writer's doorbell would meet.
+    let _mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    let mut pending = Vec::new();
+    let refused = loop {
+        match std::os::unix::net::UnixStream::connect(&socket) {
+            Ok(stream) => pending.push(stream),
+            Err(e) => break e,
+        }
+        assert!(
+            pending.len() < 10_000,
+            "the accept backlog never filled: this test can no longer create \
+             the refusal a doorbell has to survive",
+        );
+    };
+    assert_eq!(
+        refused.kind(),
+        std::io::ErrorKind::ConnectionRefused,
+        "the backlog-full refusal is the condition under test",
+    );
+
+    // A doorbell now meets that refusal. The subscriber is alive; its socket
+    // must still be there afterwards.
+    reviewdb::events::ring(ctx.data_dir());
+
+    assert!(
+        socket.exists(),
+        "a refused doorbell must not delete a live subscriber's socket: the \
+         feed can never be rung again once the path is gone",
+    );
+
+    // And the feed must still work end to end once the wedge clears.
+    drop(pending);
+    drop(_mute);
+    let foreign = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&foreign, &canonical, submission("after a refusal"), 1_000).unwrap();
+
+    assert!(events.sync(), "the feed must still be live");
+    assert!(
+        matches!(
+            events.try_recv(),
+            Some(reviewdb::events::StoreEvent::Changed { .. })
+        ),
+        "a commit after a refused doorbell must still be announced",
+    );
+}
+
+/// The other half of TRUNK-114: `ring` must still reclaim a socket whose
+/// subscriber died without dropping it. `Drop` removes the file on any
+/// orderly exit, so only a crash leaves one — and a crashed owner's path
+/// refuses connections exactly as a busy live one does. The pid in the name
+/// is what tells them apart, so this test names a pid that cannot be running.
+#[test]
+fn store_events_reclaim_a_socket_whose_owner_is_gone() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let ring_dir = ctx.data_dir().join("w");
+    std::fs::create_dir_all(&ring_dir).unwrap();
+
+    // A pid above the system's ceiling, so it is not merely free now but
+    // cannot be running — `kill` answers ESRCH for it (pid 0 would not do:
+    // it addresses the caller's process group and reports success). Bound
+    // and leaked: the listener is dropped while the path stays, which is
+    // what a crash leaves behind.
+    let orphan = ring_dir.join("999999-0.sock");
+    drop(std::os::unix::net::UnixListener::bind(&orphan).unwrap());
+    assert!(
+        orphan.exists(),
+        "the leaked socket file is the precondition"
+    );
+
+    reviewdb::events::ring(ctx.data_dir());
+
+    assert!(
+        !orphan.exists(),
+        "a socket whose owner is gone must be reclaimed, or every later ring \
+         pays a failed connect for a subscriber that will never return",
+    );
+}
+
 #[test]
 fn store_events_stay_silent_for_a_draft_autosave() {
     let ctx = TestContext::builder()
