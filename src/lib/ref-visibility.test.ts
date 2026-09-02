@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	EVERYTHING_VISIBLE,
+	hidesNothing,
 	isRefHidden,
 	isSectionHidden,
 	remoteOf,
@@ -85,5 +86,25 @@ describe("remoteOf", () => {
 
 	it("is null for anything that is not a remote branch", () => {
 		expect(remoteOf("refs/heads/main")).toBeNull();
+	});
+});
+
+describe("hidesNothing", () => {
+	it("is true for the empty value", () => {
+		expect(hidesNothing(EVERYTHING_VISIBLE)).toBe(true);
+	});
+
+	it("is false once any rule is set", () => {
+		expect(hidesNothing(toggleRef(EVERYTHING_VISIBLE, topic))).toBe(false);
+		expect(hidesNothing(toggleRemote(EVERYTHING_VISIBLE, "origin"))).toBe(
+			false,
+		);
+		expect(hidesNothing(toggleSection(EVERYTHING_VISIBLE, "Tag"))).toBe(false);
+	});
+
+	// A value read back from prefs is a different object with the same fields, so this
+	// has to compare fields rather than identity.
+	it("is true for a distinct object that hides nothing", () => {
+		expect(hidesNothing({ ...EVERYTHING_VISIBLE })).toBe(true);
 	});
 });

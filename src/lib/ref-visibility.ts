@@ -48,6 +48,24 @@ export function remoteOf(name: string): string | null {
 	return first === undefined || first === "" ? null : first;
 }
 
+/**
+ * Whether this value hides nothing, matching the Rust side's `RefVisibility::is_empty`.
+ *
+ * Compares fields rather than identity: a value read back from prefs is a different object
+ * with the same contents.
+ */
+export function hidesNothing(visibility: RefVisibility): boolean {
+	return (
+		visibility.hiddenRefs.length === 0 &&
+		visibility.hiddenRemotes.length === 0 &&
+		visibility.hiddenStashes.length === 0 &&
+		!visibility.hideLocal &&
+		!visibility.hideRemote &&
+		!visibility.hideTags &&
+		!visibility.hideStashes
+	);
+}
+
 const SECTION_KEY = {
 	LocalBranch: "hideLocal",
 	RemoteBranch: "hideRemote",

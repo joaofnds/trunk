@@ -12,6 +12,7 @@ import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
 	EVERYTHING_VISIBLE,
+	hidesNothing,
 	isRefHidden,
 	isSectionHidden,
 	isStashHidden,
@@ -111,25 +112,13 @@ async function loadVisibility(path: string) {
 	visibility = stored;
 	// Opening a repository walks with everything visible, so a repo with a stored set
 	// needs it pushed before its first graph is drawn.
-	if (stored !== EVERYTHING_VISIBLE && !sameAsVisible(stored)) {
+	if (!hidesNothing(stored)) {
 		await safeInvoke("set_ref_visibility", {
 			path,
 			visibility: stored,
 		});
 		onrefreshed?.();
 	}
-}
-
-function sameAsVisible(v: RefVisibility): boolean {
-	return (
-		v.hiddenRefs.length === 0 &&
-		v.hiddenRemotes.length === 0 &&
-		v.hiddenStashes.length === 0 &&
-		!v.hideLocal &&
-		!v.hideRemote &&
-		!v.hideTags &&
-		!v.hideStashes
-	);
 }
 
 let filteredLocal = $derived(
