@@ -1,0 +1,106 @@
+repo graph-merges/01-octopus-merge
+head branch refs/heads/main
+ref refs/heads/main 7dbbc326ddbcb0e06503353dd8835ad21c911c17
+ref refs/heads/topic-a e6864df83fb23351871c750d2492b33b175dc8ea
+ref refs/heads/topic-b db4f59793e05c770d3a4f6f5d5682f95a0cf51a2
+ref refs/heads/topic-c 3d39238b45ce0dc89c77c2a32286ad28acda3caf
+state clean
+
+repo graph-merges/02-criss-cross
+head branch refs/heads/alpha
+ref refs/heads/alpha 038e39e7334fb66b4328a7030254c4a8f076be53
+ref refs/heads/beta 829dcb36b875731ecedc5f6e27fbd087e93f885a
+ref refs/heads/main e5f066736304132f17817ed5d57437e27f1f87cb
+state clean
+
+repo graph-merges/03-merge-of-merges
+head branch refs/heads/left
+ref refs/heads/feed-a 69644c38137e82bd9de7f026424983ecc88f2c5f
+ref refs/heads/feed-b 15d26a37f442959c878781f6c099c55d0e184c50
+ref refs/heads/left c47f755b1881433c25594c0e51d21e4330ef3b37
+ref refs/heads/main e5f066736304132f17817ed5d57437e27f1f87cb
+ref refs/heads/right 9e4e22c51ff84db05f2b462cd73192f9d94c2747
+state clean
+
+repo graph-merges/04-three-topics
+head branch refs/heads/main
+ref refs/heads/main 5276637a11b8f49fbd87358b989a3bf71f6dd5e4
+ref refs/heads/topic-four 9f9fe0de74ab10be92de2a5b1b72341f00fba87f
+ref refs/heads/topic-one a79e4854cf8f4311766a1fd2da09231847e5761d
+ref refs/heads/topic-three 482389cb3a6080adc35d7def1f5d361a4314e0a8
+ref refs/heads/topic-two ac8369d5cd705e331a9a560f4b209a322c0d5c60
+state clean
+
+repo graph-merges/05-sequential-merges
+head branch refs/heads/main
+ref refs/heads/feature-one ea7ad1844a2e6e0c71d83277794305966b9f0325
+ref refs/heads/feature-three 871d9cece6bc70265173c4e9f25dd150411a30ee
+ref refs/heads/feature-two 2a402708ac0dcf09d9e5e0890967c03a0346e7b3
+ref refs/heads/main 0c7f1afa5e373306112793f3a3e3e789cc9d9c91
+state clean
+
+repo graph-merges/06-merge-second-parent-newer
+head branch refs/heads/main
+ref refs/heads/main 4f8dccab876f09b0de0ef56e259fe36c69e9cf8c
+ref refs/heads/side 186231b2fd0d6a268db74ff4ada695dd0c86a169
+state clean
+
+repo graph-merges/07-fork-sibling-older
+head branch refs/heads/main
+ref refs/heads/main 7c85028ee167c4f3a269326b394ccb56a14d43d1
+ref refs/heads/side 8a5e8f6163f49c968621971b73043001f34e6b1f
+state clean
+
+repo graph-merges/08-fork-sibling-newer
+head branch refs/heads/main
+ref refs/heads/main 7c85028ee167c4f3a269326b394ccb56a14d43d1
+ref refs/heads/side 3006e917fce9b8b3ab0c109fcc994f120b9210df
+state clean
+
+repo graph-merges/09-column-saturation
+head branch refs/heads/main
+ref refs/heads/lane-five af1f592a045832b9e4c522459f5e15153acd3633
+ref refs/heads/lane-four 6e44ffd750c7c8d6eb1c4a141997f1a3440d77fd
+ref refs/heads/lane-one 57e2bb1cc04018d55020ff3325a3f7ebef8d8503
+ref refs/heads/lane-three 0ebe6c7be963ed89c38bea3330f078cc5f27368b
+ref refs/heads/lane-two 13ec3cf048ec915ddbbf993c2fbaead4fdb74178
+ref refs/heads/main 4afab5a5e03788c75a7bd38d476f8f4c6981896b
+ref refs/heads/orphan 9aff311d064d3a1473c7ecbab62e95d76d604ee9
+state clean
+
+repo graph-merges/10-merge-parent-left
+head branch refs/heads/main
+ref refs/heads/feature e477604bc97744e07534ca7da6984370d7c9325b
+ref refs/heads/main 5276637a11b8f49fbd87358b989a3bf71f6dd5e4
+state clean
+
+repo graph-merges/11-fork-in-left
+head branch refs/heads/main
+ref refs/heads/alpha 18e4aa087860b8bea3d8d42cc473e64ab5e1677a
+ref refs/heads/main 0b8ad56a875ce43fc5933c0e9fb50a1e9ff61411
+ref refs/heads/shared 27d564fe161bb7a9ab11f8027ab7415782997d6d
+state clean
+
+repo graph-merges/12-pagination-boundary
+head branch refs/heads/main
+ref refs/heads/late 942dcc7091df41ab15565e8608360a68359d3ed9
+ref refs/heads/main eec4a0bc5ff9106a47afb115cc88a94114817699
+ref refs/heads/side db86b16cd36991bbddba1d269692da45d5090244
+state clean
+
+repo graph-merges/13-freed-column-left
+head branch refs/heads/main
+ref refs/heads/beta 64d5ae259bb1dbbf4c1daff70d1d9ac6d8a06cb4
+ref refs/heads/delta 2d56fd11d7b52698a385e2b61547e5addde64615
+ref refs/heads/gamma 63488ede9dd43da52e442c750e1305489a1c40b5
+ref refs/heads/main f0fbd5c7f01cd59bad02e128675d556c9b9d6d59
+ref refs/heads/orphan 56cbe9ec362198193440b55efa17775e98bd1f6f
+state clean
+
+repo graph-merges/14-spiral-right-before-left
+head branch refs/heads/main
+ref refs/heads/beta 64d5ae259bb1dbbf4c1daff70d1d9ac6d8a06cb4
+ref refs/heads/delta 824d10852c030eaab3c9b0ff4ea02d7eeca85e32
+ref refs/heads/main f0fbd5c7f01cd59bad02e128675d556c9b9d6d59
+ref refs/heads/orphan 56cbe9ec362198193440b55efa17775e98bd1f6f
+state clean

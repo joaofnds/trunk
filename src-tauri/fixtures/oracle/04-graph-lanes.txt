@@ -1,0 +1,130 @@
+repo graph-lanes/01-behind-only
+head branch refs/heads/main
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/remotes/origin/main aa10225412498034ed5c870bce16c7c80ea6504b
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/02-local-ahead-no-remote
+head branch refs/heads/old
+ref refs/heads/new 669d4d81854453badef68eb5b95d4866ef486947
+ref refs/heads/old 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+state clean
+
+repo graph-lanes/03-detached-old
+head detached e5f066736304132f17817ed5d57437e27f1f87cb
+ref refs/heads/main 679a80adfff868cba61c6cf9c92748358b6e3ee5
+state clean
+
+repo graph-lanes/04-tiebreak-upstream-vs-topic
+head branch refs/heads/main
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/heads/topic 01f301c978f67da96176336d8f244cc01099e9e6
+ref refs/remotes/origin/main aa10225412498034ed5c870bce16c7c80ea6504b
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/05-diverged
+head branch refs/heads/main
+ref refs/heads/main d57b53dd7d327b93f207d458925b68a5e03dbf8a
+ref refs/remotes/origin/main 01db20f5aa96d854af6d57c3d4b9d3123ed256af
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/06-tag-only-chain
+head branch refs/heads/main
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/tags/v1.0.0 4b5c977a44e2b50c16d6ffec46d3381b2fed25d7
+state clean
+
+repo graph-lanes/07-tag-on-unpulled
+head branch refs/heads/main
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/remotes/origin/main 01db20f5aa96d854af6d57c3d4b9d3123ed256af
+ref refs/tags/v2.0.0 d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/08-stash-on-tip-behind
+head branch refs/heads/main
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/remotes/origin/main 01db20f5aa96d854af6d57c3d4b9d3123ed256af
+ref refs/stash f73d7519044a5cb629c5657beb40c0321981c5df
+stash 0 f73d7519044a5cb629c5657beb40c0321981c5df On main: half-finished work
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/09-branch-point-below-head
+head branch refs/heads/main
+ref refs/heads/feature c8e0f4ec8b71f3ab55318c2c2b9cbfda61780f68
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/remotes/origin/feature c8e0f4ec8b71f3ab55318c2c2b9cbfda61780f68
+ref refs/remotes/origin/main 24327fa8f3dad2cd5fe1e3c1cd01d5c7f5954610
+state clean
+upstream feature origin refs/heads/feature
+upstream main origin refs/heads/main
+
+repo graph-lanes/10-two-remotes
+head branch refs/heads/main
+ref refs/heads/main 4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72
+ref refs/remotes/origin/main 387a82e5d865dd1a24d8e354c090548ec31b16b6
+ref refs/remotes/upstream/main 387a82e5d865dd1a24d8e354c090548ec31b16b6
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/11-merge-in-head-chain
+head branch refs/heads/main
+ref refs/heads/main 37f3ae23b501cde326979682a2d92d090d6f3946
+ref refs/heads/side 321ae8bca8486d7ec83946588a16f16dda4703f9
+ref refs/remotes/origin/main 67a9bb440f97dcbe038a891b0d04023f038fdcd5
+state clean
+upstream main origin refs/heads/main
+
+repo graph-lanes/12-author-vs-committer
+head detached e5f066736304132f17817ed5d57437e27f1f87cb
+ref refs/heads/alpha c16fb4d06519cd245b487a33d43e4e4bc94e3a23
+ref refs/heads/beta c3f015e10e2aeb8e957dbd81d07bd0e9135bf8d6
+ref refs/heads/main e5f066736304132f17817ed5d57437e27f1f87cb
+state clean
+
+repo graph-lanes/13-tall-linear
+head branch refs/heads/main
+ref refs/heads/main 3f779a2b8c5f647928d79fcec4c34d05112a3ad9
+state clean
+
+repo graph-lanes/.remotes/01-behind-only-origin.git
+head unborn refs/heads/master
+ref refs/heads/main aa10225412498034ed5c870bce16c7c80ea6504b
+
+repo graph-lanes/.remotes/04-tiebreak-upstream-vs-topic-origin.git
+head unborn refs/heads/master
+ref refs/heads/main aa10225412498034ed5c870bce16c7c80ea6504b
+
+repo graph-lanes/.remotes/05-diverged-origin.git
+head unborn refs/heads/master
+ref refs/heads/main 01db20f5aa96d854af6d57c3d4b9d3123ed256af
+
+repo graph-lanes/.remotes/07-tag-on-unpulled-origin.git
+head unborn refs/heads/master
+ref refs/heads/main 01db20f5aa96d854af6d57c3d4b9d3123ed256af
+
+repo graph-lanes/.remotes/08-stash-on-tip-behind-origin.git
+head unborn refs/heads/master
+ref refs/heads/main 01db20f5aa96d854af6d57c3d4b9d3123ed256af
+
+repo graph-lanes/.remotes/09-branch-point-below-head-origin.git
+head unborn refs/heads/master
+ref refs/heads/feature c8e0f4ec8b71f3ab55318c2c2b9cbfda61780f68
+ref refs/heads/main 24327fa8f3dad2cd5fe1e3c1cd01d5c7f5954610
+
+repo graph-lanes/.remotes/10-two-remotes-origin.git
+head unborn refs/heads/master
+ref refs/heads/main 387a82e5d865dd1a24d8e354c090548ec31b16b6
+
+repo graph-lanes/.remotes/10-two-remotes-upstream.git
+head unborn refs/heads/master
+ref refs/heads/main 387a82e5d865dd1a24d8e354c090548ec31b16b6
+
+repo graph-lanes/.remotes/11-merge-in-head-chain-origin.git
+head unborn refs/heads/master
+ref refs/heads/main 67a9bb440f97dcbe038a891b0d04023f038fdcd5

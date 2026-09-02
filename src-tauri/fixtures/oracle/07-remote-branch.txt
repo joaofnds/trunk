@@ -1,0 +1,15 @@
+repo remote-branch/repo
+head branch refs/heads/main
+ref refs/heads/main 36b8186186fa3f321c7b43385677154621b86123
+ref refs/remotes/origin/feature/alpha b2467d9df0d56c5e01cfd3ee65746c350b1058d8
+ref refs/remotes/origin/feature/beta fdd75e777ccfc3ff5466bab982afd3ae104221cb
+ref refs/remotes/origin/main 36b8186186fa3f321c7b43385677154621b86123
+state clean
+status .M README.md d09bc92ac146b6cc09363f5b97dbfc88ec5fc64a 15b67ba7566446d7feb5be235f4bb5f6e130a2b9
+upstream main origin refs/heads/main
+
+repo remote-branch/origin.git
+head branch refs/heads/main
+ref refs/heads/feature/alpha b2467d9df0d56c5e01cfd3ee65746c350b1058d8
+ref refs/heads/feature/beta fdd75e777ccfc3ff5466bab982afd3ae104221cb
+ref refs/heads/main 36b8186186fa3f321c7b43385677154621b86123

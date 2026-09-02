@@ -1,0 +1,28 @@
+repo 01-nonff-merge
+head branch refs/heads/main
+ref refs/heads/feature b4d8e53f335b103dcb230720ebdf0a8999b2dca4
+ref refs/heads/main 17cbf4cb745c970f81608e0f165d5d46cc4156a1
+state clean
+
+repo 02-ff-merge
+head branch refs/heads/main
+ref refs/heads/feature fd10db95f8bddac8aca367aa743329faa4892e65
+ref refs/heads/main 2d3a58b20896b46eb9f9169654dc3ffd2fa6a1b8
+state clean
+
+repo 03-conflict-merge
+head branch refs/heads/main
+ref refs/heads/feature 311368b12ab3d18d33d21e82f65323674bcdeeaa
+ref refs/heads/main cc4674da69667cd5c68de35259ae56dd36ed5579
+state clean
+
+repo 04-revert
+head branch refs/heads/main
+ref refs/heads/main 376c9800b1b4beb156218f431b606c683a09fa52
+state clean
+
+repo 05-empty-message-abort
+head branch refs/heads/main
+ref refs/heads/feature 7befe86a16139c129363025648cd1f02bc78d43e
+ref refs/heads/main b25675072c1e00ce2d78618cdd0f707dc3782023
+state clean

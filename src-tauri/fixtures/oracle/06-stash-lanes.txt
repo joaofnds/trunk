@@ -1,0 +1,163 @@
+repo stash-lanes/01-clean-inline
+head branch refs/heads/main
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash 9cfe194fd0567dcb073af9784ade3ab97bc8446b
+stash 0 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+
+repo stash-lanes/02-dirty-tracked
+head branch refs/heads/main
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash 9cfe194fd0567dcb073af9784ade3ab97bc8446b
+stash 0 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+status .M notes.txt 7edb01a5d8cf4c06e4362fc3bb341a2410f7cf4e 186d496a7c88db0413aa7b4dbd65d86fee615605
+
+repo stash-lanes/03-dirty-untracked
+head branch refs/heads/main
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash 9cfe194fd0567dcb073af9784ade3ab97bc8446b
+stash 0 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+status ?? scratch.txt - fb188b9ecf0563e4e036fa3031d43b6a9387504d
+
+repo stash-lanes/04-dirty-staged
+head branch refs/heads/main
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash 9cfe194fd0567dcb073af9784ade3ab97bc8446b
+stash 0 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+status A. staged.txt 19d9cc8584ac2c7dcf57d2680375e80f099dc481 19d9cc8584ac2c7dcf57d2680375e80f099dc481
+
+repo stash-lanes/05-dirty-conflicted
+head branch refs/heads/main
+ref refs/heads/main d352d3d5fe3d72ff92561d6d7aee0b69437286e6
+ref refs/heads/other e68b1b45c2983de0bd35d9dc35bcdb4272e104e7
+ref refs/stash ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28
+stash 0 ebb498c77f0a88e6e44a8ef045bf1b3347b1cf28 On main: half-finished notes
+state merge
+merge-head e68b1b45c2983de0bd35d9dc35bcdb4272e104e7
+merge-msg Merge branch 'other'\n\n# Conflicts:\n#\tconflict.txt\n
+unmerged 1 100644 78be1e870e7f42e7d15c00756176862c3781ae26 conflict.txt
+unmerged 2 100644 b0f1dad295f802ac516dfc810d15f9ad94c46fce conflict.txt
+unmerged 3 100644 a8d3c2a6edc83873cffe94234dd1747af4e61a48 conflict.txt
+status UU conflict.txt - 57ce380d599b3c49e3b097abca1ebc4a2b8ebb4d
+
+repo stash-lanes/06-ignored-stays-inline
+head branch refs/heads/main
+ref refs/heads/main 166a0839849b3e96bf591eea63e47f46a269001c
+ref refs/stash 379a9721bdbf4c125eb433b984729302b54fd148
+stash 0 379a9721bdbf4c125eb433b984729302b54fd148 On main: half-finished notes
+state clean
+ignored build/out.o
+
+repo stash-lanes/07-multi-stash-clean
+head branch refs/heads/main
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash ba03923873d191156e739a36ff6829ec7c32045e
+stash 0 ba03923873d191156e739a36ff6829ec7c32045e On main: second stash
+stash 1 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+
+repo stash-lanes/08-multi-stash-dirty
+head branch refs/heads/main
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash ba03923873d191156e739a36ff6829ec7c32045e
+stash 0 ba03923873d191156e739a36ff6829ec7c32045e On main: second stash
+stash 1 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+status .M lib.txt fb8d8f1bf8dc10adb0bab6d8cc50061840622736 c7426076d17c2fcb66e0f68ae18375a600c9b4b8
+
+repo stash-lanes/09-topic-above-parent
+head branch refs/heads/main
+ref refs/heads/main e9900172efd0f324dea3a1cdbad4eadaeba9b188
+ref refs/heads/topic dd9e3df2351518bcd55e2e75fc5d6fccc73ac287
+ref refs/stash 105121ad968590ae7a69b1877a6c8fe252272cfc
+stash 0 105121ad968590ae7a69b1877a6c8fe252272cfc On main: half-finished notes
+state clean
+
+repo stash-lanes/10-topic-below-parent
+head branch refs/heads/main
+ref refs/heads/main e9900172efd0f324dea3a1cdbad4eadaeba9b188
+ref refs/heads/topic f0ee74a51230b71e831d30aa4248b29e413d7668
+ref refs/stash 105121ad968590ae7a69b1877a6c8fe252272cfc
+stash 0 105121ad968590ae7a69b1877a6c8fe252272cfc On main: half-finished notes
+state clean
+
+repo stash-lanes/11-stash-parent-mid-chain
+head branch refs/heads/main
+ref refs/heads/main a553d5704470e64a456841a8d2f15ace3588ff5c
+ref refs/stash 9cfe194fd0567dcb073af9784ade3ab97bc8446b
+stash 0 9cfe194fd0567dcb073af9784ade3ab97bc8446b On main: half-finished notes
+state clean
+
+repo stash-lanes/12-orphan-stash
+head branch refs/heads/main
+ref refs/heads/main 22843f0512d2968ad0203df07492f629916dc0ac
+ref refs/stash dee21df87cfe55c55dffcf022abbc3d2017b84a5
+stash 0 dee21df87cfe55c55dffcf022abbc3d2017b84a5 On main: half-finished notes
+state clean
+
+repo stash-lanes/13-detached-head
+head detached 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/heads/main 9d75273952501f0f0ceb979779daa846035c4afe
+ref refs/stash b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e
+stash 0 b3d0d0b0c9cb30baaf7523ada4e09d689916eb0e On (no branch): half-finished notes
+state clean
+
+repo stash-lanes/14-merge-tip
+head branch refs/heads/main
+ref refs/heads/feat ed21506dac817238b3b83e3f172196f82263280a
+ref refs/heads/main 766dbfd0b2185bd691aa111d29e7792459787286
+ref refs/stash 0b6ed9f5881deff91e072b71d2d3e96f009e16d7
+stash 0 0b6ed9f5881deff91e072b71d2d3e96f009e16d7 On main: half-finished notes
+state clean
+
+repo stash-lanes/15-backdated-stash
+head branch refs/heads/main
+ref refs/heads/main c8259b7bb3051fbec4dac96c7310b5c79c42208c
+ref refs/stash 2d8371048e5ad1b9ff45585b8552900fe5aab50c
+stash 0 2d8371048e5ad1b9ff45585b8552900fe5aab50c On main: stash dated before its parent
+state clean
+
+repo stash-lanes/16-bare-repo.git
+head branch refs/heads/main
+ref refs/heads/main b9ab12be16d14d7e784be8bab5184a32e2c898c2
+
+repo stash-lanes/17-no-stash-dirty
+head branch refs/heads/main
+ref refs/heads/main b9ab12be16d14d7e784be8bab5184a32e2c898c2
+state clean
+status .M notes.txt 7edb01a5d8cf4c06e4362fc3bb341a2410f7cf4e 489550ed25353fc0861b15cc156af6d029c0cbdf
+
+repo stash-lanes/18-many-files
+head branch refs/heads/main
+ref refs/heads/main 5669165ecff3a9649471301122a21ee73d87d7d8
+ref refs/stash 46a7793ad6d40efdf5af3d2556ef43de26281829
+stash 0 46a7793ad6d40efdf5af3d2556ef43de26281829 On main: half-finished notes
+state clean
+status .M src/file_1.txt a0054e492840f572e48a3cb791d2e083afaf08f6 f7f6607fcaf8289ce72ca2a4b3f9eab8e173a916
+
+repo stash-lanes/19-two-backdated
+head branch refs/heads/main
+ref refs/heads/main c8259b7bb3051fbec4dac96c7310b5c79c42208c
+ref refs/stash 800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3
+stash 0 800b6633a2e5897b02c9ccdb5c4d2be2c9bc91f3 On main: newer, dated before its parent
+stash 1 14fef159cbfaf5de90f9f17166ae30ad504ee5fd On main: older, dated before its parent
+state clean
+
+repo stash-lanes/20-stash-on-stash
+head detached 53cb71412a131783e82c07954200cc5617171218
+ref refs/heads/main b9ab12be16d14d7e784be8bab5184a32e2c898c2
+ref refs/stash ba1c51a504d02d757a88c5bfa4bffedbd0143222
+stash 0 ba1c51a504d02d757a88c5bfa4bffedbd0143222 On (no branch): stash B
+stash 1 53cb71412a131783e82c07954200cc5617171218 On main: stash A
+state clean
+
+repo stash-lanes/21-tagged-stash
+head branch refs/heads/main
+ref refs/heads/main c8259b7bb3051fbec4dac96c7310b5c79c42208c
+ref refs/stash 2d8371048e5ad1b9ff45585b8552900fe5aab50c
+ref refs/tags/keep 2d8371048e5ad1b9ff45585b8552900fe5aab50c
+stash 0 2d8371048e5ad1b9ff45585b8552900fe5aab50c On main: stash dated before its parent
+state clean

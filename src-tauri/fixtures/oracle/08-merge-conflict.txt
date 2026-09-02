@@ -1,0 +1,12 @@
+repo merge-conflict/repo
+head branch refs/heads/main
+ref refs/heads/main 5ce7f6edac53942daad0752cc044c71ccf870efd
+ref refs/heads/topic aeefea107cf7736bc9dc0639877f7411f87aa292
+state merge
+merge-head aeefea107cf7736bc9dc0639877f7411f87aa292
+merge-msg Merge branch 'topic'\n\n# Conflicts:\n#\tsettings.ts\n
+unmerged 1 100644 eb2fc94e55e25ffbc0e3bdcbef18c7965fd0c22d settings.ts
+unmerged 2 100644 5cf928e4abcbfa42edb014d9328fbcf2e3f6d329 settings.ts
+unmerged 3 100644 35a49549a5b4f8e0e69e9bccdd00086172567797 settings.ts
+status ?? SCENARIO.md - 95a7d971f02d0a08827d920284f034afbacf4d70
+status UU settings.ts - 17899214724404eee49996cff53f085d28f5599d

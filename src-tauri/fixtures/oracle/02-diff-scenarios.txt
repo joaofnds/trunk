@@ -1,0 +1,8 @@
+repo diff-scenarios
+head branch refs/heads/main
+ref refs/heads/main 4c879bc6f917024227dca0253bcd1708aefce56d
+state clean
+status .M code/metrics.rs 5f0ade452148ff00e4e088489b8beb048ccde023 5f590e3a068bd51f3b47f17502526b64250b7958
+status M. code/report.py 1f71270ed25bdb0cf44c5065a011b6789c0c7f6a 1f71270ed25bdb0cf44c5065a011b6789c0c7f6a
+status .M docs/guide.md 3b2968325e0a705036f2453f88898969860a97a3 d5098350a9ce3c705105c8d1d4bf5c1e2fca29c0
+status .D vendor/dep 2222222222222222222222222222222222222222 -

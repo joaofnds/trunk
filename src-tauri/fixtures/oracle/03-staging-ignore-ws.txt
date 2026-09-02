@@ -1,0 +1,35 @@
+repo 7a-stage-hunk-ignore-ws
+head branch refs/heads/main
+ref refs/heads/main 915104e4073b8449933841f1af8ab38180358bde
+state clean
+status .M notes.txt bab081fdb7372d4e471fcbb12b886e1a7cddcae2 bda9e1cfb82131e21782d3ff47d0f520504cd674
+
+repo 7b-stage-lines-ignore-ws
+head branch refs/heads/main
+ref refs/heads/main 3d03972d4ebdd7c53b29d0539390cc4ca604e849
+state clean
+status .M notes.txt bab081fdb7372d4e471fcbb12b886e1a7cddcae2 bda9e1cfb82131e21782d3ff47d0f520504cd674
+
+repo 7c-unstage-hunk-ignore-ws
+head branch refs/heads/main
+ref refs/heads/main d3dab24d5eb30479464542076eca151adae8091c
+state clean
+status M. notes.txt bda9e1cfb82131e21782d3ff47d0f520504cd674 bda9e1cfb82131e21782d3ff47d0f520504cd674
+
+repo 7d-unstage-lines-ignore-ws
+head branch refs/heads/main
+ref refs/heads/main 41dfeb3be5efec2f243c0ab4ff746dbf05e50f41
+state clean
+status M. notes.txt bda9e1cfb82131e21782d3ff47d0f520504cd674 bda9e1cfb82131e21782d3ff47d0f520504cd674
+
+repo 7e-discard-hunk-ignore-ws
+head branch refs/heads/main
+ref refs/heads/main 6ab6b213a6503f0174c1fb1cc3ee4c42a2b1ea23
+state clean
+status .M notes.txt bab081fdb7372d4e471fcbb12b886e1a7cddcae2 bda9e1cfb82131e21782d3ff47d0f520504cd674
+
+repo 7f-no-regression-plain
+head branch refs/heads/main
+ref refs/heads/main 10334d73f38493807f375517255cbff91d943d56
+state clean
+status .M notes.txt bab081fdb7372d4e471fcbb12b886e1a7cddcae2 bda9e1cfb82131e21782d3ff47d0f520504cd674

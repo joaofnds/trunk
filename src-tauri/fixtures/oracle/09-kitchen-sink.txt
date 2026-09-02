@@ -1,0 +1,33 @@
+repo kitchen-sink
+head branch refs/heads/main
+ref refs/heads/branch-a 75fb61f92e2ca49c0a5c21ea6952ebfee759cc18
+ref refs/heads/branch-b 319cc8e72db50643dcc2264d31a2a33399faba15
+ref refs/heads/bugfix/memory-leak 26f9b7a1b1d95bcb4c9ffd4d9e63f6eab0d99f01
+ref refs/heads/develop a04ccd4cb8ed4ad11f86e3dbcdc1a19e21110113
+ref refs/heads/feature/api 1fa41090d7d4eb00c7b0c844c7cdd3b5a9b9af64
+ref refs/heads/feature/auth d642043621c2f8cab6a07cdbe1ad3b61f9e3f4ea
+ref refs/heads/feature/cache b608e6853a26af30902ba3328b67446ab4df103a
+ref refs/heads/feature/db 1b8c098e68507a7febd284a68f15428868268f26
+ref refs/heads/feature/long-lived 4ed907d48742d15405ed75db4723dc56dd69a0ac
+ref refs/heads/feature/notifications c83ff4cdc1dce42ddecfd430f350384b09aad49a
+ref refs/heads/feature/notifications-email 925a1ccafb206bf48b070cfc3be6b9373ade02a4
+ref refs/heads/feature/quick-fix 5f53ffc47ff5d9bba08801757dc6a623c6f420d8
+ref refs/heads/feature/refactor 326a0d8641194bb2607cc0c7a6d86eb4dd5094f6
+ref refs/heads/feature/search f4cc61b4f9d9706e17e9e9bcbd782ab5fff0664c
+ref refs/heads/feature/ui 2f640f256517ac0922fd54c95d106f72335dbc8e
+ref refs/heads/gh-pages 888239d8700dd723830d2d3e065706e2c2af385b
+ref refs/heads/hotfix/typo e1fcdda96248785567963c254113067af62f4671
+ref refs/heads/main b3554ed1ca7421d7acc2b5e7d1b49bc03b876eea
+ref refs/stash 1996b8932af7494c13a7b545ef723619dbe11c90
+ref refs/tags/v0.1.0 6c0907bf8d4d3d63a6a29cd757e77641989d70dd
+ref refs/tags/v0.2.0 a9fbb4fdc1f3f4a44f94f2f3f0020cf4b0287fa2
+ref refs/tags/v0.3.0 960564ca69684c1bee0ba3da17d1cab6ed53c246
+ref refs/tags/v0.4.0 9959ac67d6f3086195c4e61a58bdbb5e15d0379f
+ref refs/tags/v0.5.0-rc1 2b1004fe24384cee2c2f29701084dd4139a3eefb
+stash 0 1996b8932af7494c13a7b545ef723619dbe11c90 On main: WIP: mixed staged and untracked
+stash 1 6a296eaaff7526d2d546078ab13ec2ccf1a08367 On main: WIP: another experiment
+stash 2 548bdccc980c4c8fe62bc389fcdd9f1f123e4618 On main: WIP: experimental feature
+state clean
+status M. CHANGELOG.md 666f7cf2ae5a8a19c0997a233d9499852351b28d 666f7cf2ae5a8a19c0997a233d9499852351b28d
+status ?? SCENARIO.md - ee6d6c63895da10f135b4d285181ec9a8c995f4a
+status ?? src/uncommitted.ts - f3111dc7b9a067940b05e0f70b5c9adf494fdaf1

@@ -1,0 +1,63 @@
+repo nested-conflict
+head branch refs/heads/main
+ref refs/heads/feature/better-greeting 52d7cd85fdafd8886484bf6f9171866ed566aedf
+ref refs/heads/feature/refactor-nested-modules 9180b6abba387fa9f2195603f3231deca3454753
+ref refs/heads/interactive-rebase 3b62d2ff20bd696ec5fe80f939beeff787310c31
+ref refs/heads/main 124fdc585db7ca7d769e4e01616570327f828079
+state merge
+merge-head 9180b6abba387fa9f2195603f3231deca3454753
+merge-msg Merge branch 'feature/refactor-nested-modules'\n\n# Conflicts:\n#\tconfig.ts\n#\tlib/helpers/date/compare.ts\n#\tlib/helpers/date/parse.ts\n#\tlib/helpers/string/transform.ts\n#\tsrc/components/ui/Button.tsx\n#\tsrc/components/ui/Modal.tsx\n#\tsrc/services/api/client.ts\n#\tsrc/services/api/endpoints.ts\n#\tsrc/services/auth/permissions.ts\n#\tsrc/services/auth/session.ts\n#\tsrc/utils/formatting/currency.ts\n#\tsrc/utils/formatting/date.ts\n#\tsrc/utils/validation/email.ts\n#\tsrc/utils/validation/password.ts\n
+unmerged 1 100644 9094ba8c00b578a2cd39903d7627f5f1bb904ca1 config.ts
+unmerged 2 100644 c72d77a70ae46c1b54d581130f6e81a863cfe86d config.ts
+unmerged 3 100644 5d174fa00cca35c26bacd392ae1daf6a47203b57 config.ts
+unmerged 1 100644 adf705d7df5b420636e16a9bdac1f764254044a2 lib/helpers/date/compare.ts
+unmerged 2 100644 58af2f932ba4da0dcca375c6f0b829b5c54e0be5 lib/helpers/date/compare.ts
+unmerged 3 100644 59ea0e6a560db2939cbbb877d6faf95376c4b69e lib/helpers/date/compare.ts
+unmerged 1 100644 4638ac3d7cae71d8c2c9ef618d6d5d1b8181cae9 lib/helpers/date/parse.ts
+unmerged 2 100644 1531b3486f49d43a0fd82adbfd80bc4bf2472c99 lib/helpers/date/parse.ts
+unmerged 3 100644 016cbb6d9c1a303ad8eaa442d509b1901b3c7345 lib/helpers/date/parse.ts
+unmerged 1 100644 c5975daea9d17fd277d2988102183d6dafe8c319 src/components/ui/Button.tsx
+unmerged 2 100644 300f3436ad6fe6cd93129140affa37bf8709adbe src/components/ui/Button.tsx
+unmerged 3 100644 82b2677ffc13f3d51f4be9cfa5b0a24fc6e1bd94 src/components/ui/Button.tsx
+unmerged 1 100644 875c02ba2085227689d6addcd54c4c55e1c6a0ed src/components/ui/Modal.tsx
+unmerged 2 100644 3677780c980f77be336a6cfa264dcadb43a36a96 src/components/ui/Modal.tsx
+unmerged 3 100644 5b8e1c5702a7351582dc63f48642b02da17e1d23 src/components/ui/Modal.tsx
+unmerged 1 100644 32a0958216aac179fe173ec90610396f097483c3 src/services/api/client.ts
+unmerged 2 100644 8fea22ab9a85524bb4cf25cc35e12d953349c0dc src/services/api/client.ts
+unmerged 3 100644 e3d0a74af14c56ea50c4211a396b0bb09c8c7b05 src/services/api/client.ts
+unmerged 1 100644 9763cc23367a6027f6b096b476aadd218819b866 src/services/api/endpoints.ts
+unmerged 2 100644 c5c4fae544a143169d88d013ee5c7addf55a3973 src/services/api/endpoints.ts
+unmerged 3 100644 036692e04697e860464e4d45bac0648f961268c2 src/services/api/endpoints.ts
+unmerged 1 100644 e7eb40611bf93d094490782dca0a95149aaecea6 src/services/auth/permissions.ts
+unmerged 2 100644 2744351a7ec123bd5c24273799b48b16e46a9f95 src/services/auth/permissions.ts
+unmerged 3 100644 08ce84801e57df2fc1e92444e257df6baccdbaf9 src/services/auth/permissions.ts
+unmerged 1 100644 6c53868c086a4487424b48674f544d4a625d2b5e src/services/auth/session.ts
+unmerged 2 100644 2c0fd2c79455f8dd62d95af9458fcec5127518b8 src/services/auth/session.ts
+unmerged 3 100644 cb22ceb6fff8409454ee36342228ea07c426b61e src/services/auth/session.ts
+unmerged 1 100644 aee16a842137683ace34c01846df2f166e9a26e5 src/utils/formatting/currency.ts
+unmerged 2 100644 7411adcc70d082d4991e6d0c016b493d04585686 src/utils/formatting/currency.ts
+unmerged 3 100644 1372140a1a043d034337512ac40cea6908e1e67b src/utils/formatting/currency.ts
+unmerged 1 100644 c45660c8df2e0f81ad2763616d7af6e446931f79 src/utils/formatting/date.ts
+unmerged 2 100644 13d503ecf17280c49811b2e86c8cab6404216316 src/utils/formatting/date.ts
+unmerged 3 100644 f200203d82011972e8e20ed827be33cbd3adac60 src/utils/formatting/date.ts
+unmerged 1 100644 7b83a48d5bc112b1670569e6cbf247068b7b0b08 src/utils/validation/email.ts
+unmerged 2 100644 74d6a0d16582e8cf35c329be9b91b8d1bb84ec01 src/utils/validation/email.ts
+unmerged 3 100644 9eadc558415cb1724009611dcdc1a96174d35b4a src/utils/validation/email.ts
+unmerged 1 100644 91012738eae1089e373516db115a39b86796a6fe src/utils/validation/password.ts
+unmerged 2 100644 b6f71518b004e0e083f881d12034c68a6a62d332 src/utils/validation/password.ts
+unmerged 3 100644 6d57249a47c84a7e43121755abfc95234656ad8e src/utils/validation/password.ts
+status ?? SCENARIO.md - 9111633f25fd560131b68096141910ab4c8ea730
+status UU config.ts - 7fe182e935fc24eccd21140f30087195aee94553
+status UU lib/helpers/date/compare.ts - e75b1ceb15f16217b7906194dd258e0ea3703ce2
+status UU lib/helpers/date/parse.ts - d5c396655bd35559fb2e7f39b94f545902b0bbe0
+status .M lib/helpers/string/transform.ts 639078f3ee6ef8d3631c1de1d63e0c06a988df85 8f8a521c00e48c12133c5dcbf2c57c861f6235d0
+status UU src/components/ui/Button.tsx - 61958dd8515b98cc2d8dae35b90d1ee7f26fa042
+status UU src/components/ui/Modal.tsx - ad428cd19ab33ce8dad51b4509f3abfaaa7a29c6
+status UU src/services/api/client.ts - d3393e82661ca4683e33339aeab14261e635ef05
+status UU src/services/api/endpoints.ts - 9f1735f25e0019a6eb6c4d4bac7ff4faaa59b5e3
+status UU src/services/auth/permissions.ts - 37873baa34afe4c26c4966a5b35c9a76755e2369
+status UU src/services/auth/session.ts - 58c379a264e786d539bef8fb9877bc3900788de5
+status UU src/utils/formatting/currency.ts - dea64e07e8ad942f14fe6c63b0ffc85f7a37a7c9
+status UU src/utils/formatting/date.ts - aa1b6a7c6e13765e1d6dbd2186f628a4c80fd921
+status UU src/utils/validation/email.ts - b4963e7374cc0c00ffcc30d497970b3d5251b081
+status UU src/utils/validation/password.ts - 34a4a73dd7a378d6b41de6cec8049aad66a26638
