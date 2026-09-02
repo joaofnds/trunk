@@ -52,3 +52,21 @@ fn every_built_repository_carries_its_document() {
 
     assert!(missing.is_empty(), "documents missing: {missing:?}");
 }
+
+#[test]
+fn every_case_is_listed_in_the_catalogue_document() {
+    let doc = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/fixtures.md");
+    let text =
+        std::fs::read_to_string(&doc).unwrap_or_else(|e| panic!("read {}: {e}", doc.display()));
+
+    let missing: Vec<&str> = CASES
+        .iter()
+        .map(|case| case.name)
+        .filter(|name| !text.contains(&format!("| `{name}` |")))
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "cases without a row in docs/fixtures.md: {missing:?}"
+    );
+}

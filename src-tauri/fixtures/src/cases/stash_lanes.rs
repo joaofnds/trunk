@@ -345,10 +345,10 @@ fn build(out: &Path) {
     std::fs::write(out.join("stash-lanes").join("README.md"), README).expect("write the README");
 }
 
-/// The corpus README, verbatim from the script's heredoc.
+/// The corpus README from the script's heredoc, its rebuild line naming the recipe.
 const README: &str = r##"# Stash-vs-WIP lane placement — QA fixtures
 
-Regenerate at any time with `scripts/qa-stash-fixtures.sh`. Every repo is rebuilt
+Regenerate at any time with `just fixtures 06-stash-lanes`. Every repo is rebuilt
 from scratch, so edit them freely.
 
 ## The rule under test

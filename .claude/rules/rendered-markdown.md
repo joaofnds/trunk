@@ -102,9 +102,10 @@ shrink: fix the defect, drop the entry, same change.
 
 ## The fixture corpus
 
-`~/code/trunk-test-cases/cases/02-diff-scenarios` builds a repository whose
-commits are scenarios, each stating its expected rendered behaviour in its
-body. Build it with `./build 02-diff-scenarios`; `repos/` is generated and
+The `02-diff-scenarios` case of the fixture corpus
+(`src-tauri/fixtures/src/cases/diff_scenarios.rs`) builds a repository whose commits are
+scenarios, each stating its expected rendered behaviour in its body. Build it with
+`just fixtures 02-diff-scenarios`; `repos/` at the repository root is generated and
 gitignored.
 
 Match scenarios by commit **subject**, never by OID. The corpus is generated

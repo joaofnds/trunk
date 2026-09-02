@@ -505,7 +505,8 @@ shape, the dirtiness dependency, the post-processing prohibition — is stated o
 Test commands are in `.claude/rules/commit-graph.md`.
 
 For visual checks, `just dev` and open a repo with stashes.
-The `06-stash-lanes` case in the trunk-test-cases repository builds a set of repos covering
+The `06-stash-lanes` case of the fixture corpus (`just fixtures 06-stash-lanes`,
+`docs/fixtures.md`) builds a set of repos covering
 inline placement, each flavour of dirtiness, the multi-stash, orphan, detached-HEAD,
 merge-tip and bare cases, and both accepted-churn shapes, with a per-scenario checklist. `scripts/qa-stash-probe.sh` dumps each
 fixture's layout as one text file, so a change to Layer 1 can be diffed against a baseline.
@@ -533,9 +534,9 @@ a git repository. `cargo mutants` is not used for this suite — see
 `docs/commit-graph-mutation-ledger.md` for the measurement and why it is a dated audit rather
 than a gate.
 
-**Editing a fixture script therefore changes nothing until someone runs
-`just graph-capture`**, which rebuilds the corpus into a throwaway directory and rewrites
-every input. The same recipe then rebuilds the named-rule shapes in
+**Editing a graph case in `src-tauri/fixtures/src/cases/` therefore changes nothing until
+someone runs `just graph-capture`**, which rebuilds the corpus into a throwaway directory
+and rewrites every input. The same recipe then rebuilds the named-rule shapes in
 `src-tauri/tests/common/graph_shapes.rs` and rewrites `src-tauri/tests/rule-inputs/`, which
 the hand-asserted tests in `test_graph.rs` read. `just graph-fidelity` is the check that those
 rule inputs still equal a fresh capture of their repository. Two consecutive runs must produce identical files; that reproducibility check
@@ -548,9 +549,10 @@ A red golden is a suspected defect, not a stale artifact. Accept a change only w
 Never set `TRUNK_ACCEPT_GRAPH_GOLDENS` by hand, and never accept a change without the
 user's explicit direction; `.claude/rules/commit-graph.md` is the binding source.
 
-Three generators build the corpus, offline, behind `just graph-capture`. They live in the
-trunk-test-cases repository, which holds every fixture Trunk is tested against; `just check`
-never needs that checkout, because the captured inputs are committed here. Its
+Three cases build the corpus, offline, behind `just graph-capture`: `04-graph-lanes`,
+`05-graph-merges` and `06-stash-lanes` of the `trunk-fixtures` crate, which builds every
+fixture Trunk is tested against (`docs/fixtures.md`); the graph suites build no fixture,
+because the captured inputs are committed here. The
 `05-graph-merges` case covers the merge, multi-branch, ordering and column-pressure shapes:
 
 | Shape | Fixture |

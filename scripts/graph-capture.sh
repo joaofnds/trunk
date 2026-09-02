@@ -6,8 +6,8 @@
 #
 # Builds the three graph corpora from the trunk-fixtures crate into a throwaway
 # directory and writes one `src-tauri/tests/inputs/<corpus>-<name>.json` per repository.
-# The golden suite reads those files, so nothing in `just check` builds a git repository
-# any more — which is what makes a hand-applied mutation cycle cheap enough to sweep
+# The golden suite reads those files, so no graph suite builds a git repository any
+# more — which is what makes a hand-applied mutation cycle cheap enough to sweep
 # (`just graph-sweep`).
 #
 # Then rebuilds the named-rule shapes — the repositories `test_graph.rs`'s placement tests

@@ -2,9 +2,10 @@
 //!
 //!     cargo run --example graph_capture -- <repo-path>
 //!
-//! Driven by `scripts/graph-capture.sh`, which runs it over the whole QA fixture corpus and
+//! Driven by `scripts/graph-capture.sh`, which builds the three graph cases of the fixture
+//! corpus (`docs/fixtures.md`) into a throwaway directory, runs this over each repository and
 //! writes `src-tauri/tests/inputs/`. The golden suite reads those files instead of building
-//! repositories, so this is the only place the fixture scripts still reach.
+//! repositories, so this is the only place a built fixture still reaches the graph suites.
 
 use std::collections::HashMap;
 

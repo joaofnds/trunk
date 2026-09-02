@@ -25,6 +25,7 @@ paths:
   - "src-tauri/tests/inputs"
   - "src-tauri/tests/rule-inputs"
   - "src-tauri/tests/goldens"
+  - "src-tauri/fixtures"
   - "src/__tests__/goldens/graph-render"
   - "scripts/graph-accept.sh"
   - "scripts/graph-capture.sh"

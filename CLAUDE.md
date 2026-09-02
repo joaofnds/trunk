@@ -19,6 +19,8 @@ just rust         # fmt, clippy, cargo-test (~12s; longer after an edit)
 just check        # Run ALL checks (fmt, biome, svelte-check, clippy, cargo-test, vitest, graph-sweep-check)
 just audit        # Dependency advisories (cargo-audit + bun audit)
 just mutants      # Which mutations the Rust tests miss (slow, opt-in)
+just fixtures     # Build the fixture corpus into repos/ (`just fixtures nested` for one case)
+just fixtures-list # The cases and what each proves (docs/fixtures.md)
 ```
 
 While working, run the narrowest tier that covers what you touched — `quick` for
