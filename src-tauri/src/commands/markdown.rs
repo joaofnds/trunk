@@ -1332,7 +1332,20 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs);
     for op in ops.iter().copied() {
         match op {
-            similar::DiffOp::Equal { .. } => {}
+            similar::DiffOp::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                for k in 0..len {
+                    let b = &before.leaves[old_index + k];
+                    let a = &after.leaves[new_index + k];
+                    if markup_only_change(b, a) {
+                        before_tints.push((&b.sourcepos, "md-removed"));
+                        after_tints.push((&a.sourcepos, "md-added"));
+                    }
+                }
+            }
             similar::DiffOp::Delete {
                 old_index, old_len, ..
             } => {
@@ -1540,6 +1553,19 @@ fn renders_same(before_html: &str, after_html: &str) -> bool {
 /// alone still carries its `data-sourcepos`. Callers sanitize what they ship;
 /// the hunk fold needs those attributes to find and drop unchanged leaves, and
 /// sanitization strips them.
+/// Whether two leaves the signature diff called `Equal` in fact differ — a
+/// markup-only edit: unbolding a phrase, retargeting a link, an HTML comment.
+/// A leaf's signature is its visible TEXT, so such an edit leaves every leaf
+/// Equal while the item genuinely changed, and nothing downstream marks it
+/// (TRUNK-101, the third time this class shipped).
+///
+/// Compares the rendered markup with each side's asset rev normalized away.
+/// Comparing the raw html would call an untouched image changed, because its
+/// URL carries the rev of the side that rendered it (TRUNK-102).
+fn markup_only_change(before: &Leaf, after: &Leaf) -> bool {
+    strip_asset_rev(&before.raw_html) != strip_asset_rev(&after.raw_html)
+}
+
 fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> Option<String> {
     let mut frag = after.sourcepos_html.clone();
     let mut tints: Vec<(&str, &str)> = Vec::new();
@@ -1581,7 +1607,23 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
 
     for op in ops.iter().copied() {
         match op {
-            similar::DiffOp::Equal { .. } | similar::DiffOp::Delete { .. } => {}
+            // The merged copy is what the inline view renders, so a markup-only
+            // pair must be tinted here as well as on the split fragments, or the
+            // reader sees a plain container with nothing marking the change.
+            similar::DiffOp::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                for k in 0..len {
+                    let b = &before.leaves[old_index + k];
+                    let a = &after.leaves[new_index + k];
+                    if markup_only_change(b, a) {
+                        tints.push((&a.sourcepos, "md-added"));
+                    }
+                }
+            }
+            similar::DiffOp::Delete { .. } => {}
             similar::DiffOp::Insert {
                 new_index, new_len, ..
             } => {
@@ -3067,8 +3109,7 @@ mod tests {
     ///   markup-only edit inside a container leaves every leaf comparing
     ///   equal, so no tint lands and no word mark is produced; the reader sees
     ///   a plain list with nothing marking the change.
-    const KNOWN_ILLEGIBLE: &[(&str, &str)] =
-        &[("md: unbold a phrase, formatting only", "unmarked")];
+    const KNOWN_ILLEGIBLE: &[(&str, &str)] = &[];
 
     /// The built fixture repository, or `None` when it has not been built.
     fn fixture_repo() -> Option<PathBuf> {
@@ -3944,6 +3985,74 @@ mod tests {
     }
 
     #[test]
+    fn a_markup_only_edit_inside_a_list_marks_the_item_that_changed() {
+        // A leaf's signature is its visible text, so unbolding diffs every leaf
+        // Equal while the item genuinely changed. The fixture scenario states
+        // the wanted behaviour: the item keeps a wash/tint, and no del/ins word
+        // marks, since no visible words changed.
+        let rows = diff_rows("- **x** item\n- keep", "- x item\n- keep");
+
+        assert!(
+            illegible_rows(&rows).is_empty(),
+            "the reader can see which item changed: {rows:?}"
+        );
+        let DiffRow::Changed {
+            has_tints,
+            after_html,
+            merged_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("one changed list: {rows:?}");
+        };
+        assert!(has_tints, "the changed item carries a tint: {rows:?}");
+        assert!(
+            after_html.contains("md-added"),
+            "the tint lands on the item that changed: {after_html}"
+        );
+        assert!(
+            !after_html.contains("<li class=\"md-added\">keep</li>"),
+            "the untouched item is not tinted: {after_html}"
+        );
+        // The inline view renders the merged copy, so the tint has to land there
+        // too: asserting only on after_html passed while the reader still saw a
+        // plain list, which is what the app scenario caught.
+        let merged = merged_html.as_deref().unwrap_or_default();
+        assert!(
+            merged.contains("md-added"),
+            "the merged copy the inline view renders carries the tint: {merged}"
+        );
+        assert!(
+            !merged.contains("md-word-"),
+            "no del/ins marks: no visible words changed: {merged}"
+        );
+    }
+
+    #[test]
+    fn a_list_item_holding_an_unchanged_image_is_not_tinted() {
+        // The markup-only tint compares rendered leaf html, which carries each
+        // side's rev in any image URL. Comparing it raw would tint every item
+        // holding an untouched image whenever a sibling changed.
+        let rows = diff_rows(
+            "- ![logo](a.png) one\n- two",
+            "- ![logo](a.png) one\n- three",
+        );
+        let DiffRow::Changed { after_html, .. } = &rows[0] else {
+            panic!("one changed list: {rows:?}");
+        };
+
+        assert!(
+            !after_html.contains(">![logo]") && !after_html.contains("md-added\">\n<img"),
+            "the untouched image item carries no tint: {after_html}"
+        );
+        let tinted_items = after_html.matches("md-added").count();
+        assert_eq!(
+            tinted_items, 1,
+            "only the item that changed is tinted: {after_html}"
+        );
+    }
+
+    #[test]
     fn illegible_rows_is_not_fooled_by_a_document_that_names_the_mark_classes() {
         // The oracle used to ask whether the shown copy contained "md-word-".
         // This repository's own rule file contains that string, so a document
@@ -4720,11 +4829,11 @@ mod tests {
     }
 
     #[test]
-    fn a_markup_only_container_edit_reports_no_tints() {
+    fn a_markup_only_container_edit_reports_tints() {
         // The leaf signature is the whitespace-normalised TEXT, so dropping the
-        // emphasis leaves it equal and the inner diff finds nothing to tint —
-        // the row is still Changed, and it has nothing to point at.
-        assert!(!first_changed_has_tints("- **bold** item", "- bold item"));
+        // emphasis leaves it Equal. The rendered markup is what says the item
+        // changed, and the tint is what points the reader at it (TRUNK-101).
+        assert!(first_changed_has_tints("- **bold** item", "- bold item"));
     }
 
     #[test]
@@ -4738,7 +4847,10 @@ mod tests {
     #[test]
     fn has_tints_reaches_the_wire_only_when_a_tint_landed() {
         let tinted = serde_json::to_string(&diff_rows("- one item", "- one ITEM")).unwrap();
-        let untinted = serde_json::to_string(&diff_rows("- **bold** item", "- bold item")).unwrap();
+        // A code block has no leaves, so no tint can land on one.
+        let untinted =
+            serde_json::to_string(&diff_rows("```\nlet x = 1;\n```", "```\nlet x = 2;\n```"))
+                .unwrap();
 
         assert!(tinted.contains(r#""hasTints":true"#), "{tinted}");
         assert!(!untinted.contains(r#""hasTints""#), "{untinted}");

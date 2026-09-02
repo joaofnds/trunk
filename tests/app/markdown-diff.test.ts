@@ -134,8 +134,10 @@ describe("the rendered markdown diff", () => {
 
 	// A markup-only edit inside one list item: the leaf signature is visible
 	// text, so every leaf compares equal and the fold has no changed leaf to
-	// keep. It must not fold — hiding all three items left an empty list.
-	it("keeps every item of a list whose only edit is markup", async () => {
+	// keep. It must not fold — hiding all three items left an empty list — and
+	// the item that changed must be tinted, or the reader sees a plain list
+	// indistinguishable from an unchanged one (TRUNK-101).
+	it("tints the one item of a list whose only edit is markup", async () => {
 		const doc = (emphasis: string) =>
 			[
 				"1. plain step one",
@@ -166,6 +168,16 @@ describe("the rendered markdown diff", () => {
 		expect(items).toHaveLength(3);
 		expect(items[2]).toContain("the stored baseline");
 		expect(app.diffPane.renderedFoldNotes()).toEqual([]);
+
+		const tinted = await waitFor("the tinted item", () => {
+			const added = app.diffPane.renderedAdded();
+			return added.length > 0 ? added : null;
+		});
+		expect(tinted).toHaveLength(1);
+		expect(tinted[0]).toContain("the stored baseline");
+		// No visible word changed, so nothing is struck or inserted.
+		expect(app.diffPane.renderedWordDeleted()).toEqual([]);
+		expect(app.diffPane.renderedWordAdded()).toEqual([]);
 	});
 
 	// A reflow moves the source lines without changing one rendered word, so
