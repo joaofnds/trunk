@@ -40,9 +40,23 @@ let {
 }: Props = $props();
 
 let hovered = $state(false);
+let focused = $state(false);
+
+/**
+ * Whether the trailing action occupies the row.
+ *
+ * Idle rows drop it out of the flow entirely, so the name gets the full width instead of
+ * truncating against a reserved gutter for an icon that is not there. Following VS Code's
+ * SCM view, which is the same problem in the same shape: a git ref list in a narrow pane.
+ *
+ * Focus counts alongside hover, or the control would be unreachable by keyboard. A hidden
+ * ref keeps it permanently: the eye is the only thing saying the ref is hidden, so it
+ * cannot depend on the pointer being there.
+ */
+let actionShown = $derived(hovered || focused || hidden);
 </script>
 
-<div data-testid="branch-row" data-hidden={hidden}>
+<div data-testid="branch-row" data-hidden={hidden} data-action-shown={actionShown}>
   <div
     role="button"
     tabindex="0"
@@ -52,6 +66,9 @@ let hovered = $state(false);
     oncontextmenu={(e) => { if (oncontextmenu) { e.preventDefault(); oncontextmenu(e); } }}
     onmouseenter={() => (hovered = true)}
     onmouseleave={() => (hovered = false)}
+    onfocusin={() => (focused = true)}
+    onfocusout={() => (focused = false)}
+    aria-label={name}
     style="
       height: var(--row-h);
       margin: 0 var(--space-2);
@@ -75,7 +92,7 @@ let hovered = $state(false);
     {:else}
       <span style="flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-right: var(--space-2); background: {isHead ? 'var(--accent)' : 'var(--fg-4)'};"></span>
     {/if}
-    <span style="
+    <span title={name} style="
       display: block;
       overflow: hidden;
       white-space: nowrap;
@@ -97,7 +114,7 @@ let hovered = $state(false);
         data-testid="branch-row-visibility-btn"
         onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
         ondblclick={(e) => e.stopPropagation()}
-        style="flex-shrink: 0; margin-left: var(--space-1); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; visibility: {hovered || hidden ? 'visible' : 'hidden'};"
+        style="flex-shrink: 0; margin-left: var(--space-1); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; align-items: center; display: {actionShown ? 'inline-flex' : 'none'};"
         aria-label="{hidden ? 'Show' : 'Hide'} {name}"
       >
         {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}

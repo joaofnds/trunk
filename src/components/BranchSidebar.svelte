@@ -879,7 +879,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         >
           <Archive size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
           <span class="stash-index">{stash.short_name}</span>
-          <span class="stash-message">{stash.name}</span>
+          <span class="stash-message" title={stash.name}>{stash.name}</span>
           <button
             class="stash-visibility-btn"
             data-hidden={isStashHidden(visibility, stash.oid)}
@@ -937,6 +937,11 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     border-radius: var(--radius);
   }
 
+  /*
+   * Idle rows drop the eye out of the flow rather than reserving its box, so the stash
+   * message gets the full width. `visibility: hidden` keeps the layout box, which is what
+   * made every message truncate early against an icon that was not there.
+   */
   .stash-visibility-btn {
     flex-shrink: 0;
     margin-left: auto;
@@ -945,14 +950,16 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     border: none;
     cursor: pointer;
     padding: 0;
-    display: inline-flex;
     align-items: center;
-    visibility: hidden;
+    display: none;
   }
 
+  /* Focus reveals it too, or the control is unreachable by keyboard. A hidden stash keeps
+     it permanently: the eye is the only marker saying the stash is hidden. */
   .stash-row:hover .stash-visibility-btn,
+  .stash-row:focus-within .stash-visibility-btn,
   .stash-visibility-btn[data-hidden="true"] {
-    visibility: visible;
+    display: inline-flex;
   }
 
   .stash-row {
