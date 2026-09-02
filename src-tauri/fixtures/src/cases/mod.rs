@@ -3,6 +3,7 @@ use std::path::Path;
 pub mod commit_message;
 pub mod graph_lanes;
 pub mod graph_merges;
+pub mod merge_conflict;
 pub mod remote_branch;
 pub mod staging_ignore_ws;
 pub mod stash_lanes;
@@ -22,6 +23,7 @@ pub const CASES: &[Case] = &[
     commit_message::CASE,
     graph_lanes::CASE,
     graph_merges::CASE,
+    merge_conflict::CASE,
     remote_branch::CASE,
     staging_ignore_ws::CASE,
     stash_lanes::CASE,

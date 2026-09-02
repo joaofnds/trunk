@@ -103,3 +103,8 @@ fn staging_ignore_ws_matches_its_oracle() {
 fn remote_branch_matches_its_oracle() {
     assert_matches_oracle("07-remote-branch");
 }
+
+#[test]
+fn merge_conflict_matches_its_oracle() {
+    assert_matches_oracle("08-merge-conflict");
+}
