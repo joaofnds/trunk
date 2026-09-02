@@ -15,9 +15,9 @@ use std::path::Path;
 
 use trunk_fixtures::fingerprint;
 
-use common::{case, fixtures_command, oracle, report};
-
 mod common;
+
+use common::{case, fixtures_command, oracle, report};
 
 const CASES_UNDER_TEST: [&str; 3] = ["09-kitchen-sink", "06-stash-lanes", "04-graph-lanes"];
 

@@ -3,9 +3,9 @@
 
 use trunk_fixtures::fingerprint;
 
-use common::{case, oracle, report};
-
 mod common;
+
+use common::{case, oracle, report};
 
 fn assert_matches_oracle(name: &str) {
     trunk_fixtures::isolate();

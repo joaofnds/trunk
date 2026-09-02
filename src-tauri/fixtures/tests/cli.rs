@@ -5,9 +5,9 @@ use std::path::Path;
 use trunk_fixtures::cases::CASES;
 use trunk_fixtures::fingerprint;
 
-use common::fixtures;
-
 mod common;
+
+use common::fixtures;
 
 /// `fixtures build <case> --out <out>`.
 fn build(case: &str, out: &Path) -> std::process::Output {
