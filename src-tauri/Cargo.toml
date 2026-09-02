@@ -33,7 +33,7 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
+git2 = { workspace = true }
 notify = "8"
 notify-debouncer-mini = "0.7"
 tauri-plugin-window-state = "2"
@@ -99,3 +99,8 @@ harness = false
 name = "bench_ipc"
 harness = false
 
+[workspace]
+members = ["fixtures"]
+
+[workspace.dependencies]
+git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }

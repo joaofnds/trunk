@@ -1,0 +1,20 @@
+[package]
+name = "trunk-fixtures"
+version = "0.1.0"
+description = "The fixture corpus Trunk is tested against, built with the library the app reads with"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+name = "trunk_fixtures"
+
+[[bin]]
+name = "fixtures"
+path = "src/main.rs"
+
+[dependencies]
+git2 = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

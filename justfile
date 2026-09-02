@@ -67,7 +67,7 @@ toolchain-parity:
 
 # Check Rust formatting
 fmt:
-    cargo fmt --manifest-path {{manifest}} --check
+    cargo fmt --all --manifest-path {{manifest}} --check
 
 # Lint & format with Biome
 biome:
@@ -79,7 +79,7 @@ svelte-check:
 
 # Clippy lints
 clippy:
-    cargo clippy --manifest-path {{manifest}} --all-targets -- -D warnings
+    cargo clippy --workspace --manifest-path {{manifest}} --all-targets -- -D warnings
 
 # Clippy the configuration that actually ships. `clippy` above passes
 # --all-targets, which pulls in the dev targets, and the dev-dependency on
@@ -88,7 +88,7 @@ clippy:
 # reads a `test-util`-gated field from ungated code passes `just check` and
 # fails only at `tauri build`.
 clippy-shipped:
-    cargo clippy --manifest-path {{manifest}} --lib --bins -- -D warnings
+    cargo clippy --workspace --manifest-path {{manifest}} --lib --bins -- -D warnings
 
 # Run Rust tests (needs: cargo install cargo-nextest). nextest runs every test
 # binary in parallel where `cargo test` runs them serially — measured 7.2s
@@ -96,12 +96,12 @@ clippy-shipped:
 # ride on a second invocation; the two together still run every test `cargo
 # test` ran, verified by name against `cargo test -- --list`.
 cargo-test:
-    {{scrubbed_env}} cargo nextest run --manifest-path {{manifest}}
-    {{scrubbed_env}} cargo test --doc --manifest-path {{manifest}}
+    {{scrubbed_env}} cargo nextest run --workspace --manifest-path {{manifest}}
+    {{scrubbed_env}} cargo test --doc --workspace --manifest-path {{manifest}}
 
 # Run Rust tests with coverage
 cargo-test-cov:
-    {{scrubbed_env}} cargo llvm-cov --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
+    {{scrubbed_env}} cargo llvm-cov --workspace --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
 
