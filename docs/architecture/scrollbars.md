@@ -80,6 +80,28 @@ padding. Keep it that way. If a pane scrolls when it should not, compare
 Two earlier passes missed this, one by looking at a 0.33px content excess that was the wrong
 quantity entirely.
 
+## Emptying a scroller destroys its position
+
+A scroller whose content collapses to nothing has its `scrollTop` clamped to zero by the
+engine, and the old value is gone. Putting taller content back does not restore it. This is
+not the browser being unhelpful: there is no position to keep while there is nothing to
+scroll.
+
+So a pane that refetches must not blank itself while the replacement is in flight. Swapping
+the content for a loading placeholder empties the scroller, and the reader is returned to
+the top of the document. TRUNK-127 was this in the rendered markdown diff, where an
+unconditional `state = { kind: "loading" }` on every fetch meant any write under the
+repository sent a scrolled reader back to the top, once a minute, because Trunk's own
+background fetch rewrites `FETCH_HEAD` on that timer.
+
+The fix is to keep the current content on screen until the replacement arrives, and show a
+placeholder only when there is nothing to show yet. Restoring `scrollTop` after the blank
+frame is the wrong shape: it flickers, and it lands in the wrong place whenever the new
+content's height differs from the old.
+
+jsdom cannot observe the clamp, so the harness test asserts the thing that causes it — that
+the pane still holds its blocks mid-refetch — rather than the scroll offset itself.
+
 ## Testing it
 
 jsdom computes no layout and does no hit testing, so it can answer none of the questions
