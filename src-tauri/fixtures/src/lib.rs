@@ -8,6 +8,7 @@ use git2::ConfigLevel;
 
 pub mod cases;
 pub mod fingerprint;
+pub mod repo;
 
 static ISOLATED: Once = Once::new();
 
