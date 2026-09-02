@@ -67,12 +67,17 @@ impl Repo {
         let workdir = repo
             .workdir()
             .expect("an initialised repository has a workdir")
-            .to_path_buf();
+            .components()
+            .collect::<PathBuf>();
         let mut this = Repo { repo, workdir };
         this.config("user.name", identity.name);
         this.config("user.email", identity.email);
 
         this
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.workdir
     }
 
     /// `git config <key> <value>` in the repository's own config.
@@ -372,6 +377,82 @@ impl Repo {
             .expect("reset to the commit");
     }
 
+    /// `git remote add <name> <path>`, with the default fetch refspec.
+    pub fn remote_add(&mut self, name: &str, path: &Path) {
+        self.repo
+            .remote(name, path.to_str().expect("a fixture path is utf-8"))
+            .expect("add the remote");
+    }
+
+    /// `git push [-u] <remote> <branch>` to a local bare remote. libgit2 updates
+    /// `refs/remotes/<remote>/<branch>` after the push through the remote's fetch
+    /// refspec, as git does. With `set_upstream`, `branch.<branch>.remote` and `.merge`
+    /// are set as `-u` sets them.
+    pub fn push(&mut self, remote: &str, branch: &str, set_upstream: bool) {
+        self.refuse_non_fast_forward_push(remote, branch);
+        let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
+        self.repo
+            .find_remote(remote)
+            .expect("find the remote")
+            .push(&[refspec.as_str()], None)
+            .expect("push the branch");
+        if set_upstream {
+            self.config(&format!("branch.{branch}.remote"), remote);
+            self.config(
+                &format!("branch.{branch}.merge"),
+                &format!("refs/heads/{branch}"),
+            );
+        }
+    }
+
+    /// libgit2's local transport overwrites the remote's ref; git refuses a push that
+    /// does not fast-forward it.
+    fn refuse_non_fast_forward_push(&self, remote: &str, branch: &str) {
+        let handle = self.repo.find_remote(remote).expect("find the remote");
+        let url = handle.url().expect("a remote url is utf-8");
+        let Ok(bare) = Repository::open(url) else {
+            return;
+        };
+        let Ok(their_tip) = bare.refname_to_id(&format!("refs/heads/{branch}")) else {
+            return;
+        };
+        let our_tip = self.resolve(&format!("refs/heads/{branch}")).id();
+        let fast_forward = our_tip == their_tip
+            || self
+                .repo
+                .graph_descendant_of(our_tip, their_tip)
+                .expect("compare the two tips");
+        assert!(
+            fast_forward,
+            "push {remote} {branch}: not a fast-forward, git would reject it"
+        );
+    }
+
+    /// `git fetch <remote>` through the remote's configured refspec. Like git, the first
+    /// fetch also records the remote's HEAD as `refs/remotes/<remote>/HEAD` when it names a
+    /// branch that was fetched; libgit2 leaves that to the caller.
+    pub fn fetch(&mut self, remote: &str) {
+        let mut handle = self.repo.find_remote(remote).expect("find the remote");
+        handle
+            .fetch(&[] as &[&str], None, None)
+            .expect("fetch the remote");
+        let remote_head = format!("refs/remotes/{remote}/HEAD");
+        if self.repo.find_reference(&remote_head).is_ok() {
+            return;
+        }
+        let url = handle.url().expect("a remote url is utf-8");
+        let Some(branch) = head_branch_of(url) else {
+            return;
+        };
+        let tracked = format!("refs/remotes/{remote}/{branch}");
+        if self.repo.find_reference(&tracked).is_err() {
+            return;
+        }
+        self.repo
+            .reference_symbolic(&remote_head, &tracked, false, "remote HEAD")
+            .expect("record the remote's HEAD");
+    }
+
     /// `git checkout --detach <revspec>`.
     pub fn checkout_detached(&mut self, revspec: &str) {
         let commit = self.resolve(revspec);
@@ -625,4 +706,53 @@ fn index_entry(mode: u32, id: Oid, file_size: u32, path: &str) -> git2::IndexEnt
         flags_extended: 0,
         path: path.as_bytes().to_vec(),
     }
+}
+
+/// `git init --bare [-b <initial_branch>] <path>`. Without a branch libgit2 names the
+/// unborn HEAD `master`, as git does with no `init.defaultBranch`.
+pub fn init_bare(path: &Path, initial_branch: Option<&str>) -> Repository {
+    let mut options = RepositoryInitOptions::new();
+    options.bare(true);
+    if let Some(branch) = initial_branch {
+        options.initial_head(branch);
+    }
+
+    Repository::init_opts(path, &options).expect("init the bare repository")
+}
+
+/// `git clone --bare <src> <dst>`: a bare repository whose HEAD names the source's
+/// branch, its heads mirrored under `refs/heads/*`, every tag brought along, and only
+/// `remote.origin.url` in its config. libgit2's own bare clone puts the heads under
+/// `refs/remotes/origin/*` and writes a fetch refspec, so the clone is spelled out.
+pub fn clone_bare(src: &Path, dst: &Path) {
+    let source = Repository::open(src).expect("open the repository to clone");
+    let head = source.head().expect("the source has a HEAD");
+    assert!(
+        head.is_branch(),
+        "clone_bare: the source HEAD is not on a branch"
+    );
+    let branch = head.shorthand().expect("a branch name is utf-8");
+    let url = src.to_str().expect("a fixture path is utf-8");
+    let clone = init_bare(dst, Some(branch));
+    clone
+        .config()
+        .expect("open the clone's config")
+        .set_str("remote.origin.url", url)
+        .expect("record the clone's origin");
+    let mirror = "+refs/heads/*:refs/heads/*";
+    let mut origin = clone.remote_anonymous(url).expect("address the source");
+    let mut options = git2::FetchOptions::new();
+    options.download_tags(git2::AutotagOption::All);
+    origin
+        .fetch(&[mirror], Some(&mut options), None)
+        .expect("fetch the source's heads into the clone");
+}
+
+/// The branch a local repository's HEAD names, when it names one.
+fn head_branch_of(path: &str) -> Option<String> {
+    let repo = Repository::open(path).ok()?;
+    let head = repo.find_reference("HEAD").ok()?;
+    let target = head.symbolic_target().ok()??;
+
+    target.strip_prefix("refs/heads/").map(str::to_owned)
 }

@@ -42,6 +42,22 @@ trait Build {
     fn mv(&mut self, from: &str, to: &str);
     fn merge_ff(&mut self, branch: &str);
     fn reset_hard(&mut self, revspec: &str);
+    /// A bare repository at `<dir>.remotes/<name>.git`, added as the remote `name`.
+    fn remote(&mut self, name: &str);
+    fn push(&mut self, remote: &str, branch: &str, set_upstream: bool);
+    fn fetch(&mut self, remote: &str);
+    /// A bare clone of this repository at `<dir>.remotes/<name>.git`.
+    fn clone_bare(&mut self, name: &str);
+    /// The bare repository `name` already beside the driver, added as a remote.
+    fn remote_existing(&mut self, name: &str);
+}
+
+fn remote_path(dir: &Path, name: &str) -> PathBuf {
+    let side = dir.file_name().unwrap().to_str().unwrap();
+    dir.parent()
+        .unwrap()
+        .join(format!("{side}.remotes"))
+        .join(format!("{name}.git"))
 }
 
 impl Build for Repo {
@@ -107,6 +123,25 @@ impl Build for Repo {
     }
     fn reset_hard(&mut self, revspec: &str) {
         Repo::reset_hard(self, revspec);
+    }
+    fn remote(&mut self, name: &str) {
+        let bare = remote_path(self.path(), name);
+        trunk_fixtures::repo::init_bare(&bare, None);
+        Repo::remote_add(self, name, &bare);
+    }
+    fn push(&mut self, remote: &str, branch: &str, set_upstream: bool) {
+        Repo::push(self, remote, branch, set_upstream);
+    }
+    fn fetch(&mut self, remote: &str) {
+        Repo::fetch(self, remote);
+    }
+    fn clone_bare(&mut self, name: &str) {
+        let bare = remote_path(self.path(), name);
+        trunk_fixtures::repo::clone_bare(self.path(), &bare);
+    }
+    fn remote_existing(&mut self, name: &str) {
+        let bare = remote_path(self.path(), name);
+        Repo::remote_add(self, name, &bare);
     }
 }
 
@@ -240,6 +275,35 @@ impl Build for GitCli {
     }
     fn reset_hard(&mut self, revspec: &str) {
         self.git(&["reset", "-q", "--hard", revspec], None);
+    }
+    fn remote(&mut self, name: &str) {
+        let bare = remote_path(&self.dir, name);
+        std::fs::create_dir_all(&bare).unwrap();
+        let bare = bare.to_str().unwrap().to_owned();
+        self.git(&["init", "-q", "--bare", &bare], None);
+        self.git(&["remote", "add", name, &bare], None);
+    }
+    fn push(&mut self, remote: &str, branch: &str, set_upstream: bool) {
+        let mut args = vec!["push", "-q"];
+        if set_upstream {
+            args.push("-u");
+        }
+        args.extend([remote, branch]);
+        self.git(&args, None);
+    }
+    fn fetch(&mut self, remote: &str) {
+        self.git(&["fetch", "-q", remote], None);
+    }
+    fn clone_bare(&mut self, name: &str) {
+        let bare = remote_path(&self.dir, name);
+        let bare = bare.to_str().unwrap().to_owned();
+        let source = self.dir.to_str().unwrap().to_owned();
+        self.git(&["clone", "-q", "--bare", &source, &bare], None);
+    }
+    fn remote_existing(&mut self, name: &str) {
+        let bare = remote_path(&self.dir, name);
+        let bare = bare.to_str().unwrap().to_owned();
+        self.git(&["remote", "add", name, &bare], None);
     }
 }
 
@@ -375,12 +439,74 @@ fn scenario(b: &mut impl Build) {
     b.add_all();
     b.commit(day(36), "feat: after the reset");
     b.checkout_detached("main~2");
+
+    b.checkout("main");
+    b.remote("origin");
+    b.write("base-one.txt", "base one\n");
+    b.add_all();
+    b.commit(day(40), "base one");
+    b.write("base-two.txt", "base two\n");
+    b.add_all();
+    b.commit(day(41), "base two");
+    b.push("origin", "main", true);
+    b.write("upstream-three.txt", "upstream three\n");
+    b.add_all();
+    b.commit(day(42), "upstream three");
+    b.write("upstream-four.txt", "upstream four\n");
+    b.add_all();
+    b.commit(day(43), "upstream four");
+    b.write("upstream-five.txt", "upstream five\n");
+    b.add_all();
+    b.commit(day(44), "upstream five");
+    b.push("origin", "main", false);
+    b.reset_hard("HEAD~3");
+    b.fetch("origin");
+
+    b.merge_ff("origin/main");
+    b.remote("upstream");
+    b.push("upstream", "main", false);
+    b.write("shared-three.txt", "shared three\n");
+    b.add_all();
+    b.commit(day(45), "shared three");
+    b.push("origin", "main", false);
+
+    b.clone_bare("mirror");
+    b.remote_existing("mirror");
+    b.fetch("mirror");
+}
+
+/// The working repository and every bare repository beside it, as the fingerprint lists
+/// them.
+fn side(root: &Path, name: &str) -> Vec<String> {
+    let mut bare: Vec<String> = std::fs::read_dir(root.join(format!("{name}.remotes")))
+        .unwrap()
+        .map(|entry| {
+            let file = entry.unwrap().file_name();
+            format!("{name}.remotes/{}", file.to_str().unwrap())
+        })
+        .collect();
+    bare.sort();
+    let mut paths = vec![name.to_owned()];
+    paths.extend(bare);
+
+    paths
+}
+
+fn as_strs(paths: &[String]) -> Vec<&str> {
+    paths.iter().map(String::as_str).collect()
 }
 
 fn assert_same_fingerprint(root: &Path, git_side: &str, repo_side: &str) {
-    let expected = fingerprint::fingerprint(root, &[git_side]).unwrap();
-    let actual = fingerprint::fingerprint(root, &[repo_side]).unwrap();
-    let strip = |text: &str| text.lines().skip(1).map(str::to_owned).collect::<Vec<_>>();
+    let git_paths = side(root, git_side);
+    let repo_paths = side(root, repo_side);
+    let expected = fingerprint::fingerprint(root, &as_strs(&git_paths)).unwrap();
+    let actual = fingerprint::fingerprint(root, &as_strs(&repo_paths)).unwrap();
+    let strip = |text: &str| {
+        text.lines()
+            .filter(|line| !line.starts_with("repo "))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
     let (expected, actual) = (strip(&expected), strip(&actual));
     if expected != actual {
         let mut report = String::from("git and Repo disagree:\n");
