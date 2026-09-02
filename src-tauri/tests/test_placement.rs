@@ -525,6 +525,28 @@ fn a_merged_branch_keeps_naming_itself_below_the_merge() {
 }
 
 #[test]
+fn a_head_tip_behind_its_upstream_names_itself_not_the_upstream() {
+    // `above` is the tracked upstream, ahead of `tip` on the same first-parent line, so the
+    // clean-worktree extension pre-claims column 0 for `above` before the walk reaches `tip`.
+    // `tip` still carries its own ref and must claim its own row rather than inherit that
+    // claim, the way its colour already resets to lane 0's own colour at this row.
+    let (above, tip, root) = (oid(1), oid(2), oid(3));
+    let input = PlacementInput {
+        oids: vec![above, tip, root],
+        parents: HashMap::from([(above, vec![tip]), (tip, vec![root]), (root, vec![])]),
+        stashes: HashSet::new(),
+        head_tip: Some(tip),
+        tracked_upstream: Some(above),
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(lane_claim_of(&layout, above), Some(above));
+    assert_eq!(lane_claim_of(&layout, tip), Some(tip));
+}
+
+#[test]
 fn a_stash_never_claims_the_lane_it_inlines_into() {
     // A stash inlines at the top of the HEAD lane when the worktree is clean, so it is the
     // first row seen in column 0. It names a state, not a line of history, so the lane still
@@ -584,4 +606,36 @@ fn a_tip_taking_a_freed_column_claims_it_from_the_previous_holder() {
         "the new lane takes a colour of its own"
     );
     assert_eq!(lane_claim_of(&layout, delta), Some(delta));
+}
+
+#[test]
+fn a_stash_taking_a_freed_column_clears_the_previous_holders_claim() {
+    // `stash` opens no claim of its own in the column `orphan` released — a stash names no
+    // line of history — but a commit below it in that column must not inherit `orphan`'s
+    // stale claim either. Same defect as `a_tip_taking_a_freed_column_claims_it_from_the_
+    // previous_holder`, on the one `open_lane` call site that can pass a `None` claim.
+    let (head, orphan, stash, below_stash, root) = (oid(1), oid(2), oid(3), oid(4), oid(5));
+    let input = PlacementInput {
+        oids: vec![head, orphan, stash, below_stash, root],
+        parents: HashMap::from([
+            (head, vec![root]),
+            (orphan, vec![]),
+            (stash, vec![below_stash]),
+            (below_stash, vec![root]),
+            (root, vec![]),
+        ]),
+        stashes: HashSet::from([stash]),
+        head_tip: Some(head),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(
+        lane_of(&layout, orphan).0,
+        lane_of(&layout, stash).0,
+        "the shape under test reuses a freed column"
+    );
+    assert_eq!(lane_claim_of(&layout, below_stash), Some(below_stash));
 }

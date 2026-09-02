@@ -216,7 +216,9 @@ fn first_parent_path_to(
 /// leaves a reused column drawn in the new branch's colour under the old branch's name.
 ///
 /// `claim` is `None` for a stash, which takes a lane without naming one: it is a state
-/// rather than a line of history.
+/// rather than a line of history. Opening with no claim still clears the column's previous
+/// one — a stash reusing a column a branch just freed must not leave that branch's claim for
+/// the commit below the stash to inherit.
 fn open_lane(
     lane_colors: &mut HashMap<usize, usize>,
     lane_claims: &mut HashMap<usize, Oid>,
@@ -227,8 +229,13 @@ fn open_lane(
     lane_colors.insert(col, *next_color);
     *next_color += 1;
 
-    if let Some(oid) = claim {
-        lane_claims.insert(col, oid);
+    match claim {
+        Some(oid) => {
+            lane_claims.insert(col, oid);
+        }
+        None => {
+            lane_claims.remove(&col);
+        }
     }
 }
 
@@ -343,9 +350,13 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
         }
         max_columns = max_columns.max(active_lanes.len());
 
-        // The extension's colour ends here: from the HEAD tip down, lane 0 is HEAD's own.
+        // The extension's colour and claim end here: from the HEAD tip down, lane 0 is HEAD's
+        // own. An extension above the tip pre-claims column 0 for itself (the `or_insert`
+        // below), so without this reset the tip would inherit the extension's claim instead of
+        // naming its own ref — the one case where a live claim must be overwritten.
         if input.head_tip == Some(oid) {
             lane_colors.insert(0, 0);
+            lane_claims.insert(0, oid);
         }
 
         // Rows below a lane's opener inherit its claim rather than re-claiming, which is what
