@@ -71,6 +71,7 @@ pub fn stash_save_inner(
     path: &str,
     message: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let sig = repo.signature().map_err(TrunkError::from)?;
@@ -94,13 +95,14 @@ pub fn stash_save_inner(
             TrunkError::from(e)
         }
     })?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn stash_pop_inner(
     path: &str,
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let index = stash_index_of(&mut repo, oid)?;
@@ -118,13 +120,14 @@ pub fn stash_pop_inner(
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn stash_apply_inner(
     path: &str,
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let index = stash_index_of(&mut repo, oid)?;
@@ -138,18 +141,19 @@ pub fn stash_apply_inner(
     if crate::git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn stash_drop_inner(
     path: &str,
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 #[tauri::command]
@@ -170,12 +174,14 @@ pub async fn stash_save<R: Runtime>(
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_save_inner(&path_clone, &message, &state_map)
+        stash_save_inner(&path_clone, &message, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -192,12 +198,14 @@ pub async fn stash_pop<R: Runtime>(
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_pop_inner(&path_clone, &oid, &state_map)
+        stash_pop_inner(&path_clone, &oid, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -214,12 +222,14 @@ pub async fn stash_apply<R: Runtime>(
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_apply_inner(&path_clone, &oid, &state_map)
+        stash_apply_inner(&path_clone, &oid, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -236,12 +246,14 @@ pub async fn stash_drop<R: Runtime>(
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_drop_inner(&path_clone, &oid, &state_map)
+        stash_drop_inner(&path_clone, &oid, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

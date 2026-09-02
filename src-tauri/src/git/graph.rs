@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::{self, CommitFacts, GraphSource};
+use crate::git::graph_input::{self, CommitFacts, GraphSource, RefVisibility};
 use crate::git::placement::PlacementInput;
 use crate::git::repository;
 use crate::git::status;
@@ -146,10 +146,18 @@ pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
     })
 }
 
+/// The whole pipeline for one repository: capture, drop what the user hid, lay out the page.
+///
+/// Every site that fills `CommitCache` comes through here, which is what keeps a rebuild
+/// after a commit, a checkout or a stash honouring the same visibility the graph was drawn
+/// with. `visibility` is a parameter rather than a lookup so a new rebuild site cannot
+/// forget it.
 pub fn walk_commits(
     repo: &mut git2::Repository,
     offset: usize,
     limit: usize,
+    visibility: &RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
-    Ok(graph_input::layout(&capture(repo)?, offset, limit))
+    let source = graph_input::apply_visibility(&capture(repo)?, visibility);
+    Ok(graph_input::layout(&source, offset, limit))
 }

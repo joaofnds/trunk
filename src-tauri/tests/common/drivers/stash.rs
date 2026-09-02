@@ -9,7 +9,12 @@ impl TestContext {
     }
 
     pub fn stash_save(&self, message: &str) -> Result<GraphResult, TrunkError> {
-        stash::stash_save_inner(self.path(), message, self.state_map())
+        stash::stash_save_inner(
+            self.path(),
+            message,
+            self.state_map(),
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 
     /// The most recent stash, for tests whose subject is not which entry is picked.
@@ -18,14 +23,29 @@ impl TestContext {
     }
 
     pub fn stash_pop(&self, oid: &str) -> Result<GraphResult, TrunkError> {
-        stash::stash_pop_inner(self.path(), oid, self.state_map())
+        stash::stash_pop_inner(
+            self.path(),
+            oid,
+            self.state_map(),
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 
     pub fn stash_apply(&self, oid: &str) -> Result<GraphResult, TrunkError> {
-        stash::stash_apply_inner(self.path(), oid, self.state_map())
+        stash::stash_apply_inner(
+            self.path(),
+            oid,
+            self.state_map(),
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 
     pub fn stash_drop(&self, oid: &str) -> Result<GraphResult, TrunkError> {
-        stash::stash_drop_inner(self.path(), oid, self.state_map())
+        stash::stash_drop_inner(
+            self.path(),
+            oid,
+            self.state_map(),
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 }

@@ -256,6 +256,7 @@ pub fn configure<R: tauri::Runtime>(
         .manage(traffic_lights)
         .manage(ReviewStoreState(Default::default()))
         .manage(crate::state::SweptRepos::default())
+        .manage(crate::state::RefVisibilityState::default())
         .manage(commands::prefs::PrefsState::default())
         .manage(commands::markdown::MarkdownDiffCache(Default::default()))
         .invoke_handler(tauri::generate_handler![
@@ -272,6 +273,7 @@ pub fn configure<R: tauri::Runtime>(
             commands::markdown::render_markdown_diff,
             commands::history::get_commit_graph,
             commands::history::refresh_commit_graph,
+            commands::history::set_ref_visibility,
             commands::history::get_commit_stats,
             commands::history::get_wip_diff_stats,
             commands::history::search_commits,

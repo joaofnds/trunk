@@ -142,13 +142,15 @@ async fn refresh_graph<R: Runtime>(
     path: &str,
     path_buf: PathBuf,
     cache: &CommitCache,
+    ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
     let path_owned = path.to_owned();
+    let visibility = ref_visibility.get(path);
     let graph_result: GraphResult = tauri::async_runtime::spawn_blocking(move || {
         let mut repo = git2::Repository::open(&path_buf)
             .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-        graph::walk_commits(&mut repo, 0, usize::MAX)
+        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
@@ -168,6 +170,7 @@ pub async fn git_fetch<R: Runtime>(
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -185,7 +188,7 @@ pub async fn git_fetch<R: Runtime>(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, path_buf, &cache, &app)
+    refresh_graph(&path, path_buf, &cache, &ref_visibility, &app)
         .await
         .map_err(|e| e.to_json())
 }
@@ -199,6 +202,7 @@ pub async fn git_fetch_background<R: Runtime>(
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -231,7 +235,7 @@ pub async fn git_fetch_background<R: Runtime>(
         return Ok(());
     }
 
-    let _ = refresh_graph(&path, path_buf, &cache, &app).await;
+    let _ = refresh_graph(&path, path_buf, &cache, &ref_visibility, &app).await;
     Ok(())
 }
 
@@ -262,6 +266,7 @@ pub async fn git_pull<R: Runtime>(
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -271,6 +276,7 @@ pub async fn git_pull<R: Runtime>(
         &state_map,
         &cache,
         &running.0,
+        &ref_visibility,
         &app,
     )
     .await
@@ -283,6 +289,7 @@ pub async fn git_pull_inner<R: Runtime>(
     state_map: &HashMap<String, PathBuf>,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
+    ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
@@ -306,7 +313,7 @@ pub async fn git_pull_inner<R: Runtime>(
 
     // Refresh before reporting the conflict, or the UI never repaints and the files the
     // message points at stay invisible.
-    refresh_graph(path, path_buf, cache, app).await?;
+    refresh_graph(path, path_buf, cache, ref_visibility, app).await?;
 
     if conflicted {
         return Err(TrunkError::new(
@@ -323,10 +330,11 @@ pub async fn git_push<R: Runtime>(
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    git_push_inner(&path, &state_map, &cache, &running.0, &app)
+    git_push_inner(&path, &state_map, &cache, &running.0, &ref_visibility, &app)
         .await
         .map_err(|e| e.to_json())
 }
@@ -336,13 +344,14 @@ pub async fn git_push_inner<R: Runtime>(
     state_map: &HashMap<String, PathBuf>,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
+    ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
 
     run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
 
-    refresh_graph(path, path_buf, cache, app).await
+    refresh_graph(path, path_buf, cache, ref_visibility, app).await
 }
 
 /// Fixed prefix of the recovery force push. Both lease flags are mandatory:
@@ -394,6 +403,18 @@ pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkE
     Ok(PushTarget { remote, branch })
 }
 
+/// The remote and branch the user confirmed in the force-push dialog.
+///
+/// The pair travels together because the check below is about the pair: a force push runs
+/// only while the repository is still on the branch the dialog named.
+pub struct ConfirmedPush<'a> {
+    pub remote: &'a str,
+    pub branch: &'a str,
+}
+
+// The three leading arguments are the command's wire contract with the frontend, and the rest
+// are state Tauri injects by type; neither half can be grouped without changing one of those.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn git_push_force<R: Runtime>(
     path: String,
@@ -402,11 +423,21 @@ pub async fn git_push_force<R: Runtime>(
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
     git_push_force_inner(
-        &path, &remote, &branch, &state_map, &cache, &running.0, &app,
+        &path,
+        ConfirmedPush {
+            remote: &remote,
+            branch: &branch,
+        },
+        &state_map,
+        &cache,
+        &running.0,
+        &ref_visibility,
+        &app,
     )
     .await
     .map_err(|e| e.to_json())
@@ -414,13 +445,14 @@ pub async fn git_push_force<R: Runtime>(
 
 pub async fn git_push_force_inner<R: Runtime>(
     path: &str,
-    confirmed_remote: &str,
-    confirmed_branch: &str,
+    confirmed: ConfirmedPush<'_>,
     state_map: &HashMap<String, PathBuf>,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
+    ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
+    let (confirmed_remote, confirmed_branch) = (confirmed.remote, confirmed.branch);
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
 
     let target_path = path_buf.clone();
@@ -468,7 +500,7 @@ pub async fn git_push_force_inner<R: Runtime>(
 
     run_git_remote(&args, &path_buf, app, path, running).await?;
 
-    refresh_graph(path, path_buf, cache, app).await
+    refresh_graph(path, path_buf, cache, ref_visibility, app).await
 }
 
 #[tauri::command]
@@ -478,6 +510,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     running: State<'_, RunningOp>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -506,7 +539,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     .await
     .map_err(|e| e.to_json())?;
 
-    refresh_graph(&path, path_buf, &cache, &app)
+    refresh_graph(&path, path_buf, &cache, &ref_visibility, &app)
         .await
         .map_err(|e| e.to_json())
 }

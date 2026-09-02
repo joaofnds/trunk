@@ -8,10 +8,11 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 fn refresh_commit_cache(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<crate::git::types::GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 fn build_message(subject: &str, body: Option<&str>) -> String {
@@ -94,13 +95,15 @@ pub async fn create_commit<R: Runtime>(
     body: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-        refresh_commit_cache(&path_clone, &state_map)
+        refresh_commit_cache(&path_clone, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -118,13 +121,15 @@ pub async fn amend_commit<R: Runtime>(
     body: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-        refresh_commit_cache(&path_clone, &state_map)
+        refresh_commit_cache(&path_clone, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

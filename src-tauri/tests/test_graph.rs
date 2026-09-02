@@ -8,6 +8,7 @@ use common::graph_shapes::{
 };
 use common::rule_inputs;
 use trunk_lib::git::graph::walk_commits;
+use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::types::EdgeType;
 
 // ============================================================
@@ -669,7 +670,7 @@ fn assert_readings_agree(dirty_the_tree: impl Fn(&TestContext)) {
 
     let counts = get_dirty_counts_inner(ctx.path(), ctx.state_map()).unwrap();
     let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).unwrap();
 
     let (stash_idx, _) = stash_and_parent(&result.commits);
     let counts_say_dirty = counts.staged + counts.unstaged + counts.conflicted > 0;
@@ -725,7 +726,7 @@ fn walk_commits_on_bare_repo_does_not_error() {
     let dir = tempfile::tempdir().unwrap();
     let mut repo = git2::Repository::init_bare(dir.path()).unwrap();
 
-    let result = walk_commits(&mut repo, 0, usize::MAX);
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default());
 
     assert!(result.is_ok(), "bare repo walk failed: {:?}", result.err());
 }
@@ -759,9 +760,9 @@ fn topic_layout_clean_then_dirty(
         (result.max_columns, t1.column, t1.color_index)
     };
 
-    let clean = read(&walk_commits(&mut repo, 0, usize::MAX).unwrap());
+    let clean = read(&walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).unwrap());
     std::fs::write(ctx.repo_path().join("f1.txt"), "dirty").unwrap();
-    let dirty = read(&walk_commits(&mut repo, 0, usize::MAX).unwrap());
+    let dirty = read(&walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).unwrap());
     (clean, dirty)
 }
 
@@ -899,7 +900,7 @@ fn detached_head_marks_first_parent_chain() {
 
     let ctx = context_at(dir);
     let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).unwrap();
     let commits = &result.commits;
 
     assert!(
@@ -986,7 +987,7 @@ fn tagged_stash_is_not_duplicated() {
     let mut repo = ctx.repo();
     let stash_oid = repo.refname_to_id("refs/stash").unwrap();
 
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).unwrap();
     let commits = &result.commits;
 
     let stash_rows: Vec<_> = commits
@@ -1041,7 +1042,7 @@ fn two_backdated_stashes_on_one_parent() {
     let ctx = two_backdated_stashes_repo();
     let mut repo = ctx.repo();
 
-    let result = walk_commits(&mut repo, 0, usize::MAX).unwrap();
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).unwrap();
     let commits = &result.commits;
 
     let newer_row = row_of(commits, "On main: newer backdated");
@@ -1167,7 +1168,7 @@ fn unreadable_stash_commit_is_skipped() {
     delete_loose_object(ctx.repo_path(), stash_oid);
 
     let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX);
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default());
 
     let commits = result
         .expect("an unreadable stash commit must not blank the graph")
@@ -1195,7 +1196,7 @@ fn unreadable_stash_index_commit_is_skipped() {
     delete_loose_object(ctx.repo_path(), index_oid);
 
     let mut repo = ctx.repo();
-    let result = walk_commits(&mut repo, 0, usize::MAX);
+    let result = walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default());
 
     let commits = result
         .expect("an unreadable stash index commit must not blank the graph")
@@ -1228,7 +1229,9 @@ fn row<'a>(
 
 fn walk(ctx: &TestContext) -> Vec<trunk_lib::git::types::GraphCommit> {
     let mut repo = ctx.repo();
-    walk_commits(&mut repo, 0, usize::MAX).unwrap().commits
+    walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default())
+        .unwrap()
+        .commits
 }
 
 fn has_fork_right(c: &trunk_lib::git::types::GraphCommit) -> bool {

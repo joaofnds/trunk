@@ -154,6 +154,7 @@ pub fn merge_continue_inner(
     path: &str,
     message: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // The editor flow always supplies a message (frontend aborts on null and
@@ -173,12 +174,13 @@ pub fn merge_continue_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn merge_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
@@ -192,7 +194,7 @@ pub fn merge_abort_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 /// `git rebase <step>` with the commit-message editor pinned to a no-op.
@@ -218,6 +220,7 @@ pub fn rebase_continue_inner(
     path: &str,
     message: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -252,12 +255,13 @@ pub fn rebase_continue_inner(
         }
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn rebase_skip_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let editor = crate::git::editor::keyed_rebase_editor()?;
@@ -270,12 +274,13 @@ pub fn rebase_skip_inner(
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn rebase_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = rebase_command(path_buf, "--abort")
@@ -286,7 +291,7 @@ pub fn rebase_abort_inner(
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 // --- Start merge/rebase ---
@@ -305,6 +310,7 @@ pub fn merge_branch_begin_inner(
     path: &str,
     branch: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<MergeBeginResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -319,7 +325,7 @@ pub fn merge_branch_begin_inner(
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
     if probe.status.success() {
         let mut repo = git2::Repository::open(path_buf)?;
-        let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+        let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
         return Ok(MergeBeginResult::FastForwarded { graph });
     }
 
@@ -343,7 +349,7 @@ pub fn merge_branch_begin_inner(
             // Conflicts: rebuild graph so the merge-continue UI picks up the
             // state. NOT an error, NOT an editor — the message isn't ready yet.
             let mut repo = git2::Repository::open(path_buf)?;
-            let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+            let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
             return Ok(MergeBeginResult::Conflicts { graph });
         }
         return Err(TrunkError::new("merge_error", stderr.to_string()));
@@ -353,7 +359,7 @@ pub fn merge_branch_begin_inner(
     let mut repo = git2::Repository::open(path_buf)?;
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+    let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
     Ok(MergeBeginResult::Ready { graph, message })
 }
 
@@ -361,6 +367,7 @@ pub fn rebase_branch_inner(
     path: &str,
     onto_branch: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
@@ -373,12 +380,12 @@ pub fn rebase_branch_inner(
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.to_lowercase().contains("conflict") {
             let mut repo = git2::Repository::open(path_buf)?;
-            return graph::walk_commits(&mut repo, 0, usize::MAX);
+            return graph::walk_commits(&mut repo, 0, usize::MAX, visibility);
         }
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 // --- Tauri command wrappers ---
@@ -430,12 +437,14 @@ pub async fn merge_continue<R: Runtime>(
     message: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        merge_continue_inner(&path_clone, message.as_deref(), &state_map)
+        merge_continue_inner(&path_clone, message.as_deref(), &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -450,15 +459,18 @@ pub async fn merge_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    let graph_result =
-        tauri::async_runtime::spawn_blocking(move || merge_abort_inner(&path_clone, &state_map))
-            .await
-            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-            .map_err(|e| e.to_json())?;
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        merge_abort_inner(&path_clone, &state_map, &visibility)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
     cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
@@ -470,12 +482,14 @@ pub async fn rebase_continue<R: Runtime>(
     message: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        rebase_continue_inner(&path_clone, message.as_deref(), &state_map)
+        rebase_continue_inner(&path_clone, message.as_deref(), &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -490,15 +504,18 @@ pub async fn rebase_skip<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    let graph_result =
-        tauri::async_runtime::spawn_blocking(move || rebase_skip_inner(&path_clone, &state_map))
-            .await
-            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-            .map_err(|e| e.to_json())?;
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        rebase_skip_inner(&path_clone, &state_map, &visibility)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
     cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
@@ -509,15 +526,18 @@ pub async fn rebase_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    let graph_result =
-        tauri::async_runtime::spawn_blocking(move || rebase_abort_inner(&path_clone, &state_map))
-            .await
-            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-            .map_err(|e| e.to_json())?;
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        rebase_abort_inner(&path_clone, &state_map, &visibility)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
     cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
@@ -541,12 +561,14 @@ pub async fn merge_branch_begin<R: Runtime>(
     branch: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<MergeBeginResult, String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        merge_branch_begin_inner(&path_clone, &branch, &state_map)
+        merge_branch_begin_inner(&path_clone, &branch, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -571,12 +593,14 @@ pub async fn rebase_branch<R: Runtime>(
     onto_branch: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        rebase_branch_inner(&path_clone, &onto_branch, &state_map)
+        rebase_branch_inner(&path_clone, &onto_branch, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -739,7 +763,9 @@ mod tests {
     fn merge_branch_begin_fast_forwards_without_editor() {
         let (dir, _repo) = ff_repo();
         let map = state_map_for(&dir);
-        let result = merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        let result =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+                .unwrap();
         assert_eq!(kind_of(&result), "fast_forwarded");
         assert!(
             !merge_head_path(&dir).exists(),
@@ -751,7 +777,9 @@ mod tests {
     fn merge_branch_begin_non_ff_clean_returns_ready_with_verbatim_message() {
         let (dir, _repo) = clean_divergent_repo();
         let map = state_map_for(&dir);
-        let result = merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        let result =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+                .unwrap();
         assert_eq!(kind_of(&result), "ready");
         let message = match result {
             MergeBeginResult::Ready { message, .. } => message,
@@ -780,7 +808,9 @@ mod tests {
         set_branch(&repo, "devel", head_oid);
         repo.set_head("refs/heads/devel").unwrap();
         let map = state_map_for(&dir);
-        let result = merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        let result =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+                .unwrap();
         let message = match result {
             MergeBeginResult::Ready { message, .. } => message,
             other => panic!("expected Ready, got {:?}", kind_of(&other)),
@@ -795,7 +825,9 @@ mod tests {
     fn merge_branch_begin_conflict_returns_conflicts_not_err() {
         let (dir, _repo) = conflict_divergent_repo();
         let map = state_map_for(&dir);
-        let result = merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        let result =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+                .unwrap();
         assert_eq!(kind_of(&result), "conflicts");
         assert!(
             merge_head_path(&dir).exists(),
@@ -832,7 +864,9 @@ mod tests {
         let (dir, repo) = conflict_divergent_repo();
         let map = state_map_for(&dir);
         // Begin the conflicted merge so MERGE_HEAD + `# Conflicts:` MERGE_MSG exist.
-        let result = merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        let result =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+                .unwrap();
         assert_eq!(kind_of(&result), "conflicts");
         // Resolve the conflict by staging a fixed version of the file.
         let blob = repo.blob(b"resolved\n").unwrap();
@@ -861,7 +895,7 @@ mod tests {
             raw_msg.contains("# Conflicts:"),
             "precondition: {raw_msg:?}"
         );
-        merge_continue_inner(&path_str(&dir), Some(&raw_msg), &map).unwrap();
+        merge_continue_inner(&path_str(&dir), Some(&raw_msg), &map, &Default::default()).unwrap();
 
         // HEAD body must NOT contain any `#`-leading line (--cleanup=strip).
         let head_msg = repo

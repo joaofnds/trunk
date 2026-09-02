@@ -37,6 +37,7 @@ impl TestContext {
             todo_items,
             session.path(),
             self.state_map(),
+            &trunk_lib::git::graph_input::RefVisibility::default(),
         )
     }
 }

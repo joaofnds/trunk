@@ -8,6 +8,7 @@
 //! and a red golden read the same.
 
 use trunk_lib::git::graph::walk_commits;
+use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::layout_dump;
 
 fn main() {
@@ -18,7 +19,8 @@ fn main() {
     };
 
     let mut repo = git2::Repository::open(&path).expect("open repository");
-    let result = walk_commits(&mut repo, 0, usize::MAX).expect("walk_commits");
+    let result =
+        walk_commits(&mut repo, 0, usize::MAX, &RefVisibility::default()).expect("walk_commits");
 
     print!("{}", layout_dump::render(&result));
 }

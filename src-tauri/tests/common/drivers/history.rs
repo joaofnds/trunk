@@ -2,6 +2,7 @@ use crate::common::context::TestContext;
 use std::collections::HashMap;
 use trunk_lib::commands::history;
 use trunk_lib::error::TrunkError;
+use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::types::{DiffStat, SearchResult};
 
 impl TestContext {
@@ -34,8 +35,13 @@ impl TestContext {
     /// Must be called before search_commits to have data to search.
     pub fn populate_cache(&mut self) {
         let mut repo = self.repo();
-        let result = trunk_lib::git::graph::walk_commits(&mut repo, 0, usize::MAX)
-            .expect("walk_commits failed");
+        let result = trunk_lib::git::graph::walk_commits(
+            &mut repo,
+            0,
+            usize::MAX,
+            &RefVisibility::default(),
+        )
+        .expect("walk_commits failed");
         self.cache_map.insert(self.path.clone(), result);
     }
 }

@@ -112,8 +112,10 @@ pub async fn save_merge_result<R: Runtime>(
     content: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let state_map_clone = state_map.clone();
@@ -129,7 +131,7 @@ pub async fn save_merge_result<R: Runtime>(
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         let path_buf = crate::commands::repo_path_from_state(&path_for_cache, &state_map)?;
         let mut repo = git2::Repository::open(path_buf)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX)
+        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

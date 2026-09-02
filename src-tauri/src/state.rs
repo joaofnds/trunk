@@ -103,3 +103,39 @@ impl SweptRepos {
         self.0.lock().unwrap().insert(canonical.to_path_buf())
     }
 }
+
+/// The refs each open repository has hidden from its graph.
+///
+/// Keyed by the repo path the frontend uses, mirroring `CommitCache`. The frontend loads the
+/// stored value from prefs when it opens a repository and pushes it here; every rebuild site
+/// then reads it, so a graph rebuilt after a commit, a checkout or a stash keeps the same
+/// refs hidden as the one on screen.
+///
+/// A repository absent from the map has hidden nothing, which is what an unopened one and
+/// one with no stored preference both get.
+#[derive(Default)]
+pub struct RefVisibilityState(Arc<Mutex<HashMap<String, crate::git::graph_input::RefVisibility>>>);
+
+impl RefVisibilityState {
+    /// A handle the blocking pool can own, mirroring `StoreSlot`.
+    pub fn clone_handle(&self) -> RefVisibilityState {
+        RefVisibilityState(Arc::clone(&self.0))
+    }
+
+    pub fn get(&self, path: &str) -> crate::git::graph_input::RefVisibility {
+        self.0
+            .lock()
+            .unwrap()
+            .get(path)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn set(&self, path: String, visibility: crate::git::graph_input::RefVisibility) {
+        self.0.lock().unwrap().insert(path, visibility);
+    }
+
+    pub fn forget(&self, path: &str) {
+        self.0.lock().unwrap().remove(path);
+    }
+}

@@ -136,6 +136,7 @@ pub fn delete_branch_inner(
     branch_name: &str,
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -159,7 +160,7 @@ pub fn delete_branch_inner(
 
     // Rebuild graph cache
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -172,6 +173,7 @@ pub fn rename_branch_inner(
     new_name: &str,
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -182,7 +184,7 @@ pub fn rename_branch_inner(
 
     // Rebuild graph cache
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -261,6 +263,7 @@ pub fn checkout_branch_inner(
     branch_name: &str,
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -279,7 +282,7 @@ pub fn checkout_branch_inner(
 
     // Rebuild graph cache after checkout
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -291,13 +294,15 @@ pub async fn checkout_branch<R: Runtime>(
     branch_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
-        checkout_branch_inner(&path_clone, &branch_name, &state_map, rebuilt)
+        checkout_branch_inner(&path_clone, &branch_name, &state_map, rebuilt, &visibility)
     })
     .await
     .map_err(|e| e.to_json())?;
@@ -312,6 +317,7 @@ pub fn fast_forward_to_inner(
     target_oid: &str,
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -329,7 +335,7 @@ pub fn fast_forward_to_inner(
 
     // Rebuild graph cache
     let mut repo = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+    let graph_result = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -341,13 +347,15 @@ pub async fn fast_forward_to<R: Runtime>(
     target_oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
-        fast_forward_to_inner(&path_clone, &target_oid, &state_map, rebuilt)
+        fast_forward_to_inner(&path_clone, &target_oid, &state_map, rebuilt, &visibility)
     })
     .await
     .map_err(|e| e.to_json())?;
@@ -367,6 +375,7 @@ pub fn create_branch_inner(
     from_oid: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
     cache_map: &mut HashMap<String, GraphResult>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -389,7 +398,7 @@ pub fn create_branch_inner(
         drop(repo);
         // Rebuild cache even though checkout didn't happen — branch was created
         let mut repo2 = git2::Repository::open(path_buf)?;
-        let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+        let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
         cache_map.insert(path.to_owned(), graph_result);
         return Err(TrunkError::new(
             "dirty_workdir",
@@ -411,7 +420,7 @@ pub fn create_branch_inner(
 
     // Rebuild graph cache after branch creation
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX)?;
+    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -424,13 +433,22 @@ pub async fn create_branch<R: Runtime>(
     from_oid: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
-        create_branch_inner(&path_clone, &name, from_oid.as_deref(), &state_map, rebuilt)
+        create_branch_inner(
+            &path_clone,
+            &name,
+            from_oid.as_deref(),
+            &state_map,
+            rebuilt,
+            &visibility,
+        )
     })
     .await
     .map_err(|e| e.to_json())?;
@@ -446,13 +464,15 @@ pub async fn delete_branch<R: Runtime>(
     branch_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
-        delete_branch_inner(&path_clone, &branch_name, &state_map, rebuilt)
+        delete_branch_inner(&path_clone, &branch_name, &state_map, rebuilt, &visibility)
     })
     .await
     .map_err(|e| e.to_json())?;
@@ -468,13 +488,22 @@ pub async fn rename_branch<R: Runtime>(
     new_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
-        rename_branch_inner(&path_clone, &old_name, &new_name, &state_map, rebuilt)
+        rename_branch_inner(
+            &path_clone,
+            &old_name,
+            &new_name,
+            &state_map,
+            rebuilt,
+            &visibility,
+        )
     })
     .await
     .map_err(|e| e.to_json())?;

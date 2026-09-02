@@ -24,6 +24,7 @@ pub fn checkout_commit_inner(
     path: &str,
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -42,7 +43,7 @@ pub fn checkout_commit_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo2, 0, usize::MAX)
+    graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)
 }
 
 pub fn create_tag_inner(
@@ -51,6 +52,7 @@ pub fn create_tag_inner(
     tag_name: &str,
     message: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -66,13 +68,14 @@ pub fn create_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo2, 0, usize::MAX)
+    graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)
 }
 
 pub fn delete_tag_inner(
     path: &str,
     tag_name: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -83,13 +86,14 @@ pub fn delete_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo2, 0, usize::MAX)
+    graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)
 }
 
 pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -111,13 +115,14 @@ pub fn cherry_pick_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn cherry_pick_continue_inner(
     path: &str,
     message: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
@@ -133,12 +138,13 @@ pub fn cherry_pick_continue_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn cherry_pick_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
@@ -154,13 +160,14 @@ pub fn cherry_pick_abort_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<RevertBeginResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -188,7 +195,7 @@ pub fn revert_commit_begin_inner(
     // Verbatim default — `# Conflicts:` lines (conflicted revert) are stripped at
     // commit time via --cleanup=strip, never here.
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok();
-    let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+    let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
     Ok(RevertBeginResult { graph, message })
 }
 
@@ -196,6 +203,7 @@ pub fn revert_continue_inner(
     path: &str,
     message: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
@@ -211,12 +219,13 @@ pub fn revert_continue_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn revert_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
@@ -232,7 +241,7 @@ pub fn revert_abort_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 pub fn reset_to_commit_inner(
@@ -240,6 +249,7 @@ pub fn reset_to_commit_inner(
     oid: &str,
     mode: &str,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphResult, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -264,7 +274,7 @@ pub fn reset_to_commit_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX)
+    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
 }
 
 #[tauri::command]
@@ -274,12 +284,14 @@ pub async fn reset_to_commit<R: Runtime>(
     mode: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        reset_to_commit_inner(&path_clone, &oid, &mode, &state_map)
+        reset_to_commit_inner(&path_clone, &oid, &mode, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -296,12 +308,14 @@ pub async fn checkout_commit<R: Runtime>(
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        checkout_commit_inner(&path_clone, &oid, &state_map)
+        checkout_commit_inner(&path_clone, &oid, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -312,6 +326,9 @@ pub async fn checkout_commit<R: Runtime>(
     Ok(())
 }
 
+// The four leading arguments are the command's wire contract with the frontend, and the rest
+// are state Tauri injects by type; neither half can be grouped without changing one of those.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn create_tag<R: Runtime>(
     path: String,
@@ -320,12 +337,21 @@ pub async fn create_tag<R: Runtime>(
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        create_tag_inner(&path_clone, &oid, &tag_name, &message, &state_map)
+        create_tag_inner(
+            &path_clone,
+            &oid,
+            &tag_name,
+            &message,
+            &state_map,
+            &visibility,
+        )
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -342,12 +368,14 @@ pub async fn delete_tag<R: Runtime>(
     tag_name: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        delete_tag_inner(&path_clone, &tag_name, &state_map)
+        delete_tag_inner(&path_clone, &tag_name, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -364,12 +392,14 @@ pub async fn cherry_pick<R: Runtime>(
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        cherry_pick_inner(&path_clone, &oid, &state_map)
+        cherry_pick_inner(&path_clone, &oid, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -386,12 +416,14 @@ pub async fn revert_commit_begin<R: Runtime>(
     oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<RevertBeginResult, String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        revert_commit_begin_inner(&path_clone, &oid, &state_map)
+        revert_commit_begin_inner(&path_clone, &oid, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -415,12 +447,14 @@ pub async fn cherry_pick_continue<R: Runtime>(
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        cherry_pick_continue_inner(&path_clone, &message, &state_map)
+        cherry_pick_continue_inner(&path_clone, &message, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -436,12 +470,14 @@ pub async fn cherry_pick_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        cherry_pick_abort_inner(&path_clone, &state_map)
+        cherry_pick_abort_inner(&path_clone, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -458,12 +494,14 @@ pub async fn revert_continue<R: Runtime>(
     message: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        revert_continue_inner(&path_clone, &message, &state_map)
+        revert_continue_inner(&path_clone, &message, &state_map, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -479,15 +517,18 @@ pub async fn revert_abort<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
-    let graph_result =
-        tauri::async_runtime::spawn_blocking(move || revert_abort_inner(&path_clone, &state_map))
-            .await
-            .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-            .map_err(|e| e.to_json())?;
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        revert_abort_inner(&path_clone, &state_map, &visibility)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
 
     cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
@@ -565,8 +606,10 @@ pub async fn undo_commit<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<UndoResult, String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let (undo_result, graph_result) = tauri::async_runtime::spawn_blocking(move || {
@@ -574,7 +617,7 @@ pub async fn undo_commit<R: Runtime>(
         let graph = {
             let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::walk_commits(&mut repo, 0, usize::MAX)?
+            graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)?
         };
         Ok::<(UndoResult, GraphResult), TrunkError>((undo, graph))
     })
@@ -594,15 +637,17 @@ pub async fn redo_commit<R: Runtime>(
     body: Option<String>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         redo_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
         let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX)
+        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -652,6 +697,10 @@ mod tests {
 
     fn path_str(dir: &TempDir) -> String {
         dir.path().to_str().unwrap().to_string()
+    }
+
+    fn default_visibility() -> crate::git::graph_input::RefVisibility {
+        crate::git::graph_input::RefVisibility::default()
     }
 
     fn state_map_for(dir: &TempDir) -> HashMap<String, PathBuf> {
@@ -732,7 +781,9 @@ mod tests {
         let (dir, _repo, oid) = two_commit_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        let result = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
+        let result =
+            revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility())
+                .unwrap();
         let message = result.message.expect("clean revert must carry a message");
         assert!(
             message.starts_with("Revert \"change to v2\""),
@@ -758,10 +809,10 @@ mod tests {
         let (dir, repo, oid) = two_commit_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
+        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility()).unwrap();
 
         let edited = "Revert \"change to v2\"\n\nedited body";
-        revert_continue_inner(&path_str(&dir), edited, &map).unwrap();
+        revert_continue_inner(&path_str(&dir), edited, &map, &default_visibility()).unwrap();
 
         assert!(
             !revert_head_path(&dir).exists(),
@@ -785,7 +836,7 @@ mod tests {
         let (dir, _repo, oid) = conflicting_revert_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        let err = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map)
+        let err = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility())
             .expect_err("conflicted revert must return Err, never open the editor");
         assert_eq!(err.code, "conflict_state");
     }
@@ -795,13 +846,13 @@ mod tests {
         let (dir, repo, oid) = two_commit_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
+        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility()).unwrap();
         assert!(
             revert_head_path(&dir).exists(),
             "precondition: begin set REVERT_HEAD"
         );
 
-        revert_abort_inner(&path_str(&dir), &map).unwrap();
+        revert_abort_inner(&path_str(&dir), &map, &default_visibility()).unwrap();
 
         assert!(
             !revert_head_path(&dir).exists(),
@@ -819,7 +870,7 @@ mod tests {
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
         // Conflicted begin leaves REVERT_HEAD set; resolve by staging a fix.
-        let _ = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map);
+        let _ = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility());
         let blob = repo.blob(b"resolved\n").unwrap();
         let mut index = repo.index().unwrap();
         index
@@ -842,7 +893,7 @@ mod tests {
 
         // Finish with a message that carries a trailing `# Conflicts:` block.
         let msg = "Revert \"mid change to v2\"\n\n# Conflicts:\n#\tf.txt";
-        revert_continue_inner(&path_str(&dir), msg, &map).unwrap();
+        revert_continue_inner(&path_str(&dir), msg, &map, &default_visibility()).unwrap();
 
         let body = head_body(&repo);
         assert!(

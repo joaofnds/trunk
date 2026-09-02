@@ -25,7 +25,8 @@ use trunk_lib::commands::operation_state::{
 };
 use trunk_lib::commands::remote::{git_pull_inner, git_push_force_inner, git_push_inner};
 use trunk_lib::error::TrunkError;
-use trunk_lib::state::{CommitCache, RepoState};
+use trunk_lib::git::graph_input::RefVisibility;
+use trunk_lib::state::{CommitCache, RefVisibilityState, RepoState};
 
 const UNREGISTERED: &str = "/not/a/registered/repo";
 
@@ -50,51 +51,51 @@ macro_rules! not_open_contract {
 
 not_open_contract! {
     merge_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| merge_continue_inner(path, None, state);
+        |path, state| merge_continue_inner(path, None, state, &RefVisibility::default());
     merge_abort_reports_not_open_for_an_unregistered_repo =>
-        merge_abort_inner;
+        |path, state| merge_abort_inner(path, state, &RefVisibility::default());
     merge_branch_begin_reports_not_open_for_an_unregistered_repo =>
-        |path, state| merge_branch_begin_inner(path, "main", state);
+        |path, state| merge_branch_begin_inner(path, "main", state, &RefVisibility::default());
     rebase_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rebase_continue_inner(path, None, state);
+        |path, state| rebase_continue_inner(path, None, state, &RefVisibility::default());
     rebase_skip_reports_not_open_for_an_unregistered_repo =>
-        rebase_skip_inner;
+        |path, state| rebase_skip_inner(path, state, &RefVisibility::default());
     rebase_abort_reports_not_open_for_an_unregistered_repo =>
-        rebase_abort_inner;
+        |path, state| rebase_abort_inner(path, state, &RefVisibility::default());
     rebase_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rebase_branch_inner(path, "main", state);
+        |path, state| rebase_branch_inner(path, "main", state, &RefVisibility::default());
     cherry_pick_reports_not_open_for_an_unregistered_repo =>
-        |path, state| cherry_pick_inner(path, "HEAD", state);
+        |path, state| cherry_pick_inner(path, "HEAD", state, &RefVisibility::default());
     revert_commit_begin_reports_not_open_for_an_unregistered_repo =>
-        |path, state| revert_commit_begin_inner(path, "HEAD", state);
+        |path, state| revert_commit_begin_inner(path, "HEAD", state, &RefVisibility::default());
     revert_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| revert_continue_inner(path, "a message", state);
+        |path, state| revert_continue_inner(path, "a message", state, &RefVisibility::default());
     revert_abort_reports_not_open_for_an_unregistered_repo =>
-        revert_abort_inner;
+        |path, state| revert_abort_inner(path, state, &RefVisibility::default());
     reset_to_commit_reports_not_open_for_an_unregistered_repo =>
-        |path, state| reset_to_commit_inner(path, "HEAD", "hard", state);
+        |path, state| reset_to_commit_inner(path, "HEAD", "hard", state, &RefVisibility::default());
     fast_forward_to_reports_not_open_for_an_unregistered_repo =>
-        |path, state| fast_forward_to_inner(path, "HEAD", state, &mut HashMap::new());
+        |path, state| fast_forward_to_inner(path, "HEAD", state, &mut HashMap::new(), &RefVisibility::default());
     get_fork_point_reports_not_open_for_an_unregistered_repo =>
         |path, state| get_fork_point_inner(path, "main", state);
     delete_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| delete_branch_inner(path, "feature", state, &mut HashMap::new());
+        |path, state| delete_branch_inner(path, "feature", state, &mut HashMap::new(), &RefVisibility::default());
     rename_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rename_branch_inner(path, "feature", "renamed", state, &mut HashMap::new());
+        |path, state| rename_branch_inner(path, "feature", "renamed", state, &mut HashMap::new(), &RefVisibility::default());
     checkout_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| checkout_branch_inner(path, "feature", state, &mut HashMap::new());
+        |path, state| checkout_branch_inner(path, "feature", state, &mut HashMap::new(), &RefVisibility::default());
     create_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| create_branch_inner(path, "feature", None, state, &mut HashMap::new());
+        |path, state| create_branch_inner(path, "feature", None, state, &mut HashMap::new(), &RefVisibility::default());
     checkout_commit_reports_not_open_for_an_unregistered_repo =>
-        |path, state| checkout_commit_inner(path, "HEAD", state);
+        |path, state| checkout_commit_inner(path, "HEAD", state, &RefVisibility::default());
     create_tag_reports_not_open_for_an_unregistered_repo =>
-        |path, state| create_tag_inner(path, "HEAD", "v1", "a message", state);
+        |path, state| create_tag_inner(path, "HEAD", "v1", "a message", state, &RefVisibility::default());
     delete_tag_reports_not_open_for_an_unregistered_repo =>
-        |path, state| delete_tag_inner(path, "v1", state);
+        |path, state| delete_tag_inner(path, "v1", state, &RefVisibility::default());
     undo_commit_reports_not_open_for_an_unregistered_repo =>
         undo_commit_inner;
     start_interactive_rebase_reports_not_open_for_an_unregistered_repo =>
-        |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state);
+        |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state, &RefVisibility::default());
 }
 
 #[test]
@@ -109,6 +110,7 @@ fn git_pull_reports_not_open_for_an_unregistered_repo() {
         &HashMap::new(),
         &cache,
         &running,
+        &RefVisibilityState::default(),
         app.handle(),
     ))
     .unwrap_err();
@@ -127,6 +129,7 @@ fn git_push_reports_not_open_for_an_unregistered_repo() {
         &HashMap::new(),
         &cache,
         &running,
+        &RefVisibilityState::default(),
         app.handle(),
     ))
     .unwrap_err();
@@ -142,11 +145,14 @@ fn git_push_force_reports_not_open_for_an_unregistered_repo() {
 
     let err = tauri::async_runtime::block_on(git_push_force_inner(
         UNREGISTERED,
-        "origin",
-        "main",
+        trunk_lib::commands::remote::ConfirmedPush {
+            remote: "origin",
+            branch: "main",
+        },
         &HashMap::new(),
         &cache,
         &running,
+        &RefVisibilityState::default(),
         app.handle(),
     ))
     .unwrap_err();
@@ -161,9 +167,11 @@ fn a_command_wrapper_carries_not_open_through_its_json() {
     let app = tauri::test::mock_app();
     app.manage(RepoState(Mutex::new(HashMap::new())));
     app.manage(CommitCache(Mutex::new(HashMap::new())));
+    app.manage(RefVisibilityState::default());
 
     let json = tauri::async_runtime::block_on(refresh_commit_graph(
         UNREGISTERED.to_owned(),
+        app.state(),
         app.state(),
         app.state(),
     ))

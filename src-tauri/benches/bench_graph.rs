@@ -82,7 +82,13 @@ fn bench_walk_commits(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let mut repo = git2::Repository::open(path).unwrap();
-                    trunk_lib::git::graph::walk_commits(&mut repo, 0, usize::MAX).unwrap()
+                    trunk_lib::git::graph::walk_commits(
+                        &mut repo,
+                        0,
+                        usize::MAX,
+                        &trunk_lib::git::graph_input::RefVisibility::default(),
+                    )
+                    .unwrap()
                 });
             },
         );

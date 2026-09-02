@@ -16,17 +16,36 @@ impl TestContext {
 
     /// Checkout a branch by name (needs &mut self for cache_map)
     pub fn checkout_branch(&mut self, name: &str) -> Result<(), TrunkError> {
-        branches::checkout_branch_inner(&self.path, name, &self.state_map, &mut self.cache_map)
+        branches::checkout_branch_inner(
+            &self.path,
+            name,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 
     /// Delete a local branch (needs &mut self for cache_map)
     pub fn delete_branch(&mut self, name: &str) -> Result<(), TrunkError> {
-        branches::delete_branch_inner(&self.path, name, &self.state_map, &mut self.cache_map)
+        branches::delete_branch_inner(
+            &self.path,
+            name,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 
     /// Rename a local branch (needs &mut self for cache_map)
     pub fn rename_branch(&mut self, old: &str, new: &str) -> Result<(), TrunkError> {
-        branches::rename_branch_inner(&self.path, old, new, &self.state_map, &mut self.cache_map)
+        branches::rename_branch_inner(
+            &self.path,
+            old,
+            new,
+            &self.state_map,
+            &mut self.cache_map,
+            &trunk_lib::git::graph_input::RefVisibility::default(),
+        )
     }
 
     /// Fast-forward merge to a target OID (needs &mut self for cache_map)
@@ -36,6 +55,7 @@ impl TestContext {
             target_oid,
             &self.state_map,
             &mut self.cache_map,
+            &trunk_lib::git::graph_input::RefVisibility::default(),
         )
     }
 
@@ -47,6 +67,7 @@ impl TestContext {
             from_oid,
             &self.state_map,
             &mut self.cache_map,
+            &trunk_lib::git::graph_input::RefVisibility::default(),
         )
     }
 }

@@ -123,6 +123,7 @@ pub fn start_interactive_rebase_blocking(
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
     state_map: &HashMap<String, PathBuf>,
+    visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(crate::git::types::GraphResult, RebaseStartResult), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
@@ -211,7 +212,7 @@ pub fn start_interactive_rebase_blocking(
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
-    let graph = graph::walk_commits(&mut repo, 0, usize::MAX)?;
+    let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
 
     let outcome = if stopped_at_a_commit {
         RebaseStartResult::Stopped
@@ -317,8 +318,10 @@ pub async fn start_interactive_rebase<R: Runtime>(
     todo_items: Vec<RebaseTodoAction>,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<RebaseStartResult, String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
@@ -332,6 +335,7 @@ pub async fn start_interactive_rebase<R: Runtime>(
             &todo_items,
             &session_dir,
             &state_map,
+            &visibility,
         )
     })
     .await

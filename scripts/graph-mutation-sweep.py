@@ -201,7 +201,7 @@ MUTATIONS = [
      "    oids.retain(|oid| !stash_internals.contains(oid));",
      "    oids.retain(|oid| stash_internals.contains(oid));"),
     (49, G, "walk_commits",
-     "    Ok(graph_input::layout(&capture(repo)?, offset, limit))",
+     "    Ok(graph_input::layout(&source, offset, limit))",
      "    Ok(Default::default())"),
     (50, I, "parse_oid",
      "fn parse_oid(hex: &str) -> Oid {",

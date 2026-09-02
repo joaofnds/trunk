@@ -40,14 +40,55 @@ pub async fn refresh_commit_graph(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<GraphResponse, String> {
+    let visibility = ref_visibility.get(&path);
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX)
+        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    let len = graph_result.commits.len();
+    let end = 200.min(len);
+    let response = GraphResponse {
+        commits: graph_result.commits[..end].to_vec(),
+        max_columns: graph_result.max_columns,
+    };
+
+    cache.0.lock().unwrap().insert(path, graph_result);
+
+    Ok(response)
+}
+
+/// Record which refs the user has hidden for a repository and rebuild its graph.
+///
+/// The visibility is stored before the walk, so every later rebuild — a commit, a checkout,
+/// a stash, the file watcher — sees the same set without the frontend having to resend it.
+/// The frontend persists it to prefs in parallel with this call.
+#[tauri::command]
+pub async fn set_ref_visibility(
+    path: String,
+    visibility: crate::git::graph_input::RefVisibility,
+    state: State<'_, RepoState>,
+    cache: State<'_, CommitCache>,
+    ref_visibility: State<'_, crate::state::RefVisibilityState>,
+) -> Result<GraphResponse, String> {
+    ref_visibility.set(path.clone(), visibility.clone());
+
+    let state_map = state.0.lock().unwrap().clone();
+    let path_clone = path.clone();
+
+    let graph_result = tauri::async_runtime::spawn_blocking(move || {
+        let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
+        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

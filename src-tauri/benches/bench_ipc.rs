@@ -124,7 +124,13 @@ fn bench_ipc_get_graph(c: &mut Criterion) {
     group.bench_function("get_commit_graph", |b| {
         b.iter(|| {
             let mut repo = git2::Repository::open(&bench_repo.path).unwrap();
-            let result = trunk_lib::git::graph::walk_commits(&mut repo, 0, usize::MAX).unwrap();
+            let result = trunk_lib::git::graph::walk_commits(
+                &mut repo,
+                0,
+                usize::MAX,
+                &trunk_lib::git::graph_input::RefVisibility::default(),
+            )
+            .unwrap();
             // Simulate the command boundary: slice to 200 commits + serialize
             let len = result.commits.len();
             let end = 200.min(len);
@@ -209,8 +215,13 @@ fn bench_startup_sequence(c: &mut Criterion) {
                     let mut repo = git2::Repository::open(repo_path).unwrap();
 
                     // 2. Walk commits (populates graph cache in real app)
-                    let graph =
-                        trunk_lib::git::graph::walk_commits(&mut repo, 0, usize::MAX).unwrap();
+                    let graph = trunk_lib::git::graph::walk_commits(
+                        &mut repo,
+                        0,
+                        usize::MAX,
+                        &trunk_lib::git::graph_input::RefVisibility::default(),
+                    )
+                    .unwrap();
                     let _ = serde_json::to_string(&trunk_lib::commands::history::GraphResponse {
                         commits: graph.commits[..200.min(graph.commits.len())].to_vec(),
                         max_columns: graph.max_columns,

@@ -36,6 +36,7 @@ impl RemoteDriver<'_> {
             self.ctx.state_map(),
             &self.cache,
             &self.running.0,
+            &trunk_lib::state::RefVisibilityState::default(),
             self.app.handle(),
         ))
     }
@@ -46,6 +47,7 @@ impl RemoteDriver<'_> {
             self.ctx.state_map(),
             &self.cache,
             &self.running.0,
+            &trunk_lib::state::RefVisibilityState::default(),
             self.app.handle(),
         ))
     }
@@ -53,11 +55,11 @@ impl RemoteDriver<'_> {
     pub fn push_force(&self, remote: &str, branch: &str) -> Result<(), TrunkError> {
         tauri::async_runtime::block_on(remote::git_push_force_inner(
             self.ctx.path(),
-            remote,
-            branch,
+            remote::ConfirmedPush { remote, branch },
             self.ctx.state_map(),
             &self.cache,
             &self.running.0,
+            &trunk_lib::state::RefVisibilityState::default(),
             self.app.handle(),
         ))
     }
