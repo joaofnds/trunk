@@ -120,6 +120,10 @@ function mockListRefs(overrides?: {
 	};
 }
 
+// Prefs are a plain map here: the suite asserts on what was persisted, and a repo's
+// hidden set has to survive a reload of the component.
+const prefsStore = new Map<string, unknown>();
+
 describe("BranchSidebar", () => {
 	beforeEach(() => {
 		mockInvoke.mockReset();
@@ -426,5 +430,211 @@ describe("BranchSidebar", () => {
 				expect.anything(),
 			);
 		});
+	});
+});
+
+describe("BranchSidebar ref visibility", () => {
+	beforeEach(() => {
+		mockInvoke.mockReset();
+		menuActions.clear();
+		prefsStore.clear();
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "list_refs") {
+				return Promise.resolve(
+					mockListRefs({
+						local: [
+							{
+								name: "main",
+								is_head: true,
+								upstream: null,
+								ahead: 0,
+								behind: 0,
+								last_commit_timestamp: 1700000000,
+							},
+							{
+								name: "topic",
+								is_head: false,
+								upstream: null,
+								ahead: 0,
+								behind: 0,
+								last_commit_timestamp: 1700000000,
+							},
+						],
+					}),
+				);
+			}
+			if (cmd === "prefs_get") {
+				return Promise.resolve(
+					prefsStore.get((args as { key: string })?.key) ?? null,
+				);
+			}
+			if (cmd === "prefs_set") {
+				prefsStore.set(
+					(args as { key: string }).key,
+					(args as { value: unknown }).value,
+				);
+				return Promise.resolve(undefined);
+			}
+			return Promise.resolve(undefined);
+		});
+	});
+
+	// Acceptance #5: HEAD's branch row offers no toggle, every other row does.
+	it("offers a toggle on every row but HEAD's branch", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		expect(screen.queryByLabelText("Hide main")).not.toBeInTheDocument();
+	});
+
+	// Acceptance #1 and #2: the toggle pushes the new set to the backend, which rebuilds
+	// the graph, so the pills update and stay updated across a reload.
+	it("pushes the hidden set to the backend when a row is toggled", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		await fireEvent.click(screen.getByLabelText("Hide topic"));
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"set_ref_visibility",
+				expect.objectContaining({
+					path: "/test/repo",
+					visibility: expect.objectContaining({
+						hiddenRefs: ["refs/heads/topic"],
+					}),
+				}),
+			);
+		});
+	});
+
+	// Acceptance #7: the same hidden set comes back when the repository is reopened.
+	it("persists the hidden set to prefs", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		await fireEvent.click(screen.getByLabelText("Hide topic"));
+
+		await waitFor(() => {
+			expect(prefsStore.get("ref_visibility")).toEqual({
+				"/test/repo": expect.objectContaining({
+					hiddenRefs: ["refs/heads/topic"],
+				}),
+			});
+		});
+	});
+
+	// Acceptance #6: a hidden ref stays listed, marked hidden, so it can be turned back on.
+	it("keeps a hidden row listed and marked", async () => {
+		prefsStore.set("ref_visibility", {
+			"/test/repo": {
+				hiddenRefs: ["refs/heads/topic"],
+				hiddenRemotes: [],
+				hiddenStashes: [],
+				hideLocal: false,
+				hideRemote: false,
+				hideTags: false,
+				hideStashes: false,
+			},
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Show topic")).toBeInTheDocument();
+		});
+		expect(screen.getByText("topic")).toBeInTheDocument();
+	});
+
+	// Opening a repository has to push the stored set, or the first graph shows refs the
+	// user hid in an earlier session.
+	it("pushes the stored set to the backend on open", async () => {
+		prefsStore.set("ref_visibility", {
+			"/test/repo": {
+				hiddenRefs: ["refs/heads/topic"],
+				hiddenRemotes: [],
+				hiddenStashes: [],
+				hideLocal: false,
+				hideRemote: false,
+				hideTags: false,
+				hideStashes: false,
+			},
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"set_ref_visibility",
+				expect.objectContaining({ path: "/test/repo" }),
+			);
+		});
+	});
+
+	// Acceptance #5: a stash row carries a toggle like every other row. A stash has no
+	// stable name, so it is keyed by its commit OID.
+	it("offers a toggle on a stash row, keyed by its oid", async () => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "list_refs") {
+				return Promise.resolve(
+					mockListRefs({
+						stashes: [
+							{
+								index: 0,
+								name: "WIP on main",
+								short_name: "stash@{0}",
+								oid: "abc123",
+								parent_oid: null,
+							},
+						],
+					}),
+				);
+			}
+			if (cmd === "prefs_get") {
+				return Promise.resolve(
+					prefsStore.get((args as { key: string })?.key) ?? null,
+				);
+			}
+			if (cmd === "prefs_set") {
+				prefsStore.set(
+					(args as { key: string }).key,
+					(args as { value: unknown }).value,
+				);
+				return Promise.resolve(undefined);
+			}
+			return Promise.resolve(undefined);
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+		await fireEvent.click(await screen.findByLabelText("Hide stash@{0}"));
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"set_ref_visibility",
+				expect.objectContaining({
+					visibility: expect.objectContaining({ hiddenStashes: ["abc123"] }),
+				}),
+			);
+		});
+	});
+
+	it("does not push anything when nothing is hidden", async () => {
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		expect(mockInvoke).not.toHaveBeenCalledWith(
+			"set_ref_visibility",
+			expect.anything(),
+		);
 	});
 });

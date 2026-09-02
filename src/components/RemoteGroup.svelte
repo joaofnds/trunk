@@ -1,4 +1,6 @@
 <script lang="ts">
+import Eye from "@lucide/svelte/icons/eye";
+import EyeOff from "@lucide/svelte/icons/eye-off";
 import BranchRow from "./BranchRow.svelte";
 
 interface Props {
@@ -10,6 +12,12 @@ interface Props {
 	oncheckout: (fullName: string) => void;
 	ondblclick?: (fullName: string) => void;
 	oncontextmenu?: (e: MouseEvent, fullName: string) => void;
+	/** Whether this whole remote is hidden from the graph. */
+	hidden?: boolean;
+	/** Whether each branch under it is hidden, keyed by branch name. */
+	hiddenBranches?: Record<string, boolean>;
+	ontogglevisibility?: () => void;
+	ontogglebranchvisibility?: (fullName: string) => void;
 }
 
 let {
@@ -21,6 +29,10 @@ let {
 	oncheckout,
 	ondblclick,
 	oncontextmenu,
+	hidden = false,
+	hiddenBranches = {},
+	ontogglevisibility,
+	ontogglebranchvisibility,
 }: Props = $props();
 </script>
 
@@ -32,8 +44,20 @@ let {
     color: var(--fg-3);
     font-weight: 500;
     font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
   ">
-    {remoteName}
+    <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;">{remoteName}</span>
+    {#if ontogglevisibility}
+      <button
+        data-testid="remote-group-visibility-btn"
+        onclick={() => ontogglevisibility?.()}
+        style="flex-shrink: 0; color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
+        aria-label="{hidden ? 'Show' : 'Hide'} all {remoteName} branches"
+      >
+        {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+      </button>
+    {/if}
   </div>
 
   <!-- Branch rows for this remote -->
@@ -48,6 +72,10 @@ let {
         onclick={() => oncheckout(remoteName + '/' + branch)}
         ondblclick={() => ondblclick?.(remoteName + '/' + branch)}
         oncontextmenu={(e) => oncontextmenu?.(e, remoteName + '/' + branch)}
+        hidden={hidden || (hiddenBranches[remoteName + '/' + branch] ?? false)}
+        ontogglevisibility={ontogglebranchvisibility
+          ? () => ontogglebranchvisibility?.(remoteName + '/' + branch)
+          : undefined}
       />
     </div>
   {/each}

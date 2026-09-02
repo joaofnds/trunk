@@ -1,6 +1,8 @@
 <script lang="ts">
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronRight from "@lucide/svelte/icons/chevron-right";
+import Eye from "@lucide/svelte/icons/eye";
+import EyeOff from "@lucide/svelte/icons/eye-off";
 import Plus from "@lucide/svelte/icons/plus";
 import type { Snippet } from "svelte";
 
@@ -11,6 +13,10 @@ interface Props {
 	ontoggle: () => void;
 	showCreateButton?: boolean;
 	oncreate?: () => void;
+	/** Whether every ref in this section is hidden from the graph. */
+	hidden?: boolean;
+	/** Omitted by a section that offers no visibility toggle. */
+	ontogglevisibility?: () => void;
 	children: Snippet;
 }
 
@@ -21,6 +27,8 @@ let {
 	ontoggle,
 	showCreateButton = false,
 	oncreate,
+	hidden = false,
+	ontogglevisibility,
 	children,
 }: Props = $props();
 </script>
@@ -47,6 +55,16 @@ let {
     <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;">
       {label} ({count})
     </span>
+    {#if ontogglevisibility}
+      <button
+        data-testid="branch-section-visibility-btn"
+        onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
+        style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
+        aria-label="{hidden ? 'Show' : 'Hide'} all {label} refs"
+      >
+        {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+      </button>
+    {/if}
     {#if showCreateButton}
       <button
         data-testid="branch-section-create-btn"

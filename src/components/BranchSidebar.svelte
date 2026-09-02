@@ -1,5 +1,7 @@
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
+import Eye from "@lucide/svelte/icons/eye";
+import EyeOff from "@lucide/svelte/icons/eye-off";
 import Search from "@lucide/svelte/icons/search";
 import {
 	mergeBranch,
@@ -8,8 +10,20 @@ import {
 } from "../lib/branch-op.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import {
+	EVERYTHING_VISIBLE,
+	isRefHidden,
+	isSectionHidden,
+	isStashHidden,
+	type RefVisibility,
+	toggleRef,
+	toggleRemote,
+	toggleSection,
+	toggleStash,
+} from "../lib/ref-visibility.js";
+import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { RefsResponse, StashEntry } from "../lib/types.js";
+import type { RefLabel, RefsResponse, StashEntry } from "../lib/types.js";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -56,6 +70,67 @@ let stashEntryErrors = $state<Record<string, string | null>>({});
 let showCreateInput = $state(false);
 let newBranchName = $state("");
 let createError = $state<string | null>(null);
+let visibility = $state<RefVisibility>(EVERYTHING_VISIBLE);
+
+/** The full ref name the hidden set is keyed by, for a row the sidebar lists by short name. */
+function localRefName(branch: string): string {
+	return `refs/heads/${branch}`;
+}
+
+function remoteRefName(fullName: string): string {
+	return `refs/remotes/${fullName}`;
+}
+
+function tagRefName(shortName: string): string {
+	return `refs/tags/${shortName}`;
+}
+
+function refLabel(
+	name: string,
+	ref_type: RefLabel["ref_type"],
+	is_head = false,
+): RefLabel {
+	return { name, short_name: name, ref_type, is_head, color_index: 0 };
+}
+
+/**
+ * Store the new hidden set, push it to the backend, and let the parent redraw.
+ *
+ * The backend rebuilds the graph from the pushed set and caches it, so every later
+ * rebuild keeps the same refs hidden without the frontend resending anything.
+ */
+async function applyVisibility(next: RefVisibility) {
+	visibility = next;
+	await setRefVisibility(repoPath, next);
+	await safeInvoke("set_ref_visibility", { path: repoPath, visibility: next });
+	onrefreshed?.();
+}
+
+async function loadVisibility(path: string) {
+	const stored = await getRefVisibility(path);
+	visibility = stored;
+	// Opening a repository walks with everything visible, so a repo with a stored set
+	// needs it pushed before its first graph is drawn.
+	if (stored !== EVERYTHING_VISIBLE && !sameAsVisible(stored)) {
+		await safeInvoke("set_ref_visibility", {
+			path,
+			visibility: stored,
+		});
+		onrefreshed?.();
+	}
+}
+
+function sameAsVisible(v: RefVisibility): boolean {
+	return (
+		v.hiddenRefs.length === 0 &&
+		v.hiddenRemotes.length === 0 &&
+		v.hiddenStashes.length === 0 &&
+		!v.hideLocal &&
+		!v.hideRemote &&
+		!v.hideTags &&
+		!v.hideStashes
+	);
+}
 
 let filteredLocal = $derived(
 	search
@@ -105,6 +180,7 @@ let remoteGroups = $derived(
 $effect(() => {
 	const path = repoPath;
 	loadRefs(path);
+	loadVisibility(path);
 });
 
 // Reload refs when parent signals a refresh (e.g. context menu actions)
@@ -605,6 +681,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         ontoggle={() => (localExpanded = !localExpanded)}
         showCreateButton={true}
         oncreate={() => { showCreateInput = true; }}
+        hidden={isSectionHidden(visibility, 'LocalBranch')}
+        ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'LocalBranch'))}
       >
         {#if showCreateInput}
           <div style="padding: var(--space-1) var(--space-2) var(--space-1);">
@@ -650,6 +728,10 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
             onclick={() => onrefnavigate?.(branch.name)}
             ondblclick={() => handleCheckout(branch.name)}
             oncontextmenu={(e) => showBranchContextMenu(e, branch.name, branch.is_head)}
+            hidden={isRefHidden(visibility, refLabel(localRefName(branch.name), 'LocalBranch', branch.is_head))}
+            ontogglevisibility={branch.is_head
+              ? undefined
+              : () => applyVisibility(toggleRef(visibility, refLabel(localRefName(branch.name), 'LocalBranch')))}
           />
         {/each}
       </BranchSection>
@@ -662,6 +744,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         count={refs?.remote.length ?? 0}
         expanded={remoteExpanded}
         ontoggle={() => (remoteExpanded = !remoteExpanded)}
+        hidden={isSectionHidden(visibility, 'RemoteBranch')}
+        ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'RemoteBranch'))}
       >
         {#each Object.entries(remoteGroups) as [remoteName, branches] (remoteName)}
           <RemoteGroup
@@ -673,6 +757,16 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
             oncheckout={(fullName) => onrefnavigate?.(fullName)}
             ondblclick={handleCheckoutRemoteBranch}
             oncontextmenu={(e, fullName) => showRemoteContextMenu(e, fullName)}
+            hidden={isSectionHidden(visibility, 'RemoteBranch') || visibility.hiddenRemotes.includes(remoteName)}
+            hiddenBranches={Object.fromEntries(
+              branches.map((b) => [
+                remoteName + '/' + b,
+                isRefHidden(visibility, refLabel(remoteRefName(remoteName + '/' + b), 'RemoteBranch')),
+              ]),
+            )}
+            ontogglevisibility={() => applyVisibility(toggleRemote(visibility, remoteName))}
+            ontogglebranchvisibility={(fullName) =>
+              applyVisibility(toggleRef(visibility, refLabel(remoteRefName(fullName), 'RemoteBranch')))}
           />
         {/each}
       </BranchSection>
@@ -685,6 +779,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         count={refs?.tags.length ?? 0}
         expanded={tagsExpanded}
         ontoggle={() => (tagsExpanded = !tagsExpanded)}
+        hidden={isSectionHidden(visibility, 'Tag')}
+        ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'Tag'))}
       >
         {#each filteredTags as tag (tag.name)}
           <BranchRow
@@ -692,6 +788,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
             kind="tag"
             onclick={() => onrefnavigate?.(tag.short_name)}
             oncontextmenu={(e) => showTagContextMenu(e, tag.short_name)}
+            hidden={isRefHidden(visibility, refLabel(tagRefName(tag.short_name), 'Tag'))}
+            ontogglevisibility={() => applyVisibility(toggleRef(visibility, refLabel(tagRefName(tag.short_name), 'Tag')))}
           />
         {/each}
       </BranchSection>
@@ -703,6 +801,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
       count={filteredStashes.length}
       expanded={stashesExpanded}
       ontoggle={() => (stashesExpanded = !stashesExpanded)}
+      hidden={isSectionHidden(visibility, 'Stash')}
+      ontogglevisibility={() => applyVisibility(toggleSection(visibility, 'Stash'))}
       showCreateButton={true}
       oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; stashesExpanded = true; }}
     >
@@ -741,6 +841,14 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
           <Archive size={12} color="var(--fg-3)" style="flex-shrink: 0;" />
           <span class="stash-index">{stash.short_name}</span>
           <span class="stash-message">{stash.name}</span>
+          <button
+            class="stash-visibility-btn"
+            data-hidden={isStashHidden(visibility, stash.oid)}
+            onclick={(e) => { e.stopPropagation(); applyVisibility(toggleStash(visibility, stash.oid)); }}
+            aria-label="{isStashHidden(visibility, stash.oid) ? 'Show' : 'Hide'} {stash.short_name}"
+          >
+            {#if isStashHidden(visibility, stash.oid)}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+          </button>
         </div>
         {#if stashEntryErrors[stash.oid]}
           <p class="stash-error stash-entry-error">{stashEntryErrors[stash.oid]}</p>
@@ -788,6 +896,24 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     color: var(--accent-fg);
     border: none;
     border-radius: var(--radius);
+  }
+
+  .stash-visibility-btn {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: var(--fg-3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    visibility: hidden;
+  }
+
+  .stash-row:hover .stash-visibility-btn,
+  .stash-visibility-btn[data-hidden="true"] {
+    visibility: visible;
   }
 
   .stash-row {

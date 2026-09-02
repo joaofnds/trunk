@@ -82,3 +82,71 @@ describe("BranchSection", () => {
 		expect(oncreate).toHaveBeenCalled();
 	});
 });
+
+describe("BranchSection visibility toggle", () => {
+	it("hides the toggle when the section does not offer one", () => {
+		render(BranchSection, {
+			props: {
+				label: "Branches",
+				count: 3,
+				expanded: false,
+				ontoggle: vi.fn(),
+				children: emptySnippet,
+			},
+		});
+		expect(
+			screen.queryByLabelText("Hide all Branches refs"),
+		).not.toBeInTheDocument();
+	});
+
+	it("offers to hide every ref of a visible section", async () => {
+		const ontogglevisibility = vi.fn();
+		render(BranchSection, {
+			props: {
+				label: "Branches",
+				count: 3,
+				expanded: false,
+				ontoggle: vi.fn(),
+				hidden: false,
+				ontogglevisibility,
+				children: emptySnippet,
+			},
+		});
+		await fireEvent.click(screen.getByLabelText("Hide all Branches refs"));
+		expect(ontogglevisibility).toHaveBeenCalled();
+	});
+
+	it("offers to show a hidden section", () => {
+		render(BranchSection, {
+			props: {
+				label: "Branches",
+				count: 3,
+				expanded: false,
+				ontoggle: vi.fn(),
+				hidden: true,
+				ontogglevisibility: vi.fn(),
+				children: emptySnippet,
+			},
+		});
+		expect(screen.getByLabelText("Show all Branches refs")).toBeInTheDocument();
+	});
+
+	// The header toggle must not also expand or collapse the section: two gestures,
+	// two outcomes, and the same click would otherwise do both.
+	it("does not toggle the section open when the visibility button is clicked", async () => {
+		const ontoggle = vi.fn();
+		render(BranchSection, {
+			props: {
+				label: "Branches",
+				count: 3,
+				expanded: false,
+				ontoggle,
+				hidden: false,
+				ontogglevisibility: vi.fn(),
+				children: emptySnippet,
+			},
+		});
+		await fireEvent.click(screen.getByLabelText("Hide all Branches refs"));
+		expect(ontoggle).not.toHaveBeenCalled();
+	});
+});

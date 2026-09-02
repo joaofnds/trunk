@@ -1,6 +1,8 @@
 <script lang="ts">
 import ArrowDown from "@lucide/svelte/icons/arrow-down";
 import ArrowUp from "@lucide/svelte/icons/arrow-up";
+import Eye from "@lucide/svelte/icons/eye";
+import EyeOff from "@lucide/svelte/icons/eye-off";
 import Tag from "@lucide/svelte/icons/tag";
 
 interface Props {
@@ -15,6 +17,10 @@ interface Props {
 	onclick?: () => void;
 	ondblclick?: () => void;
 	oncontextmenu?: (e: MouseEvent) => void;
+	/** Whether this ref is hidden from the graph. */
+	hidden?: boolean;
+	/** Omitted by a row that cannot be hidden, such as HEAD's own branch. */
+	ontogglevisibility?: () => void;
 }
 
 let {
@@ -29,12 +35,14 @@ let {
 	onclick,
 	ondblclick,
 	oncontextmenu,
+	hidden = false,
+	ontogglevisibility,
 }: Props = $props();
 
 let hovered = $state(false);
 </script>
 
-<div data-testid="branch-row">
+<div data-testid="branch-row" data-hidden={hidden}>
   <div
     role="button"
     tabindex="0"
@@ -55,7 +63,7 @@ let hovered = $state(false);
       cursor: pointer;
       background: {isHead ? 'color-mix(in oklch, var(--accent) 10%, transparent)' : hovered ? 'var(--bg-hover)' : 'transparent'};
       box-shadow: {isHead ? 'inset 0 0 0 1px color-mix(in oklch, var(--accent) 28%, transparent)' : 'none'};
-      color: {isHead ? 'var(--fg-0)' : isLoading ? 'var(--color-text-muted)' : 'var(--color-text)'};
+      color: {isHead ? 'var(--fg-0)' : isLoading || hidden ? 'var(--color-text-muted)' : 'var(--color-text)'};
       font-weight: {isHead ? '600' : 'normal'};
       font-size: 12px;
     "
@@ -83,6 +91,17 @@ let hovered = $state(false);
     {/if}
     {#if isHead}
       <span style="flex-shrink: 0; margin-left: var(--space-1); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; color: var(--accent);">HEAD</span>
+    {/if}
+    {#if ontogglevisibility}
+      <button
+        data-testid="branch-row-visibility-btn"
+        onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
+        ondblclick={(e) => e.stopPropagation()}
+        style="flex-shrink: 0; margin-left: var(--space-1); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; display: inline-flex; align-items: center; visibility: {hovered || hidden ? 'visible' : 'hidden'};"
+        aria-label="{hidden ? 'Show' : 'Hide'} {name}"
+      >
+        {#if hidden}<EyeOff size={12} />{:else}<Eye size={12} />{/if}
+      </button>
     {/if}
   </div>
 
