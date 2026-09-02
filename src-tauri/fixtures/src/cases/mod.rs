@@ -8,6 +8,7 @@ pub mod kitchen_sink;
 pub mod merge_conflict;
 pub mod nested_conflict;
 pub mod remote_branch;
+pub mod rendered_markdown;
 pub mod staging_ignore_ws;
 pub mod stash_lanes;
 
@@ -31,6 +32,7 @@ pub const CASES: &[Case] = &[
     merge_conflict::CASE,
     nested_conflict::CASE,
     remote_branch::CASE,
+    rendered_markdown::CASE,
     staging_ignore_ws::CASE,
     stash_lanes::CASE,
 ];

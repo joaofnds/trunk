@@ -123,3 +123,8 @@ fn nested_conflict_matches_its_oracle() {
 fn diff_scenarios_matches_its_oracle() {
     assert_matches_oracle("02-diff-scenarios");
 }
+
+#[test]
+fn rendered_markdown_matches_its_oracle() {
+    assert_matches_oracle("11-rendered-markdown");
+}
