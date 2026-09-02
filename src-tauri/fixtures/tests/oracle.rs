@@ -98,3 +98,8 @@ fn commit_message_matches_its_oracle() {
 fn staging_ignore_ws_matches_its_oracle() {
     assert_matches_oracle("03-staging-ignore-ws");
 }
+
+#[test]
+fn remote_branch_matches_its_oracle() {
+    assert_matches_oracle("07-remote-branch");
+}
