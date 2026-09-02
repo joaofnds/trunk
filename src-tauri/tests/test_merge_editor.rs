@@ -112,3 +112,36 @@ fn get_merge_sides_refuses_a_binary_conflict() {
 
     assert_eq!(err.code, "binary_conflict");
 }
+
+/// The editor stays on screen after the operation it belongs to ends, and its
+/// Save button stays live. Writing then would put the merged text over the file
+/// the abort just restored and stage it, destroying content that was never
+/// committed and cannot be recovered from the repository.
+#[test]
+fn save_merge_result_refuses_once_the_conflict_is_gone() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    ctx.merge_abort().unwrap();
+
+    let err = ctx
+        .save_merge_result("file.txt", "resolved content")
+        .unwrap_err();
+
+    assert_eq!(err.code, "not_conflicted");
+    let restored = std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap();
+    assert_eq!(
+        restored, "main content",
+        "the abort's restored content must survive a stale save"
+    );
+}

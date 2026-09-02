@@ -1,5 +1,5 @@
 <script lang="ts">
-import { safeInvoke } from "../lib/invoke.js";
+import { safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { remoteErrorMessage } from "../lib/remote-error.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
@@ -60,6 +60,13 @@ $effect(() => {
 	);
 });
 
+// A pull whose rebase stopped on a conflict. The failure is the stop itself, so
+// it stays true only for as long as that rebase is in progress, unlike a refused
+// push, which stays true until the user acts on it.
+function reportsAStoppedOperation(error: TrunkError | null): boolean {
+	return error?.code === "rebase_conflict";
+}
+
 // Reading refreshSignal is what re-probes on every repo change rather than sampling
 // once: the user can finish or start a merge while the banner is up. Only "clean"
 // opens the destructive path, so a failed probe withholds it rather than assuming.
@@ -69,10 +76,15 @@ $effect(() => {
 		repoOperation = "unknown";
 		return;
 	}
+	const stoppedOp = reportsAStoppedOperation(remoteState.error);
 	return settleIfCurrent(
 		safeInvoke<OperationInfo>("get_operation_state", { path: repoPath }),
 		(info) => {
 			repoOperation = info.op_type === "None" ? "clean" : "busy";
+			// A pull that stopped mid-rebase reports the stop as its failure. Once
+			// that rebase is over, however it ended, the report describes nothing
+			// the user can still act on and the bar has no reason to stay up.
+			if (stoppedOp && repoOperation === "clean") remoteState.error = null;
 		},
 		() => {
 			repoOperation = "unknown";

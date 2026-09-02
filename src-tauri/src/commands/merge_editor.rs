@@ -6,20 +6,20 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-pub fn get_merge_sides_inner(
-    path: &str,
+/// The file's conflict entry, or `not_conflicted` when the index holds none for
+/// it. Both the read and the write path ask this first: the editor outlives the
+/// operation that opened it, so "is this file still conflicted" is the question
+/// that separates a real resolution from one aimed at history that has moved on.
+fn conflict_entry(
+    repo: &git2::Repository,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<MergeSides, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+) -> Result<git2::IndexConflict, TrunkError> {
     let index = repo.index()?;
-
-    // Find the conflict entry for this file by iterating all conflicts
     let mut conflicts = index
         .conflicts()
         .map_err(|e| TrunkError::new("conflict_error", e.to_string()))?;
 
-    let conflict = conflicts
+    conflicts
         .find(|entry| {
             if let Ok(c) = entry {
                 let entry_path = c
@@ -39,7 +39,16 @@ pub fn get_merge_sides_inner(
                 format!("File not in conflict: {}", file_path),
             )
         })?
-        .map_err(|e| TrunkError::new("conflict_error", e.to_string()))?;
+        .map_err(|e| TrunkError::new("conflict_error", e.to_string()))
+}
+
+pub fn get_merge_sides_inner(
+    path: &str,
+    file_path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<MergeSides, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let conflict = conflict_entry(&repo, file_path)?;
 
     // `from_utf8_lossy` would replace every invalid byte with U+FFFD and the save
     // path writes that text back over the file, with both original sides already
@@ -74,6 +83,11 @@ pub fn save_merge_result_inner(
     let repo_path = repo
         .workdir()
         .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
+
+    // Refuse before touching the file. An editor left open after its operation
+    // ended would otherwise overwrite the restored content and stage it, and
+    // nothing committed it, so the repository could not give it back.
+    conflict_entry(&repo, file_path)?;
 
     // Write merged content to disk
     let full_path = repo_path.join(file_path);

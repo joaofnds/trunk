@@ -46,6 +46,12 @@ pub fn classify_git_error(stderr: &str) -> TrunkError {
         TrunkError::new("non_fast_forward", stderr)
     } else if lower.contains("no upstream") || lower.contains("has no upstream branch") {
         TrunkError::new("no_upstream", stderr)
+    } else if lower.contains("could not apply") && lower.contains("rebase --continue") {
+        // A pull with rebase that stopped on a conflict. Left to the fallback it
+        // reaches the user as git's whole stderr, hints and all; it is an expected
+        // outcome of pulling, and the app has its own words and its own controls
+        // for it.
+        TrunkError::new("rebase_conflict", stderr)
     } else {
         TrunkError::new("remote_error", stderr)
     }

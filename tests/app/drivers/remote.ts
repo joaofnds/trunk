@@ -62,6 +62,16 @@ export class RemoteDriver {
 
 		return { text: collapse(surface.querySelector(RECOVERY_TEXT)), actions };
 	}
+
+	/** What the bar says right now, whatever it is offering, and null while the
+	 *  bar is absent. `recovery` speaks only for the force-push case; a failed
+	 *  pull puts a plain message and a Dismiss button on the same surface. */
+	message(): string | null {
+		const surface = document.querySelector(RECOVERY_SURFACE);
+		if (!surface) return null;
+
+		return collapse(surface.querySelector(RECOVERY_TEXT));
+	}
 }
 
 function enabled(selector: string): HTMLButtonElement | null {

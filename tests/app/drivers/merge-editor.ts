@@ -16,4 +16,13 @@ export class MergeEditorDriver {
 	async saveAndResolve(): Promise<void> {
 		await pressButton("Save and Mark Resolved");
 	}
+
+	/** Whether the editor is on screen, judged by the controls only it offers.
+	 *  It describes one conflict, so it has no business outliving the operation
+	 *  that raised it. */
+	isShowing(): boolean {
+		return [...document.querySelectorAll("button")].some(
+			(button) => button.textContent?.trim() === "Save and Mark Resolved",
+		);
+	}
 }

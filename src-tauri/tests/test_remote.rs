@@ -745,3 +745,18 @@ fn get_push_target_reports_not_open_for_an_unregistered_repo() {
 
     assert_eq!(err.code, "not_open");
 }
+
+/// A pull with rebase that stops on a conflict is an expected outcome, not a
+/// remote failure. Falling through to `remote_error` puts git's whole stderr,
+/// hints included, on screen as the message.
+#[test]
+fn classify_a_pull_that_stopped_on_a_conflict() {
+    let err = classify_git_error(
+        "Rebasing (1/1)\nerror: could not apply a3d06e5... Mine\n\
+         hint: Resolve all conflicts manually, mark them as resolved with\n\
+         hint: \"git add/rm <conflicted_files>\", then run \"git rebase --continue\".\n\
+         Could not apply a3d06e5... Mine",
+    );
+
+    assert_eq!(err.code, "rebase_conflict");
+}

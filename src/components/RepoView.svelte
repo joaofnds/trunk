@@ -471,6 +471,21 @@ function clearStagingDiff() {
 	stagingDiffLoading = false;
 }
 
+// Every status refresh passes through here, including the one that follows an
+// abort, a skip, or a Continue that finished. A conflicted selection describes a
+// conflict, so when the status no longer lists that file as conflicted there is
+// nothing left for the merge editor to show, whatever ended the operation.
+function handleStatusChange(s: WorkingTreeStatus) {
+	cachedStatus = s;
+
+	if (
+		selectedFile?.kind === "conflicted" &&
+		!s.conflicted.some((file) => file.path === selectedFile?.path)
+	) {
+		clearStagingDiff();
+	}
+}
+
 function clearCommitFileDiff() {
 	selectedCommitFile = null;
 	diffInViewPath = null;
@@ -1435,7 +1450,7 @@ function startRightResize(e: MouseEvent) {
           }}
           selectedPath={selectedFile?.path ?? null}
           selectedKind={selectedFile?.kind ?? null}
-          onstatuschange={(s) => { cachedStatus = s; }}
+          onstatuschange={handleStatusChange}
           {treeViewEnabled}
           ontreeviewtoggle={handleTreeViewToggle}
           onopenmessageeditor={handleOpenMessageEditor}

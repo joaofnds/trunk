@@ -29,6 +29,23 @@ describe("remoteErrorMessage", () => {
 		expect(remoteErrorMessage(err(code), "push")).toBe(expected);
 	});
 
+	// The raw stderr for this one is git's progress lines plus four hint lines,
+	// which is what the user saw before it was classified.
+	it("says a stopped rebase in its own words, not git's", () => {
+		const message = remoteErrorMessage(
+			err(
+				"rebase_conflict",
+				'Rebasing (1/1) error: could not apply a3d06e5... hint: run "git rebase --continue".',
+			),
+			"pull",
+		);
+
+		expect(message).toBe(
+			"Pulled with rebase and stopped on a conflict — resolve the conflicted files, then continue the rebase",
+		);
+		expect(message).not.toContain("hint:");
+	});
+
 	it("passes an unrecognised failure through unchanged", () => {
 		expect(remoteErrorMessage(err("remote_error", "ssh: no route"))).toBe(
 			"ssh: no route",

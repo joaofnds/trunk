@@ -17,6 +17,8 @@ export function remoteErrorMessage(
 			return "This branch has no upstream on the remote";
 		case "push_declined":
 			return "The remote refused this push — a branch protection rule or a server-side hook rejected it";
+		case "rebase_conflict":
+			return "Pulled with rebase and stopped on a conflict — resolve the conflicted files, then continue the rebase";
 		default:
 			return error.message;
 	}
