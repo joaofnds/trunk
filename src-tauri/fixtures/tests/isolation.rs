@@ -9,12 +9,15 @@
 //! process-global and set once, so a HOME set from inside a test process that already
 //! opened a repository would prove nothing (doc-45 §7).
 
+use std::ffi::OsStr;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::process::Command;
 
-use trunk_fixtures::cases::CASES;
 use trunk_fixtures::fingerprint;
+
+use common::{case, fixtures_command, oracle, report};
+
+mod common;
 
 const CASES_UNDER_TEST: [&str; 3] = ["09-kitchen-sink", "06-stash-lanes", "04-graph-lanes"];
 
@@ -50,11 +53,12 @@ fn hostile_home(home: &Path) {
 }
 
 fn build_under(home: &Path, out: &Path) {
-    let output = Command::new(env!("CARGO_BIN_EXE_fixtures"))
-        .arg("build")
-        .args(CASES_UNDER_TEST)
-        .arg("--out")
-        .arg(out)
+    let mut args: Vec<&OsStr> = vec![OsStr::new("build")];
+    args.extend(CASES_UNDER_TEST.iter().map(OsStr::new));
+    args.push(OsStr::new("--out"));
+    args.push(out.as_os_str());
+
+    let output = fixtures_command(&args)
         .env("HOME", home)
         .env_remove("XDG_CONFIG_HOME")
         .output()
@@ -65,22 +69,6 @@ fn build_under(home: &Path, out: &Path) {
         home.display(),
         String::from_utf8_lossy(&output.stderr)
     );
-}
-
-fn repos_of(name: &str) -> &'static [&'static str] {
-    CASES
-        .iter()
-        .find(|case| case.name == name)
-        .unwrap_or_else(|| panic!("{name} is not in CASES"))
-        .repos
-}
-
-fn oracle(name: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("oracle")
-        .join(format!("{name}.txt"));
-
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
 #[test]
@@ -97,42 +85,21 @@ fn a_hostile_home_builds_the_same_corpus_as_a_clean_one() {
 
     let mut differences = Vec::new();
     for name in CASES_UNDER_TEST {
-        let repos = repos_of(name);
+        let repos = case(name).repos;
         let under_hostile = fingerprint::fingerprint(hostile_out.path(), repos).unwrap();
         let under_clean = fingerprint::fingerprint(clean_out.path(), repos).unwrap();
         if under_hostile != under_clean {
             differences.push(format!(
-                "{name} differs between the clean and the hostile HOME:\n{}",
-                first_difference(&under_clean, &under_hostile)
+                "{name} differs between the clean and the hostile HOME (expected the clean build, got the hostile one):\n{}",
+                report(&under_clean, &under_hostile)
             ));
         }
         if under_hostile != oracle(name) {
             differences.push(format!(
-                "{name} under the hostile HOME differs from its oracle:\n{}",
-                first_difference(&oracle(name), &under_hostile)
+                "{name} under the hostile HOME differs from its oracle (expected the oracle, got the hostile build):\n{}",
+                report(&oracle(name), &under_hostile)
             ));
         }
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
-}
-
-/// The first line that differs, with the repository block it sits in.
-fn first_difference(expected: &str, actual: &str) -> String {
-    let expected: Vec<&str> = expected.lines().collect();
-    let actual: Vec<&str> = actual.lines().collect();
-    let longest = expected.len().max(actual.len());
-    let Some(at) = (0..longest).find(|&i| expected.get(i) != actual.get(i)) else {
-        return "no line differs".to_owned();
-    };
-    let block = expected[..at.min(expected.len())]
-        .iter()
-        .rev()
-        .find(|line| line.starts_with("repo "))
-        .unwrap_or(&"<no block>");
-
-    format!(
-        "  in {block}\n  expected: {}\n  actual:   {}",
-        expected.get(at).unwrap_or(&"<end>"),
-        actual.get(at).unwrap_or(&"<end>")
-    )
 }

@@ -1,17 +1,13 @@
 //! The `fixtures` binary's contract: what a script or a recipe can rely on.
 
 use std::path::Path;
-use std::process::Command;
 
 use trunk_fixtures::cases::CASES;
 use trunk_fixtures::fingerprint;
 
-fn fixtures(args: &[&std::ffi::OsStr]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_fixtures"))
-        .args(args)
-        .output()
-        .unwrap()
-}
+use common::fixtures;
+
+mod common;
 
 /// `fixtures build <case> --out <out>`.
 fn build(case: &str, out: &Path) -> std::process::Output {
