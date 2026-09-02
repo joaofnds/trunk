@@ -251,6 +251,211 @@ impl Repo {
             .expect("create the annotated tag");
     }
 
+    /// `git checkout --detach <revspec>`.
+    pub fn checkout_detached(&mut self, revspec: &str) {
+        let commit = self.resolve(revspec);
+        self.repo
+            .set_head_detached(commit.id())
+            .expect("detach HEAD at the commit");
+        self.checkout_head();
+    }
+
+    /// `git stash push -q [-u] -m <msg>` at a pinned date, byte for byte (doc-45 §3.2).
+    /// Not `stash_save`: it ends the WIP commit's message with a newline git does not
+    /// write, which moves every stash OID. The index helper commit and the untracked
+    /// helper commit do end with one. The reflog entry is rewritten under the pinned
+    /// signature, because the ref update logs under the config identity and the wall
+    /// clock. Panics when there is nothing to stash, where git would make no stash.
+    pub fn stash(&mut self, sig: Signature, msg: &str, include_untracked: bool) -> Oid {
+        let head = self.repo.head().expect("a stash needs a HEAD");
+        let head_commit = head.peel_to_commit().expect("HEAD points at a commit");
+        let branch = if head.is_branch() {
+            head.shorthand().expect("a branch name is utf-8")
+        } else {
+            "(no branch)"
+        };
+        let abbrev = &head_commit.id().to_string()[..7];
+        let subject = head_commit
+            .summary()
+            .expect("a fixture commit message is utf-8")
+            .unwrap_or_default();
+        let base = format!("{branch}: {abbrev} {subject}");
+        let signature = sig.to_git2();
+
+        let mut index = self.index();
+        let index_tree = self
+            .repo
+            .find_tree(index.write_tree().expect("write the index tree"))
+            .expect("find the index tree");
+        let index_commit = self
+            .repo
+            .commit(
+                None,
+                &signature,
+                &signature,
+                &format!("index on {base}\n"),
+                &index_tree,
+                &[&head_commit],
+            )
+            .expect("write the index helper commit");
+        let mut parents = vec![
+            head_commit.clone(),
+            self.repo
+                .find_commit(index_commit)
+                .expect("find the index helper commit"),
+        ];
+
+        let mut untracked = Vec::new();
+        if include_untracked {
+            let (commit, paths) = self.untracked_commit(&signature, &base);
+            if let Some(commit) = commit {
+                parents.push(
+                    self.repo
+                        .find_commit(commit)
+                        .expect("find the untracked helper commit"),
+                );
+            }
+            untracked = paths;
+        }
+
+        index
+            .update_all(["*"], None)
+            .expect("stage the tracked edits for the stash");
+        let wip_tree = self
+            .repo
+            .find_tree(
+                index
+                    .write_tree_to(&self.repo)
+                    .expect("write the worktree tree"),
+            )
+            .expect("find the worktree tree");
+        let head_tree = head_commit.tree().expect("read the HEAD tree").id();
+        assert!(
+            index_tree.id() != head_tree || wip_tree.id() != head_tree || !untracked.is_empty(),
+            "nothing to stash on {branch}: git makes no stash here, so the fixture is wrong"
+        );
+        let parent_refs: Vec<&Commit> = parents.iter().collect();
+        let message = format!("On {base_branch}: {msg}", base_branch = branch);
+        let wip = self
+            .repo
+            .commit(
+                None,
+                &signature,
+                &signature,
+                &message,
+                &wip_tree,
+                &parent_refs,
+            )
+            .expect("write the stash commit");
+
+        self.repo
+            .reference_ensure_log("refs/stash")
+            .expect("ensure the stash reflog exists");
+        self.repo
+            .reference("refs/stash", wip, true, &message)
+            .expect("point refs/stash at the stash commit");
+        let mut log = self
+            .repo
+            .reflog("refs/stash")
+            .expect("read the stash reflog");
+        log.remove(0, false)
+            .expect("drop the entry the ref update logged");
+        log.append(wip, &signature, Some(&message))
+            .expect("log the stash under the pinned signature");
+        log.write().expect("write the stash reflog");
+
+        self.repo
+            .reset(head_commit.as_object(), git2::ResetType::Hard, None)
+            .expect("reset the worktree to HEAD");
+        for path in untracked {
+            std::fs::remove_file(&path).expect("remove the stashed untracked file");
+            self.remove_emptied_directories(&path);
+        }
+
+        wip
+    }
+
+    /// The `untracked files on …` helper commit: a tree of every untracked file, which
+    /// `git stash -u` then deletes from the worktree. `None` when nothing is untracked,
+    /// where git writes no helper commit.
+    fn untracked_commit(
+        &self,
+        signature: &git2::Signature<'_>,
+        base: &str,
+    ) -> (Option<Oid>, Vec<PathBuf>) {
+        let mut tree_index = git2::Index::new().expect("create an in-memory index");
+        let mut options = git2::StatusOptions::new();
+        options.include_untracked(true).recurse_untracked_dirs(true);
+        let mut paths = Vec::new();
+        for entry in self
+            .repo
+            .statuses(Some(&mut options))
+            .expect("read the worktree status")
+            .iter()
+        {
+            if !entry.status().contains(git2::Status::WT_NEW) {
+                continue;
+            }
+            let rel = entry.path().expect("a status path is utf-8").to_owned();
+            let path = self.workdir.join(&rel);
+            let (mode, bytes) = untracked_blob(&path);
+            let blob = self.repo.blob(&bytes).expect("write the untracked blob");
+            tree_index
+                .add(&git2::IndexEntry {
+                    ctime: git2::IndexTime::new(0, 0),
+                    mtime: git2::IndexTime::new(0, 0),
+                    dev: 0,
+                    ino: 0,
+                    mode,
+                    uid: 0,
+                    gid: 0,
+                    file_size: bytes.len() as u32,
+                    id: blob,
+                    flags: 0,
+                    flags_extended: 0,
+                    path: rel.into_bytes(),
+                })
+                .expect("add the untracked file to the helper tree");
+            paths.push(path);
+        }
+        if paths.is_empty() {
+            return (None, paths);
+        }
+        let tree = self
+            .repo
+            .find_tree(
+                tree_index
+                    .write_tree_to(&self.repo)
+                    .expect("write the untracked tree"),
+            )
+            .expect("find the untracked tree");
+        let commit = self
+            .repo
+            .commit(
+                None,
+                signature,
+                signature,
+                &format!("untracked files on {base}\n"),
+                &tree,
+                &[],
+            )
+            .expect("write the untracked helper commit");
+
+        (Some(commit), paths)
+    }
+
+    /// `git clean -d`'s share of `git stash -u`: a directory left empty by a stashed file
+    /// goes too, up to the worktree root.
+    fn remove_emptied_directories(&self, path: &Path) {
+        let mut dir = path.parent();
+        while let Some(current) = dir {
+            if current == self.workdir || std::fs::remove_dir(current).is_err() {
+                break;
+            }
+            dir = current.parent();
+        }
+    }
+
     fn index(&self) -> git2::Index {
         self.repo.index().expect("open the index")
     }
@@ -274,4 +479,24 @@ impl Repo {
             .checkout_head(Some(CheckoutBuilder::new().force()))
             .expect("make the worktree match HEAD");
     }
+}
+
+/// The index mode and blob bytes git stores for an untracked path: a symlink as its
+/// target text, an executable as 100755, anything else as 100644.
+fn untracked_blob(path: &Path) -> (u32, Vec<u8>) {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let metadata = std::fs::symlink_metadata(path).expect("stat the untracked path");
+    if metadata.file_type().is_symlink() {
+        let target = std::fs::read_link(path).expect("read the symlink target");
+        return (0o120000, target.as_os_str().as_encoded_bytes().to_vec());
+    }
+    let bytes = std::fs::read(path).expect("read the untracked file");
+    let mode = if metadata.permissions().mode() & 0o111 != 0 {
+        0o100755
+    } else {
+        0o100644
+    };
+
+    (mode, bytes)
 }
