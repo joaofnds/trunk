@@ -298,6 +298,11 @@ pub struct HeadCommitMessage {
 pub struct UndoResult {
     pub subject: String,
     pub body: Option<String>,
+    /// Where the undo left HEAD. A redo restores the undone commit onto this
+    /// position and nowhere else: replayed after a checkout or a reset it would
+    /// commit the old message against unrelated history, so the caller carries
+    /// this to tell the two apart.
+    pub head_oid: String,
 }
 
 #[derive(Debug, Serialize, Clone)]

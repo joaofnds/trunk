@@ -558,6 +558,9 @@ pub fn undo_commit_inner(
 
     let subject = head.summary().ok().flatten().unwrap_or("").to_owned();
     let body = head.body().ok().flatten().map(str::to_owned);
+    // The parent is where the soft reset below lands HEAD, and the only position
+    // a redo of this commit belongs on.
+    let head_oid = head.parent_id(0)?.to_string();
     drop(head);
     drop(repo);
 
@@ -573,7 +576,11 @@ pub fn undo_commit_inner(
         return Err(TrunkError::new("undo_error", stderr.to_string()));
     }
 
-    Ok(UndoResult { subject, body })
+    Ok(UndoResult {
+        subject,
+        body,
+        head_oid,
+    })
 }
 
 pub fn redo_commit_inner(
@@ -599,6 +606,20 @@ pub fn check_undo_available_inner(
     };
     // Can undo if exactly one parent (not initial, not merge)
     Ok(head.parent_count() == 1)
+}
+
+/// Where HEAD is now, or `None` on an unborn branch. A pending redo names the
+/// position it belongs on; comparing it against this is what stops the redo
+/// being replayed onto history it does not describe.
+pub fn head_oid_inner(
+    path: &str,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<Option<String>, TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    match repo.head().and_then(|h| h.peel_to_commit()) {
+        Ok(commit) => Ok(Some(commit.id().to_string())),
+        Err(_) => Ok(None),
+    }
 }
 
 #[tauri::command]
@@ -665,6 +686,15 @@ pub async fn check_undo_available(
 ) -> Result<bool, String> {
     let state_map = state.0.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || check_undo_available_inner(&path, &state_map))
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())
+}
+
+#[tauri::command]
+pub async fn head_oid(path: String, state: State<'_, RepoState>) -> Result<Option<String>, String> {
+    let state_map = state.0.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || head_oid_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())

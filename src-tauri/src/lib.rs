@@ -357,6 +357,7 @@ pub fn configure<R: tauri::Runtime>(
             commands::commit_actions::undo_commit,
             commands::commit_actions::redo_commit,
             commands::commit_actions::check_undo_available,
+            commands::commit_actions::head_oid,
             commands::remote::git_fetch,
             commands::remote::git_fetch_background,
             commands::remote::git_pull,

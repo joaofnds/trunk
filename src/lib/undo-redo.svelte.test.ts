@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createUndoRedoState } from "./undo-redo.svelte.js";
+import { createUndoRedoState, type UndoEntry } from "./undo-redo.svelte.js";
+
+/** These tests are about stack behaviour, so the position an entry belongs on
+ *  only has to be present and distinct, not meaningful. */
+function entry(subject: string, body: string | null = null): UndoEntry {
+	return { subject, body, headOid: `oid-${subject}` };
+}
 
 describe("createUndoRedoState", () => {
 	it("starts with empty redoStack", () => {
@@ -9,16 +15,16 @@ describe("createUndoRedoState", () => {
 
 	it("push adds entry", () => {
 		const mgr = createUndoRedoState();
-		mgr.push({ subject: "test", body: null });
+		mgr.push(entry("test"));
 		expect(mgr.state.redoStack).toHaveLength(1);
 	});
 
 	it("pop returns last pushed entry (LIFO)", () => {
 		const mgr = createUndoRedoState();
-		mgr.push({ subject: "first", body: null });
-		mgr.push({ subject: "second", body: "desc" });
+		mgr.push(entry("first"));
+		mgr.push(entry("second", "desc"));
 		const popped = mgr.pop();
-		expect(popped).toEqual({ subject: "second", body: "desc" });
+		expect(popped).toEqual(entry("second", "desc"));
 	});
 
 	it("pop returns undefined on empty stack", () => {
@@ -28,9 +34,9 @@ describe("createUndoRedoState", () => {
 
 	it("clear empties the stack", () => {
 		const mgr = createUndoRedoState();
-		mgr.push({ subject: "a", body: null });
-		mgr.push({ subject: "b", body: null });
-		mgr.push({ subject: "c", body: null });
+		mgr.push(entry("a"));
+		mgr.push(entry("b"));
+		mgr.push(entry("c"));
 		mgr.clear();
 		expect(mgr.state.redoStack).toHaveLength(0);
 	});
@@ -38,7 +44,7 @@ describe("createUndoRedoState", () => {
 	it("instances are independent", () => {
 		const a = createUndoRedoState();
 		const b = createUndoRedoState();
-		a.push({ subject: "only-on-a", body: null });
+		a.push(entry("only-on-a"));
 		expect(b.state.redoStack).toHaveLength(0);
 		expect(b.pop()).toBeUndefined();
 	});

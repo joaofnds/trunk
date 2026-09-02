@@ -12,6 +12,16 @@ export class ToolbarDriver {
 		await press("Redo");
 	}
 
+	/** Whether Redo is on offer right now. A redo restores the undone commit
+	 *  where the undo left HEAD, so once HEAD moves elsewhere the offer has to
+	 *  be withdrawn rather than replayed against the new position. */
+	offersRedo(): boolean {
+		const found = document.querySelector<HTMLButtonElement>(
+			'button[aria-label="Redo"]',
+		);
+		return found !== null && !found.disabled;
+	}
+
 	async stash(): Promise<void> {
 		await press("Stash");
 	}

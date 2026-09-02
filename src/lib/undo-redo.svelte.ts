@@ -1,6 +1,10 @@
 export interface UndoEntry {
 	subject: string;
 	body: string | null;
+	/** Where the undo left HEAD. The commit this entry restores belongs on this
+	 *  position and nowhere else, so a redo offered after HEAD moved would put
+	 *  the message onto history that has nothing to do with it. */
+	headOid: string;
 }
 
 export interface UndoRedoState {

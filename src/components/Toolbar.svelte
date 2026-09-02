@@ -85,6 +85,17 @@ let branchDialogOpen = $state(false);
 
 // Undo/redo state
 let canUndo = $state(false);
+// Where HEAD is, refreshed on the same beat as canUndo. A pending redo names the
+// position it belongs on, and offering it anywhere else would commit the undone
+// message onto unrelated history.
+let headOid = $state<string | null>(null);
+
+let pendingRedo = $derived(
+	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
+);
+let canRedo = $derived(
+	pendingRedo !== null && headOid !== null && pendingRedo.headOid === headOid,
+);
 
 async function checkUndoAvailable() {
 	try {
@@ -93,6 +104,11 @@ async function checkUndoAvailable() {
 		});
 	} catch {
 		canUndo = false;
+	}
+	try {
+		headOid = await safeInvoke<string | null>("head_oid", { path: repoPath });
+	} catch {
+		headOid = null;
 	}
 }
 
@@ -115,19 +131,28 @@ $effect(() => {
 
 async function handleUndo() {
 	try {
-		const result = await safeInvoke<{ subject: string; body: string | null }>(
-			"undo_commit",
-			{
-				path: repoPath,
-			},
-		);
-		undoRedo.push({ subject: result.subject, body: result.body });
+		const result = await safeInvoke<{
+			subject: string;
+			body: string | null;
+			head_oid: string;
+		}>("undo_commit", {
+			path: repoPath,
+		});
+		undoRedo.push({
+			subject: result.subject,
+			body: result.body,
+			headOid: result.head_oid,
+		});
+		headOid = result.head_oid;
 	} catch (e) {
 		console.error("undo failed:", e);
 	}
 }
 
 async function handleRedo() {
+	// The button is gated on the same condition, so this only catches HEAD moving
+	// between the render and the click.
+	if (!canRedo) return;
 	const entry = undoRedo.pop();
 	if (!entry) return;
 	try {
@@ -324,7 +349,7 @@ async function handleBranchCreate(values: Record<string, string>) {
     <button class="toolbar-btn" disabled={!canUndo} onclick={handleUndo} aria-label="Undo" use:tooltip={"Undo"}>
       <Undo2 size={14} />
     </button>
-    <button class="toolbar-btn" disabled={undoRedo.state.redoStack.length === 0} onclick={handleRedo} aria-label="Redo" use:tooltip={"Redo"}>
+    <button class="toolbar-btn" disabled={!canRedo} onclick={handleRedo} aria-label="Redo" use:tooltip={"Redo"}>
       <Redo2 size={14} />
     </button>
   </div>

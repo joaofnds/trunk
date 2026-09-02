@@ -7,6 +7,7 @@ import {
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
+import type { UndoEntry } from "../lib/undo-redo.svelte.js";
 import Toolbar from "./Toolbar.svelte";
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
@@ -60,7 +61,7 @@ function makeRemoteState(): RemoteState {
 
 function makeUndoRedo() {
 	return {
-		state: { redoStack: [] as Array<{ subject: string; body: string | null }> },
+		state: { redoStack: [] as UndoEntry[] },
 		push: vi.fn(),
 		pop: vi.fn(),
 		clear: vi.fn(),
@@ -161,6 +162,52 @@ describe("Toolbar", () => {
 
 		const redoBtn = screen.getByRole("button", { name: "Redo" });
 		expect(redoBtn).toBeDisabled();
+	});
+
+	it("offers Redo while HEAD is still where the undo left it", async () => {
+		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
+			cmd === "head_oid" ? "abc123" : false,
+		);
+		const undoRedo = makeUndoRedo();
+		undoRedo.state.redoStack = [
+			{ subject: "C2", body: null, headOid: "abc123" },
+		];
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo,
+				reviewActive: false,
+			},
+		});
+
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled(),
+		);
+	});
+
+	it("withholds Redo once HEAD has moved off the position the entry names", async () => {
+		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
+			cmd === "head_oid" ? "moved-elsewhere" : false,
+		);
+		const undoRedo = makeUndoRedo();
+		undoRedo.state.redoStack = [
+			{ subject: "C2", body: null, headOid: "abc123" },
+		];
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo,
+				reviewActive: false,
+			},
+		});
+
+		await waitFor(() =>
+			expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled(),
+		);
 	});
 
 	it("emits review-toggle on click", async () => {
