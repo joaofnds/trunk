@@ -243,6 +243,48 @@ describe("Toolbar", () => {
 		expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
 	});
 
+	it("sends the entry's position and repository on redo, so the backend can refuse a stale one", async () => {
+		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
+			cmd === "head_oid" ? "abc123" : false,
+		);
+		const undoRedo = makeUndoRedo();
+		undoRedo.state.redoStack = [
+			{
+				subject: "C2",
+				body: "desc",
+				headOid: "abc123",
+				repoPath: "/test/repo",
+			},
+		];
+		undoRedo.pop.mockReturnValue(undoRedo.state.redoStack[0]);
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo,
+				reviewActive: false,
+			},
+		});
+
+		const redoBtn = await waitFor(() => {
+			const btn = screen.getByRole("button", { name: "Redo" });
+			expect(btn).toBeEnabled();
+			return btn;
+		});
+		await fireEvent.click(redoBtn);
+
+		await waitFor(() =>
+			expect(safeInvoke).toHaveBeenCalledWith("redo_commit", {
+				path: "/test/repo",
+				subject: "C2",
+				body: "desc",
+				expectedHeadOid: "abc123",
+				expectedRepoPath: "/test/repo",
+			}),
+		);
+	});
+
 	it("emits review-toggle on click", async () => {
 		const { emit } = await import("@tauri-apps/api/event");
 		render(Toolbar, {
