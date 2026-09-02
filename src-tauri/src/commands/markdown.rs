@@ -1396,8 +1396,8 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // The fold runs per side, each against its own keep set: the split columns
     // are the two tinted fragments, the inline view is the merged copy (which
     // lives on the AFTER skeleton, so it folds by the after side's set).
-    let keep_after = leaves_to_keep(&ops, after.leaves.len(), Side::After);
-    let keep_before = leaves_to_keep(&ops, before.leaves.len(), Side::Before);
+    let keep_after = leaves_to_keep(&ops, &before.leaves, &after.leaves, Side::After);
+    let keep_before = leaves_to_keep(&ops, &before.leaves, &after.leaves, Side::Before);
     let folded_merged = merged_raw
         .as_deref()
         .zip(keep_after.as_deref())
@@ -1506,8 +1506,38 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
         {
             out.push((i, "the fold emptied a block that had content".to_string()));
         }
+
+        // Hiding unchanged leaves is the point of the fold; hiding a leaf the
+        // unfolded copy marked is dropping the one thing the reader opened the
+        // row to see. Hunk mode is the default view, so a fold that loses the
+        // mark shows the reader exactly the unfixed defect. Counted, because a
+        // fold legitimately drops the marks of leaves it hides entirely.
+        if let (Some(folded), Some(full)) = (hunk_merged_html, merged_html.as_ref())
+            && marks(full) > 0
+            && marks(folded) == 0
+        {
+            out.push((
+                i,
+                "the fold hid every leaf the unfolded copy marked as changed".to_string(),
+            ));
+        }
     }
     out
+}
+
+/// How many change marks a fragment carries: leaf tints and word marks, keyed
+/// on the whole opening tag for the reason `illegible_rows` is.
+#[cfg(test)]
+fn marks(html: &str) -> usize {
+    MD_WORD_CLASSES
+        .iter()
+        .map(|c| html.matches(&format!("class=\"{c}\">")).count())
+        .chain(
+            MD_TINT_CLASSES
+                .iter()
+                .map(|c| html.matches(&format!("class=\"{c}\"")).count()),
+        )
+        .sum()
 }
 
 /// The words a fragment puts on screen: tags stripped, whitespace runs
@@ -1544,28 +1574,34 @@ fn renders_same(before_html: &str, after_html: &str) -> bool {
     visible(before_html) == visible(after_html) && tags(before_html) == tags(after_html)
 }
 
+/// Whether two leaves the signature diff called `Equal` in fact render
+/// differently — a markup-only edit: unbolding a phrase, retargeting a link,
+/// an HTML comment. A leaf's signature is its visible TEXT, so such an edit
+/// leaves every leaf `Equal` while the item genuinely changed, and nothing
+/// downstream marks it (TRUNK-101, the third time this class shipped).
+///
+/// Asks what the READER sees, via `renders_same`, not whether the html
+/// strings differ. Two reasons the strings differ without the render doing so:
+/// a source reflow moves newlines inside the leaf, which HTML collapses when
+/// it displays them; and an asset URL carries the rev of the side that
+/// rendered it, so an untouched image differs across sides (TRUNK-102).
+fn markup_only_change(before: &Leaf, after: &Leaf) -> bool {
+    !renders_same(
+        &strip_asset_rev(&before.raw_html),
+        &strip_asset_rev(&after.raw_html),
+    )
+}
+
 /// The suggestion-mode copy of a changed container: the after skeleton with
 /// deleted leaves spliced back in tinted red, inserted leaves tinted green,
 /// and cleanly pairing leaves replaced by their del+ins word merge. `None` on
 /// any structural failure; the merged view then falls back to the
 /// before/after pair.
+///
 /// The merged fragment before sanitization, where every leaf the merge left
 /// alone still carries its `data-sourcepos`. Callers sanitize what they ship;
 /// the hunk fold needs those attributes to find and drop unchanged leaves, and
 /// sanitization strips them.
-/// Whether two leaves the signature diff called `Equal` in fact differ — a
-/// markup-only edit: unbolding a phrase, retargeting a link, an HTML comment.
-/// A leaf's signature is its visible TEXT, so such an edit leaves every leaf
-/// Equal while the item genuinely changed, and nothing downstream marks it
-/// (TRUNK-101, the third time this class shipped).
-///
-/// Compares the rendered markup with each side's asset rev normalized away.
-/// Comparing the raw html would call an untouched image changed, because its
-/// URL carries the rev of the side that rendered it (TRUNK-102).
-fn markup_only_change(before: &Leaf, after: &Leaf) -> bool {
-    strip_asset_rev(&before.raw_html) != strip_asset_rev(&after.raw_html)
-}
-
 fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> Option<String> {
     let mut frag = after.sourcepos_html.clone();
     let mut tints: Vec<(&str, &str)> = Vec::new();
@@ -1699,23 +1735,51 @@ enum Side {
 /// side, widened by `LEAF_CONTEXT`. `None` when there is nothing to fold —
 /// either every leaf must stay, or NO leaf changed at all.
 ///
-/// The no-leaf-changed case is not a container that folds to nothing: it is a
-/// container the leaf diff cannot speak about. A leaf's signature is its
-/// visible text, so a markup-only edit — unbolding a phrase, relinking a URL —
-/// leaves every leaf `Equal` while the block is genuinely changed. Folding
-/// there would hide the changed item and leave an empty container, so the
-/// whole container renders and its wash points at it instead.
+/// An `Equal` op holds leaves the signature diff matched, and a leaf's
+/// signature is its visible text — so a markup-only edit (unbolding a phrase,
+/// relinking a URL) sits inside one. Those pairs are tinted, and a fold must
+/// keep a leaf the unfolded copy marks as changed, so they widen the keep set
+/// like any other change. Skipping every `Equal` op hid the one item the
+/// reader was meant to see, in the default (hunk) view.
 ///
 /// An op that touches no leaf on this side — an insertion read from the before
 /// side, a deletion from the after — still anchors one position, so the fold
 /// keeps the leaves the change landed between and the reader sees where it went.
-fn leaves_to_keep(ops: &[similar::DiffOp], n: usize, side: Side) -> Option<Vec<bool>> {
+fn leaves_to_keep(
+    ops: &[similar::DiffOp],
+    before: &[Leaf],
+    after: &[Leaf],
+    side: Side,
+) -> Option<Vec<bool>> {
+    let n = match side {
+        Side::Before => before.len(),
+        Side::After => after.len(),
+    };
     if n == 0 {
         return None;
     }
     let mut keep = vec![false; n];
     for op in ops.iter().copied() {
-        if matches!(op, similar::DiffOp::Equal { .. }) {
+        if let similar::DiffOp::Equal {
+            old_index,
+            new_index,
+            len,
+        } = op
+        {
+            for k in 0..len {
+                if !markup_only_change(&before[old_index + k], &after[new_index + k]) {
+                    continue;
+                }
+                let at = match side {
+                    Side::Before => old_index + k,
+                    Side::After => new_index + k,
+                };
+                let lo = at.saturating_sub(LEAF_CONTEXT);
+                let hi = (at + 1 + LEAF_CONTEXT).min(n);
+                for slot in keep.iter_mut().take(hi).skip(lo) {
+                    *slot = true;
+                }
+            }
             continue;
         }
         let range = match side {
@@ -2714,12 +2778,13 @@ mod tests {
     }
 
     /// A container whose leaves all compare EQUAL — a markup-only edit like
-    /// unbolding a phrase, where the leaf signature is the visible text — must
-    /// never fold. Every leaf being equal means the leaf diff cannot say which
-    /// one changed, so a fold would hide the changed item and leave an empty
-    /// container. Regression: it did exactly that.
+    /// unbolding a phrase, where the leaf signature is the visible text. The
+    /// fold may run, because `markup_only_change` names the leaf that changed,
+    /// but it must keep that leaf: a fold never empties a block, and never
+    /// hides a leaf the unfolded copy marks as changed. Regression: it once
+    /// hid every item and left an empty container.
     #[test]
-    fn a_container_whose_leaves_all_compare_equal_never_folds() {
+    fn a_markup_only_fold_keeps_the_leaf_it_marked_as_changed() {
         let doc = |emphasis: &str| {
             let mut md = String::new();
             for i in 0..3 {
@@ -2747,19 +2812,25 @@ mod tests {
         else {
             unreachable!()
         };
+        let full = merged_html.as_ref().expect("merged copy");
         assert!(
-            hunk_merged_html.is_none(),
-            "a markup-only edit must not fold: {hunk_merged_html:?}"
+            full.contains("md-added"),
+            "the unfolded copy marks the changed item: {full}"
         );
-        assert_eq!(*hunk_hidden_leaves, 0);
-        // The reader still gets every item, with the block wash pointing at it.
-        assert_eq!(
-            merged_html
-                .as_ref()
-                .expect("merged copy")
-                .matches("<li")
-                .count(),
-            3
+        assert_eq!(full.matches("<li").count(), 3, "every item: {full}");
+
+        let Some(folded) = hunk_merged_html else {
+            // Nothing outside the window: the full copy renders in both modes.
+            assert_eq!(*hunk_hidden_leaves, 0);
+            return;
+        };
+        assert!(
+            folded.contains("md-added"),
+            "the fold kept the leaf the full copy marked: {folded}"
+        );
+        assert!(
+            folded.contains("<li"),
+            "the fold never empties a block that had content: {folded}"
         );
     }
 
@@ -2995,6 +3066,66 @@ mod tests {
     /// A fold must never leave the reader with an empty block where the
     /// unfolded copy had content — yesterday's defect, as an invariant.
     #[test]
+    fn a_folded_list_keeps_the_item_whose_only_edit_was_markup() {
+        // Hunk mode is the default view. A 20-item list with one text edit and
+        // one markup-only edit folds; the markup-only item sits outside the
+        // window, and the fold used to drop it and every trace of the change.
+        let doc = |bold: bool, item2: &str| {
+            (0..20)
+                .map(|i| match i {
+                    18 if bold => "- **flagged** item 18".to_string(),
+                    18 => "- flagged item 18".to_string(),
+                    2 => format!("- {item2}"),
+                    _ => format!("- item {i}"),
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let rows = diff_rows(&doc(true, "item 2"), &doc(false, "item 2 CHANGED"));
+
+        assert!(illegible_rows(&rows).is_empty(), "{rows:?}");
+        let DiffRow::Changed {
+            hunk_merged_html, ..
+        } = &rows[0]
+        else {
+            panic!("one changed list: {rows:?}");
+        };
+        let folded = hunk_merged_html.as_deref().expect("the long list folds");
+        assert!(
+            folded.contains("flagged"),
+            "the fold keeps the markup-only item: {folded}"
+        );
+        assert!(
+            folded.contains("md-added\">flagged"),
+            "and keeps its tint: {folded}"
+        );
+    }
+
+    #[test]
+    fn illegible_rows_reports_a_fold_that_hid_the_only_mark() {
+        // Hunk mode is the default view, so a fold that drops every mark shows
+        // the reader the unfixed defect while the unfolded copy looks correct.
+        // The emptiness check does not catch it: the fold still has content.
+        let rows = vec![DiffRow::Changed {
+            before_html: "<ul><li>a</li><li>b</li></ul>".into(),
+            after_html: "<ul><li>a</li><li>b</li></ul>".into(),
+            merged_html: Some("<ul><li class=\"md-added\">a</li><li>b</li></ul>".into()),
+            hunk_merged_html: Some("<ul><li>b</li></ul>".into()),
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 1,
+            has_tints: true,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 2,
+        }];
+
+        let found = illegible_rows(&rows);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].1.contains("fold hid"), "{found:?}");
+    }
+
+    #[test]
     fn illegible_rows_reports_a_fold_that_emptied_its_block() {
         let rows = vec![DiffRow::Changed {
             before_html: "<ol><li>a</li></ol>".into(),
@@ -3092,8 +3223,10 @@ mod tests {
     /// Which rule a violation broke, so the known list can name a specific
     /// defect rather than excusing a whole scenario.
     fn violation_kind(why: &str) -> &'static str {
-        if why.contains("fold") {
+        if why.contains("emptied") {
             "fold-emptied"
+        } else if why.contains("fold hid") {
+            "fold-hid-the-mark"
         } else {
             "unmarked"
         }
@@ -3105,10 +3238,8 @@ mod tests {
     /// scenario — and fails again when a listed one starts passing, so the
     /// list can only shrink.
     ///
-    /// - `md: unbold a phrase, formatting only` / `unmarked` — TRUNK-101. A
-    ///   markup-only edit inside a container leaves every leaf comparing
-    ///   equal, so no tint lands and no word mark is produced; the reader sees
-    ///   a plain list with nothing marking the change.
+    /// Empty: every scenario in the corpus renders legibly. An entry added here
+    /// names its card and the specific violation, never just the scenario.
     const KNOWN_ILLEGIBLE: &[(&str, &str)] = &[];
 
     /// The built fixture repository, or `None` when it has not been built.
@@ -4029,6 +4160,36 @@ mod tests {
     }
 
     #[test]
+    fn a_reflowed_list_item_is_not_tinted_as_changed() {
+        // The leaf's rendered html keeps the source's newlines, but HTML
+        // collapses whitespace when it displays them, so a rewrap changes the
+        // string without changing one rendered word. Tinting it would put a
+        // green item under the view's own "renders identically" note.
+        let rows = diff_rows(
+            "- alpha beta\n  gamma delta\n- keep",
+            "- alpha beta gamma delta\n- keep",
+        );
+        let DiffRow::Changed {
+            has_tints,
+            renders_identically,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("one changed list: {rows:?}");
+        };
+
+        assert!(
+            renders_identically,
+            "a rewrap renders identically: {rows:?}"
+        );
+        assert!(
+            !has_tints,
+            "and so carries no tint contradicting that: {after_html}"
+        );
+    }
+
+    #[test]
     fn a_list_item_holding_an_unchanged_image_is_not_tinted() {
         // The markup-only tint compares rendered leaf html, which carries each
         // side's rev in any image URL. Comparing it raw would tint every item
@@ -4847,10 +5008,10 @@ mod tests {
     #[test]
     fn has_tints_reaches_the_wire_only_when_a_tint_landed() {
         let tinted = serde_json::to_string(&diff_rows("- one item", "- one ITEM")).unwrap();
-        // A code block has no leaves, so no tint can land on one.
-        let untinted =
-            serde_json::to_string(&diff_rows("```\nlet x = 1;\n```", "```\nlet x = 2;\n```"))
-                .unwrap();
+        // A container whose leaves render identically: only the list marker
+        // changed, which is source syntax the render does not show. Keeps this
+        // test on the container path, where has_tints is actually computed.
+        let untinted = serde_json::to_string(&diff_rows("- one\n- two", "* one\n* two")).unwrap();
 
         assert!(tinted.contains(r#""hasTints":true"#), "{tinted}");
         assert!(!untinted.contains(r#""hasTints""#), "{untinted}");

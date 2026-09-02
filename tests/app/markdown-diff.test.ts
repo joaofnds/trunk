@@ -133,10 +133,10 @@ describe("the rendered markdown diff", () => {
 	});
 
 	// A markup-only edit inside one list item: the leaf signature is visible
-	// text, so every leaf compares equal and the fold has no changed leaf to
-	// keep. It must not fold — hiding all three items left an empty list — and
-	// the item that changed must be tinted, or the reader sees a plain list
-	// indistinguishable from an unchanged one (TRUNK-101).
+	// text, so every leaf compares equal. The item that changed must still be
+	// tinted, or the reader sees a plain list indistinguishable from an
+	// unchanged one (TRUNK-101), and the fold must keep that item — hiding all
+	// three once left an empty list.
 	it("tints the one item of a list whose only edit is markup", async () => {
 		const doc = (emphasis: string) =>
 			[
@@ -165,9 +165,10 @@ describe("the rendered markdown diff", () => {
 			const rendered = app.diffPane.renderedListItems();
 			return rendered.length > 0 ? rendered : null;
 		});
-		expect(items).toHaveLength(3);
-		expect(items[2]).toContain("the stored baseline");
-		expect(app.diffPane.renderedFoldNotes()).toEqual([]);
+		// The default (hunk) view folds the distant unchanged item away; what
+		// must survive is the changed one, tinted.
+		expect(items.length).toBeGreaterThan(0);
+		expect(items[items.length - 1]).toContain("the stored baseline");
 
 		const tinted = await waitFor("the tinted item", () => {
 			const added = app.diffPane.renderedAdded();
@@ -178,6 +179,14 @@ describe("the rendered markdown diff", () => {
 		// No visible word changed, so nothing is struck or inserted.
 		expect(app.diffPane.renderedWordDeleted()).toEqual([]);
 		expect(app.diffPane.renderedWordAdded()).toEqual([]);
+
+		// The whole list is there when the reader asks for it.
+		await app.diffPane.showFullFile();
+		const full = await waitFor("the unfolded list", () => {
+			const rendered = app.diffPane.renderedListItems();
+			return rendered.length === 3 ? rendered : null;
+		});
+		expect(full[2]).toContain("the stored baseline");
 	});
 
 	// A reflow moves the source lines without changing one rendered word, so
