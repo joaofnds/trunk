@@ -1301,7 +1301,13 @@ struct ChangedFragments {
 }
 
 fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
-    if before.leaves.is_empty() {
+    // BOTH sides must be leaf-bearing to diff by leaf. A blockquote lends its
+    // leaves from the single container it wraps, so leaf-bearing-ness follows
+    // content, not kind, and one row's two sides can disagree: a quoted list
+    // that gains a paragraph is a container before and not after. The container
+    // path reads each side's `sourcepos_html`, which a non-container leaves
+    // empty, and the reader lost that whole side of the diff.
+    if before.leaves.is_empty() || after.leaves.is_empty() {
         let merged_html = if before.kind == "code_block" || after.kind == "code_block" {
             None
         } else {
@@ -1489,7 +1495,13 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
             || MD_TINT_CLASSES
                 .iter()
                 .any(|c| shown.contains(&format!("class=\"{c}\"")));
-        let pair_differs = is_pair && visible(before_html) != visible(after_html);
+        // A blank side is not a difference the reader can read: it is the new
+        // content missing from the screen. Comparing the two texts alone called
+        // that "the sides visibly differ" and passed the row.
+        let pair_differs = is_pair
+            && visible(before_html) != visible(after_html)
+            && !visible(before_html).is_empty()
+            && !visible(after_html).is_empty();
 
         if !marked && !has_tints && !renders_identically && !pair_differs {
             out.push((
@@ -2064,13 +2076,6 @@ fn md_cell(s: &str) -> String {
     s.replace(['\r', '\n'], " ").replace('|', "\\|")
 }
 
-/// Parse a document and reduce each top-level block (direct child of the comrak
-/// root) to a `Block`. `markdown` must already be front-matter-rewritten
-/// (`front_matter_as_table`) — the caller line-diffs that same text, keeping the
-/// block spans and the diff in one coordinate system; a rewrite that failed
-/// leaves raw front matter, which comrak parses and this filter suppresses.
-/// Images are rewritten once over the whole tree first, so each fragment
-/// resolves them like the whole-doc render would.
 /// The node whose children are a block's leaves, or `None` when the block has
 /// none and takes the whole-fragment path instead.
 ///
@@ -2100,6 +2105,13 @@ fn leaf_parent<'a>(node: &'a comrak::nodes::AstNode<'a>) -> Option<&'a comrak::n
     is_container(only).then_some(only)
 }
 
+/// Parse a document and reduce each top-level block (direct child of the comrak
+/// root) to a `Block`. `markdown` must already be front-matter-rewritten
+/// (`front_matter_as_table`) — the caller line-diffs that same text, keeping the
+/// block spans and the diff in one coordinate system; a rewrite that failed
+/// leaves raw front matter, which comrak parses and this filter suppresses.
+/// Images are rewritten once over the whole tree first, so each fragment
+/// resolves them like the whole-doc render would.
 fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpec) -> Vec<Block> {
     let arena = comrak::Arena::new();
     let options = build_options();
@@ -2658,6 +2670,42 @@ mod tests {
     }
 
     #[test]
+    fn a_quote_that_stops_being_a_container_still_shows_both_sides() {
+        // Leaf-bearing-ness follows a quote's CONTENT, so the two sides of one
+        // Changed row can disagree: a quoted list gains a paragraph and the
+        // after side is no longer a container. The container path reads the
+        // after side's sourcepos_html, which a non-container leaves empty, and
+        // the reader lost the whole new side.
+        for (before, after) in [
+            ("> - one\n> - two", "> - one\n> - two\n>\n> tail"),
+            ("> - one\n> - two", "> just prose now"),
+            ("> - one\n> - two", "> # heading"),
+            ("> just prose", "> - one\n> - two"),
+        ] {
+            let rows = diff_rows(before, after);
+            let DiffRow::Changed {
+                before_html,
+                after_html,
+                merged_html,
+                ..
+            } = &rows[0]
+            else {
+                panic!("one changed quote: {before:?} -> {after:?}: {rows:?}");
+            };
+
+            let shown = merged_html.as_deref().unwrap_or(after_html);
+            assert!(
+                !visible(shown).is_empty(),
+                "the new side is on screen: {before:?} -> {after:?}: {rows:?}"
+            );
+            assert!(
+                !visible(before_html).is_empty(),
+                "and so is the old one: {before:?} -> {after:?}: {rows:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_prose_blockquote_keeps_the_whole_fragment_path() {
         // Only a quote wrapping ONE container lends its leaves. Prose, or
         // several blocks, keeps the word merge over the whole quote.
@@ -3208,6 +3256,27 @@ mod tests {
             folded.contains("md-added\">flagged"),
             "and keeps its tint: {folded}"
         );
+    }
+
+    #[test]
+    fn illegible_rows_reports_a_pair_with_one_blank_side() {
+        // A blank side is the content missing, not a difference to read. The
+        // text comparison alone called this "the sides visibly differ".
+        let rows = vec![DiffRow::Changed {
+            before_html: "<blockquote><ul><li>one</li></ul></blockquote>".into(),
+            after_html: String::new(),
+            merged_html: None,
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
+            has_tints: false,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 1,
+        }];
+
+        assert_eq!(illegible_rows(&rows).len(), 1, "{rows:?}");
     }
 
     #[test]

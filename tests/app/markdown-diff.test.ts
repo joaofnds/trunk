@@ -189,6 +189,50 @@ describe("the rendered markdown diff", () => {
 		expect(full[2]).toContain("the stored baseline");
 	});
 
+	// A list inside a blockquote had no leaves, so it never folded: a long
+	// quoted list rendered whole while the identical unquoted one folded to a
+	// few items (TRUNK-103). The quote must fold and keep the changed item.
+	it("folds a long list inside a blockquote", async () => {
+		const doc = (ninth: string) =>
+			Array.from({ length: 20 }, (_, i) =>
+				i === 9 ? `> - item ${ninth}` : `> - item ${i}`,
+			).join("\n");
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${doc("nine")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${doc("NINE")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		const items = await waitFor("the rendered quote", () => {
+			const rendered = app.diffPane.renderedListItems();
+			return rendered.length > 0 ? rendered : null;
+		});
+		expect(items.length).toBeLessThan(20);
+		// The merged copy shows the word that left beside the one that arrived.
+		expect(items.join(" ")).toContain("NINE");
+		expect(app.diffPane.renderedWordAdded()).toEqual(["NINE"]);
+		expect(app.diffPane.renderedFoldNotes().length).toBeGreaterThan(0);
+
+		// And the whole quote is there when the reader asks for it.
+		await app.diffPane.showFullFile();
+		const full = await waitFor("the unfolded quote", () => {
+			const rendered = app.diffPane.renderedListItems();
+			return rendered.length === 20 ? rendered : null;
+		});
+		expect(full[9]).toContain("NINE");
+	});
+
 	// A reflow moves the source lines without changing one rendered word, so
 	// the block has nothing to tint. Without a note it draws as an untinted
 	// paragraph the reader cannot tell from an unchanged one.
