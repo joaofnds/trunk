@@ -400,3 +400,85 @@ fn a_lane_ref_carries_the_lanes_own_colour() {
     );
     assert_ne!(tip_row.color_index, 99, "the captured colour is replaced");
 }
+
+#[test]
+fn a_merged_branch_with_no_ref_left_on_its_tip_draws_no_pill() {
+    // AC6's narrower scope: a merged topic branch keeps naming itself only while its tip
+    // still carries a ref. Once that branch is deleted, the commit that claimed its lane
+    // resolves to zero refs, and the row draws no pill rather than falling back to main's.
+    // Joao ruled a containing-ref fallback out of scope; this is the shape from the
+    // career-ops repo's "Merge remote-tracking branch origin/main" commit, where the
+    // absorbed side has no ref of its own left on disk.
+    let (merge, side, base, root) = (oid(1), oid(2), oid(3), oid(4));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![merge, side, base, root],
+            parents: HashMap::from([
+                (merge, vec![base, side]),
+                (side, vec![root]),
+                (base, vec![root]),
+                (root, vec![]),
+            ]),
+            stashes: HashSet::new(),
+            head_tip: Some(merge),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (merge, facts("Merge")),
+            (side, facts("Side")),
+            (base, facts("Base")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([(
+            merge,
+            vec![ref_label("refs/heads/main", "main", RefType::LocalBranch)],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    let result = layout(&source, 0, usize::MAX);
+
+    let side_row = result.commits.iter().find(|c| c.oid == side.to_string());
+    assert!(side_row.is_some_and(|c| c.lane_ref.is_none()));
+}
+
+#[test]
+fn a_lane_claim_carrying_several_refs_names_the_local_branch_over_the_tag() {
+    // `ref_rank` mirrors the frontend's `sortRefs` precedence so the lane's name and the
+    // claiming commit's own pill agree: HEAD, then local branch, tag, stash, remote branch
+    // last. A commit release-tagged on its own branch tip carries both.
+    let (tip, root) = (oid(1), oid(2));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, root],
+            parents: HashMap::from([(tip, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([(tip, facts("Tip")), (root, facts("Init"))]),
+        refs: HashMap::from([(
+            tip,
+            vec![
+                ref_label("refs/tags/v1.0.0", "v1.0.0", RefType::Tag),
+                ref_label("refs/heads/main", "main", RefType::LocalBranch),
+                ref_label(
+                    "refs/remotes/origin/main",
+                    "origin/main",
+                    RefType::RemoteBranch,
+                ),
+            ],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    let result = layout(&source, 0, usize::MAX);
+
+    let tip_row = &result.commits[0];
+    assert_eq!(
+        tip_row.lane_ref.as_ref().map(|r| r.short_name.as_str()),
+        Some("main")
+    );
+}
