@@ -57,13 +57,15 @@ Working artifacts live in `.boris/`, which is gitignored. They are per-task and 
 
 | Path | Holds |
 |------|-------|
-| `.boris/CONTEXT.md` | Project glossary — shared vocabulary for specs and plans |
 | `.boris/plans/` | Specs, options, grilled designs, and implementation plans |
 | `.boris/reviews/` | Panel and adversarial review reports |
 | `.boris/handoffs/` | Mid-task context dumps |
 | `.boris/archive/` | Plans whose work has shipped |
 
 Durable material is committed under `docs/` instead — see `docs/README.md` for the index.
+The project glossary is `GLOSSARY.md` at the root, committed: read it when you start
+and add a term when you learn one. It used to be `.boris/CONTEXT.md`, where every edit
+was lost to the gitignore.
 When a `.boris/` artifact turns out to be a lasting reference (an architecture note, a
 decision record, a known issue), move it into `docs/` and add it to that index.
 
