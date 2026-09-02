@@ -142,9 +142,21 @@ $effect(() => {
 	// it re-runs this effect so the same fetch re-executes against fresh disk.
 	void refreshToken;
 
-	// What this run would ask the backend for. Two runs with the same request
-	// differ only in the refresh token, which is the on-disk-changed signal.
-	const request = JSON.stringify([repo, path, kind, oid, parent, ignoreWs]);
+	// This run's whole backend call, built once. The identity below is derived
+	// from these very arguments, so a new fetch input cannot be added to the
+	// call while being forgotten in the identity — which would silently leave a
+	// stale pane on screen.
+	const args = [
+		repo,
+		path,
+		beforeRev(kind, parent),
+		afterRev(kind, oid),
+		ignoreWs,
+	] as const;
+
+	// Two runs asking for the same thing differ only in the refresh token, which
+	// is the repo-changed-on-disk signal.
+	const request = JSON.stringify(args);
 
 	// Read untracked: this effect writes both, so tracking them here would make
 	// every fetch re-run the effect that issued it.
@@ -168,13 +180,7 @@ $effect(() => {
 	// the document on every repo change (TRUNK-127). Only a pane with nothing to
 	// show yet shows the placeholder.
 	if (showing !== "rows") state = { kind: "loading" };
-	renderMarkdownDiff(
-		repo,
-		path,
-		beforeRev(kind, parent),
-		afterRev(kind, oid),
-		ignoreWs,
-	)
+	renderMarkdownDiff(...args)
 		.then((diff) => {
 			if (my === seq)
 				state = {
