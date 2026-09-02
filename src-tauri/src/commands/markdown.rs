@@ -200,6 +200,11 @@ struct Leaf {
     signature: String,
     sourcepos: String,
     raw_html: String,
+    /// The HTML tag this leaf renders as (`li`, `tr`). A one-item list gives the
+    /// `<ul>` and its only `<li>` the SAME `data-sourcepos`, so a lookup keyed on
+    /// sourcepos alone finds the container and tints or splices that instead of
+    /// the item (TRUNK-112). Both lookups match tag and sourcepos together.
+    tag: String,
 }
 
 /// Diff two markdown documents, returning an aligned row per top-level block in
@@ -1213,12 +1218,13 @@ fn strip_table_section(raw: &str) -> &str {
 /// same-tag nesting (a list item can hold a nested list of more items).
 /// `None` when the element cannot be located; the caller falls back to the
 /// tint, which degrades gracefully rather than corrupt the fragment.
-fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Option<String> {
-    let (start, end) = element_span(sourcepos_html, sourcepos)?;
-    let tag: String = sourcepos_html[start + 1..]
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric())
-        .collect();
+fn replace_leaf(
+    sourcepos_html: &str,
+    tag: &str,
+    sourcepos: &str,
+    replacement: &str,
+) -> Option<String> {
+    let (start, end) = element_span(sourcepos_html, tag, sourcepos)?;
     if !replacement.trim_start().starts_with(&format!("<{tag}")) {
         // The standalone render wraps some leaves differently than they sit
         // in the container (a header row gains its own <thead>); splicing
@@ -1233,20 +1239,19 @@ fn replace_leaf(sourcepos_html: &str, sourcepos: &str, replacement: &str) -> Opt
     Some(out)
 }
 
-/// The byte span of one leaf's whole element in a sourcepos-annotated
-/// fragment, matched by its unique `data-sourcepos` and closed by scanning
+/// The byte span of one leaf's whole element in a sourcepos-annotated fragment,
+/// matched by its tag AND `data-sourcepos` together, and closed by scanning
 /// same-tag nesting (a list item can hold a nested list of more items).
-fn element_span(sourcepos_html: &str, sourcepos: &str) -> Option<(usize, usize)> {
-    let needle = format!("data-sourcepos=\"{sourcepos}\"");
-    let attr = sourcepos_html.find(&needle)?;
-    let start = sourcepos_html[..attr].rfind('<')?;
-    let tag: String = sourcepos_html[start + 1..]
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric())
-        .collect();
+///
+/// Sourcepos alone does not identify the element: a one-item list gives the
+/// `<ul>` and its only `<li>` the same value, and matching the first of them
+/// operated on the container (TRUNK-112).
+fn element_span(sourcepos_html: &str, tag: &str, sourcepos: &str) -> Option<(usize, usize)> {
     if tag.is_empty() {
         return None;
     }
+    let start = sourcepos_html.find(&format!("<{tag} data-sourcepos=\"{sourcepos}\""))?;
+    let tag = tag.to_string();
 
     let open_marker = format!("<{tag}");
     let close_marker = format!("</{tag}>");
@@ -1330,8 +1335,8 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     let before_sigs: Vec<String> = before.leaves.iter().map(|l| l.signature.clone()).collect();
     let after_sigs: Vec<String> = after.leaves.iter().map(|l| l.signature.clone()).collect();
 
-    let mut before_tints: Vec<(&str, &str)> = Vec::new();
-    let mut after_tints: Vec<(&str, &str)> = Vec::new();
+    let mut before_tints: Vec<(&str, &str, &str)> = Vec::new();
+    let mut after_tints: Vec<(&str, &str, &str)> = Vec::new();
     let mut before_frag = before.sourcepos_html.clone();
     let mut after_frag = after.sourcepos_html.clone();
     let mut word_marked = false;
@@ -1347,8 +1352,8 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
                     let b = &before.leaves[old_index + k];
                     let a = &after.leaves[new_index + k];
                     if markup_only_change(b, a) {
-                        before_tints.push((&b.sourcepos, "md-removed"));
-                        after_tints.push((&a.sourcepos, "md-added"));
+                        before_tints.push((&b.tag, &b.sourcepos, "md-removed"));
+                        after_tints.push((&a.tag, &a.sourcepos, "md-added"));
                     }
                 }
             }
@@ -1356,14 +1361,14 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
                 old_index, old_len, ..
             } => {
                 for l in &before.leaves[old_index..old_index + old_len] {
-                    before_tints.push((&l.sourcepos, "md-removed"));
+                    before_tints.push((&l.tag, &l.sourcepos, "md-removed"));
                 }
             }
             similar::DiffOp::Insert {
                 new_index, new_len, ..
             } => {
                 for l in &after.leaves[new_index..new_index + new_len] {
-                    after_tints.push((&l.sourcepos, "md-added"));
+                    after_tints.push((&l.tag, &l.sourcepos, "md-added"));
                 }
             }
             similar::DiffOp::Replace {
@@ -1389,10 +1394,10 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
                         continue;
                     }
                     if let Some(b) = b {
-                        before_tints.push((&b.sourcepos, "md-removed"));
+                        before_tints.push((&b.tag, &b.sourcepos, "md-removed"));
                     }
                     if let Some(a) = a {
-                        after_tints.push((&a.sourcepos, "md-added"));
+                        after_tints.push((&a.tag, &a.sourcepos, "md-added"));
                     }
                 }
             }
@@ -1616,7 +1621,7 @@ fn markup_only_change(before: &Leaf, after: &Leaf) -> bool {
 /// sanitization strips them.
 fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) -> Option<String> {
     let mut frag = after.sourcepos_html.clone();
-    let mut tints: Vec<(&str, &str)> = Vec::new();
+    let mut tints: Vec<(&str, &str, &str)> = Vec::new();
 
     // Removed leaves splice in first, while every anchor's element is still
     // pristine — a Replace splice strips its leaf's sourcepos, and a tail
@@ -1667,7 +1672,7 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                     let b = &before.leaves[old_index + k];
                     let a = &after.leaves[new_index + k];
                     if markup_only_change(b, a) {
-                        tints.push((&a.sourcepos, "md-added"));
+                        tints.push((&a.tag, &a.sourcepos, "md-added"));
                     }
                 }
             }
@@ -1676,7 +1681,7 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                 new_index, new_len, ..
             } => {
                 for l in &after.leaves[new_index..new_index + new_len] {
-                    tints.push((&l.sourcepos, "md-added"));
+                    tints.push((&l.tag, &l.sourcepos, "md-added"));
                 }
             }
             similar::DiffOp::Replace {
@@ -1691,7 +1696,7 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                     let a = &after.leaves[new_index + k];
                     match html_token_merge(&b.raw_html, &a.raw_html) {
                         Some(merged_leaf) => {
-                            frag = replace_leaf(&frag, &a.sourcepos, &merged_leaf)?;
+                            frag = replace_leaf(&frag, &a.tag, &a.sourcepos, &merged_leaf)?;
                         }
                         None => {
                             insert_removed_leaves(
@@ -1700,12 +1705,12 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                                 Some(a),
                                 false,
                             )?;
-                            tints.push((&a.sourcepos, "md-added"));
+                            tints.push((&a.tag, &a.sourcepos, "md-added"));
                         }
                     }
                 }
                 for l in &after.leaves[new_index + pairs..new_index + new_len] {
-                    tints.push((&l.sourcepos, "md-added"));
+                    tints.push((&l.tag, &l.sourcepos, "md-added"));
                 }
             }
         }
@@ -1821,7 +1826,7 @@ fn drop_leaves(frag: &str, leaves: &[Leaf], keep: &[bool]) -> Option<(String, u3
         if keep[i] {
             continue;
         }
-        let Some((start, end)) = element_span(&out, &leaf.sourcepos) else {
+        let Some((start, end)) = element_span(&out, &leaf.tag, &leaf.sourcepos) else {
             continue;
         };
         out.replace_range(start..end, "");
@@ -1848,7 +1853,7 @@ fn insert_removed_leaves(
         .collect::<Option<Vec<_>>>()?
         .join("\n");
 
-    let (start, end) = element_span(frag, &anchor.sourcepos)?;
+    let (start, end) = element_span(frag, &anchor.tag, &anchor.sourcepos)?;
     let pos = if after_anchor {
         skip_section_boundary(frag, end)
     } else {
@@ -1895,10 +1900,10 @@ fn try_leaf_swap(b: &Leaf, a: &Leaf, before_frag: &mut String, after_frag: &mut 
     let Some((before_marked, after_marked)) = leaf_word_merge(&b.raw_html, &a.raw_html) else {
         return false;
     };
-    let Some(next_before) = replace_leaf(before_frag, &b.sourcepos, &before_marked) else {
+    let Some(next_before) = replace_leaf(before_frag, &b.tag, &b.sourcepos, &before_marked) else {
         return false;
     };
-    let Some(next_after) = replace_leaf(after_frag, &a.sourcepos, &after_marked) else {
+    let Some(next_after) = replace_leaf(after_frag, &a.tag, &a.sourcepos, &after_marked) else {
         return false;
     };
 
@@ -1907,15 +1912,19 @@ fn try_leaf_swap(b: &Leaf, a: &Leaf, before_frag: &mut String, after_frag: &mut 
     true
 }
 
-/// Inject an `md-*` class onto each leaf element in a sourcepos-annotated fragment,
-/// matched by its unique `data-sourcepos` value. The leftover `data-sourcepos`
-/// attributes are not allowlisted, so ammonia strips them next; only the injected
-/// class survives.
-fn tint_leaves(sourcepos_html: &str, tints: &[(&str, &str)]) -> String {
+/// Inject an `md-*` class onto each leaf element in a sourcepos-annotated
+/// fragment, matched by its tag AND `data-sourcepos` together. The leftover
+/// `data-sourcepos` attributes are not allowlisted, so ammonia strips them next;
+/// only the injected class survives.
+///
+/// Matching sourcepos alone tinted the `<ul>` of a one-item list rather than its
+/// item, and sanitize then stripped that class off the container: the reader got
+/// a copy with no mark while `has_tints` still claimed one (TRUNK-112).
+fn tint_leaves(sourcepos_html: &str, tints: &[(&str, &str, &str)]) -> String {
     let mut out = sourcepos_html.to_string();
-    for (sourcepos, class) in tints {
-        let needle = format!("data-sourcepos=\"{sourcepos}\"");
-        let replacement = format!("class=\"{class}\" {needle}");
+    for (tag, sourcepos, class) in tints {
+        let needle = format!("<{tag} data-sourcepos=\"{sourcepos}\"");
+        let replacement = format!("<{tag} class=\"{class}\" data-sourcepos=\"{sourcepos}\"");
         out = out.replacen(&needle, &replacement, 1);
     }
     out
@@ -2076,6 +2085,16 @@ fn md_cell(s: &str) -> String {
     s.replace(['\r', '\n'], " ").replace('|', "\\|")
 }
 
+/// The HTML tag a container's leaf renders as. Empty for anything else, which
+/// makes both sourcepos lookups decline rather than guess at the element.
+fn leaf_tag(node: &comrak::nodes::AstNode<'_>) -> &'static str {
+    match node.data.borrow().value.xml_node_name() {
+        "item" => "li",
+        "table_row" => "tr",
+        _ => "",
+    }
+}
+
 /// The node whose children are a block's leaves, or `None` when the block has
 /// none and takes the whole-fragment path instead.
 ///
@@ -2132,6 +2151,7 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                         signature: block_signature(c),
                         sourcepos: c.data.borrow().sourcepos.to_string(),
                         raw_html: strip_table_section(&format_node(c, &options)).to_string(),
+                        tag: leaf_tag(c).to_string(),
                     })
                     .collect();
                 (leaves, format_node(n, &options_sp), String::new())
@@ -2745,6 +2765,54 @@ mod tests {
             merged.contains("md-word-delete\">old") || merged.contains("md-removed"),
             "the item that changed is marked: {merged}"
         );
+    }
+
+    #[test]
+    fn a_one_item_list_marks_the_item_inside_the_list() {
+        // comrak gives a single-item list the same data-sourcepos for the <ul>
+        // and its only <li>, so a lookup matching the first of them operated on
+        // the container: the removed item was spliced OUTSIDE the list.
+        for (before, after) in [("- one", "- ONE"), ("> - one", "> - ONE")] {
+            let rows = diff_rows(before, after);
+            let merged = merged_of(&rows);
+
+            assert!(
+                illegible_rows(&rows).is_empty(),
+                "{before:?} -> {after:?}: {rows:?}"
+            );
+            let list_open = merged.find("<ul>").expect("a list");
+            let removed = merged.find("md-removed").expect("the removed item is marked");
+            assert!(
+                removed > list_open,
+                "the removed item sits inside the list: {merged}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_markup_only_edit_in_a_one_item_list_is_visible_to_the_reader() {
+        // The tint landed on the <ul>, where sanitize strips it, leaving a copy
+        // with no mark at all while has_tints still claimed one — so the gate
+        // passed a row the reader sees as unchanged.
+        let rows = diff_rows("- **one**", "- one");
+        let merged = merged_of(&rows);
+
+        assert!(
+            marks(&merged) > 0,
+            "the reader sees a mark on the copy shown: {merged}"
+        );
+        assert!(illegible_rows(&rows).is_empty(), "{rows:?}");
+    }
+
+    #[test]
+    fn a_one_row_table_marks_the_row_inside_the_table() {
+        let rows = diff_rows("| a |\n| - |\n| x |", "| a |\n| - |\n| Y |");
+        let merged = merged_of(&rows);
+
+        assert!(illegible_rows(&rows).is_empty(), "{rows:?}");
+        let body = merged.find("<tbody>").expect("a table body");
+        let removed = merged.find("md-removed").expect("the removed row is marked");
+        assert!(removed > body, "the removed row sits in the body: {merged}");
     }
 
     #[test]
