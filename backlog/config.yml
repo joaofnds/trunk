@@ -3,7 +3,7 @@ default_status: "To Do"
 statuses: ["To Do", "Shape", "Build", "Review", "Ship", "Done"]
 labels: ["graph", "review", "diff", "ui", "perf", "a11y", "ci", "release"]
 types: ["bug", "feature", "refactor", "chore", "docs", "spike"]
-definition_of_done: ["just check passes — the full gate, not a narrower tier", "New or changed behavior has a test that fails without the change", "No new suppressions: lint/clippy allows, skipped tests, or check exclusions", "Docs describing the changed behavior are updated (docs/, and .claude/rules/commit-graph.md paths when the graph pipeline changed)", "QA verified by a different session than the implementer (move to In QA; QA moves to Done)"]
+definition_of_done: ["just check passes — the full gate, not a narrower tier", "New or changed behavior has a test that fails without the change", "No new suppressions: lint/clippy allows, skipped tests, or check exclusions", "Docs describing the changed behavior are updated (docs/, and .claude/rules/commit-graph.md paths when the graph pipeline changed)", "Behaviour observed in the running app by a reader who did not write it: a fresh reviewer agent driving the app, or João. A reviewing session that fixes what it finds re-observes and closes the card; only a fix large enough to need its own review goes back to Build."]
 date_format: yyyy-mm-dd
 max_column_width: 20
 default_editor: "nvim"

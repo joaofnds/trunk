@@ -117,11 +117,6 @@ impl SweptRepos {
 pub struct RefVisibilityState(Arc<Mutex<HashMap<String, crate::git::graph_input::RefVisibility>>>);
 
 impl RefVisibilityState {
-    /// A handle the blocking pool can own, mirroring `StoreSlot`.
-    pub fn clone_handle(&self) -> RefVisibilityState {
-        RefVisibilityState(Arc::clone(&self.0))
-    }
-
     pub fn get(&self, path: &str) -> crate::git::graph_input::RefVisibility {
         self.0
             .lock()
