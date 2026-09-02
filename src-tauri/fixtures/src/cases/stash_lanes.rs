@@ -244,6 +244,9 @@ fn build_15_backdated_stash(out: &Path) {
 
 fn build_16_bare_repo(out: &Path) {
     let source = out.join("stash-lanes").join(".16-source");
+    if source.exists() {
+        std::fs::remove_dir_all(&source).expect("remove a previous run's clone source");
+    }
     let mut repo = Repo::init(&source, "main", QA);
     repo.config("commit.gpgsign", "false");
     echo(&mut repo, "notes.txt", "notes v1");

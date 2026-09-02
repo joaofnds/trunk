@@ -19,5 +19,8 @@ mutants.out.old
 .vscode
 .boris/
 
+# The fixture corpus, build output of src-tauri/fixtures (just fixtures)
+/repos
+
 # The measurement bridge writes its per-run token here (just measure)
 scripts/measure/.bridge-token.txt

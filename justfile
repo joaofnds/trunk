@@ -208,6 +208,16 @@ graph-svg fixture="":
 graph-sweep *args="--run":
     python3 scripts/graph-mutation-sweep.py {{args}}
 
+# ── Fixtures ─────────────────────────────────────────
+
+# Build the fixture corpus into repos/ (every case, or the ones whose name contains an argument: `just fixtures nested`)
+fixtures *cases:
+    cargo run --quiet --manifest-path {{manifest}} -p trunk-fixtures -- build {{cases}}
+
+# List the cases and what each one proves
+fixtures-list:
+    cargo run --quiet --manifest-path {{manifest}} -p trunk-fixtures -- list
+
 # ── Benchmarks ───────────────────────────────────────
 
 # Run all benchmarks

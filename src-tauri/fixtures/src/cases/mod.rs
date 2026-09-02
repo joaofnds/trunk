@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub mod commit_message;
 pub mod diff_scenarios;
@@ -26,13 +26,22 @@ pub struct Case {
 pub const CASES: &[Case] = &[
     commit_message::CASE,
     diff_scenarios::CASE,
+    staging_ignore_ws::CASE,
     graph_lanes::CASE,
     graph_merges::CASE,
-    kitchen_sink::CASE,
-    merge_conflict::CASE,
-    nested_conflict::CASE,
-    remote_branch::CASE,
-    rendered_markdown::CASE,
-    staging_ignore_ws::CASE,
     stash_lanes::CASE,
+    remote_branch::CASE,
+    merge_conflict::CASE,
+    kitchen_sink::CASE,
+    nested_conflict::CASE,
+    rendered_markdown::CASE,
 ];
+
+/// Where `fixtures build` lands without `--out`: `repos/` at the repository root.
+pub fn default_out() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("the crate lives two levels below the repository root")
+        .join("repos")
+}
