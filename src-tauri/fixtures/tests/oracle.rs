@@ -108,3 +108,8 @@ fn remote_branch_matches_its_oracle() {
 fn merge_conflict_matches_its_oracle() {
     assert_matches_oracle("08-merge-conflict");
 }
+
+#[test]
+fn kitchen_sink_matches_its_oracle() {
+    assert_matches_oracle("09-kitchen-sink");
+}
