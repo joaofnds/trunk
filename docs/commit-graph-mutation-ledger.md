@@ -90,7 +90,7 @@ honest.
 | 22 | placement.rs | unclaimed-parent resize | `                        active_lanes.resize(col + 1, None);` → `                        active_lanes.resize(col - 1, None);` | SURVIVES | 2026-08-12 |
 | 23 | placement.rs | unclaimed-parent resize | `                        active_lanes.resize(col + 1, None);` → `                        active_lanes.resize(col * 1, None);` | SURVIVES | 2026-08-12 |
 | 24 | placement.rs | secondary-parent min_col | `                    let min_col = if !head_chain.is_empty() { 1 } else { 0 };` → `                    let min_col = if head_chain.is_empty() { 1 } else { 0 };` | killed | 2026-08-12 |
-| 25 | placement.rs | secondary-parent colour | `                    lane_colors.insert(c, next_color);⏎                    next_color += 1;` → `                    lane_colors.insert(c, next_color);⏎                    next_color *= 1;` | killed | 2026-08-12 |
+| 25 | placement.rs | open_lane colour advance | `    lane_colors.insert(col, *next_color);⏎    *next_color += 1;` → `    lane_colors.insert(col, *next_color);⏎    *next_color *= 1;` | killed | 2026-09-02 |
 | 26 | placement.rs | merge ladder | `                    if parent_col < col {` → `                    if parent_col == col {` | killed | 2026-08-12 |
 | 27 | placement.rs | merge ladder | `                    if parent_col < col {` → `                    if parent_col > col {` | killed | 2026-08-12 |
 | 28 | placement.rs | merge ladder | `                    if parent_col < col {` → `                    if parent_col <= col {` | killed | 2026-08-12 |
