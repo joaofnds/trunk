@@ -396,7 +396,7 @@ export async function clearCommitDraft(path: string): Promise<void> {
 	await setPref(COMMIT_DRAFTS_KEY, rest);
 }
 
-// Periodic background fetch interval. 0 disables. Default 5 min.
+// Periodic background fetch interval. 0 disables. Default 1 min.
 const FETCH_INTERVAL_KEY = "fetch_interval_ms";
 const DEFAULT_FETCH_INTERVAL_MS = 60 * 1000;
 

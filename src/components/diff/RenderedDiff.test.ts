@@ -974,6 +974,80 @@ describe("RenderedDiff", () => {
 		}
 	});
 
+	it("keeps the rendered blocks on screen while a refresh refetch is in flight", async () => {
+		const pending: { release?: (value: unknown) => void } = {};
+		safeInvoke.mockResolvedValueOnce({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+
+			// The refetch never resolves, so what is on screen after this is what
+			// the reader looks at for as long as the round trip takes.
+			safeInvoke.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						pending.release = resolve;
+					}),
+			);
+			props.refreshToken = 1;
+			flushSync();
+
+			// Emptying the pane here collapses its scroller, and a scroller with
+			// no content is clamped to the top (TRUNK-127).
+			expect(screen.getByText("alpha")).toBeTruthy();
+		} finally {
+			pending.release?.({ whitespaceOnly: false, rows: [] });
+			await unmount(app);
+			target.remove();
+		}
+	});
+
+	it("issues no refetch on a refresh bump when both revs are commits", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({
+			...baseProps,
+			diffKind: "commit" as const,
+			commitOid: "cafe",
+			commitDetail: { parent_oids: ["babe"] } as never,
+			refreshToken: 0,
+		});
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+			const before = safeInvoke.mock.calls.length;
+
+			props.refreshToken = 1;
+			flushSync();
+
+			// Two fixed revs: no write to the repo can change this diff.
+			expect(safeInvoke.mock.calls.length).toBe(before);
+
+			// The reader opening another file in the same commit is a different
+			// request, and still fetches.
+			props.selectedPath = "OTHER.md";
+			flushSync();
+			expect(safeInvoke.mock.calls.length).toBe(before + 1);
+		} finally {
+			await unmount(app);
+			target.remove();
+		}
+	});
+
 	it("does not refetch when a layout-only prop changes and refreshToken holds", async () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,

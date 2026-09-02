@@ -1,3 +1,4 @@
+import { flushSync } from "svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
@@ -21,6 +22,35 @@ const EDITED_MARKDOWN: RepoSpec = {
 		},
 	],
 };
+
+/** Two commits that both touch markdown, so a rendered diff between them is a
+ *  commit-to-commit diff: two fixed revs. A second file gives the reader
+ *  somewhere else to go without leaving the commit. */
+const TWO_MARKDOWN_COMMITS: RepoSpec = {
+	steps: [
+		{ step: "file", path: "doc.md", content: "# Title\n\nfirst paragraph\n" },
+		{ step: "file", path: "other.md", content: "# Other\n\nother first\n" },
+		{ step: "commit", message: "base" },
+		{
+			step: "file",
+			path: "doc.md",
+			content: "# Title\n\nfirst paragraph\n\nsecond paragraph\n",
+		},
+		{
+			step: "file",
+			path: "other.md",
+			content: "# Other\n\nother first\n\nother second\n",
+		},
+		{ step: "commit", message: "edit the doc" },
+	],
+};
+
+/** How many times the rendered view has asked the backend for a diff. The
+ *  count, not the content, is what says whether a refetch happened. */
+function renders(app: { invokes(): readonly { cmd: string }[] }): number {
+	return app.invokes().filter(({ cmd }) => cmd === "render_markdown_diff")
+		.length;
+}
 
 describe("the rendered markdown diff", () => {
 	afterEach(teardown);
@@ -306,5 +336,103 @@ describe("the rendered markdown diff", () => {
 		expect(app.diffPane.renderedWordAdded()).toEqual(["new"]);
 		expect(app.diffPane.renderedRemoved()).toEqual([]);
 		expect(app.diffPane.renderedAdded()).toEqual([]);
+	});
+
+	it("keeps its blocks on screen while a repo-change refetch is in flight", async () => {
+		const app = await setup({ repo: EDITED_MARKDOWN });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.addedLines().includes("fresh paragraph") ? true : null,
+		);
+		await app.diffPane.showRendered();
+		await waitFor("the green rendered block", () =>
+			app.diffPane.renderedAdded().length > 0 ? true : null,
+		);
+		await app.settled();
+
+		await app.events.externalChange(app.repo.path);
+		await app.elapse();
+		flushSync();
+
+		// The refetch's reply needs a host round trip, which has not happened
+		// yet: this is the pane mid-refetch. A pane that empties here collapses
+		// its scroller, and WebKit clamps the scroll position to the top.
+		expect(app.diffPane.renderedAdded()).toEqual(["fresh paragraph"]);
+		expect(app.diffPane.renderedRemoved()).toEqual(["doomed paragraph"]);
+	});
+
+	it("issues no refetch on a repo change when both revs are commits", async () => {
+		const app = await setup({ repo: TWO_MARKDOWN_COMMITS });
+		await app.repo.open();
+		await app.repo.selectCommit("edit the doc");
+		await app.repo.openCommitFile("doc.md");
+		await app.settled();
+		await app.diffPane.showRendered();
+		await waitFor("the green rendered block", () =>
+			app.diffPane.renderedAdded().length > 0 ? true : null,
+		);
+		await app.settled();
+		const before = renders(app);
+
+		await app.events.externalChange(app.repo.path);
+		await app.elapse();
+		await app.settled();
+
+		// Two fixed revs: nothing written to the repo can change this diff, so
+		// the round trip the working-tree kinds need is waste here.
+		expect(renders(app)).toBe(before);
+		expect(app.diffPane.renderedAdded()).toEqual(["second paragraph"]);
+	});
+
+	it("still refetches a commit diff when the reader opens another file", async () => {
+		const app = await setup({ repo: TWO_MARKDOWN_COMMITS });
+		await app.repo.open();
+		await app.repo.selectCommit("edit the doc");
+		await app.repo.openCommitFile("doc.md");
+		// Let the panel's stored view preferences land first: they arrive
+		// asynchronously and would otherwise overwrite the toggle underneath.
+		await app.settled();
+		await app.diffPane.showRendered();
+		await waitFor("the green rendered block", () =>
+			app.diffPane.renderedAdded().length > 0 ? true : null,
+		);
+		await app.settled();
+
+		await app.repo.openCommitFile("other.md");
+
+		// The revs are fixed; the file is not. Skipping this fetch would leave
+		// the reader looking at the previous file's diff.
+		await expect(
+			waitFor("the other file's rendered block", () => {
+				const blocks = app.diffPane.renderedAdded();
+				return blocks.includes("other second") ? blocks : null;
+			}),
+		).resolves.toEqual(["other second"]);
+	});
+
+	it("still refetches an unstaged diff on a repo change", async () => {
+		const app = await setup({ repo: EDITED_MARKDOWN });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.addedLines().includes("fresh paragraph") ? true : null,
+		);
+		await app.diffPane.showRendered();
+		await waitFor("the green rendered block", () =>
+			app.diffPane.renderedAdded().length > 0 ? true : null,
+		);
+		await app.settled();
+		const before = renders(app);
+
+		await app.events.externalChange(app.repo.path);
+		await app.elapse();
+		await app.settled();
+
+		// The working tree is what changed on disk, so this diff can differ from
+		// what is on screen and has to be re-read.
+		expect(renders(app)).toBeGreaterThan(before);
 	});
 });

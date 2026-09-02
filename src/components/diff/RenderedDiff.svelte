@@ -120,6 +120,11 @@ let state = $state<LoadState>({ kind: "loading" });
 // while a fetch is in flight lets the slower stale request clobber the fresh one.
 let seq = 0;
 
+// The request the rows on screen were fetched for. A re-run whose request is
+// unchanged is the refresh token firing, which only the working-tree kinds
+// need to act on. Plain state, not `$state`: only the effect reads it.
+let fetched: string | null = null;
+
 const parentOid = $derived(commitDetail?.parent_oids[0] ?? null);
 
 $effect(() => {
@@ -137,7 +142,32 @@ $effect(() => {
 	// it re-runs this effect so the same fetch re-executes against fresh disk.
 	void refreshToken;
 
-	state = { kind: "loading" };
+	// What this run would ask the backend for. Two runs with the same request
+	// differ only in the refresh token, which is the on-disk-changed signal.
+	const request = JSON.stringify([repo, path, kind, oid, parent, ignoreWs]);
+
+	// Read untracked: this effect writes both, so tracking them here would make
+	// every fetch re-run the effect that issued it.
+	const { showing, lastRequest } = untrack(() => ({
+		showing: state.kind,
+		lastRequest: fetched,
+	}));
+
+	// A diff between two commits is two fixed revs, so nothing written to the
+	// repo can change its answer. Only a repeat of the same request is skipped:
+	// a reader switching file or commit changes the request and still refetches.
+	// Trunk's own background fetch rewrites FETCH_HEAD about once a minute, so
+	// without this an idle commit view refetches on that timer for nothing.
+	if (kind === "commit" && showing === "rows" && request === lastRequest)
+		return;
+	fetched = request;
+
+	// Hold the rows already on screen while the replacement is in flight. The
+	// placeholder empties the scroller, and a scroller with no content is
+	// clamped to the top — which is the rendered preview jumping to the top of
+	// the document on every repo change (TRUNK-127). Only a pane with nothing to
+	// show yet shows the placeholder.
+	if (showing !== "rows") state = { kind: "loading" };
 	renderMarkdownDiff(
 		repo,
 		path,
