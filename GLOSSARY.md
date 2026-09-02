@@ -30,6 +30,12 @@ is a linear continuation of it; a diverged branch is not.
 ref that is not that branch's configured upstream is not its tracking pair, however similar
 the name.
 
+**Hidden ref** — a ref the user has switched off in the sidebar. It leaves the graph the way GitKraken hides it: its pill goes, and so does every commit reachable only through hidden refs, so the remaining history is laid out and coloured as if the ref did not exist. The repository is untouched. HEAD's own branch cannot be hidden, because column 0, the WIP row and the head-lane extension assume it is in the walk (João, 2026-09-02).
+
+**Ref visibility** — the per-repository set of hidden refs, kept in the preferences file and restored when the repository opens. Anything the sidebar lists can be in it: a local branch, a remote branch, a whole remote, a tag, a stash, or a whole sidebar section.
+
+**Solo** — GitKraken's inverse of hide: show only the soloed refs. Not built; a follow-up card if wanted.
+
 ## Commit graph testing
 
 **Fixture repository** — a git repository built from scratch by a generator, with pinned
