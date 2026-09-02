@@ -88,3 +88,8 @@ fn graph_lanes_matches_its_oracle() {
 fn graph_merges_matches_its_oracle() {
     assert_matches_oracle("05-graph-merges");
 }
+
+#[test]
+fn commit_message_matches_its_oracle() {
+    assert_matches_oracle("01-commit-message");
+}

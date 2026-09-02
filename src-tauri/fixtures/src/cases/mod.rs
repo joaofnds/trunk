@@ -1,5 +1,6 @@
 use std::path::Path;
 
+pub mod commit_message;
 pub mod graph_lanes;
 pub mod graph_merges;
 pub mod stash_lanes;
@@ -15,4 +16,9 @@ pub struct Case {
 }
 
 /// The catalogue, in case order. There is no discovery: a case exists when it is here.
-pub const CASES: &[Case] = &[graph_lanes::CASE, graph_merges::CASE, stash_lanes::CASE];
+pub const CASES: &[Case] = &[
+    commit_message::CASE,
+    graph_lanes::CASE,
+    graph_merges::CASE,
+    stash_lanes::CASE,
+];
