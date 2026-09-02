@@ -43,10 +43,9 @@ describe("each test", () => {
 		await app.staging.stageEverything();
 
 		await app.staging.commit("From the first test");
-		await app.elapse();
 
 		await expect(
-			waitFor("the new commit", () => {
+			app.elapseUntil("the new commit", () => {
 				const rows = app.repo.commitRows();
 				return rows.includes("From the first test") ? rows : null;
 			}),

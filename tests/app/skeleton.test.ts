@@ -94,9 +94,8 @@ describe("the application", () => {
 
 		writeFileSync(join(app.repo.path, "e.txt"), "e");
 		await app.events.externalChange(app.repo.path);
-		await app.elapse();
 
-		const rows = await waitFor("the refreshed graph", () => {
+		const rows = await app.elapseUntil("the refreshed graph", () => {
 			const rows = app.repo.commitRows();
 			return rows.length > COMMIT_COUNT ? rows : null;
 		});
@@ -127,10 +126,9 @@ describe("the application", () => {
 		await app.staging.stageEverything();
 
 		await app.staging.commit("Add b");
-		await app.elapse();
 
 		await expect(
-			waitFor("the new commit", () => {
+			app.elapseUntil("the new commit", () => {
 				const rows = app.repo.commitRows();
 				return rows.includes("Add b") ? rows : null;
 			}),

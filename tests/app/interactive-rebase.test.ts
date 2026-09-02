@@ -77,9 +77,8 @@ describe("an interactive rebase", () => {
 		const refreshesBefore = app.refreshes();
 
 		await app.rebaseEditor.start();
-		await app.elapse();
 
-		await waitFor("the graph the rebase refetched", () =>
+		await app.elapseUntil("the graph the rebase refetched", () =>
 			app.refreshes() > refreshesBefore && app.repo.commitRows().length === 4
 				? true
 				: null,
