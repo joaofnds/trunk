@@ -129,7 +129,6 @@ function createMockUndoRedo(): UndoRedoManager {
 		state: { redoStack: [] },
 		push: vi.fn(),
 		pop: vi.fn(),
-		clear: vi.fn(),
 	};
 }
 

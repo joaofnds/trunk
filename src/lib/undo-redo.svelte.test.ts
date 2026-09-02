@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createUndoRedoState, type UndoEntry } from "./undo-redo.svelte.js";
 
-/** These tests are about stack behaviour, so the position an entry belongs on
- *  only has to be present and distinct, not meaningful. */
+/** These tests are about stack behaviour, so the position and repository an
+ *  entry belongs to only have to be present and distinct, not meaningful. */
 function entry(subject: string, body: string | null = null): UndoEntry {
-	return { subject, body, headOid: `oid-${subject}` };
+	return { subject, body, headOid: `oid-${subject}`, repoPath: "/repo" };
 }
 
 describe("createUndoRedoState", () => {
@@ -30,15 +30,6 @@ describe("createUndoRedoState", () => {
 	it("pop returns undefined on empty stack", () => {
 		const mgr = createUndoRedoState();
 		expect(mgr.pop()).toBeUndefined();
-	});
-
-	it("clear empties the stack", () => {
-		const mgr = createUndoRedoState();
-		mgr.push(entry("a"));
-		mgr.push(entry("b"));
-		mgr.push(entry("c"));
-		mgr.clear();
-		expect(mgr.state.redoStack).toHaveLength(0);
 	});
 
 	it("instances are independent", () => {

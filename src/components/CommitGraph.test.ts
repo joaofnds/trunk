@@ -188,7 +188,6 @@ describe("CommitGraph", () => {
 		const { container } = render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 				tabActive: true,
 			},
 		});
@@ -199,7 +198,6 @@ describe("CommitGraph", () => {
 		render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 				tabActive: true,
 			},
 		});
@@ -217,7 +215,6 @@ describe("CommitGraph", () => {
 		render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 				tabActive: true,
 			},
 		});
@@ -231,7 +228,6 @@ describe("CommitGraph", () => {
 		render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 				tabActive: true,
 			},
 		});
@@ -243,7 +239,6 @@ describe("CommitGraph", () => {
 		const { container } = render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 				tabActive: true,
 			},
 		});
@@ -254,7 +249,6 @@ describe("CommitGraph", () => {
 		render(CommitGraph, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 				tabActive: true,
 			},
 		});
@@ -312,7 +306,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 				},
 			});
@@ -343,7 +336,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -381,7 +373,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -409,7 +400,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -444,7 +434,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -472,7 +461,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 					onopenmessageeditor,
 				},
@@ -512,14 +500,12 @@ describe("CommitGraph", () => {
 			const first = render(CommitGraph, {
 				props: {
 					repoPath: "/repo/a",
-					clearRedoStack: vi.fn(),
 					tabActive: false,
 				},
 			});
 			const second = render(CommitGraph, {
 				props: {
 					repoPath: "/repo/b",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 				},
 			});
@@ -587,7 +573,6 @@ describe("CommitGraph", () => {
 			return render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 				},
 			});
@@ -643,7 +628,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 				},
 			});
@@ -662,7 +646,6 @@ describe("CommitGraph", () => {
 	describe("out-of-order refreshes", () => {
 		const props = (refreshSignal: number) => ({
 			repoPath: "/test/repo",
-			clearRedoStack: vi.fn(),
 			tabActive: true,
 			refreshSignal,
 		});
@@ -741,7 +724,6 @@ describe("CommitGraph", () => {
 			render(CommitGraph, {
 				props: {
 					repoPath: "/test/repo",
-					clearRedoStack: vi.fn(),
 					tabActive: true,
 				},
 			});

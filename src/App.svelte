@@ -241,9 +241,6 @@ function openRepoInTab(tabId: string, path: string, name: string) {
 
 	const tab = tabs.find((t) => t.id === tabId);
 	if (tab) {
-		// The pending redo carries the outgoing repo's commit message; replayed
-		// against the incoming one it commits that message here.
-		getOrCreateTabState(tabId).undoRedo.clear();
 		tab.repoPath = path;
 		tab.repoName = name;
 		persistTabs();

@@ -1383,7 +1383,7 @@ function startRightResize(e: MouseEvent) {
             : handleDiffClose}
         />
       {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} clearRedoStack={undoRedo.clear} {tabActive} {showInlineComments} {reviewComments} {compareOids} />
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} {tabActive} {showInlineComments} {reviewComments} {compareOids} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1436,7 +1436,6 @@ function startRightResize(e: MouseEvent) {
           selectedPath={selectedFile?.path ?? null}
           selectedKind={selectedFile?.kind ?? null}
           onstatuschange={(s) => { cachedStatus = s; }}
-          clearRedoStack={undoRedo.clear}
           {treeViewEnabled}
           ontreeviewtoggle={handleTreeViewToggle}
           onopenmessageeditor={handleOpenMessageEditor}

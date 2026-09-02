@@ -94,7 +94,10 @@ let pendingRedo = $derived(
 	undoRedo.state.redoStack[undoRedo.state.redoStack.length - 1] ?? null,
 );
 let canRedo = $derived(
-	pendingRedo !== null && headOid !== null && pendingRedo.headOid === headOid,
+	pendingRedo !== null &&
+		headOid !== null &&
+		pendingRedo.headOid === headOid &&
+		pendingRedo.repoPath === repoPath,
 );
 
 async function checkUndoAvailable() {
@@ -142,6 +145,7 @@ async function handleUndo() {
 			subject: result.subject,
 			body: result.body,
 			headOid: result.head_oid,
+			repoPath,
 		});
 		headOid = result.head_oid;
 	} catch (e) {

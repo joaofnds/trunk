@@ -102,7 +102,6 @@ interface Props {
 		defaultValue: string,
 		title: string,
 	) => Promise<string | null>;
-	clearRedoStack: () => void;
 	/** Whether this graph's tab is the active one. Every tab stays mounted, so the
 	 *  window-global search-toggle event reaches all of them. */
 	tabActive: boolean;
@@ -125,7 +124,6 @@ let {
 	compareOids = new Set<string>(),
 	onopenrebaseeditor,
 	onopenmessageeditor,
-	clearRedoStack,
 	tabActive,
 	showInlineComments = false,
 	reviewComments,
@@ -526,7 +524,6 @@ function handleCreateTag(commit: GraphCommit) {
 }
 
 async function handleCherryPick(commit: GraphCommit) {
-	clearRedoStack();
 	try {
 		await safeInvoke("cherry_pick", { path: repoPath, oid: commit.oid });
 	} catch (e) {
@@ -539,7 +536,6 @@ async function handleCherryPick(commit: GraphCommit) {
 }
 
 async function handleRevert(commit: GraphCommit) {
-	clearRedoStack();
 	try {
 		// Two-step: begin stages the revert and emits repo-changed, then the user
 		// edits the message in the host MessageEditor. A null return (cancel/empty)

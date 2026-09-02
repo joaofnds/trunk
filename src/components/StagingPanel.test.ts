@@ -89,7 +89,6 @@ describe("StagingPanel", () => {
 		const { container } = render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		expect(container).toBeTruthy();
@@ -99,7 +98,6 @@ describe("StagingPanel", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		// Header shows "{totalCount} file(s) changed" — 1 unstaged + 1 staged = 2
@@ -112,7 +110,6 @@ describe("StagingPanel", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 
@@ -127,7 +124,6 @@ describe("StagingPanel", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		// Section header: "Unstaged Files" label + count badge
@@ -141,7 +137,6 @@ describe("StagingPanel", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/test/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		// Section header: "Staged Files" label + count badge
@@ -156,7 +151,6 @@ describe("StagingPanel", () => {
 			props: {
 				repoPath: "/test/repo",
 				currentBranch: "feature/test",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		await waitFor(() => {
@@ -168,7 +162,6 @@ describe("StagingPanel", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/my/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		await waitFor(() => {
@@ -214,7 +207,6 @@ describe("StagingPanel merge-continue", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/repo",
-				clearRedoStack: vi.fn(),
 				onopenmessageeditor,
 			},
 		});
@@ -244,7 +236,6 @@ describe("StagingPanel merge-continue", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/repo",
-				clearRedoStack: vi.fn(),
 				onopenmessageeditor,
 			},
 		});
@@ -265,7 +256,6 @@ describe("StagingPanel merge-continue", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		await screen.findByText("Commit merge");
@@ -277,7 +267,6 @@ describe("StagingPanel merge-continue", () => {
 		render(StagingPanel, {
 			props: {
 				repoPath: "/repo",
-				clearRedoStack: vi.fn(),
 			},
 		});
 		expect(await screen.findByText("Abort Merge")).toBeInTheDocument();

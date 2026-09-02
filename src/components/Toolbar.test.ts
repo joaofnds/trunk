@@ -1,5 +1,6 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { safeInvoke } from "../lib/invoke.js";
 import {
@@ -170,7 +171,7 @@ describe("Toolbar", () => {
 		);
 		const undoRedo = makeUndoRedo();
 		undoRedo.state.redoStack = [
-			{ subject: "C2", body: null, headOid: "abc123" },
+			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/test/repo" },
 		];
 
 		render(Toolbar, {
@@ -193,7 +194,7 @@ describe("Toolbar", () => {
 		);
 		const undoRedo = makeUndoRedo();
 		undoRedo.state.redoStack = [
-			{ subject: "C2", body: null, headOid: "abc123" },
+			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/test/repo" },
 		];
 
 		render(Toolbar, {
@@ -208,6 +209,38 @@ describe("Toolbar", () => {
 		await waitFor(() =>
 			expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled(),
 		);
+	});
+
+	// A tab can be pointed at another repository without remounting, and two
+	// clones share every oid. Position alone would call that a match and commit
+	// the outgoing repository's message into the incoming one.
+	it("withholds Redo in a different repository sitting at the same commit", async () => {
+		vi.mocked(safeInvoke).mockImplementation(async (cmd: string) =>
+			cmd === "head_oid" ? "abc123" : false,
+		);
+		const undoRedo = makeUndoRedo();
+		undoRedo.state.redoStack = [
+			{ subject: "C2", body: null, headOid: "abc123", repoPath: "/a/clone" },
+		];
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/another/clone",
+				remoteState: makeRemoteState(),
+				undoRedo,
+				reviewActive: false,
+			},
+		});
+
+		// Redo starts disabled and the poll is what could turn it on, so waiting
+		// for the answer to land is what makes this assertion mean anything.
+		await waitFor(() =>
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("head_oid", {
+				path: "/another/clone",
+			}),
+		);
+		await tick();
+		expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
 	});
 
 	it("emits review-toggle on click", async () => {

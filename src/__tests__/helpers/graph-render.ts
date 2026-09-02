@@ -136,7 +136,6 @@ async function renderGraph(fixture: LayoutExport, wipCount: number) {
 		props: {
 			repoPath: "/fixture",
 			wipCount,
-			clearRedoStack: () => {},
 			tabActive: true,
 		},
 	});

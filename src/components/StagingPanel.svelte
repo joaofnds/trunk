@@ -46,7 +46,6 @@ interface Props {
 	selectedPath?: string | null;
 	selectedKind?: "unstaged" | "staged" | "conflicted" | null;
 	onstatuschange?: (status: WorkingTreeStatus) => void;
-	clearRedoStack: () => void;
 	treeViewEnabled?: boolean;
 	ontreeviewtoggle?: () => void;
 	// Threaded from RepoView (76-03); consumed by the merge-continue / revert
@@ -75,7 +74,6 @@ let {
 	selectedPath = null,
 	selectedKind = null,
 	onstatuschange,
-	clearRedoStack,
 	treeViewEnabled = false,
 	ontreeviewtoggle,
 	onopenmessageeditor,
@@ -1411,6 +1409,6 @@ $effect(() => {
     </div>
   {:else}
     <!-- CommitForm — normal mode -->
-    <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} {initialSubject} {initialBody} {onsubjectchange} {onbodychange} {clearRedoStack} />
+    <CommitForm {repoPath} stagedCount={status?.staged.length ?? 0} {initialSubject} {initialBody} {onsubjectchange} {onbodychange} />
   {/if}
 </div>

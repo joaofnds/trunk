@@ -12,7 +12,6 @@ interface Props {
 	initialBody?: string;
 	onsubjectchange?: (value: string) => void;
 	onbodychange?: (value: string) => void;
-	clearRedoStack: () => void;
 }
 
 let {
@@ -22,7 +21,6 @@ let {
 	initialBody,
 	onsubjectchange,
 	onbodychange,
-	clearRedoStack,
 }: Props = $props();
 
 let draftSubject = $state(untrack(() => initialSubject) ?? "");
@@ -135,11 +133,6 @@ async function handleSubmit() {
 	if (mode !== "amend" && stagedCount === 0) {
 		stagedError = "No files staged";
 		return;
-	}
-
-	// clearRedoStack only for commit/amend (modifies history), not stash
-	if (mode !== "stash") {
-		clearRedoStack();
 	}
 
 	committing = true;

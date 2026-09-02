@@ -20,7 +20,6 @@ describe("CommitForm", () => {
 	const defaultProps = {
 		repoPath: "/repo",
 		stagedCount: 1,
-		clearRedoStack: vi.fn(),
 	};
 
 	it("renders Commit button in commit mode", () => {
