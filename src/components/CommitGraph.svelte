@@ -1429,6 +1429,25 @@ export async function scrollToOid(oid: string): Promise<void> {
 	}
 }
 
+/** Replaces the graph with a freshly laid-out first page, as a rebuild or a
+ *  visibility change returns it. Any refresh still in flight is older than this
+ *  page and is dropped when it lands. */
+export function showGraph(response: GraphResponse): void {
+	refreshSeq += 1;
+	// Swap data atomically -- old data stays visible until this assignment
+	commits = response.commits;
+	maxColumns = response.max_columns;
+	updateContentWidths(response.commits, true);
+	offset = response.commits.length;
+	hasMore = response.commits.length >= BATCH;
+	error = null;
+	// Drop stale per-oid stats (amend/rebase may have rewritten oids) and
+	// refetch the now-current first page + the WIP row.
+	commitStats = new Map();
+	void fetchPageStats(0);
+	void fetchWipStats();
+}
+
 async function refresh() {
 	const seq = ++refreshSeq;
 	try {
@@ -1436,18 +1455,7 @@ async function refresh() {
 			path: repoPath,
 		});
 		if (seq !== refreshSeq) return;
-		// Swap data atomically -- old data stays visible until this assignment
-		commits = response.commits;
-		maxColumns = response.max_columns;
-		updateContentWidths(response.commits, true);
-		offset = response.commits.length;
-		hasMore = response.commits.length >= BATCH;
-		error = null;
-		// Drop stale per-oid stats (amend/rebase may have rewritten oids) and
-		// refetch the now-current first page + the WIP row.
-		commitStats = new Map();
-		void fetchPageStats(0);
-		void fetchWipStats();
+		showGraph(response);
 		await loadStashMap();
 	} catch (e) {
 		if (seq !== refreshSeq) return;

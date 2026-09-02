@@ -82,6 +82,36 @@ describe("ref visibility", () => {
 		expect(app.repo.refPills()).toContain("topic");
 	});
 
+	// TRUNK-129: the toggle command already returns the re-laid-out first page, so the
+	// graph takes it from there. A second walk, or a refs or stash re-list, is the latency
+	// the user saw as a toggle that had not taken.
+	it("re-lays out the graph from the toggle's own response, without walking again", async () => {
+		const app = await setup({ repo: DIVERGED });
+		await app.repo.open();
+		await waitFor("the topic pill", () =>
+			app.repo.refPills().includes("topic") ? true : null,
+		);
+		await app.settled();
+		const issuedBefore = app.invokes().length;
+
+		await app.branches.toggleVisibility("topic");
+		await app.elapseUntil("the topic commits to leave the graph", () =>
+			app.repo.commitRows().join("\n").includes("Topic two") ? null : true,
+		);
+		await app.settled();
+
+		const issued = app
+			.invokes()
+			.slice(issuedBefore)
+			.map(({ cmd }) => cmd);
+		expect(issued.filter((cmd) => cmd === "set_ref_visibility")).toHaveLength(
+			1,
+		);
+		expect(issued).not.toContain("refresh_commit_graph");
+		expect(issued).not.toContain("list_refs");
+		expect(issued).not.toContain("list_stashes");
+	});
+
 	// Acceptance #5: HEAD's branch offers no toggle and survives its section being hidden.
 	it("offers no toggle on HEAD's branch and keeps it visible", async () => {
 		const app = await setup({ repo: DIVERGED });

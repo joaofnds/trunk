@@ -25,7 +25,12 @@ import {
 } from "../lib/ref-visibility.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { RefLabel, RefsResponse, StashEntry } from "../lib/types.js";
+import type {
+	GraphResponse,
+	RefLabel,
+	RefsResponse,
+	StashEntry,
+} from "../lib/types.js";
 import BranchRow from "./BranchRow.svelte";
 import BranchSection from "./BranchSection.svelte";
 import InputDialog from "./InputDialog.svelte";
@@ -35,6 +40,8 @@ import VisibilityIcon from "./VisibilityIcon.svelte";
 interface Props {
 	repoPath: string;
 	onrefreshed?: () => void;
+	/** The graph as the backend re-laid it out after a visibility change. */
+	onvisibilitychanged?: (graph: GraphResponse) => void;
 	onstashselect?: (oid: string) => void;
 	onrefnavigate?: (refNameOrOid: string) => void;
 	refreshSignal?: number;
@@ -49,6 +56,7 @@ interface Props {
 let {
 	repoPath,
 	onrefreshed,
+	onvisibilitychanged,
 	onstashselect,
 	onrefnavigate,
 	refreshSignal,
@@ -99,16 +107,33 @@ function refLabel(
 }
 
 /**
- * Store the new hidden set, push it to the backend, and let the parent redraw.
+ * Push the new hidden set to the backend and hand the parent the graph it returns.
  *
  * The backend rebuilds the graph from the pushed set and caches it, so every later
- * rebuild keeps the same refs hidden without the frontend resending anything.
+ * rebuild keeps the same refs hidden without the frontend resending anything. The
+ * set is saved to prefs only after the graph has changed: the save is not on the
+ * path between the click and the graph.
  */
 async function applyVisibility(next: RefVisibility) {
 	visibility = next;
-	await setRefVisibility(repoPath, next);
-	await safeInvoke("set_ref_visibility", { path: repoPath, visibility: next });
-	onrefreshed?.();
+	await pushVisibility(repoPath, next);
+	await saveVisibility(next);
+}
+
+async function pushVisibility(path: string, next: RefVisibility) {
+	const graph = await safeInvoke<GraphResponse>("set_ref_visibility", {
+		path,
+		visibility: next,
+	});
+	onvisibilitychanged?.(graph);
+}
+
+async function saveVisibility(next: RefVisibility) {
+	try {
+		await setRefVisibility(repoPath, next);
+	} catch {
+		showToast("Could not save which refs are hidden", "error");
+	}
 }
 
 async function loadVisibility(path: string) {
@@ -116,13 +141,7 @@ async function loadVisibility(path: string) {
 	visibility = stored;
 	// Opening a repository walks with everything visible, so a repo with a stored set
 	// needs it pushed before its first graph is drawn.
-	if (!hidesNothing(stored)) {
-		await safeInvoke("set_ref_visibility", {
-			path,
-			visibility: stored,
-		});
-		onrefreshed?.();
-	}
+	if (!hidesNothing(stored)) await pushVisibility(path, stored);
 }
 
 let filteredLocal = $derived(
