@@ -51,14 +51,15 @@ re-try them.
 
 ## Wall-clock waits inside scenarios
 
-`settle()` costs a minimum of 250 ms per call and is a fallback, not a default: it exists
-for negative assertions ("nothing else refetched") that have no state to wait for. A
-scenario that reaches for it when a `waitFor` on real state would do donates wall time to
-the suite's slowest file.
+The app harness used to offer `settle()`, a 250 ms quiet window sized to outlast RepoView's
+200 ms `repo-changed` debounce. It cost that window on every call, and nothing tied the two
+numbers together: raising the debounce would have made every caller assert early. TRUNK-110
+replaced it with a frozen scheduler the tests advance themselves (`docs/application-harness.md`
+§Writing a scenario), so a debounced refresh costs a flush instead of a window.
 
-**Rule:** wait on observable state; reach for `settle()` only when the assertion is a
-negative. (The testing skill's sleep-based-waits ban is the general form; this is its cost
-in this suite.)
+**Rule:** wait on observable state, never on a duration. Where the state comes from a
+debounce, advance the scheduler rather than sizing a window against it. (The testing skill's
+sleep-based-waits ban is the general form; this is its cost in this suite.)
 
 ## Freshly linked binaries pay a first-exec scan (TRUNK-12, 2026-08-31)
 

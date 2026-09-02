@@ -185,15 +185,26 @@ variant on both sides to reach a shape it cannot build yet. Commits are day-spac
 step pins `at`, because the graph sorts `TOPOLOGICAL | TIME` and same-second commits sort
 arbitrarily.
 
-Assert post-event state with `waitFor` rather than sleeping out the 200 ms `repo-changed`
-debounce. `driver.settle()` is the fallback for a negative assertion — "nothing else
-refetched" — which has no state to wait for, and it costs the whole quiet window.
+RepoView debounces `repo-changed` before refetching, and in the harness that debounce runs
+on a frozen `FakeScheduler` installed through `mount`'s context option. No wall-clock window
+outlasts it, so a test advances it deliberately:
+
+- `app.elapse()` waits for a timer to be armed and fires it. Use it after a gesture that
+  produces one `repo-changed` emit.
+- `app.elapseUntil(description, condition)` waits for `condition`, firing timers as they arm.
+  Use it when one user action produces several emits — a revert, an undo, a redo — so the
+  test asserts on the state it wants rather than counting emits it does not control.
+- `app.settled()` runs every refresh out. Use it before a gesture a re-render would disturb:
+  a refresh landing mid-selection discards the selection.
+
+A negative assertion — "nothing else refetched" — reads `app.scheduler.pending` directly:
+nothing armed means nothing was scheduled to happen.
 
 `waitFor`'s 5 000 ms deadline is a safety net, not a budget, and it is not the thing to raise
 when a run goes red. Measured over 448 waits, 336 on a quiet machine and 112 with the CPU
-oversubscribed two to one: the slowest legitimate wait was 849 ms, it was a `settle()` paying
-out its own quiet window, the mean was 51 ms, and none reached one second. Load did not move
-those figures — the loaded suite took 23 s of wall against a 7.4 s median and its slowest wait
+oversubscribed two to one: the slowest legitimate wait was 849 ms, the mean was 51 ms, and
+none reached one second. That slowest wait was the quiet window the harness paid out before
+the fake scheduler replaced it. Load did not move those figures — the loaded suite took 23 s of wall against a 7.4 s median and its slowest wait
 was 801 ms — because a wait is bounded by a round trip, not by the clock. So a wait that
 reaches 5 000 ms is one whose state never arrived, and a longer deadline only makes the same
 failure take longer to report.
@@ -245,7 +256,7 @@ real time. And CI wall time is a different number (the job runs about six minute
 2-core runner, and is not what this budget measures.
 
 The boot count is not the whole marginal cost when a scenario is long. The stopped-rebase
-recovery scenario (TRUNK-41.4) runs two full rebases, an abort and a `settle()`, about 4.5 s
+recovery scenario (TRUNK-41.4) runs two full rebases and an abort, about 4.5 s
 of in-test time, and it moved the suite's wall clock to roughly 9 s: measured 2026-08-31 as an
 8.9 / 9.0 / 9.2 s cluster across six runs on a machine at load average 8, with 16–21 s
 outliers that are the contention, not the suite. A quiet-machine median was not obtainable

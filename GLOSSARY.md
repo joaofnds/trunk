@@ -328,4 +328,6 @@ fall back to the real one when nothing set it, so a plain mount and the unit sui
 Installed through `mount()`'s `context` option before the root mounts, the same shape as the
 transport seam. `flush()` fires whatever is pending now; `elapse()` waits for a timer to be
 armed and then fires it, so a test says "the debounce ran" instead of guessing a quiet
-window. Retires `settle()` and its quiet window.
+window. `elapseUntil()` fires timers while waiting on a condition, for the actions that emit
+`repo-changed` more than once; `settled()` runs every refresh out before a gesture a
+re-render would disturb. Retires `settle()` and its quiet window.
