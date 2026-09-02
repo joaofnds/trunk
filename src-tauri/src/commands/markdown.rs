@@ -3488,14 +3488,14 @@ mod tests {
         assert!(found[0].1.contains("fold"), "{found:?}");
     }
 
-    /// The gate over the fixture corpus: every markdown scenario in
-    /// `trunk-test-cases` diffed through the real pipeline, asserting that a
-    /// reader can see what changed in each.
+    /// The gate over the fixture corpus: every markdown scenario in the
+    /// `02-diff-scenarios` case diffed through the real pipeline, asserting
+    /// that a reader can see what changed in each.
     ///
     /// Scenarios are matched by commit SUBJECT, never by OID. The corpus is
-    /// generated (`./build 02-diff-scenarios`) and re-pinning its dates moves
-    /// every hash while leaving content byte-identical, so an ID-keyed gate
-    /// would go red on an unrelated generator edit.
+    /// generated (`just fixtures 02-diff-scenarios`) and re-pinning its dates
+    /// moves every hash while leaving content byte-identical, so an ID-keyed
+    /// gate would go red on an unrelated generator edit.
     ///
     /// Skips when the corpus is absent — a fresh clone has not built it — and
     /// says so, because a silent skip is a gate that quietly stops gating.
@@ -3504,7 +3504,7 @@ mod tests {
         let Some(repo) = fixture_repo() else {
             eprintln!(
                 "SKIP: fixture corpus absent. Build it with \
-                 `cd ~/code/trunk-test-cases && ./build 02-diff-scenarios`"
+                 `just fixtures 02-diff-scenarios`"
             );
             return;
         };
@@ -3585,10 +3585,12 @@ mod tests {
     /// names its card and the specific violation, never just the scenario.
     const KNOWN_ILLEGIBLE: &[(&str, &str)] = &[];
 
-    /// The built fixture repository, or `None` when it has not been built.
+    /// The built fixture repository under the repository root's `repos/`, or
+    /// `None` when it has not been built.
     fn fixture_repo() -> Option<PathBuf> {
-        let repo = PathBuf::from(std::env::var("HOME").ok()?)
-            .join("code/trunk-test-cases/repos/diff-scenarios");
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()?
+            .join("repos/diff-scenarios");
         repo.join(".git").exists().then_some(repo)
     }
 

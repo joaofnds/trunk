@@ -118,3 +118,8 @@ fn kitchen_sink_matches_its_oracle() {
 fn nested_conflict_matches_its_oracle() {
     assert_matches_oracle("10-nested-conflict");
 }
+
+#[test]
+fn diff_scenarios_matches_its_oracle() {
+    assert_matches_oracle("02-diff-scenarios");
+}
