@@ -45,7 +45,14 @@
         "is_merge": true,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/feature",
+          "short_name": "feature",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "65fc140370cfcb68696a601a4129a0230aeedd79",
@@ -74,7 +81,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/feature",
+          "short_name": "feature",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "5276637a11b8f49fbd87358b989a3bf71f6dd5e4",
@@ -118,7 +132,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
@@ -145,7 +166,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 2

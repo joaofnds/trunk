@@ -37,6 +37,14 @@ pub struct Placement {
     pub edges: Vec<GraphEdge>,
     pub is_branch_tip: bool,
     pub is_stash: bool,
+    /// The commit that claimed this lane, which every row below inherits until the lane
+    /// ends. A column is claimed once, by a tip, and freed for reuse afterwards, so this
+    /// identifies the line of history a row belongs to where the column alone cannot:
+    /// two unrelated branches can hold one column at different rows.
+    ///
+    /// An OID rather than a ref, because the algorithm reads no refs at all. `graph_input`
+    /// resolves it against the ref map, which is where ref labels live.
+    pub lane_claim: Option<Oid>,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +223,11 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
     // Branch color counter (Fix 4): deterministic per-branch color assignment
     let mut next_color: usize = 1; // 0 reserved for HEAD's own chain
     let mut lane_colors: HashMap<usize, usize> = HashMap::new();
+    // lane_claims[col] = the commit that opened the lane col currently holds. Every row below
+    // inherits it until the lane ends. Written wherever a lane opens, which is wherever
+    // `lane_colors` takes a new colour, so a column released by one branch and taken by
+    // another names the branch that holds it now rather than the one that freed it.
+    let mut lane_claims: HashMap<usize, Oid> = HashMap::new();
 
     let head_chain = head_chain(input);
 
@@ -293,6 +306,11 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
                 // New branch gets a new color
                 lane_colors.insert(c, next_color);
                 next_color += 1;
+                // A new lane, so a new claim: `c` may be a column an earlier branch released,
+                // and the claim has to move with the colour rather than be inherited.
+                if !is_stash {
+                    lane_claims.insert(c, oid);
+                }
                 c
             }
         };
@@ -308,6 +326,21 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
             lane_colors.insert(0, 0);
         }
 
+        // Rows below a lane's opener inherit its claim rather than re-claiming, which is what
+        // `or_insert` says. A tip opening a lane has already claimed the column above, so it
+        // does not reach this; nothing here overwrites a live claim.
+        //
+        // This covers column 0, which is pre-reserved for the head chain before the walk
+        // starts and so is never seen being taken: the first row to land there is HEAD's own
+        // tip, or the topmost row of the extension continuing it.
+        //
+        // A stash claims nothing. It names a state rather than a line of history, and a clean
+        // worktree inlines it at the top of the lane it hangs off, where it would otherwise
+        // claim that whole lane and rename every commit on the branch below it.
+        if !is_stash {
+            lane_claims.entry(col).or_insert(oid);
+        }
+
         // Branch tip: no child has set up this lane (active_lanes[col] is None),
         // or this is a root commit (no parents) — root commits always terminate the lane downward.
         let is_root_commit = commit_parents.is_empty();
@@ -316,6 +349,7 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
 
         // Get this commit's color_index from lane_colors.
         let commit_color = *lane_colors.get(&col).unwrap_or(&0);
+        let commit_lane_claim = lane_claims.get(&col).copied();
 
         // Phase 2: Emit pass-through edges for all OTHER active lanes (PASSTHROUGH)
         // Also detect fork-in lanes: lanes held by a child that forked from this commit.
@@ -441,6 +475,9 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
                     // New secondary parent lane gets a new color
                     lane_colors.insert(c, next_color);
                     next_color += 1;
+                    // The merged-in branch opens this lane at its own tip: the merge names
+                    // the line it came from, which is the colour drawn there too.
+                    lane_claims.insert(c, parent_oid);
                     max_columns = max_columns.max(active_lanes.len());
                     c
                 };
@@ -487,6 +524,7 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
                 edges,
                 is_branch_tip,
                 is_stash,
+                lane_claim: commit_lane_claim,
             },
         );
     }

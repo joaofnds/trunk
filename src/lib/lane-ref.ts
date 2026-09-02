@@ -1,35 +1,23 @@
-import { sortRefs } from "./ref-pill-data.js";
 import type { GraphCommit, RefLabel } from "./types.js";
 
 /**
- * The ref that names the lane a row sits in: the nearest one at or above the row
- * in its own column.
+ * The ref naming the lane a row sits in: the one on the commit that opened that lane.
  *
- * A commit is usually reachable from several branches, and asking which ones is a
- * walk of the whole graph. The lane is the cheap and honest answer: placement has
- * already put this commit on one line of history and coloured it accordingly, so
- * the ref at the top of that lane is the name the colour is already implying.
+ * The backend records which commit claimed each lane while it lays the graph out, and every
+ * row below inherits that claim, so this is a read rather than a search. What it is not is
+ * the nearest ref above the row: a column freed by one branch and taken by another, and a
+ * tag pointing inside a branch's lane, are both nearer without naming the line of history
+ * the row belongs to. Because the claim is resolved over the whole walk, a row still names
+ * its lane when that lane's tip has not been paged in.
  *
- * Where a row carries more than one ref, `sortRefs` picks the same primary the ref
- * pill shows, so hovering and reading the pill agree.
+ * A lane only a tag holds is named by that tag, which is what keeps a line whose branch was
+ * deleted from going nameless.
  *
- * A stash names a state rather than a line of history, so it never names a lane.
+ * The WIP row has no lane of its own to name.
  */
 export function laneRefForRow(
 	commits: GraphCommit[],
 	row: number,
 ): RefLabel | undefined {
-	const hovered = commits[row];
-	if (!hovered) return undefined;
-
-	for (let r = row; r >= 0; r--) {
-		const commit = commits[r];
-		if (!commit || commit.column !== hovered.column) continue;
-		if (commit.is_stash) continue;
-		if (commit.refs.length === 0) continue;
-
-		return sortRefs(commit.refs)[0];
-	}
-
-	return undefined;
+	return commits[row]?.lane_ref ?? undefined;
 }

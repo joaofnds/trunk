@@ -37,7 +37,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/topic",
+          "short_name": "topic",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "9b710837683ab1ba9ac5775ceb119f3f43b81394",
@@ -66,7 +73,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/topic",
+          "short_name": "topic",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "aa10225412498034ed5c870bce16c7c80ea6504b",
@@ -110,7 +124,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "01db20f5aa96d854af6d57c3d4b9d3123ed256af",
@@ -146,7 +167,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "d1d63c796f8ac3ef93597cbd4ba14e1ad71c2836",
@@ -182,7 +210,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "4ac730fcf96ccd4bc5d913b1a731b60fbfc86e72",
@@ -226,7 +261,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
@@ -245,7 +287,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 2

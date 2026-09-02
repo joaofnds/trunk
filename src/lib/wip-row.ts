@@ -27,6 +27,9 @@ function makeWipItem(msg: string, col: number, colorIdx: number): GraphCommit {
 		is_branch_tip: false,
 		is_stash: false,
 		in_head_chain: false,
+		// Uncommitted work sits above the lane rather than in it, and names no line of
+		// history of its own.
+		lane_ref: null,
 	};
 }
 

@@ -373,19 +373,42 @@ partially-visible connector instead of clipping it.
 
 ### `laneRefForRow(commits, row): RefLabel | undefined`
 
-The ref naming the lane a row sits in: the nearest one at or above that row in its
-own column. Drives the hover pill.
+The ref naming the lane a row sits in, read off the row's `lane_ref`. Drives the hover
+pill. This is a field lookup, not a search: `placement.rs` records which commit opened
+each lane while laying the graph out, and `graph_input::layout` resolves that commit to
+a ref label.
 
-A commit is usually reachable from several branches, and asking which ones is a walk
-of the whole graph. The lane is the cheap and honest answer: placement has already put
-the commit on one line of history and coloured it accordingly, so the ref at the top of
-that lane is the name the colour already implies.
+What it is not is the nearest ref above the row. Proximity is not ownership, and the
+difference is visible three ways:
 
-- The search stays inside the hovered row's own column. A nearer ref in another column
-  would name a branch the commit is not on.
-- Where a row carries several refs, `sortRefs` picks the same primary the ref pill
-  shows, so hovering and reading a pill agree.
-- A stash names a state rather than a line of history and never names a lane.
+- A column freed by one branch and taken by another. Scanning up crosses from one line
+  of history into an unrelated one, naming a branch that does not contain the row. The
+  `freed-column-reuse` rule input is this shape.
+- A tag pointing inside a branch's lane. Under the old rule it captured every row below
+  it, so one lane read as two different branches depending where you hovered.
+- A lane whose claiming ref sits beyond the loaded page. A scan only sees loaded rows,
+  so a branch far behind its upstream went unnamed. The claim is resolved over the whole
+  walk, so paging does not change the answer.
+
+Consequences of naming the lane's opener:
+
+- A lane only a tag holds is named by that tag. Branch off, commit, tag the tip, delete
+  the branch: the tag is the only thing keeping that line on the graph, and the revwalk
+  pushes `refs/tags` alongside `refs/heads`, so this needs no rule of its own.
+- A merged topic branch keeps naming itself below the merge, matching the colour already
+  drawn there.
+- Where the claiming commit carries several refs, `ref_rank` in `graph_input.rs` mirrors
+  `sortRefs`, so a lane's name and the pill on its tip are the same ref.
+- A stash claims nothing. It names a state rather than a line of history, and a clean
+  worktree inlines it at the top of the lane it hangs off, where claiming would rename
+  every commit on the branch below it.
+- A lane no ref points at is `null`, and the pill is simply absent. Two shapes reach this:
+  the merged-in side of a merge, whose absorbed branch no longer has a ref on the tip that
+  opened the lane, and the `orphan-stash` rule input, where a commit is reachable only from
+  a stash. A ref further down often does contain such a commit, so a containing-ref fallback
+  would have a name to offer. It was offered and declined: blanks on merged history are
+  accepted, and the lane rule stays a lookup rather than a containment query
+  (João, 2026-09-02).
 
 The pill itself is built by `buildRefPillData` from the hovered row with that ref
 substituted, so it renders through the ordinary pill path and differs only in opacity.
@@ -590,7 +613,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 | `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel |
 | `src/lib/overlay-paths.ts` | `buildOverlayPaths()` — SVG path generation |
 | `src/lib/overlay-visible.ts` | Viewport culling of paths, dots and pills before render |
-| `src/lib/lane-ref.ts` | `laneRefForRow()` — the ref naming the lane a row sits in, for the hover pill |
+| `src/lib/lane-ref.ts` | `laneRefForRow()` — reads a row's `lane_ref`, the ref that opened its lane, for the hover pill |
 | `src/lib/graph-constants.ts` | `DEFAULT_GRAPH_SETTINGS` (rowHeight, laneWidth, dotRadius, etc.) |
 | `src/components/CommitGraph.svelte` | SVG rendering, dot shapes, pill rendering, lane labels |
 | `src-tauri/tests/test_graph.rs` | Owns the named-rule layout assertions, read from `tests/rule-inputs/`; the set that still builds a repository is enumerated in `.claude/rules/commit-graph.md`, split into the tests bound to stay and the ones merely not yet migrated |

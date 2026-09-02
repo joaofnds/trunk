@@ -21,6 +21,7 @@ export function makeCommit(
 		is_branch_tip: overrides.is_branch_tip ?? false,
 		is_stash: overrides.is_stash ?? false,
 		in_head_chain: overrides.in_head_chain ?? false,
+		lane_ref: overrides.lane_ref ?? null,
 	};
 }
 

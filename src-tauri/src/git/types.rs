@@ -67,6 +67,13 @@ pub struct GraphCommit {
     pub is_branch_tip: bool,
     pub is_stash: bool,
     pub in_head_chain: bool,
+    /// The ref on the commit that opened this row's lane, which names the line of history
+    /// the row belongs to. `None` when nothing points at that commit.
+    ///
+    /// Not the nearest ref above the row: a column reused by a later branch, and a tag
+    /// pointing inside someone else's lane, are both nearer without naming anything. A lane
+    /// only a tag holds is named by that tag.
+    pub lane_ref: Option<RefLabel>,
 }
 
 #[derive(Debug, Serialize, Clone)]

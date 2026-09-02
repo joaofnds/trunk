@@ -45,7 +45,14 @@
         "is_merge": true,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/beta",
+          "short_name": "beta",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "038e39e7334fb66b4328a7030254c4a8f076be53",
@@ -97,7 +104,14 @@
         "is_merge": true,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/alpha",
+          "short_name": "alpha",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "b995fab3917d8d2c2a71b7de9e141b8a6162ac5a",
@@ -133,7 +147,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/beta",
+          "short_name": "beta",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "be2e4927ebf88dd1f7e910038777a40d0cfa4c35",
@@ -169,7 +190,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/alpha",
+          "short_name": "alpha",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
@@ -204,7 +232,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/alpha",
+          "short_name": "alpha",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 2

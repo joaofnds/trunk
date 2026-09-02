@@ -45,7 +45,14 @@
         "is_merge": true,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/left",
+          "short_name": "left",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "9e4e22c51ff84db05f2b462cd73192f9d94c2747",
@@ -97,7 +104,14 @@
         "is_merge": true,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/right",
+          "short_name": "right",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "33d55bcfddfaf7e1d5a20872fa828e865fd21320",
@@ -140,7 +154,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/right",
+          "short_name": "right",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "a9fec471955c2007a2458c8946ee4fe31ec7d75c",
@@ -191,7 +212,14 @@
         "is_merge": true,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/left",
+          "short_name": "left",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "1953b4239c00796975c87ef8db8d7a9ef85af030",
@@ -241,7 +269,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/left",
+          "short_name": "left",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "15d26a37f442959c878781f6c099c55d0e184c50",
@@ -299,7 +334,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/feed-b",
+          "short_name": "feed-b",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 2
+        }
       },
       {
         "oid": "69644c38137e82bd9de7f026424983ecc88f2c5f",
@@ -357,7 +399,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/feed-a",
+          "short_name": "feed-a",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 3
+        }
       },
       {
         "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
@@ -406,7 +455,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/left",
+          "short_name": "left",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 4

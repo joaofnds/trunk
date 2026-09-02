@@ -60,7 +60,8 @@ paths:
 `wip-row.ts` prepends the WIP row → `active-lanes.ts` maps commits to overlay nodes and per-parent connections →
 `overlay-paths.ts` emits SVG paths →
 `overlay-visible.ts` culls off-screen paths, dots and pills →
-`CommitGraph.svelte` renders, naming the hovered row's lane via `lane-ref.ts`.
+`CommitGraph.svelte` renders, naming the hovered row's lane via `lane-ref.ts`, which reads
+the `lane_ref` that `placement.rs` claims and `graph_input.rs` resolves.
 
 `layout_dump.rs` is not a pipeline stage (it is still pipeline source for the rules below):
 it renders a `GraphResult` as the deterministic

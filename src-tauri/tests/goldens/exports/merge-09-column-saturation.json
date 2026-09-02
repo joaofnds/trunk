@@ -37,7 +37,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/orphan",
+          "short_name": "orphan",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "4afab5a5e03788c75a7bd38d476f8f4c6981896b",
@@ -81,7 +88,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "2692bb00eeb8394dc91071f511cf20c33de829c4",
@@ -108,7 +122,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/orphan",
+          "short_name": "orphan",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "57e2bb1cc04018d55020ff3325a3f7ebef8d8503",
@@ -152,7 +173,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/lane-one",
+          "short_name": "lane-one",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 2
+        }
       },
       {
         "oid": "13ec3cf048ec915ddbbf993c2fbaead4fdb74178",
@@ -203,7 +231,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/lane-two",
+          "short_name": "lane-two",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 3
+        }
       },
       {
         "oid": "0ebe6c7be963ed89c38bea3330f078cc5f27368b",
@@ -261,7 +296,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/lane-three",
+          "short_name": "lane-three",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 4
+        }
       },
       {
         "oid": "6e44ffd750c7c8d6eb1c4a141997f1a3440d77fd",
@@ -326,7 +368,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/lane-four",
+          "short_name": "lane-four",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 5
+        }
       },
       {
         "oid": "af1f592a045832b9e4c522459f5e15153acd3633",
@@ -398,7 +447,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/lane-five",
+          "short_name": "lane-five",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 6
+        }
       },
       {
         "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
@@ -453,7 +509,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 6

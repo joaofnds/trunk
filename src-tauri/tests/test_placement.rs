@@ -437,3 +437,151 @@ fn a_cycle_above_the_tracked_upstream_is_fatal() {
 
     assign_lanes(&input);
 }
+
+/// The commit that claimed the lane a commit sits in.
+fn lane_claim_of(layout: &Layout, commit: Oid) -> Option<Oid> {
+    layout.placements[&commit].lane_claim
+}
+
+#[test]
+fn a_commit_names_the_tip_that_claimed_its_lane() {
+    let (tip, mid, root) = (oid(1), oid(2), oid(3));
+    let input = PlacementInput {
+        oids: vec![tip, mid, root],
+        parents: HashMap::from([(tip, vec![mid]), (mid, vec![root]), (root, vec![])]),
+        stashes: HashSet::new(),
+        head_tip: Some(tip),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    let claims: Vec<Option<Oid>> = [tip, mid, root]
+        .iter()
+        .map(|&o| lane_claim_of(&layout, o))
+        .collect();
+    assert_eq!(claims, [Some(tip), Some(tip), Some(tip)]);
+}
+
+#[test]
+fn a_reused_column_names_the_tip_that_claimed_it_this_time() {
+    // `branch_b` takes the column `branch_a` freed when the merge absorbed it — the
+    // freed-column-reuse shape. Sharing a column is not sharing a lane: naming a row by the
+    // nearest ref up its column would name `branch_a`, which does not contain `branch_b`.
+    let (main3, branch_b, main2, merge, branch_a, main1, root) =
+        (oid(1), oid(2), oid(3), oid(4), oid(5), oid(6), oid(7));
+    let input = PlacementInput {
+        oids: vec![main3, branch_b, main2, merge, branch_a, main1, root],
+        parents: HashMap::from([
+            (main3, vec![main2]),
+            (branch_b, vec![main2]),
+            (main2, vec![merge]),
+            (merge, vec![main1, branch_a]),
+            (branch_a, vec![root]),
+            (main1, vec![root]),
+            (root, vec![]),
+        ]),
+        stashes: HashSet::new(),
+        head_tip: Some(main3),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(
+        lane_of(&layout, branch_a).0,
+        lane_of(&layout, branch_b).0,
+        "the shape under test is a reused column"
+    );
+    assert_eq!(lane_claim_of(&layout, branch_a), Some(branch_a));
+    assert_eq!(lane_claim_of(&layout, branch_b), Some(branch_b));
+}
+
+#[test]
+fn a_merged_branch_keeps_naming_itself_below_the_merge() {
+    // `merge` takes `side` as its second parent, so `side` holds a lane of its own. Its rows
+    // name that lane's tip rather than the branch it merged into.
+    let (merge, side, base, root) = (oid(1), oid(2), oid(3), oid(4));
+    let input = PlacementInput {
+        oids: vec![merge, side, base, root],
+        parents: HashMap::from([
+            (merge, vec![base, side]),
+            (side, vec![root]),
+            (base, vec![root]),
+            (root, vec![]),
+        ]),
+        stashes: HashSet::new(),
+        head_tip: Some(merge),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(lane_claim_of(&layout, side), Some(side));
+    assert_eq!(lane_claim_of(&layout, merge), Some(merge));
+}
+
+#[test]
+fn a_stash_never_claims_the_lane_it_inlines_into() {
+    // A stash inlines at the top of the HEAD lane when the worktree is clean, so it is the
+    // first row seen in column 0. It names a state, not a line of history, so the lane still
+    // belongs to the branch continuing below it.
+    let (stash, tip, root) = (oid(1), oid(2), oid(3));
+    let input = PlacementInput {
+        oids: vec![stash, tip, root],
+        parents: HashMap::from([(stash, vec![tip]), (tip, vec![root]), (root, vec![])]),
+        stashes: HashSet::from([stash]),
+        head_tip: Some(tip),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(
+        lane_of(&layout, stash).0,
+        lane_of(&layout, tip).0,
+        "the shape under test is an inlined stash"
+    );
+    assert_eq!(lane_claim_of(&layout, tip), Some(tip));
+    assert_eq!(lane_claim_of(&layout, root), Some(tip));
+}
+
+#[test]
+fn a_tip_taking_a_freed_column_claims_it_from_the_previous_holder() {
+    // `delta` opens a new lane in the column `orphan` released, and gets a colour of its own
+    // for it. The claim has to move with the colour: inheriting `orphan` would name a lane
+    // after a branch that does not contain it. The merge-13-freed-column-left fixture is
+    // this shape.
+    let (head, orphan, delta, root) = (oid(1), oid(2), oid(3), oid(4));
+    let input = PlacementInput {
+        oids: vec![head, orphan, delta, root],
+        parents: HashMap::from([
+            (head, vec![root]),
+            (orphan, vec![]),
+            (delta, vec![root]),
+            (root, vec![]),
+        ]),
+        stashes: HashSet::new(),
+        head_tip: Some(head),
+        tracked_upstream: None,
+        worktree_dirty: false,
+    };
+
+    let layout = assign_lanes(&input);
+
+    assert_eq!(
+        lane_of(&layout, orphan).0,
+        lane_of(&layout, delta).0,
+        "the shape under test reuses a freed column"
+    );
+    assert_ne!(
+        lane_of(&layout, orphan).1,
+        lane_of(&layout, delta).1,
+        "the new lane takes a colour of its own"
+    );
+    assert_eq!(lane_claim_of(&layout, delta), Some(delta));
+}

@@ -37,7 +37,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "93ac8eb38be10862a1978d18ecf722d7033256ad",
@@ -66,7 +73,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "37f3ae23b501cde326979682a2d92d090d6f3946",
@@ -111,7 +125,14 @@
         "is_merge": true,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "c545078b65e2220669243a1a4246dd40f713c2fe",
@@ -147,7 +168,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       },
       {
         "oid": "321ae8bca8486d7ec83946588a16f16dda4703f9",
@@ -191,7 +219,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/side",
+          "short_name": "side",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "e5f066736304132f17817ed5d57437e27f1f87cb",
@@ -218,7 +253,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/remotes/origin/main",
+          "short_name": "origin/main",
+          "ref_type": "RemoteBranch",
+          "is_head": false,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 2

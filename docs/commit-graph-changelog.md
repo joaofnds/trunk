@@ -244,3 +244,58 @@ Changed goldens:
      M src-tauri/tests/goldens/exports/stash-12-orphan-stash.json
      M src-tauri/tests/goldens/graph/stash-12-orphan-stash.txt
      M src/__tests__/goldens/graph-render/stash-12-orphan-stash.txt
+
+## 2026-09-02
+
+lane_ref: every commit carries the ref that opened its lane, for the ghost pill
+
+Changed goldens:
+
+     M src-tauri/tests/goldens/exports/lane-01-behind-only.json
+     M src-tauri/tests/goldens/exports/lane-02-local-ahead-no-remote.json
+     M src-tauri/tests/goldens/exports/lane-03-detached-old.json
+     M src-tauri/tests/goldens/exports/lane-04-tiebreak-upstream-vs-topic.json
+     M src-tauri/tests/goldens/exports/lane-05-diverged.json
+     M src-tauri/tests/goldens/exports/lane-06-tag-only-chain.json
+     M src-tauri/tests/goldens/exports/lane-07-tag-on-unpulled.json
+     M src-tauri/tests/goldens/exports/lane-08-stash-on-tip-behind.json
+     M src-tauri/tests/goldens/exports/lane-09-branch-point-below-head.json
+     M src-tauri/tests/goldens/exports/lane-10-two-remotes.json
+     M src-tauri/tests/goldens/exports/lane-11-merge-in-head-chain.json
+     M src-tauri/tests/goldens/exports/lane-12-author-vs-committer.json
+     M src-tauri/tests/goldens/exports/lane-13-tall-linear.json
+     M src-tauri/tests/goldens/exports/merge-01-octopus-merge.json
+     M src-tauri/tests/goldens/exports/merge-02-criss-cross.json
+     M src-tauri/tests/goldens/exports/merge-03-merge-of-merges.json
+     M src-tauri/tests/goldens/exports/merge-04-three-topics.json
+     M src-tauri/tests/goldens/exports/merge-05-sequential-merges.json
+     M src-tauri/tests/goldens/exports/merge-06-merge-second-parent-newer.json
+     M src-tauri/tests/goldens/exports/merge-07-fork-sibling-older.json
+     M src-tauri/tests/goldens/exports/merge-08-fork-sibling-newer.json
+     M src-tauri/tests/goldens/exports/merge-09-column-saturation.json
+     M src-tauri/tests/goldens/exports/merge-10-merge-parent-left.json
+     M src-tauri/tests/goldens/exports/merge-11-fork-in-left.json
+     M src-tauri/tests/goldens/exports/merge-12-pagination-boundary.json
+     M src-tauri/tests/goldens/exports/merge-13-freed-column-left.json
+     M src-tauri/tests/goldens/exports/merge-14-spiral-right-before-left.json
+     M src-tauri/tests/goldens/exports/stash-01-clean-inline.json
+     M src-tauri/tests/goldens/exports/stash-02-dirty-tracked.json
+     M src-tauri/tests/goldens/exports/stash-03-dirty-untracked.json
+     M src-tauri/tests/goldens/exports/stash-04-dirty-staged.json
+     M src-tauri/tests/goldens/exports/stash-05-dirty-conflicted.json
+     M src-tauri/tests/goldens/exports/stash-06-ignored-stays-inline.json
+     M src-tauri/tests/goldens/exports/stash-07-multi-stash-clean.json
+     M src-tauri/tests/goldens/exports/stash-08-multi-stash-dirty.json
+     M src-tauri/tests/goldens/exports/stash-09-topic-above-parent.json
+     M src-tauri/tests/goldens/exports/stash-10-topic-below-parent.json
+     M src-tauri/tests/goldens/exports/stash-11-stash-parent-mid-chain.json
+     M src-tauri/tests/goldens/exports/stash-12-orphan-stash.json
+     M src-tauri/tests/goldens/exports/stash-13-detached-head.json
+     M src-tauri/tests/goldens/exports/stash-14-merge-tip.json
+     M src-tauri/tests/goldens/exports/stash-15-backdated-stash.json
+     M src-tauri/tests/goldens/exports/stash-16-bare-repo.git.json
+     M src-tauri/tests/goldens/exports/stash-17-no-stash-dirty.json
+     M src-tauri/tests/goldens/exports/stash-18-many-files.json
+     M src-tauri/tests/goldens/exports/stash-19-two-backdated.json
+     M src-tauri/tests/goldens/exports/stash-20-stash-on-stash.json
+     M src-tauri/tests/goldens/exports/stash-21-tagged-stash.json

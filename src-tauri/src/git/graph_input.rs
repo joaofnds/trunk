@@ -11,7 +11,7 @@ use git2::Oid;
 use serde::{Deserialize, Serialize};
 
 use crate::git::placement::{self, PlacementInput};
-use crate::git::types::{GraphCommit, GraphResult, RefLabel};
+use crate::git::types::{GraphCommit, GraphResult, RefLabel, RefType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitFacts {
@@ -135,6 +135,33 @@ impl CapturedGraph {
     }
 }
 
+/// Ref precedence when one commit carries several, matching the frontend's `sortRefs` so a
+/// lane's name and the pill on its tip are always the same ref: HEAD first, then local
+/// branch, tag, stash, remote branch.
+fn ref_rank(label: &RefLabel) -> (u8, u8) {
+    let by_type = match label.ref_type {
+        RefType::LocalBranch => 0,
+        RefType::Tag => 1,
+        RefType::Stash => 2,
+        RefType::RemoteBranch => 3,
+    };
+
+    (u8::from(!label.is_head), by_type)
+}
+
+/// The ref naming the lane `claim` opened, or `None` when nothing points at that commit.
+///
+/// Resolved against the whole walk rather than the page, which is what lets a row name a
+/// lane whose tip has not been paged in yet.
+fn lane_ref(source: &GraphSource, claim: Option<Oid>) -> Option<RefLabel> {
+    source
+        .refs
+        .get(&claim?)?
+        .iter()
+        .min_by_key(|label| ref_rank(label))
+        .cloned()
+}
+
 fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {
     match source.commits.get(&oid) {
         Some(facts) => facts,
@@ -160,7 +187,7 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
     let mut commits = Vec::with_capacity(page_oids.len());
     for &oid in page_oids {
         let facts = commit_facts(source, oid);
-        let (column, edges, color_index, is_branch_tip, is_stash) = assigned
+        let (column, edges, color_index, is_branch_tip, is_stash, claim) = assigned
             .placements
             .remove(&oid)
             .map(|p| {
@@ -170,9 +197,10 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
                     p.color_index,
                     p.is_branch_tip,
                     p.is_stash,
+                    p.lane_claim,
                 )
             })
-            .unwrap_or((0, vec![], 0, false, false));
+            .unwrap_or((0, vec![], 0, false, false, None));
         let mut refs = source.refs.get(&oid).cloned().unwrap_or_default();
         for r in &mut refs {
             r.color_index = color_index;
@@ -207,6 +235,13 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
             is_branch_tip,
             is_stash,
             in_head_chain: assigned.head_chain.contains(&oid),
+            // Recoloured to this row's lane like the row's own refs above: the name is drawn
+            // on the line it names, so it has to be that line's colour rather than whichever
+            // one the ref carried when it was captured.
+            lane_ref: lane_ref(source, claim).map(|mut label| {
+                label.color_index = color_index;
+                label
+            }),
         });
     }
 

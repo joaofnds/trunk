@@ -311,6 +311,7 @@ mod tests {
             is_branch_tip: false,
             is_stash: false,
             in_head_chain: false,
+            lane_ref: None,
         }
     }
 

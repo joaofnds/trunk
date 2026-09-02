@@ -190,3 +190,213 @@ fn a_truncated_oid_in_a_committed_input_is_fatal() {
 
     captured.to_source();
 }
+
+fn ref_label(name: &str, short: &str, ref_type: RefType) -> RefLabel {
+    RefLabel {
+        name: name.to_owned(),
+        short_name: short.to_owned(),
+        ref_type,
+        is_head: false,
+        color_index: 0,
+    }
+}
+
+#[test]
+fn every_row_of_a_lane_names_the_ref_that_claimed_it() {
+    let (tip, mid, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, mid, root],
+            parents: HashMap::from([(tip, vec![mid]), (mid, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (tip, facts("Tip")),
+            (mid, facts("Mid")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([(
+            tip,
+            vec![ref_label("refs/heads/main", "main", RefType::LocalBranch)],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    let result = layout(&source, 0, usize::MAX);
+
+    let names: Vec<Option<&str>> = result
+        .commits
+        .iter()
+        .map(|c| c.lane_ref.as_ref().map(|r| r.short_name.as_str()))
+        .collect();
+    assert_eq!(names, [Some("main"), Some("main"), Some("main")]);
+}
+
+#[test]
+fn a_tag_inside_a_branchs_lane_does_not_name_it() {
+    // The defect this whole field exists for: a tag a few rows below a branch tip used to
+    // capture every row under it, so one lane read as two different branches.
+    let (tip, tagged, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, tagged, root],
+            parents: HashMap::from([(tip, vec![tagged]), (tagged, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (tip, facts("Tip")),
+            (tagged, facts("Tagged")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([
+            (
+                tip,
+                vec![ref_label("refs/heads/main", "main", RefType::LocalBranch)],
+            ),
+            (
+                tagged,
+                vec![ref_label("refs/tags/v1.0.0", "v1.0.0", RefType::Tag)],
+            ),
+        ]),
+        stash_order: Vec::new(),
+    };
+
+    let result = layout(&source, 0, usize::MAX);
+
+    let names: Vec<Option<&str>> = result
+        .commits
+        .iter()
+        .map(|c| c.lane_ref.as_ref().map(|r| r.short_name.as_str()))
+        .collect();
+    assert_eq!(names, [Some("main"), Some("main"), Some("main")]);
+}
+
+#[test]
+fn a_lane_only_a_tag_holds_is_named_by_that_tag() {
+    // Branch off main, commit, tag the tip, delete the branch: the tag is the only thing
+    // keeping that line of history on the graph, so it is what names it.
+    let (head, tagged, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![head, tagged, root],
+            parents: HashMap::from([(head, vec![root]), (tagged, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(head),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (head, facts("Head")),
+            (tagged, facts("Tagged")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([
+            (
+                head,
+                vec![ref_label("refs/heads/main", "main", RefType::LocalBranch)],
+            ),
+            (
+                tagged,
+                vec![ref_label("refs/tags/v1.0.0", "v1.0.0", RefType::Tag)],
+            ),
+        ]),
+        stash_order: Vec::new(),
+    };
+
+    let result = layout(&source, 0, usize::MAX);
+
+    let tagged_row = result.commits.iter().find(|c| c.oid == tagged.to_string());
+    assert_eq!(
+        tagged_row
+            .and_then(|c| c.lane_ref.as_ref())
+            .map(|r| r.short_name.as_str()),
+        Some("v1.0.0")
+    );
+}
+
+#[test]
+fn a_lane_whose_claiming_ref_is_beyond_the_page_still_names_it() {
+    // The claim is resolved against the whole walk, not the page, so a row paged in without
+    // its lane's tip is still named. This is the branch-far-behind-upstream shape.
+    let (tip, mid, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, mid, root],
+            parents: HashMap::from([(tip, vec![mid]), (mid, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(tip),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (tip, facts("Tip")),
+            (mid, facts("Mid")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([(
+            tip,
+            vec![ref_label("refs/heads/main", "main", RefType::LocalBranch)],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    // Page 2 only: the tip carrying `main` is not in it.
+    let result = layout(&source, 1, 2);
+
+    let names: Vec<Option<&str>> = result
+        .commits
+        .iter()
+        .map(|c| c.lane_ref.as_ref().map(|r| r.short_name.as_str()))
+        .collect();
+    assert_eq!(names, [Some("main"), Some("main")]);
+}
+
+#[test]
+fn a_lane_ref_carries_the_lanes_own_colour() {
+    // The ghost pill is drawn from `lane_ref` and has to match the line it names. The
+    // captured colour is whatever the ref carried on disk, so it is replaced here the same
+    // way a row's own refs are.
+    let (tip, mid, root) = (oid(1), oid(2), oid(3));
+    let source = GraphSource {
+        placement: PlacementInput {
+            oids: vec![tip, mid, root],
+            parents: HashMap::from([(tip, vec![root]), (mid, vec![root]), (root, vec![])]),
+            stashes: HashSet::new(),
+            head_tip: Some(root),
+            tracked_upstream: None,
+            worktree_dirty: false,
+        },
+        commits: HashMap::from([
+            (tip, facts("Tip")),
+            (mid, facts("Mid")),
+            (root, facts("Init")),
+        ]),
+        refs: HashMap::from([(
+            tip,
+            vec![RefLabel {
+                name: "refs/heads/topic".to_owned(),
+                short_name: "topic".to_owned(),
+                ref_type: RefType::LocalBranch,
+                is_head: false,
+                color_index: 99,
+            }],
+        )]),
+        stash_order: Vec::new(),
+    };
+
+    let result = layout(&source, 0, usize::MAX);
+
+    let tip_row = &result.commits[0];
+    assert_eq!(
+        tip_row.lane_ref.as_ref().map(|r| r.color_index),
+        Some(tip_row.color_index),
+        "the lane's name is drawn in the lane's colour"
+    );
+    assert_ne!(tip_row.color_index, 99, "the captured colour is replaced");
+}

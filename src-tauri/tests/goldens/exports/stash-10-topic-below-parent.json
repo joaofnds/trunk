@@ -37,7 +37,8 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": true,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": null
       },
       {
         "oid": "e9900172efd0f324dea3a1cdbad4eadaeba9b188",
@@ -74,7 +75,14 @@
         "is_merge": false,
         "is_branch_tip": false,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       },
       {
         "oid": "f0ee74a51230b71e831d30aa4248b29e413d7668",
@@ -118,7 +126,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": false
+        "in_head_chain": false,
+        "lane_ref": {
+          "name": "refs/heads/topic",
+          "short_name": "topic",
+          "ref_type": "LocalBranch",
+          "is_head": false,
+          "color_index": 1
+        }
       },
       {
         "oid": "22843f0512d2968ad0203df07492f629916dc0ac",
@@ -145,7 +160,14 @@
         "is_merge": false,
         "is_branch_tip": true,
         "is_stash": false,
-        "in_head_chain": true
+        "in_head_chain": true,
+        "lane_ref": {
+          "name": "refs/heads/main",
+          "short_name": "main",
+          "ref_type": "LocalBranch",
+          "is_head": true,
+          "color_index": 0
+        }
       }
     ],
     "max_columns": 2

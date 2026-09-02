@@ -60,6 +60,12 @@ export interface GraphCommit {
 	is_branch_tip: boolean;
 	is_stash: boolean;
 	in_head_chain: boolean;
+	/** The ref on the commit that opened this row's lane, or null when nothing points at it.
+	 *  Names the line of history the row belongs to, which the nearest ref above it does not:
+	 *  a column reused by a later branch, and a tag inside someone else's lane, are both
+	 *  nearer without naming anything. Computed over the whole walk, so it holds for a row
+	 *  whose lane tip has not been paged in. */
+	lane_ref: RefLabel | null;
 }
 
 export interface GraphResponse {
