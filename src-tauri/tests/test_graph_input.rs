@@ -749,3 +749,53 @@ fn an_empty_visibility_changes_nothing() {
     assert_eq!(oids_before, oids_after);
     assert_eq!(before.max_columns, after.max_columns);
 }
+
+/// The value the frontend sends is the value the filter reads. `RefVisibility` crosses the
+/// `set_ref_visibility` boundary whole, so its serialized field names are a contract with
+/// `src/lib/ref-visibility.ts` — a rename on either side silently stops hiding anything.
+#[test]
+fn the_wire_form_matches_the_frontends_field_names() {
+    let mut visibility = RefVisibility {
+        hide_local: true,
+        hide_remote: true,
+        hide_tags: true,
+        hide_stashes: true,
+        ..RefVisibility::default()
+    };
+    visibility.hidden_refs.insert("refs/heads/topic".to_owned());
+    visibility.hidden_remotes.insert("origin".to_owned());
+    visibility.hidden_stashes.insert("abc".to_owned());
+
+    let json = serde_json::to_value(&visibility).expect("serialize");
+    let object = json.as_object().expect("an object");
+
+    let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "hiddenRefs",
+            "hiddenRemotes",
+            "hiddenStashes",
+            "hideLocal",
+            "hideRemote",
+            "hideStashes",
+            "hideTags",
+        ]
+    );
+
+    let back: RefVisibility = serde_json::from_value(json).expect("round trip");
+    assert_eq!(back, visibility);
+}
+
+/// An older prefs file, or a frontend that omits a field, still parses: every field defaults.
+#[test]
+fn a_partial_wire_form_fills_in_the_visible_default() {
+    let json = serde_json::json!({ "hiddenRefs": ["refs/heads/topic"] });
+
+    let parsed: RefVisibility = serde_json::from_value(json).expect("parse");
+
+    assert!(parsed.hidden_refs.contains("refs/heads/topic"));
+    assert!(!parsed.hide_local);
+    assert!(parsed.hidden_remotes.is_empty());
+}

@@ -114,7 +114,7 @@ honest.
 | 46 | graph.rs | capture | `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {` → `pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {⏎    if true {⏎        return Ok(Default::default());⏎    }` | UNVIABLE | 2026-08-12 |
 | 47 | graph.rs | capture | `git2::Sort::TOPOLOGICAL \| git2::Sort::TIME` → `git2::Sort::TOPOLOGICAL & git2::Sort::TIME` | killed | 2026-08-12 |
 | 48 | graph.rs | capture | `    oids.retain(\|oid\| !stash_internals.contains(oid));` → `    oids.retain(\|oid\| stash_internals.contains(oid));` | killed | 2026-08-12 |
-| 49 | graph.rs | walk_commits | `    Ok(graph_input::layout(&capture(repo)?, offset, limit))` → `    Ok(Default::default())` | UNVIABLE | 2026-08-12 |
+| 49 | graph.rs | walk_commits | `    Ok(graph_input::layout(&source, offset, limit))` → `    Ok(Default::default())` | UNVIABLE | 2026-09-02 |
 | 50 | graph_input.rs | parse_oid | `fn parse_oid(hex: &str) -> Oid {` → `fn parse_oid(hex: &str) -> Oid {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-08-12 |
 | 51 | graph_input.rs | parse_oid | `    if hex.len() != 40 {` → `    if hex.len() == 40 {` | killed | 2026-08-12 |
 | 52 | graph_input.rs | hex | `fn hex(oid: &Oid) -> String {⏎    oid.to_string()⏎}` → `fn hex(oid: &Oid) -> String {⏎    let _ = oid;⏎    String::new()⏎}` | killed | 2026-08-12 |

@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	EVERYTHING_VISIBLE,
+	toggleRef,
+	toggleSection,
+} from "./ref-visibility.js";
 import type { PersistedTab, TabInfo } from "./tab-types.js";
 import { createTabId } from "./tab-types.js";
 
@@ -46,6 +51,8 @@ const {
 	getColumnVisibility,
 	setColumnWidths,
 	setColumnVisibility,
+	getRefVisibility,
+	setRefVisibility,
 } = await import("./store.js");
 
 describe("tab types and helpers", () => {
@@ -348,5 +355,38 @@ describe("store", () => {
 			});
 			expect((await getColumnVisibility()).diff).toBe(false);
 		});
+	});
+});
+
+describe("ref visibility", () => {
+	beforeEach(() => {
+		backingStore.clear();
+	});
+
+	it("a repository with nothing stored has everything visible", async () => {
+		expect(await getRefVisibility("/repo")).toEqual(EVERYTHING_VISIBLE);
+	});
+
+	// Acceptance #7: closing and reopening the repository restores the same hidden set.
+	it("returns what was stored for that repository", async () => {
+		const hidden = toggleRef(EVERYTHING_VISIBLE, {
+			name: "refs/remotes/origin/topic",
+			short_name: "origin/topic",
+			ref_type: "RemoteBranch",
+			is_head: false,
+			color_index: 0,
+		});
+
+		await setRefVisibility("/repo", hidden);
+
+		expect(await getRefVisibility("/repo")).toEqual(hidden);
+	});
+
+	it("keys the hidden set per repository", async () => {
+		const hidden = toggleSection(EVERYTHING_VISIBLE, "Tag");
+		await setRefVisibility("/one", hidden);
+
+		expect(await getRefVisibility("/two")).toEqual(EVERYTHING_VISIBLE);
+		expect(await getRefVisibility("/one")).toEqual(hidden);
 	});
 });

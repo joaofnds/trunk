@@ -1,4 +1,5 @@
 import { safeInvoke } from "./invoke.js";
+import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
 import type { PersistedTab } from "./tab-types.js";
 import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
 
@@ -407,4 +408,28 @@ export async function getFetchIntervalMs(): Promise<number> {
 
 export async function setFetchIntervalMs(ms: number): Promise<void> {
 	await setPref(FETCH_INTERVAL_KEY, ms);
+}
+
+// Which refs each repository hides from its graph, keyed by absolute repo path like
+// commit_drafts above. A repository absent from the map hides nothing.
+const REF_VISIBILITY_KEY = "ref_visibility";
+
+export async function getRefVisibility(path: string): Promise<RefVisibility> {
+	const all =
+		(await getPref<Record<string, RefVisibility>>(REF_VISIBILITY_KEY)) ?? {};
+	// Spread-merged over the default so a file written before a field existed still
+	// parses, matching the Rust side's `#[serde(default)]`.
+	const stored = all[path];
+	return stored === undefined
+		? EVERYTHING_VISIBLE
+		: { ...EVERYTHING_VISIBLE, ...stored };
+}
+
+export async function setRefVisibility(
+	path: string,
+	visibility: RefVisibility,
+): Promise<void> {
+	const all =
+		(await getPref<Record<string, RefVisibility>>(REF_VISIBILITY_KEY)) ?? {};
+	await setPref(REF_VISIBILITY_KEY, { ...all, [path]: visibility });
 }
