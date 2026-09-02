@@ -29,7 +29,7 @@ describe("commit actions", () => {
 		await app.messageEditor.save();
 
 		await expect(
-			waitFor("the revert commit", () => {
+			app.elapseUntil("the revert commit", () => {
 				const rows = app.repo.commitRows();
 				return rows[0] === REVERT_ROW ? rows : null;
 			}),
@@ -37,14 +37,14 @@ describe("commit actions", () => {
 
 		await app.toolbar.undo();
 
-		await waitFor("the revert to leave the graph", () =>
+		await app.elapseUntil("the revert to leave the graph", () =>
 			app.repo.commitRows().includes(REVERT_ROW) ? null : true,
 		);
 
 		await app.toolbar.redo();
 
 		await expect(
-			waitFor("the redone revert", () => {
+			app.elapseUntil("the redone revert", () => {
 				const rows = app.repo.commitRows();
 				return rows[0] === REVERT_ROW ? rows : null;
 			}),

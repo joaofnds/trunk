@@ -74,9 +74,16 @@ describe("an interactive rebase", () => {
 		await app.repo.contextMenu("C2");
 		app.contextMenu.choose("Interactive Rebase...");
 
-		await app.rebaseEditor.start();
-		await app.settle();
+		const refreshesBefore = app.refreshes();
 
+		await app.rebaseEditor.start();
+		await app.elapse();
+
+		await waitFor("the graph the rebase refetched", () =>
+			app.refreshes() > refreshesBefore && app.repo.commitRows().length === 4
+				? true
+				: null,
+		);
 		expect(app.repo.commitShas()).toEqual(before);
 		expect(app.staging.banner()).toBeNull();
 	});

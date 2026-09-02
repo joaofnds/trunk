@@ -46,6 +46,7 @@ describe("a push to a remote that has moved", () => {
 
 		await app.remote.pullRebase();
 		await app.remote.push();
+		await app.elapse();
 
 		const pills = await waitFor("the graph to settle on one pill", () => {
 			const showing = app.repo.refPills();

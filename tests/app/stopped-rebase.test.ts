@@ -37,14 +37,15 @@ describe("a stopped rebase", () => {
 		await waitFor("the banner to clear", () =>
 			app.staging.banner() ? null : true,
 		);
-		await app.settle();
-		expect(app.branches.headBranch()).toBe("main");
-		expect(app.repo.commitRows()).toEqual([
-			"G-four",
-			"G-three",
-			"G-two",
-			"G-one",
-		]);
+		await app.elapse();
+
+		const rows = await waitFor("the pre-rebase graph back on main", () => {
+			const showing = app.repo.commitRows();
+			return showing.length === 4 && app.branches.headBranch() === "main"
+				? showing
+				: null;
+		});
+		expect(rows).toEqual(["G-four", "G-three", "G-two", "G-one"]);
 		expect(app.repo.commitShas()).toEqual(before);
 
 		await app.repo.contextMenu("G-two");
@@ -60,6 +61,8 @@ describe("a stopped rebase", () => {
 		await waitFor("the banner to clear", () =>
 			app.staging.banner() ? null : true,
 		);
+		await app.elapse();
+
 		await expect(
 			waitFor("the rebased graph", () => {
 				const rows = app.repo.commitRows();

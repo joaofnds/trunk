@@ -48,14 +48,21 @@ describe("a working-tree file with two hunks of changes", () => {
 
 		await app.staging.stageHunk(0);
 		await app.events.externalChange(app.repo.path);
-		await app.settle();
+		await app.elapse();
 
+		await app.elapseUntil("the staged hunk to leave the unstaged view", () =>
+			app.staging.hunkHeaders().length === 1 &&
+			app.staging.stagedFiles().length === 1
+				? true
+				: null,
+		);
 		expect(app.staging.stagedFiles()).toEqual([MODIFIED_ROW]);
 		expect(app.staging.unstagedFiles()).toEqual([MODIFIED_ROW]);
 		expect(app.staging.hunkHeaders()).toEqual(["@@ -17,6 +17,9 @@ line 16"]);
 		expect(app.staging.addedLines()).toEqual(["extra a", "extra b", "extra c"]);
 
 		app.dialog.confirms();
+		await app.settled();
 		await app.staging.selectLines("extra a", "extra b");
 		await app.staging.discardSelectedLines();
 
@@ -119,14 +126,13 @@ describe("staging while whitespace changes are ignored", () => {
 
 		await app.staging.stageHunk(0);
 		await app.events.externalChange(app.repo.path);
-		await app.settle();
+		await app.elapse();
 
 		// What actually landed in the index, read the way a user reads it. The
 		// click only requests the staged diff; waiting on "some added line" would
 		// pass on the unstaged pane still showing, so wait for the content to
 		// change to the staged side.
 		await app.staging.openStagedFile(FILE);
-		await app.settle();
 		await waitFor("the staged diff to replace the unstaged one", () => {
 			const showing = app.staging.addedLines();
 			return showing.length === 1 && showing[0] === "REAL line 10"

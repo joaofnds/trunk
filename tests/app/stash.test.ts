@@ -25,6 +25,7 @@ describe("stash", () => {
 		);
 
 		await app.toolbar.stash();
+		await app.elapse();
 
 		await waitFor("the stash in the graph", () =>
 			app.repo.commitRows().some((row) => row.includes(STASH_ROW))
@@ -37,6 +38,7 @@ describe("stash", () => {
 		expect(app.repo.workingTreeFile("f.txt")).toBe("one\n");
 
 		await app.toolbar.pop();
+		await app.elapse();
 
 		await waitFor("the stash to leave the graph", () =>
 			app.repo.commitRows().some((row) => row.includes(STASH_ROW))

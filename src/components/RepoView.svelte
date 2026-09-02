@@ -25,6 +25,7 @@ import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
+import { getScheduler } from "../lib/scheduler.js";
 import {
 	clearCommitDraft,
 	getCommitDraft,
@@ -135,6 +136,8 @@ let {
 	onleftpanewidthchange,
 	onrightpanewidthchange,
 }: Props = $props();
+
+const scheduler = getScheduler();
 
 // Center-pane Review-mode state (UI-SPEC:133, LOCKED to the center pane). The
 // rune owns rightPaneMode (panel|diff); jumpTo composes the existing
@@ -995,13 +998,13 @@ $effect(() => {
 // Listen for repo-changed events scoped to this repo
 $effect(() => {
 	let unlisten: (() => void) | undefined;
-	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let debounceTimer: number | undefined;
 	const path = repoPath;
 
 	listen<string>("repo-changed", (event) => {
 		if (event.payload === path) {
-			if (debounceTimer) clearTimeout(debounceTimer);
-			debounceTimer = setTimeout(() => {
+			if (debounceTimer !== undefined) scheduler.clearTimeout(debounceTimer);
+			debounceTimer = scheduler.setTimeout(() => {
 				handleRefresh();
 				loadDirtyCounts();
 				loadHeadBranch();
@@ -1017,7 +1020,7 @@ $effect(() => {
 
 	return () => {
 		unlisten?.();
-		if (debounceTimer) clearTimeout(debounceTimer);
+		if (debounceTimer !== undefined) scheduler.clearTimeout(debounceTimer);
 	};
 });
 

@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppDriver } from "./drivers/index.js";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
@@ -47,11 +46,6 @@ const ONE_COMMIT: RepoSpec = {
 		{ step: "commit", message: "First" },
 	],
 };
-
-function refreshes(app: AppDriver): number {
-	return app.invokes().filter(({ cmd }) => cmd === "refresh_commit_graph")
-		.length;
-}
 
 describe("the application", () => {
 	afterEach(teardown);
@@ -100,6 +94,7 @@ describe("the application", () => {
 
 		writeFileSync(join(app.repo.path, "e.txt"), "e");
 		await app.events.externalChange(app.repo.path);
+		await app.elapse();
 
 		const rows = await waitFor("the refreshed graph", () => {
 			const rows = app.repo.commitRows();
@@ -127,10 +122,12 @@ describe("the application", () => {
 		await app.repo.open();
 		writeFileSync(join(app.repo.path, "b.txt"), "b");
 		await app.events.externalChange(app.repo.path);
+		await app.elapse();
 		await app.staging.open();
 		await app.staging.stageEverything();
 
 		await app.staging.commit("Add b");
+		await app.elapse();
 
 		await expect(
 			waitFor("the new commit", () => {
@@ -143,12 +140,13 @@ describe("the application", () => {
 	it("ignores a change to a repository it does not have open", async () => {
 		const app = await setup({ repo: FOUR_COMMITS });
 		await app.repo.open();
-		const before = refreshes(app);
+		const before = app.refreshes();
 
 		await app.events.externalChange("/somewhere/else");
-		await app.settle();
 
-		expect(refreshes(app)).toBe(before);
+		expect(app.scheduler.pending).toBe(0);
+		app.scheduler.flush();
+		expect(app.refreshes()).toBe(before);
 	});
 
 	it("reaches a listener whose registration is still in flight", async () => {

@@ -3,6 +3,7 @@ import type { FakeDialog } from "../fakes/dialog.js";
 import type { FakeMenu } from "../fakes/menu.js";
 import type { FakeOpener } from "../fakes/opener.js";
 import type { FakePath } from "../fakes/path.js";
+import type { FakeScheduler } from "../fakes/scheduler.js";
 import type { FakeWebview } from "../fakes/webview.js";
 import type { FakeWindow } from "../fakes/window.js";
 import type { HostClient } from "../harness/host-client.js";
@@ -20,12 +21,6 @@ import { ReviewDriver } from "./review.js";
 import { SearchDriver } from "./search.js";
 import { StagingDriver } from "./staging.js";
 import { ToolbarDriver } from "./toolbar.js";
-
-/**
- * `RepoView.svelte:838-847` clears and re-arms a 200 ms timer on `repo-changed`
- * and touches nothing until it fires, so the quiet window has to outlast it.
- */
-const QUIET_MS = 250;
 
 const TOAST = '[role="status"]';
 
@@ -63,11 +58,15 @@ export class AppDriver {
 	readonly window: FakeWindow;
 	readonly webview: FakeWebview;
 	readonly path: FakePath;
+	/** The application's timers, frozen. A debounced refresh runs only when a
+	 *  test fires them. */
+	readonly scheduler: FakeScheduler;
 
 	constructor(
 		private readonly host: HostClient,
 		private readonly internals: TauriInternals,
 		fakes: Fakes,
+		scheduler: FakeScheduler,
 		repoPath: string,
 	) {
 		this.home = host.home;
@@ -90,6 +89,7 @@ export class AppDriver {
 		this.window = fakes.window;
 		this.webview = fakes.webview;
 		this.path = fakes.path;
+		this.scheduler = scheduler;
 	}
 
 	/** Everything the application is telling the user right now, oldest first. */
@@ -104,16 +104,54 @@ export class AppDriver {
 		return this.internals.invokes;
 	}
 
+	/** How many times the application has refetched the commit graph. What a
+	 *  debounced refresh is observable as when the graph it produces is
+	 *  unchanged. */
+	refreshes(): number {
+		return this.internals.invokes.filter(
+			({ cmd }) => cmd === "refresh_commit_graph",
+		).length;
+	}
+
 	/**
-	 * Resolves once nothing is in flight and nothing has started for longer than
-	 * the debounce. The fallback, not the default: an assertion with state to
-	 * wait for should `waitFor` it and come in under this cost. Reach here only
-	 * for a negative — "nothing else refetched" — which has no state to wait for.
+	 * Runs the application's debounced work: waits for a timer to be armed, then
+	 * fires it. What the debounce goes on to do is still asynchronous, so the
+	 * assertion after this waits on the state it expects.
 	 */
-	async settle(): Promise<void> {
-		await waitFor("a quiet window", () => {
-			const quiet = performance.now() - this.host.lastInvokeStartedAt;
-			return this.host.pendingInvokes === 0 && quiet > QUIET_MS ? true : null;
+	async elapse(): Promise<void> {
+		await waitFor("a timer to be armed", () =>
+			this.scheduler.pending > 0 ? true : null,
+		);
+
+		this.scheduler.flush();
+	}
+
+	/**
+	 * Waits for `condition`, firing the application's timers as they arm. One
+	 * user action can produce several `repo-changed` emits, each arming the
+	 * debounce again; the test asserts on the state it wants rather than
+	 * counting emits it does not control.
+	 */
+	async elapseUntil<T>(description: string, condition: () => T | null) {
+		return waitFor(description, () => {
+			const value = condition();
+			if (value !== null) return value;
+			this.scheduler.flush();
+
+			return null;
 		});
+	}
+
+	/**
+	 * Runs every debounced refresh to completion, so the next gesture acts on a
+	 * view that will not re-render under it. A refresh that lands mid-gesture
+	 * discards a selection the test had just made.
+	 */
+	async settled(): Promise<void> {
+		await this.elapseUntil("the application's timers to run out", () =>
+			this.scheduler.pending === 0 && this.host.pendingInvokes === 0
+				? true
+				: null,
+		);
 	}
 }

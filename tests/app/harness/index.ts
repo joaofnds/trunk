@@ -1,12 +1,14 @@
 import { mount, unmount } from "svelte";
 import App from "../../../src/App.svelte";
 import { startAppServices } from "../../../src/lib/app-services.js";
+import { SCHEDULER } from "../../../src/lib/scheduler.js";
 import { AppDriver } from "../drivers/index.js";
 import { FakeClipboard } from "../fakes/clipboard.js";
 import { FakeDialog } from "../fakes/dialog.js";
 import { FakeMenu } from "../fakes/menu.js";
 import { FakeOpener } from "../fakes/opener.js";
 import { FakePath } from "../fakes/path.js";
+import { FakeScheduler } from "../fakes/scheduler.js";
 import { FakeWebview } from "../fakes/webview.js";
 import { FakeWindow } from "../fakes/window.js";
 import { installDomPolyfills, restoreDomPolyfills } from "./dom.js";
@@ -61,6 +63,8 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	};
 	internals.route(Object.values(fakes));
 
+	const scheduler = new FakeScheduler();
+
 	installDomPolyfills({ viewportHeight: options.viewportHeight });
 	internals.install();
 
@@ -74,10 +78,13 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	// do-nothing one. Unwind what we installed before letting the failure out.
 	try {
 		const untrackScroll = startAppServices();
-		const app = mount(App, { target: root });
+		const app = mount(App, {
+			target: root,
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
 
 		running = { host, internals, root, app, untrackScroll };
-		return new AppDriver(host, internals, fakes, repoPath);
+		return new AppDriver(host, internals, fakes, scheduler, repoPath);
 	} catch (error) {
 		root.remove();
 		internals.uninstall();

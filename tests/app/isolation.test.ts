@@ -38,10 +38,12 @@ describe("each test", () => {
 		await app.repo.open();
 		writeFileSync(join(app.repo.path, "b.txt"), "b");
 		await app.events.externalChange(app.repo.path);
+		await app.elapse();
 		await app.staging.open();
 		await app.staging.stageEverything();
 
 		await app.staging.commit("From the first test");
+		await app.elapse();
 
 		await expect(
 			waitFor("the new commit", () => {
