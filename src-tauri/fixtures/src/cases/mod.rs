@@ -3,6 +3,7 @@ use std::path::Path;
 pub mod commit_message;
 pub mod graph_lanes;
 pub mod graph_merges;
+pub mod staging_ignore_ws;
 pub mod stash_lanes;
 
 /// One case of the corpus: the repositories it builds under the output root, and the
@@ -20,5 +21,6 @@ pub const CASES: &[Case] = &[
     commit_message::CASE,
     graph_lanes::CASE,
     graph_merges::CASE,
+    staging_ignore_ws::CASE,
     stash_lanes::CASE,
 ];
