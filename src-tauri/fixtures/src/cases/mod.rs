@@ -1,5 +1,7 @@
 use std::path::Path;
 
+pub mod stash_lanes;
+
 /// One case of the corpus: the repositories it builds under the output root, and the
 /// function that builds them.
 pub struct Case {
@@ -11,4 +13,4 @@ pub struct Case {
 }
 
 /// The catalogue, in case order. There is no discovery: a case exists when it is here.
-pub const CASES: &[Case] = &[];
+pub const CASES: &[Case] = &[stash_lanes::CASE];

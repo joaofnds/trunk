@@ -1,0 +1,80 @@
+//! Every case builds to the fingerprint the shell corpus produced: one test per case,
+//! against the oracle file captured before the port.
+
+use std::path::Path;
+
+use trunk_fixtures::cases::{CASES, Case};
+use trunk_fixtures::fingerprint;
+
+fn case(name: &str) -> &'static Case {
+    CASES
+        .iter()
+        .find(|case| case.name == name)
+        .unwrap_or_else(|| panic!("{name} is not in CASES"))
+}
+
+fn oracle(name: &str) -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("oracle")
+        .join(format!("{name}.txt"));
+
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+/// The differing lines, block by block, so a failure names the repository and the line.
+fn report(expected: &str, actual: &str) -> String {
+    let blocks = |text: &str| {
+        text.split("\n\n")
+            .map(|block| {
+                let mut lines = block.lines();
+                let name = lines.next().unwrap_or_default().to_owned();
+                (name, lines.map(str::to_owned).collect::<Vec<_>>())
+            })
+            .collect::<Vec<_>>()
+    };
+    let (expected, actual) = (blocks(expected), blocks(actual));
+    let mut out = String::from("the built corpus differs from the oracle:\n");
+    for (want, got) in expected.iter().zip(&actual) {
+        if want == got {
+            continue;
+        }
+        out.push_str(&format!("  {}\n", want.0));
+        let longest = want.1.len().max(got.1.len());
+        for i in 0..longest {
+            let (w, g) = (want.1.get(i), got.1.get(i));
+            if w != g {
+                out.push_str(&format!(
+                    "    oracle: {}\n    built:  {}\n",
+                    w.map_or("<none>", String::as_str),
+                    g.map_or("<none>", String::as_str)
+                ));
+            }
+        }
+    }
+    if expected.len() != actual.len() {
+        out.push_str(&format!(
+            "  oracle has {} blocks, the build {}\n",
+            expected.len(),
+            actual.len()
+        ));
+    }
+
+    out
+}
+
+fn assert_matches_oracle(name: &str) {
+    trunk_fixtures::isolate();
+    let case = case(name);
+    let out = tempfile::tempdir().unwrap();
+
+    (case.build)(out.path());
+
+    let actual = fingerprint::fingerprint(out.path(), case.repos).unwrap();
+    let expected = oracle(name);
+    assert!(actual == expected, "{}", report(&expected, &actual));
+}
+
+#[test]
+fn stash_lanes_matches_its_oracle() {
+    assert_matches_oracle("06-stash-lanes");
+}
