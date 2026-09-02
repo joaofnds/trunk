@@ -83,3 +83,8 @@ fn stash_lanes_matches_its_oracle() {
 fn graph_lanes_matches_its_oracle() {
     assert_matches_oracle("04-graph-lanes");
 }
+
+#[test]
+fn graph_merges_matches_its_oracle() {
+    assert_matches_oracle("05-graph-merges");
+}

@@ -1,6 +1,7 @@
 use std::path::Path;
 
 pub mod graph_lanes;
+pub mod graph_merges;
 pub mod stash_lanes;
 
 /// One case of the corpus: the repositories it builds under the output root, and the
@@ -14,4 +15,4 @@ pub struct Case {
 }
 
 /// The catalogue, in case order. There is no discovery: a case exists when it is here.
-pub const CASES: &[Case] = &[graph_lanes::CASE, stash_lanes::CASE];
+pub const CASES: &[Case] = &[graph_lanes::CASE, graph_merges::CASE, stash_lanes::CASE];
