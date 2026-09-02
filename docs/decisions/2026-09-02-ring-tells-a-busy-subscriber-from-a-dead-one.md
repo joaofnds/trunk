@@ -15,11 +15,17 @@ another doorbell and never learned why: `ring` finds subscribers by listing
 that directory, so once the entry is gone the subscriber is deaf for good, with
 no error raised anywhere.
 
-TRUNK-114 saw this as a hung test. `store_events_survive_a_commit_racing_the_subscribe`
-subscribes while a writer commits; `subscribe` binds the socket before it spawns
-the listener thread, so there is a window where the path exists and nothing is
-accepting yet. A doorbell landing in that window could unlink the socket the
-test was about to use.
+TRUNK-114 saw this as a hung test: `store_events_survive_a_commit_racing_the_subscribe`
+hung in `UnixListener::accept` with nothing ever connecting. The general defect
+above (a busy subscriber's socket unlinked on a refused doorbell) is confirmed —
+see the "Tests" section — but the specific mechanism that produced *this* hang is
+not established. `subscribe` does bind the socket before it spawns the listener
+thread, but a `bind`ed Unix socket is already listening: a single connection
+landing in that window is queued in the kernel backlog, not refused, and the
+hanging test rings only once. Review of this fix (2026-09-02) traced this and
+found no path from that window to a refusal in this test. What produced the
+original hang remains unexplained; this fix closes a real, independently
+reproduced defect, but is not confirmed to be the hang's cause.
 
 ## Why not narrow on the error kind
 
@@ -76,4 +82,6 @@ destroys the subscription, which is what this decision buys.
   until `connect` is refused, rings, and asserts the live socket survives and the
   feed still announces afterwards.
 - `store_events_reclaim_a_socket_whose_owner_is_gone` leaks a bound socket named
-  for an impossible pid and asserts `ring` still reclaims it.
+  for an impossible pid and asserts `ring` still reclaims it. Review (2026-09-02)
+  confirmed by direct run that this test also passes against the pre-fix code:
+  it pins real, correct reclaim behavior but does not by itself prove this fix.
