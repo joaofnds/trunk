@@ -587,8 +587,22 @@ pub fn redo_commit_inner(
     path: &str,
     subject: &str,
     body: Option<&str>,
+    expected_head_oid: &str,
     state_map: &HashMap<String, PathBuf>,
 ) -> Result<(), TrunkError> {
+    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let current = repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .map(|c| c.id().to_string())
+        .unwrap_or_default();
+    if current != expected_head_oid {
+        return Err(TrunkError::new(
+            "redo_stale",
+            "HEAD has moved since the undo; refusing to redo onto unrelated history",
+        ));
+    }
+    drop(repo);
     super::commit::create_commit_inner(path, subject, body, state_map)
 }
 
@@ -651,11 +665,15 @@ pub async fn undo_commit<R: Runtime>(
     Ok(undo_result)
 }
 
+// The four leading arguments are the command's wire contract with the frontend, and the rest
+// are state Tauri injects by type; neither half can be grouped without changing one of those.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn redo_commit<R: Runtime>(
     path: String,
     subject: String,
     body: Option<String>,
+    expected_head_oid: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -665,7 +683,13 @@ pub async fn redo_commit<R: Runtime>(
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        redo_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+        redo_commit_inner(
+            &path_clone,
+            &subject,
+            body.as_deref(),
+            &expected_head_oid,
+            &state_map,
+        )?;
         let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
         graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
@@ -930,5 +954,47 @@ mod tests {
             !body.lines().any(|l| l.starts_with('#')),
             "--cleanup=strip must remove the # Conflicts: block; got: {body:?}"
         );
+    }
+
+    #[test]
+    fn redo_refuses_when_head_has_moved_off_the_position_it_names() {
+        let (dir, repo) = make_repo();
+        let base = commit_file(&repo, "base", &[], "f.txt", b"base\n");
+        commit_file(&repo, "moved on", &[base], "f.txt", b"moved\n");
+        let map = state_map_for(&dir);
+
+        let err = redo_commit_inner(
+            &path_str(&dir),
+            "undone commit",
+            None,
+            &base.to_string(),
+            &map,
+        )
+        .expect_err("HEAD is not at `base`, so redo must refuse");
+        assert_eq!(err.code, "redo_stale");
+
+        assert_eq!(
+            head_body(&repo).trim(),
+            "moved on",
+            "a refused redo must not write a commit"
+        );
+    }
+
+    #[test]
+    fn redo_commits_when_head_is_still_at_the_position_it_names() {
+        let (dir, repo) = make_repo();
+        let base = commit_file(&repo, "base", &[], "f.txt", b"base\n");
+        let map = state_map_for(&dir);
+
+        redo_commit_inner(
+            &path_str(&dir),
+            "redone commit",
+            None,
+            &base.to_string(),
+            &map,
+        )
+        .expect("HEAD is at `base`, so redo must succeed");
+
+        assert_eq!(head_body(&repo).trim(), "redone commit");
     }
 }

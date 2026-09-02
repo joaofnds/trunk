@@ -116,9 +116,21 @@ impl TestContext {
         commit_actions::undo_commit_inner(self.path(), self.state_map())
     }
 
-    /// Redo a previously undone commit by creating a new commit with the given message
-    pub fn redo_commit(&self, subject: &str, body: Option<&str>) -> Result<(), TrunkError> {
-        commit_actions::redo_commit_inner(self.path(), subject, body, self.state_map())
+    /// Redo a previously undone commit by creating a new commit with the given message,
+    /// refusing unless HEAD is still at `expected_head_oid`
+    pub fn redo_commit(
+        &self,
+        subject: &str,
+        body: Option<&str>,
+        expected_head_oid: &str,
+    ) -> Result<(), TrunkError> {
+        commit_actions::redo_commit_inner(
+            self.path(),
+            subject,
+            body,
+            expected_head_oid,
+            self.state_map(),
+        )
     }
 
     /// Check whether the current HEAD commit can be undone

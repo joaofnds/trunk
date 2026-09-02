@@ -200,8 +200,12 @@ fn workflow_undo_redo_commit() {
     assert_eq!(undo_result.subject, "Second");
 
     // Redo the undone commit
-    ctx.redo_commit(&undo_result.subject, undo_result.body.as_deref())
-        .unwrap();
+    ctx.redo_commit(
+        &undo_result.subject,
+        undo_result.body.as_deref(),
+        &undo_result.head_oid,
+    )
+    .unwrap();
     ctx.assert_head_message("Second");
 }
 
