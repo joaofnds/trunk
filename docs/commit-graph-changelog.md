@@ -319,3 +319,13 @@ Changed goldens:
      M src-tauri/tests/goldens/exports/lane-12-author-vs-committer.json
      M src-tauri/tests/goldens/exports/stash-12-orphan-stash.json
      M src-tauri/tests/goldens/exports/stash-20-stash-on-stash.json
+
+## 2026-09-02
+
+hidden-ref golden variant for lane-05-diverged: first committed bytes for the ref-visibility feature (TRUNK-116). The behaviour test hiding_a_ref_drops_the_rows_only_it_reached already pins what these bytes must mean.
+
+Changed goldens:
+
+    ?? src-tauri/tests/goldens/exports/lane-05-diverged.hidden.json
+    ?? src-tauri/tests/goldens/graph/lane-05-diverged.hidden.txt
+    ?? src/__tests__/goldens/graph-render/lane-05-diverged.hidden.txt

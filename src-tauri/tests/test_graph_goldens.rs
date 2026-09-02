@@ -157,13 +157,23 @@ fn a_bare_fixture_reports_no_wip_rows() {
 #[test]
 fn every_committed_input_has_a_golden_and_an_export() {
     let names: BTreeSet<String> = fixtures().into_iter().map(|(name, _)| name).collect();
+
+    // A paged slice and a hidden-ref layout are second renderings of an input already in
+    // the corpus, not inputs of their own, so each is expected alongside its pair rather
+    // than demanding a committed input of its own. A hidden variant carries an export too,
+    // which a paged slice does not.
     let mut expected_goldens = names.clone();
     for (name, skip, limit) in PAGED {
         expected_goldens.insert(format!("{name}.rows-{skip}-{limit}"));
     }
+    let mut expected_exports = names.clone();
+    for (name, _) in HIDDEN {
+        expected_goldens.insert(format!("{name}.hidden"));
+        expected_exports.insert(format!("{name}.hidden"));
+    }
 
     assert_eq!(committed_names(&goldens::dir(), ".txt"), expected_goldens);
-    assert_eq!(committed_names(&exports::dir(), ".json"), names);
+    assert_eq!(committed_names(&exports::dir(), ".json"), expected_exports);
 }
 
 #[test]

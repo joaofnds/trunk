@@ -1,0 +1,24 @@
+max_columns=1
+
+row 0: local six
+  col=0 color=0 head=true merge=false tip=true stash=false in_head_chain=true
+  parents: local five
+  refs: refs/heads/main (LocalBranch color=0 head=true)
+  edge 0->0 Straight color=0 dashed=false
+
+row 1: local five
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: base two
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 2: base two
+  col=0 color=0 head=false merge=false tip=false stash=false in_head_chain=true
+  parents: base one
+  refs: -
+  edge 0->0 Straight color=0 dashed=false
+
+row 3: base one
+  col=0 color=0 head=false merge=false tip=true stash=false in_head_chain=true
+  parents: -
+  refs: -
