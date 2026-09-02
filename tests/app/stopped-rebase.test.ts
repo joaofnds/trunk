@@ -50,6 +50,7 @@ describe("a stopped rebase", () => {
 		expect(rows).toEqual(["G-four", "G-three", "G-two", "G-one"]);
 		expect(app.repo.commitShas()).toEqual(before);
 
+		await app.settled();
 		await app.repo.contextMenu("G-two");
 		app.contextMenu.choose("Interactive Rebase...");
 		await app.rebaseEditor.setAction(1, "drop");
