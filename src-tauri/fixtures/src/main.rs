@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use trunk_fixtures::cases::CASES;
+use trunk_fixtures::cases::{CASES, Case};
 use trunk_fixtures::fingerprint;
 
 const USAGE: &str = "usage: fixtures build [CASE...] [--out DIR]
@@ -21,7 +21,7 @@ fn main() {
             list();
             Ok(())
         }
-        Some("build") => Err("fixtures build: no cases yet".to_owned()),
+        Some("build") => build(&args[1..]),
         _ => Err(USAGE.to_owned()),
     };
 
@@ -29,6 +29,59 @@ fn main() {
         eprintln!("{message}");
         std::process::exit(1);
     }
+}
+
+/// `build [CASE...] [--out DIR]`: every case, or the ones whose name contains any
+/// argument. A repository already under DIR is removed first, as the shell generators
+/// did; initialising over one would parent the new history on the old.
+fn build(args: &[String]) -> Result<(), String> {
+    let mut out = None;
+    let mut wanted = Vec::new();
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if arg == "--out" {
+            out = Some(PathBuf::from(args.next().ok_or_else(|| USAGE.to_owned())?));
+        } else {
+            wanted.push(arg.as_str());
+        }
+    }
+    let out = out.ok_or_else(|| "fixtures build: --out DIR is required".to_owned())?;
+
+    let mut selected: Vec<&Case> = Vec::new();
+    for want in &wanted {
+        let matching: Vec<&Case> = CASES
+            .iter()
+            .filter(|case| case.name.contains(want))
+            .collect();
+        if matching.is_empty() {
+            return Err(format!("no case matches '{want}'; run `fixtures list`"));
+        }
+        for case in matching {
+            if !selected.iter().any(|chosen| chosen.name == case.name) {
+                selected.push(case);
+            }
+        }
+    }
+    if wanted.is_empty() {
+        selected.extend(CASES.iter());
+    }
+
+    for case in selected {
+        for repo in case.repos {
+            let stale = out.join(repo);
+            if stale.exists() {
+                std::fs::remove_dir_all(&stale)
+                    .map_err(|e| format!("remove {}: {e}", stale.display()))?;
+            }
+        }
+        (case.build)(&out);
+        for repo in case.repos {
+            println!("{repo}");
+        }
+    }
+    println!("repositories in {}", out.display());
+
+    Ok(())
 }
 
 fn list() {
