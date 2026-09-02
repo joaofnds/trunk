@@ -38,6 +38,21 @@ export class RepoDriver {
 		);
 	}
 
+	/**
+	 * Closes the repository the way the user does: the tab's close control, which is what
+	 * calls `close_repo` and drops the backend's per-repo state.
+	 */
+	async close(): Promise<void> {
+		const close = await waitFor("the tab's close control", () =>
+			document.querySelector<HTMLButtonElement>('[aria-label="Close tab"]'),
+		);
+		close.click();
+
+		await waitFor("the repository's commits to go", () =>
+			this.rows().length === 0 ? true : null,
+		);
+	}
+
 	/** Selects a commit, returning once the detail pane is listing its files. */
 	async selectCommit(summary: string): Promise<void> {
 		const row = await waitFor(`the ${summary} row`, () => commitRow(summary));

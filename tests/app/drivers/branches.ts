@@ -6,6 +6,8 @@ const BRANCH_ROW = '[data-testid="branch-row"]';
 const ROW_BUTTON = '[role="button"]';
 const CREATE_BUTTON = '[aria-label="Create new branch"]';
 const CREATE_INPUT = '[data-testid="branch-create-input"]';
+const ROW_VISIBILITY = '[data-testid="branch-row-visibility-btn"]';
+const SECTION_VISIBILITY = '[data-testid="branch-section-visibility-btn"]';
 
 /** The branch sidebar, in the gestures it offers: a double-click checks a
  *  branch out, and a refusal shows under the row it was aimed at. */
@@ -64,6 +66,51 @@ export class BranchesDriver {
 	refusal(name: string): string | null {
 		const banner = branchRow(name)?.querySelector(".error-banner");
 		return banner?.textContent?.trim() ?? null;
+	}
+
+	/** Clicks the eye on a branch row, hiding it from the graph or showing it
+	 *  again. The row reveals the control on hover, so this enters it first. */
+	async toggleVisibility(name: string): Promise<void> {
+		const row = await waitFor(`the ${name} branch row`, () => branchRow(name));
+		row
+			.querySelector(ROW_BUTTON)
+			?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+		const eye = await waitFor(`the eye on ${name}`, () =>
+			row.querySelector<HTMLButtonElement>(ROW_VISIBILITY),
+		);
+		eye.click();
+	}
+
+	/** Whether the sidebar is marking `name` as hidden from the graph. */
+	isHidden(name: string): boolean {
+		return branchRow(name)?.dataset.hidden === "true";
+	}
+
+	/** Whether `name` offers a visibility toggle at all. HEAD's branch does not. */
+	offersVisibilityToggle(name: string): boolean {
+		const row = branchRow(name);
+		if (!row) return false;
+		row
+			.querySelector(ROW_BUTTON)
+			?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+		return row.querySelector(ROW_VISIBILITY) !== null;
+	}
+
+	/** Clicks the eye on a section header, hiding or showing every row under it. */
+	async toggleSectionVisibility(label: string): Promise<void> {
+		const button = await waitFor(`the eye on the ${label} section`, () => {
+			const buttons =
+				document.querySelectorAll<HTMLButtonElement>(SECTION_VISIBILITY);
+
+			return (
+				[...buttons].find((b) =>
+					b.getAttribute("aria-label")?.includes(`all ${label} refs`),
+				) ?? null
+			);
+		});
+		button.click();
 	}
 }
 
