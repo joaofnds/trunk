@@ -4,7 +4,7 @@ What the gate's speed depends on outside the repo, and how to tell which one is
 hurting when `just check` slows down. Warm on a settled tree the full gate is
 ~47s; cold after `cargo clean` it is ~2m12s (measured 2026-08-30, M5 Pro, 18
 cores). If a run is minutes-slow with idle CPUs, the machine is the problem, not
-the checks.
+the checks — start with the target dir's file count below, then Gatekeeper.
 
 ## One toolchain, pinned
 
@@ -50,6 +50,71 @@ Fix (both were needed on 2026-08-30):
    Tools, enable the terminal / Claude app.
 2. Reboot if `syspolicyd` shows hours of CPU time — it degrades and stays slow
    even for exempted processes until restarted.
+
+## `src-tauri/target` grows without bound, and slows every build
+
+Cargo keys each artifact by a build hash and never removes a superseded one.
+`cargo clean` is all-or-nothing, so nothing prunes in between and a week of
+builds accumulates artifacts for build configurations that no longer exist.
+
+Measured 2026-09-03, after roughly a week:
+
+| | |
+|---|---|
+| Files in `src-tauri/target` | 1,200,987 |
+| Files a full `--workspace --all-targets` build needs | 19,239 |
+| `.o` files in `debug/deps` | 1,035,318 |
+| `.rlib` files in `debug/deps` | 1,786 |
+| Compiled artifacts for 352 distinct crates | 2,809, about eight stale copies each |
+| Files in `debug/deps` older than seven days | 0 |
+
+Nothing there was stale by age. `aho_corasick` alone had four separately
+compiled copies at one version, sixteen codegen units each.
+
+The cost is paid on every cargo invocation, because cargo stats the tree each
+time. An identical no-op build, nothing to compile and nothing else running:
+
+| Target dir | Files | No-op build |
+|---|---|---|
+| freshly rebuilt | 19,239 | 5.6s |
+| accumulated | 1,200,987 | 76.1s |
+
+Both rows are this repository's own `src-tauri/target`, measured either side of
+the deletion below: 73GB and 1.2M files before, 6.7GB and 19k files after.
+
+Check it with `find src-tauri/target -type f | wc -l`. Past roughly 100k files,
+delete the directory:
+
+```bash
+rm -rf src-tauri/target
+```
+
+That costs one cold build (46s for `--workspace --all-targets`, measured on the
+real deletion) and restores 5s no-op builds. **Only when nothing is building.**
+Check first:
+
+```bash
+pgrep -fl 'cargo|rustc'
+```
+
+Deleting artifacts under a running cargo corrupts that build in ways that
+surface later as an unreproducible error, and this machine runs several
+sessions at once — which is why this is a manual step and deliberately not a
+`just` recipe any session could fire.
+
+Prefer `rm -rf` over `cargo clean`, and never interrupt either. Observed
+2026-09-03: a `cargo clean` interrupted at 14% left the tree half-deleted and
+the build-directory lock held, and two cargo invocations in another session sat
+on that lock for fifteen minutes accumulating 2.5s of CPU between them — not
+slow, stopped. `rm -rf` takes no lock, so an interrupted one leaves nothing to
+block on and can simply be re-run.
+
+Two things this is *not*. It is not the cargo build lock: that costs 34.4s and
+only when two builds overlap, where this is paid by every build. And it is not
+fixed by giving each session its own target dir (TRUNK-139, dropped) — a fresh
+dir is fast because it is empty, not because it is private, and seeding one by
+cloning is worse than useless: `cp -c` is a per-inode operation, so cloning the
+accumulated tree measured 525s against building it from empty in 46s.
 
 ## Scanners must not walk `src-tauri/target`
 
