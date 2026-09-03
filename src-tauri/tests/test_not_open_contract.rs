@@ -171,6 +171,7 @@ fn a_command_wrapper_carries_not_open_through_its_json() {
 
     let json = tauri::async_runtime::block_on(refresh_commit_graph(
         UNREGISTERED.to_owned(),
+        0,
         app.state(),
         app.state(),
         app.state(),

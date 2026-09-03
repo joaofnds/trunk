@@ -66,9 +66,13 @@ pub fn snapshot(repo: &mut git2::Repository, visibility: &RefVisibility)
 ```
 
 Returns a `GraphSnapshot`: the capture, the visibility it was laid out under, and
-`layout: GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`. The commands page
-the layout 200 rows at a time; a visibility change re-lays out the same capture through
-`GraphSnapshot::with_visibility` without opening the repository.
+`layout: GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`. `get_commit_graph`
+pages the layout 200 rows at a time. A rebuild — `refresh_commit_graph` or
+`set_ref_visibility` — instead answers with as many rows as the caller says it already
+holds, never fewer than one page, because the frontend replaces its whole list with what a
+rebuild returns and page one alone would drop every page the user had scrolled through. A
+visibility change re-lays out the same capture through `GraphSnapshot::with_visibility`
+without opening the repository.
 
 ### Commit ordering
 

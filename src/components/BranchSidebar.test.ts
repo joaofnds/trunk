@@ -827,4 +827,24 @@ describe("BranchSidebar ref visibility", () => {
 			expect.anything(),
 		);
 	});
+	// TRUNK-133: the graph replaces its whole list with what a toggle returns, so the
+	// toggle must ask for the depth the graph already holds. Without it the user loses
+	// every page they scrolled through.
+	it("tells the backend how many rows the graph already holds", async () => {
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", loadedRows: () => 400 },
+		});
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+		await fireEvent.click(screen.getByLabelText("Hide topic"));
+
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"set_ref_visibility",
+				expect.objectContaining({ loaded: 400 }),
+			);
+		});
+	});
 });

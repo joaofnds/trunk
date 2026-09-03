@@ -16,15 +16,30 @@ pub struct GraphResponse {
     pub max_columns: usize,
 }
 
+/// Rows per page. The frontend's own BATCH must match: it decides there whether a
+/// short response means the end of history.
+const PAGE: usize = 200;
+
 impl GraphResponse {
-    /// The 200-row page of `layout` starting at `offset`, empty past the end.
+    /// The `PAGE`-row page of `layout` starting at `offset`, empty past the end.
     fn page(layout: &GraphResult, offset: usize) -> GraphResponse {
+        Self::rows(layout, offset, offset + PAGE)
+    }
+
+    /// The first `loaded` rows of `layout`, or one page when the caller has none.
+    ///
+    /// A rebuild answers this way so the caller keeps the depth it had already paged
+    /// in. Returning page one alone would drop every later page it holds, and it has
+    /// no way to tell that loss from a history that genuinely shrank.
+    pub fn head(layout: &GraphResult, loaded: usize) -> GraphResponse {
+        Self::rows(layout, 0, loaded.max(PAGE))
+    }
+
+    fn rows(layout: &GraphResult, start: usize, end: usize) -> GraphResponse {
         let len = layout.commits.len();
-        let start = offset.min(len);
-        let end = (offset + 200).min(len);
 
         GraphResponse {
-            commits: layout.commits[start..end].to_vec(),
+            commits: layout.commits[start.min(len)..end.min(len)].to_vec(),
             max_columns: layout.max_columns,
         }
     }
@@ -47,6 +62,7 @@ pub async fn get_commit_graph(
 #[tauri::command]
 pub async fn refresh_commit_graph(
     path: String,
+    loaded: usize,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -64,7 +80,7 @@ pub async fn refresh_commit_graph(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let response = GraphResponse::page(&graph_result.layout, 0);
+    let response = GraphResponse::head(&graph_result.layout, loaded);
 
     cache.0.lock().unwrap().insert(path, graph_result);
 
@@ -80,6 +96,7 @@ pub async fn refresh_commit_graph(
 pub async fn set_ref_visibility(
     path: String,
     visibility: crate::git::graph_input::RefVisibility,
+    loaded: usize,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -98,7 +115,7 @@ pub async fn set_ref_visibility(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let response = GraphResponse::page(&graph_result.layout, 0);
+    let response = GraphResponse::head(&graph_result.layout, loaded);
 
     write_relaid_out_graph(&cache, path, read.as_ref(), graph_result);
 

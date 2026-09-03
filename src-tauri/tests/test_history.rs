@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use common::context::TestContext;
-use trunk_lib::commands::history::set_ref_visibility_inner;
+use trunk_lib::commands::history::{GraphResponse, set_ref_visibility_inner};
 use trunk_lib::git::graph_input::RefVisibility;
-use trunk_lib::git::types::MatchType;
+use trunk_lib::git::types::{GraphResult, MatchType};
 
 /// Build a TestContext with a merge topology and populate its cache.
 /// Topology: Initial commit -> Feature commit -> Merge feature into main
@@ -464,4 +464,46 @@ fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
         .collect();
     assert_eq!(summaries, ["Initial commit"]);
     assert_eq!(toggled.visibility(), &hidden);
+}
+
+/// A layout of `n` rows, built by repeating a real captured row. Only the slice
+/// length is under test, so the rows' content does not matter.
+fn layout_of(n: usize) -> GraphResult {
+    let mut ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+    ctx.populate_cache();
+    let row = ctx.cache_map.get(ctx.path()).unwrap().layout.commits[0].clone();
+
+    GraphResult {
+        commits: std::iter::repeat_n(row, n).collect(),
+        max_columns: 1,
+    }
+}
+
+/// TRUNK-133: a rebuild must be able to answer with the depth the caller had already
+/// paged in, or the frontend replaces its list with page one and loses every page the
+/// user had scrolled through.
+#[test]
+fn a_rebuild_returns_as_many_rows_as_the_caller_had_loaded() {
+    let restored = GraphResponse::head(&layout_of(450), 400);
+
+    assert_eq!(restored.commits.len(), 400);
+}
+
+/// A caller with nothing loaded asks for the default page, so a fresh open is unchanged.
+#[test]
+fn a_rebuild_with_no_loaded_depth_returns_one_page() {
+    let fresh = GraphResponse::head(&layout_of(450), 0);
+
+    assert_eq!(fresh.commits.len(), 200);
+}
+
+/// A rebuild that shortened the history answers with what is left, never past the end.
+#[test]
+fn a_rebuild_shorter_than_the_loaded_depth_returns_what_remains() {
+    let shortened = GraphResponse::head(&layout_of(120), 400);
+
+    assert_eq!(shortened.commits.len(), 120);
 }

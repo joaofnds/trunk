@@ -42,6 +42,8 @@ interface Props {
 	onrefreshed?: () => void;
 	/** The graph as the backend re-laid it out after a visibility change. */
 	onvisibilitychanged?: (graph: GraphResponse) => void;
+	/** How many rows the graph holds, so a rebuild answers with the same depth. */
+	loadedRows?: () => number;
 	onstashselect?: (oid: string) => void;
 	onrefnavigate?: (refNameOrOid: string) => void;
 	refreshSignal?: number;
@@ -57,6 +59,7 @@ let {
 	repoPath,
 	onrefreshed,
 	onvisibilitychanged,
+	loadedRows,
 	onstashselect,
 	onrefnavigate,
 	refreshSignal,
@@ -124,6 +127,7 @@ async function pushVisibility(path: string, next: RefVisibility) {
 	const graph = await safeInvoke<GraphResponse>("set_ref_visibility", {
 		path,
 		visibility: next,
+		loaded: loadedRows?.() ?? 0,
 	});
 	onvisibilitychanged?.(graph);
 }

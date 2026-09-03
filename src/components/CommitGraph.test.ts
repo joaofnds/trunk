@@ -975,4 +975,172 @@ describe("CommitGraph", () => {
 			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(true);
 		});
 	});
+	// A rebuild replaces the whole commit list. It must ask the backend for as many
+	// rows as the component already holds, or every page the user scrolled through
+	// is dropped and the author column re-fits to page one alone.
+	describe("a rebuild and already-paged history", () => {
+		const BATCH = 200;
+		const NARROW_AUTHOR = "Ann";
+		const WIDE_AUTHOR = "Wilhelmina Wollstonecraft";
+
+		// in_head_chain on page one, or the mount anchor effect pages forever
+		// looking for the head row and the run never terminates.
+		function page(from: number, author: string) {
+			return Array.from({ length: BATCH }, (_, i) =>
+				makeCommit({
+					oid: `${from + i}`.padStart(40, "0"),
+					summary: `commit ${from + i}`,
+					author_name: author,
+					in_head_chain: from === 0,
+				}),
+			);
+		}
+
+		function rows(count: number) {
+			return Array.from({ length: count }, (_, i) =>
+				makeCommit({
+					oid: `${i}`.padStart(40, "0"),
+					summary: `commit ${i}`,
+					author_name: i < BATCH ? NARROW_AUTHOR : WIDE_AUTHOR,
+					in_head_chain: i < BATCH,
+				}),
+			);
+		}
+
+		// The backend answers a rebuild with as many rows as the caller says it holds,
+		// never fewer than one page. A rebuild that forgets to say gets page one, which
+		// is what dropping the caller's depth looks like from here.
+		function rebuildOf(available: number): DispatchOverride {
+			return (cmd, args) => {
+				if (cmd !== "refresh_commit_graph") return undefined;
+				const asked = Math.max((args?.loaded as number) ?? 0, BATCH);
+
+				return Promise.resolve({
+					commits: rows(Math.min(asked, available)),
+					max_columns: 1,
+				});
+			};
+		}
+
+		function authorHeaderWidth(container: HTMLElement): number {
+			const header = [...container.querySelectorAll("div")].find(
+				(el) => el.firstChild?.textContent?.trim() === "Author",
+			) as HTMLElement | undefined;
+			if (!header) throw new Error("author header cell not found");
+			return Number.parseFloat(header.style.width);
+		}
+
+		// Page one holds narrow authors; page two, paged in through loadMore, holds
+		// the widest one. This is the state a rebuild arrives in.
+		async function mountTwoPages(override?: DispatchOverride) {
+			installReads({
+				override: (cmd, args) => {
+					const own = override?.(cmd, args);
+					if (own !== undefined) return own;
+					return cmd === "get_commit_graph"
+						? Promise.resolve({
+								commits:
+									args?.offset === 0
+										? page(0, NARROW_AUTHOR)
+										: args?.offset === BATCH
+											? page(BATCH, WIDE_AUTHOR)
+											: [],
+								max_columns: 1,
+							})
+						: undefined;
+				},
+			});
+
+			const rendered = render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true, refreshSignal: 0 },
+			});
+			await waitFor(() => {
+				expect(screen.getByText("commit 0")).toBeInTheDocument();
+			});
+			// Paging to a commit only page two holds is what drives loadMore.
+			await rendered.component.scrollToOid(`${BATCH}`.padStart(40, "0"));
+			await flush();
+
+			return rendered;
+		}
+
+		it("asks a refresh for as many rows as it already holds", async () => {
+			const rendered = await mountTwoPages(rebuildOf(2 * BATCH));
+
+			await rendered.rerender({
+				repoPath: "/test/repo",
+				tabActive: true,
+				refreshSignal: 1,
+			});
+
+			await waitFor(() => {
+				expect(safeInvoke).toHaveBeenCalledWith("refresh_commit_graph", {
+					path: "/test/repo",
+					loaded: 2 * BATCH,
+				});
+			});
+		});
+
+		// Whether a row is loaded is not whether it is rendered: the virtual list
+		// only mounts its window. Asking the component to scroll to the row makes it
+		// page for one it does not hold, so the next request names the loaded depth.
+		async function nextRequestedOffset(
+			rendered: Awaited<ReturnType<typeof mountTwoPages>>,
+			oid: string,
+		) {
+			vi.mocked(safeInvoke).mockClear();
+			void rendered.component.scrollToOid(oid);
+			await flush();
+			const paged = vi
+				.mocked(safeInvoke)
+				.mock.calls.find(([cmd]) => cmd === "get_commit_graph");
+			return (paged?.[1] as { offset: number } | undefined)?.offset;
+		}
+
+		it("keeps every paged-in commit across a refresh", async () => {
+			const rendered = await mountTwoPages(rebuildOf(2 * BATCH));
+
+			await rendered.rerender({
+				repoPath: "/test/repo",
+				tabActive: true,
+				refreshSignal: 1,
+			});
+			await flush();
+
+			// A row from page two is already held, so reaching it pages for nothing.
+			expect(
+				await nextRequestedOffset(rendered, `${BATCH}`.padStart(40, "0")),
+			).toBeUndefined();
+		});
+
+		it("keeps the author width the paged-in commits earned", async () => {
+			const rendered = await mountTwoPages(rebuildOf(2 * BATCH));
+			const widened = authorHeaderWidth(rendered.container);
+
+			await rendered.rerender({
+				repoPath: "/test/repo",
+				tabActive: true,
+				refreshSignal: 1,
+			});
+			await flush();
+
+			expect(authorHeaderWidth(rendered.container)).toBe(widened);
+		});
+
+		// A rebuild that genuinely dropped the widest author's commits must narrow
+		// the column to fit what is left. That is correct, not the truncation bug.
+		it("narrows the author column when the rebuild really lost those commits", async () => {
+			const rendered = await mountTwoPages(rebuildOf(BATCH));
+			const widened = authorHeaderWidth(rendered.container);
+
+			await rendered.rerender({
+				repoPath: "/test/repo",
+				tabActive: true,
+				refreshSignal: 1,
+			});
+			await flush();
+
+			expect(authorHeaderWidth(rendered.container)).toBeLessThan(widened);
+		});
+	});
 });

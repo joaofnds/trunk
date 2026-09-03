@@ -1440,6 +1440,12 @@ export async function scrollToOid(oid: string): Promise<void> {
 	}
 }
 
+/** How many rows are loaded, so a rebuild can answer with the same depth rather
+ *  than replacing the list with page one. Called from RepoView via bind:this. */
+export function loadedRows(): number {
+	return offset;
+}
+
 /** Replaces the graph with a freshly laid-out first page, as a rebuild or a
  *  visibility change returns it. Any refresh still in flight is older than this
  *  page and is dropped when it lands. */
@@ -1464,6 +1470,7 @@ async function refresh() {
 	try {
 		const response = await safeInvoke<GraphResponse>("refresh_commit_graph", {
 			path: repoPath,
+			loaded: offset,
 		});
 		if (seq !== refreshSeq) return;
 		showGraph(response);

@@ -210,7 +210,7 @@
 - Purpose: One `GraphSnapshot` per repository: the capture the walk read, the ref visibility it was laid out under, and the full layout, served in 200-row pages
 - Location: `src-tauri/src/state.rs`
 - Populated: On `open_repo`, refreshed on `refresh_commit_graph` and after each write op; `set_ref_visibility` re-lays out the cached capture under the new visibility without opening the repository
-- Consumed: `get_commit_graph` slices `[offset..offset+200]` from the cached layout
+- Consumed: `get_commit_graph` slices one 200-row page from the cached layout; the rebuild commands slice from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
 
 **`RepoState` (path registry):**
 - Purpose: Maps repo path strings to `PathBuf` — proof that a repo is "open"

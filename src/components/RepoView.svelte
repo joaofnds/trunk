@@ -320,6 +320,7 @@ let commitEmpty = $state(false);
 let commitGraphRef = $state<{
 	scrollToOid: (oid: string) => Promise<void>;
 	showGraph: (graph: GraphResponse) => void;
+	loadedRows: () => number;
 } | null>(null);
 
 // Rebase editor state
@@ -1318,7 +1319,7 @@ function startRightResize(e: MouseEvent) {
       </div>
     {:else}
     <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-      <BranchSidebar {repoPath} onrefreshed={handleRefresh} onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} workingTreeDirty={wipCount > 0} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
+      <BranchSidebar {repoPath} onrefreshed={handleRefresh} onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)} loadedRows={() => commitGraphRef?.loadedRows() ?? 0} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} workingTreeDirty={wipCount > 0} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>
