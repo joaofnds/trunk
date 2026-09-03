@@ -130,7 +130,7 @@ fn update_requested() -> bool {
     std::env::var_os(UPDATE_VAR).is_some()
 }
 
-/// Everything `walk_commits` reads from `ctx`, rendered as the committed file. The wip count
+/// Everything `graph::snapshot` reads from `ctx`, rendered as the committed file. The wip count
 /// is the one `RepoView.svelte` passes alongside the layout.
 fn render(ctx: &TestContext) -> String {
     let counts = get_dirty_counts_inner(ctx.path(), ctx.state_map()).expect("count dirty files");

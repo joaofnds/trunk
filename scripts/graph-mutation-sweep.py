@@ -200,9 +200,9 @@ MUTATIONS = [
     (48, G, "capture",
      "    oids.retain(|oid| !stash_internals.contains(oid));",
      "    oids.retain(|oid| stash_internals.contains(oid));"),
-    (49, G, "walk_commits",
-     "    Ok(graph_input::layout(&source, offset, limit))",
-     "    Ok(Default::default())"),
+    (49, G, "snapshot",
+     "    Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))",
+     "    Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))"),
     (50, I, "parse_oid",
      "fn parse_oid(hex: &str) -> Oid {",
      "fn parse_oid(hex: &str) -> Oid {\n"

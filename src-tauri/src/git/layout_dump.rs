@@ -1,4 +1,4 @@
-//! Deterministic text rendering of a `walk_commits` result, for golden-file tests
+//! Deterministic text rendering of a graph layout, for golden-file tests
 //! and manual QA diffs.
 //!
 //! Rows are keyed by commit summary rather than OID: editing one fixture churns every

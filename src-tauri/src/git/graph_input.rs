@@ -1,7 +1,7 @@
 //! The commit facts lane assignment does not read, and the hydration that turns a layout
 //! back into `GraphResult`.
 //!
-//! `GraphSource` is everything `walk_commits` learns from a repository. Production builds it
+//! `GraphSource` is everything `graph::snapshot` learns from a repository. Production builds it
 //! with `graph::capture`; the golden suite parses it from a committed file. Both reach the
 //! same `layout`, so a golden stays evidence about production for that half of the pipeline.
 

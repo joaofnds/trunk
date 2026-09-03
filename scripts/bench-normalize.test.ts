@@ -23,12 +23,12 @@ describe("normalize", () => {
 	});
 
 	it("divides a git2-class benchmark by the git2 calibration", () => {
-		const input = `${CALIBRATIONS}\n${bench("walk_commits/10k", "1,500,000")}`;
+		const input = `${CALIBRATIONS}\n${bench("snapshot/10k", "1,500,000")}`;
 
 		const output = normalize(input);
 
 		expect(output).toContain(
-			"test norm/walk_commits/10k ... bench: 3000000 ns/iter",
+			"test norm/snapshot/10k ... bench: 3000000 ns/iter",
 		);
 	});
 

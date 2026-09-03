@@ -28,7 +28,7 @@ vi.mock("../../lib/invoke.js", async () => {
 
 vi.mock("../../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 
-/** One fixture's `walk_commits` output plus the `wipCount` the app would pass. */
+/** One fixture's graph layout plus the `wipCount` the app would pass. */
 export interface LayoutExport {
 	wipCount: number;
 	layout: GraphResponse;

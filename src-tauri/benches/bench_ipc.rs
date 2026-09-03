@@ -120,17 +120,16 @@ fn bench_ipc_get_graph(c: &mut Criterion) {
 
     let bench_repo = REPO_1K.get_or_init(|| make_linear_repo(1_000));
 
-    // Measure: walk_commits (compute) + serde_json::to_string (serialize)
+    // Measure: graph::snapshot (compute) + serde_json::to_string (serialize)
     group.bench_function("get_commit_graph", |b| {
         b.iter(|| {
             let mut repo = git2::Repository::open(&bench_repo.path).unwrap();
-            let result = trunk_lib::git::graph::walk_commits(
+            let result = trunk_lib::git::graph::snapshot(
                 &mut repo,
-                0,
-                usize::MAX,
                 &trunk_lib::git::graph_input::RefVisibility::default(),
             )
-            .unwrap();
+            .unwrap()
+            .layout;
             // Simulate the command boundary: slice to 200 commits + serialize
             let len = result.commits.len();
             let end = 200.min(len);
@@ -191,7 +190,7 @@ fn bench_ipc_diff_unstaged(c: &mut Criterion) {
 
 /// BENCH-04: Measure cold-start sequence — the sequential operations that must complete
 /// before the app can show its first meaningful paint:
-///   open repo → walk_commits → list_refs → get_status
+///   open repo → graph::snapshot → list_refs → get_status
 fn bench_startup_sequence(c: &mut Criterion) {
     let mut group = c.benchmark_group("startup");
     group.warm_up_time(Duration::from_secs(3));
@@ -215,13 +214,12 @@ fn bench_startup_sequence(c: &mut Criterion) {
                     let mut repo = git2::Repository::open(repo_path).unwrap();
 
                     // 2. Walk commits (populates graph cache in real app)
-                    let graph = trunk_lib::git::graph::walk_commits(
+                    let graph = trunk_lib::git::graph::snapshot(
                         &mut repo,
-                        0,
-                        usize::MAX,
                         &trunk_lib::git::graph_input::RefVisibility::default(),
                     )
-                    .unwrap();
+                    .unwrap()
+                    .layout;
                     let _ = serde_json::to_string(&trunk_lib::commands::history::GraphResponse {
                         commits: graph.commits[..200.min(graph.commits.len())].to_vec(),
                         max_columns: graph.max_columns,

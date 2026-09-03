@@ -31,7 +31,7 @@ fn read(name: &str) -> FixtureInput {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", file.display()))
 }
 
-/// The layout `walk_commits` returns for `name`, taken through the same call it makes.
+/// The layout `graph::snapshot` produces for `name`, taken through the same `layout` call it makes.
 pub fn walk(name: &str, offset: usize, limit: usize) -> GraphResult {
     graph_input::layout(&read(name).capture.to_source(), offset, limit)
 }

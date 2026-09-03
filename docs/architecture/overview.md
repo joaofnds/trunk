@@ -78,7 +78,7 @@
 | `commands/operation_state.rs` | `get_operation_state`, `merge_continue/abort`, `rebase_continue/skip/abort`, `merge_branch`, `rebase_branch` | `src-tauri/src/commands/operation_state.rs` |
 | `commands/interactive_rebase.rs` | `get_rebase_todo`, `get_fork_point`, `start_interactive_rebase` | `src-tauri/src/commands/interactive_rebase.rs` |
 | `commands/merge_editor.rs` | `get_merge_sides`, `save_merge_result` | `src-tauri/src/commands/merge_editor.rs` |
-| `git/graph.rs` | `walk_commits()` = `capture()` piped into `graph_input::layout()` — commit ordering and every git2 read the pipeline makes | `src-tauri/src/git/graph.rs` |
+| `git/graph.rs` | `snapshot()` = `capture()` piped into `graph_input::apply_visibility()` and `layout()`, kept as a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/src/git/graph.rs` |
 | `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/src/git/placement.rs` |
 | `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/src/git/graph_input.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/src/git/repository.rs` |
@@ -114,7 +114,7 @@
 - Used by: `src/components/`
 
 **Commit Graph Pipeline (TypeScript, 4 layers):**
-- Layer 1 (Rust): `graph::walk_commits()` assigns columns, colors, edge types → `GraphCommit[]`
+- Layer 1 (Rust): `graph::snapshot()` assigns columns, colors, edge types → `GraphCommit[]`
 - Layer 2 (TS): `buildGraphData()` in `src/lib/active-lanes.ts` → `OverlayGraphData` (nodes + connections)
 - Layer 3 (TS): `buildOverlayPaths()` in `src/lib/overlay-paths.ts` → SVG path strings
 - Culling (TS): `getVisibleOverlayElements()` in `src/lib/overlay-visible.ts` drops off-screen paths, dots and pills
@@ -148,7 +148,7 @@
 ### Primary Request Path: Open Repository
 
 1. User picks repo path via `tauri-plugin-dialog` → `WelcomeScreen.svelte` calls `safeInvoke("open_repo", { path })` (`src/lib/invoke.ts:10`)
-2. Rust `open_repo` command (`src-tauri/src/commands/repo.rs:8`) runs `repository::validate_and_open()`, then calls `graph::walk_commits()` in `spawn_blocking`
+2. Rust `open_repo` command (`src-tauri/src/commands/repo.rs:8`) runs `repository::validate_and_open()`, then calls `graph::snapshot()` in `spawn_blocking`
 3. Graph result cached in `CommitCache`, repo path registered in `RepoState`, `start_watcher()` called for path
 4. Frontend receives `Ok(())`, updates `tabs` state in `App.svelte`, renders `RepoView.svelte`
 5. `RepoView` → `CommitGraph` calls `safeInvoke("get_commit_graph", { path, offset: 0 })` → returns first 200 `GraphCommit` rows from cache

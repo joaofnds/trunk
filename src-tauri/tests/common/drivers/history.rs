@@ -31,7 +31,7 @@ impl TestContext {
         history::wip_diff_stats_inner(self.path(), self.state_map())
     }
 
-    /// Populate the graph cache by running walk_commits on the test repo.
+    /// Populate the graph cache by taking a graph snapshot of the test repo.
     /// Must be called before search_commits to have data to search.
     pub fn populate_cache(&mut self) {
         let mut repo = self.repo();

@@ -1,4 +1,4 @@
-//! Dump everything `walk_commits` reads from one repository, as a committed fixture input.
+//! Dump everything `graph::snapshot` reads from one repository, as a committed fixture input.
 //!
 //!     cargo run --example graph_capture -- <repo-path>
 //!

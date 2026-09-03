@@ -57,8 +57,8 @@ static REPO_100: OnceLock<BenchRepo> = OnceLock::new();
 static REPO_1K: OnceLock<BenchRepo> = OnceLock::new();
 static REPO_10K: OnceLock<BenchRepo> = OnceLock::new();
 
-fn bench_walk_commits(c: &mut Criterion) {
-    let mut group = c.benchmark_group("walk_commits");
+fn bench_snapshot(c: &mut Criterion) {
+    let mut group = c.benchmark_group("snapshot");
     group.warm_up_time(Duration::from_secs(3));
     group.measurement_time(Duration::from_secs(5));
 
@@ -82,10 +82,8 @@ fn bench_walk_commits(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let mut repo = git2::Repository::open(path).unwrap();
-                    trunk_lib::git::graph::walk_commits(
+                    trunk_lib::git::graph::snapshot(
                         &mut repo,
-                        0,
-                        usize::MAX,
                         &trunk_lib::git::graph_input::RefVisibility::default(),
                     )
                     .unwrap()
@@ -155,5 +153,5 @@ fn make_linear_repo_with_side_branch(n: usize) -> BenchRepo {
     bench_repo
 }
 
-criterion_group!(benches, bench_walk_commits, bench_toggle_visibility);
+criterion_group!(benches, bench_snapshot, bench_toggle_visibility);
 criterion_main!(benches);

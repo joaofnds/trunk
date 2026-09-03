@@ -1,4 +1,4 @@
-//! Dump `walk_commits` output for one repository as deterministic text.
+//! Dump the graph `graph::snapshot` lays out for one repository as deterministic text.
 //!
 //!     cargo run --example graph_probe -- <repo-path> [hidden-ref-name]...
 //!
@@ -7,7 +7,7 @@
 //! be diffed. Shares `layout_dump` with the golden suite, so a manual QA diff
 //! and a red golden read the same.
 
-use trunk_lib::git::graph::walk_commits;
+use trunk_lib::git::graph::snapshot;
 use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::layout_dump;
 
@@ -26,7 +26,7 @@ fn main() {
     }
 
     let mut repo = git2::Repository::open(&path).expect("open repository");
-    let result = walk_commits(&mut repo, 0, usize::MAX, &visibility).expect("walk_commits");
+    let result = snapshot(&mut repo, &visibility).expect("snapshot");
 
-    print!("{}", layout_dump::render(&result));
+    print!("{}", layout_dump::render(&result.layout));
 }

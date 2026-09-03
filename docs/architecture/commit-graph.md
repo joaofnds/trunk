@@ -18,8 +18,8 @@ with code that broke a rule.
 git repo
   │
   ▼
-[Rust: graph.rs] walk_commits()
-  │    = capture() |> graph_input::apply_visibility() |> graph_input::layout()
+[Rust: graph.rs] snapshot()
+  │    = capture() |> graph_input::apply_visibility() |> graph_input::layout(), kept as a GraphSnapshot
   │  capture() reads the repository into plain data; apply_visibility() drops the
   │  refs the user hid and every commit only they reached; placement.rs::assign_lanes()
   │  assigns columns, colors, edge types and dashed flags; graph_input.rs hydrates.
@@ -61,11 +61,14 @@ a binding rule, stated once in `.claude/rules/commit-graph.md`.
 ### Entry point
 
 ```rust
-pub fn walk_commits(repo: &mut git2::Repository, offset: usize, limit: usize)
-    -> Result<GraphResult, TrunkError>
+pub fn snapshot(repo: &mut git2::Repository, visibility: &RefVisibility)
+    -> Result<GraphSnapshot, TrunkError>
 ```
 
-Returns `GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`.
+Returns a `GraphSnapshot`: the capture, the visibility it was laid out under, and
+`layout: GraphResult { commits: Vec<GraphCommit>, max_columns: usize }`. The commands page
+the layout 200 rows at a time; a visibility change re-lays out the same capture through
+`GraphSnapshot::with_visibility` without opening the repository.
 
 ### Commit ordering
 
@@ -528,7 +531,7 @@ against a committed golden under `src-tauri/tests/goldens/graph/`, plus a JSON e
 `src-tauri/tests/goldens/exports/` that the TypeScript render suite consumes.
 
 The suite builds no git repository. It reads one committed **captured input** per fixture
-from `src-tauri/tests/inputs/`, a `FixtureInput` holding everything `walk_commits` reads
+from `src-tauri/tests/inputs/`, a `FixtureInput` holding everything `graph::snapshot` reads
 from a repository plus the `wipCount` the app would pass, and drives `graph_input::layout`
 over it. That is what makes a mutation cycle cheap enough to run by hand: `just graph-sweep`
 applies one mutation, runs the four graph suites and restores, and no cycle pays for building
@@ -594,7 +597,7 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 - `a_stash_on_the_upstream_extension_tip_inlines_end_to_end` — the tracked-upstream arm's end-to-end witness: a stash parented on the extension tip inlines at column 0 through the real pipeline (`stash-on-upstream-extension-tip` rule input)
 - `dirtiness_relayouts_unrelated_branches` / `dirtiness_recolors_branches_below_the_stash_parent` — the accepted churn
 - `graph_and_dirty_counts_agree_when_*` — the graph and `get_dirty_counts` never disagree about dirtiness
-- `walk_commits_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it
+- `snapshot_on_bare_repo_does_not_error` — `statuses()` refuses bare repos; the walk must survive it
 - `orphan_stash_shows_its_parent` — a parent dropped from every ref still gets a row, and the dashed connector lands on it
 - `first_parent_never_sorts_above_its_child` / `no_oid_appears_twice` — over every stash shape whose ordering committer time could invert
 - `unreadable_stash_commit_is_skipped` / `unreadable_stash_index_commit_is_skipped` — one bad object costs one stash, not the graph

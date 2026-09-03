@@ -263,7 +263,7 @@ then mirror the same edit into the changelog.
   `graph_and_dirty_counts_agree_when_only_staged` *and*
   `stash_branches_right_when_only_staged` before the dirtiness migration, and only the first
   after it — still caught, with the redundancy gone);
-  `walk_commits_on_bare_repo_does_not_error`, the two `unreadable_stash_*`, and
+  `snapshot_on_bare_repo_does_not_error`, the two `unreadable_stash_*`, and
   `tagged_stash_is_not_duplicated`; plus, measured 2026-08-11, the only two tests in the four
   suites `just rust` runs (`test_graph.rs`, `test_placement.rs`, `test_graph_input.rs`,
   `test_graph_goldens.rs`) that fail when the revwalk's `TOPOLOGICAL | TIME` loses `TIME` —

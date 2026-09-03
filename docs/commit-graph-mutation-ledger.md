@@ -355,7 +355,7 @@ that the old `walk_commits` carried.
 | `graph.rs::capture`'s whole-function return | 1 | `graph.rs`, `capture` | Same reachability caveat as `parent_map`. Measured as row 46 |
 | `graph_input.rs`, whole file | 15 | row hydration and paging | Measured as rows 50 to 64 |
 
-**`test_graph.rs` is the only suite that reaches `capture`.** All 49 `walk_commits` calls live
+**`test_graph.rs` is the only suite that reaches `capture`.** All 49 `graph::snapshot` calls live
 there. `test_graph_goldens.rs` reads committed inputs and calls `graph_input::layout` directly, so
 it never runs the git2 half of the pipeline. Every mutant in `graph.rs`, including Appendix A row
 7, is therefore measurable only while `test_graph.rs` stays in the sweep's command. Dropping that

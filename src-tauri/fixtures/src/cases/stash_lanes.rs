@@ -485,7 +485,7 @@ exists to catch.
 
 ## Regenerating the expected layouts
 
-The layouts above were read off `walk_commits`, not predicted. Re-derive them with
+The layouts above were read off `graph::snapshot`, not predicted. Re-derive them with
 
 ```sh
 scripts/qa-stash-probe.sh /tmp/qa-after
