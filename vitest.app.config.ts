@@ -21,6 +21,10 @@ export default defineConfig({
 	test: {
 		include: ["tests/app/**/*.test.ts"],
 		environment: "jsdom",
+		// Inject every component's stylesheet so getComputedStyle can answer which
+		// elements scroll. jsdom lays nothing out, but it does cascade declared
+		// values, and a scroll container is a declared value.
+		css: { include: [/\.svelte/] },
 		// Every worker compiles the whole Svelte tree, and that compile is most of
 		// the suite's wall time. Threads share it where the default forks pool does
 		// not: dropping back to forks costs 1.8 s of the 10 s ceiling.

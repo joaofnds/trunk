@@ -2,6 +2,8 @@ import { waitFor } from "../harness/wait.js";
 
 const SHOW_RENDERED = 'button[title="Show rendered markdown"]';
 const SHOW_FULL_FILE = 'button[title="Show full file"]';
+const SHOW_SIDE_BY_SIDE = 'button[title="Side-by-side view"]';
+const SHOW_INLINE = 'button[title="Inline view"]';
 const IGNORE_WHITESPACE = 'button[title="Ignore whitespace changes"]';
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
@@ -25,6 +27,45 @@ export class DiffPaneDriver {
 		);
 
 		button.click();
+	}
+
+	/** Switches the pane from inline to side-by-side, if it is not there already. */
+	async showSideBySide(): Promise<void> {
+		const button = await waitFor("the layout toggle", () =>
+			document.querySelector<HTMLButtonElement>(
+				`${SHOW_SIDE_BY_SIDE}, ${SHOW_INLINE}`,
+			),
+		);
+
+		if (button.matches(SHOW_SIDE_BY_SIDE)) button.click();
+	}
+
+	/** The ancestors of the first element matching `selector` that declare a
+	 *  vertical scroll container, outermost last. A diff view must have exactly
+	 *  one above its content: two give the wheel two places to go on one axis,
+	 *  and the inner one, once at its end, chains into the outer and slides the
+	 *  pane out of the window (TRUNK-127). An element that sets only
+	 *  `overflow-x` is a vertical scroll container too in a real engine, but
+	 *  jsdom does not apply that rule, so this reads only declared vertical
+	 *  overflow. */
+	verticalScrollersAbove(selector: string): string[] {
+		const start = document.querySelector(selector);
+		if (!start) throw new Error(`no element matches ${selector}`);
+
+		const scrolls = (value: string) => value === "auto" || value === "scroll";
+		const found: string[] = [];
+		for (let el = start.parentElement; el; el = el.parentElement) {
+			const style = getComputedStyle(el);
+			const vertical = style.overflowY;
+			const shorthand = style.overflow;
+			if (
+				scrolls(vertical) ||
+				((vertical === "" || vertical === "visible") && scrolls(shorthand))
+			) {
+				found.push(describe(el));
+			}
+		}
+		return found;
 	}
 
 	/** Flips the ignore-whitespace toggle. The view then hides whitespace-only
@@ -82,4 +123,13 @@ function textsOf(selector: string): string[] {
 	const blocks = document.querySelectorAll<HTMLElement>(selector);
 
 	return [...blocks].map((block) => block.textContent?.trim() ?? "");
+}
+
+/** A tag and its classes with the Svelte scope hash removed, so an assertion
+ *  failure names the element as its component does. */
+function describe(el: Element): string {
+	const classes = [...el.classList].filter((c) => !c.startsWith("svelte-"));
+	return classes.length > 0
+		? `${el.tagName.toLowerCase()}.${classes.join(".")}`
+		: el.tagName.toLowerCase();
 }
