@@ -944,6 +944,61 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
     );
 }
 
+/// `sync` must wait out a full accept queue rather than call the feed dead.
+///
+/// The queue is bounded, so a subscriber whose listener is behind refuses a
+/// connection exactly as a subscriber that has gone away does — the ambiguity
+/// `abandoned` resolves on the writer's side, and which `sync` used to resolve
+/// the wrong way by treating one refusal as the end of the feed. That made the
+/// doorbell test above flaky on a loaded macOS runner: the queue it fills has
+/// not always drained by the time `sync` connects.
+///
+/// Here the queue is filled and left full while `sync` is called, so the race
+/// is the whole test rather than something it might hit. Nothing waits on a
+/// duration: the wedge is released before the assertion, and `sync` returns
+/// when the listener acknowledges the barrier it sent.
+#[test]
+fn sync_waits_out_a_full_accept_queue_instead_of_reporting_a_dead_feed() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let events = reviewdb::events::subscribe(ctx.data_dir()).unwrap();
+
+    let socket = std::fs::read_dir(ctx.data_dir().join("w"))
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
+        .expect("the subscriber's socket");
+
+    let mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    let mut pending = Vec::new();
+    loop {
+        match nonblocking_connect(&socket) {
+            Ok(stream) => pending.push(stream),
+            Err(_) => break,
+        }
+        assert!(pending.len() < 10_000, "the accept queue never filled");
+    }
+    assert!(
+        std::os::unix::net::UnixStream::connect(&socket).is_err(),
+        "the queue must be refusing when sync is called, or this test proves nothing",
+    );
+
+    // Release the wedge and go straight into sync, with the queue still full.
+    // A sync that gives up on one refusal fails here; one that waits for the
+    // listener to drain succeeds.
+    drop(pending);
+    drop(mute);
+    assert!(
+        events.sync(),
+        "sync read a full accept queue as a dead feed: a busy listener refuses \
+         exactly as an absent one does, so one refusal cannot decide it",
+    );
+}
+
 /// The other half of TRUNK-114: `ring` must still reclaim a socket whose
 /// subscriber died without dropping it. `Drop` removes the file on any
 /// orderly exit, so only a crash leaves one — and a crashed owner's path

@@ -97,6 +97,18 @@ impl StoreEvents {
     /// the listener to acknowledge without inspecting the store.
     ///
     /// `false` means the feed has ended and no further events can arrive.
+    ///
+    /// A refused connection does not mean that. The listener's accept queue is
+    /// bounded, and a subscriber whose queue is full refuses exactly as a dead
+    /// one does — the same ambiguity [`abandoned`] exists to resolve on the
+    /// writer's side. The barrier is retried while the listener drains rather
+    /// than reported as a dead feed, because the caller cannot tell the two
+    /// apart from a single refusal and the whole point of `sync` is to wait for
+    /// a listener that is behind.
+    ///
+    /// The retry is bounded by attempts, not by a clock, so it cannot pass by
+    /// waiting long enough: each attempt is one connect, and a listener that is
+    /// truly gone refuses every one of them and ends the loop.
     #[cfg(feature = "test-util")]
     pub fn sync(&self) -> bool {
         use std::io::Write;
@@ -104,7 +116,25 @@ impl StoreEvents {
         // Every sync acknowledges, so an ack from an earlier one may be
         // waiting. Discarding it first means this call blocks on its own.
         while self.synced.try_recv().is_ok() {}
-        let Ok(mut stream) = std::os::unix::net::UnixStream::connect(&self.socket_path) else {
+
+        // One connect per drained peer plus headroom. The listener releases a
+        // queued peer as fast as it can read from it — a closed one reads EOF
+        // at once — so a queue filled to the kernel's cap clears well inside
+        // this, and a socket with nobody behind it exhausts it immediately.
+        const ATTEMPTS: usize = 512;
+
+        let mut stream = None;
+        for _ in 0..ATTEMPTS {
+            match std::os::unix::net::UnixStream::connect(&self.socket_path) {
+                Ok(s) => {
+                    stream = Some(s);
+                    break;
+                }
+                // Yield rather than spin: the listener needs the CPU to drain.
+                Err(_) => std::thread::yield_now(),
+            }
+        }
+        let Some(mut stream) = stream else {
             return false;
         };
         if stream.write_all(&[SYNC_BYTE]).is_err() {
