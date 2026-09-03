@@ -784,14 +784,14 @@ describe("BranchSidebar ref visibility", () => {
 	// and a save that fails must not take the toggled graph back with it.
 	it("keeps the toggled graph and reports when the hidden set cannot be saved", async () => {
 		const base = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+		mockInvoke.mockImplementation((cmd, args) => {
 			if (cmd === "set_ref_visibility")
 				return Promise.resolve({ commits: [], max_columns: 0 });
 			if (cmd === "prefs_set")
 				return Promise.reject(
 					JSON.stringify({ code: "io_error", message: "disk full" }),
 				);
-			return base?.(cmd, args);
+			return base ? base(cmd, args) : Promise.resolve(undefined);
 		});
 		const received: unknown[] = [];
 		render(BranchSidebar, {
