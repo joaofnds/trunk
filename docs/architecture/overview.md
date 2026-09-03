@@ -139,7 +139,7 @@
 **Managed State Layer:**
 - Purpose: Cross-command shared state, Tauri-managed singletons
 - Location: `src-tauri/src/state.rs`, `src-tauri/src/watcher.rs`
-- Contains: `RepoState` (path registry), `CommitCache` (full graph per repo), `RunningOp` (PID for cancel), `WatcherState` (fs watchers)
+- Contains: `RepoState` (path registry), `CommitCache` (one `GraphSnapshot` per repo: capture, visibility and layout), `RunningOp` (PID for cancel), `WatcherState` (fs watchers)
 - All state is `Mutex<HashMap<String, T>>` keyed by repo path string. `WatcherState` wraps that map beside an `enabled` flag: `WatcherState::disabled()` makes `start_watcher` register nothing, which is how a test host runs `open_repo` unchanged with no filesystem watch
 - Used by: All command modules via `State<'_, T>` injection
 
@@ -207,10 +207,10 @@
 - Contains: OID, summary, author, column assignment, color index, edges, ref labels, flags (is_head, is_merge, is_stash)
 
 **`CommitCache`:**
-- Purpose: Full walk of all commits cached in memory, served in 200-row pages
-- Location: `src-tauri/src/state.rs:32`
-- Populated: On `open_repo`, refreshed on `refresh_commit_graph` and after each write op
-- Consumed: `get_commit_graph` slices `[offset..offset+200]` from cache
+- Purpose: One `GraphSnapshot` per repository: the capture the walk read, the ref visibility it was laid out under, and the full layout, served in 200-row pages
+- Location: `src-tauri/src/state.rs`
+- Populated: On `open_repo`, refreshed on `refresh_commit_graph` and after each write op; `set_ref_visibility` re-lays out the cached capture under the new visibility without opening the repository
+- Consumed: `get_commit_graph` slices `[offset..offset+200]` from the cached layout
 
 **`RepoState` (path registry):**
 - Purpose: Maps repo path strings to `PathBuf` — proof that a repo is "open"

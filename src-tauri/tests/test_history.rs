@@ -1,6 +1,11 @@
 mod common;
 
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use common::context::TestContext;
+use trunk_lib::commands::history::set_ref_visibility_inner;
+use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::types::MatchType;
 
 /// Build a TestContext with a merge topology and populate its cache.
@@ -37,7 +42,7 @@ fn whitespace_query_returns_empty() {
 #[test]
 fn sha_prefix_match() {
     let ctx = build_search_ctx();
-    let commits = &ctx.cache_map.get(ctx.path()).unwrap().commits;
+    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout.commits;
     let first_oid = &commits[0].oid;
     let prefix = &first_oid[..6];
 
@@ -49,7 +54,7 @@ fn sha_prefix_match() {
 #[test]
 fn sha_match_case_insensitive() {
     let ctx = build_search_ctx();
-    let commits = &ctx.cache_map.get(ctx.path()).unwrap().commits;
+    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout.commits;
     let first_oid = &commits[0].oid;
     let prefix_upper = first_oid[..6].to_uppercase();
 
@@ -408,7 +413,7 @@ fn wip_diff_stats_counts_untracked_as_insertions() {
 #[test]
 fn results_in_graph_order() {
     let ctx = build_search_ctx();
-    let commits = &ctx.cache_map.get(ctx.path()).unwrap().commits;
+    let commits = &ctx.cache_map.get(ctx.path()).unwrap().layout.commits;
     // "test" matches author_name "Test User" on all commits
     let results = ctx.search_commits("test").unwrap();
     assert!(results.len() >= 2, "expected at least 2 results");
@@ -426,4 +431,37 @@ fn results_in_graph_order() {
         assert!(idx >= last_idx, "results not in graph order");
         last_idx = idx;
     }
+}
+
+/// TRUNK-129: a visibility change re-lays out the cached capture and never opens the
+/// repository, which is what keeps a sidebar toggle at a few milliseconds. The repository
+/// path is unknown to the state map here, so a walk would fail with `not_open`.
+#[test]
+fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
+    let mut ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("feature.txt", "feature work")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .build();
+    ctx.populate_cache();
+    let cached = ctx.cache_map.get(ctx.path()).unwrap().clone();
+    let mut hidden = RefVisibility::default();
+    hidden.hidden_refs.insert("refs/heads/feature".to_owned());
+    let no_repositories: HashMap<String, PathBuf> = HashMap::new();
+
+    let toggled =
+        set_ref_visibility_inner("/nowhere", &hidden, Some(&cached), &no_repositories).unwrap();
+
+    let summaries: Vec<&str> = toggled
+        .layout
+        .commits
+        .iter()
+        .map(|c| c.summary.as_str())
+        .collect();
+    assert_eq!(summaries, ["Initial commit"]);
+    assert_eq!(toggled.visibility(), &hidden);
 }

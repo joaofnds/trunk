@@ -1,4 +1,5 @@
 use crate::error::TrunkError;
+use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, types::HeadCommitMessage};
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
@@ -9,10 +10,10 @@ fn refresh_commit_cache(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<crate::git::types::GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 fn build_message(subject: &str, body: Option<&str>) -> String {

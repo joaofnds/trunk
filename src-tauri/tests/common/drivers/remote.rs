@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use tauri::test::MockRuntime;
 use trunk_lib::commands::remote;
 use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::GraphResult;
+use trunk_lib::git::graph_input::GraphSnapshot;
 use trunk_lib::state::{CommitCache, RunningOp};
 
 /// Drives the remote commands against a real `git` subprocess and a real bare
@@ -71,7 +71,7 @@ impl RemoteDriver<'_> {
     }
 
     /// The graph the last successful command cached, as the UI would receive it.
-    pub fn cached_graph(&self) -> Option<GraphResult> {
+    pub fn cached_graph(&self) -> Option<GraphSnapshot> {
         self.cache.0.lock().unwrap().get(self.ctx.path()).cloned()
     }
 }

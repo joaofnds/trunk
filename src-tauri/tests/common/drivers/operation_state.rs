@@ -2,14 +2,15 @@ use crate::common::context::TestContext;
 use trunk_lib::commands::operation_state;
 use trunk_lib::commands::operation_state::MergeBeginResult;
 use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::{GraphResult, OperationInfo};
+use trunk_lib::git::graph_input::GraphSnapshot;
+use trunk_lib::git::types::OperationInfo;
 
 impl TestContext {
     pub fn get_operation_state(&self) -> Result<OperationInfo, TrunkError> {
         operation_state::get_operation_state_inner(self.path(), self.state_map())
     }
 
-    pub fn merge_continue(&self, message: Option<&str>) -> Result<GraphResult, TrunkError> {
+    pub fn merge_continue(&self, message: Option<&str>) -> Result<GraphSnapshot, TrunkError> {
         operation_state::merge_continue_inner(
             self.path(),
             message,
@@ -18,7 +19,7 @@ impl TestContext {
         )
     }
 
-    pub fn merge_abort(&self) -> Result<GraphResult, TrunkError> {
+    pub fn merge_abort(&self) -> Result<GraphSnapshot, TrunkError> {
         operation_state::merge_abort_inner(
             self.path(),
             self.state_map(),
@@ -26,7 +27,7 @@ impl TestContext {
         )
     }
 
-    pub fn rebase_continue(&self, message: Option<&str>) -> Result<GraphResult, TrunkError> {
+    pub fn rebase_continue(&self, message: Option<&str>) -> Result<GraphSnapshot, TrunkError> {
         operation_state::rebase_continue_inner(
             self.path(),
             message,
@@ -35,7 +36,7 @@ impl TestContext {
         )
     }
 
-    pub fn rebase_skip(&self) -> Result<GraphResult, TrunkError> {
+    pub fn rebase_skip(&self) -> Result<GraphSnapshot, TrunkError> {
         operation_state::rebase_skip_inner(
             self.path(),
             self.state_map(),
@@ -43,7 +44,7 @@ impl TestContext {
         )
     }
 
-    pub fn rebase_abort(&self) -> Result<GraphResult, TrunkError> {
+    pub fn rebase_abort(&self) -> Result<GraphSnapshot, TrunkError> {
         operation_state::rebase_abort_inner(
             self.path(),
             self.state_map(),
@@ -60,7 +61,7 @@ impl TestContext {
         )
     }
 
-    pub fn rebase_branch(&self, branch: &str) -> Result<GraphResult, TrunkError> {
+    pub fn rebase_branch(&self, branch: &str) -> Result<GraphSnapshot, TrunkError> {
         operation_state::rebase_branch_inner(
             self.path(),
             branch,

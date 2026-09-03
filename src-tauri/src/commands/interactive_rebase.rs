@@ -1,4 +1,5 @@
 use crate::error::TrunkError;
+use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, types::RebaseTodoItem};
 use crate::shell_env;
 use crate::state::{CommitCache, RepoState};
@@ -124,7 +125,7 @@ pub fn start_interactive_rebase_blocking(
     session_dir: &std::path::Path,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<(crate::git::types::GraphResult, RebaseStartResult), TrunkError> {
+) -> Result<(GraphSnapshot, RebaseStartResult), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
@@ -212,7 +213,7 @@ pub fn start_interactive_rebase_blocking(
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
-    let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
+    let graph = graph::snapshot(&mut repo, visibility)?;
 
     let outcome = if stopped_at_a_commit {
         RebaseStartResult::Stopped

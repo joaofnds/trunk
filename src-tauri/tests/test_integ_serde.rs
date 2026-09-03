@@ -824,8 +824,8 @@ fn graph_response_serializes_correctly() {
     ctx.populate_cache();
     let graph_result = ctx.cache_map.get(ctx.path()).unwrap();
     let response = GraphResponse {
-        commits: graph_result.commits.clone(),
-        max_columns: graph_result.max_columns,
+        commits: graph_result.layout.commits.clone(),
+        max_columns: graph_result.layout.max_columns,
     };
 
     let json = serde_json::to_value(&response).expect("GraphResponse serialization failed");

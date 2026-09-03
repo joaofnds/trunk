@@ -96,5 +96,64 @@ fn bench_walk_commits(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_walk_commits);
+static TOGGLE_REPO_1K: OnceLock<BenchRepo> = OnceLock::new();
+static TOGGLE_REPO_10K: OnceLock<BenchRepo> = OnceLock::new();
+
+/// A sidebar toggle against a walk of the same repository: the toggle re-lays out the
+/// cached capture, so its cost is the visibility pass plus placement, never git.
+fn bench_toggle_visibility(c: &mut Criterion) {
+    use trunk_lib::git::graph_input::RefVisibility;
+
+    let mut group = c.benchmark_group("toggle_visibility");
+    group.warm_up_time(Duration::from_secs(3));
+    group.measurement_time(Duration::from_secs(5));
+
+    let configs: &[(&str, usize, &OnceLock<BenchRepo>)] = &[
+        ("1k", 1_000, &TOGGLE_REPO_1K),
+        ("10k", 10_000, &TOGGLE_REPO_10K),
+    ];
+
+    for &(label, size, lock) in configs {
+        let bench_repo = lock.get_or_init(|| make_linear_repo_with_side_branch(size));
+        let mut hidden = RefVisibility::default();
+        hidden.hidden_refs.insert("refs/heads/side".to_owned());
+        let cached = {
+            let mut repo = git2::Repository::open(&bench_repo.path).unwrap();
+            trunk_lib::git::graph::snapshot(&mut repo, &RefVisibility::default()).unwrap()
+        };
+
+        if size >= 10_000 {
+            group.sample_size(20);
+        }
+
+        group.bench_with_input(
+            BenchmarkId::new("walk", label),
+            &bench_repo.path,
+            |b, path| {
+                b.iter(|| {
+                    let mut repo = git2::Repository::open(path).unwrap();
+                    trunk_lib::git::graph::snapshot(&mut repo, &hidden).unwrap()
+                });
+            },
+        );
+        group.bench_with_input(BenchmarkId::new("cached", label), &cached, |b, cached| {
+            b.iter(|| cached.with_visibility(hidden.clone()));
+        });
+    }
+    group.finish();
+}
+
+/// `make_linear_repo` plus `refs/heads/side` on the tip, so there is a ref to hide that is
+/// not HEAD's.
+fn make_linear_repo_with_side_branch(n: usize) -> BenchRepo {
+    let bench_repo = make_linear_repo(n);
+    let repo = git2::Repository::open(&bench_repo.path).unwrap();
+    let tip = repo.head().unwrap().target().unwrap();
+    repo.reference("refs/heads/side", tip, false, "bench")
+        .unwrap();
+
+    bench_repo
+}
+
+criterion_group!(benches, bench_walk_commits, bench_toggle_visibility);
 criterion_main!(benches);

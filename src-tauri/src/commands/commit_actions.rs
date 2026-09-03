@@ -1,8 +1,6 @@
 use crate::error::TrunkError;
-use crate::git::{
-    graph,
-    types::{GraphResult, UndoResult},
-};
+use crate::git::graph_input::GraphSnapshot;
+use crate::git::{graph, types::UndoResult};
 use crate::shell_env;
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
@@ -16,7 +14,7 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 /// 2-field struct is simpler than a tagged enum here.
 #[derive(Debug, serde::Serialize)]
 pub struct RevertBeginResult {
-    pub graph: GraphResult,
+    pub graph: GraphSnapshot,
     pub message: Option<String>,
 }
 
@@ -25,7 +23,7 @@ pub fn checkout_commit_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
 
@@ -43,7 +41,7 @@ pub fn checkout_commit_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo2, visibility)
 }
 
 pub fn create_tag_inner(
@@ -53,7 +51,7 @@ pub fn create_tag_inner(
     message: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
     let obj = repo.revparse_single(oid)?;
@@ -68,7 +66,7 @@ pub fn create_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo2, visibility)
 }
 
 pub fn delete_tag_inner(
@@ -76,7 +74,7 @@ pub fn delete_tag_inner(
     tag_name: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
     let tag_ref_name = format!("refs/tags/{}", tag_name);
@@ -86,7 +84,7 @@ pub fn delete_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo2, visibility)
 }
 
 pub fn cherry_pick_inner(
@@ -94,7 +92,7 @@ pub fn cherry_pick_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let output = std::process::Command::new("git")
@@ -115,7 +113,7 @@ pub fn cherry_pick_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn cherry_pick_continue_inner(
@@ -123,7 +121,7 @@ pub fn cherry_pick_continue_inner(
     message: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
     // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
@@ -138,14 +136,14 @@ pub fn cherry_pick_continue_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn cherry_pick_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
     // which a cherry-pick never sets.
@@ -160,7 +158,7 @@ pub fn cherry_pick_abort_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn revert_commit_begin_inner(
@@ -195,7 +193,7 @@ pub fn revert_commit_begin_inner(
     // Verbatim default — `# Conflicts:` lines (conflicted revert) are stripped at
     // commit time via --cleanup=strip, never here.
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok();
-    let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
+    let graph = graph::snapshot(&mut repo, visibility)?;
     Ok(RevertBeginResult { graph, message })
 }
 
@@ -204,7 +202,7 @@ pub fn revert_continue_inner(
     message: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
     // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
@@ -219,14 +217,14 @@ pub fn revert_continue_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn revert_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
     // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
@@ -241,7 +239,7 @@ pub fn revert_abort_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn reset_to_commit_inner(
@@ -250,7 +248,7 @@ pub fn reset_to_commit_inner(
     mode: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     let valid_modes = ["soft", "mixed", "hard"];
@@ -274,7 +272,7 @@ pub fn reset_to_commit_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 #[tauri::command]
@@ -662,9 +660,9 @@ pub async fn undo_commit<R: Runtime>(
         let graph = {
             let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)?
+            graph::snapshot(&mut repo, &visibility)?
         };
-        Ok::<(UndoResult, GraphResult), TrunkError>((undo, graph))
+        Ok::<(UndoResult, GraphSnapshot), TrunkError>((undo, graph))
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -704,7 +702,7 @@ pub async fn redo_commit<R: Runtime>(
         )?;
         let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
+        graph::snapshot(&mut repo, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

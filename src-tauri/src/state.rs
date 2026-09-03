@@ -29,7 +29,7 @@ pub fn kill_process(pid: u32) {
 
 // Caches the full commit graph per open repo path.
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
-pub struct CommitCache(pub Mutex<HashMap<String, crate::git::types::GraphResult>>);
+pub struct CommitCache(pub Mutex<HashMap<String, crate::git::graph_input::GraphSnapshot>>);
 
 // Lazy per-commit diff-stats for the graph's Diff column.
 // Outer key: repo path · inner key: commit oid · value: immutable per-oid stat.

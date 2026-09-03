@@ -145,7 +145,7 @@ pub async fn save_merge_result<R: Runtime>(
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         let path_buf = crate::commands::repo_path_from_state(&path_for_cache, &state_map)?;
         let mut repo = git2::Repository::open(path_buf)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
+        graph::snapshot(&mut repo, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

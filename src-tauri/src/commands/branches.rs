@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::types::GraphResult;
+use crate::git::graph_input::GraphSnapshot;
 use crate::git::{
     graph,
     types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry},
@@ -135,7 +135,7 @@ pub fn delete_branch_inner(
     path: &str,
     branch_name: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, GraphResult>,
+    cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
@@ -160,7 +160,7 @@ pub fn delete_branch_inner(
 
     // Rebuild graph cache
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
+    let graph_result = graph::snapshot(&mut repo2, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -172,7 +172,7 @@ pub fn rename_branch_inner(
     old_name: &str,
     new_name: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, GraphResult>,
+    cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
@@ -184,7 +184,7 @@ pub fn rename_branch_inner(
 
     // Rebuild graph cache
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
+    let graph_result = graph::snapshot(&mut repo2, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -230,7 +230,7 @@ pub async fn resolve_ref(
 /// refreshed while this operation was running.
 async fn rebuild_graph_cache<F>(cache: &CommitCache, op: F) -> Result<(), TrunkError>
 where
-    F: FnOnce(&mut HashMap<String, GraphResult>) -> Result<(), TrunkError> + Send + 'static,
+    F: FnOnce(&mut HashMap<String, GraphSnapshot>) -> Result<(), TrunkError> + Send + 'static,
 {
     let rebuilt = tauri::async_runtime::spawn_blocking(move || {
         let mut rebuilt = HashMap::new();
@@ -262,7 +262,7 @@ pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, GraphResult>,
+    cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
@@ -282,7 +282,7 @@ pub fn checkout_branch_inner(
 
     // Rebuild graph cache after checkout
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
+    let graph_result = graph::snapshot(&mut repo2, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -316,7 +316,7 @@ pub fn fast_forward_to_inner(
     path: &str,
     target_oid: &str,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, GraphResult>,
+    cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
@@ -335,7 +335,7 @@ pub fn fast_forward_to_inner(
 
     // Rebuild graph cache
     let mut repo = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
+    let graph_result = graph::snapshot(&mut repo, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -374,7 +374,7 @@ pub fn create_branch_inner(
     name: &str,
     from_oid: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
-    cache_map: &mut HashMap<String, GraphResult>,
+    cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
@@ -398,7 +398,7 @@ pub fn create_branch_inner(
         drop(repo);
         // Rebuild cache even though checkout didn't happen — branch was created
         let mut repo2 = git2::Repository::open(path_buf)?;
-        let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
+        let graph_result = graph::snapshot(&mut repo2, visibility)?;
         cache_map.insert(path.to_owned(), graph_result);
         return Err(TrunkError::new(
             "dirty_workdir",
@@ -420,7 +420,7 @@ pub fn create_branch_inner(
 
     // Rebuild graph cache after branch creation
     let mut repo2 = git2::Repository::open(path_buf)?;
-    let graph_result = graph::walk_commits(&mut repo2, 0, usize::MAX, visibility)?;
+    let graph_result = graph::snapshot(&mut repo2, visibility)?;
     cache_map.insert(path.to_owned(), graph_result);
 
     Ok(())
@@ -517,11 +517,13 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    fn graph(max_columns: usize) -> GraphResult {
-        GraphResult {
-            commits: Vec::new(),
-            max_columns,
-        }
+    /// An empty graph tagged by the ref it hides, so the assertions can tell which
+    /// snapshot each entry holds.
+    fn graph(tag: usize) -> GraphSnapshot {
+        let mut visibility = crate::git::graph_input::RefVisibility::default();
+        visibility.hidden_refs.insert(format!("refs/tags/{tag}"));
+
+        GraphSnapshot::new(crate::git::graph_input::GraphSource::default(), visibility)
     }
 
     #[test]
@@ -546,9 +548,10 @@ mod tests {
         .unwrap();
 
         let cached = cache.0.lock().unwrap();
-        assert_eq!(cached["/repo/a"].max_columns, 1);
+        assert_eq!(cached["/repo/a"].visibility(), graph(1).visibility());
         assert_eq!(
-            cached["/repo/b"].max_columns, 9,
+            cached["/repo/b"].visibility(),
+            graph(9).visibility(),
             "/repo/b was reverted to the pre-operation snapshot"
         );
     }
@@ -571,6 +574,6 @@ mod tests {
         assert_eq!(err.code, "boom");
         let cached = cache.0.lock().unwrap();
         assert!(!cached.contains_key("/repo/a"));
-        assert_eq!(cached["/repo/b"].max_columns, 7);
+        assert_eq!(cached["/repo/b"].visibility(), graph(7).visibility());
     }
 }

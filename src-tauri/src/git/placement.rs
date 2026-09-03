@@ -20,7 +20,7 @@ type LaneSlot = Option<(Oid, bool)>;
 /// Everything lane assignment reads. `parents` carries full, unfiltered parent lists and is
 /// total over every oid the algorithm looks up: `oids` plus the first-parent chains above
 /// `head_tip` and `tracked_upstream`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PlacementInput {
     pub oids: Vec<Oid>,
     pub parents: HashMap<Oid, Vec<Oid>>,

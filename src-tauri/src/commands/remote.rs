@@ -7,7 +7,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::error::TrunkError;
-use crate::git::{graph, types::GraphResult};
+use crate::git::graph;
+use crate::git::graph_input::GraphSnapshot;
 use crate::shell_env;
 use crate::state::{CommitCache, RepoState, RunningOp, kill_process};
 
@@ -153,10 +154,10 @@ async fn refresh_graph<R: Runtime>(
 ) -> Result<(), TrunkError> {
     let path_owned = path.to_owned();
     let visibility = ref_visibility.get(path);
-    let graph_result: GraphResult = tauri::async_runtime::spawn_blocking(move || {
+    let graph_result: GraphSnapshot = tauri::async_runtime::spawn_blocking(move || {
         let mut repo = git2::Repository::open(&path_buf)
             .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
+        graph::snapshot(&mut repo, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;

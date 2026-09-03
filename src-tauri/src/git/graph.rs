@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::{self, CommitFacts, GraphSource, RefVisibility};
+use crate::git::graph_input::{self, CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
 use crate::git::placement::PlacementInput;
 use crate::git::repository;
 use crate::git::status;
@@ -160,4 +160,13 @@ pub fn walk_commits(
 ) -> Result<GraphResult, TrunkError> {
     let source = graph_input::apply_visibility(&capture(repo)?, visibility);
     Ok(graph_input::layout(&source, offset, limit))
+}
+
+/// The whole history laid out under `visibility`, together with the capture it came from,
+/// which is what the commit cache holds so a later visibility change needs no repository.
+pub fn snapshot(
+    repo: &mut git2::Repository,
+    visibility: &RefVisibility,
+) -> Result<GraphSnapshot, TrunkError> {
+    Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))
 }

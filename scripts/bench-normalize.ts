@@ -25,7 +25,7 @@ const CLASSES: readonly WorkloadClass[] = [
 			"get_status_inner",
 			"stage_hunk_inner",
 		],
-		groups: ["walk_commits", "ipc_round_trip", "startup"],
+		groups: ["walk_commits", "toggle_visibility", "ipc_round_trip", "startup"],
 	},
 ];
 

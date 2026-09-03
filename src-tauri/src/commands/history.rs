@@ -1,7 +1,8 @@
 use crate::error::TrunkError;
+use crate::git::graph_input::GraphSnapshot;
 use crate::git::{
     graph,
-    types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
+    types::{DiffStat, GraphCommit, MatchType, SearchResult},
 };
 use crate::state::{CommitCache, CommitStatsCache, RepoState};
 use serde::Serialize;
@@ -26,12 +27,12 @@ pub async fn get_commit_graph(
         .get(&path)
         .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
-    let len = graph_result.commits.len();
+    let len = graph_result.layout.commits.len();
     let start = offset.min(len);
     let end = (offset + 200).min(len);
     Ok(GraphResponse {
-        commits: graph_result.commits[start..end].to_vec(),
-        max_columns: graph_result.max_columns,
+        commits: graph_result.layout.commits[start..end].to_vec(),
+        max_columns: graph_result.layout.max_columns,
     })
 }
 
@@ -49,17 +50,17 @@ pub async fn refresh_commit_graph(
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
+        graph::snapshot(&mut repo, &visibility)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let len = graph_result.commits.len();
+    let len = graph_result.layout.commits.len();
     let end = 200.min(len);
     let response = GraphResponse {
-        commits: graph_result.commits[..end].to_vec(),
-        max_columns: graph_result.max_columns,
+        commits: graph_result.layout.commits[..end].to_vec(),
+        max_columns: graph_result.layout.max_columns,
     };
 
     cache.0.lock().unwrap().insert(path, graph_result);
@@ -82,28 +83,45 @@ pub async fn set_ref_visibility(
 ) -> Result<GraphResponse, String> {
     ref_visibility.set(path.clone(), visibility.clone());
 
+    let cached = cache.0.lock().unwrap().get(&path).cloned();
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
-        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
+        set_ref_visibility_inner(&path_clone, &visibility, cached.as_ref(), &state_map)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let len = graph_result.commits.len();
+    let len = graph_result.layout.commits.len();
     let end = 200.min(len);
     let response = GraphResponse {
-        commits: graph_result.commits[..end].to_vec(),
-        max_columns: graph_result.max_columns,
+        commits: graph_result.layout.commits[..end].to_vec(),
+        max_columns: graph_result.layout.max_columns,
     };
 
     cache.0.lock().unwrap().insert(path, graph_result);
 
     Ok(response)
+}
+
+/// The graph under a new visibility. The cached snapshot answers without touching the
+/// repository; only a repository whose first graph is still being built has none, and that
+/// one is walked as it always was.
+pub fn set_ref_visibility_inner(
+    path: &str,
+    visibility: &crate::git::graph_input::RefVisibility,
+    cached: Option<&GraphSnapshot>,
+    state_map: &HashMap<String, PathBuf>,
+) -> Result<GraphSnapshot, TrunkError> {
+    if let Some(snapshot) = cached {
+        return Ok(snapshot.with_visibility(visibility.clone()));
+    }
+
+    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+    graph::snapshot(&mut repo, visibility)
 }
 
 /// Diff-stat (insertions/deletions/files_changed) for one commit against its
@@ -216,10 +234,10 @@ pub async fn get_commit_stats(
         let graph_result = lock
             .get(&path)
             .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
-        let len = graph_result.commits.len();
+        let len = graph_result.layout.commits.len();
         let start = offset.min(len);
         let end = (offset + 200).min(len);
-        graph_result.commits[start..end]
+        graph_result.layout.commits[start..end]
             .iter()
             .map(|c| c.oid.clone())
             .collect()
@@ -283,7 +301,7 @@ pub async fn get_wip_diff_stats(
 pub fn search_commits_inner(
     path: &str,
     query: &str,
-    cache_map: &HashMap<String, GraphResult>,
+    cache_map: &HashMap<String, GraphSnapshot>,
 ) -> Result<Vec<SearchResult>, TrunkError> {
     let query = query.trim();
     if query.is_empty() {
@@ -296,7 +314,7 @@ pub fn search_commits_inner(
         .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
 
     let mut results = Vec::new();
-    for commit in &graph_result.commits {
+    for commit in &graph_result.layout.commits {
         let mut match_types = Vec::new();
 
         // SHA prefix match

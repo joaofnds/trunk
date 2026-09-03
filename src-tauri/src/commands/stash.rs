@@ -1,8 +1,6 @@
 use crate::error::TrunkError;
-use crate::git::{
-    graph,
-    types::{GraphResult, StashEntry},
-};
+use crate::git::graph_input::GraphSnapshot;
+use crate::git::{graph, types::StashEntry};
 use crate::state::{CommitCache, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -72,7 +70,7 @@ pub fn stash_save_inner(
     message: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let sig = repo.signature().map_err(TrunkError::from)?;
     let msg = if message.trim().is_empty() {
@@ -95,7 +93,7 @@ pub fn stash_save_inner(
             TrunkError::from(e)
         }
     })?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn stash_pop_inner(
@@ -103,7 +101,7 @@ pub fn stash_pop_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let index = stash_index_of(&mut repo, oid)?;
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
@@ -120,7 +118,7 @@ pub fn stash_pop_inner(
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn stash_apply_inner(
@@ -128,7 +126,7 @@ pub fn stash_apply_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_apply(index, None).map_err(|e| {
@@ -141,7 +139,7 @@ pub fn stash_apply_inner(
     if crate::git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn stash_drop_inner(
@@ -149,11 +147,11 @@ pub fn stash_drop_inner(
     oid: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 #[tauri::command]

@@ -36,6 +36,8 @@ the name.
 
 **Solo** — GitKraken's inverse of hide: show only the soloed refs. Not built; a follow-up card if wanted.
 
+**Graph snapshot** — what the commit cache holds for one repository: the capture a walk read from it, the ref visibility that walk was laid out under, and the resulting layout. A visibility toggle re-lays out the cached capture and never opens the repository, and the visibility travels with the layout it produced, so the cache cannot serve a layout built under a different hidden set (TRUNK-129, TRUNK-120).
+
 ## Commit graph testing
 
 **Fixture repository** — a git repository built from scratch by a generator, with pinned

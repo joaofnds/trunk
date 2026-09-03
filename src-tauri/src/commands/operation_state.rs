@@ -1,7 +1,8 @@
 use crate::error::TrunkError;
+use crate::git::graph_input::GraphSnapshot;
 use crate::git::{
     graph,
-    types::{GraphResult, OperationInfo, OperationType},
+    types::{OperationInfo, OperationType},
 };
 use crate::shell_env;
 use crate::state::{CommitCache, RepoState};
@@ -16,11 +17,14 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MergeBeginResult {
     /// Fast-forward already happened — no editor, no merge commit.
-    FastForwarded { graph: GraphResult },
+    FastForwarded { graph: GraphSnapshot },
     /// Merge stopped on conflicts — the merge-continue UI takes over; no editor.
-    Conflicts { graph: GraphResult },
+    Conflicts { graph: GraphSnapshot },
     /// Clean non-ff merge staged — open the editor pre-filled with `message`.
-    Ready { graph: GraphResult, message: String },
+    Ready {
+        graph: GraphSnapshot,
+        message: String,
+    },
 }
 
 fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
@@ -155,7 +159,7 @@ pub fn merge_continue_inner(
     message: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     // The editor flow always supplies a message (frontend aborts on null and
     // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
@@ -174,14 +178,14 @@ pub fn merge_continue_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn merge_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
         .args(["merge", "--abort"])
@@ -194,7 +198,7 @@ pub fn merge_abort_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 /// `git rebase <step>` with the commit-message editor pinned to a no-op.
@@ -221,7 +225,7 @@ pub fn rebase_continue_inner(
     message: Option<&str>,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
 
     // Write edited message to .git/rebase-merge/message before continuing
@@ -255,14 +259,14 @@ pub fn rebase_continue_inner(
         }
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn rebase_skip_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let editor = crate::git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--skip")
@@ -274,14 +278,14 @@ pub fn rebase_skip_inner(
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 pub fn rebase_abort_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = rebase_command(path_buf, "--abort")
         .output()
@@ -291,7 +295,7 @@ pub fn rebase_abort_inner(
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 // --- Start merge/rebase ---
@@ -325,7 +329,7 @@ pub fn merge_branch_begin_inner(
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
     if probe.status.success() {
         let mut repo = git2::Repository::open(path_buf)?;
-        let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
+        let graph = graph::snapshot(&mut repo, visibility)?;
         return Ok(MergeBeginResult::FastForwarded { graph });
     }
 
@@ -349,7 +353,7 @@ pub fn merge_branch_begin_inner(
             // Conflicts: rebuild graph so the merge-continue UI picks up the
             // state. NOT an error, NOT an editor — the message isn't ready yet.
             let mut repo = git2::Repository::open(path_buf)?;
-            let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
+            let graph = graph::snapshot(&mut repo, visibility)?;
             return Ok(MergeBeginResult::Conflicts { graph });
         }
         return Err(TrunkError::new("merge_error", stderr.to_string()));
@@ -359,7 +363,7 @@ pub fn merge_branch_begin_inner(
     let mut repo = git2::Repository::open(path_buf)?;
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    let graph = graph::walk_commits(&mut repo, 0, usize::MAX, visibility)?;
+    let graph = graph::snapshot(&mut repo, visibility)?;
     Ok(MergeBeginResult::Ready { graph, message })
 }
 
@@ -368,7 +372,7 @@ pub fn rebase_branch_inner(
     onto_branch: &str,
     state_map: &HashMap<String, PathBuf>,
     visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphResult, TrunkError> {
+) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let output = std::process::Command::new("git")
         .args(["rebase", "--", onto_branch])
@@ -380,12 +384,12 @@ pub fn rebase_branch_inner(
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.to_lowercase().contains("conflict") {
             let mut repo = git2::Repository::open(path_buf)?;
-            return graph::walk_commits(&mut repo, 0, usize::MAX, visibility);
+            return graph::snapshot(&mut repo, visibility);
         }
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::walk_commits(&mut repo, 0, usize::MAX, visibility)
+    graph::snapshot(&mut repo, visibility)
 }
 
 // --- Tauri command wrappers ---
@@ -403,10 +407,10 @@ pub async fn get_operation_state(
         // Look up branch color indexes from the cached graph
         if let Some(graph) = graph_cache.get(&path) {
             if let Some(ref src) = info.source_branch {
-                info.source_color_index = find_branch_color(&graph.commits, src);
+                info.source_color_index = find_branch_color(&graph.layout.commits, src);
             }
             if let Some(ref tgt) = info.target_branch {
-                info.target_color_index = find_branch_color(&graph.commits, tgt);
+                info.target_color_index = find_branch_color(&graph.layout.commits, tgt);
             }
         }
         Ok(info)

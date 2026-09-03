@@ -3,7 +3,7 @@ use trunk_lib::commands::interactive_rebase::{
     self, RebaseStartResult, RebaseTodo, RebaseTodoAction,
 };
 use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::GraphResult;
+use trunk_lib::git::graph_input::GraphSnapshot;
 
 impl TestContext {
     pub fn get_rebase_todo(
@@ -29,7 +29,7 @@ impl TestContext {
         &self,
         base_oid: Option<&str>,
         todo_items: &[RebaseTodoAction],
-    ) -> Result<(GraphResult, RebaseStartResult), TrunkError> {
+    ) -> Result<(GraphSnapshot, RebaseStartResult), TrunkError> {
         let session = tempfile::tempdir().expect("failed to create rebase session dir");
         interactive_rebase::start_interactive_rebase_blocking(
             self.path(),

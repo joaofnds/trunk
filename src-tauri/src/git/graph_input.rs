@@ -6,6 +6,7 @@
 //! same `layout`, so a golden stays evidence about production for that half of the pipeline.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 
 use git2::Oid;
 use serde::{Deserialize, Serialize};
@@ -26,7 +27,7 @@ pub struct CommitFacts {
 /// `refs` is filtered to them, since only a page member is ever hydrated. `stash_order`
 /// carries `stash_foreach`'s order, which the algorithm does not need and the serialized
 /// form does — a `HashSet`'s iteration order would differ between processes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GraphSource {
     pub placement: PlacementInput,
     pub commits: HashMap<Oid, CommitFacts>,
@@ -403,5 +404,53 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
     GraphResult {
         commits,
         max_columns: assigned.max_columns,
+    }
+}
+
+/// The graph as it was last built for one repository: the capture it came from, the
+/// visibility it was laid out under, and the layout itself.
+///
+/// A visibility change re-lays out the same capture, so a sidebar toggle never reads the
+/// repository again (TRUNK-129). The capture and the layout travel together, and the only
+/// way to change the visibility is through `with_visibility`, so the cached layout can never
+/// describe a visibility other than the one recorded beside it (TRUNK-120).
+#[derive(Debug, Clone)]
+pub struct GraphSnapshot {
+    capture: Arc<GraphSource>,
+    visibility: RefVisibility,
+    pub layout: GraphResult,
+}
+
+/// Over the wire a snapshot is its layout: the capture never leaves the backend, and every
+/// command that returns a graph to the frontend returns the same shape it always did.
+impl Serialize for GraphSnapshot {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.layout.serialize(serializer)
+    }
+}
+
+impl GraphSnapshot {
+    pub fn new(capture: GraphSource, visibility: RefVisibility) -> GraphSnapshot {
+        GraphSnapshot::lay_out(Arc::new(capture), visibility)
+    }
+
+    /// The same capture, laid out under another visibility. No repository access.
+    pub fn with_visibility(&self, visibility: RefVisibility) -> GraphSnapshot {
+        GraphSnapshot::lay_out(Arc::clone(&self.capture), visibility)
+    }
+
+    pub fn visibility(&self) -> &RefVisibility {
+        &self.visibility
+    }
+
+    fn lay_out(capture: Arc<GraphSource>, visibility: RefVisibility) -> GraphSnapshot {
+        let source = apply_visibility(&capture, &visibility);
+        let layout = layout(&source, 0, usize::MAX);
+
+        GraphSnapshot {
+            capture,
+            visibility,
+            layout,
+        }
     }
 }

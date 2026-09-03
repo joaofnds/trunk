@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use trunk_lib::git::types::GraphResult;
+use trunk_lib::git::graph_input::GraphSnapshot;
 
 pub struct TestContext {
     _dir: tempfile::TempDir,
     _data_dir: tempfile::TempDir,
     pub(crate) path: String,
     pub(crate) state_map: HashMap<String, PathBuf>,
-    pub(crate) cache_map: HashMap<String, GraphResult>,
+    pub(crate) cache_map: HashMap<String, GraphSnapshot>,
 }
 
 impl TestContext {
@@ -68,7 +68,7 @@ impl TestContext {
     }
 
     /// Mutable borrow of cache_map (for branch _inner functions taking &mut HashMap)
-    pub fn cache_map(&mut self) -> &mut HashMap<String, GraphResult> {
+    pub fn cache_map(&mut self) -> &mut HashMap<String, GraphSnapshot> {
         &mut self.cache_map
     }
 

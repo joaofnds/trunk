@@ -1,4 +1,5 @@
 use crate::error::TrunkError;
+use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, repository};
 use crate::state::{CommitCache, CommitStatsCache, RepoState, RunningOp, kill_process};
 use crate::watcher::{self, WatcherState};
@@ -18,17 +19,16 @@ pub async fn open_repo<R: Runtime>(
     let visibility = ref_visibility.get(&path);
     let path_clone = path.clone();
 
-    let result = tauri::async_runtime::spawn_blocking(
-        move || -> Result<crate::git::types::GraphResult, TrunkError> {
+    let result =
+        tauri::async_runtime::spawn_blocking(move || -> Result<GraphSnapshot, TrunkError> {
             let path_buf = std::path::PathBuf::from(&path_clone);
             repository::validate_and_open(&path_buf)?;
             let mut repo = git2::Repository::open(&path_buf)?;
-            graph::walk_commits(&mut repo, 0, usize::MAX, &visibility)
-        },
-    )
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+            graph::snapshot(&mut repo, &visibility)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+        .map_err(|e| e.to_json())?;
 
     let path_buf = std::path::PathBuf::from(&path);
     state

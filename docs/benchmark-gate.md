@@ -16,7 +16,7 @@ Two calibrations live in `src-tauri/benches/bench_commands.rs`:
 | Calibration | Measures | Divides |
 |---|---|---|
 | `calibration/syntect` | A fixed syntect highlight of an embedded TypeScript constant | `diff_ts_full_pipeline`, `enrich_ts_new_perfile`, every `diff_ts_large_file/*` |
-| `calibration/git2` | A fixed revwalk and blob read over a repository the benchmark builds itself | `list_refs_inner`, `diff_unstaged_inner`, `get_status_inner`, `stage_hunk_inner`, every `walk_commits/*`, `ipc_round_trip/*` and `startup/*` |
+| `calibration/git2` | A fixed revwalk and blob read over a repository the benchmark builds itself | `list_refs_inner`, `diff_unstaged_inner`, `get_status_inner`, `stage_hunk_inner`, every `walk_commits/*`, `toggle_visibility/*`, `ipc_round_trip/*` and `startup/*` |
 
 `reviewdb_draft_write` is excluded. It measures an fsync, it fits neither calibration, and
 its own doc comment in the bench file says a threshold on it reports how loaded the runner

@@ -970,7 +970,7 @@ pub async fn list_session_commits<R: Runtime>(
         })?;
 
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
-        let mut result = intersect_graph_order(&commits, &graph, &repo);
+        let mut result = intersect_graph_order(&commits, &graph.layout, &repo);
         for commit in result.iter_mut() {
             commit.is_snapshot = snapshot_oids.contains(&commit.oid);
         }
