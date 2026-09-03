@@ -809,20 +809,72 @@ fn store_events_survive_a_peer_that_connects_and_says_nothing() {
     );
 }
 
+/// Connect without ever blocking, so a full accept queue is reported rather
+/// than waited on.
+///
+/// `UnixStream::connect` cannot do this. On Linux it sleeps in the kernel when
+/// the peer's backlog is full, with no timeout, so a caller trying to *detect*
+/// that condition hangs on it instead. Setting `O_NONBLOCK` before the connect
+/// turns the same condition into an immediate `EAGAIN`, and leaves macOS's
+/// `ECONNREFUSED` unchanged. Either error means the same thing here: the queue
+/// will take no more.
+///
+/// The returned stream is held by the caller purely to keep its slot in the
+/// queue occupied; nothing is read from or written to it.
+fn nonblocking_connect(path: &std::path::Path) -> std::io::Result<std::os::unix::net::UnixStream> {
+    use std::os::fd::FromRawFd;
+
+    // SAFETY: `socket` returns an owned descriptor or -1. On success it is
+    // handed straight to `UnixStream`, which closes it on drop; on failure
+    // there is nothing to close.
+    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is the descriptor just created and is not owned elsewhere.
+    let stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
+    stream.set_nonblocking(true)?;
+
+    let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    let bytes = path.as_os_str().as_encoded_bytes();
+    assert!(
+        bytes.len() < std::mem::size_of_val(&addr.sun_path),
+        "the subscriber's socket path does not fit in sockaddr_un",
+    );
+    for (slot, byte) in addr.sun_path.iter_mut().zip(bytes) {
+        *slot = *byte as libc::c_char;
+    }
+
+    // SAFETY: `addr` is a fully initialised `sockaddr_un` owned by this frame
+    // and `fd` is still open, owned by `stream`.
+    let rc = unsafe {
+        libc::connect(
+            fd,
+            std::ptr::addr_of!(addr).cast::<libc::sockaddr>(),
+            std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t,
+        )
+    };
+    if rc == 0 {
+        return Ok(stream);
+    }
+    Err(std::io::Error::last_os_error())
+}
+
 /// TRUNK-114: a live subscriber's socket must survive a failed doorbell.
 ///
 /// `ring` deletes the socket of a peer it cannot connect to, reading the
-/// failure as a subscriber that died without cleaning up. But a listener
-/// that is merely busy refuses connections too: a bound socket whose accept
-/// backlog is full answers `ECONNREFUSED`, measured here at the 128th
-/// pending connection on macOS. Deleting on that answer unbinds a live
-/// subscriber — no later `ring` can find it, because `ring` lists the
-/// directory the entry was just removed from, and the feed goes deaf with
-/// no error anywhere.
+/// failure as a subscriber that died without cleaning up. But a listener that
+/// is merely busy fails a connect too: a bound socket whose accept queue is
+/// full turns one away, at the 128th pending connection on macOS and the
+/// 4096th on Linux. Deleting on that answer unbinds a live subscriber — no
+/// later `ring` can find it, because `ring` lists the directory the entry was
+/// just removed from, and the feed goes deaf with no error anywhere.
 ///
 /// The backlog is filled deliberately rather than waited on: the pending
-/// connections are the observable state that makes the next `connect` fail,
-/// so the race is driven, not raced.
+/// connections are the observable state that makes the next connect fail, so
+/// the race is driven, not raced. See [`nonblocking_connect`] for why filling
+/// it needs a connect that cannot block.
 #[test]
 fn store_events_survive_a_doorbell_that_cannot_connect() {
     let ctx = TestContext::builder()
@@ -840,30 +892,34 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
         .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
         .expect("the subscriber's socket");
 
-    // Wedge the listener on a peer that says nothing, so it stops draining
-    // the backlog, then fill the backlog until a connect is refused. That
-    // refusal is exactly what a writer's doorbell would meet.
+    // Wedge the listener on a peer that says nothing, so it stops draining the
+    // backlog, then fill the queue until a fresh connection can no longer be
+    // completed. That is the state a writer's doorbell has to survive.
+    //
+    // How the kernel reports it differs, and only one of the two can be waited
+    // on. macOS caps the queue near 128 and refuses the next connect with
+    // ECONNREFUSED. Linux refuses nothing: a *blocking* connect to a full unix
+    // backlog sleeps in unix_wait_for_peer with no timeout of its own, so a
+    // loop that waits for an error there never gets one and hangs instead —
+    // which is what it did in CI for 19 minutes (TRUNK-117). A *non-blocking*
+    // connect answers on both: EAGAIN/EWOULDBLOCK on Linux, ECONNREFUSED on
+    // macOS. So the queue is filled with connections that cannot block.
     let _mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
     let mut pending = Vec::new();
-    let refused = loop {
-        match std::os::unix::net::UnixStream::connect(&socket) {
+    loop {
+        match nonblocking_connect(&socket) {
             Ok(stream) => pending.push(stream),
-            Err(e) => break e,
+            Err(_) => break,
         }
         assert!(
             pending.len() < 10_000,
-            "the accept backlog never filled: this test can no longer create \
-             the refusal a doorbell has to survive",
+            "the accept queue never filled: this test can no longer create \
+             the condition a doorbell has to survive",
         );
-    };
-    assert_eq!(
-        refused.kind(),
-        std::io::ErrorKind::ConnectionRefused,
-        "the backlog-full refusal is the condition under test",
-    );
+    }
 
-    // A doorbell now meets that refusal. The subscriber is alive; its socket
-    // must still be there afterwards.
+    // A doorbell now meets a queue that will take no more. The subscriber is
+    // alive, so its socket must still be there afterwards.
     reviewdb::events::ring(ctx.data_dir());
 
     assert!(
