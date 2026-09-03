@@ -266,6 +266,48 @@ missing so the two copies say nothing."##,
     );
     fixture_write(
         &mut repo,
+        "HTMLBLOCK.md",
+        r##"# Wrapped in raw HTML
+
+<details>
+<summary>An expandable section</summary>
+The prose inside is what the reader came for.
+It is wrapped in tags the renderer refuses to emit.
+</details>
+
+A closing paragraph outside the block.
+"##,
+    );
+    fixture_commit(&mut repo, 12, r##"docs: add a raw-HTML section"##);
+    fixture_write(
+        &mut repo,
+        "HTMLBLOCK.md",
+        r##"# Wrapped in raw HTML
+
+<details>
+<summary>An expandable section</summary>
+The prose inside is what the reader came for.
+It is wrapped in tags the renderer will not emit.
+</details>
+
+A closing paragraph outside the block.
+"##,
+    );
+    fixture_commit(
+        &mut repo,
+        13,
+        r##"docs: edit prose inside a raw-HTML block
+
+Rendered view: the block's SOURCE is on screen, both sides, as a code block.
+
+Sanitization strips raw HTML by design, so this block renders to nothing at
+all. Showing the source is what puts the change in front of the reader. An
+empty tinted block is the defect, and an empty block under the note
+'Reflowed - renders identically' is the same defect stating the opposite of
+the truth: the content is exactly what changed."##,
+    );
+    fixture_write(
+        &mut repo,
         "TASKS.md",
         r##"# Tasks
 
@@ -274,7 +316,7 @@ missing so the two copies say nothing."##,
 - [ ] tag the release
 "##,
     );
-    fixture_commit(&mut repo, 12, r##"docs: add a task list"##);
+    fixture_commit(&mut repo, 14, r##"docs: add a task list"##);
     fixture_write(
         &mut repo,
         "TASKS.md",
@@ -287,7 +329,7 @@ missing so the two copies say nothing."##,
     );
     fixture_commit(
         &mut repo,
-        13,
+        15,
         r##"docs: edit one item of a task list
 
 Rendered view: the first item's added word is marked, and the checkboxes
@@ -298,7 +340,7 @@ defect (TRUNK-112) — a task item is an ordinary list item to the reader."##,
         &mut repo,
         r##"# Rendered markdown diff
 
-Seven defects, one commit pair each. Open a commit, switch the centre pane to
+Eight defects, one commit pair each. Open a commit, switch the centre pane to
 the rendered view (the toggle beside the diff), and compare against the
 commit's own message: each says what the rendered view should show and what
 would count as wrong.
@@ -317,6 +359,7 @@ unchanged image used to render struck through and duplicated.
 | `docs: append a paragraph to a quoted list` | Both sides on screen | The after side blank |
 | `docs: edit one item of a task list` | The added word marked, checkboxes on every item | No mark anywhere, or the item rendered without its checkbox |
 | `docs: edit quoted prose and rewrap a paragraph` | Quoted prose word-marked; the rewrap renders as two washed copies under the note 'Reflowed — renders identically' | A del/ins mark on a rewrapped word, or the note missing so two identical copies say nothing |
+| `docs: edit prose inside a raw-HTML block` | The block's source on screen, both sides, as a code block | An empty tinted block, or an empty one under the note 'Reflowed — renders identically' |
 
 The rendered view has an inline (merged) mode and a split mode, and a hunk
 (folded) mode and a full-file mode. The fold rows above are about hunk mode,
@@ -324,7 +367,7 @@ which is the default; check the fold rows in full-file mode too, where every
 item should be present.
 "##,
     );
-    fixture_commit(&mut repo, 14, r##"docs: record what to look at"##);
+    fixture_commit(&mut repo, 16, r##"docs: record what to look at"##);
     fixture_write(
         &mut repo,
         "README.md",
