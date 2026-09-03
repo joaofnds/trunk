@@ -551,13 +551,11 @@ fn a_hidden_ref_drops_its_pill_and_the_commits_only_it_reaches() {
     }
 }
 
-/// A visibility change re-lays out the capture the graph was built from, so a sidebar toggle
-/// never reads the repository again (TRUNK-129), and the snapshot carries the visibility it
-/// was laid out under, so the two cannot disagree (TRUNK-120).
-#[test]
-fn a_snapshot_re_laid_out_under_a_visibility_equals_a_fresh_layout_under_it() {
+/// Two rows, with `main` and `origin/main` both on the tip.
+fn tip_with_local_and_remote_main() -> GraphSource {
     let (tip, root) = (oid(1), oid(2));
-    let source = GraphSource {
+
+    GraphSource {
         placement: PlacementInput {
             oids: vec![tip, root],
             parents: HashMap::from([(tip, vec![root]), (root, vec![])]),
@@ -579,7 +577,15 @@ fn a_snapshot_re_laid_out_under_a_visibility_equals_a_fresh_layout_under_it() {
             ],
         )]),
         stash_order: Vec::new(),
-    };
+    }
+}
+
+/// A visibility change re-lays out the capture the graph was built from, so a sidebar toggle
+/// never reads the repository again (TRUNK-129), and the snapshot carries the visibility it
+/// was laid out under, so the two cannot disagree (TRUNK-120).
+#[test]
+fn a_snapshot_re_laid_out_under_a_visibility_equals_a_fresh_layout_under_it() {
+    let source = tip_with_local_and_remote_main();
     let mut hidden = RefVisibility::default();
     hidden.hidden_refs.insert("refs/heads/main".to_owned());
 
@@ -597,30 +603,7 @@ fn a_snapshot_re_laid_out_under_a_visibility_equals_a_fresh_layout_under_it() {
 /// the name of its lane fall back to the highest-ranked ref that is still visible.
 #[test]
 fn a_commit_a_visible_ref_still_reaches_keeps_its_row_and_names_itself_by_that_ref() {
-    let (tip, root) = (oid(1), oid(2));
-    let source = GraphSource {
-        placement: PlacementInput {
-            oids: vec![tip, root],
-            parents: HashMap::from([(tip, vec![root]), (root, vec![])]),
-            stashes: HashSet::new(),
-            head_tip: None,
-            tracked_upstream: None,
-            worktree_dirty: false,
-        },
-        commits: HashMap::from([(tip, facts("Tip")), (root, facts("Init"))]),
-        refs: HashMap::from([(
-            tip,
-            vec![
-                ref_label("refs/heads/main", "main", RefType::LocalBranch),
-                ref_label(
-                    "refs/remotes/origin/main",
-                    "origin/main",
-                    RefType::RemoteBranch,
-                ),
-            ],
-        )]),
-        stash_order: Vec::new(),
-    };
+    let source = tip_with_local_and_remote_main();
 
     let mut hidden = RefVisibility::default();
     hidden.hidden_refs.insert("refs/heads/main".to_owned());

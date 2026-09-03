@@ -2,7 +2,7 @@ use crate::error::TrunkError;
 use crate::git::graph_input::GraphSnapshot;
 use crate::git::{
     graph,
-    types::{DiffStat, GraphCommit, MatchType, SearchResult},
+    types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
 };
 use crate::state::{CommitCache, CommitStatsCache, RepoState};
 use serde::Serialize;
@@ -16,6 +16,20 @@ pub struct GraphResponse {
     pub max_columns: usize,
 }
 
+impl GraphResponse {
+    /// The 200-row page of `layout` starting at `offset`, empty past the end.
+    fn page(layout: &GraphResult, offset: usize) -> GraphResponse {
+        let len = layout.commits.len();
+        let start = offset.min(len);
+        let end = (offset + 200).min(len);
+
+        GraphResponse {
+            commits: layout.commits[start..end].to_vec(),
+            max_columns: layout.max_columns,
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn get_commit_graph(
     path: String,
@@ -27,13 +41,7 @@ pub async fn get_commit_graph(
         .get(&path)
         .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
-    let len = graph_result.layout.commits.len();
-    let start = offset.min(len);
-    let end = (offset + 200).min(len);
-    Ok(GraphResponse {
-        commits: graph_result.layout.commits[start..end].to_vec(),
-        max_columns: graph_result.layout.max_columns,
-    })
+    Ok(GraphResponse::page(&graph_result.layout, offset))
 }
 
 #[tauri::command]
@@ -56,12 +64,7 @@ pub async fn refresh_commit_graph(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let len = graph_result.layout.commits.len();
-    let end = 200.min(len);
-    let response = GraphResponse {
-        commits: graph_result.layout.commits[..end].to_vec(),
-        max_columns: graph_result.layout.max_columns,
-    };
+    let response = GraphResponse::page(&graph_result.layout, 0);
 
     cache.0.lock().unwrap().insert(path, graph_result);
 
@@ -94,12 +97,7 @@ pub async fn set_ref_visibility(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
     .map_err(|e| e.to_json())?;
 
-    let len = graph_result.layout.commits.len();
-    let end = 200.min(len);
-    let response = GraphResponse {
-        commits: graph_result.layout.commits[..end].to_vec(),
-        max_columns: graph_result.layout.max_columns,
-    };
+    let response = GraphResponse::page(&graph_result.layout, 0);
 
     cache.0.lock().unwrap().insert(path, graph_result);
 
