@@ -139,6 +139,10 @@ function commentCountFor(oid: string): number {
 
 const BATCH = 200;
 const SKELETON_COUNT = 10;
+/** How many page loads in a row may return nothing before scrollToOid gives up.
+ *  Above 1 so a page dropped by the stale-page guard is retried against the
+ *  rebuilt graph, low enough that a persistent failure stops quickly. */
+const PAGE_ATTEMPT_BUDGET = 3;
 
 /** Stands in for the session membership Set when no comments rune is supplied. */
 const EMPTY_OIDS: ReadonlySet<string> = new Set();
@@ -1411,10 +1415,18 @@ async function loadMore() {
 export async function scrollToOid(oid: string): Promise<void> {
 	let idx = displayItems.findIndex((c) => c.oid === oid);
 
-	// Load more batches until found or all commits exhausted
-	while (idx < 0 && hasMore && !loading) {
+	// Load more batches until found or all commits exhausted. A page can come
+	// back without growing the list two ways: the request failed, or it landed
+	// after a rebuild and was dropped as stale -- and the stale drop sets no
+	// error, so counting failures would miss it. Count attempts that made no
+	// progress instead, which covers both. The budget is not 1: the stale-page
+	// guard relies on this loop re-issuing the load a rebuild made it discard.
+	let stalled = 0;
+	while (idx < 0 && hasMore && !loading && stalled < PAGE_ATTEMPT_BUDGET) {
+		const before = commits.length;
 		await loadMore();
 		await tick();
+		stalled = commits.length > before ? 0 : stalled + 1;
 		idx = displayItems.findIndex((c) => c.oid === oid);
 	}
 

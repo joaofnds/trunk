@@ -975,6 +975,142 @@ describe("CommitGraph", () => {
 			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(true);
 		});
 	});
+	// scrollToOid pages until it finds the row it was asked for. Two things can
+	// make a page yield nothing: the request rejects, or it lands after a rebuild
+	// and the seq guard drops it. Neither grows the list, so a loop that retries
+	// until the list grows never stops. The dropped-page case sets no error at
+	// all, which is why the bound counts attempts that made no progress rather
+	// than attempts that failed.
+	describe("scrollToOid hunting a row that never arrives", () => {
+		const BATCH = 200;
+		// Above any legitimate budget, so hitting it means the loop is unbounded.
+		// Without it these tests hang instead of failing.
+		const RUNAWAY = 25;
+		const originalScrollTo = Element.prototype.scrollTo;
+
+		beforeEach(() => {
+			Element.prototype.scrollTo = function scrollTo() {};
+		});
+
+		afterEach(() => {
+			Element.prototype.scrollTo = originalScrollTo;
+		});
+
+		// in_head_chain on page one, or the mount anchor effect pages forever
+		// looking for the head row and the run never terminates.
+		function page(from: number, tag: string) {
+			return Array.from({ length: BATCH }, (_, i) =>
+				makeCommit({
+					oid: `${tag}${from + i}`.padStart(40, "0"),
+					summary: `${tag} commit ${from + i}`,
+					in_head_chain: from === 0,
+				}),
+			);
+		}
+
+		const MISSING = "missing".padStart(40, "0");
+
+		async function mounted() {
+			const rendered = render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+			await waitFor(() => {
+				expect(screen.getByText("old commit 0")).toBeInTheDocument();
+			});
+			return rendered;
+		}
+
+		it("stops paging when every page request fails", async () => {
+			let attempts = 0;
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					if (args?.offset === 0) {
+						return Promise.resolve({
+							commits: page(0, "old"),
+							max_columns: 1,
+						});
+					}
+					attempts += 1;
+					// Escape hatch: report history exhausted so a still-unbounded
+					// loop terminates and the count below is the assertion.
+					if (attempts > RUNAWAY) {
+						return Promise.resolve({ commits: [], max_columns: 1 });
+					}
+					return Promise.reject(new Error("page unavailable"));
+				},
+			});
+			const rendered = await mounted();
+
+			await rendered.component.scrollToOid(MISSING);
+			await flush();
+
+			expect(attempts).toBeLessThan(RUNAWAY);
+		});
+
+		it("stops paging when every page is dropped as stale", async () => {
+			let attempts = 0;
+			let rendered: Awaited<ReturnType<typeof mounted>>;
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					if (args?.offset === 0 && attempts === 0) {
+						return Promise.resolve({
+							commits: page(0, "old"),
+							max_columns: 1,
+						});
+					}
+					attempts += 1;
+					if (attempts > RUNAWAY) {
+						return Promise.resolve({ commits: [], max_columns: 1 });
+					}
+					// Rebuild before the page lands, so the seq guard drops it. No
+					// error is set on this path -- the list simply does not grow.
+					rendered.component.showGraph({
+						commits: page(0, "new"),
+						max_columns: 1,
+					});
+					return Promise.resolve({
+						commits: page(BATCH, "old"),
+						max_columns: 1,
+					});
+				},
+			});
+			rendered = await mounted();
+
+			await rendered.component.scrollToOid(MISSING);
+			await flush();
+
+			expect(attempts).toBeLessThan(RUNAWAY);
+		});
+
+		it("shows the failure and a way to retry once it gives up", async () => {
+			let attempts = 0;
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					if (args?.offset === 0) {
+						return Promise.resolve({
+							commits: page(0, "old"),
+							max_columns: 1,
+						});
+					}
+					attempts += 1;
+					if (attempts > RUNAWAY) {
+						return Promise.resolve({ commits: [], max_columns: 1 });
+					}
+					return Promise.reject(new Error("page unavailable"));
+				},
+			});
+			const rendered = await mounted();
+
+			await rendered.component.scrollToOid(MISSING);
+			await flush();
+
+			expect(screen.getByText("page unavailable")).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+		});
+	});
 	// A rebuild replaces the whole commit list. It must ask the backend for as many
 	// rows as the component already holds, or every page the user scrolled through
 	// is dropped and the author column re-fits to page one alone.
