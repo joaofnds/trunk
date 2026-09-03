@@ -102,6 +102,24 @@ content's height differs from the old.
 jsdom cannot observe the clamp, so the harness test asserts the thing that causes it — that
 the pane still holds its blocks mid-refetch — rather than the scroll offset itself.
 
+## A view that owns its scroller sits in a clipped wrapper
+
+`DiffViewer` mounts every diff view inside one wrapper, and every view it mounts owns its own
+scroller: the virtual lists, and `.rendered-diff` for rendered markdown. The wrapper is
+therefore `overflow: clip`, never `auto` and never `hidden`. Two scrollers on one axis give
+the wheel two places to go: when the inner one reaches its end the scroll chains to the
+outer, and the whole pane slides up out of the window behind a second scrollbar, with the
+wrapper's background showing beneath it. That is what TRUNK-127 looked like on screen.
+
+`hidden` is not enough. A hidden overflow is still a scroll container, which `scrollIntoView`
+and scroll chaining can move, and WebKit hands it a phantom scroll range: measured in the
+running app, the wrapper reported a `scrollHeight` of the rendered pane's content height
+(minus a constant) while its only child was exactly the wrapper's height and clipped its own
+overflow. Toggling the wrapper's `position` made the phantom range vanish and it did not
+return, so it is stale overflow the engine never recomputed. `clip` removes the scroll
+container altogether, so nothing can act on that range whether or not it exists.
+`DiffViewer.test.ts` pins the value.
+
 ## Testing it
 
 jsdom computes no layout and does no hit testing, so it can answer none of the questions
