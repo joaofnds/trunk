@@ -144,6 +144,12 @@ const SKELETON_COUNT = 10;
  *  rebuilt graph, low enough that a persistent failure stops quickly. */
 const PAGE_ATTEMPT_BUDGET = 3;
 
+/** What one loadMore call did, for callers that must tell its outcomes apart.
+ *  "appended" is the only one that grew the list: "failed" set the error banner,
+ *  "stale" was laid out against a graph a rebuild has since replaced, and "idle"
+ *  means a load was already running or history is exhausted. */
+type PageResult = "appended" | "failed" | "stale" | "idle";
+
 /** Stands in for the session membership Set when no comments rune is supplied. */
 const EMPTY_OIDS: ReadonlySet<string> = new Set();
 
@@ -1375,8 +1381,8 @@ async function fetchWipStats() {
 	}
 }
 
-async function loadMore() {
-	if (loading || !hasMore) return;
+async function loadMore(): Promise<PageResult> {
+	if (loading || !hasMore) return "idle";
 	loading = true;
 	error = null;
 	// The page is a slice of the graph as it stands now. showGraph bumps this
@@ -1392,18 +1398,20 @@ async function loadMore() {
 		// Drop it rather than append: these rows were laid out under the old
 		// graph, and offset now indexes the new one. The viewport re-triggers a
 		// load for whatever it still needs.
-		if (seq !== refreshSeq) return;
+		if (seq !== refreshSeq) return "stale";
 		commits.push(...response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
 		offset += response.commits.length;
 		if (response.commits.length < BATCH) hasMore = false;
 		void fetchPageStats(requestedOffset);
+		return "appended";
 	} catch (e) {
 		// A page that failed for the graph we no longer show is not this graph's
 		// error, and reporting it would bury the rebuilt view under a stale bar.
-		if (seq !== refreshSeq) return;
+		if (seq !== refreshSeq) return "stale";
 		error = errorMessage(e, "Failed to load commits");
+		return "failed";
 	} finally {
 		loading = false;
 	}
@@ -1415,18 +1423,14 @@ async function loadMore() {
 export async function scrollToOid(oid: string): Promise<void> {
 	let idx = displayItems.findIndex((c) => c.oid === oid);
 
-	// Load more batches until found or all commits exhausted. A page can come
-	// back without growing the list two ways: the request failed, or it landed
-	// after a rebuild and was dropped as stale -- and the stale drop sets no
-	// error, so counting failures would miss it. Count attempts that made no
-	// progress instead, which covers both. The budget is not 1: the stale-page
-	// guard relies on this loop re-issuing the load a rebuild made it discard.
+	// Load more batches until found or all commits exhausted. A page that did
+	// not append is either a failure or a drop by the stale-page guard, and both
+	// count against the budget. The budget is not 1: the stale-page guard relies
+	// on this loop re-issuing the load a rebuild made it discard.
 	let stalled = 0;
 	while (idx < 0 && hasMore && !loading && stalled < PAGE_ATTEMPT_BUDGET) {
-		const before = commits.length;
-		await loadMore();
+		stalled = (await loadMore()) === "appended" ? 0 : stalled + 1;
 		await tick();
-		stalled = commits.length > before ? 0 : stalled + 1;
 		idx = displayItems.findIndex((c) => c.oid === oid);
 	}
 
@@ -2104,7 +2108,7 @@ $effect(() => {
         items={displayItems}
         defaultEstimatedItemHeight={displaySettings.rowHeight}
         bind:measuredItemHeight={svgRowHeight}
-        onLoadMore={loadMore}
+        onLoadMore={() => void loadMore()}
         loadMoreThreshold={50}
         {hasMore}
         overlaySnippet={graphOverlay}
@@ -2143,7 +2147,7 @@ $effect(() => {
         <div class="flex items-center gap-3 px-4 py-2">
           <span class="error-text text-sm">{error}</span>
           <button
-            onclick={loadMore}
+            onclick={() => void loadMore()}
             class="rounded px-3 py-1 text-xs font-medium"
             style="background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text);"
           >
