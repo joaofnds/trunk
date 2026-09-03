@@ -582,19 +582,6 @@ textarea::placeholder {
 	background: var(--color-diff-delete-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
-/* A tinted line inside the source fallback (a raw-HTML block shown as its own
-   source). The span is inline, so without display:block its background would
-   stop at the end of the text instead of running the width of the pane, and
-   the changed lines would read as ragged highlights rather than as diff rows.
-   The negative margin plus matching padding lets the tint reach the <pre>'s
-   own padding edge, so a line's tint starts where the code block starts. */
-.markdown-body pre code span.md-added,
-.markdown-body pre code span.md-removed {
-	display: block;
-	margin-inline: -1em;
-	padding-inline: 1em;
-}
-
 /* A Changed pair whose leaves are tinted keeps the rail and drops the wash, so
    the changed item is the only highlighted thing instead of a brighter patch
    inside a fully painted block. Two classes beat the single-class rule above on

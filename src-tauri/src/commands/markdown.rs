@@ -185,10 +185,6 @@ struct Block {
     /// matching compares this, never `html`: rendered html embeds each side's
     /// rev in image URLs, so identical markdown renders differently per side.
     source: String,
-    /// Whether `html` is the source fallback rather than a render of the
-    /// block. A changed pair of these is diffed by LINE and tinted, so the
-    /// reader is not left comparing two copies of the source by eye.
-    is_source_fallback: bool,
     leaves: Vec<Leaf>,
     sourcepos_html: String,
     start_line: u32,
@@ -1316,27 +1312,6 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // path reads each side's `sourcepos_html`, which a non-container leaves
     // empty, and the reader lost that whole side of the diff.
     if before.leaves.is_empty() || after.leaves.is_empty() {
-        // Two source-fallback panes are diffed by line and tinted. The word
-        // merge is not used here: it wraps its marks around the `<code>`
-        // element rather than inside it, which splits the pane. There is no
-        // single merged copy either — the reader compares two source panes,
-        // as they do for a code block.
-        if before.is_source_fallback && after.is_source_fallback {
-            let (before_html, after_html) = marked_source_fallback(&before.source, &after.source);
-            let (before_html, after_html) =
-                (sanitize_html(&before_html), sanitize_html(&after_html));
-            return ChangedFragments {
-                has_tints: tinted(&before_html) || tinted(&after_html),
-                before_html,
-                after_html,
-                merged_html: None,
-                hunk_merged_html: None,
-                hunk_before_html: None,
-                hunk_after_html: None,
-                hunk_hidden_leaves: 0,
-                renders_identically: false,
-            };
-        }
         let merged_html = if before.kind == "code_block" || after.kind == "code_block" {
             None
         } else {
@@ -2038,44 +2013,6 @@ fn source_fallback(source: &str) -> String {
     format!("<pre><code>{escaped}</code></pre>\n")
 }
 
-/// The two source-fallback panes of a changed block, with the lines that
-/// differ tinted — the same red/green the source view gives them.
-///
-/// Two untinted copies of a hundred-line block leave the reader to find the
-/// change by eye, which is the job the rendered view exists to do for them.
-/// The marks are per LINE, matching the source view's granularity, and they
-/// go INSIDE one `<code>` element: the word merge wraps its marks around the
-/// element instead, splitting `<code>` at every mark and breaking the pane.
-fn marked_source_fallback(before: &str, after: &str) -> (String, String) {
-    let ops = line_diff_ops(before, after);
-    let (before_dirty, after_dirty) = dirty_lines(&ops);
-    let render = |text: &str, dirty: &HashSet<u32>, class: &str| {
-        let mut out = String::from("<pre><code>");
-        for (i, line) in text.lines().enumerate() {
-            let mut escaped = String::new();
-            comrak::html::escape(&mut escaped, line).expect("escaping to a String cannot fail");
-            // 1-based, matching `dirty_lines`' line numbering.
-            if dirty.contains(&(i as u32 + 1)) {
-                out.push_str(&format!("<span class=\"{class}\">{escaped}</span>"));
-            } else {
-                out.push_str(&escaped);
-            }
-            out.push('\n');
-        }
-        // The trailing newline the loop always appends would render as a blank
-        // final line inside the `<pre>`.
-        if out.ends_with('\n') {
-            out.pop();
-        }
-        out.push_str("</code></pre>\n");
-        out
-    };
-    (
-        render(before, &before_dirty, "md-removed"),
-        render(after, &after_dirty, "md-added"),
-    )
-}
-
 /// Read one side of the diff as a string, mapping a `not_found` (the file is
 /// absent at this rev — added or deleted) to `None` so the diff renders the present
 /// side alone (every block added or removed). Other errors propagate.
@@ -2284,8 +2221,7 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
             // between angle brackets, so `<keep>` reads as empty text when it
             // is the very content to show. The source is judged by its own
             // characters instead.
-            let is_source_fallback = shows_nothing(&sanitized) && !source.trim().is_empty();
-            let html = if is_source_fallback {
+            let html = if shows_nothing(&sanitized) && !source.trim().is_empty() {
                 source_fallback(&source)
             } else {
                 sanitized
@@ -2295,7 +2231,6 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                 html,
                 raw_html,
                 source,
-                is_source_fallback,
                 leaves,
                 sourcepos_html,
                 start_line: start_line as u32,
@@ -2680,9 +2615,6 @@ fn sanitize_html(html: &str) -> String {
         .add_tag_attributes("input", ["type", "checked", "disabled"])
         .add_url_schemes(["trunk-asset"])
         .add_allowed_classes("span", SYN_CLASSES.iter().copied())
-        // The source fallback tints whole lines, and a line inside a `<pre>`
-        // is a span rather than a table row or a list item.
-        .add_allowed_classes("span", MD_TINT_CLASSES.iter().copied())
         .add_allowed_classes("tr", MD_TINT_CLASSES.iter().copied())
         .add_allowed_classes("li", MD_TINT_CLASSES.iter().copied())
         .add_allowed_classes("del", MD_WORD_CLASSES.iter().copied())
@@ -5039,57 +4971,6 @@ mod tests {
         assert!(
             !*renders_identically,
             "the two sides do NOT render the same text, so the reflow note must not fire: {rows:?}"
-        );
-    }
-
-    /// The source fallback showed two full copies of the block and left the
-    /// reader to compare a hundred lines by eye. The changed LINES carry the
-    /// same red/green tint the source view gives them (TRUNK-132).
-    #[test]
-    fn the_source_fallback_marks_the_lines_that_changed() {
-        let rows = diff_rows(
-            "<box>\nkept line\nold line\n",
-            "<box>\nkept line\nnew line\n",
-        );
-        let DiffRow::Changed {
-            before_html,
-            after_html,
-            ..
-        } = &rows[0]
-        else {
-            panic!("expected Changed: {rows:?}");
-        };
-        assert!(
-            before_html.contains("md-removed"),
-            "the removed line is tinted: {before_html}"
-        );
-        assert!(
-            after_html.contains("md-added"),
-            "the added line is tinted: {after_html}"
-        );
-        assert!(
-            !before_html.contains("kept line</span>") && before_html.contains("kept line"),
-            "the unchanged line is present and untinted: {before_html}"
-        );
-    }
-
-    /// One `<code>` element, whatever the marks: a fallback that closed and
-    /// reopened it around every mark broke the source pane's layout.
-    #[test]
-    fn the_marked_source_fallback_stays_one_code_element() {
-        let rows = diff_rows("<box>\nold line\n", "<box>\nnew line\n");
-        let DiffRow::Changed { after_html, .. } = &rows[0] else {
-            panic!("expected Changed: {rows:?}");
-        };
-        assert_eq!(
-            after_html.matches("<code").count(),
-            1,
-            "exactly one <code> open tag: {after_html}"
-        );
-        assert_eq!(
-            after_html.matches("</code>").count(),
-            1,
-            "exactly one <code> close tag: {after_html}"
         );
     }
 
