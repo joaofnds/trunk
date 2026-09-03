@@ -16,6 +16,7 @@ mutants.out
 mutants.out.old
 .claude/settings.local.json
 .claude/worktrees
+.delta/
 .vscode
 .boris/
 
