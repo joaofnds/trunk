@@ -116,6 +116,9 @@ jobs:
     name: Rust Tests
     needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: ubuntu-latest
+    # The suite takes ~2min. TRUNK-78's hang has no internal bound, so without
+    # this a single stuck test holds a runner for the 6h default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install system dependencies
@@ -154,6 +157,8 @@ jobs:
     name: macOS Clippy + Tests
     needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: macos-latest
+    # Same reason as Rust Tests above: this job runs the same suite.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
