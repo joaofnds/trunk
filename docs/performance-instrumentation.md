@@ -90,6 +90,28 @@ observation fires with its attributes — `RepoView.test.ts` for `diff.openCommi
 `FullFileView.test.ts` plus `HunkView.test.ts` for `diff.buildRows` and `diff.rowHeights`,
 which both views record. Add one alongside any new span.
 
+## Ad-hoc probes from a debug build
+
+`perf_append` accepts any JSON line from any debug build, not only a `just perf` session, so
+a one-off investigation can log what it needs from a component and read the file while the
+app runs. Two things about that measurement are easy to get wrong:
+
+- **An HMR edit remounts the component it touches.** The first run of an effect after saving
+  a probe is the mount-time run, on a fresh instance with an empty scroller, and it looks
+  exactly like a reset. Stamp each instance with an id and log mount and unmount, and only
+  read runs that happened with no edit in between.
+- **A scroller clamps its position only when a layout runs while it is empty.** A window
+  that is not painting (occluded, or on another Space) runs no rendering updates, so a pane
+  that empties and refills within a few milliseconds keeps its position there and jumps to
+  the top on a visible window. Force the layout in the probe: read `scrollTop` from a
+  `MutationObserver` on the scroller, which lays out at the moment the content changes.
+
+The app can drive itself when the desktop cannot be controlled from the session: a probe
+effect in `RepoView` may call `selectCommitIdempotent` and `selectCommitFileIdempotent`, set
+`scrollTop` once the rows arrive, and a `touch` under the repository from the shell is the
+repo-changed event. Remove every probe before committing; tag them with one prefix so the
+cleanup is a single grep.
+
 ## Adding a span
 
 Wrap the operation, don't sprinkle timers. A good span name is the user-visible operation
