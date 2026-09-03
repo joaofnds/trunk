@@ -242,14 +242,19 @@ fixtures-list:
 bench:
     cd src-tauri && cargo bench
 
-# Compile-check benchmarks. In CI this runs in the macOS job, beside
-# `just cargo-test`, and the reason is which target dir is already warm.
-# `--no-run` still builds and links the bench binaries, so it needs real
-# artifacts, not the metadata `cargo check` leaves. Measured: after the coverage
-# run it rebuilt the crate from scratch, because `cargo llvm-cov` builds into
-# `target/llvm-cov-target` (29s); after `just clippy` it was worse, 169s, because
-# `--all-targets` only *checks* and never produces the linkable rlibs, so
-# criterion and git2 compiled from source. `just cargo-test` is the one step in
-# CI that leaves a fully built `target/debug` behind.
+# Compile-check benchmarks. Costs a relink of the crate wherever it runs, and no
+# placement avoids that: `--no-run` links the bench binaries, which pulls in the
+# `staticlib` and `cdylib` crate types this package declares, and nothing else in
+# CI builds those — nextest needs only the rlib, and clippy only checks.
+#
+# Measured attempts, in order: after the coverage run, 29s (llvm-cov builds into
+# its own target dir); after `just clippy`, 169s (a check leaves no linkable
+# artifacts at all, so criterion and git2 compiled from source); after
+# `just cargo-test`, 7s — which was a mistake to read as the real cost, because
+# the `cargo test --doc` step then running just before it had already built those
+# same two crate types. With that step gone the same placement measured 37s.
+#
+# So it sits in the Clippy job, which is the shortest job in CI, to keep the 37s
+# off the macOS job that sets the critical path. That is the only lever left.
 bench-check:
     cargo test --benches --no-run --manifest-path {{manifest}}
