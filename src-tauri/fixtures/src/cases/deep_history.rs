@@ -151,7 +151,12 @@ fn build(out: &Path) {
         // wider than every other, which is what makes the author column's width
         // observable once the user has paged down to this row.
         if i == ANCIENT_ROOT {
-            spur(&mut repo, "ancient", "ancient.txt", WIDE.at(stamp + HALF_HOUR));
+            spur(
+                &mut repo,
+                "ancient",
+                "ancient.txt",
+                WIDE.at(stamp + HALF_HOUR),
+            );
         }
 
         // A branch whose tip renders inside the first page, so hiding it rebuilds the
@@ -183,4 +188,3 @@ fn spur(repo: &mut Repo, name: &str, file: &str, sig: Signature) {
     // nothing the target tree does not name. It stays untracked and harmless: every
     // commit here stages one named path, so nothing ever sweeps it into main.
 }
-
