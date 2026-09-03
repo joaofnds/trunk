@@ -77,3 +77,8 @@ fn diff_scenarios_matches_its_oracle() {
 fn rendered_markdown_matches_its_oracle() {
     assert_matches_oracle("11-rendered-markdown");
 }
+
+#[test]
+fn deep_history_matches_its_oracle() {
+    assert_matches_oracle("12-deep-history");
+}

@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 pub mod commit_message;
+pub mod deep_history;
 pub mod diff_scenarios;
 pub mod graph_lanes;
 pub mod graph_merges;
@@ -35,6 +36,7 @@ pub const CASES: &[Case] = &[
     kitchen_sink::CASE,
     nested_conflict::CASE,
     rendered_markdown::CASE,
+    deep_history::CASE,
 ];
 
 /// Where `fixtures build` lands without `--out`: `repos/` at the repository root.

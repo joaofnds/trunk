@@ -1,0 +1,6 @@
+repo deep-history
+head branch refs/heads/main
+ref refs/heads/ancient 339fe132370129b6f6dc683098d6c202f92ecfee
+ref refs/heads/main beb1b7d4ee8af01a5b203a74136437c4acb87f0c
+ref refs/heads/recent 86377fe8e2328a4aa1f5174c1564d53afe6ac882
+state clean

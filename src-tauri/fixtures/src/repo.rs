@@ -775,8 +775,19 @@ impl Repo {
         }
     }
 
+    /// The index, re-read from disk every time.
+    ///
+    /// libgit2 caches the index and reloads it only when the file's mtime or size
+    /// changed. A case that stages and commits in a tight loop can write two indexes
+    /// within one mtime tick at the same size, and the cached copy is then kept: the
+    /// tree is written from stale entries, naming a blob whose object was never
+    /// written. That surfaced as `invalid object specified` at a random file, on about
+    /// one build in six of the deepest case.
     fn index(&self) -> git2::Index {
-        self.repo.index().expect("open the index")
+        let mut index = self.repo.index().expect("open the index");
+        index.read(true).expect("re-read the index from disk");
+
+        index
     }
 
     fn head_commit(&self) -> Option<Commit<'_>> {
