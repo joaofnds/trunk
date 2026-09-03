@@ -40,6 +40,21 @@ the name.
 
 **Graph snapshot** — what the commit cache holds for one repository: the capture a walk read from it, the ref visibility that walk was laid out under, and the resulting layout. A visibility toggle re-lays out the cached capture and never opens the repository, and the visibility travels with the layout it produced, so the cache cannot serve a layout built under a different hidden set (TRUNK-129, TRUNK-120).
 
+**Page** — one fixed-size slice of the laid-out graph the frontend fetches at a time,
+200 rows. Both sides hold that size independently, the backend in `history.rs` and `BATCH`
+in `CommitGraph.svelte`, which reads a short response as the end of history. A page is a slice
+of the layout as it stands when the request is answered, so it is only meaningful against
+the layout that produced it.
+
+**Stale page** — a page that lands after the graph was rebuilt underneath it, describing a
+layout that no longer exists. It is dropped rather than appended, because its rows were laid
+out under the old graph while the paging offset now indexes the new one (TRUNK-135). A drop
+is silent: it sets no error, and the caller sees only that the list did not grow.
+
+**Non-progressing attempt** — a page request that returned without growing the loaded list,
+whether it was rejected or dropped as stale. It is the one signature the two failure modes
+share, and what a paging loop counts to know it is not getting anywhere (TRUNK-137).
+
 ## Commit graph testing
 
 **Fixture repository** — a git repository built from scratch by a generator, with pinned
