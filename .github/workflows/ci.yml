@@ -106,11 +106,6 @@ jobs:
       # everywhere through the dev-dependency, so this is the only job that
       # compiles the feature-off build.
       - run: just clippy-shipped
-      # Here rather than in Rust Tests: `just clippy` above already built this
-      # job's target dir with --all-targets, so linking the bench binaries is
-      # nearly free. In the coverage job it found an empty target dir and spent
-      # 29s rebuilding the crate.
-      - run: just bench-check
 
   cargo-test:
     name: Rust Tests
@@ -174,6 +169,10 @@ jobs:
       # branches entirely; this is the only job that compiles them.
       - run: just clippy
       - run: just cargo-test
+      # After cargo-test, not after clippy: `--no-run` links the bench binaries,
+      # and cargo-test is the only CI step that leaves a fully built
+      # `target/debug` for them to link against. See the recipe's comment.
+      - run: just bench-check
 
   app-test:
     name: Application Harness

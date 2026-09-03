@@ -102,18 +102,19 @@ cargo-test:
 # Run Rust tests with coverage. Same nextest-vs-serial split as `cargo-test`
 # above, for the same reason: plain `cargo llvm-cov` runs the test binaries one
 # after another and spent ~65s where nextest spends 34s, on identical coverage
-# (18124/22002 lines over 74 files, both ways).
+# (18124/22002 lines over 74 files, both ways). Measured at 30s in CI.
 #
-# nextest cannot run doctests, and instrumenting them needs `-Z persist-doctests`,
-# which the pinned stable toolchain rejects. So the doctest runs uninstrumented on
-# its own line, the way `cargo-test` already splits it. It is excluded from the
-# coverage number rather than from the run — `cargo-test` measured the same suites
-# either way, and the numbers above are what the gate is set against.
+# No `--doc` line here, unlike `cargo-test`. Coverage builds into
+# `target/llvm-cov-target`, so a `cargo test --doc` after it recompiles the whole
+# crate uninstrumented — measured at 35s in CI to run a doctest suite that is
+# empty, because the one doctest in the tree is an ```ignore block. `cargo-test`
+# above still runs it, so the day a real doctest is written it is executed on
+# every developer run and on macOS CI; it is only left out of the coverage job,
+# where it cost more than everything it measured.
 cargo-test-cov:
     {{scrubbed_env}} cargo llvm-cov nextest --workspace --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
-    {{scrubbed_env}} cargo test --doc --workspace --manifest-path {{manifest}}
 
 # Run frontend tests
 vitest:
@@ -234,10 +235,14 @@ fixtures-list:
 bench:
     cd src-tauri && cargo bench
 
-# Compile-check benchmarks. Runs in CI next to `clippy`, not next to the
-# coverage run: `cargo llvm-cov` builds into `target/llvm-cov-target`, so this
-# recipe finds `target/debug` empty after it and rebuilds the crate from scratch
-# (29s, plus a second tree for the cache to carry). Beside `just clippy`, which
-# has already populated `target/debug` with `--all-targets`, it is nearly free.
+# Compile-check benchmarks. In CI this runs in the macOS job, beside
+# `just cargo-test`, and the reason is which target dir is already warm.
+# `--no-run` still builds and links the bench binaries, so it needs real
+# artifacts, not the metadata `cargo check` leaves. Measured: after the coverage
+# run it rebuilt the crate from scratch, because `cargo llvm-cov` builds into
+# `target/llvm-cov-target` (29s); after `just clippy` it was worse, 169s, because
+# `--all-targets` only *checks* and never produces the linkable rlibs, so
+# criterion and git2 compiled from source. `just cargo-test` is the one step in
+# CI that leaves a fully built `target/debug` behind.
 bench-check:
     cargo test --benches --no-run --manifest-path {{manifest}}
