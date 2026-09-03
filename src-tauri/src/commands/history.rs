@@ -89,6 +89,7 @@ pub async fn set_ref_visibility(
     let cached = cache.0.lock().unwrap().get(&path).cloned();
     let state_map = state.0.lock().unwrap().clone();
     let path_clone = path.clone();
+    let read = cached.clone();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         set_ref_visibility_inner(&path_clone, &visibility, cached.as_ref(), &state_map)
@@ -99,9 +100,29 @@ pub async fn set_ref_visibility(
 
     let response = GraphResponse::page(&graph_result.layout, 0);
 
-    cache.0.lock().unwrap().insert(path, graph_result);
+    write_relaid_out_graph(&cache, path, read.as_ref(), graph_result);
 
     Ok(response)
+}
+
+/// Store a toggle's re-laid-out graph, unless a fresher rebuild already replaced the entry
+/// this toggle read. That rebuild's capture is newer than the one this graph was re-laid out
+/// from, so writing over it would show a graph from before whatever it just did (TRUNK-129).
+fn write_relaid_out_graph(
+    cache: &CommitCache,
+    path: String,
+    read: Option<&GraphSnapshot>,
+    relaid_out: GraphSnapshot,
+) {
+    let mut cache = cache.0.lock().unwrap();
+    let still_current = match (cache.get(&path), read) {
+        (Some(current), Some(read)) => current.same_capture_as(read),
+        (None, None) => true,
+        _ => false,
+    };
+    if still_current {
+        cache.insert(path, relaid_out);
+    }
 }
 
 /// The graph under a new visibility. The cached snapshot answers without touching the
@@ -362,4 +383,66 @@ pub async fn search_commits(
 ) -> Result<Vec<SearchResult>, String> {
     let cache_map = cache.0.lock().unwrap().clone();
     search_commits_inner(&path, &query, &cache_map).map_err(|e| e.to_json())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::git::graph_input::{GraphSource, RefVisibility};
+    use std::sync::Mutex;
+
+    /// An empty graph tagged by the ref it hides, so a test can tell two snapshots apart
+    /// by their visibility while both carry an empty capture.
+    fn graph(tag: &str) -> GraphSnapshot {
+        let mut visibility = RefVisibility::default();
+        visibility.hidden_refs.insert(format!("refs/tags/{tag}"));
+        GraphSnapshot::new(GraphSource::default(), visibility)
+    }
+
+    #[test]
+    fn a_toggle_does_not_overwrite_a_rebuild_that_landed_while_it_relaid_out() {
+        let cache = CommitCache(Mutex::new(HashMap::new()));
+        let read = graph("pre-commit");
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), read.clone());
+
+        // A commit's rebuild replaces the entry with a fresh capture while the toggle's
+        // relayout of the stale one is still in flight off-thread.
+        let fresher = graph("post-commit");
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), fresher.clone());
+
+        let relaid_out = read.with_visibility(graph("toggled").visibility().clone());
+        write_relaid_out_graph(&cache, "/repo".to_owned(), Some(&read), relaid_out);
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(
+            cached["/repo"].visibility(),
+            fresher.visibility(),
+            "the toggle overwrote a rebuild that landed after it read the cache"
+        );
+    }
+
+    #[test]
+    fn a_toggle_writes_its_graph_when_nothing_landed_ahead_of_it() {
+        let cache = CommitCache(Mutex::new(HashMap::new()));
+        let read = graph("pre-toggle");
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), read.clone());
+
+        let relaid_out = read.with_visibility(graph("toggled").visibility().clone());
+        write_relaid_out_graph(&cache, "/repo".to_owned(), Some(&read), relaid_out.clone());
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(cached["/repo"].visibility(), relaid_out.visibility());
+    }
 }

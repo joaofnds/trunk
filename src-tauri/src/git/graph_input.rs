@@ -443,6 +443,13 @@ impl GraphSnapshot {
         &self.visibility
     }
 
+    /// Whether `other` was laid out from the exact same capture as this snapshot, rather
+    /// than one a later rebuild produced. `with_visibility` clones the `Arc`, so two
+    /// snapshots from the same capture always point at the same allocation.
+    pub fn same_capture_as(&self, other: &GraphSnapshot) -> bool {
+        Arc::ptr_eq(&self.capture, &other.capture)
+    }
+
     fn lay_out(capture: Arc<GraphSource>, visibility: RefVisibility) -> GraphSnapshot {
         let source = apply_visibility(&capture, &visibility);
         let layout = layout(&source, 0, usize::MAX);
