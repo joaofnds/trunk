@@ -20,6 +20,13 @@ pub struct GraphResponse {
 /// short response means the end of history.
 const PAGE: usize = 200;
 
+/// The rows of `layout` in `[start, end)`, clamped to what the layout holds.
+fn slice(layout: &GraphResult, start: usize, end: usize) -> &[GraphCommit] {
+    let len = layout.commits.len();
+
+    &layout.commits[start.min(len)..end.min(len)]
+}
+
 impl GraphResponse {
     /// The `PAGE`-row page of `layout` starting at `offset`, empty past the end.
     fn page(layout: &GraphResult, offset: usize) -> GraphResponse {
@@ -36,10 +43,8 @@ impl GraphResponse {
     }
 
     fn rows(layout: &GraphResult, start: usize, end: usize) -> GraphResponse {
-        let len = layout.commits.len();
-
         GraphResponse {
-            commits: layout.commits[start.min(len)..end.min(len)].to_vec(),
+            commits: slice(layout, start, end).to_vec(),
             max_columns: layout.max_columns,
         }
     }
@@ -270,10 +275,7 @@ pub async fn get_commit_stats(
         let graph_result = lock
             .get(&path)
             .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
-        let len = graph_result.layout.commits.len();
-        let start = offset.min(len);
-        let end = (offset + 200).min(len);
-        graph_result.layout.commits[start..end]
+        slice(&graph_result.layout, offset, offset + PAGE)
             .iter()
             .map(|c| c.oid.clone())
             .collect()
