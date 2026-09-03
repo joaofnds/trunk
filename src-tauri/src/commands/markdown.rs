@@ -1522,7 +1522,14 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
             && !visible(before_html).is_empty()
             && !visible(after_html).is_empty();
 
-        if !marked && !has_tints && !renders_identically && !pair_differs {
+        // An identical-render claim only means something when there IS text
+        // that reads the same on both sides. With nothing visible on either,
+        // the claim is vacuous and the row shows the reader nothing — the same
+        // reasoning the `pair_differs` arm above already applies to a blank
+        // side (TRUNK-132).
+        let identical_and_visible = *renders_identically && !visible(after_html).is_empty();
+
+        if !marked && !has_tints && !identical_and_visible && !pair_differs {
             out.push((
                 i,
                 "changed, but carries no mark, no tint, no identical-render \
@@ -1979,6 +1986,21 @@ fn block_signature<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
     format!("{kind}:{normalized}")
 }
 
+/// A block whose rendered HTML carries no visible text, shown as its raw
+/// markdown source instead. Sanitization strips raw HTML (`render.unsafe` is
+/// off, by design), so a `<details>` section or an `<examples>` wrapper renders
+/// to nothing at all: a changed one reached the reader as two empty tinted
+/// blocks, and an unchanged one as a gap in the document (TRUNK-132).
+///
+/// The source is escaped into the same `<pre><code>` shell fenced code already
+/// uses, with no language class: the block's language is unknown, so it gets
+/// the code block's presentation without a highlighter's guess.
+fn source_fallback(source: &str) -> String {
+    let mut escaped = String::new();
+    comrak::html::escape(&mut escaped, source).expect("escaping to a String cannot fail");
+    format!("<pre><code>{escaped}</code></pre>\n")
+}
+
 /// Read one side of the diff as a string, mapping a `not_found` (the file is
 /// absent at this rev — added or deleted) to `None` so the diff renders the present
 /// side alone (every block added or removed). Other errors propagate.
@@ -2177,11 +2199,26 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
             };
             let sourcepos = n.data.borrow().sourcepos;
             let (start_line, end_line) = (sourcepos.start.line, sourcepos.end.line);
+            // Raw HTML sanitizes away to nothing; such a block shows its
+            // source rather than reaching the reader blank (TRUNK-132). Decided
+            // here, once, so every row kind — changed, added, removed and the
+            // unchanged context between them — inherits it.
+            let sanitized = sanitize_html(&raw);
+            let source = lines[start_line - 1..end_line.min(lines.len())].join("\n");
+            // `visible` is the wrong test for the source: it strips anything
+            // between angle brackets, so `<keep>` reads as empty text when it
+            // is the very content to show. The source is judged by its own
+            // characters instead.
+            let html = if visible(&sanitized).is_empty() && !source.trim().is_empty() {
+                source_fallback(&source)
+            } else {
+                sanitized
+            };
             Block {
                 kind: kind.to_string(),
-                html: sanitize_html(&raw),
+                html,
                 raw_html,
-                source: lines[start_line - 1..end_line.min(lines.len())].join("\n"),
+                source,
                 leaves,
                 sourcepos_html,
                 start_line: start_line as u32,
@@ -4892,6 +4929,95 @@ mod tests {
             panic!("expected Changed: {rows:?}");
         };
         assert!(!*renders_identically, "{rows:?}");
+    }
+
+    /// A raw-HTML block is stripped to nothing by the sanitizer, so a changed
+    /// one used to reach the reader as two empty tinted blocks under the note
+    /// "Reflowed — renders identically" — the opposite of the truth, since its
+    /// content is exactly what changed (TRUNK-132). The rendered view falls
+    /// back to the block's raw source so the change is on screen.
+    #[test]
+    fn a_changed_html_block_shows_its_source_instead_of_rendering_empty() {
+        let rows = diff_rows("<examples>\n<foo>\n", "<examples>\n<bar>\n");
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            renders_identically,
+            ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        assert!(
+            visible(before_html).iter().any(|w| w.contains("foo")),
+            "the before source reaches the reader: {rows:?}"
+        );
+        assert!(
+            visible(after_html).iter().any(|w| w.contains("bar")),
+            "the after source reaches the reader: {rows:?}"
+        );
+        assert!(
+            !*renders_identically,
+            "the two sides do NOT render the same text, so the reflow note must not fire: {rows:?}"
+        );
+    }
+
+    /// The oracle trusted a `renders_identically` claim on its own. A row with
+    /// no visible text on either side satisfied it while showing the reader
+    /// nothing, which is how TRUNK-132 shipped past the TRUNK-104 gate.
+    #[test]
+    fn illegible_rows_rejects_an_identical_render_claim_with_no_visible_text() {
+        let rows = vec![DiffRow::Changed {
+            before_html: "\n".to_string(),
+            after_html: "\n".to_string(),
+            merged_html: None,
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
+            has_tints: false,
+            renders_identically: true,
+            after_start: 1,
+            after_end: 2,
+        }];
+        assert!(
+            !illegible_rows(&rows).is_empty(),
+            "both sides blank: the identical-render claim is vacuous and the row is illegible"
+        );
+    }
+
+    /// An added or removed raw-HTML block has the same invisibility on its one
+    /// side: the reader gets a tinted block with nothing in it.
+    #[test]
+    fn an_added_html_block_shows_its_source() {
+        let rows = diff_rows("intro\n", "intro\n\n<details>\n<summary>hi</summary>\n");
+        let added: Vec<&DiffRow> = rows
+            .iter()
+            .filter(|r| matches!(r, DiffRow::Added { .. }))
+            .collect();
+        assert!(!added.is_empty(), "an added block: {rows:?}");
+        let DiffRow::Added { html, .. } = added[0] else {
+            unreachable!()
+        };
+        assert!(
+            !visible(html).is_empty(),
+            "the added HTML block is not a blank green box: {rows:?}"
+        );
+    }
+
+    /// Unchanged context around an edited HTML block must be readable too,
+    /// or the reader sees tinted source floating between blank boxes.
+    #[test]
+    fn an_unchanged_html_block_shows_its_source() {
+        let md = "<keep>\n\npara\n";
+        let rows = diff_rows(md, "<keep>\n\npara edited\n");
+        let DiffRow::Unchanged { html, .. } = &rows[0] else {
+            panic!("expected the html block unchanged first: {rows:?}");
+        };
+        assert!(
+            !visible(html).is_empty(),
+            "the unchanged HTML block is not blank: {rows:?}"
+        );
     }
 
     #[test]
