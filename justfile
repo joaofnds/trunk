@@ -242,19 +242,25 @@ fixtures-list:
 bench:
     cd src-tauri && cargo bench
 
-# Compile-check benchmarks. Costs a relink of the crate wherever it runs, and no
-# placement avoids that: `--no-run` links the bench binaries, which pulls in the
-# `staticlib` and `cdylib` crate types this package declares, and nothing else in
-# CI builds those — nextest needs only the rlib, and clippy only checks.
+# Compile-check benchmarks. Runs in the macOS job, immediately after
+# `just cargo-test`, and moving it anywhere else has cost time every time.
 #
-# Measured attempts, in order: after the coverage run, 29s (llvm-cov builds into
-# its own target dir); after `just clippy`, 169s (a check leaves no linkable
-# artifacts at all, so criterion and git2 compiled from source); after
-# `just cargo-test`, 7s — which was a mistake to read as the real cost, because
-# the `cargo test --doc` step then running just before it had already built those
-# same two crate types. With that step gone the same placement measured 37s.
+# `--no-run` links the bench binaries. Linking needs real artifacts, so a job
+# that only type-checks leaves it nothing to use and it rebuilds the dependency
+# tree from source. Only a job that has actually built the crate makes it cheap,
+# and `just cargo-test` is the one step in CI that does.
 #
-# So it sits in the Clippy job, which is the shortest job in CI, to keep the 37s
-# off the macOS job that sets the critical path. That is the only lever left.
+# Every placement measured in CI, so nobody re-derives this from first
+# principles a fourth time:
+#   after `cargo llvm-cov`     29s   (coverage builds into its own target dir)
+#   beside `just clippy`      169s   (first attempt)
+#   beside `just clippy`      187s   (second attempt, a run later)
+#   after `just cargo-test`     7s   (NOT the real cost — `cargo test --doc`
+#                                     then ran just before it and had already
+#                                     built the staticlib and cdylib types)
+#   after `just cargo-test`    37s   (the real cost, once --doc was removed)
+#
+# The 7s reading is what made the move to Clippy look free. It was not. If this
+# looks cheap somewhere new, check what ran before it.
 bench-check:
     cargo test --benches --no-run --manifest-path {{manifest}}

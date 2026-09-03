@@ -106,10 +106,6 @@ jobs:
       # everywhere through the dev-dependency, so this is the only job that
       # compiles the feature-off build.
       - run: just clippy-shipped
-      # Here because this is the shortest job that can host it, not because
-      # anything makes it cheap. See the recipe's comment: it relinks the crate
-      # wherever it runs.
-      - run: just bench-check
 
   cargo-test:
     name: Rust Tests
@@ -173,6 +169,10 @@ jobs:
       # branches entirely; this is the only job that compiles them.
       - run: just clippy
       - run: just cargo-test
+      # Only after cargo-test. A `check` job leaves nothing linkable, so run
+      # anywhere else this compiles the dependency tree from source — measured
+      # at 187s beside clippy against 37s here. See the recipe's comment.
+      - run: just bench-check
 
   app-test:
     name: Application Harness
