@@ -36,6 +36,8 @@ the name.
 
 **Solo** — GitKraken's inverse of hide: show only the soloed refs. Not built; a follow-up card if wanted.
 
+**Auto-fit** — a commit-graph column sizing itself to the widest content it has seen, rather than to a fixed width. The author column is the only one whose target depends on the commits on screen; the date column sizes for the widest label the relative clock can ever produce and the sha column for a seven-character sha, so neither moves as pages load. Auto-fit keeps a running maximum across loaded pages, so scrolling into a wider author widens the column and scrolling on never narrows it. Narrowing is correct only when the commits themselves changed, as a visibility toggle can do by hiding the widest author's commit. A column the user has dragged is exempt from auto-fit (TRUNK-133).
+
 **Graph snapshot** — what the commit cache holds for one repository: the capture a walk read from it, the ref visibility that walk was laid out under, and the resulting layout. A visibility toggle re-lays out the cached capture and never opens the repository, and the visibility travels with the layout it produced, so the cache cannot serve a layout built under a different hidden set (TRUNK-129, TRUNK-120).
 
 ## Commit graph testing
