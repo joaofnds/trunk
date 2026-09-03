@@ -104,14 +104,19 @@ let authorDate = $derived(
 
 // A long body used to push the file list past the bottom of the panel, since
 // the body, the notes and the file list share one scroller. The body is clamped
-// to a fixed number of lines and the reader opens it when they want it. Keyed
-// by OID so selecting another commit starts clamped again rather than inheriting
-// the previous commit's expansion.
-let expandedBodyOid = $state<string | null>(null);
+// to a fixed number of lines and the reader opens it when they want it.
+//
+// Expansion belongs to the reading rather than to the commit. Reading the OID
+// below subscribes the reset to it, so moving away clamps again, and so does
+// coming back to a commit expanded earlier. Remembering it per commit instead
+// put the file list back below the fold on a second visit.
+let bodyExpanded = $state(false);
+$effect(() => {
+	commitDetail.oid;
+	bodyExpanded = false;
+});
 let bodyExpandable = $derived(bodyOverflows(commitDetail.body));
-let bodyClamped = $derived(
-	bodyExpandable && expandedBodyOid !== commitDetail.oid,
-);
+let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 
 // j/k step older/newer through the same navigate path as the pager, so review
 // flows without focusing the graph. Vim-style: j = down = older, k = up = newer.
@@ -304,7 +309,7 @@ async function saveNote() {
             class="body-toggle"
             aria-expanded={!bodyClamped}
             onclick={() => {
-              expandedBodyOid = bodyClamped ? commitDetail.oid : null;
+              bodyExpanded = !bodyExpanded;
             }}
           >{bodyClamped ? 'Show more' : 'Show less'}</button>
         {/if}
