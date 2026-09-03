@@ -1450,6 +1450,18 @@ fn tinted(html: &str) -> bool {
         .any(|c| html.contains(&format!("class=\"{c}\"")))
 }
 
+/// Whether a rendered fragment puts nothing at all in front of the reader.
+///
+/// The rendered view's recurring question, asked at every point where a block
+/// could reach the screen blank: the oracle's two arms, the identical-render
+/// claim, the fold, and the source fallback in `extract_blocks`. Named because
+/// it is one idea — a fragment with no visible text says nothing, whatever
+/// markup it carries — and because spelling it out invites reading the
+/// allocation as the point rather than the emptiness.
+fn shows_nothing(html: &str) -> bool {
+    visible(html).is_empty()
+}
+
 /// Whether two rendered fragments show the same visible text. Compares the
 /// text with tags stripped and whitespace runs collapsed: a rewrap changes
 /// where the line breaks fall inside the html, and HTML collapses those to one
@@ -1519,15 +1531,15 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
         // that "the sides visibly differ" and passed the row.
         let pair_differs = is_pair
             && visible(before_html) != visible(after_html)
-            && !visible(before_html).is_empty()
-            && !visible(after_html).is_empty();
+            && !shows_nothing(before_html)
+            && !shows_nothing(after_html);
 
         // An identical-render claim only means something when there IS text
         // that reads the same on both sides. With nothing visible on either,
         // the claim is vacuous and the row shows the reader nothing — the same
         // reasoning the `pair_differs` arm above already applies to a blank
         // side (TRUNK-132).
-        let identical_and_visible = *renders_identically && !visible(after_html).is_empty();
+        let identical_and_visible = *renders_identically && !shows_nothing(after_html);
 
         if !marked && !has_tints && !identical_and_visible && !pair_differs {
             out.push((
@@ -1539,8 +1551,8 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
         }
 
         if let (Some(folded), Some(full)) = (hunk_merged_html, merged_html.as_ref())
-            && visible(folded).is_empty()
-            && !visible(full).is_empty()
+            && shows_nothing(folded)
+            && !shows_nothing(full)
         {
             out.push((i, "the fold emptied a block that had content".to_string()));
         }
@@ -2209,7 +2221,7 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
             // between angle brackets, so `<keep>` reads as empty text when it
             // is the very content to show. The source is judged by its own
             // characters instead.
-            let html = if visible(&sanitized).is_empty() && !source.trim().is_empty() {
+            let html = if shows_nothing(&sanitized) && !source.trim().is_empty() {
                 source_fallback(&source)
             } else {
                 sanitized
@@ -2769,11 +2781,11 @@ mod tests {
 
             let shown = merged_html.as_deref().unwrap_or(after_html);
             assert!(
-                !visible(shown).is_empty(),
+                !shows_nothing(shown),
                 "the new side is on screen: {before:?} -> {after:?}: {rows:?}"
             );
             assert!(
-                !visible(before_html).is_empty(),
+                !shows_nothing(before_html),
                 "and so is the old one: {before:?} -> {after:?}: {rows:?}"
             );
         }
@@ -5000,7 +5012,7 @@ mod tests {
             unreachable!()
         };
         assert!(
-            !visible(html).is_empty(),
+            !shows_nothing(html),
             "the added HTML block is not a blank green box: {rows:?}"
         );
     }
@@ -5015,7 +5027,7 @@ mod tests {
             panic!("expected the html block unchanged first: {rows:?}");
         };
         assert!(
-            !visible(html).is_empty(),
+            !shows_nothing(html),
             "the unchanged HTML block is not blank: {rows:?}"
         );
     }
