@@ -300,9 +300,7 @@ async function saveNote() {
           data-testid="commit-body"
           data-clamped={bodyClamped}
           style="--body-clamp-lines: {BODY_CLAMP_LINES};"
-        >
-          {commitDetail.body}
-        </div>
+        >{commitDetail.body}</div>
         {#if bodyExpandable}
           <button
             type="button"
@@ -311,7 +309,14 @@ async function saveNote() {
             onclick={() => {
               bodyExpanded = !bodyExpanded;
             }}
-          >{bodyClamped ? 'Show more' : 'Show less'}</button>
+          >
+            {#if bodyClamped}
+              <ChevronDown size={12} />
+            {:else}
+              <ChevronUp size={12} />
+            {/if}
+            <span>{bodyClamped ? 'Show more' : 'Show less'}</span>
+          </button>
         {/if}
       {/if}
     </div>
@@ -496,10 +501,17 @@ async function saveNote() {
      skip past, and it would leave the file list just as far down. */
   .commit-body {
     font-size: 12px;
-    color: var(--color-text-muted);
+    color: var(--fg-2);
+    line-height: 1.6;
+    margin-top: var(--space-2);
+    /* Bodies arrive hard-wrapped at the author's terminal width, and some carry
+       indented code or lists, so the newlines and the leading spaces are both
+       content: `pre-wrap` rather than `pre-line`. The cost is that a line longer
+       than this pane wraps a second time and leaves a short remainder under it.
+       Narrowing the type and opening the leading keeps that remainder rare at
+       the widths this panel is actually used at. */
     white-space: pre-wrap;
-    line-height: 1.5;
-    margin-top: var(--space-1);
+    overflow-wrap: break-word;
   }
   .commit-body.clamped {
     display: -webkit-box;
@@ -507,21 +519,30 @@ async function saveNote() {
     -webkit-line-clamp: var(--body-clamp-lines);
     line-clamp: var(--body-clamp-lines);
     overflow: hidden;
+    /* Fade the cut so the clamp reads as text continuing rather than as a
+       paragraph that happens to end mid-sentence. */
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.6em), transparent);
   }
+
   .body-toggle {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: var(--control-sm-h);
     margin-top: var(--space-1);
-    background: none;
-    border: none;
-    padding: 0;
-    cursor: pointer;
+    padding: 0 var(--space-2) 0 var(--space-1);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: var(--bg-2);
+    color: var(--fg-2);
     font-size: 11px;
     font-family: inherit;
-    color: var(--accent-hi);
+    cursor: pointer;
   }
   .body-toggle:hover,
   .body-toggle:focus-visible {
-    text-decoration: underline;
+    background: var(--bg-3);
+    color: var(--fg-0);
   }
 
   /* Click-to-copy SHA: reset the button to read as inline mono text. */
