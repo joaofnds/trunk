@@ -92,12 +92,19 @@ clippy-shipped:
 
 # Run Rust tests (needs: cargo install cargo-nextest). nextest runs every test
 # binary in parallel where `cargo test` runs them serially — measured 7.2s
-# against 17s on the same suites (TRUNK-67). It cannot run doctests, so those
-# ride on a second invocation; the two together still run every test `cargo
-# test` ran, verified by name against `cargo test -- --list`.
+# against 17s on the same suites (TRUNK-67).
+#
+# No `cargo test --doc` line, though nextest cannot run doctests. There are none
+# to run: the only fenced block in either crate is an ```ignore example, so the
+# invocation executed nothing and cost 30s of compile in CI to do it — `--doc`
+# needs the `staticlib` and `cdylib` crate types this package declares, which
+# nextest never builds, so it relinked the crate from scratch.
+#
+# `test_doctest_guard.rs` is what makes the omission safe: it fails, naming the
+# file and line, the moment a runnable example appears, and its message says to
+# put this line back. It scans the sources in 17ms.
 cargo-test:
     {{scrubbed_env}} cargo nextest run --workspace --manifest-path {{manifest}}
-    {{scrubbed_env}} cargo test --doc --workspace --manifest-path {{manifest}}
 
 # Run Rust tests with coverage. Same nextest-vs-serial split as `cargo-test`
 # above, for the same reason: plain `cargo llvm-cov` runs the test binaries one

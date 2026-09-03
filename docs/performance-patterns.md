@@ -104,9 +104,17 @@ Recorded so they aren't re-tried:
   62 s → 49 s. The 8-minute hang of
   `store_events_survive_a_commit_racing_the_subscribe` seen on the first try did not
   reproduce on a clean tree (six runs); it coincided with another session's in-flight
-  reviewdb race fix. nextest cannot run doctests, so the recipe runs `cargo test --doc`
+  reviewdb race fix. nextest cannot run doctests, so the recipe ran `cargo test --doc`
   after it; the union was verified name-by-name against `cargo test -- --list`, which
   differs only by the one doctest.
+- **Dropping `cargo test --doc`** (adopted, TRUNK-139): that second invocation cost 30s
+  of compile in CI and ran nothing. `--doc` needs the `staticlib` and `cdylib` crate
+  types this package declares, which nextest never builds, so it relinked the crate from
+  scratch; the tree's only fenced doc block is an ```ignore example, which no runner
+  executes. The omission is guarded by `test_doctest_guard.rs`, which scans both crates'
+  sources in 17ms and fails with the file and line the moment a runnable example appears.
+  The general shape: a step that exists for a case the codebase does not yet have is
+  worth replacing with a check that the case has not arrived.
 - **Two-lane `just check`** (measured, not adopted): running the Rust chain
   (clippy → clippy-shipped → cargo-test → app-test) concurrently with the frontend chain
   measured 41.6 s post-edit against 49.4 s serial — about 8 s, for a wrapper script,
