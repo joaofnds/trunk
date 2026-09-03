@@ -1,6 +1,7 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BODY_CLAMP_LINES } from "../lib/commit-body-clamp.js";
 import type { CommitDetail, FileDiff } from "../lib/types.js";
 import CommitDetailComponent from "./CommitDetail.svelte";
 
@@ -297,5 +298,118 @@ describe("CommitDetail", () => {
 		expect(
 			screen.getByText("This fixes a null pointer issue in the parser."),
 		).toHaveClass("select-text");
+	});
+
+	// A long body used to push the file list arbitrarily far down the panel's one
+	// scroller, so the files a reader opened the commit for sat below the fold
+	// (TRUNK-140).
+	describe("long commit bodies", () => {
+		const longBody = Array.from(
+			{ length: BODY_CLAMP_LINES + 5 },
+			(_, i) => `body line ${i}`,
+		).join("\n");
+
+		function renderWithBody(body: string | null) {
+			return render(CommitDetailComponent, {
+				props: {
+					commitDetail: { ...detail, body },
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+				},
+			});
+		}
+
+		it("clamps a body past the limit and offers to show the rest", () => {
+			renderWithBody(longBody);
+			expect(screen.getByTestId("commit-body")).toHaveAttribute(
+				"data-clamped",
+				"true",
+			);
+			expect(
+				screen.getByRole("button", { name: /show more/i }),
+			).toBeInTheDocument();
+		});
+
+		it("leaves a body within the limit unclamped and offers no control", () => {
+			renderWithBody("short enough to read in place");
+			expect(screen.getByTestId("commit-body")).toHaveAttribute(
+				"data-clamped",
+				"false",
+			);
+			expect(screen.queryByRole("button", { name: /show more/i })).toBeNull();
+		});
+
+		it("renders no body block and no control when there is no body", () => {
+			renderWithBody(null);
+			expect(screen.queryByTestId("commit-body")).toBeNull();
+			expect(screen.queryByRole("button", { name: /show more/i })).toBeNull();
+		});
+
+		it("shows the whole body once expanded, and clamps again on show less", async () => {
+			renderWithBody(longBody);
+
+			await fireEvent.click(screen.getByRole("button", { name: /show more/i }));
+			expect(screen.getByTestId("commit-body")).toHaveAttribute(
+				"data-clamped",
+				"false",
+			);
+
+			await fireEvent.click(screen.getByRole("button", { name: /show less/i }));
+			expect(screen.getByTestId("commit-body")).toHaveAttribute(
+				"data-clamped",
+				"true",
+			);
+		});
+
+		// An inner scroller here would be an inline scroll area inside the panel's
+		// own scroller, which readers skip past. The clamp hides the overflow
+		// instead.
+		it("never gives the body its own scrollbar", () => {
+			renderWithBody(longBody);
+			expect(screen.getByTestId("commit-body").style.overflowY).not.toBe(
+				"auto",
+			);
+			expect(screen.getByTestId("commit-body").style.overflowY).not.toBe(
+				"scroll",
+			);
+		});
+
+		it("keeps the files-changed header rendered above the fold while clamped", () => {
+			renderWithBody(longBody);
+			const body = screen.getByTestId("commit-body");
+			const header = screen.getByText("2 files changed");
+			// The clamp is what bounds the body's contribution to the panel height;
+			// with it applied the header is a sibling below a bounded block rather
+			// than below an unbounded one.
+			expect(body).toHaveAttribute("data-clamped", "true");
+			expect(
+				body.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING,
+			).toBeTruthy();
+		});
+
+		it("re-clamps when a different commit is selected", async () => {
+			const { rerender } = renderWithBody(longBody);
+
+			await fireEvent.click(screen.getByRole("button", { name: /show more/i }));
+			expect(screen.getByTestId("commit-body")).toHaveAttribute(
+				"data-clamped",
+				"false",
+			);
+
+			await rerender({
+				commitDetail: {
+					...detail,
+					oid: "othercommitoid",
+					short_oid: "otherco",
+					body: longBody,
+				},
+			});
+			expect(screen.getByTestId("commit-body")).toHaveAttribute(
+				"data-clamped",
+				"true",
+			);
+		});
 	});
 });

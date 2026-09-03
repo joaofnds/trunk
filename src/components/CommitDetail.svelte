@@ -9,6 +9,7 @@ import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
+import { BODY_CLAMP_LINES, bodyOverflows } from "../lib/commit-body-clamp.js";
 import { createDraft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
@@ -99,6 +100,17 @@ async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 
 let authorDate = $derived(
 	new Date(commitDetail.author_timestamp * 1000).toLocaleString(),
+);
+
+// A long body used to push the file list past the bottom of the panel, since
+// the body, the notes and the file list share one scroller. The body is clamped
+// to a fixed number of lines and the reader opens it when they want it. Keyed
+// by OID so selecting another commit starts clamped again rather than inheriting
+// the previous commit's expansion.
+let expandedBodyOid = $state<string | null>(null);
+let bodyExpandable = $derived(bodyOverflows(commitDetail.body));
+let bodyClamped = $derived(
+	bodyExpandable && expandedBodyOid !== commitDetail.oid,
 );
 
 // j/k step older/newer through the same navigate path as the pager, so review
@@ -277,15 +289,25 @@ async function saveNote() {
         {commitDetail.summary}
       </div>
       {#if commitDetail.body}
-        <div class="select-text" style="
-          font-size: 12px;
-          color: var(--color-text-muted);
-          white-space: pre-wrap;
-          line-height: 1.5;
-          margin-top: var(--space-1);
-        ">
+        <div
+          class="select-text commit-body"
+          class:clamped={bodyClamped}
+          data-testid="commit-body"
+          data-clamped={bodyClamped}
+          style="--body-clamp-lines: {BODY_CLAMP_LINES};"
+        >
           {commitDetail.body}
         </div>
+        {#if bodyExpandable}
+          <button
+            type="button"
+            class="body-toggle"
+            aria-expanded={!bodyClamped}
+            onclick={() => {
+              expandedBodyOid = bodyClamped ? commitDetail.oid : null;
+            }}
+          >{bodyClamped ? 'Show more' : 'Show less'}</button>
+        {/if}
       {/if}
     </div>
 
@@ -464,6 +486,39 @@ async function saveNote() {
 </div>
 
 <style>
+  /* Commit body. Clamped to a line count rather than given its own scrollbar:
+     an inline scroll area inside the panel's own scroller is content readers
+     skip past, and it would leave the file list just as far down. */
+  .commit-body {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    white-space: pre-wrap;
+    line-height: 1.5;
+    margin-top: var(--space-1);
+  }
+  .commit-body.clamped {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--body-clamp-lines);
+    line-clamp: var(--body-clamp-lines);
+    overflow: hidden;
+  }
+  .body-toggle {
+    display: block;
+    margin-top: var(--space-1);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+    color: var(--accent-hi);
+  }
+  .body-toggle:hover,
+  .body-toggle:focus-visible {
+    text-decoration: underline;
+  }
+
   /* Click-to-copy SHA: reset the button to read as inline mono text. */
   .sha-copy {
     background: none;
