@@ -1375,12 +1375,20 @@ async function loadMore() {
 	if (loading || !hasMore) return;
 	loading = true;
 	error = null;
+	// The page is a slice of the graph as it stands now. showGraph bumps this
+	// token before it swaps the list, so a rebuild that lands first makes this
+	// response describe a layout that no longer exists.
+	const seq = refreshSeq;
 	try {
 		const requestedOffset = offset;
 		const response = await safeInvoke<GraphResponse>("get_commit_graph", {
 			path: repoPath,
 			offset,
 		});
+		// Drop it rather than append: these rows were laid out under the old
+		// graph, and offset now indexes the new one. The viewport re-triggers a
+		// load for whatever it still needs.
+		if (seq !== refreshSeq) return;
 		commits.push(...response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
@@ -1388,6 +1396,9 @@ async function loadMore() {
 		if (response.commits.length < BATCH) hasMore = false;
 		void fetchPageStats(requestedOffset);
 	} catch (e) {
+		// A page that failed for the graph we no longer show is not this graph's
+		// error, and reporting it would bury the rebuilt view under a stale bar.
+		if (seq !== refreshSeq) return;
 		error = errorMessage(e, "Failed to load commits");
 	} finally {
 		loading = false;

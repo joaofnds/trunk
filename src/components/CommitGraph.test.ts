@@ -795,4 +795,140 @@ describe("CommitGraph", () => {
 			});
 		});
 	});
+
+	// A scroll-driven page load reads the graph as it was before a rebuild. If it
+	// lands after the rebuild, its commits describe a layout that no longer
+	// exists, and appending them mixes two graphs in one list.
+	//
+	// VirtualList renders only a window, so a loaded row is not necessarily in the
+	// DOM. What the list holds is observed through scrollToOid, which scrolls only
+	// for a commit it can find and pages in more history when it cannot.
+	describe("a page load in flight across a rebuild", () => {
+		const BATCH = 200;
+		const scrollTargets: Element[] = [];
+		const originalScrollTo = Element.prototype.scrollTo;
+
+		beforeEach(() => {
+			scrollTargets.length = 0;
+			Element.prototype.scrollTo = function scrollTo() {
+				scrollTargets.push(this);
+			};
+		});
+
+		afterEach(() => {
+			Element.prototype.scrollTo = originalScrollTo;
+		});
+
+		// in_head_chain on page one, or the mount anchor effect pages forever
+		// looking for the head row and the run never terminates.
+		function page(from: number, tag: string) {
+			return Array.from({ length: BATCH }, (_, i) =>
+				makeCommit({
+					oid: oidOf(from + i, tag),
+					summary: `${tag} commit ${from + i}`,
+					in_head_chain: from === 0,
+				}),
+			);
+		}
+
+		// The tag is in the oid, so a row from the old layout is never mistaken
+		// for the row that replaced it at the same index.
+		function oidOf(row: number, tag: string) {
+			return `${tag}${row}`.padStart(40, "0");
+		}
+
+		/** Whether the loaded list holds this commit: scrollToOid scrolls only if
+		 *  it can find it, and pages no further once the graph is exhausted. */
+		async function isLoaded(
+			rendered: Awaited<ReturnType<typeof mountWithPageTwoPending>>["rendered"],
+			oid: string,
+		) {
+			scrollTargets.length = 0;
+			await rendered.component.scrollToOid(oid);
+			await flush();
+			return scrollTargets.length > 0;
+		}
+
+		// Page two is held open so the test decides when it lands.
+		async function mountWithPageTwoPending() {
+			const pending: ((page: unknown) => void)[] = [];
+			installReads({
+				override: (cmd, args) => {
+					if (cmd !== "get_commit_graph") return undefined;
+					if (args?.offset === 0) {
+						return Promise.resolve({
+							commits: page(0, "old"),
+							max_columns: 1,
+						});
+					}
+					return new Promise((resolve) => pending.push(resolve));
+				},
+			});
+
+			const rendered = render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+			await waitFor(() => {
+				expect(screen.getByText("old commit 0")).toBeInTheDocument();
+			});
+			// Reaching for a commit page one does not hold starts the page-two load.
+			void rendered.component.scrollToOid(oidOf(BATCH, "old"));
+			await flush();
+			expect(pending).toHaveLength(1);
+
+			return { rendered, pending };
+		}
+
+		function rebuildWith(
+			rendered: Awaited<ReturnType<typeof mountWithPageTwoPending>>["rendered"],
+		) {
+			rendered.component.showGraph({
+				commits: page(0, "new"),
+				max_columns: 1,
+			});
+		}
+
+		function resolveStalePage(pending: ((page: unknown) => void)[]) {
+			pending[0]({ commits: page(BATCH, "old"), max_columns: 1 });
+		}
+
+		it("drops a page that describes the graph it replaced", async () => {
+			const { rendered, pending } = await mountWithPageTwoPending();
+
+			rebuildWith(rendered);
+			await flush();
+			// The pre-rebuild request resolves only now.
+			resolveStalePage(pending);
+			await flush();
+
+			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(false);
+		});
+
+		it("still reaches the pages the rebuilt graph does have", async () => {
+			const { rendered, pending } = await mountWithPageTwoPending();
+
+			rebuildWith(rendered);
+			await flush();
+			resolveStalePage(pending);
+			await flush();
+
+			// offset must still index the new layout, so the request the viewport
+			// re-issues asks for its page two and the rows become reachable.
+			resolveStalePage(pending);
+			await flush();
+			pending.at(-1)?.({ commits: page(BATCH, "new"), max_columns: 1 });
+			await flush();
+
+			expect(await isLoaded(rendered, oidOf(BATCH, "new"))).toBe(true);
+		});
+
+		it("appends a page that no rebuild interrupted", async () => {
+			const { rendered, pending } = await mountWithPageTwoPending();
+
+			resolveStalePage(pending);
+			await flush();
+
+			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(true);
+		});
+	});
 });
