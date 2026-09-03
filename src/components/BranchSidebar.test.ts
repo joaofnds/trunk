@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { toasts } from "../lib/toast.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 
 // All Tauri module mocks declared locally so vi.mock hoisting keeps a single
@@ -775,6 +776,42 @@ describe("BranchSidebar ref visibility", () => {
 				expect.objectContaining({
 					visibility: expect.objectContaining({ hiddenStashes: ["abc123"] }),
 				}),
+			);
+		});
+	});
+
+	// TRUNK-129: saving the hidden set is not on the path between the click and the graph,
+	// and a save that fails must not take the toggled graph back with it.
+	it("keeps the toggled graph and reports when the hidden set cannot be saved", async () => {
+		const base = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "set_ref_visibility")
+				return Promise.resolve({ commits: [], max_columns: 0 });
+			if (cmd === "prefs_set")
+				return Promise.reject(
+					JSON.stringify({ code: "io_error", message: "disk full" }),
+				);
+			return base?.(cmd, args);
+		});
+		const received: unknown[] = [];
+		render(BranchSidebar, {
+			props: {
+				repoPath: "/test/repo",
+				onvisibilitychanged: (graph) => received.push(graph),
+			},
+		});
+		await waitFor(() => {
+			expect(screen.getByLabelText("Hide topic")).toBeInTheDocument();
+		});
+
+		await fireEvent.click(screen.getByLabelText("Hide topic"));
+
+		await waitFor(() => {
+			expect(received).toEqual([{ commits: [], max_columns: 0 }]);
+		});
+		await waitFor(() => {
+			expect(toasts.items.map((t) => t.message)).toContain(
+				"Could not save which refs are hidden",
 			);
 		});
 	});
