@@ -23,11 +23,5 @@ mutants.out.old
 # The fixture corpus, build output of src-tauri/fixtures (just fixtures)
 /repos
 
-# Per-card cargo output roots (TRUNK_CARD; see docs/build-environment.md).
-# Cargo's own /src-tauri/target is ignored by src-tauri/.gitignore, and these
-# are the same build output under a different name, so they need the same
-# exclusion — untracked, they swamp every tool that walks the tree.
-/src-tauri/target-cards
-
 # The measurement bridge writes its per-run token here (just measure)
 scripts/measure/.bridge-token.txt

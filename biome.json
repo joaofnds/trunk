@@ -12,7 +12,6 @@
 			"!!**/.claude",
 			"!!**/.delta",
 			"!!src-tauri/target",
-			"!!src-tauri/target-cards",
 			"!!node_modules",
 			"!!**/.git"
 		]
