@@ -14,6 +14,7 @@ import { FakeWindow } from "../fakes/window.js";
 import { installDomPolyfills, restoreDomPolyfills } from "./dom.js";
 import { HostClient, type RepoSpec } from "./host-client.js";
 import { TauriInternals } from "./internals.js";
+import { describeTimeout } from "./wait.js";
 
 export type { RepoSpec, SpecStep } from "./host-client.js";
 
@@ -48,6 +49,9 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		throw new Error("an application is already running; teardown first");
 
 	const host = await HostClient.spawn();
+	// A wait that expires can then say what the host was still owed, which is the
+	// difference between a slow round trip and one the frontend ignored (TRUNK-62).
+	describeTimeout(() => host.describeOutstanding());
 	const repoPath = options.repo ? await host.seedRepo(options.repo) : "";
 	if (repoPath) await offerInRecents(host, repoPath);
 
@@ -89,6 +93,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		root.remove();
 		internals.uninstall();
 		restoreDomPolyfills();
+		describeTimeout(null);
 		await host.shutdown();
 		throw error;
 	}
@@ -101,6 +106,7 @@ export async function teardown(): Promise<void> {
 
 	const { host, internals, root, app, untrackScroll } = running;
 	running = null;
+	describeTimeout(null);
 
 	await unmount(app);
 	untrackScroll();

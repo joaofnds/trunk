@@ -32,6 +32,10 @@ export type EventHandler = (event: string, payload: unknown) => void;
 interface Pending {
 	resolve: (value: unknown) => void;
 	reject: (reason: unknown) => void;
+	/** What the host was asked to do, and when, so a wait that expires can say
+	 *  which round trip never came back. */
+	label: string;
+	startedAt: number;
 }
 
 const DEFAULT_HOST = "src-tauri/target/debug/examples/app_host";
@@ -65,6 +69,9 @@ function stall(ms: number): Promise<void> {
 export class HostClient {
 	private readonly child: ChildProcess;
 	private readonly pending = new Map<number, Pending>();
+	/** Commands `invoke` has entered and not yet returned from, which spans the
+	 *  stall knob's delay as well as the round trip itself. */
+	private readonly entered = new Set<{ cmd: string; startedAt: number }>();
 	private readonly handlers: EventHandler[] = [];
 	private nextId = 1;
 	private inFlight = 0;
@@ -103,6 +110,38 @@ export class HostClient {
 		return this.inFlight;
 	}
 
+	/**
+	 * What the host was still owed at this instant, and what it printed.
+	 *
+	 * A wait that expires can otherwise say only that the DOM never changed,
+	 * which is why TRUNK-62 sat parked: nobody had ever seen *why* a round trip
+	 * failed to return. An outstanding command with an age says the host is slow
+	 * or stuck; nothing outstanding says the host answered and the frontend did
+	 * not act on it. Those want different fixes, and this is what tells them
+	 * apart. Never throws, because it runs on a path that is already failing.
+	 */
+	describeOutstanding(): string {
+		const now = Date.now();
+		const invokes = [...this.entered].map(
+			({ cmd, startedAt }) =>
+				`  invoke ${cmd}, outstanding ${now - startedAt}ms`,
+		);
+		const requests = [...this.pending.entries()].map(
+			([id, { label, startedAt }]) =>
+				`  request #${id} ${label}, outstanding ${now - startedAt}ms`,
+		);
+		const waiting = [...invokes, ...requests];
+		const commands = waiting.length
+			? `${waiting.length} host command(s) outstanding:\n${waiting.join("\n")}`
+			: "no host command outstanding: the host answered everything it was asked";
+
+		return [
+			commands,
+			this.exited ? `host exited: ${this.exited}` : "host is running",
+			`host stderr: ${this.stderr.trim() || "(empty)"}`,
+		].join("\n");
+	}
+
 	onEvent(handler: EventHandler): void {
 		this.handlers.push(handler);
 	}
@@ -113,10 +152,15 @@ export class HostClient {
 
 	async invoke<T>(cmd: string, args: unknown = {}): Promise<T> {
 		this.inFlight += 1;
+		// Recorded before the stall, so a command the knob is deliberately
+		// starving reads as outstanding rather than as one the host answered.
+		const entry = { cmd, startedAt: Date.now() };
+		this.entered.add(entry);
 		try {
 			if (stalls(cmd)) await stall(STALL_MS);
 			return (await this.request({ verb: "invoke", cmd, args })) as T;
 		} finally {
+			this.entered.delete(entry);
 			this.inFlight -= 1;
 		}
 	}
@@ -157,8 +201,10 @@ export class HostClient {
 		if (this.closing || this.exited) return Promise.resolve(null);
 
 		const id = this.nextId++;
+		const label = String(body.cmd ?? body.verb);
+		const startedAt = Date.now();
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
+			this.pending.set(id, { resolve, reject, label, startedAt });
 			this.send({ id, ...body });
 		});
 	}

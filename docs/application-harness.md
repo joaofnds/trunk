@@ -210,6 +210,15 @@ a round trip, not by the clock. So a wait that
 reaches 5 000 ms is one whose state never arrived, and a longer deadline only makes the same
 failure take longer to report.
 
+A timeout therefore reports what the host was still owed. `setup()` registers
+`HostClient.describeOutstanding()` with the wait module, so every expiry prints each
+outstanding command with its age, whether the host process is still running, and whatever it
+wrote to stderr. The two readings differ: a command with a large age means the host never
+answered, and no outstanding command means it answered and the frontend did not act on the
+reply. Those want different fixes, and until this existed a red run could not tell them apart
+(TRUNK-62). The accounting starts when `invoke` is entered rather than when the request is
+sent, so a command the stall knob is deliberately starving still reads as outstanding.
+
 `app.events.externalChange()` waits for the application's in-flight `listen` calls before it
 emits, because registering a listener costs a host round trip. Two of the four `repo-changed`
 registrations, `RepoView.svelte:836` and `StagingPanel.svelte:752`, had still not landed when
