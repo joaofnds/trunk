@@ -912,14 +912,58 @@ describe("CommitGraph", () => {
 			resolveStalePage(pending);
 			await flush();
 
-			// offset must still index the new layout, so the request the viewport
-			// re-issues asks for its page two and the rows become reachable.
-			resolveStalePage(pending);
-			await flush();
+			// offset must still index the new layout. scrollToOid, still hunting the
+			// row it was asked for, re-issues the load, and that request is the one
+			// answered here with the new layout's page two.
 			pending.at(-1)?.({ commits: page(BATCH, "new"), max_columns: 1 });
 			await flush();
 
 			expect(await isLoaded(rendered, oidOf(BATCH, "new"))).toBe(true);
+		});
+
+		// The watcher, a commit and a checkout all rebuild through refreshSignal,
+		// not through a direct showGraph call. This pins the guard on that route.
+		it("drops a stale page when the rebuild came from a refresh", async () => {
+			const pending: ((page: unknown) => void)[] = [];
+			installReads({
+				override: (cmd, args) => {
+					if (cmd === "refresh_commit_graph") {
+						return Promise.resolve({
+							commits: page(0, "new"),
+							max_columns: 1,
+						});
+					}
+					if (cmd !== "get_commit_graph") return undefined;
+					if (args?.offset === 0) {
+						return Promise.resolve({
+							commits: page(0, "old"),
+							max_columns: 1,
+						});
+					}
+					return new Promise((resolve) => pending.push(resolve));
+				},
+			});
+
+			const rendered = render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true, refreshSignal: 0 },
+			});
+			await waitFor(() => {
+				expect(screen.getByText("old commit 0")).toBeInTheDocument();
+			});
+			void rendered.component.scrollToOid(oidOf(BATCH, "old"));
+			await flush();
+			expect(pending).toHaveLength(1);
+
+			await rendered.rerender({
+				repoPath: "/test/repo",
+				tabActive: true,
+				refreshSignal: 1,
+			});
+			await flush();
+			resolveStalePage(pending);
+			await flush();
+
+			expect(await isLoaded(rendered, oidOf(BATCH, "old"))).toBe(false);
 		});
 
 		it("appends a page that no rebuild interrupted", async () => {
