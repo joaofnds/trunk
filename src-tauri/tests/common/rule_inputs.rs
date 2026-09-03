@@ -31,7 +31,10 @@ fn read(name: &str) -> FixtureInput {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", file.display()))
 }
 
-/// The layout `graph::snapshot` produces for `name`, taken through the same `layout` call it makes.
+/// The layout for `name`, produced by the same `graph_input::layout` call `graph::snapshot`
+/// makes — but not through `snapshot` itself: this skips `capture`/`apply_visibility` and
+/// lays out the fixture's own capture directly, by design (see "Two kinds of test" in
+/// `.claude/rules/commit-graph.md`).
 pub fn walk(name: &str, offset: usize, limit: usize) -> GraphResult {
     graph_input::layout(&read(name).capture.to_source(), offset, limit)
 }

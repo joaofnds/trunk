@@ -660,7 +660,7 @@ fn stash_branches_right_when_only_staged() {
 
 /// Invariant 1: `graph::snapshot` and `get_dirty_counts_inner` must never disagree about whether
 /// the worktree is dirty — drift between them reproduces the stash/WIP collision intermittently.
-/// the walk's reading is invisible in `GraphResult`, so the stash's column is the only
+/// `graph::snapshot`'s reading is invisible in `GraphResult`, so the stash's column is the only
 /// observable that stands in for it.
 fn assert_readings_agree(dirty_the_tree: impl Fn(&TestContext)) {
     use trunk_lib::commands::staging::get_dirty_counts_inner;

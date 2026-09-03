@@ -145,14 +145,13 @@ pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
     })
 }
 
-/// The whole pipeline for one repository: capture, drop what the user hid, lay out the page.
+/// The whole history laid out under `visibility`, together with the capture it came from,
+/// which is what the commit cache holds so a later visibility change needs no repository.
 ///
 /// Every site that fills `CommitCache` comes through here, which is what keeps a rebuild
 /// after a commit, a checkout or a stash honouring the same visibility the graph was drawn
 /// with. `visibility` is a parameter rather than a lookup so a new rebuild site cannot
 /// forget it.
-/// The whole history laid out under `visibility`, together with the capture it came from,
-/// which is what the commit cache holds so a later visibility change needs no repository.
 pub fn snapshot(
     repo: &mut git2::Repository,
     visibility: &RefVisibility,
