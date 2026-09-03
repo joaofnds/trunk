@@ -60,6 +60,17 @@ jobs:
       # Pure string matching over three config files: no bun install, no cargo invocation.
       - run: just toolchain-parity
 
+  target-dir-check:
+    name: Target Dir Derivation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      # Evaluates one justfile variable under constructed environments: no bun
+      # install, no cargo invocation. Runs here because CI is the case that must
+      # keep resolving to the shared dir.
+      - run: just target-dir-check
+
   check-parity:
     name: CI Mirrors just check
     runs-on: ubuntu-latest
@@ -67,7 +78,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every recipe in `just check` has a CI job
         run: |
-          mirrored=$(printf '%s\n' app-test biome cargo-test clippy clippy-shipped fmt graph-sweep-check svelte-check toolchain-parity vitest | sort)
+          mirrored=$(printf '%s\n' app-test biome cargo-test clippy clippy-shipped fmt graph-sweep-check svelte-check target-dir-check toolchain-parity vitest | sort)
           recipes=$(sed -n 's/^check: *//p' justfile | tr ' ' '\n' | sort)
           if ! diff <(echo "$mirrored") <(echo "$recipes"); then
             echo "::error::just check and this workflow disagree; add or remove the CI job, then update the mirrored list in ci.yml"

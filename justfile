@@ -7,8 +7,24 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 unexport RUSTUP_TOOLCHAIN
 
 manifest := "src-tauri/Cargo.toml"
+
+# The card this session is working, if it declared one. Sessions run several at
+# a time against one checkout, and cargo takes an exclusive lock on its build
+# directory: a second build waits for the first rather than running. Measured
+# 34.4s of pure waiting for work that was already done (TRUNK-139). Keying the
+# output root by card gives concurrent sessions separate dirs, and keys it by
+# something that outlives a session restart so the dir stays warm.
+#
+# A card name becomes a path segment, so only a flat, boring name is allowed
+# through. A malformed name aborts rather than falling back to the shared dir:
+# a session that believes it is isolated and silently is not would wait on
+# another's build lock while showing no sign of why.
+card := env("TRUNK_CARD", "")
+card_dir := if card == "" { justfile_directory() / "src-tauri/target" } else if card =~ '^[A-Za-z0-9_-]+$' { justfile_directory() / "src-tauri/target-cards" / card } else { error("TRUNK_CARD='" + card + "' is not a bare card name; it becomes a directory under src-tauri/target-cards, so use letters, digits, dashes and underscores only (e.g. trunk-139)") }
+
 # Cargo's output root, honouring CARGO_TARGET_DIR the way cargo itself does.
-target := env("CARGO_TARGET_DIR", justfile_directory() / "src-tauri/target")
+# An explicit override outranks the card, so CI and one-off runs still pin it.
+target := env("CARGO_TARGET_DIR", card_dir)
 
 # The Rust suite drives real `git` subprocesses. Without this the developer's
 # editor vars and global git config decide which path a test takes, and the
@@ -49,7 +65,11 @@ front: biome svelte-check vitest
 rust: fmt clippy clippy-shipped cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity
+check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity target-dir-check
+
+# Verify the target dir resolves per card, per override, and shared by default (milliseconds)
+target-dir-check:
+    scripts/target-dir-check.sh
 
 # Verify every file naming the rust version names the same one (milliseconds)
 toolchain-parity:
