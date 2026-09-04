@@ -247,14 +247,20 @@ $effect(() => {
 	}
 });
 
-// Infinite scroll: trigger onLoadMore when approaching end of list
+// Infinite scroll: trigger onLoadMore when approaching end of list.
+// The reads stay above the guard so that every run subscribes to them, the run
+// that bails on the latch included. Svelte records dependencies per run, so a
+// run that returns before reading any reactive state can never be invalidated
+// again, and paging stops for good at whichever page was in flight (TRUNK-148).
 $effect(() => {
+	const range = visibleItems;
+	const loaded = items.length;
+
 	if (!BROWSER || !onLoadMore || !hasMore || isLoadingMore) return;
 
-	const range = visibleItems;
-	const atLoadingEdge = range.end >= items.length - loadMoreThreshold;
+	const atLoadingEdge = range.end >= loaded - loadMoreThreshold;
 	const insufficientItems =
-		items.length < loadMoreThreshold && heightManager.initialized;
+		loaded < loadMoreThreshold && heightManager.initialized;
 
 	if (atLoadingEdge || insufficientItems) {
 		isLoadingMore = true;

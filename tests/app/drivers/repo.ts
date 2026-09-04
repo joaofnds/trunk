@@ -14,6 +14,9 @@ const COMMIT_SHA = '[title="Copy SHA"]';
 const REF_PILL = "g.overlay-pills foreignObject";
 const OVERFLOW_BADGE = /^\+\d+$/;
 const FILE_ROW = '[data-testid="staging-file"]';
+const GRAPH_VIEWPORT = ".virtual-list-viewport";
+const GRAPH_CONTENT = ".virtual-list-content";
+const GRAPH_ROW = "[data-original-index]";
 
 /**
  * The repository surface, in gestures rather than transport. The harness seeds
@@ -140,6 +143,84 @@ export class RepoDriver {
 	 *  content at the next gesture that reloads status. */
 	writeWorkingTreeFile(relativePath: string, content: string): void {
 		writeFileSync(join(this.path, relativePath), content);
+	}
+
+	/**
+	 * Scrolls the graph to the end of the rows it has loaded and returns once the
+	 * list is rendering them, which is the gesture that asks for the next page.
+	 *
+	 * Each attempt moves away from the tail first, so the assignment is a change
+	 * the list can notice. Re-issuing a position it already holds produces no
+	 * scroll it acts on.
+	 */
+	async scrollToTail(): Promise<void> {
+		const viewport = await waitFor("the graph's scroll viewport", () =>
+			document.querySelector<HTMLElement>(GRAPH_VIEWPORT),
+		);
+
+		// The list acts on a scroll a frame later, ignores one that moves less than
+		// half a row, and right after mount is still settling its own scroll to
+		// HEAD, which swallows the first gesture whole. So keep asking until the
+		// window holds the deepest loaded row.
+		//
+		// That reading says the viewport arrived, not that a page followed, so a
+		// stalled pager satisfies it and fails on the caller's assertion rather
+		// than on this wait.
+		await waitFor("the graph to render its deepest loaded row", () => {
+			if (this.renderedEnd() >= this.loadedDepth()) return true;
+
+			this.scrollTo(viewport, 0);
+			this.scrollTo(viewport, this.contentHeight());
+
+			return null;
+		});
+	}
+
+	/**
+	 * How many commit rows the graph has paged in, which is what paging deeper
+	 * grows.
+	 *
+	 * Read from the scroll range the list sized itself to, divided by the height
+	 * of a row. Neither the rendered rows nor their `data-original-index` can
+	 * answer it: both describe the virtual list's window over the loaded rows,
+	 * which stays small however deep the list goes, so a stalled pager and a
+	 * working one look identical through them.
+	 */
+	loadedDepth(): number {
+		const row = document.querySelector<HTMLElement>(GRAPH_ROW);
+		const rowHeight = row?.getBoundingClientRect().height ?? 0;
+		if (rowHeight <= 0) return 0;
+
+		return Math.round(this.contentHeight() / rowHeight);
+	}
+
+	private scrollTo(viewport: HTMLElement, top: number): void {
+		viewport.scrollTop = top;
+		viewport.dispatchEvent(new Event("scroll"));
+	}
+
+	/** How far down the loaded rows the list's window currently reaches, as a
+	 *  count of rows. */
+	private renderedEnd(): number {
+		const rows = document.querySelectorAll<HTMLElement>(GRAPH_ROW);
+
+		let deepest = -1;
+		for (const row of rows) {
+			const index = Number.parseInt(row.dataset.originalIndex ?? "", 10);
+			if (Number.isFinite(index) && index > deepest) deepest = index;
+		}
+
+		return deepest + 1;
+	}
+
+	/** How tall the list has made its content, which is the scroll range. jsdom
+	 *  reports 0 for `scrollHeight`, so the list's own inline height is the only
+	 *  reading of it available here. */
+	private contentHeight(): number {
+		const content = document.querySelector<HTMLElement>(GRAPH_CONTENT);
+		const declared = Number.parseFloat(content?.style.height ?? "");
+
+		return Number.isFinite(declared) ? declared : 0;
 	}
 
 	/** The short hash the graph shows for one commit. */

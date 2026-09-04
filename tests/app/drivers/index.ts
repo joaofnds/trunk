@@ -163,6 +163,27 @@ export class AppDriver {
 		}
 	}
 
+	/**
+	 * Scrolls the commit graph to the end of history, the way a user does: to the
+	 * bottom, let what that asks for arrive, and again, until a scroll to the
+	 * bottom brings back nothing new.
+	 *
+	 * The graph pages as the viewport reaches the end of the rows it holds, so
+	 * reaching the oldest commit takes as many gestures as the history has pages,
+	 * and a test cannot know that number. Letting each page arrive is what
+	 * `settled()` does, and skipping it reads the depth from before the request:
+	 * a working pager then looks stalled.
+	 */
+	async scrollToOldest(): Promise<void> {
+		let previous = -1;
+
+		while (this.repo.loadedDepth() > previous) {
+			previous = this.repo.loadedDepth();
+			await this.repo.scrollToTail();
+			await this.settled();
+		}
+	}
+
 	/** Nothing armed and nothing in flight, as of this instant. */
 	private quiet(): boolean {
 		return this.scheduler.pending === 0 && this.host.pendingInvokes === 0;
