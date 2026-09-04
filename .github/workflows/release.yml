@@ -70,10 +70,24 @@ jobs:
           toolchain: 1.98.0
           targets: ${{ matrix.rust_target }}
 
+      # Restore only. This workflow runs on tags, and a cache saved from a tag
+      # ref can only ever be read back by that same tag — GitHub scopes a cache
+      # to the ref that wrote it, plus the default branch. So `save-if` on a tag
+      # wrote a cache for a release that had already finished and that no later
+      # release could see: measured across v0.38.0 and v0.39.0, two 522MB
+      # Darwin-x64 entries under identical keys, both with last_accessed_at
+      # equal to created_at, and the v0.39.0 run logging "No cache found".
+      #
+      # Sixteen such entries had accumulated, 4.71GB of the repository's 10GB
+      # budget, none of them restorable by anything. That is what evicts the
+      # main-scoped CI caches, which are read on every push.
+      #
+      # Release builds stay cold either way. Warming them needs a cache written
+      # from the default branch, where a tag run can reach it — TRUNK-142.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "src-tauri -> target"
-          save-if: ${{ github.ref_type == 'tag' }}
+          save-if: "false"
 
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
