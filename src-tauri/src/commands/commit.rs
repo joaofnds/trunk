@@ -18,7 +18,7 @@ fn refresh_commit_cache(
 
 fn build_message(subject: &str, body: Option<&str>) -> String {
     match body {
-        Some(b) if !b.trim().is_empty() => format!("{}\n\n{}", subject, b),
+        Some(b) if !b.trim().is_empty() => format!("{subject}\n\n{b}"),
         _ => subject.to_owned(),
     }
 }

@@ -10,10 +10,10 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_n
 static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// Map a syntect foreground Color (from base16-ocean.dark theme) to a CSS class name.
-/// Colors discovered by running highlight_line() on sample code and observing
+/// Colors discovered by running `highlight_line()` on sample code and observing
 /// the actual RGB values the theme produces for each token type.
 /// Returns empty string for default/plain text colors (no syntax class needed).
-fn color_to_css_class(color: Color) -> &'static str {
+const fn color_to_css_class(color: Color) -> &'static str {
     match (color.r, color.g, color.b) {
         // Keywords: fn, let, if, return, class, def, pub, use, mod, etc.
         (180, 142, 173) => "syn-keyword",
@@ -61,6 +61,7 @@ pub fn can_highlight_extension(ext: &str) -> bool {
 }
 
 /// Extract file extension from a path string.
+#[must_use]
 pub fn extension_from_path(path: &str) -> &str {
     std::path::Path::new(path)
         .extension()
@@ -119,7 +120,7 @@ pub fn highlight_line_with(
     let normalized = if content.ends_with('\n') {
         content.to_string()
     } else {
-        format!("{}\n", content)
+        format!("{content}\n")
     };
 
     let ranges = highlighter
@@ -150,6 +151,7 @@ pub fn highlight_line_with(
 
 /// Highlight a single line of code (standalone — creates a fresh highlighter).
 /// Prefer `create_highlighter` + `highlight_line_with` for batch processing.
+#[must_use]
 pub fn highlight_line_tokens(content: &str, extension: &str) -> Vec<SyntaxToken> {
     let Some(mut hl) = create_highlighter(extension) else {
         return vec![];
@@ -158,7 +160,8 @@ pub fn highlight_line_tokens(content: &str, extension: &str) -> Vec<SyntaxToken>
 }
 
 /// Merge syntax tokens and word spans into a single sorted span array.
-/// The resulting array covers bytes 0 to content_len with no gaps.
+/// The resulting array covers bytes 0 to `content_len` with no gaps.
+#[must_use]
 pub fn merge_spans(
     syntax_tokens: &[SyntaxToken],
     word_spans: &[WordSpan],

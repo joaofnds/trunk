@@ -13,7 +13,7 @@ pub(crate) fn repo_path_from_state<'a>(
         let name = std::path::Path::new(path)
             .file_name()
             .map_or(path, |n| n.to_str().unwrap_or(path));
-        TrunkError::new("not_open", format!("Repository not open: {}", name))
+        TrunkError::new("not_open", format!("Repository not open: {name}"))
     })
 }
 

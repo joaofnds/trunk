@@ -37,6 +37,7 @@ pub struct EditorHandle {
 
 impl EditorHandle {
     /// Path callers pass to `Command::env("GIT_EDITOR", _)`.
+    #[must_use]
     pub fn script_path(&self) -> &Path {
         &self.script_path
     }
@@ -141,6 +142,7 @@ pub struct KeyedEditor {
 
 impl KeyedEditor {
     /// Path callers pass to `Command::env("GIT_EDITOR", _)`.
+    #[must_use]
     pub fn script_path(&self) -> &Path {
         &self.script_path
     }
@@ -170,7 +172,7 @@ pub(crate) fn shell_single_quote(s: &str) -> String {
 
 /// Reserve a unique temp file and write `contents` through the open file
 /// handle returned by `tempfile`, then `.keep()` the path. Writing before
-/// `.keep()` is what gives us the O_EXCL guarantee.
+/// `.keep()` is what gives us the `O_EXCL` guarantee.
 fn write_temp_file(prefix: &str, suffix: &str, contents: &[u8]) -> Result<PathBuf, TrunkError> {
     use std::io::Write;
     let mut tf = tempfile::Builder::new()

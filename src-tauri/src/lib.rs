@@ -49,7 +49,7 @@ fn is_internal_url(url: &tauri::Url) -> bool {
         "tauri" | "ipc" => true,
         "http" | "https" => matches!(
             url.host_str(),
-            Some("localhost") | Some("tauri.localhost") | Some("ipc.localhost")
+            Some("localhost" | "tauri.localhost" | "ipc.localhost")
         ),
         _ => false,
     }

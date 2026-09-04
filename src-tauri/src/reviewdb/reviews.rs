@@ -12,7 +12,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
 
-#[derive(Debug, Serialize, Clone, Copy, PartialEq)]
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ReviewState {
     Composing,
@@ -72,6 +72,7 @@ pub fn create(
 
 /// Readable without being clever: the ISO date the review was opened plus its
 /// short id, e.g. `Review 2026-08-12 · 3F7K2QAB`.
+#[must_use]
 pub fn default_title(id: &str, now: i64) -> String {
     format!("Review {} · {}", iso_date(now), id)
 }
@@ -235,7 +236,7 @@ pub fn publish(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Resul
 }
 
 /// Delete a review. `threads`, `review_commits` and `active_review` all cascade,
-/// which is what `PRAGMA foreign_keys = ON` buys — SQLite defaults it off, and a
+/// which is what `PRAGMA foreign_keys = ON` buys — `SQLite` defaults it off, and a
 /// cascade that silently does not fire leaves a dangling pointer row.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
     conn.execute(

@@ -22,6 +22,7 @@ pub struct RepoSnapshots {
 
 impl RepoSnapshots {
     /// The stored oid for one kind, if the repo has one.
+    #[must_use]
     pub fn for_kind(&self, kind: SnapshotKind) -> Option<&str> {
         match kind {
             SnapshotKind::Workdir => self.working_tree_snapshot.as_deref(),
@@ -30,6 +31,7 @@ impl RepoSnapshots {
     }
 
     /// Every snapshot oid this repo has pinned.
+    #[must_use]
     pub fn oids(&self) -> Vec<String> {
         [
             self.working_tree_snapshot.clone(),

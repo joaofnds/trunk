@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-/// Inner implementation of list_refs — separated for testability without Tauri state.
+/// Inner implementation of `list_refs` — separated for testability without Tauri state.
 pub fn list_refs_inner(
     path: &str,
     state_map: &HashMap<String, PathBuf>,
@@ -26,7 +26,7 @@ pub fn list_refs_inner(
 
     let local: Vec<BranchInfo> = repo
         .branches(Some(BranchType::Local))?
-        .filter_map(|b| b.ok())
+        .filter_map(std::result::Result::ok)
         .map(|(branch, _)| {
             let name = branch.name().ok().flatten().unwrap_or("").to_owned();
             let is_head = head_name.as_deref() == Some(name.as_str());
@@ -37,18 +37,16 @@ pub fn list_refs_inner(
             let last_commit_timestamp = branch
                 .get()
                 .peel_to_commit()
-                .map(|c| c.author().when().seconds())
-                .unwrap_or(0);
+                .map_or(0, |c| c.author().when().seconds());
             let (ahead, behind) = match (&upstream, branch.get().target()) {
                 (Some(_), Some(local_oid)) => branch
                     .upstream()
                     .ok()
                     .and_then(|ub| ub.get().target())
-                    .map(|remote_oid| {
+                    .map_or((0, 0), |remote_oid| {
                         repo.graph_ahead_behind(local_oid, remote_oid)
                             .unwrap_or((0, 0))
-                    })
-                    .unwrap_or((0, 0)),
+                    }),
                 _ => (0, 0),
             };
             BranchInfo {
@@ -65,7 +63,7 @@ pub fn list_refs_inner(
     // Remote branches — filter out entries where name ends with "/HEAD"
     let remote: Vec<BranchInfo> = repo
         .branches(Some(BranchType::Remote))?
-        .filter_map(|b| b.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(|(branch, _)| {
             let name = branch.name().ok().flatten()?.to_owned();
             if name.ends_with("/HEAD") {
@@ -114,7 +112,7 @@ pub fn list_refs_inner(
                 .map(|o| o.to_string());
             StashEntry {
                 index: idx,
-                short_name: format!("stash@{{{}}}", idx),
+                short_name: format!("stash@{{{idx}}}"),
                 name,
                 oid: stash_oid.to_string(),
                 parent_oid,
@@ -199,7 +197,7 @@ pub async fn list_refs(path: String, state: State<'_, RepoState>) -> Result<Refs
         .map_err(|e| e.to_json())
 }
 
-/// Inner implementation of resolve_ref — separated for testability.
+/// Inner implementation of `resolve_ref` — separated for testability.
 pub fn resolve_ref_inner(
     path: &str,
     ref_name: &str,
@@ -257,7 +255,7 @@ fn classify_checkout_error(e: git2::Error) -> TrunkError {
     e.into()
 }
 
-/// Inner implementation of checkout_branch — separated for testability.
+/// Inner implementation of `checkout_branch` — separated for testability.
 pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
@@ -268,7 +266,7 @@ pub fn checkout_branch_inner(
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
 
-    let branch_ref = format!("refs/heads/{}", branch_name);
+    let branch_ref = format!("refs/heads/{branch_name}");
     {
         let (object, _reference) = repo.revparse_ext(&branch_ref)?;
         repo.checkout_tree(
@@ -365,10 +363,11 @@ pub async fn fast_forward_to<R: Runtime>(
     Ok(())
 }
 
-/// Inner implementation of create_branch — separated for testability.
+/// Inner implementation of `create_branch` — separated for testability.
+///
 /// When `from_oid` is Some, branches from that OID; when None, branches from HEAD.
 /// Creates the branch first (always safe), then checks out. If dirty workdir at checkout time,
-/// returns dirty_workdir error (branch exists but HEAD didn't move).
+/// returns `dirty_workdir` error (branch exists but HEAD didn't move).
 pub fn create_branch_inner(
     path: &str,
     name: &str,
@@ -407,7 +406,7 @@ pub fn create_branch_inner(
     }
 
     // Auto-checkout the new branch (checkout_tree updates index + working tree, then set_head moves HEAD)
-    let branch_ref = format!("refs/heads/{}", name);
+    let branch_ref = format!("refs/heads/{name}");
     {
         let (object, _reference) = repo.revparse_ext(&branch_ref)?;
         repo.checkout_tree(

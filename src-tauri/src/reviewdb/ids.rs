@@ -13,7 +13,7 @@ const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 pub const ID_LEN: usize = 8;
 
 /// Which table a prefix is resolved against. One id scheme, three populations.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IdKind {
     Review,
     Thread,
@@ -21,16 +21,16 @@ pub enum IdKind {
 }
 
 impl IdKind {
-    fn table(self) -> &'static str {
+    const fn table(self) -> &'static str {
         match self {
-            IdKind::Review => "reviews",
-            IdKind::Thread => "threads",
-            IdKind::Reply => "replies",
+            Self::Review => "reviews",
+            Self::Thread => "threads",
+            Self::Reply => "replies",
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ResolveError {
     NotFound,
     Ambiguous(Vec<String>),
@@ -40,8 +40,8 @@ pub enum ResolveError {
 impl From<ResolveError> for TrunkError {
     fn from(e: ResolveError) -> Self {
         match e {
-            ResolveError::NotFound => TrunkError::new("not_found", "No such id"),
-            ResolveError::Ambiguous(matches) => TrunkError::new(
+            ResolveError::NotFound => Self::new("not_found", "No such id"),
+            ResolveError::Ambiguous(matches) => Self::new(
                 "ambiguous_id",
                 format!(
                     "Prefix matches {} ids: {}",
@@ -56,6 +56,7 @@ impl From<ResolveError> for TrunkError {
 
 /// A fresh random id. Sampled from the OS, not a seeded PRNG: ids are addresses
 /// a user types, and a predictable stream would collide across processes.
+#[must_use]
 pub fn mint() -> String {
     let mut bytes = [0u8; ID_LEN];
     getrandom::fill(&mut bytes).expect("the OS random source must be available");
@@ -68,6 +69,7 @@ pub fn mint() -> String {
 
 /// Fold a typed or pasted id to its canonical form: uppercase, with the glyphs
 /// Crockford treats as confusable mapped onto the digits they resemble.
+#[must_use]
 pub fn normalize(raw: &str) -> String {
     raw.trim()
         .chars()

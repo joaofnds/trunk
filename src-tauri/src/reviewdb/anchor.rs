@@ -25,6 +25,7 @@ pub struct Columns {
     pub end_line: Option<i64>,
 }
 
+#[must_use]
 pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns {
     match (anchor, commit_oid) {
         (Some(a), _) => Columns {
@@ -33,8 +34,8 @@ pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns 
             file_path: Some(a.file_path.clone()),
             source: Some(source_str(&a.source)),
             side: Some(side_str(&a.side)),
-            start_line: Some(a.start_line as i64),
-            end_line: Some(a.end_line as i64),
+            start_line: Some(i64::from(a.start_line)),
+            end_line: Some(i64::from(a.end_line)),
         },
         (None, Some(oid)) => Columns {
             kind: COMMIT,
@@ -88,7 +89,7 @@ pub fn from_row(row: &Row, first: usize) -> Result<(Option<Anchor>, Option<Strin
 /// The anchor column names, in the order `to_columns` and `from_row` agree on.
 pub const COLUMNS: &str = "anchor_kind, commit_oid, file_path, source, side, start_line, end_line";
 
-fn source_str(source: &Source) -> &'static str {
+const fn source_str(source: &Source) -> &'static str {
     match source {
         Source::Diff => "Diff",
         Source::FullFile => "FullFile",
@@ -103,7 +104,7 @@ fn source_from(raw: &str) -> Result<Source, TrunkError> {
     }
 }
 
-fn side_str(side: &Side) -> &'static str {
+const fn side_str(side: &Side) -> &'static str {
     match side {
         Side::Old => "Old",
         Side::New => "New",

@@ -102,7 +102,7 @@ pub fn get_operation_state_inner(
                 .ok()
                 .map(|s| s.trim().to_owned());
             let progress = match (msgnum, end) {
-                (Some(m), Some(e)) => Some(format!("{}/{}", m, e)),
+                (Some(m), Some(e)) => Some(format!("{m}/{e}")),
                 _ => None,
             };
             let rebase_message = std::fs::read_to_string(rebase_dir.join("message"))
@@ -202,6 +202,7 @@ pub fn merge_abort_inner(
 }
 
 /// `git rebase <step>` with the commit-message editor pinned to a no-op.
+///
 /// `--continue` and `--skip` both resume the todo list, so a reword or squash step
 /// opens an editor; this subprocess has no TTY, so an ambient interactive editor
 /// (vi/nvim inherited from the environment) blocks forever and the command never
@@ -211,6 +212,7 @@ pub fn merge_abort_inner(
 /// Resuming steps override the pin with `git::editor::keyed_rebase_editor`, which
 /// is equally TTY-free but also delivers the messages an interactive rebase filed
 /// before it stopped. `true` would drop every one of them silently.
+#[must_use]
 pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Command {
     let mut cmd = std::process::Command::new("git");
     cmd.args(["rebase", step])
@@ -420,7 +422,7 @@ pub async fn get_operation_state(
     .map_err(|e: TrunkError| e.to_json())
 }
 
-/// Find a branch's color_index by searching ref labels in the cached graph.
+/// Find a branch's `color_index` by searching ref labels in the cached graph.
 fn find_branch_color(
     commits: &[crate::git::types::GraphCommit],
     branch_name: &str,

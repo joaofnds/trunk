@@ -56,7 +56,7 @@ pub fn list_stashes_inner(
                 .map(|o| o.to_string());
             StashEntry {
                 index: idx,
-                short_name: format!("stash@{{{}}}", idx),
+                short_name: format!("stash@{{{idx}}}"),
                 name,
                 oid: stash_oid.to_string(),
                 parent_oid,
@@ -79,7 +79,7 @@ pub fn stash_save_inner(
             .ok()
             .and_then(|h| h.shorthand().ok().map(str::to_owned))
             .unwrap_or_else(|| "HEAD".to_owned());
-        format!("WIP on {}", branch)
+        format!("WIP on {branch}")
     } else {
         message.to_owned()
     };

@@ -24,7 +24,7 @@ use std::path::Path;
 /// Which version of a file to read. Shared by `read_file_at`, the block-diff
 /// renderer, and the `trunk-asset://` protocol handler so all agree on what "the
 /// file at this rev" means. The frontend derives it from `diffKind` + side.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RevSpec {
     WorkingTree,
@@ -45,25 +45,26 @@ impl RevSpec {
     /// authority — a colon there reads as `host:port` and the URL parser (and
     /// ammonia) reject it. The keywords can't collide with a hex oid, so
     /// decoding stays unambiguous.
+    #[must_use]
     pub fn to_url_token(&self) -> String {
         match self {
-            RevSpec::WorkingTree => "working-tree".to_string(),
-            RevSpec::Index => "index".to_string(),
-            RevSpec::Head => "head".to_string(),
-            RevSpec::Empty => "empty".to_string(),
-            RevSpec::Commit { oid } => format!("commit-{oid}"),
+            Self::WorkingTree => "working-tree".to_string(),
+            Self::Index => "index".to_string(),
+            Self::Head => "head".to_string(),
+            Self::Empty => "empty".to_string(),
+            Self::Commit { oid } => format!("commit-{oid}"),
         }
     }
 
-    pub fn from_url_token(token: &str) -> Result<RevSpec, TrunkError> {
+    pub fn from_url_token(token: &str) -> Result<Self, TrunkError> {
         match token {
-            "working-tree" => Ok(RevSpec::WorkingTree),
-            "index" => Ok(RevSpec::Index),
-            "head" => Ok(RevSpec::Head),
-            "empty" => Ok(RevSpec::Empty),
+            "working-tree" => Ok(Self::WorkingTree),
+            "index" => Ok(Self::Index),
+            "head" => Ok(Self::Head),
+            "empty" => Ok(Self::Empty),
             other => other
                 .strip_prefix("commit-")
-                .map(|oid| RevSpec::Commit {
+                .map(|oid| Self::Commit {
                     oid: oid.to_string(),
                 })
                 .ok_or_else(|| {

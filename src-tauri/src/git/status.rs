@@ -3,6 +3,7 @@ use git2::{Repository, Status, StatusOptions};
 /// The one definition of "dirty" in Trunk, shared by the graph walk and the dirty counters so
 /// the two cannot drift. `include_ignored(false)` keeps ignored trees out of the scan, which
 /// libgit2's defaults would otherwise walk on every refresh.
+#[must_use]
 pub fn dirty_status_options() -> StatusOptions {
     let mut opts = StatusOptions::new();
     opts.include_untracked(true)
@@ -25,6 +26,7 @@ pub const UNSTAGED_BITS: Status = Status::WT_NEW
 
 pub const DIRTY_BITS: Status = STAGED_BITS.union(UNSTAGED_BITS).union(Status::CONFLICTED);
 
+#[must_use]
 pub fn worktree_dirty(repo: &Repository) -> bool {
     let mut opts = dirty_status_options();
     // Bare repos error here rather than reporting clean, and have no worktree to be dirty.

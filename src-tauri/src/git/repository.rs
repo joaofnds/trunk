@@ -3,7 +3,7 @@ use crate::git::types::{RefLabel, RefType};
 use std::collections::HashMap;
 
 /// Returns true if the repo has any tracked modifications that would block checkout.
-/// Untracked files (WT_NEW) are deliberately excluded — git allows checkout with untracked files.
+/// Untracked files (`WT_NEW`) are deliberately excluded — git allows checkout with untracked files.
 pub fn is_repo_dirty(repo: &git2::Repository) -> Result<bool, git2::Error> {
     use git2::{Status, StatusOptions};
     let mut opts = StatusOptions::new();
@@ -58,7 +58,7 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
         .head()
         .ok()
         .and_then(|h| h.resolve().ok())
-        .and_then(|r| r.name().ok().map(|n| n.to_owned()));
+        .and_then(|r| r.name().ok().map(std::borrow::ToOwned::to_owned));
 
     if let Ok(refs) = repo.references() {
         for reference in refs.flatten() {
@@ -78,10 +78,7 @@ pub fn build_ref_map(repo: &mut git2::Repository) -> HashMap<git2::Oid, Vec<RefL
 
             // For annotated tags, peel to the underlying commit OID
             let oid = if matches!(ref_type, RefType::Tag) {
-                reference
-                    .peel_to_commit()
-                    .map(|c| c.id())
-                    .unwrap_or(raw_oid)
+                reference.peel_to_commit().map_or(raw_oid, |c| c.id())
             } else {
                 raw_oid
             };

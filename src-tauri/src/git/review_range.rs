@@ -100,7 +100,12 @@ pub(crate) fn intersect_graph_order(
         let summary = git2::Oid::from_str(oid_str)
             .ok()
             .and_then(|oid| repo.find_commit(oid).ok())
-            .and_then(|c| c.summary().ok().flatten().map(|s| s.to_owned()))
+            .and_then(|c| {
+                c.summary()
+                    .ok()
+                    .flatten()
+                    .map(std::borrow::ToOwned::to_owned)
+            })
             .unwrap_or_else(|| "(unavailable)".to_string());
         out.push(SessionCommit {
             oid: oid_str.clone(),

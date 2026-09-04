@@ -22,6 +22,7 @@ fn git_own_lines(lower: &str) -> impl Iterator<Item = &str> {
 }
 
 /// Classifies git stderr output into structured error codes.
+#[must_use]
 pub fn classify_git_error(stderr: &str) -> TrunkError {
     let lower = stderr.to_lowercase();
 
@@ -220,8 +221,7 @@ pub async fn git_fetch_background<R: Runtime>(
     let path_for_state = path_buf.clone();
     let is_clean = tauri::async_runtime::spawn_blocking(move || {
         git2::Repository::open(&path_for_state)
-            .map(|r| r.state() == git2::RepositoryState::Clean)
-            .unwrap_or(false)
+            .is_ok_and(|r| r.state() == git2::RepositoryState::Clean)
     })
     .await
     .unwrap_or(false);
@@ -529,7 +529,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     let slash = branch_name.find('/').ok_or_else(|| {
         TrunkError::new(
             "invalid_ref",
-            format!("Invalid remote branch name: {}", branch_name),
+            format!("Invalid remote branch name: {branch_name}"),
         )
         .to_json()
     })?;

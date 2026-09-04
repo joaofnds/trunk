@@ -10,7 +10,7 @@ use std::path::Path;
 /// Atomic write: tmp-in-same-dir + `sync_all` + `rename` (D-10, Pitfall 5).
 /// `rename` is only atomic within a filesystem, so the tmp file lives next to
 /// the target. `create_dir_all` covers the first-write case (Pitfall 2).
-pub(crate) fn atomic_write_json(final_path: &Path, json: &str) -> Result<(), TrunkError> {
+pub fn atomic_write_json(final_path: &Path, json: &str) -> Result<(), TrunkError> {
     let dir = final_path
         .parent()
         .ok_or_else(|| TrunkError::new("bad_path", "target path has no parent dir"))?;
@@ -31,7 +31,7 @@ pub(crate) fn atomic_write_json(final_path: &Path, json: &str) -> Result<(), Tru
 /// Rename a file we cannot read to a `.corrupt` sidecar — never delete it
 /// (D-15), including earlier sidecars: an occupied name falls through to
 /// `.json.corrupt-2`, `-3`, … instead of overwriting.
-pub(crate) fn quarantine_corrupt(final_path: &Path) -> Result<(), TrunkError> {
+pub fn quarantine_corrupt(final_path: &Path) -> Result<(), TrunkError> {
     let mut corrupt = final_path.with_extension("json.corrupt");
     let mut n = 2;
     while corrupt.exists() {

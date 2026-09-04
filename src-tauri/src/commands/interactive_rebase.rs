@@ -300,7 +300,7 @@ pub async fn get_fork_point(
 /// One scratch directory per invocation, removed when this value drops.
 ///
 /// Keying it by process id shared it across every concurrent rebase in an app
-/// whose RepoState holds many repositories: a second todo write replaced the
+/// whose `RepoState` holds many repositories: a second todo write replaced the
 /// first while git may not have read it yet, and whichever rebase finished
 /// first deleted the other's editor scripts mid-run. Dropping rather than an
 /// explicit remove also covers the early returns, which leaked an executable

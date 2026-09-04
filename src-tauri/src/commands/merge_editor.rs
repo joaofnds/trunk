@@ -36,7 +36,7 @@ fn conflict_entry(
         .ok_or_else(|| {
             TrunkError::new(
                 "not_conflicted",
-                format!("File not in conflict: {}", file_path),
+                format!("File not in conflict: {file_path}"),
             )
         })?
         .map_err(|e| TrunkError::new("conflict_error", e.to_string()))

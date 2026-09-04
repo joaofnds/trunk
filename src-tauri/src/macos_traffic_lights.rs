@@ -1,15 +1,15 @@
 //! Centers the macOS traffic-light buttons in Trunk's top bar.
 //!
-//! Tauri/wry honor the configured inset only at window creation; AppKit then
+//! Tauri/wry honor the configured inset only at window creation; `AppKit` then
 //! relayouts the buttons back to the default top position on window-state
 //! restore, resize, or appearance change, and Tauri 2.10 exposes no runtime
 //! setter. So we grow the title-bar container ourselves so the buttons drop to
 //! the bar's vertical center.
 //!
-//! Resize is special: AppKit resets the buttons on every step of a live resize,
+//! Resize is special: `AppKit` resets the buttons on every step of a live resize,
 //! and Tauri's `Resized` event arrives a frame too late to correct it without a
 //! visible flash. So we observe `NSWindowDidResizeNotification` directly and
-//! re-inset inside AppKit's own resize pass (see `observe_resize`).
+//! re-inset inside `AppKit`'s own resize pass (see `observe_resize`).
 //!
 //! The bar is `--topbar-h` (44px) of webview CSS, so its on-screen height scales
 //! with the webview zoom; the frontend reports the zoom via `set_zoom`.
@@ -20,7 +20,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use block2::RcBlock;
 use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSWindow, NSWindowButton, NSWindowDidResizeNotification};
 use objc2_foundation::{NSNotification, NSNotificationCenter};
 
@@ -59,7 +58,7 @@ pub fn reposition(ns_window: *mut c_void) {
     inset(&window, bar_height());
 }
 
-/// Re-apply the inset inside AppKit's resize pass so the buttons never flash to
+/// Re-apply the inset inside `AppKit`'s resize pass so the buttons never flash to
 /// their default position during a live resize. Registered once; the observer
 /// lives for the process lifetime.
 pub fn observe_resize() {
@@ -68,7 +67,7 @@ pub fn observe_resize() {
         // `object` is the NSWindow that resized.
         let notification = unsafe { notification.as_ref() };
         if let Some(window) = notification.object() {
-            reposition(&*window as *const AnyObject as *mut c_void);
+            reposition(&raw const *window as *mut c_void);
         }
     });
 
@@ -108,14 +107,14 @@ fn inset(window: &NSWindow, bar_height: f64) {
     let close_rect = close.frame();
     let button_offset = close_rect.origin.y;
     let mut title_bar_rect = title_bar.frame();
-    title_bar_rect.size.height = (bar_height + close_rect.size.height) / 2.0 + button_offset;
+    title_bar_rect.size.height = f64::midpoint(bar_height, close_rect.size.height) + button_offset;
     title_bar_rect.origin.y = window.frame().size.height - title_bar_rect.size.height;
     title_bar.setFrame(title_bar_rect);
 
     let space_between = miniaturize.frame().origin.x - close_rect.origin.x;
     for (i, button) in [close, miniaturize, zoom].into_iter().enumerate() {
         let mut origin = button.frame().origin;
-        origin.x = INSET_X + i as f64 * space_between;
+        origin.x = (i as f64).mul_add(space_between, INSET_X);
         button.setFrameOrigin(origin);
     }
 }

@@ -84,7 +84,7 @@ pub struct GraphResult {
 
 /// A single commit in the review session, rendered by the panel (D-05) and
 /// consumed as a membership set by the graph (D-04/D-06). Serialize-default
-/// snake_case matches `GraphCommit`, whose fields it copies 1:1.
+/// `snake_case` matches `GraphCommit`, whose fields it copies 1:1.
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionCommit {
     pub oid: String,
@@ -102,14 +102,14 @@ pub struct SessionCommit {
 // in the graph's Diff column. Write-only DTO (Serialize, no Deserialize) like
 // GraphCommit. Snake_case field names serialize as-is (no rename_all) to match the
 // frontend DiffStat interface.
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct DiffStat {
     pub insertions: usize,
     pub deletions: usize,
     pub files_changed: usize,
 }
 
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub enum MatchType {
     Sha,
     Message,
@@ -209,7 +209,7 @@ pub struct DiffRequestOptions {
     pub show_full_file: bool,
 }
 
-fn default_context_lines() -> u32 {
+const fn default_context_lines() -> u32 {
     3
 }
 
@@ -363,13 +363,13 @@ pub struct RebaseTodoItem {
 // The Anchor NEVER carries hunk_index/line_index/context_lines/ignore_whitespace
 // (D-01): it stores source coordinates only, never diff-array positions.
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Source {
     Diff,
     FullFile,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Side {
     Old,
     New,

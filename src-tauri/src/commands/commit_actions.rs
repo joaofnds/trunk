@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a clean two-step revert begin. The async wrapper emits
-/// `repo-changed` (REVERT_HEAD is set before the editor opens), so a later
+/// `repo-changed` (`REVERT_HEAD` is set before the editor opens), so a later
 /// cancel still surfaces the in-progress UI. A conflicted revert returns
 /// `Err(conflict_state)` instead — there is a single editor outcome, so a
 /// 2-field struct is simpler than a tagged enum here.
@@ -77,7 +77,7 @@ pub fn delete_tag_inner(
 ) -> Result<GraphSnapshot, TrunkError> {
     let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
     let repo = git2::Repository::open(path_buf)?;
-    let tag_ref_name = format!("refs/tags/{}", tag_name);
+    let tag_ref_name = format!("refs/tags/{tag_name}");
     let mut reference = repo.find_reference(&tag_ref_name)?;
     reference.delete()?;
     drop(reference);
@@ -255,12 +255,12 @@ pub fn reset_to_commit_inner(
     if !valid_modes.contains(&mode) {
         return Err(TrunkError::new(
             "invalid_mode",
-            format!("Invalid reset mode: {}", mode),
+            format!("Invalid reset mode: {mode}"),
         ));
     }
 
     let output = std::process::Command::new("git")
-        .args(["reset", &format!("--{}", mode), oid])
+        .args(["reset", &format!("--{mode}"), oid])
         .current_dir(path_buf)
         .env("PATH", shell_env::system_path())
         .output()

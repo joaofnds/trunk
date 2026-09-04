@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 pub const CURRENT_VERSION: i64 = 7;
 
-const V1: &str = r#"
+const V1: &str = r"
 CREATE TABLE reviews (
     id         TEXT PRIMARY KEY,
     repo_path  TEXT    NOT NULL,
@@ -75,9 +75,9 @@ CREATE TABLE repo_snapshots (
 CREATE INDEX reviews_by_repo   ON reviews(repo_path);
 CREATE INDEX threads_by_review ON threads(review_id);
 CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
-"#;
+";
 
-const V2: &str = r#"
+const V2: &str = r"
 CREATE TABLE replies (
     id         TEXT PRIMARY KEY,
     thread_id  TEXT    NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
@@ -88,7 +88,7 @@ CREATE TABLE replies (
 );
 
 CREATE INDEX replies_by_thread ON replies(thread_id, created_at);
-"#;
+";
 
 /// The commit's subject line, stored at add time so the doc renders with no
 /// repository open (D13) and a gc'd snapshot commit keeps its label. Rows

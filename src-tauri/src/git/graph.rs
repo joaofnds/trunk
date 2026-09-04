@@ -115,7 +115,11 @@ pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
             oid,
             CommitFacts {
                 summary: commit.summary().ok().flatten().unwrap_or("").to_owned(),
-                body: commit.body().ok().flatten().map(|s| s.to_owned()),
+                body: commit
+                    .body()
+                    .ok()
+                    .flatten()
+                    .map(std::borrow::ToOwned::to_owned),
                 author_name: author.name().unwrap_or("").to_owned(),
                 author_email: author.email().unwrap_or("").to_owned(),
                 author_timestamp: author.when().seconds(),

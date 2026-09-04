@@ -50,12 +50,11 @@ fn load_from_disk(data_dir: &Path) -> Result<HashMap<String, Value>, TrunkError>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
         Err(e) => return Err(TrunkError::new("io", e.to_string())),
     };
-    match serde_json::from_str(&raw) {
-        Ok(map) => Ok(map),
-        Err(_) => {
-            quarantine_corrupt(&path)?;
-            Ok(HashMap::new())
-        }
+    if let Ok(map) = serde_json::from_str(&raw) {
+        Ok(map)
+    } else {
+        quarantine_corrupt(&path)?;
+        Ok(HashMap::new())
     }
 }
 

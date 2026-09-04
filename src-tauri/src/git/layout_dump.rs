@@ -11,6 +11,7 @@ use super::types::{GraphCommit, GraphResult, RefLabel};
 
 const UNLOADED: &str = "<not-loaded>";
 
+#[must_use]
 pub fn render(result: &GraphResult) -> String {
     let summaries = summaries_by_oid(&result.commits);
     let mut out = String::new();

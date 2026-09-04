@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 pub struct TrunkError {
     pub code: String,
     pub message: String,
@@ -8,7 +8,7 @@ pub struct TrunkError {
 
 impl TrunkError {
     pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
-        TrunkError {
+        Self {
             code: code.into(),
             message: message.into(),
         }
@@ -17,6 +17,7 @@ impl TrunkError {
     /// Serialize to the JSON string a Tauri command returns as its `Err` payload.
     /// Serializing a two-string struct cannot realistically fail; the fallback
     /// avoids a panic on the impossible case instead of `.unwrap()`.
+    #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).unwrap_or_else(|_| {
             String::from(r#"{"code":"serialize_error","message":"failed to serialize error"}"#)
@@ -26,7 +27,7 @@ impl TrunkError {
 
 impl From<git2::Error> for TrunkError {
     fn from(e: git2::Error) -> Self {
-        TrunkError {
+        Self {
             code: git_error_code(e.code()).into(),
             message: e.message().to_owned(),
         }
@@ -36,8 +37,13 @@ impl From<git2::Error> for TrunkError {
 /// The `code` a libgit2 failure carries to the frontend. The `git_` prefix keeps
 /// these out of the namespace of the domain codes commands raise by hand, so a
 /// `.code` branch can tell "libgit2 said not-found" from "we decided not-found".
-fn git_error_code(code: git2::ErrorCode) -> &'static str {
-    use git2::ErrorCode::*;
+const fn git_error_code(code: git2::ErrorCode) -> &'static str {
+    use git2::ErrorCode::{
+        Ambiguous, Applied, ApplyFail, Auth, BareRepo, BufSize, Certificate, Conflict, Directory,
+        Eof, Exists, GenericError, HashsumMismatch, IndexDirty, Invalid, InvalidSpec, Locked,
+        MergeConflict, Modified, NotFastForward, NotFound, Owner, Peel, Timeout, UnbornBranch,
+        Uncommitted, Unmerged, User,
+    };
 
     match code {
         GenericError => "git_error",
