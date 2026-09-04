@@ -82,7 +82,10 @@ let height = $state(0);
  * State Flags and Control
  */
 const isCalculatingHeight = $state(false);
-let isLoadingMore = $state(false);
+/** Re-entrancy latch for the load-more effect below, which both reads and writes
+ *  it. Reactive state here re-invalidates that effect from inside its own body,
+ *  so it re-runs without bound and the thread never yields (TRUNK-147). */
+let isLoadingMore = false;
 let isScrolling = $state(false);
 let scrollIdleTimer: number | null = null;
 
