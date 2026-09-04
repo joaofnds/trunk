@@ -1,14 +1,4 @@
-# A test that stops making progress must fail, not wait.
-#
-# TRUNK-78 and TRUNK-114 record a load-dependent hang in the reviewdb store-event
-# tests: `subscribe()` blocks in `UnixListener::accept` and nothing bounds the
-# wait, so the test sits forever. Under `cargo test` that was rare enough to look
-# like bad luck. Coverage now runs through nextest, whose higher parallelism makes
-# it frequent, and an unbounded hang there costs a whole CI runner.
-#
-# The slowest legitimate test is ~28s (trunk-fixtures::catalogue), so 120s is
-# roughly four times the real ceiling: slow enough never to fire on honest work,
-# fast enough that a hang is reported as a failure with a name instead of a
-# six-hour job. This bounds the symptom only — the defect itself is TRUNK-117.
+# A test that stops making progress must fail, not hang a CI runner. The
+# slowest honest test is ~40s, so 120s only fires on something stuck.
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 4 }

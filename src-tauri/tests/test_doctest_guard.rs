@@ -1,20 +1,8 @@
 //! No doc comment in this workspace carries a runnable example.
 //!
-//! `just cargo-test` used to run `cargo test --doc` after nextest, because nextest
-//! cannot run doctests and the union of the two was what matched `cargo test`. That
-//! invocation cost 30s of compile in CI to run nothing: `--doc` needs the `staticlib`
-//! and `cdylib` crate types this package declares, which nextest never builds, so it
-//! relinked the crate from scratch — and the only fenced block in the tree is an
-//! ```ignore example, which no runner executes.
-//!
-//! Dropping the invocation is only safe while that stays true, and nothing about a
-//! doc comment makes it announce itself. This test is the guard: write a runnable
-//! example and it fails here, naming the file, rather than going quietly unrun.
-//!
-//! The fix when it fails is to restore the `--doc` line in `justfile`'s `cargo-test`
-//! and delete this test. Paying 30s per CI run to execute a real doctest is a fair
-//! trade; paying it to execute nothing is not.
-
+//! `just cargo-test` runs nextest, which cannot run doctests, and does not
+//! invoke `cargo test --doc` because adding it relinks the crate. That is only
+//! safe while there is nothing to run, which is what this checks.
 use std::path::{Path, PathBuf};
 
 /// A fenced block inside a doc comment, and the attributes on its opening fence.

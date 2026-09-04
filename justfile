@@ -94,30 +94,13 @@ clippy-shipped:
 # binary in parallel where `cargo test` runs them serially — measured 7.2s
 # against 17s on the same suites (TRUNK-67).
 #
-# No `cargo test --doc` line, though nextest cannot run doctests. There are none
-# to run: the only fenced block in either crate is an ```ignore example, so the
-# invocation executed nothing and cost 30s of compile in CI to do it — `--doc`
-# needs the `staticlib` and `cdylib` crate types this package declares, which
-# nextest never builds, so it relinked the crate from scratch.
-#
-# `test_doctest_guard.rs` is what makes the omission safe: it fails, naming the
-# file and line, the moment a runnable example appears, and its message says to
-# put this line back. It scans the sources in 17ms.
+# No `--doc` line: there are no runnable doctests, and adding one relinks the
+# crate. `test_doctest_guard.rs` fails if that stops being true.
 cargo-test:
     {{scrubbed_env}} cargo nextest run --workspace --manifest-path {{manifest}}
 
-# Run Rust tests with coverage. Same nextest-vs-serial split as `cargo-test`
-# above, for the same reason: plain `cargo llvm-cov` runs the test binaries one
-# after another and spent ~65s where nextest spends 34s, on identical coverage
-# (18124/22002 lines over 74 files, both ways). Measured at 30s in CI.
-#
-# No `--doc` line here, unlike `cargo-test`. Coverage builds into
-# `target/llvm-cov-target`, so a `cargo test --doc` after it recompiles the whole
-# crate uninstrumented — measured at 35s in CI to run a doctest suite that is
-# empty, because the one doctest in the tree is an ```ignore block. `cargo-test`
-# above still runs it, so the day a real doctest is written it is executed on
-# every developer run and on macOS CI; it is only left out of the coverage job,
-# where it cost more than everything it measured.
+# Run Rust tests with coverage. Through nextest for the same reason as
+# `cargo-test`; coverage is identical either way.
 cargo-test-cov:
     {{scrubbed_env}} cargo llvm-cov nextest --workspace --manifest-path {{manifest}} --lcov --output-path rust-lcov.info
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
@@ -242,25 +225,8 @@ fixtures-list:
 bench:
     cd src-tauri && cargo bench
 
-# Compile-check benchmarks. Runs in the macOS job, immediately after
-# `just cargo-test`, and moving it anywhere else has cost time every time.
-#
-# `--no-run` links the bench binaries. Linking needs real artifacts, so a job
-# that only type-checks leaves it nothing to use and it rebuilds the dependency
-# tree from source. Only a job that has actually built the crate makes it cheap,
-# and `just cargo-test` is the one step in CI that does.
-#
-# Every placement measured in CI, so nobody re-derives this from first
-# principles a fourth time:
-#   after `cargo llvm-cov`     29s   (coverage builds into its own target dir)
-#   beside `just clippy`      169s   (first attempt)
-#   beside `just clippy`      187s   (second attempt, a run later)
-#   after `just cargo-test`     7s   (NOT the real cost — `cargo test --doc`
-#                                     then ran just before it and had already
-#                                     built the staticlib and cdylib types)
-#   after `just cargo-test`    37s   (the real cost, once --doc was removed)
-#
-# The 7s reading is what made the move to Clippy look free. It was not. If this
-# looks cheap somewhere new, check what ran before it.
+# Compile-check benchmarks. `--no-run` links, so this needs a job that has
+# already built the crate: in CI, only after `just cargo-test`. Next to a
+# check-only job it rebuilds the dependency tree from source (187s vs 37s).
 bench-check:
     cargo test --benches --no-run --manifest-path {{manifest}}

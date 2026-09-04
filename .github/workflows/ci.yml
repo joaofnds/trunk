@@ -111,8 +111,7 @@ jobs:
     name: Rust Tests
     needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: ubuntu-latest
-    # The suite takes ~2min. TRUNK-78's hang has no internal bound, so without
-    # this a single stuck test holds a runner for the 6h default.
+    # The suite takes ~2min; the default is 6h.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -152,7 +151,6 @@ jobs:
     name: macOS Clippy + Tests
     needs: [biome, cargo-fmt, graph-sweep-check, svelte-check]
     runs-on: macos-latest
-    # Same reason as Rust Tests above: this job runs the same suite.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -169,9 +167,8 @@ jobs:
       # branches entirely; this is the only job that compiles them.
       - run: just clippy
       - run: just cargo-test
-      # Only after cargo-test. A `check` job leaves nothing linkable, so run
-      # anywhere else this compiles the dependency tree from source — measured
-      # at 187s beside clippy against 37s here. See the recipe's comment.
+      # Only after cargo-test: `--no-run` links, and a check-only job leaves
+      # nothing to link against.
       - run: just bench-check
 
   app-test:

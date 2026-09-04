@@ -810,17 +810,9 @@ fn store_events_survive_a_peer_that_connects_and_says_nothing() {
 }
 
 /// Connect without ever blocking, so a full accept queue is reported rather
-/// than waited on.
+/// than waited on. `UnixStream::connect` sleeps instead on Linux.
 ///
-/// `UnixStream::connect` cannot do this. On Linux it sleeps in the kernel when
-/// the peer's backlog is full, with no timeout, so a caller trying to *detect*
-/// that condition hangs on it instead. Setting `O_NONBLOCK` before the connect
-/// turns the same condition into an immediate `EAGAIN`, and leaves macOS's
-/// `ECONNREFUSED` unchanged. Either error means the same thing here: the queue
-/// will take no more.
-///
-/// The returned stream is held by the caller purely to keep its slot in the
-/// queue occupied; nothing is read from or written to it.
+/// The returned stream is held only to keep its slot in the queue occupied.
 fn nonblocking_connect(path: &std::path::Path) -> std::io::Result<std::os::unix::net::UnixStream> {
     use std::os::fd::FromRawFd;
 
@@ -866,15 +858,13 @@ fn nonblocking_connect(path: &std::path::Path) -> std::io::Result<std::os::unix:
 /// `ring` deletes the socket of a peer it cannot connect to, reading the
 /// failure as a subscriber that died without cleaning up. But a listener that
 /// is merely busy fails a connect too: a bound socket whose accept queue is
-/// full turns one away, at the 128th pending connection on macOS and the
-/// 4096th on Linux. Deleting on that answer unbinds a live subscriber — no
+/// full turns one away. Deleting on that answer unbinds a live subscriber — no
 /// later `ring` can find it, because `ring` lists the directory the entry was
 /// just removed from, and the feed goes deaf with no error anywhere.
 ///
 /// The backlog is filled deliberately rather than waited on: the pending
 /// connections are the observable state that makes the next connect fail, so
-/// the race is driven, not raced. See [`nonblocking_connect`] for why filling
-/// it needs a connect that cannot block.
+/// the race is driven, not raced.
 #[test]
 fn store_events_survive_a_doorbell_that_cannot_connect() {
     let ctx = TestContext::builder()
@@ -896,14 +886,8 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
     // backlog, then fill the queue until a fresh connection can no longer be
     // completed. That is the state a writer's doorbell has to survive.
     //
-    // How the kernel reports it differs, and only one of the two can be waited
-    // on. macOS caps the queue near 128 and refuses the next connect with
-    // ECONNREFUSED. Linux refuses nothing: a *blocking* connect to a full unix
-    // backlog sleeps in unix_wait_for_peer with no timeout of its own, so a
-    // loop that waits for an error there never gets one and hangs instead —
-    // which is what it did in CI for 19 minutes (TRUNK-117). A *non-blocking*
-    // connect answers on both: EAGAIN/EWOULDBLOCK on Linux, ECONNREFUSED on
-    // macOS. So the queue is filled with connections that cannot block.
+    // Filled with connections that cannot block: on Linux a blocking connect to
+    // a full backlog sleeps forever instead of refusing.
     let _mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
     let mut pending = Vec::new();
     loop {
@@ -946,17 +930,8 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
 
 /// `sync` must wait out a full accept queue rather than call the feed dead.
 ///
-/// The queue is bounded, so a subscriber whose listener is behind refuses a
-/// connection exactly as a subscriber that has gone away does — the ambiguity
-/// `abandoned` resolves on the writer's side, and which `sync` used to resolve
-/// the wrong way by treating one refusal as the end of the feed. That made the
-/// doorbell test above flaky on a loaded macOS runner: the queue it fills has
-/// not always drained by the time `sync` connects.
-///
-/// Here the queue is filled and left full while `sync` is called, so the race
-/// is the whole test rather than something it might hit. Nothing waits on a
-/// duration: the wedge is released before the assertion, and `sync` returns
-/// when the listener acknowledges the barrier it sent.
+/// The queue is left full when `sync` is called, so the race the doorbell test
+/// above only sometimes hits is this test's whole subject.
 #[test]
 fn sync_waits_out_a_full_accept_queue_instead_of_reporting_a_dead_feed() {
     let ctx = TestContext::builder()
@@ -982,12 +957,8 @@ fn sync_waits_out_a_full_accept_queue_instead_of_reporting_a_dead_feed() {
         }
         assert!(pending.len() < 10_000, "the accept queue never filled");
     }
-    // Filling it is the precondition, and that the loop ended by being turned
-    // away is the proof. Re-checking with another connect would not be: the
-    // listener is live and releases a slot as it drains, so a probe can find
-    // the queue open again a moment later — on Linux, measured, a blocking
-    // connect against this exact state succeeds after ~245ms. The queue being
-    // full is a state this test creates, not one it can keep asserting.
+    // Do not re-probe to confirm the queue is full: the listener is live and
+    // frees a slot as it drains, so a probe can find it open again.
     assert!(
         !pending.is_empty(),
         "the accept queue refused the first connection, so nothing was queued \
