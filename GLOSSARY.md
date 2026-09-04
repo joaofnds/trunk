@@ -55,6 +55,21 @@ is silent: it sets no error, and the caller sees only that the list did not grow
 whether it was rejected or dropped as stale. It is the one signature the two failure modes
 share, and what a paging loop counts to know it is not getting anywhere (TRUNK-137).
 
+**Loading edge** — the state where the virtual list's rendered range reaches within
+`loadMoreThreshold` rows of the end of what is loaded, which is the condition that asks
+for the next page. Reaching it is the whole trigger for paging. No search, jump or
+gesture is required, only scrolling until the tail is in view (TRUNK-147).
+
+**Dead effect** — a Svelte effect that returned before reading any reactive state, so the
+runtime recorded no dependencies for it and nothing can ever invalidate it again. An
+effect whose early-return guard reads only plain variables ends this way, and the symptom
+is a feature that works until the first time its guard trips and never again (TRUNK-148).
+
+**Loaded depth** — how many commit rows the frontend has actually paged in, which
+`CommitGraph.loadedRows()` reports and a rebuild is asked to preserve. Distinct from the
+rendered row count, which is the virtual list's window over that depth and stays small
+however deep the list goes. A test that counts DOM rows measures the window, not the depth.
+
 ## Commit graph testing
 
 **Fixture repository** — a git repository built from scratch by a generator, with pinned
