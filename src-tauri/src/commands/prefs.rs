@@ -68,6 +68,15 @@ fn ensure_loaded<'a>(
     Ok(cache.as_mut().expect("filled by the branch above"))
 }
 
+/// One preference value, or `None` when the key is unset.
+///
+/// # Errors
+///
+/// Returns `io` or `json` when the preferences file exists but will not read.
+///
+/// # Panics
+///
+/// Panics when the preferences lock is poisoned.
 pub fn prefs_get_inner(
     data_dir: &Path,
     state: &PrefsState,
@@ -78,6 +87,16 @@ pub fn prefs_get_inner(
     Ok(map.get(key).cloned())
 }
 
+/// Store one preference, rolling the in-memory value back if the write fails.
+///
+/// # Errors
+///
+/// Returns `serialize` when the map will not encode, and the filesystem error
+/// when the preferences file will not write.
+///
+/// # Panics
+///
+/// Panics when the preferences lock is poisoned.
 pub fn prefs_set_inner(
     data_dir: &Path,
     state: &PrefsState,
@@ -103,6 +122,10 @@ fn join_error(e: tauri::Error) -> String {
     TrunkError::new("join", e.to_string()).to_json()
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, and `join` when the blocking task cannot be
+/// joined.
 #[tauri::command]
 pub async fn prefs_get<R: Runtime>(
     key: String,
@@ -116,6 +139,10 @@ pub async fn prefs_get<R: Runtime>(
     .map_err(join_error)?
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, and `join` when the blocking task cannot be
+/// joined.
 #[tauri::command]
 pub async fn prefs_set<R: Runtime>(
     key: String,

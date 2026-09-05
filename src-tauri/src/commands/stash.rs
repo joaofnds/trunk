@@ -34,6 +34,12 @@ fn stash_index_of(repo: &mut git2::Repository, oid: &str) -> Result<usize, Trunk
     })
 }
 
+/// Every stash entry in the repository, newest first.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the
+/// stash reflog will not enumerate.
 pub fn list_stashes_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -63,6 +69,13 @@ pub fn list_stashes_inner(
         .collect())
 }
 
+/// Stash the working tree and return the rebuilt graph.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `nothing_to_stash` when the
+/// working tree is clean, and the git error when the signature is unset or
+/// the stash will not write.
 pub fn stash_save_inner(
     path: &str,
     message: &str,
@@ -94,6 +107,13 @@ pub fn stash_save_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Apply a stash and drop it, keeping it when the apply conflicts.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `stash_not_found` when `oid` is
+/// no longer in the stash reflog, `conflict_state` when the apply conflicts,
+/// and the git error otherwise.
 pub fn stash_pop_inner(
     path: &str,
     oid: &str,
@@ -119,6 +139,13 @@ pub fn stash_pop_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Apply a stash, leaving it in the reflog.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `stash_not_found` when `oid` is
+/// no longer in the stash reflog, `conflict_state` when the apply conflicts,
+/// and the git error otherwise.
 pub fn stash_apply_inner(
     path: &str,
     oid: &str,
@@ -140,6 +167,12 @@ pub fn stash_apply_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Drop a stash without applying it.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `stash_not_found` when `oid` is
+/// no longer in the stash reflog, and the git error when the drop fails.
 pub fn stash_drop_inner(
     path: &str,
     oid: &str,
@@ -152,6 +185,13 @@ pub fn stash_drop_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn list_stashes(
     path: String,
@@ -164,6 +204,13 @@ pub async fn list_stashes(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stash_save<R: Runtime>(
     path: String,
@@ -188,6 +235,13 @@ pub async fn stash_save<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stash_pop<R: Runtime>(
     path: String,
@@ -212,6 +266,13 @@ pub async fn stash_pop<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stash_apply<R: Runtime>(
     path: String,
@@ -236,6 +297,13 @@ pub async fn stash_apply<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stash_drop<R: Runtime>(
     path: String,

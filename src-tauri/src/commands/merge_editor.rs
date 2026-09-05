@@ -40,6 +40,13 @@ fn conflict_entry(
         .map_err(|e| TrunkError::new("conflict_error", e.to_string()))
 }
 
+/// The three sides of a conflicted file, read from the index.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `not_conflicted`
+/// when the index holds no conflict for `file_path`, `binary_conflict` when a
+/// side is not valid UTF-8, and the git error when a blob will not read.
 pub fn get_merge_sides_inner(
     path: &str,
     file_path: &str,
@@ -71,6 +78,14 @@ pub fn get_merge_sides_inner(
     })
 }
 
+/// Write the resolved content over the file and stage it, clearing the conflict.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `no_workdir` for a
+/// bare repository, `not_conflicted` when the index holds no conflict for
+/// `file_path`, `write_error` when the file will not write, and the git error
+/// when the index will not stage.
 pub fn save_merge_result_inner(
     path: &str,
     file_path: &str,
@@ -102,6 +117,14 @@ pub fn save_merge_result_inner(
 
 // --- Tauri command wrappers ---
 
+/// # Errors
+///
+/// Returns the inner error as JSON, and `spawn_error` when the blocking task
+/// cannot be joined.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_merge_sides(
     path: String,
@@ -117,6 +140,14 @@ pub async fn get_merge_sides(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, and `spawn_error` when the blocking task
+/// cannot be joined.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn save_merge_result<R: Runtime>(
     path: String,

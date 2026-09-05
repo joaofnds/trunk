@@ -5,6 +5,16 @@ use crate::state::{CommitCache, CommitStatsCache, RepoState, RunningOp, kill_pro
 use crate::watcher::{self, WatcherState};
 use tauri::{AppHandle, Runtime, State};
 
+/// Open a repository, cache its first graph, and start watching it.
+///
+/// # Errors
+///
+/// Returns `spawn_error` as JSON when the blocking task cannot be joined, and
+/// the git error as JSON when the path is not a repository this app can open.
+///
+/// # Panics
+///
+/// Panics when the commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn open_repo<R: Runtime>(
     path: String,
@@ -38,6 +48,15 @@ pub async fn open_repo<R: Runtime>(
     Ok(())
 }
 
+/// Forget a repository and stop watching it.
+///
+/// # Errors
+///
+/// Never returns an error. The `Result` is the shape every command shares.
+///
+/// # Panics
+///
+/// Panics when the commit-cache or stats lock is poisoned.
 #[tauri::command]
 pub async fn close_repo(
     path: String,
@@ -55,6 +74,15 @@ pub async fn close_repo(
     Ok(())
 }
 
+/// Close a repository, killing any remote operation still running on it.
+///
+/// # Errors
+///
+/// Never returns an error. The `Result` is the shape every command shares.
+///
+/// # Panics
+///
+/// Panics when the running-operation, commit-cache or stats lock is poisoned.
 #[tauri::command]
 pub async fn force_close_repo(
     path: String,

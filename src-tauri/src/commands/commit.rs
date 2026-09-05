@@ -21,6 +21,13 @@ fn build_message(subject: &str, body: Option<&str>) -> String {
     }
 }
 
+/// Commit the index, clearing any cherry-pick or revert state left behind.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the
+/// signature is unset, the index will not write, or the commit fails. An
+/// unborn HEAD is not an error: the commit becomes the first one.
 pub fn create_commit_inner(
     path: &str,
     subject: &str,
@@ -50,6 +57,12 @@ pub fn create_commit_inner(
     Ok(())
 }
 
+/// Replace HEAD's commit with one carrying the current index and a new message.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when HEAD is
+/// unborn, the signature is unset, or the index will not write.
 pub fn amend_commit_inner(
     path: &str,
     subject: &str,
@@ -75,6 +88,12 @@ pub fn amend_commit_inner(
     Ok(())
 }
 
+/// HEAD's commit message, split into subject and body.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when HEAD is
+/// unborn or does not peel to a commit.
 pub fn get_head_commit_message_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -87,6 +106,13 @@ pub fn get_head_commit_message_inner(
     })
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn create_commit<R: Runtime>(
     path: String,
@@ -113,6 +139,13 @@ pub async fn create_commit<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn amend_commit<R: Runtime>(
     path: String,
@@ -139,6 +172,13 @@ pub async fn amend_commit<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_head_commit_message(
     path: String,

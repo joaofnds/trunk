@@ -11,6 +11,11 @@ use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Inner implementation of `list_refs` — separated for testability without Tauri state.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the
+/// repository will not open or its refs will not enumerate.
 pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse, TrunkError> {
     let mut repo = state_map.open(path)?;
 
@@ -125,6 +130,13 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
 }
 
 /// Delete a local branch. Rejects deletion of the currently checked-out (HEAD) branch.
+/// Delete a local branch and rebuild the graph cache.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `cannot_delete_head` when
+/// `branch_name` is the checked-out branch, and the git error when the branch
+/// is missing or will not delete.
 pub fn delete_branch_inner(
     path: &str,
     branch_name: &str,
@@ -161,6 +173,11 @@ pub fn delete_branch_inner(
 }
 
 /// Rename a local branch. Fails if `new_name` already exists.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the
+/// branch is missing or `new_name` is already taken.
 pub fn rename_branch_inner(
     path: &str,
     old_name: &str,
@@ -194,6 +211,12 @@ pub async fn list_refs(path: String, state: State<'_, RepoState>) -> Result<Refs
 }
 
 /// Inner implementation of `resolve_ref` — separated for testability.
+/// The commit oid `ref_name` resolves to.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when
+/// `ref_name` does not resolve or does not peel to a commit.
 pub fn resolve_ref_inner(
     path: &str,
     ref_name: &str,
@@ -252,6 +275,12 @@ fn classify_checkout_error(e: git2::Error) -> TrunkError {
 }
 
 /// Inner implementation of `checkout_branch` — separated for testability.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the
+/// checkout would overwrite uncommitted changes, and the git error when the
+/// branch is missing or HEAD will not move.
 pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
@@ -306,6 +335,14 @@ pub async fn checkout_branch<R: Runtime>(
     Ok(())
 }
 
+/// Fast-forward the checked-out branch to `target_oid`, refusing anything that
+/// is not a fast-forward.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `merge_error` when `git` will not
+/// run, and `not_fast_forward` carrying git's own message when the merge is
+/// not a fast-forward.
 pub fn fast_forward_to_inner(
     path: &str,
     target_oid: &str,
@@ -364,6 +401,13 @@ pub async fn fast_forward_to<R: Runtime>(
 /// When `from_oid` is Some, branches from that OID; when None, branches from HEAD.
 /// Creates the branch first (always safe), then checks out. If dirty workdir at checkout time,
 /// returns `dirty_workdir` error (branch exists but HEAD didn't move).
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the branch
+/// was created but the working tree blocked the checkout, `git_error` when
+/// HEAD is unborn, and the git error when the name is taken or `from_oid` does
+/// not resolve.
 pub fn create_branch_inner(
     path: &str,
     name: &str,

@@ -43,6 +43,10 @@ fn truncate_samples(path: &Path) -> std::io::Result<()> {
 
 /// Inert outside a debug build: the frontend gate keeps it unreachable in a
 /// release, and this makes that structural rather than a matter of trust.
+///
+/// # Errors
+///
+/// Returns the filesystem error's text when the samples file will not append.
 #[tauri::command]
 pub fn perf_append(lines: Vec<String>) -> Result<(), String> {
     if !cfg!(debug_assertions) {
@@ -53,6 +57,10 @@ pub fn perf_append(lines: Vec<String>) -> Result<(), String> {
 }
 
 /// Starts a fresh measurement session and answers where to read it.
+///
+/// # Errors
+///
+/// Returns the filesystem error's text when the samples file will not truncate.
 #[tauri::command]
 pub fn perf_reset() -> Result<String, String> {
     if !cfg!(debug_assertions) {
