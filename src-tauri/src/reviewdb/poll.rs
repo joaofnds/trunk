@@ -212,7 +212,7 @@ fn spawn_with(
     };
     let baseline = Baseline::read(&conn);
 
-    let thread = std::thread::spawn(move || run(&conn, baseline, &ticker, on_change));
+    let thread = std::thread::spawn(move || run(&conn, &baseline, &ticker, on_change));
 
     PollHandle {
         stop,
@@ -238,7 +238,7 @@ impl Baseline {
     }
 }
 
-fn run(conn: &Connection, baseline: Baseline, ticker: &impl Ticker, on_change: impl Fn()) {
+fn run(conn: &Connection, baseline: &Baseline, ticker: &impl Ticker, on_change: impl Fn()) {
     let mut last_data_version = baseline.data_version;
     let mut last_revision = baseline.revision;
 

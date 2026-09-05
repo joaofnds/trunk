@@ -1487,18 +1487,14 @@ pub fn generate_review_doc_inner(
     // same doc with the repo closed (D13).
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
 
-    render_review_doc(
-        store,
-        canonical,
-        review_id,
-        repo.workdir().map(std::path::Path::to_path_buf),
-        repo.path().to_path_buf(),
-    )
+    render_review_doc(store, canonical, review_id, repo.workdir(), repo.path())
 }
 
-/// Render `review_id`'s doc from stored rows. `workdir` and `repo_dir` are
-/// the caller's two path facts: the app takes them from its open repo, the
-/// CLI from discovery — neither reads repository content for the doc (D13).
+/// Render `review_id`'s doc from stored rows.
+///
+/// `workdir` and `repo_dir` are the caller's two path facts: the app takes them from
+/// its open repo, the CLI from discovery — neither reads repository content for the doc
+/// (D13).
 ///
 /// # Errors
 ///
@@ -1508,8 +1504,8 @@ pub fn render_review_doc(
     store: &Store,
     canonical: &Path,
     review_id: &str,
-    workdir: Option<PathBuf>,
-    repo_dir: PathBuf,
+    workdir: Option<&Path>,
+    repo_dir: &Path,
 ) -> Result<String, TrunkError> {
     use crate::git::review::{DocCommit, RenderInput};
 
@@ -1531,8 +1527,8 @@ pub fn render_review_doc(
             } else {
                 None
             },
-            workdir: workdir.clone(),
-            repo_dir: repo_dir.clone(),
+            workdir: workdir.map(std::path::Path::to_path_buf),
+            repo_dir: repo_dir.to_path_buf(),
             commits: commits::list(conn, &review.id)?
                 .into_iter()
                 .map(|c| DocCommit {

@@ -93,7 +93,7 @@ impl TestContext {
         &self,
         file_path: &str,
         hunk_index: u32,
-        line_indices: Vec<u32>,
+        line_indices: &[u32],
     ) -> Result<(), TrunkError> {
         self.stage_lines_with_options(
             file_path,
@@ -107,7 +107,7 @@ impl TestContext {
         &self,
         file_path: &str,
         hunk_index: u32,
-        line_indices: Vec<u32>,
+        line_indices: &[u32],
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
         staging::stage_lines_inner(
@@ -124,7 +124,7 @@ impl TestContext {
         &self,
         file_path: &str,
         hunk_index: u32,
-        line_indices: Vec<u32>,
+        line_indices: &[u32],
     ) -> Result<(), TrunkError> {
         self.unstage_lines_with_options(
             file_path,
@@ -138,7 +138,7 @@ impl TestContext {
         &self,
         file_path: &str,
         hunk_index: u32,
-        line_indices: Vec<u32>,
+        line_indices: &[u32],
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
         staging::unstage_lines_inner(
@@ -155,7 +155,7 @@ impl TestContext {
         &self,
         file_path: &str,
         hunk_index: u32,
-        line_indices: Vec<u32>,
+        line_indices: &[u32],
     ) -> Result<(), TrunkError> {
         self.discard_lines_with_options(
             file_path,
@@ -169,7 +169,7 @@ impl TestContext {
         &self,
         file_path: &str,
         hunk_index: u32,
-        line_indices: Vec<u32>,
+        line_indices: &[u32],
         options: &DiffRequestOptions,
     ) -> Result<(), TrunkError> {
         staging::discard_lines_inner(

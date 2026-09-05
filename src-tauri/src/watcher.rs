@@ -1,7 +1,7 @@
 use notify_debouncer_mini::notify::RecommendedWatcher;
 use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer, notify::RecursiveMode};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime};
@@ -39,12 +39,12 @@ impl WatcherState {
 /// # Panics
 ///
 /// Panics when the watcher lock is poisoned.
-pub fn start_watcher<R: Runtime>(path: PathBuf, app: AppHandle<R>, state: &WatcherState) {
+pub fn start_watcher<R: Runtime>(path: &Path, app: AppHandle<R>, state: &WatcherState) {
     if !state.enabled {
         return;
     }
 
-    let path_clone = path.clone();
+    let path_clone = path.to_path_buf();
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
         move |res: DebounceEventResult| {
@@ -57,7 +57,7 @@ pub fn start_watcher<R: Runtime>(path: PathBuf, app: AppHandle<R>, state: &Watch
 
     debouncer
         .watcher()
-        .watch(&path, RecursiveMode::Recursive)
+        .watch(path, RecursiveMode::Recursive)
         .expect("failed to watch path");
 
     state

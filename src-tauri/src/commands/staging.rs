@@ -1051,7 +1051,7 @@ pub async fn stage_lines(
             &path,
             &file_path,
             hunk_index,
-            line_indices,
+            &line_indices,
             &state_map,
             &options,
         )
@@ -1084,7 +1084,7 @@ pub async fn unstage_lines(
             &path,
             &file_path,
             hunk_index,
-            line_indices,
+            &line_indices,
             &state_map,
             &options,
         )
@@ -1117,7 +1117,7 @@ pub async fn discard_lines(
             &path,
             &file_path,
             hunk_index,
-            line_indices,
+            &line_indices,
             &state_map,
             &options,
         )
@@ -1287,7 +1287,7 @@ pub fn stage_lines_inner(
     path: &str,
     file_path: &str,
     hunk_index: u32,
-    line_indices: Vec<u32>,
+    line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
@@ -1317,7 +1317,7 @@ pub fn stage_lines_inner(
     }
 
     let patch_text =
-        build_partial_patch_text(file_path, &patch, hunk_index as usize, &line_indices, false)?;
+        build_partial_patch_text(file_path, &patch, hunk_index as usize, line_indices, false)?;
     drop(patch);
     drop(diff);
 
@@ -1344,7 +1344,7 @@ pub fn unstage_lines_inner(
     path: &str,
     file_path: &str,
     hunk_index: u32,
-    line_indices: Vec<u32>,
+    line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
@@ -1377,7 +1377,7 @@ pub fn unstage_lines_inner(
 
     // Build a reversed partial patch: undoes selected lines in the index
     let patch_text =
-        build_partial_patch_text(file_path, &patch, hunk_index as usize, &line_indices, true)?;
+        build_partial_patch_text(file_path, &patch, hunk_index as usize, line_indices, true)?;
     drop(patch);
     drop(diff);
 
@@ -1402,7 +1402,7 @@ pub fn discard_lines_inner(
     path: &str,
     file_path: &str,
     hunk_index: u32,
-    line_indices: Vec<u32>,
+    line_indices: &[u32],
     state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
@@ -1435,7 +1435,7 @@ pub fn discard_lines_inner(
 
     // Build a reversed partial patch: undoes selected lines in the working directory
     let patch_text =
-        build_partial_patch_text(file_path, &patch, hunk_index as usize, &line_indices, true)?;
+        build_partial_patch_text(file_path, &patch, hunk_index as usize, line_indices, true)?;
     drop(patch);
     drop(diff);
 

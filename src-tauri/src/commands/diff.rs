@@ -400,7 +400,7 @@ fn diff_line_of(line: &git2::DiffLine<'_>) -> DiffLine {
 /// Collect diff lines from git2 and enrich with syntax highlighting + word-level diff.
 /// Single pass: git2 walk → word diff → syntax → merge spans. Returns complete data.
 fn walk_diff(
-    diff: git2::Diff<'_>,
+    diff: &git2::Diff<'_>,
     repo: &git2::Repository,
     new_side: NewSideSource,
 ) -> Result<Vec<FileDiff>, TrunkError> {
@@ -648,7 +648,7 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
 
 /// Raw walk without enrichment — for benchmarking only.
 fn walk_diff_raw_for_bench(
-    diff: git2::Diff<'_>,
+    diff: &git2::Diff<'_>,
 ) -> Result<(Vec<FileDiff>, Vec<DeltaSides>), TrunkError> {
     use std::cell::RefCell;
     let file_diffs: RefCell<Vec<FileDiff>> = RefCell::new(Vec::new());
@@ -714,7 +714,7 @@ pub fn diff_unstaged_raw_for_bench(
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    let (file_diffs, delta_sides) = walk_diff_raw_for_bench(diff)?;
+    let (file_diffs, delta_sides) = walk_diff_raw_for_bench(&diff)?;
     let sides = resolve_sides(&repo, &file_diffs, &delta_sides, NewSideSource::Workdir);
     Ok((file_diffs, sides))
 }
@@ -735,7 +735,7 @@ pub fn diff_unstaged_inner(
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
-    walk_diff(diff, &repo, NewSideSource::Workdir)
+    walk_diff(&diff, &repo, NewSideSource::Workdir)
 }
 
 /// One file's staged diff, HEAD to index.
@@ -776,7 +776,7 @@ pub fn diff_commit_inner(
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
     let diff = commit_diff(&repo, &commit, &mut opts)?;
-    walk_diff(diff, &repo, NewSideSource::Odb)
+    walk_diff(&diff, &repo, NewSideSource::Odb)
 }
 
 /// Lightweight commit file listing — returns only metadata (path, status, `is_binary`),

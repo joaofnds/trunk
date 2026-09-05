@@ -47,9 +47,10 @@ fn parent_map(
     Ok(parents)
 }
 
-/// Everything one walk reads from the repository, in one pass. Every git2 call in the
-/// commit-graph pipeline lives here; `graph_input::layout` takes it from plain data.
-/// Read everything one graph walk needs out of a repository.
+/// Everything one walk reads from the repository, in one pass.
+///
+/// Every git2 call in the commit-graph pipeline lives here; `graph_input::layout` takes
+/// it from plain data. Read everything one graph walk needs out of a repository.
 ///
 /// # Errors
 ///

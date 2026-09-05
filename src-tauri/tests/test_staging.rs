@@ -626,7 +626,7 @@ fn stage_lines_stages_selected_add_lines() {
         "expected at least one add line in hunk 0"
     );
 
-    ctx.stage_lines("multi.txt", 0, add_indices)
+    ctx.stage_lines("multi.txt", 0, &add_indices)
         .expect("stage_lines failed");
 
     let staged = ctx.diff_staged("multi.txt").expect("diff_staged failed");
@@ -679,7 +679,7 @@ fn stage_lines_stages_selected_delete_lines() {
         "expected at least one delete line in hunk 0"
     );
 
-    ctx.stage_lines("multi.txt", 0, del_indices)
+    ctx.stage_lines("multi.txt", 0, &del_indices)
         .expect("stage_lines failed");
 
     let staged = ctx.diff_staged("multi.txt").expect("diff_staged failed");
@@ -735,7 +735,7 @@ fn stage_lines_mixed_add_and_delete_selection() {
         "expected at least 2 add/delete lines for mixed selection"
     );
 
-    ctx.stage_lines("multi.txt", 0, mixed_indices)
+    ctx.stage_lines("multi.txt", 0, &mixed_indices)
         .expect("stage_lines failed");
 
     let staged = ctx.diff_staged("multi.txt").expect("diff_staged failed");
@@ -768,7 +768,7 @@ fn stage_lines_stale_hunk_index_returns_error() {
 
     create_add_delete_hunk_file(&ctx);
 
-    let result = ctx.stage_lines("multi.txt", 99, vec![0]);
+    let result = ctx.stage_lines("multi.txt", 99, &[0]);
     assert!(result.is_err(), "expected Err for out-of-range hunk index");
     let err = result.unwrap_err();
     assert_eq!(
@@ -809,7 +809,7 @@ fn stage_lines_works_on_untracked_file() {
     assert!(!add_indices.is_empty(), "expected add lines");
 
     // Stage only the first add line
-    ctx.stage_lines("new_file.txt", 0, vec![add_indices[0]])
+    ctx.stage_lines("new_file.txt", 0, &[add_indices[0]])
         .expect("stage_lines should work on untracked files");
 
     let status = ctx.get_status().expect("get_status failed");
@@ -849,7 +849,7 @@ fn unstage_lines_unstages_selected_lines() {
         "expected add lines in staged hunk 0"
     );
 
-    ctx.unstage_lines("multi.txt", 0, add_indices)
+    ctx.unstage_lines("multi.txt", 0, &add_indices)
         .expect("unstage_lines failed");
 
     let unstaged_after = ctx
@@ -1077,7 +1077,7 @@ fn discard_lines_removes_selected_add_lines_from_file() {
     let add_indices: Vec<u32> = add_info.iter().map(|(i, _)| *i).collect();
     let add_contents: Vec<String> = add_info.iter().map(|(_, c)| c.clone()).collect();
 
-    ctx.discard_lines("multi.txt", 0, add_indices)
+    ctx.discard_lines("multi.txt", 0, &add_indices)
         .expect("discard_lines failed");
 
     let file_content = std::fs::read_to_string(ctx.repo_path().join("multi.txt")).unwrap();
@@ -1405,7 +1405,7 @@ fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
         .position(|line| matches!(line.origin, DiffOrigin::Add))
         .expect("the hunk holds the added line");
 
-    ctx.unstage_lines("math-util.ts", 0, vec![added as u32])
+    ctx.unstage_lines("math-util.ts", 0, &[added as u32])
         .expect("unstage_lines failed");
 
     let staged = staged_paths(&ctx);
@@ -1603,7 +1603,7 @@ fn staging_lines_under_ignore_whitespace_stages_the_lines_the_view_showed() {
         .map(|(i, _)| i as u32)
         .collect();
 
-    ctx.stage_lines_with_options("ws.txt", 0, adds, &ignore_whitespace())
+    ctx.stage_lines_with_options("ws.txt", 0, &adds, &ignore_whitespace())
         .expect("stage_lines failed");
 
     let staged = staged_content(&ctx, "ws.txt");

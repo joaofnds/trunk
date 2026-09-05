@@ -43,7 +43,7 @@ pub async fn open_repo<R: Runtime>(
     let path_buf = std::path::PathBuf::from(&path);
     state.register(path.clone(), path_buf.clone());
     cache.0.lock().unwrap().insert(path.clone(), result);
-    watcher::start_watcher(path_buf, app, &watcher_state);
+    watcher::start_watcher(&path_buf, app, &watcher_state);
 
     Ok(())
 }

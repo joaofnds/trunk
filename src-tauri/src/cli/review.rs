@@ -258,8 +258,8 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
                 &store,
                 &canonical,
                 &review.id,
-                paths.workdir,
-                paths.repo_dir,
+                paths.workdir.as_deref(),
+                &paths.repo_dir,
             )
         }
         ReviewCmd::Reply { id, text, repo } => {

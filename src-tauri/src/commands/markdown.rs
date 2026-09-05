@@ -2043,10 +2043,11 @@ fn read_side(
     }
 }
 
-/// Resolve `repo_path`, read `file_path` at both revs, and diff their markdown
-/// blocks. A `not_found` on one side (added/deleted file) is handled by the caller
-/// so the present side still renders.
-/// Render the block-aligned markdown diff for two revisions of a file.
+/// Resolve `repo_path`, read `file_path` at both revs, and diff their markdown blocks.
+///
+/// A `not_found` on one side (added/deleted file) is handled by the caller so the
+/// present side still renders. Render the block-aligned markdown diff for two revisions
+/// of a file.
 ///
 /// # Errors
 ///

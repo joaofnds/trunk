@@ -41,7 +41,7 @@ fn watcher_emits_event_on_file_write() {
     let watcher_state = WatcherState::default();
     let path_str = dir.path().to_string_lossy().to_string();
 
-    start_watcher(dir.path().to_path_buf(), handle, &watcher_state);
+    start_watcher(dir.path(), handle, &watcher_state);
 
     // Verify watcher is registered
     assert!(
@@ -91,7 +91,7 @@ fn watcher_stop_removes_watcher() {
     let watcher_state = WatcherState::default();
     let path_str = dir.path().to_string_lossy().to_string();
 
-    start_watcher(dir.path().to_path_buf(), handle, &watcher_state);
+    start_watcher(dir.path(), handle, &watcher_state);
 
     // Verify watcher is registered
     assert!(
@@ -136,8 +136,8 @@ fn watcher_multiple_repos_independent() {
     let path_str2 = dir2.path().to_string_lossy().to_string();
 
     // Start watchers for both repos
-    start_watcher(dir1.path().to_path_buf(), handle1, &watcher_state);
-    start_watcher(dir2.path().to_path_buf(), handle2, &watcher_state);
+    start_watcher(dir1.path(), handle1, &watcher_state);
+    start_watcher(dir2.path(), handle2, &watcher_state);
 
     // Verify both are registered
     {
@@ -189,7 +189,7 @@ fn watcher_debounces_rapid_changes() {
     let watcher_state = WatcherState::default();
     let path_str = dir.path().to_string_lossy().to_string();
 
-    start_watcher(dir.path().to_path_buf(), handle, &watcher_state);
+    start_watcher(dir.path(), handle, &watcher_state);
 
     // Write 5 files in rapid succession (no sleep between writes)
     for i in 0..5 {
@@ -235,7 +235,7 @@ fn a_disabled_watcher_state_registers_no_watcher() {
     git2::Repository::init(dir.path()).unwrap();
     let watcher_state = WatcherState::disabled();
 
-    start_watcher(dir.path().to_path_buf(), handle, &watcher_state);
+    start_watcher(dir.path(), handle, &watcher_state);
 
     assert!(
         watcher_state.watchers.lock().unwrap().is_empty(),
