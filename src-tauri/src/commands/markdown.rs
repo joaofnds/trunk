@@ -220,7 +220,8 @@ struct Leaf {
 /// a block is dirty iff its line span intersects its side's changed lines. Both
 /// texts are front-matter-rewritten BEFORE the line diff so line numbers and
 /// sourcepos share one coordinate system. `repo`/`file`/`rev` are needed only to
-/// resolve each side's images. The frontend projects every layout from the rows.
+/// resolve each side's images; a renamed file's before side lived at `old_path`,
+/// so its images resolve from there. The frontend projects every layout from the rows.
 /// `ignore_whitespace` compares line keys with ALL whitespace stripped — git's
 /// `-w`, matching Source's `GIT_DIFF_IGNORE_WHITESPACE` — while the original
 /// lines still classify blocks and render.
@@ -230,6 +231,7 @@ pub fn diff_markdown_blocks(
     after_md: &str,
     repo_path: &str,
     file_path: &str,
+    old_path: Option<&str>,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
@@ -243,7 +245,8 @@ pub fn diff_markdown_blocks(
     let after_md = normalize_line_endings(after_md);
     let before_text = front_matter_as_table(&before_md);
     let after_text = front_matter_as_table(&after_md);
-    let before = extract_blocks(&before_text, repo_path, file_path, before_rev);
+    let before_path = old_path.unwrap_or(file_path);
+    let before = extract_blocks(&before_text, repo_path, before_path, before_rev);
     let after = extract_blocks(&after_text, repo_path, file_path, after_rev);
 
     let ops = if ignore_whitespace {
@@ -2089,8 +2092,9 @@ fn read_side(
 /// The block-aligned markdown diff for two revisions of a file.
 ///
 /// Resolves `repo_path`, reads `file_path` at both revs, and diffs their markdown
-/// blocks. A `not_found` on one side (added/deleted file) is handled by the caller
-/// so the present side still renders.
+/// blocks. A renamed file is read at `old_path` on the before side, where it
+/// lived at that rev. A `not_found` on one side (added/deleted file) is handled
+/// by the caller so the present side still renders.
 ///
 /// # Errors
 ///
@@ -2099,18 +2103,21 @@ fn read_side(
 pub fn render_markdown_diff_from_state(
     repo_path: &str,
     file_path: &str,
+    old_path: Option<&str>,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
     state_map: &OpenRepos,
 ) -> Result<MarkdownDiff, TrunkError> {
-    let before = read_side(repo_path, file_path, before_rev, state_map)?;
+    let before_path = old_path.unwrap_or(file_path);
+    let before = read_side(repo_path, before_path, before_rev, state_map)?;
     let after = read_side(repo_path, file_path, after_rev, state_map)?;
     Ok(diff_markdown_blocks(
         before.as_deref().unwrap_or(""),
         after.as_deref().unwrap_or(""),
         repo_path,
         file_path,
+        old_path,
         before_rev,
         after_rev,
         ignore_whitespace,
@@ -2377,16 +2384,20 @@ fn build_image_rewrite(
 
 /// Cache key for a block diff — `Some` only when both revs are immutable commits,
 /// so working-tree/index diffs always recompute (they move on every `repo-changed`).
+/// The old path is part of the key: one new path diffed from two different old
+/// paths is two different diffs.
 fn diff_cache_key(
     repo_path: &str,
     file_path: &str,
+    old_path: Option<&str>,
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
 ) -> Option<String> {
+    let old_path = old_path.unwrap_or_default();
     match (before_rev, after_rev) {
         (RevSpec::Commit { oid: before }, RevSpec::Commit { oid: after }) => Some(format!(
-            "{repo_path}\u{1f}{file_path}\u{1f}{before}\u{1f}{after}\u{1f}{ignore_whitespace}"
+            "{repo_path}\u{1f}{file_path}\u{1f}{old_path}\u{1f}{before}\u{1f}{after}\u{1f}{ignore_whitespace}"
         )),
         _ => None,
     }
@@ -2404,6 +2415,7 @@ fn diff_cache_key(
 pub async fn render_markdown_diff(
     repo_path: String,
     file_path: String,
+    old_path: Option<String>,
     before_rev: RevSpec,
     after_rev: RevSpec,
     ignore_whitespace: bool,
@@ -2413,6 +2425,7 @@ pub async fn render_markdown_diff(
     let cache_key = diff_cache_key(
         &repo_path,
         &file_path,
+        old_path.as_deref(),
         &before_rev,
         &after_rev,
         ignore_whitespace,
@@ -2428,6 +2441,7 @@ pub async fn render_markdown_diff(
         render_markdown_diff_from_state(
             &repo_path,
             &file_path,
+            old_path.as_deref(),
             &before_rev,
             &after_rev,
             ignore_whitespace,
@@ -2752,6 +2766,7 @@ mod tests {
             after,
             "/r",
             "d.md",
+            None,
             &RevSpec::Head,
             &RevSpec::WorkingTree,
             ignore_whitespace,
@@ -3682,6 +3697,7 @@ mod tests {
                 after,
                 "/r",
                 path,
+                None,
                 &RevSpec::Head,
                 &RevSpec::WorkingTree,
                 false,
@@ -3932,15 +3948,23 @@ mod tests {
             oid: oid.to_string(),
         };
         assert!(
-            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb"), false).is_some(),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false).is_some(),
             "commit-vs-commit is cacheable"
         );
         assert!(
-            diff_cache_key("/r", "d.md", &RevSpec::Head, &commit("bbb"), false).is_none(),
+            diff_cache_key("/r", "d.md", None, &RevSpec::Head, &commit("bbb"), false).is_none(),
             "a HEAD side is not cacheable"
         );
         assert!(
-            diff_cache_key("/r", "d.md", &commit("aaa"), &RevSpec::WorkingTree, false).is_none(),
+            diff_cache_key(
+                "/r",
+                "d.md",
+                None,
+                &commit("aaa"),
+                &RevSpec::WorkingTree,
+                false
+            )
+            .is_none(),
             "a working-tree side is not cacheable"
         );
     }
@@ -3953,8 +3977,8 @@ mod tests {
             oid: oid.to_string(),
         };
         assert_ne!(
-            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb"), false),
-            diff_cache_key("/r", "d.md", &commit("aaa"), &commit("bbb"), true),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), true),
         );
     }
 
@@ -3984,6 +4008,7 @@ mod tests {
         let added = render_markdown_diff_from_state(
             &repo_str,
             "new.md",
+            None,
             &RevSpec::Head,
             &RevSpec::WorkingTree,
             false,
@@ -3999,6 +4024,7 @@ mod tests {
         let removed = render_markdown_diff_from_state(
             &repo_str,
             "new.md",
+            None,
             &RevSpec::WorkingTree,
             &RevSpec::Head,
             false,
@@ -4030,6 +4056,7 @@ mod tests {
         let rows = render_markdown_diff_from_state(
             &dir.path().to_string_lossy(),
             "new.md",
+            None,
             &RevSpec::Head,
             &RevSpec::Index,
             false,
@@ -4059,6 +4086,7 @@ mod tests {
         let rows = render_markdown_diff_from_state(
             &repo_str,
             "doc.md",
+            None,
             &RevSpec::Index,
             &RevSpec::WorkingTree,
             false,
@@ -4096,6 +4124,7 @@ mod tests {
         let rows = render_markdown_diff_from_state(
             &repo_str,
             "doc.md",
+            None,
             &RevSpec::Empty,
             &RevSpec::WorkingTree,
             false,
@@ -4107,6 +4136,209 @@ mod tests {
         assert!(
             !rows.is_empty() && rows.iter().all(|r| matches!(r, DiffRow::Added { .. })),
             "an Empty before side is absent, never HEAD: {rows:?}"
+        );
+    }
+
+    /// Repo whose first commit holds `old.md` and whose second renames it to
+    /// `new.md`, editing the third paragraph when `edit` is set. Returns the
+    /// two commit oids.
+    fn renamed_markdown_repo(edit: bool) -> (TempDir, git2::Oid, git2::Oid) {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let body = "# Title\n\nfirst paragraph\n\nsecond paragraph\n\nthird paragraph\n";
+        fs::write(dir.path().join("old.md"), body).unwrap();
+        let first = {
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new("old.md")).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let s = sig();
+            repo.commit(Some("HEAD"), &s, &s, "a", &tree, &[]).unwrap()
+        };
+
+        fs::remove_file(dir.path().join("old.md")).unwrap();
+        let renamed = if edit {
+            body.replace("third", "changed third")
+        } else {
+            body.to_string()
+        };
+        fs::write(dir.path().join("new.md"), renamed).unwrap();
+        let second = {
+            let mut idx = repo.index().unwrap();
+            idx.remove_path(Path::new("old.md")).unwrap();
+            idx.add_path(Path::new("new.md")).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let parent = repo.find_commit(first).unwrap();
+            let s = sig();
+            repo.commit(Some("HEAD"), &s, &s, "b", &tree, &[&parent])
+                .unwrap()
+        };
+        (dir, first, second)
+    }
+
+    #[test]
+    fn renamed_and_edited_file_keeps_its_unchanged_blocks() {
+        let (dir, first, second) = renamed_markdown_repo(true);
+        let repo_str = dir.path().to_string_lossy().to_string();
+        let state_map = OpenRepos::from_iter([(repo_str.clone(), dir.path().to_path_buf())]);
+
+        let rows = render_markdown_diff_from_state(
+            &repo_str,
+            "new.md",
+            Some("old.md"),
+            &RevSpec::Commit {
+                oid: first.to_string(),
+            },
+            &RevSpec::Commit {
+                oid: second.to_string(),
+            },
+            false,
+            &state_map,
+        )
+        .unwrap()
+        .rows;
+
+        assert_eq!(kinds(&rows), "UUUC");
+    }
+
+    #[test]
+    fn pure_rename_renders_every_block_unchanged() {
+        let (dir, first, second) = renamed_markdown_repo(false);
+        let repo_str = dir.path().to_string_lossy().to_string();
+        let state_map = OpenRepos::from_iter([(repo_str.clone(), dir.path().to_path_buf())]);
+
+        let rows = render_markdown_diff_from_state(
+            &repo_str,
+            "new.md",
+            Some("old.md"),
+            &RevSpec::Commit {
+                oid: first.to_string(),
+            },
+            &RevSpec::Commit {
+                oid: second.to_string(),
+            },
+            false,
+            &state_map,
+        )
+        .unwrap()
+        .rows;
+
+        assert_eq!(kinds(&rows), "UUUU");
+    }
+
+    #[test]
+    fn staged_rename_reads_the_before_side_from_head_by_the_old_path() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let body = "# Title\n\nfirst paragraph\n\nsecond paragraph\n";
+        fs::write(dir.path().join("old.md"), body).unwrap();
+        {
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new("old.md")).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            let s = sig();
+            repo.commit(Some("HEAD"), &s, &s, "a", &tree, &[]).unwrap();
+        }
+        fs::remove_file(dir.path().join("old.md")).unwrap();
+        fs::write(
+            dir.path().join("new.md"),
+            body.replace("second", "edited second"),
+        )
+        .unwrap();
+        {
+            let mut idx = repo.index().unwrap();
+            idx.remove_path(Path::new("old.md")).unwrap();
+            idx.add_path(Path::new("new.md")).unwrap();
+            idx.write().unwrap();
+        }
+        let repo_str = dir.path().to_string_lossy().to_string();
+        let state_map = OpenRepos::from_iter([(repo_str.clone(), dir.path().to_path_buf())]);
+
+        let rows = render_markdown_diff_from_state(
+            &repo_str,
+            "new.md",
+            Some("old.md"),
+            &RevSpec::Head,
+            &RevSpec::Index,
+            false,
+            &state_map,
+        )
+        .unwrap()
+        .rows;
+
+        assert_eq!(kinds(&rows), "UUC");
+    }
+
+    #[test]
+    fn before_side_images_resolve_against_the_old_path() {
+        let before = "the logo ![logo](img/logo.png)\n";
+        let after = "the new logo ![logo](img/logo.png)\n";
+
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "new/doc.md",
+            Some("old/doc.md"),
+            &RevSpec::Head,
+            &RevSpec::Index,
+            false,
+        )
+        .rows;
+
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("an edited image paragraph is a changed row: {rows:?}");
+        };
+        assert!(
+            before_html.contains("path=old%2Fimg%2Flogo.png"),
+            "before side resolves against the old path: {before_html}"
+        );
+        assert!(
+            after_html.contains("path=new%2Fimg%2Flogo.png"),
+            "after side resolves against the new path: {after_html}"
+        );
+    }
+
+    #[test]
+    fn diff_cache_key_separates_old_paths() {
+        let commit = |oid: &str| RevSpec::Commit {
+            oid: oid.to_string(),
+        };
+        assert_ne!(
+            diff_cache_key(
+                "/r",
+                "d.md",
+                Some("a.md"),
+                &commit("aaa"),
+                &commit("bbb"),
+                false
+            ),
+            diff_cache_key(
+                "/r",
+                "d.md",
+                Some("b.md"),
+                &commit("aaa"),
+                &commit("bbb"),
+                false
+            ),
+        );
+        assert_ne!(
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false),
+            diff_cache_key(
+                "/r",
+                "d.md",
+                Some("d.md"),
+                &commit("aaa"),
+                &commit("bbb"),
+                false
+            ),
         );
     }
 
