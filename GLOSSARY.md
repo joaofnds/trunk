@@ -151,6 +151,15 @@ element. The frontend half of the guarantee.
 everything and explains nothing, a named-rule test pins one rule and says what it is. Editing
 one is the loud signal that intended behaviour changed.
 
+**Ledger anchor** — the exact source text, indentation included, that one row of the
+mutation ledger (`docs/commit-graph-mutation-ledger.md`) is measured at. Each row's verdict
+describes the mutation of that text at that site, so the anchor is the record's key into the
+code. `just graph-sweep-check` asserts every anchor matches its file exactly once and is the
+only part of the sweep on the fast path. An anchor is per file, not per function: a
+behaviour-preserving extraction that moves the text keeps the alarm green only while the text
+and its indentation survive, and the rule file still asks for the moved rows to be re-measured.
+Not a review thread's anchor, which is the lines a comment is pinned to.
+
 **Surviving mutant** — a mutation of the placement code that the test suite fails to detect.
 The operational measure of "nothing can be misplaced without a test breaking": every survivor
 is a placement change no test notices.
