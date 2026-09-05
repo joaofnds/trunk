@@ -2216,20 +2216,21 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
         .map(|n| {
             let kind = n.data.borrow().value.xml_node_name();
             let raw = format_node(n, &options);
-            let (leaves, sourcepos_html, raw_html) = if let Some(container) = leaf_parent(n) {
-                let leaves = container
-                    .children()
-                    .map(|c| Leaf {
-                        signature: block_signature(c),
-                        sourcepos: c.data.borrow().sourcepos.to_string(),
-                        raw_html: strip_table_section(&format_node(c, &options)).to_string(),
-                        tag: leaf_tag(c).to_string(),
-                    })
-                    .collect();
-                (leaves, format_node(n, &options_sp), String::new())
-            } else {
-                (Vec::new(), String::new(), raw.clone())
-            };
+            let (leaves, sourcepos_html, raw_html) = leaf_parent(n).map_or_else(
+                || (Vec::new(), String::new(), raw.clone()),
+                |container| {
+                    let leaves = container
+                        .children()
+                        .map(|c| Leaf {
+                            signature: block_signature(c),
+                            sourcepos: c.data.borrow().sourcepos.to_string(),
+                            raw_html: strip_table_section(&format_node(c, &options)).to_string(),
+                            tag: leaf_tag(c).to_string(),
+                        })
+                        .collect();
+                    (leaves, format_node(n, &options_sp), String::new())
+                },
+            );
             let sourcepos = n.data.borrow().sourcepos;
             let (start_line, end_line) = (sourcepos.start.line, sourcepos.end.line);
             // Raw HTML sanitizes away to nothing; such a block shows its
@@ -2552,12 +2553,11 @@ fn has_url_scheme(url: &str) -> bool {
 /// collapsing `.`/`..` into a normalized repo-relative POSIX path. A leading `/`
 /// resolves from the repo root.
 fn resolve_relative(base_dir: &str, url: &str) -> String {
-    let combined = if let Some(rooted) = url.strip_prefix('/') {
-        rooted.to_string()
-    } else if base_dir.is_empty() {
-        url.to_string()
-    } else {
-        format!("{base_dir}/{url}")
+    // A leading slash resolves from the repo root, so the base is dropped.
+    let combined = match url.strip_prefix('/') {
+        Some(rooted) => rooted.to_string(),
+        None if base_dir.is_empty() => url.to_string(),
+        None => format!("{base_dir}/{url}"),
     };
     let mut parts: Vec<&str> = Vec::new();
     for seg in combined.split('/') {
@@ -2629,11 +2629,11 @@ fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
     Ok((repo, rev, path))
 }
 
-/// Resolve a `trunk-asset://` request to its file bytes + MIME. Backs the custom
-/// protocol handler wired in lib.rs; reuses the same `read_file_at` resolver, so the
-/// working-tree path-escape guard applies to images too.
-///
 /// Serve a `trunk-asset://` URL as bytes plus a MIME type.
+///
+/// Backs the custom protocol handler wired in lib.rs, reusing the same
+/// `read_file_at` resolver, so the working-tree path-escape guard applies to
+/// images too.
 ///
 /// # Errors
 ///
@@ -2655,10 +2655,11 @@ pub fn resolve_trunk_asset<R: tauri::Runtime>(
     Ok((bytes, mime_for_ext(&path)))
 }
 
-/// Render a review comment's markdown body to sanitized HTML. Comment text has
-/// no file/rev, so scheme-less image URLs aren't rewritten (relative images have
-/// nothing to resolve against and are dropped by the sanitizer; remote `http(s)`
-/// images render).
+/// Render a review comment's markdown body to sanitized HTML.
+///
+/// Comment text has no file or rev, so scheme-less image URLs are not
+/// rewritten. Relative images have nothing to resolve against and the sanitizer
+/// drops them; remote `http(s)` images render.
 #[must_use]
 pub fn render_comment_text(text: &str) -> String {
     render_markdown_html(text, &|_| None)

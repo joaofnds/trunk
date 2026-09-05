@@ -1,6 +1,8 @@
-//! Live reflection's primitive (plan §3, D3): `PRAGMA data_version` on a dedicated
-//! autocommit connection moves when any OTHER connection commits — a CLI reply, a
-//! second app instance — and never for this connection's own work.
+//! Live reflection's primitive (plan §3, D3).
+//!
+//! `PRAGMA data_version` on a dedicated autocommit connection moves when any
+//! OTHER connection commits — a CLI reply, a second app instance — and never
+//! for this connection's own work.
 //!
 //! `store_meta.revision` then decides whether the movement deserves an emit: the draft
 //! autosave commits without bumping it, so typing never triggers a refetch storm.
@@ -200,9 +202,7 @@ fn spawn_with(
     on_change: impl Fn() + Send + 'static,
 ) -> PollHandle {
     let db_path = data_dir.join(DB_FILE);
-    let conn = if let Ok(conn) = Connection::open(&db_path) {
-        conn
-    } else {
+    let Ok(conn) = Connection::open(&db_path) else {
         eprintln!("review poll: cannot open {}", db_path.display());
         return PollHandle {
             stop,

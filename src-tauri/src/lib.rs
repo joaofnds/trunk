@@ -116,24 +116,6 @@ pub fn run() {
     .expect("error while running tauri application");
 }
 
-/// The whole application except the runtime it runs on and two plugins: plugins, the
-/// asset protocol, the window and menu setup, every managed state and the command list.
-///
-/// The test host builds the same application on `MockRuntime`.
-///
-/// `tauri_plugin_single_instance` stays out because it binds a per-identifier
-/// socket that parallel hosts would fight over. `tauri_plugin_clipboard_manager`
-/// stays out because its `setup` calls `arboard::Clipboard::new()` from inside
-/// `Builder::build()`, which costs 9-17 s per process outside a bundled app.
-///
-/// The two managed states it takes as parameters are the ones a test host
-/// overrides — `Builder::manage` panics on a duplicate type, so they cannot be
-/// added afterwards.
-///
-/// # Panics
-///
-/// Panics when a managed state of the same type is already registered, or when
-/// a plugin fails to initialize.
 /// Reposition the macOS traffic lights when the title bar's layout changes.
 ///
 /// Off macOS this observes nothing: there are no traffic lights to move.
@@ -161,6 +143,24 @@ fn reposition_traffic_lights_on<R: tauri::Runtime>(
 ) {
 }
 
+/// The whole application except the runtime it runs on and two plugins: plugins, the
+/// asset protocol, the window and menu setup, every managed state and the command list.
+///
+/// The test host builds the same application on `MockRuntime`.
+///
+/// `tauri_plugin_single_instance` stays out because it binds a per-identifier
+/// socket that parallel hosts would fight over. `tauri_plugin_clipboard_manager`
+/// stays out because its `setup` calls `arboard::Clipboard::new()` from inside
+/// `Builder::build()`, which costs 9-17 s per process outside a bundled app.
+///
+/// The two managed states it takes as parameters are the ones a test host
+/// overrides — `Builder::manage` panics on a duplicate type, so they cannot be
+/// added afterwards.
+///
+/// # Panics
+///
+/// Panics when a managed state of the same type is already registered, or when
+/// a plugin fails to initialize.
 pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     watcher: WatcherState,

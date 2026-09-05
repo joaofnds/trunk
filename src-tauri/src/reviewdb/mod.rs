@@ -304,10 +304,11 @@ pub fn repo_key(repo_path: &Path) -> String {
     repo_path.to_string_lossy().into_owned()
 }
 
-/// The human-only-edit policy shared by `threads::edit` and `replies::edit`:
-/// agent-attributed text is not editable from the UI. `channel` is `None` when
-/// the row itself is missing, in which case `missing` supplies the caller's
-/// own `not_found` error (its message names the row kind, thread or reply).
+/// The human-only-edit policy shared by `threads::edit` and `replies::edit`.
+///
+/// Agent-attributed text is not editable from the UI. `channel` is `None` when
+/// the row itself is missing, in which case `missing` supplies the caller's own
+/// `not_found` error (its message names the row kind, thread or reply).
 ///
 /// # Errors
 ///

@@ -63,10 +63,10 @@ pub fn get(conn: &Connection, repo_path: &Path) -> Result<RepoSnapshots, TrunkEr
         })
         .map_err(sqlite_error)?;
 
-    match rows.next() {
-        None => Ok(RepoSnapshots::default()),
-        Some(row) => row.map_err(sqlite_error),
-    }
+    rows.next().map_or_else(
+        || Ok(RepoSnapshots::default()),
+        |row| row.map_err(sqlite_error),
+    )
 }
 
 /// Point one of the repo's snapshot fields at `oid`, leaving the other alone.

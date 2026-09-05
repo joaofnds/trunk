@@ -115,12 +115,12 @@ impl StoreEvents {
     pub fn sync(&self) -> bool {
         use std::io::Write;
 
+        // Comfortably more than a full accept queue takes to drain.
+        const ATTEMPTS: usize = 512;
+
         // Every sync acknowledges, so an ack from an earlier one may be
         // waiting. Discarding it first means this call blocks on its own.
         while self.synced.try_recv().is_ok() {}
-
-        // Comfortably more than a full accept queue takes to drain.
-        const ATTEMPTS: usize = 512;
 
         let mut stream = None;
         for _ in 0..ATTEMPTS {

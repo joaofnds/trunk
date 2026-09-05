@@ -249,12 +249,14 @@ fn submit_thread_write(
         )?;
         // Same transaction as the thread: a pin can never be reclaimed between
         // the thread landing and its snapshot being marked as used.
-        let mut restored = None;
-        if let Some(oid) = anchor_oid
-            && pins::mark_anchored(tx, canonical, &oid, now)? == pins::Anchored::Restored
-        {
-            restored = Some(oid);
-        }
+        let restored = match anchor_oid {
+            Some(oid)
+                if pins::mark_anchored(tx, canonical, &oid, now)? == pins::Anchored::Restored =>
+            {
+                Some(oid)
+            }
+            _ => None,
+        };
         if req.clears_draft {
             drafts::delete(tx, canonical)?;
         }

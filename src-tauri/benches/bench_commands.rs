@@ -20,7 +20,7 @@ fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
     // Initial commit on main
     let blob_oid = repo.blob(b"initial").unwrap();
     let mut tb = repo.treebuilder(None).unwrap();
-    tb.insert("README.md", blob_oid, 0o100644).unwrap();
+    tb.insert("README.md", blob_oid, 0o100_644).unwrap();
     let tree_oid = tb.write().unwrap();
     let tree = repo.find_tree(tree_oid).unwrap();
     let initial_oid = repo
@@ -49,7 +49,7 @@ fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
                 .blob(format!("branch-{b}-commit-{c}").as_bytes())
                 .unwrap();
             let mut tb = repo.treebuilder(None).unwrap();
-            tb.insert(format!("file-{b}-{c}.txt"), blob, 0o100644)
+            tb.insert(format!("file-{b}-{c}.txt"), blob, 0o100_644)
                 .unwrap();
             let tree_oid = tb.write().unwrap();
             let tree = repo.find_tree(tree_oid).unwrap();
@@ -680,7 +680,7 @@ fn make_calibration_repo() -> BenchRepo {
             .blob(format!("{CALIBRATION_TS_BLOCK}{n}").as_bytes())
             .unwrap();
         let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert("calibration.ts", blob, 0o100644).unwrap();
+        tb.insert("calibration.ts", blob, 0o100_644).unwrap();
         let tree_oid = tb.write().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
         let parents: Vec<git2::Commit> = parent

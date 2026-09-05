@@ -52,9 +52,11 @@ pub struct DocCommit {
     pub subject: String,
 }
 
-/// One thread as the renderer wants it — `Doc*`, not `Rendered*`: the IPC payloads
-/// (`commands/review.rs`) already own that prefix, and two near-identical names in one
-/// crate is a defect waiting to happen.
+/// One thread as the renderer wants it.
+///
+/// Named `Doc*` rather than `Rendered*` because the IPC payloads
+/// (`commands/review.rs`) already own that prefix, and two near-identical names
+/// in one crate is a defect waiting to happen.
 ///
 /// Every excerpt comes from `excerpt`; no repository lookup decides which section a
 /// thread renders in (D8/D13).
@@ -1191,9 +1193,9 @@ mod tests {
         let b = commit_with_file(&repo, "B", &[a], "foo.rs", b"b1\nb2\nb3\n");
         let bar_blob = repo.blob(b"x\n").unwrap();
         let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert("foo.rs", repo.blob(b"a1\na2\na3\n").unwrap(), 0o100644)
+        tb.insert("foo.rs", repo.blob(b"a1\na2\na3\n").unwrap(), 0o100_644)
             .unwrap();
-        tb.insert("bar.rs", bar_blob, 0o100644).unwrap();
+        tb.insert("bar.rs", bar_blob, 0o100_644).unwrap();
         let tree = repo.find_tree(tb.write().unwrap()).unwrap();
         let a_parent = repo.find_commit(a).unwrap();
         let a_with_bar = repo
@@ -1337,7 +1339,7 @@ mod tests {
         }
         let file_blob = repo.blob(&buf).unwrap();
         let mut src_builder = repo.treebuilder(None).unwrap();
-        src_builder.insert("main.rs", file_blob, 0o100644).unwrap();
+        src_builder.insert("main.rs", file_blob, 0o100_644).unwrap();
         let src_tree_oid = src_builder.write().unwrap();
         let mut root_builder = repo.treebuilder(None).unwrap();
         root_builder.insert("src", src_tree_oid, 0o040000).unwrap();

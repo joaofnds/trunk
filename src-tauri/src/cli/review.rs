@@ -10,6 +10,7 @@
 use crate::error::TrunkError;
 use crate::review_types::{Channel, ThreadState};
 use crate::reviewdb::{self, reviews};
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -867,18 +868,17 @@ fn discover_repo(repo: Option<PathBuf>) -> Result<PathBuf, TrunkError> {
 /// renderer's sanitizer: one thread must never print as two lines, or the
 /// second is a thread an agent will act on that nobody wrote.
 fn render_threads(threads: &[crate::reviewdb::threads::Thread]) -> String {
-    threads
-        .iter()
-        .map(|t| {
-            format!(
-                "- {id} {state} {location} — {summary}\n",
-                id = t.id,
-                state = t.state.as_str(),
-                location = crate::git::review::sanitize_heading_text(&thread_location(t)),
-                summary = first_line(&t.text),
-            )
-        })
-        .collect()
+    threads.iter().fold(String::new(), |mut out, t| {
+        let _ = writeln!(
+            out,
+            "- {id} {state} {location} — {summary}",
+            id = t.id,
+            state = t.state.as_str(),
+            location = crate::git::review::sanitize_heading_text(&thread_location(t)),
+            summary = first_line(&t.text),
+        );
+        out
+    })
 }
 
 /// Where a thread points, in the index's one-line spelling.
@@ -1057,12 +1057,13 @@ fn render_thread(
 
     let mut out = crate::git::review::render_thread_section(&session, &doc_thread);
     let rule = trailer_rule_for(&out);
-    out.push_str(&format!(
+    let _ = write!(
+        out,
         "{rule}\nReview: {review}\nState: {state}\nYou can: {actions}\n",
         review = thread.review_id,
         state = thread.state.as_str(),
         actions = agent_actions(thread.state),
-    ));
+    );
 
     Ok(out)
 }
@@ -1133,9 +1134,10 @@ fn render_list(listed: &[reviews::Review]) -> String {
     listed
         .iter()
         .filter(|r| r.published)
-        .map(|r| {
-            format!(
-                "- {} {} \"{}\" ({} {})\n",
+        .fold(String::new(), |mut out, r| {
+            let _ = writeln!(
+                out,
+                "- {} {} \"{}\" ({} {})",
                 r.id,
                 state_word(r.state),
                 r.title,
@@ -1145,9 +1147,9 @@ fn render_list(listed: &[reviews::Review]) -> String {
                 } else {
                     "threads"
                 },
-            )
+            );
+            out
         })
-        .collect()
 }
 
 const fn state_word(state: reviews::ReviewState) -> &'static str {

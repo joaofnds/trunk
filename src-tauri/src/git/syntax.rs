@@ -558,7 +558,7 @@ mod tests {
                 continue;
             }
             let tokens = highlight_line_with(&mut hl, line);
-            let content_len = line.len() as u32;
+            let content_len = u32::try_from(line.len()).unwrap_or(u32::MAX);
             let merged = merge_spans(&tokens, &[], content_len);
 
             assert_eq!(

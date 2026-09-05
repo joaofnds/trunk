@@ -619,7 +619,7 @@ fn stage_lines_stages_selected_add_lines() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
-        .map(|(i, _)| i as u32)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
         .collect();
     assert!(
         !add_indices.is_empty(),
@@ -672,7 +672,7 @@ fn stage_lines_stages_selected_delete_lines() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Delete))
-        .map(|(i, _)| i as u32)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
         .collect();
     assert!(
         !del_indices.is_empty(),
@@ -728,7 +728,7 @@ fn stage_lines_mixed_add_and_delete_selection() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
-        .map(|(i, _)| i as u32)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
         .collect();
     assert!(
         mixed_indices.len() >= 2,
@@ -804,7 +804,7 @@ fn stage_lines_works_on_untracked_file() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
-        .map(|(i, _)| i as u32)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
         .collect();
     assert!(!add_indices.is_empty(), "expected add lines");
 
@@ -842,7 +842,7 @@ fn unstage_lines_unstages_selected_lines() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
-        .map(|(i, _)| i as u32)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
         .collect();
     assert!(
         !add_indices.is_empty(),
@@ -1071,7 +1071,7 @@ fn discard_lines_removes_selected_add_lines_from_file() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
-        .map(|(i, l)| (i as u32, l.content.clone()))
+        .map(|(i, l)| (u32::try_from(i).unwrap_or(u32::MAX), l.content.clone()))
         .collect();
     assert!(!add_info.is_empty(), "expected add lines in hunk 0");
     let add_indices: Vec<u32> = add_info.iter().map(|(i, _)| *i).collect();
@@ -1405,8 +1405,12 @@ fn unstaging_selected_lines_of_a_staged_rename_applies_without_a_patch_error() {
         .position(|line| matches!(line.origin, DiffOrigin::Add))
         .expect("the hunk holds the added line");
 
-    ctx.unstage_lines("math-util.ts", 0, &[added as u32])
-        .expect("unstage_lines failed");
+    ctx.unstage_lines(
+        "math-util.ts",
+        0,
+        &[u32::try_from(added).unwrap_or(u32::MAX)],
+    )
+    .expect("unstage_lines failed");
 
     let staged = staged_paths(&ctx);
     assert!(
@@ -1600,7 +1604,7 @@ fn staging_lines_under_ignore_whitespace_stages_the_lines_the_view_showed() {
         .iter()
         .enumerate()
         .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add))
-        .map(|(i, _)| i as u32)
+        .map(|(i, _)| u32::try_from(i).unwrap_or(u32::MAX))
         .collect();
 
     ctx.stage_lines_with_options("ws.txt", 0, &adds, &ignore_whitespace())

@@ -298,7 +298,7 @@ fn octopus_repo(branches: usize) -> TestContext {
         for (i, letter) in ["a", "b", "c"].iter().enumerate().take(branches) {
             branch_oids.push(raw_commit(
                 &repo,
-                &sig_at(3000 + 1000 * i as i64),
+                &sig_at(3000 + 1000 * i64::try_from(i).unwrap_or(i64::MAX)),
                 &format!("refs/heads/branch-{letter}"),
                 &format!("B{}", letter.to_uppercase()),
                 &format!("{letter}.txt"),
@@ -312,7 +312,7 @@ fn octopus_repo(branches: usize) -> TestContext {
         idx.add_path(std::path::Path::new("octopus.txt")).unwrap();
         idx.write().unwrap();
         let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
-        let sig = sig_at(3000 + 1000 * branches as i64);
+        let sig = sig_at(3000 + 1000 * i64::try_from(branches).unwrap_or(i64::MAX));
 
         let main1_c = repo.find_commit(main1).unwrap();
         let branch_commits: Vec<git2::Commit> = branch_oids

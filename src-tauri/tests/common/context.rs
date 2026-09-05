@@ -2,8 +2,9 @@ use std::path::Path;
 use trunk_lib::state::{GraphCache, OpenRepos};
 
 pub struct TestContext {
-    _dir: tempfile::TempDir,
-    _data_dir: tempfile::TempDir,
+    /// Held so the temporary directories outlive the context that names them.
+    dir: tempfile::TempDir,
+    data_dir: tempfile::TempDir,
     pub(crate) path: String,
     pub(crate) state_map: OpenRepos,
     pub(crate) cache_map: GraphCache,
@@ -31,8 +32,8 @@ impl TestContext {
         let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
 
         Self {
-            _dir: dir,
-            _data_dir: data_dir,
+            dir,
+            data_dir,
             path,
             state_map,
             cache_map: GraphCache::default(),
@@ -46,18 +47,18 @@ impl TestContext {
 
     /// Filesystem path to the temporary repo
     pub fn repo_path(&self) -> &Path {
-        self._dir.path()
+        self.dir.path()
     }
 
     /// Temporary directory standing in for `app_data_dir` in persistence tests.
     /// Threaded into `review_store` / review _inner functions as the `data_dir` arg.
     pub fn data_dir(&self) -> &Path {
-        self._data_dir.path()
+        self.data_dir.path()
     }
 
     /// Open a fresh `git2::Repository` handle
     pub fn repo(&self) -> git2::Repository {
-        git2::Repository::open(self._dir.path()).unwrap()
+        git2::Repository::open(self.dir.path()).unwrap()
     }
 
     /// Immutable borrow of the open repositories, for `_inner` functions.
@@ -74,8 +75,8 @@ impl TestContext {
     pub(crate) fn from_parts(dir: tempfile::TempDir, path: String, state_map: OpenRepos) -> Self {
         let data_dir = tempfile::tempdir().expect("failed to create data_dir tempdir");
         Self {
-            _dir: dir,
-            _data_dir: data_dir,
+            dir,
+            data_dir,
             path,
             state_map,
             cache_map: GraphCache::default(),

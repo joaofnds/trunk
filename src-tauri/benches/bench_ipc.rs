@@ -19,7 +19,7 @@ fn make_linear_repo(n: usize) -> BenchRepo {
     for i in 0..n {
         let blob_oid = repo.blob(format!("content-{i}").as_bytes()).unwrap();
         let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert(format!("file{i}.txt"), blob_oid, 0o100644)
+        tb.insert(format!("file{i}.txt"), blob_oid, 0o100_644)
             .unwrap();
         let tree_oid = tb.write().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
