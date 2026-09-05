@@ -45,7 +45,11 @@ class BridgeHost implements HostChannel {
 		void this.pump();
 	}
 
-	async invoke<T>(cmd: string, args: unknown = {}): Promise<T> {
+	async invoke<T>(
+		cmd: string,
+		args: unknown = {},
+		onReply?: (value: T) => void,
+	): Promise<T> {
 		const response = await fetch(`${BRIDGE}/invoke`, {
 			method: "POST",
 			headers: {
@@ -56,6 +60,8 @@ class BridgeHost implements HostChannel {
 		});
 		const body: InvokeReply = await response.json();
 		if (!body.ok) throw new Error(body.error);
+
+		onReply?.(body.value as T);
 		return body.value as T;
 	}
 

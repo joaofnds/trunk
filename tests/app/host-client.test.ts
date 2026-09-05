@@ -34,6 +34,18 @@ describe("host client", () => {
 		expect(filesUnder(host.home)).toContain("trunk-prefs.json");
 	});
 
+	it("runs the reply hook before the reply's promise settles", async () => {
+		host = await HostClient.spawn();
+		const order: string[] = [];
+
+		const answered = host.invoke("prefs_get", { key: "zoom_level" }, () =>
+			order.push("hook"),
+		);
+		await answered.then(() => order.push("promise"));
+
+		expect(order).toEqual(["hook", "promise"]);
+	});
+
 	it("rejects a seed step it cannot parse", async () => {
 		host = await HostClient.spawn();
 		const unknown = { step: "teleport" } as unknown as SpecStep;

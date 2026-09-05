@@ -46,7 +46,11 @@ that by inspection.
 the host.** The ACL check, the event id allocation and the Rust registration are all real. Only
 the delivery hop is the harness's: Tauri delivers an event by evaluating a script this side
 cannot observe, so the host mirrors each emit onto stdout and the harness dispatches from its
-own id map. A frontend `emit` travels as the `plugin:event|emit` command rather than through
+own id map. That map is filled on the registration's reply line itself, through the channel's
+`onReply` hook, not in a `.then` on the reply promise: the stdout reader fires every line of
+one chunk before a microtask runs, so a listener filled by promise callback lost any event
+that shared a chunk with its own registration reply, with the host having answered everything
+(TRUNK-159, the stash flake). A frontend `emit` travels as the `plugin:event|emit` command rather than through
 the host's own `emit` verb, so the plugin and the ACL are the real ones; the verb, which
 `driver.events` uses to mirror the watcher, calls `app.emit` directly and skips both.
 

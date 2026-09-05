@@ -32,6 +32,8 @@ export type EventHandler = (event: string, payload: unknown) => void;
 interface Pending {
 	resolve: (value: unknown) => void;
 	reject: (reason: unknown) => void;
+	/** Runs on the reply line itself, ahead of any line read behind it. */
+	onReply?: (value: unknown) => void;
 	/** What the host was asked to do, and when, so a wait that expires can say
 	 *  which round trip never came back. */
 	label: string;
@@ -150,7 +152,11 @@ export class HostClient {
 		return (await this.request({ verb: "seedRepo", spec })) as string;
 	}
 
-	async invoke<T>(cmd: string, args: unknown = {}): Promise<T> {
+	async invoke<T>(
+		cmd: string,
+		args: unknown = {},
+		onReply?: (value: T) => void,
+	): Promise<T> {
 		this.inFlight += 1;
 		// Recorded before the stall, so a command the knob is deliberately
 		// starving reads as outstanding rather than as one the host answered.
@@ -158,7 +164,10 @@ export class HostClient {
 		this.entered.add(entry);
 		try {
 			if (stalls(cmd)) await stall(STALL_MS);
-			return (await this.request({ verb: "invoke", cmd, args })) as T;
+			return (await this.request(
+				{ verb: "invoke", cmd, args },
+				onReply as ((value: unknown) => void) | undefined,
+			)) as T;
 		} finally {
 			this.entered.delete(entry);
 			this.inFlight -= 1;
@@ -197,14 +206,17 @@ export class HostClient {
 	 * nothing left to unregister, so those resolve quietly rather than writing down
 	 * a pipe nobody is reading.
 	 */
-	private request(body: Record<string, unknown>): Promise<unknown> {
+	private request(
+		body: Record<string, unknown>,
+		onReply?: (value: unknown) => void,
+	): Promise<unknown> {
 		if (this.closing || this.exited) return Promise.resolve(null);
 
 		const id = this.nextId++;
 		const label = String(body.cmd ?? body.verb);
 		const startedAt = Date.now();
 		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject, label, startedAt });
+			this.pending.set(id, { resolve, reject, onReply, label, startedAt });
 			this.send({ id, ...body });
 		});
 	}
@@ -261,6 +273,7 @@ export class HostClient {
 		} else if ("err" in message) {
 			waiter.reject(message.err);
 		} else {
+			waiter.onReply?.(message.ok);
 			waiter.resolve(message.ok);
 		}
 		return false;

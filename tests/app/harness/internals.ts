@@ -11,7 +11,16 @@ declare global {
  *  `HostClient` (stdio) and the measurement bridge's HTTP host both satisfy it,
  *  so neither one has to be cast to the other. */
 export interface HostChannel {
-	invoke<T>(cmd: string, args?: unknown): Promise<T>;
+	/**
+	 * `onReply` runs as the reply is read, before anything the host wrote after
+	 * it. The promise settles a microtask later, and a line read behind the
+	 * reply in the same chunk has already been handled by then.
+	 */
+	invoke<T>(
+		cmd: string,
+		args?: unknown,
+		onReply?: (value: T) => void,
+	): Promise<T>;
 	onEvent(handler: EventHandler): void;
 }
 
@@ -139,13 +148,13 @@ export class TauriInternals {
 	}
 
 	private listen(args: Record<string, unknown>): Promise<number> {
-		const registration = this.host.invoke<number>(LISTEN, args).then((id) => {
-			this.listeners.set(id, {
-				event: args.event as string,
-				callbackId: args.handler as number,
-			});
-			return id;
-		});
+		const listener = {
+			event: args.event as string,
+			callbackId: args.handler as number,
+		};
+		const registration = this.host.invoke<number>(LISTEN, args, (id) =>
+			this.listeners.set(id, listener),
+		);
 
 		this.registering.add(registration);
 		void registration
