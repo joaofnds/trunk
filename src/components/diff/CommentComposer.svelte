@@ -3,7 +3,7 @@ import { untrack } from "svelte";
 import { buildDiffAnchor } from "../../lib/diff-anchor.js";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
-import { ownedTimer } from "../../lib/owned-timer.js";
+import { createOwnedTimer } from "../../lib/owned-timer.js";
 import {
 	deleteDraft,
 	getDraft,
@@ -74,7 +74,7 @@ $effect(() => {
 });
 
 const DRAFT_DEBOUNCE_MS = 300;
-const draftSave = ownedTimer();
+const draftSave = createOwnedTimer();
 
 // The capture-time adapter is the single source of truth for both the persisted
 // range (start_line..end_line) and the excerpt. When the host injects a captured
@@ -114,12 +114,9 @@ async function persistDraft() {
 	}
 }
 
-function handleInput() {
-	scheduleDraftSave();
-}
-
 async function handleSubmit() {
 	if (submitDisabled) return;
+
 	submitting = true;
 	draftSave.cancel();
 	try {
@@ -183,7 +180,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 		class="composer-textarea"
 		placeholder="Leave a comment on these lines…"
 		bind:value={text}
-		oninput={handleInput}
+		oninput={scheduleDraftSave}
 	></textarea>
 	<div class="composer-actions">
 		<button class="composer-btn cancel-btn" onclick={handleCancel}>Cancel</button>

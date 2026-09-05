@@ -15,7 +15,7 @@ import { commitOidForComment } from "../lib/comment-counts.js";
 import { createDraft } from "../lib/draft.svelte.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
-import { ownedTimer } from "../lib/owned-timer.js";
+import { createOwnedTimer } from "../lib/owned-timer.js";
 import {
 	addReply,
 	deleteReply,
@@ -149,14 +149,10 @@ const groups = $derived.by<CommitGroup[]>(() => {
 const hasAnyComment = $derived(comments.length > 0);
 
 let copied = $state(false);
-const copiedRevert = ownedTimer();
+const copiedRevert = createOwnedTimer();
 
-// End-review two-step confirm. First click flips endConfirming true and arms a
-// 3000ms revert; second click within the window invokes publish_review and lets
-// the reviews-changed listener round-trip drive the panel back to the cold
-// state (D-08 — no manual array clear).
 let endConfirming = $state(false);
-const endConfirmRevert = ownedTimer();
+const endConfirmRevert = createOwnedTimer();
 
 function isOrphan(c: Thread): boolean {
 	const r = resolutionById.get(c.id);
@@ -250,6 +246,7 @@ async function saveEdit(id: string, text: string) {
 async function onCopyClick() {
 	try {
 		if (!activeReviewId) return;
+
 		const md = await session.generate(repoPath, activeReviewId);
 		await writeText(md);
 		copied = true;
@@ -282,6 +279,7 @@ async function onEndClick() {
 	// the button's {#if} gate hides it. On failure we explicitly revert.
 	endConfirmRevert.cancel();
 	if (!activeReviewId) return;
+
 	try {
 		await safeInvoke("publish_review", {
 			path: repoPath,
@@ -350,7 +348,7 @@ async function commitRename() {
 // Deleting a review is destructive in every state, so it takes the same
 // two-step confirm the publish button uses rather than a single click.
 let deleteConfirmingId = $state<string | null>(null);
-const deleteConfirmRevert = ownedTimer();
+const deleteConfirmRevert = createOwnedTimer();
 
 async function onDeleteReviewClick(id: string) {
 	if (deleteConfirmingId !== id) {
@@ -363,6 +361,7 @@ async function onDeleteReviewClick(id: string) {
 
 	deleteConfirmRevert.cancel();
 	deleteConfirmingId = null;
+
 	try {
 		await safeInvoke("delete_review", { path: repoPath, reviewId: id });
 	} catch (e) {

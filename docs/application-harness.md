@@ -190,8 +190,11 @@ step pins `at`, because the graph sorts `TOPOLOGICAL | TIME` and same-second com
 arbitrarily.
 
 RepoView debounces `repo-changed` before refetching, and in the harness that debounce runs
-on a frozen `FakeScheduler` installed through `mount`'s context option. No wall-clock window
-outlasts it, so a test advances it deliberately:
+on a frozen `FakeScheduler` installed through `mount`'s context option. Every owned timer
+(`GLOSSARY.md`) lands in the same scheduler: the review panel's Copied, end-confirm and
+delete-confirm reverts and the comment composer's draft autosave queue beside the debounce,
+and `flush` fires them all. No wall-clock window outlasts it, so a test advances it
+deliberately:
 
 - `app.elapse()` waits for a timer to be armed and fires it. Use it after a gesture that
   produces one `repo-changed` emit.
@@ -202,7 +205,9 @@ outlasts it, so a test advances it deliberately:
   a refresh landing mid-selection discards the selection.
 
 A negative assertion — "nothing else refetched" — reads `app.scheduler.pending` directly:
-nothing armed means nothing was scheduled to happen.
+nothing armed means nothing was scheduled to happen. It counts every owned timer, so after
+a Copy click, a first End review or Delete click, or a keystroke in the composer, a pending
+timer is that affordance's and not a refetch.
 
 `waitFor`'s 5 000 ms deadline is a safety net, not a budget, and it is not the thing to raise
 when a run goes red. Measured over 448 waits, 336 on a quiet machine and 112 with the CPU

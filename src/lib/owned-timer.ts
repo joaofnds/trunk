@@ -1,9 +1,9 @@
 import { onDestroy } from "svelte";
-import { getScheduler, type Scheduler } from "./scheduler.js";
+import { getScheduler } from "./scheduler.js";
 
 /** At most one pending callback, which the owning component takes down with it. */
 export interface OwnedTimer {
-	/** Replaces whatever is pending. */
+	/** Replaces whatever is pending. Arms nothing once the component is destroyed. */
 	arm(callback: () => void, delayMs: number): void;
 	cancel(): void;
 }
@@ -13,8 +13,10 @@ export interface OwnedTimer {
  * context and is cancelled when the component is destroyed, so a callback can
  * never fire against a component that no longer exists.
  */
-export function ownedTimer(scheduler: Scheduler = getScheduler()): OwnedTimer {
+export function createOwnedTimer(): OwnedTimer {
+	const scheduler = getScheduler();
 	let handle: number | null = null;
+	let destroyed = false;
 
 	function cancel() {
 		if (handle === null) return;
@@ -25,6 +27,7 @@ export function ownedTimer(scheduler: Scheduler = getScheduler()): OwnedTimer {
 
 	function arm(callback: () => void, delayMs: number) {
 		cancel();
+		if (destroyed) return;
 
 		handle = scheduler.setTimeout(() => {
 			handle = null;
@@ -32,7 +35,10 @@ export function ownedTimer(scheduler: Scheduler = getScheduler()): OwnedTimer {
 		}, delayMs);
 	}
 
-	onDestroy(cancel);
+	onDestroy(() => {
+		destroyed = true;
+		cancel();
+	});
 
 	return { arm, cancel };
 }

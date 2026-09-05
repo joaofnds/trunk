@@ -1057,6 +1057,25 @@ describe("ReviewPanel", () => {
 			expect(scheduler.pending).toBe(0);
 		});
 
+		it("arms no revert when the copy resolves after the panel is gone", async () => {
+			const scheduler = new FakeScheduler();
+			let clipboardWritten = () => {};
+			vi.mocked(writeText).mockReturnValueOnce(
+				new Promise<void>((resolve) => {
+					clipboardWritten = resolve;
+				}),
+			);
+			const { unmount } = renderWithComment({ scheduler });
+			await flushFake();
+			await fireEvent.click(getCopyButton());
+
+			unmount();
+			clipboardWritten();
+			await flushFake();
+
+			expect(scheduler.pending).toBe(0);
+		});
+
 		it("coerces non-Error rejection", async () => {
 			vi.mocked(writeText).mockRejectedValueOnce("raw string");
 			renderWithComment();
@@ -1270,8 +1289,8 @@ describe("review list", () => {
 		created_at: 0,
 	};
 
-	function renderPanel() {
-		render(ReviewPanel, {
+	function renderPanel(opts: { scheduler?: FakeScheduler } = {}) {
+		return render(ReviewPanel, {
 			props: {
 				repoPath: "/repo",
 				session: createReviewSession(),
@@ -1279,6 +1298,9 @@ describe("review list", () => {
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
 			},
+			...(opts.scheduler
+				? { context: new Map([[SCHEDULER, opts.scheduler]]) }
+				: {}),
 		});
 	}
 
@@ -1362,6 +1384,40 @@ describe("review list", () => {
 			path: "/repo",
 			reviewId: ACTIVE_REVIEW,
 		});
+	});
+
+	it("drops the delete confirmation once its window runs out", async () => {
+		const scheduler = new FakeScheduler();
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		renderPanel({ scheduler });
+		await flush();
+		const del = screen.getByRole("button", {
+			name: `Delete review ${ACTIVE_REVIEW}`,
+		});
+		await fireEvent.click(del);
+		await flush();
+		expect(del).toHaveTextContent("Confirm delete");
+
+		scheduler.flush();
+		await flush();
+
+		expect(del).toHaveTextContent("Delete review");
+	});
+
+	it("takes the delete confirmation timer down with the panel", async () => {
+		const scheduler = new FakeScheduler();
+		installReads({ reviews: [aReview()], activeReviewId: ACTIVE_REVIEW });
+		const { unmount } = renderPanel({ scheduler });
+		await flush();
+		await fireEvent.click(
+			screen.getByRole("button", { name: `Delete review ${ACTIVE_REVIEW}` }),
+		);
+		await flush();
+		expect(scheduler.pending).toBe(1);
+
+		unmount();
+
+		expect(scheduler.pending).toBe(0);
 	});
 
 	it("renames a review through the inline title editor", async () => {

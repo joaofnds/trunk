@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../../tests/app/fakes/scheduler.js";
 import { safeInvoke } from "../../lib/invoke.js";
+import { SCHEDULER } from "../../lib/scheduler.js";
 import { _resetToasts, toasts } from "../../lib/toast.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 import CommentComposer from "./CommentComposer.svelte";
@@ -85,7 +87,7 @@ describe("CommentComposer", () => {
 		vi.useRealTimers();
 	});
 
-	function renderComposer() {
+	function renderComposer(opts: { scheduler?: FakeScheduler } = {}) {
 		return render(CommentComposer, {
 			props: {
 				file: modifiedFile,
@@ -95,6 +97,9 @@ describe("CommentComposer", () => {
 				repoPath: "/repo",
 				onclose: () => {},
 			},
+			...(opts.scheduler
+				? { context: new Map([[SCHEDULER, opts.scheduler]]) }
+				: {}),
 		});
 	}
 
@@ -477,14 +482,16 @@ describe("CommentComposer", () => {
 	});
 
 	it("never saves the draft once the composer is gone", async () => {
-		vi.useFakeTimers();
-		const { unmount } = renderComposer();
+		const scheduler = new FakeScheduler();
+		const { unmount } = renderComposer({ scheduler });
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "typed, then closed" },
 		});
+		expect(scheduler.pending).toBe(1);
 
 		unmount();
-		await vi.advanceTimersByTimeAsync(300);
+		scheduler.flush();
+		await tick();
 
 		expect(
 			mockedInvoke.mock.calls.filter((c) => c[0] === "save_draft"),
