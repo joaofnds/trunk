@@ -12,7 +12,7 @@ pub struct TestContext {
 
 impl TestContext {
     /// Entry point for building test fixtures (D-04)
-    pub fn builder() -> crate::common::builder::TestContextBuilder {
+    pub const fn builder() -> crate::common::builder::TestContextBuilder {
         crate::common::builder::TestContextBuilder::new()
     }
 
@@ -32,7 +32,7 @@ impl TestContext {
         let mut state_map = HashMap::new();
         state_map.insert(path.clone(), dir.path().to_path_buf());
 
-        TestContext {
+        Self {
             _dir: dir,
             _data_dir: data_dir,
             path,
@@ -51,24 +51,24 @@ impl TestContext {
         self._dir.path()
     }
 
-    /// Temporary directory standing in for app_data_dir in persistence tests.
-    /// Threaded into review_store / review _inner functions as the `data_dir` arg.
+    /// Temporary directory standing in for `app_data_dir` in persistence tests.
+    /// Threaded into `review_store` / review _inner functions as the `data_dir` arg.
     pub fn data_dir(&self) -> &Path {
         self._data_dir.path()
     }
 
-    /// Open a fresh git2::Repository handle
+    /// Open a fresh `git2::Repository` handle
     pub fn repo(&self) -> git2::Repository {
         git2::Repository::open(self._dir.path()).unwrap()
     }
 
-    /// Immutable borrow of state_map (for _inner functions taking &HashMap)
-    pub fn state_map(&self) -> &HashMap<String, PathBuf> {
+    /// Immutable borrow of `state_map` (for _inner functions taking &`HashMap`)
+    pub const fn state_map(&self) -> &HashMap<String, PathBuf> {
         &self.state_map
     }
 
-    /// Mutable borrow of cache_map (for branch _inner functions taking &mut HashMap)
-    pub fn cache_map(&mut self) -> &mut HashMap<String, GraphSnapshot> {
+    /// Mutable borrow of `cache_map` (for branch _inner functions taking &mut `HashMap`)
+    pub const fn cache_map(&mut self) -> &mut HashMap<String, GraphSnapshot> {
         &mut self.cache_map
     }
 
@@ -79,7 +79,7 @@ impl TestContext {
         state_map: HashMap<String, PathBuf>,
     ) -> Self {
         let data_dir = tempfile::tempdir().expect("failed to create data_dir tempdir");
-        TestContext {
+        Self {
             _dir: dir,
             _data_dir: data_dir,
             path,

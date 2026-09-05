@@ -265,7 +265,7 @@ pub struct RenderedReply {
 impl RenderedReply {
     fn from_reply(r: replies::Reply) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&r.text);
-        RenderedReply {
+        Self {
             id: r.id,
             text: r.text,
             text_html,
@@ -306,7 +306,7 @@ pub struct RenderedThread {
 impl RenderedThread {
     fn from_thread(t: threads::Thread, replies: Vec<replies::Reply>, published: bool) -> Self {
         let text_html = crate::commands::markdown::render_comment_text(&t.text);
-        RenderedThread {
+        Self {
             id: t.id,
             review_id: t.review_id,
             text: t.text,
@@ -339,9 +339,7 @@ pub fn list_threads_inner(
         };
         // Every thread in this batch belongs to the same active review, so its
         // published bit is read once rather than per-thread.
-        let published = reviews::get(conn, &review_id)?
-            .map(|r| r.published)
-            .unwrap_or(false);
+        let published = reviews::get(conn, &review_id)?.is_some_and(|r| r.published);
 
         Ok(threads::list_with_replies(conn, &review_id)?
             .into_iter()
@@ -971,7 +969,7 @@ pub async fn list_session_commits<R: Runtime>(
 
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
         let mut result = intersect_graph_order(&commits, &graph.layout, &repo);
-        for commit in result.iter_mut() {
+        for commit in &mut result {
             commit.is_snapshot = snapshot_oids.contains(&commit.oid);
         }
 
@@ -1349,7 +1347,7 @@ mod tests {
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
         let mut state_map = HashMap::new();
-        state_map.insert("real".to_string(), real.clone());
+        state_map.insert("real".to_string(), real);
         state_map.insert("link".to_string(), link);
 
         assert_eq!(

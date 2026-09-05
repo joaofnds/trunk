@@ -42,6 +42,7 @@ pub struct RenderInput {
 }
 
 /// One `## Commits` bullet: the oid plus the subject stored at add time.
+///
 /// Stored, not resolved: a snapshot commit gc has collected keeps the label
 /// it was added under, and the CLI needs no repository (D13).
 pub struct DocCommit {
@@ -75,8 +76,8 @@ pub struct DocReply {
 /// Longest run of consecutive backticks in `s`. Linear byte-scan — counter
 /// resets on any non-backtick byte (including newlines), so two separate
 /// `` ``` `` runs split by a newline do NOT compose into a longer run.
-/// Shared by `fence_length` (CommonMark §4.5, block fences) and `inline_code`
-/// (CommonMark §6.1, inline spans) — both need the same quantity to size a
+/// Shared by `fence_length` (`CommonMark` §4.5, block fences) and `inline_code`
+/// (`CommonMark` §6.1, inline spans) — both need the same quantity to size a
 /// delimiter that can't be broken out of by the content it wraps.
 fn longest_backtick_run(s: &str) -> usize {
     let mut longest = 0usize;
@@ -93,7 +94,7 @@ fn longest_backtick_run(s: &str) -> usize {
 }
 
 /// L-03: fence length is `max(3, longest_contiguous_backtick_run + 1)`.
-/// CommonMark §4.5 requires the opening fence be strictly longer than any
+/// `CommonMark` §4.5 requires the opening fence be strictly longer than any
 /// inner backtick run.
 pub(crate) fn fence_length(body: &str) -> usize {
     std::cmp::max(3, longest_backtick_run(body) + 1)
@@ -144,13 +145,12 @@ fn repo_name(session: &RenderInput) -> String {
         .unwrap_or(&session.repo_dir)
         .file_name()
         .and_then(|n| n.to_str())
-        .map(String::from)
-        .unwrap_or_else(|| "repository".to_string())
+        .map_or_else(|| "repository".to_string(), String::from)
 }
 
 /// Inline-code guard: wraps `s` in backticks sized to survive any backtick
 /// run already inside it, padding with a space when `s` itself starts or ends
-/// with a backtick (CommonMark §6.1). Used for values interpolated into the
+/// with a backtick (`CommonMark` §6.1). Used for values interpolated into the
 /// header prose (e.g. the repo root path) that `emit_fence`'s block-fence
 /// sizing does not cover.
 fn inline_code(s: &str) -> String {
@@ -178,7 +178,7 @@ pub(crate) fn sanitize_heading_text(s: &str) -> String {
 /// Which tree an anchor's line range and excerpt come from — rendered in
 /// every anchor heading so `Side::Old` (the parent commit's tree) is never
 /// mistaken for current code.
-fn side_label(side: &Side) -> &'static str {
+const fn side_label(side: &Side) -> &'static str {
     match side {
         Side::New => "after",
         Side::Old => "before",
@@ -219,7 +219,7 @@ fn commit_subject(session: &RenderInput, oid_str: &str) -> String {
 
 /// Emit a fenced code block — fence length scales to the body's longest
 /// backtick run per L-03. `info` is the language tag (or "diff" for Diff
-/// sources, "text" fallback for FullFile).
+/// sources, "text" fallback for `FullFile`).
 fn emit_fence(out: &mut String, body: &str, info: &str) {
     use std::fmt::Write;
     let n = fence_length(body);
@@ -263,7 +263,7 @@ fn emit_reviewer_text(out: &mut String, text: &str, channel: Channel) {
 /// as its entire prompt — so a line like `#### [id] path:L1-L1 (oid, after)
 /// — open` inside a reply would otherwise render as real document structure,
 /// followed by its own `**Reviewer:**` line to fill it in. A backslash
-/// before the run escapes it per CommonMark backslash-escape rules without
+/// before the run escapes it per `CommonMark` backslash-escape rules without
 /// altering the visible text.
 fn neutralize_leading_hashes(s: &str) -> String {
     s.split('\n')
@@ -468,12 +468,12 @@ enum ThreadTarget<'c> {
         anchor: &'c Anchor,
         info: &'static str,
     },
-    /// anchor=None, commit_oid present.
+    /// anchor=None, `commit_oid` present.
     CommitLevel {
         thread: &'c DocThread,
         commit_oid: String,
     },
-    /// anchor=None, commit_oid=None: the thread names no target at all.
+    /// anchor=None, `commit_oid=None`: the thread names no target at all.
     NoTarget { thread: &'c DocThread },
 }
 
@@ -553,12 +553,11 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             }
             // D-06: excerpt FIRST, comment text after — straight from the
             // stored row, never re-resolved from the repository.
-            match &thread.excerpt {
-                Some(excerpt) => emit_fence(out, excerpt, info),
-                None => {
-                    let _ = writeln!(out, "No excerpt was captured for this thread.");
-                    let _ = writeln!(out);
-                }
+            if let Some(excerpt) = &thread.excerpt {
+                emit_fence(out, excerpt, info)
+            } else {
+                let _ = writeln!(out, "No excerpt was captured for this thread.");
+                let _ = writeln!(out);
             }
         }
         ThreadTarget::CommitLevel { thread, commit_oid } => {
@@ -839,7 +838,7 @@ mod tests {
                 commit_oid, file_path, source, side, start_line, end_line,
             )),
             commit_oid: None,
-            excerpt: cached_excerpt.map(|s| s.to_string()),
+            excerpt: cached_excerpt.map(std::string::ToString::to_string),
             channel: Channel::Human,
             replies: vec![],
         }
@@ -871,7 +870,7 @@ mod tests {
                 end_line,
             }),
             commit_oid: None,
-            excerpt: cached_excerpt.map(|s| s.to_string()),
+            excerpt: cached_excerpt.map(std::string::ToString::to_string),
             channel: Channel::Human,
             replies: vec![],
         }

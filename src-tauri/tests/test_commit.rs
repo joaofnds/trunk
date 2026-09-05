@@ -45,8 +45,7 @@ fn create_commit_works_on_unborn_head() {
     let result = ctx.create_commit("Initial commit", None);
     assert!(
         result.is_ok(),
-        "expected Ok for unborn HEAD, got: {:?}",
-        result
+        "expected Ok for unborn HEAD, got: {result:?}"
     );
 
     let repo = ctx.repo();

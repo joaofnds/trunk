@@ -19,10 +19,10 @@ fn make_linear_repo(n: usize) -> BenchRepo {
     let mut parent_oid: Option<git2::Oid> = None;
 
     for i in 0..n {
-        let blob_oid = repo.blob(format!("content-{}", i).as_bytes()).unwrap();
+        let blob_oid = repo.blob(format!("content-{i}").as_bytes()).unwrap();
 
         let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert(format!("file{}.txt", i), blob_oid, 0o100644)
+        tb.insert(format!("file{i}.txt"), blob_oid, 0o100644)
             .unwrap();
         let tree_oid = tb.write().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
@@ -38,7 +38,7 @@ fn make_linear_repo(n: usize) -> BenchRepo {
                 Some("refs/heads/main"),
                 &sig,
                 &sig,
-                &format!("Commit {}", i),
+                &format!("Commit {i}"),
                 &tree,
                 &parent_refs,
             )

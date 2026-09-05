@@ -49,6 +49,7 @@ pub struct Store {
 /// (§5.2). It is the one sanctioned escape from the identifier: a test-built
 /// binary carries the prod identifier and would otherwise read the
 /// developer's real store.
+#[must_use]
 pub fn data_dir_for(identifier: &str) -> PathBuf {
     if let Some(dir) = std::env::var_os("TRUNK_DATA_DIR") {
         return PathBuf::from(dir);
@@ -100,7 +101,7 @@ pub fn open(data_dir: &Path) -> Result<Store, TrunkError> {
 
 fn open_at(path: &Path, data_dir: &Path) -> Result<Store, TrunkError> {
     let conn = Connection::open(path).map_err(sqlite_error)?;
-    conn.busy_timeout(std::time::Duration::from_millis(BUSY_TIMEOUT_MS as u64))
+    conn.busy_timeout(std::time::Duration::from_millis(u64::from(BUSY_TIMEOUT_MS)))
         .map_err(sqlite_error)?;
 
     // Before any pragma that writes the file: `journal_mode = WAL` rewrites the
@@ -248,6 +249,7 @@ pub const CORRUPT: &str = "store_corrupt";
 /// Translate a driver failure into a stable port error, keeping the one
 /// distinction the caller acts on — `storage.rs`'s posture is "never destroy",
 /// and only genuine corruption earns the quarantine.
+#[must_use]
 pub fn sqlite_error(e: rusqlite::Error) -> TrunkError {
     use rusqlite::ErrorCode;
 
@@ -262,6 +264,7 @@ pub fn sqlite_error(e: rusqlite::Error) -> TrunkError {
 
 /// The primary-key form of a canonical repo path. Every table keyed by repo path
 /// goes through this, so no two tables can disagree on the key.
+#[must_use]
 pub fn repo_key(repo_path: &Path) -> String {
     repo_path.to_string_lossy().into_owned()
 }
@@ -305,11 +308,11 @@ pub fn require_unpublished(published: bool, noun: &str) -> Result<(), TrunkError
 /// Wall-clock seconds, for `created_at` / `updated_at`. Every store function
 /// takes the timestamp as an argument instead of reading the clock itself, so a
 /// test can pin it.
+#[must_use]
 pub fn now_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_secs() as i64)
 }
 
 #[cfg(test)]

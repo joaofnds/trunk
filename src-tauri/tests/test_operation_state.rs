@@ -78,7 +78,7 @@ fn merge_branch_begin_non_conflicting_then_continue_creates_merge_commit() {
     let result = ctx.merge_branch_begin("feature").unwrap();
     let message = match result {
         MergeBeginResult::Ready { message, .. } => message,
-        other => panic!("expected Ready for a clean non-ff merge, got {:?}", other),
+        other => panic!("expected Ready for a clean non-ff merge, got {other:?}"),
     };
     // Begin staged without committing: still mid-merge with MERGE_HEAD set.
     let info = ctx.get_operation_state().unwrap();
@@ -111,8 +111,7 @@ fn merge_branch_begin_fast_forward_when_linear() {
     let result = ctx.merge_branch_begin("feature").unwrap();
     assert!(
         matches!(result, MergeBeginResult::FastForwarded { .. }),
-        "expected FastForwarded, got {:?}",
-        result
+        "expected FastForwarded, got {result:?}"
     );
 
     // Fast-forward merge: HEAD has 1 parent (not a merge commit).
@@ -141,8 +140,7 @@ fn merge_branch_begin_with_conflict_returns_conflicts() {
     let result = ctx.merge_branch_begin("feature").unwrap();
     assert!(
         matches!(result, MergeBeginResult::Conflicts { .. }),
-        "expected Conflicts, got {:?}",
-        result
+        "expected Conflicts, got {result:?}"
     );
     let info = ctx.get_operation_state().unwrap();
     assert!(matches!(info.op_type, OperationType::Merge));
@@ -170,7 +168,7 @@ fn merge_abort_clears_merge_state() {
 
     // Abort the merge
     let result = ctx.merge_abort();
-    assert!(result.is_ok(), "merge_abort should succeed: {:?}", result);
+    assert!(result.is_ok(), "merge_abort should succeed: {result:?}");
 
     let info = ctx.get_operation_state().unwrap();
     assert!(matches!(info.op_type, OperationType::None));
@@ -192,7 +190,7 @@ fn rebase_branch_with_no_conflicts_completes() {
         .build();
 
     let result = ctx.rebase_branch("main");
-    assert!(result.is_ok(), "rebase_branch should succeed: {:?}", result);
+    assert!(result.is_ok(), "rebase_branch should succeed: {result:?}");
 
     let info = ctx.get_operation_state().unwrap();
     assert!(matches!(info.op_type, OperationType::None));
@@ -218,7 +216,7 @@ fn rebase_abort_clears_rebase_state() {
 
     // Abort it
     let result = ctx.rebase_abort();
-    assert!(result.is_ok(), "rebase_abort should succeed: {:?}", result);
+    assert!(result.is_ok(), "rebase_abort should succeed: {result:?}");
 
     let info = ctx.get_operation_state().unwrap();
     assert!(matches!(info.op_type, OperationType::None));
@@ -270,8 +268,7 @@ fn rebase_continue_after_resolving_conflict_completes() {
     let result = ctx.rebase_continue(None);
     assert!(
         result.is_ok(),
-        "rebase_continue should complete after resolution: {:?}",
-        result
+        "rebase_continue should complete after resolution: {result:?}"
     );
     let info = ctx.get_operation_state().unwrap();
     assert!(
@@ -339,8 +336,7 @@ fn rebase_skip_with_a_later_reword_completes() {
 
     assert!(
         result.is_ok(),
-        "rebase_skip should complete through the reword step: {:?}",
-        result
+        "rebase_skip should complete through the reword step: {result:?}"
     );
     let info = ctx.get_operation_state().unwrap();
     assert!(

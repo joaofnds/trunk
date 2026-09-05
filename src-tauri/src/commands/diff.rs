@@ -223,7 +223,7 @@ fn delta_sides_of(delta: &git2::DiffDelta<'_>) -> DeltaSides {
     DeltaSides {
         old_oid: delta.old_file().id(),
         new_oid: delta.new_file().id(),
-        new_path: delta.new_file().path().map(|p| p.to_path_buf()),
+        new_path: delta.new_file().path().map(std::path::Path::to_path_buf),
     }
 }
 
@@ -461,6 +461,7 @@ pub struct SideContent {
 }
 
 impl SideContent {
+    #[must_use]
     pub fn none() -> Self {
         Self::default()
     }
@@ -595,6 +596,7 @@ fn pick_side_line<'a, 'b>(
 }
 
 /// Enrich file diffs with word-level diff spans and syntax highlighting.
+///
 /// Syntax tokens come from each side's real file content (`sides`, parallel to
 /// `file_diffs`), parsed by its own highlighter — never from the diff line
 /// stream, which is not either file version's real content.
@@ -756,7 +758,7 @@ pub fn diff_commit_inner(
     walk_diff(diff, &repo, NewSideSource::Odb)
 }
 
-/// Lightweight commit file listing — returns only metadata (path, status, is_binary),
+/// Lightweight commit file listing — returns only metadata (path, status, `is_binary`),
 /// no hunks/lines/spans. Used for the commit detail sidebar file list.
 pub fn list_commit_files_inner(
     path: &str,

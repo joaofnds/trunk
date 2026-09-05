@@ -14,7 +14,7 @@ pub struct WatcherState {
 
 impl Default for WatcherState {
     fn default() -> Self {
-        WatcherState {
+        Self {
             watchers: Mutex::new(HashMap::new()),
             enabled: true,
         }
@@ -24,8 +24,9 @@ impl Default for WatcherState {
 impl WatcherState {
     /// A state that refuses to watch. The application test harness manages one of
     /// these, so `open_repo` runs unchanged while no filesystem watch is created.
+    #[must_use]
     pub fn disabled() -> Self {
-        WatcherState {
+        Self {
             enabled: false,
             ..Default::default()
         }

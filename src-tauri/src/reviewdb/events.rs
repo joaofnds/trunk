@@ -1,7 +1,7 @@
 //! The store's change feed — the event-driven counterpart of `poll` (João's
 //! ruling 2026-08-31: the watch verb blocks on events, no timers, no loops).
 //!
-//! SQLite offers no cross-process hook, and FSEvents was measured dropping
+//! SQLite offers no cross-process hook, and `FSEvents` was measured dropping
 //! pure content appends to the WAL on the development host (2026-08-31,
 //! confirming the grilled doc's 3C rejection of file-watching), so the feed
 //! is a doorbell the writers themselves ring: every process that commits a
@@ -59,6 +59,7 @@ pub struct StoreEvents {
 
 impl StoreEvents {
     /// Block until the next event. `None` means the feed ended.
+    #[must_use]
     pub fn recv(&self) -> Option<StoreEvent> {
         self.receiver.recv().ok()
     }
@@ -66,6 +67,7 @@ impl StoreEvents {
     /// The event already queued, if any. Paired with [`StoreEvents::sync`]
     /// this answers "was an event produced" without a deadline.
     #[cfg(feature = "test-util")]
+    #[must_use]
     pub fn try_recv(&self) -> Option<StoreEvent> {
         self.receiver.try_recv().ok()
     }
@@ -75,6 +77,7 @@ impl StoreEvents {
     /// this revision needs no event; one above it has been lost. That is what
     /// separates "nothing to announce" from "the startup window dropped it".
     #[cfg(feature = "test-util")]
+    #[must_use]
     pub fn baseline(&self) -> Option<i64> {
         *self.last_revision.lock().unwrap()
     }
@@ -104,6 +107,7 @@ impl StoreEvents {
     /// listener drains. The bound is a count, not a clock, so a socket with
     /// nobody behind it still ends the loop at once.
     #[cfg(feature = "test-util")]
+    #[must_use]
     pub fn sync(&self) -> bool {
         use std::io::Write;
 

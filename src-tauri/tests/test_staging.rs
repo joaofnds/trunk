@@ -158,8 +158,7 @@ fn unstage_file_works_on_unborn_head() {
     let result = ctx.unstage_file("new_file.txt");
     assert!(
         result.is_ok(),
-        "expected Ok(()) for unstage on unborn HEAD, got: {:?}",
-        result
+        "expected Ok(()) for unstage on unborn HEAD, got: {result:?}"
     );
 }
 
@@ -361,7 +360,7 @@ fn dirty_counts_includes_untracked() {
 fn create_multi_hunk_file(ctx: &TestContext) {
     // Original content: 30 lines to ensure context separation between hunks
     let original = (1..=30)
-        .map(|i| format!("line {}", i))
+        .map(|i| format!("line {i}"))
         .collect::<Vec<_>>()
         .join("\n")
         + "\n";
@@ -382,7 +381,10 @@ fn create_multi_hunk_file(ctx: &TestContext) {
     }
 
     // Modify lines near the top AND near the bottom (creates 2 hunks)
-    let mut lines: Vec<String> = original.split('\n').map(|s| s.to_string()).collect();
+    let mut lines: Vec<String> = original
+        .split('\n')
+        .map(std::string::ToString::to_string)
+        .collect();
     lines[1] = "MODIFIED line 2".to_string(); // Near top -> hunk 0
     lines[28] = "MODIFIED line 29".to_string(); // Near bottom -> hunk 1
     std::fs::write(ctx.repo_path().join("multi.txt"), lines.join("\n")).unwrap();
@@ -563,7 +565,7 @@ fn discard_hunk_clean_file_returns_error() {
 
 fn create_add_delete_hunk_file(ctx: &TestContext) {
     let original = (1..=30)
-        .map(|i| format!("line {}", i))
+        .map(|i| format!("line {i}"))
         .collect::<Vec<_>>()
         .join("\n")
         + "\n";
@@ -583,7 +585,10 @@ fn create_add_delete_hunk_file(ctx: &TestContext) {
     }
 
     // Replace line 2 and insert a new line, plus modify line 29
-    let mut lines: Vec<String> = original.lines().map(|s| s.to_string()).collect();
+    let mut lines: Vec<String> = original
+        .lines()
+        .map(std::string::ToString::to_string)
+        .collect();
     lines[1] = "MODIFIED line 2".to_string();
     lines.insert(2, "INSERTED line 2.5".to_string());
     lines[29] = "MODIFIED line 29".to_string();
@@ -1081,8 +1086,7 @@ fn discard_lines_removes_selected_add_lines_from_file() {
         let trimmed = content.trim();
         assert!(
             !file_lines.contains(&trimmed),
-            "expected discarded add line '{}' to be gone from file",
-            trimmed
+            "expected discarded add line '{trimmed}' to be gone from file"
         );
     }
 }
@@ -1486,7 +1490,7 @@ fn whitespace_change_before_real_ones(ctx: &TestContext) -> String {
     let mut lines: Vec<String> = original
         .trim_end_matches('\n')
         .split('\n')
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
     lines[1] = "line 2   ".to_string();
     lines[20] = "REAL line 21".to_string();

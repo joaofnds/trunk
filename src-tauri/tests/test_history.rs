@@ -8,7 +8,7 @@ use trunk_lib::commands::history::{GraphResponse, set_ref_visibility_inner};
 use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::types::{GraphResult, MatchType};
 
-/// Build a TestContext with a merge topology and populate its cache.
+/// Build a `TestContext` with a merge topology and populate its cache.
 /// Topology: Initial commit -> Feature commit -> Merge feature into main
 fn build_search_ctx() -> TestContext {
     let mut ctx = TestContext::builder()

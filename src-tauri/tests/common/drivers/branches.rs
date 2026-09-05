@@ -14,7 +14,7 @@ impl TestContext {
         branches::resolve_ref_inner(self.path(), ref_name, self.state_map())
     }
 
-    /// Checkout a branch by name (needs &mut self for cache_map)
+    /// Checkout a branch by name (needs &mut self for `cache_map`)
     pub fn checkout_branch(&mut self, name: &str) -> Result<(), TrunkError> {
         branches::checkout_branch_inner(
             &self.path,
@@ -25,7 +25,7 @@ impl TestContext {
         )
     }
 
-    /// Delete a local branch (needs &mut self for cache_map)
+    /// Delete a local branch (needs &mut self for `cache_map`)
     pub fn delete_branch(&mut self, name: &str) -> Result<(), TrunkError> {
         branches::delete_branch_inner(
             &self.path,
@@ -36,7 +36,7 @@ impl TestContext {
         )
     }
 
-    /// Rename a local branch (needs &mut self for cache_map)
+    /// Rename a local branch (needs &mut self for `cache_map`)
     pub fn rename_branch(&mut self, old: &str, new: &str) -> Result<(), TrunkError> {
         branches::rename_branch_inner(
             &self.path,
@@ -48,7 +48,7 @@ impl TestContext {
         )
     }
 
-    /// Fast-forward merge to a target OID (needs &mut self for cache_map)
+    /// Fast-forward merge to a target OID (needs &mut self for `cache_map`)
     pub fn fast_forward_to(&mut self, target_oid: &str) -> Result<(), TrunkError> {
         branches::fast_forward_to_inner(
             &self.path,
@@ -59,7 +59,7 @@ impl TestContext {
         )
     }
 
-    /// Create a new branch, optionally from a specific OID (needs &mut self for cache_map)
+    /// Create a new branch, optionally from a specific OID (needs &mut self for `cache_map`)
     pub fn create_branch(&mut self, name: &str, from_oid: Option<&str>) -> Result<(), TrunkError> {
         branches::create_branch_inner(
             &self.path,

@@ -18,9 +18,9 @@ fn make_linear_repo(n: usize) -> BenchRepo {
     let mut parent_oid: Option<git2::Oid> = None;
 
     for i in 0..n {
-        let blob_oid = repo.blob(format!("content-{}", i).as_bytes()).unwrap();
+        let blob_oid = repo.blob(format!("content-{i}").as_bytes()).unwrap();
         let mut tb = repo.treebuilder(None).unwrap();
-        tb.insert(format!("file{}.txt", i), blob_oid, 0o100644)
+        tb.insert(format!("file{i}.txt"), blob_oid, 0o100644)
             .unwrap();
         let tree_oid = tb.write().unwrap();
         let tree = repo.find_tree(tree_oid).unwrap();
@@ -36,7 +36,7 @@ fn make_linear_repo(n: usize) -> BenchRepo {
                 Some("refs/heads/main"),
                 &sig,
                 &sig,
-                &format!("Commit {}", i),
+                &format!("Commit {i}"),
                 &tree,
                 &parent_refs,
             )
@@ -60,13 +60,13 @@ fn make_startup_repo() -> BenchRepo {
     let mut parent_oid: Option<git2::Oid> = None;
     for i in 0..100 {
         std::fs::write(
-            dir.path().join(format!("file{}.txt", i)),
-            format!("content-{}", i),
+            dir.path().join(format!("file{i}.txt")),
+            format!("content-{i}"),
         )
         .unwrap();
         let mut index = repo.index().unwrap();
         index
-            .add_path(std::path::Path::new(&format!("file{}.txt", i)))
+            .add_path(std::path::Path::new(&format!("file{i}.txt")))
             .unwrap();
         index.write().unwrap();
         let tree_oid = index.write_tree().unwrap();
@@ -83,7 +83,7 @@ fn make_startup_repo() -> BenchRepo {
                 Some("refs/heads/main"),
                 &sig,
                 &sig,
-                &format!("Commit {}", i),
+                &format!("Commit {i}"),
                 &tree,
                 &parent_refs,
             )
@@ -94,7 +94,7 @@ fn make_startup_repo() -> BenchRepo {
     // Create 10 branches
     let head_commit = repo.find_commit(parent_oid.unwrap()).unwrap();
     for b in 0..10 {
-        repo.branch(&format!("feature-{}", b), &head_commit, false)
+        repo.branch(&format!("feature-{b}"), &head_commit, false)
             .unwrap();
     }
 
@@ -112,7 +112,7 @@ static REPO_1K: OnceLock<BenchRepo> = OnceLock::new();
 static REPO_STARTUP: OnceLock<BenchRepo> = OnceLock::new();
 
 /// BENCH-03: Measure IPC round-trip cost = inner function + serde serialization.
-/// This captures the server-side processing time that dominates each invoke() call.
+/// This captures the server-side processing time that dominates each `invoke()` call.
 fn bench_ipc_get_graph(c: &mut Criterion) {
     let mut group = c.benchmark_group("ipc_round_trip");
     group.warm_up_time(Duration::from_secs(3));
@@ -190,7 +190,7 @@ fn bench_ipc_diff_unstaged(c: &mut Criterion) {
 
 /// BENCH-04: Measure cold-start sequence — the sequential operations that must complete
 /// before the app can show its first meaningful paint:
-///   open repo → graph::snapshot → list_refs → get_status
+///   open repo → `graph::snapshot` → `list_refs` → `get_status`
 fn bench_startup_sequence(c: &mut Criterion) {
     let mut group = c.benchmark_group("startup");
     group.warm_up_time(Duration::from_secs(3));

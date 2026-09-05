@@ -70,11 +70,12 @@ pub struct PollDriver {
 
 impl ManualTicker {
     /// A manual ticker and the driver that steps it.
-    pub fn new() -> (ManualTicker, PollDriver) {
+    #[must_use]
+    pub fn new() -> (Self, PollDriver) {
         let (tick_tx, tick_rx) = sync_channel(0);
         let (done_tx, done_rx) = sync_channel(0);
         (
-            ManualTicker {
+            Self {
                 ticks: tick_rx,
                 done: done_tx,
             },
@@ -100,6 +101,7 @@ impl PollDriver {
     /// Run one poll cycle and return once it has finished. `false` means the
     /// loop exited during the cycle instead of completing it — the refused-
     /// store posture.
+    #[must_use]
     pub fn run_cycle(&self) -> bool {
         if self.ticks.send(()).is_err() {
             return false;
@@ -196,16 +198,15 @@ fn spawn_with(
     on_change: impl Fn() + Send + 'static,
 ) -> PollHandle {
     let db_path = data_dir.join(DB_FILE);
-    let conn = match Connection::open(&db_path) {
-        Ok(conn) => conn,
-        Err(_) => {
-            eprintln!("review poll: cannot open {}", db_path.display());
-            return PollHandle {
-                stop,
-                thread: None,
-                joins_on_stop,
-            };
-        }
+    let conn = if let Ok(conn) = Connection::open(&db_path) {
+        conn
+    } else {
+        eprintln!("review poll: cannot open {}", db_path.display());
+        return PollHandle {
+            stop,
+            thread: None,
+            joins_on_stop,
+        };
     };
     let baseline = Baseline::read(&conn);
 
@@ -227,8 +228,8 @@ struct Baseline {
 }
 
 impl Baseline {
-    fn read(conn: &Connection) -> Baseline {
-        Baseline {
+    fn read(conn: &Connection) -> Self {
+        Self {
             data_version: data_version(conn).unwrap_or(0),
             revision: super::revision(conn).ok(),
         }

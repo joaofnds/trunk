@@ -79,6 +79,7 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 /// `__EMBED_INFO_PLIST`, which a binary can carry only once, so a second
 /// expansion anywhere in a link unit fails; the test host takes the context from
 /// here instead.
+#[must_use]
 pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }

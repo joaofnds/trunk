@@ -184,7 +184,7 @@ mod tests {
     }
 
     /// A second, unrelated repository with its own root — for the
-    /// unrelated-history rejection case (merge_base across these errors).
+    /// unrelated-history rejection case (`merge_base` across these errors).
     fn make_unrelated_repo() -> (TempDir, Repository, Oid) {
         let dir = TempDir::new().unwrap();
         let repo = Repository::init(dir.path()).unwrap();
@@ -296,7 +296,7 @@ mod tests {
     // ── Task 3: Graph-ordered intersection (SEL-04) ──────────────────────────
 
     /// A minimal `GraphCommit` for fixtures — only the fields `SessionCommit`
-    /// copies (oid, short_oid, summary) carry meaning; the rest are inert.
+    /// copies (oid, `short_oid`, summary) carry meaning; the rest are inert.
     fn graph_commit(oid: &str, summary: &str) -> crate::git::types::GraphCommit {
         crate::git::types::GraphCommit {
             oid: oid.to_string(),

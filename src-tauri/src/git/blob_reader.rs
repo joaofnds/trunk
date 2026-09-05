@@ -163,13 +163,13 @@ pub(crate) mod test_repo {
     use std::path::Path;
     use tempfile::TempDir;
 
-    pub(crate) fn sig() -> git2::Signature<'static> {
+    pub fn sig() -> git2::Signature<'static> {
         git2::Signature::new("Test", "test@example.com", &git2::Time::new(0, 0)).unwrap()
     }
 
     /// Repo with `doc.md` committed as "committed", staged as "staged", and left
     /// as "workdir" in the working tree — so each rev returns a distinct value.
-    pub(crate) fn with_three_revs() -> (TempDir, git2::Repository, git2::Oid) {
+    pub fn with_three_revs() -> (TempDir, git2::Repository, git2::Oid) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
 

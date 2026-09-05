@@ -3,7 +3,7 @@ mod common;
 use common::context::TestContext;
 
 /// Build a context with two commits for checkout/cherry-pick/revert/reset tests.
-/// Returns (ctx, first_oid, second_oid).
+/// Returns (ctx, `first_oid`, `second_oid`).
 fn build_two_commit_ctx() -> (TestContext, String, String) {
     let ctx = TestContext::builder()
         .with_file("file.txt", "hello")
@@ -221,7 +221,7 @@ fn revert_commit_begin_stages_removal_and_carries_default_message() {
         "got: {message:?}"
     );
     assert!(
-        message.contains(&format!("This reverts commit {}.", second_oid)),
+        message.contains(&format!("This reverts commit {second_oid}.")),
         "message must carry the full 40-char OID; got: {message:?}"
     );
     // begin stages the revert without committing: REVERT_HEAD set, file gone.
@@ -274,7 +274,7 @@ fn revert_abort_restores_the_reverted_file() {
 
 // -- cherry-pick has a way out --
 
-/// A conflicted cherry-pick leaves CHERRY_PICK_HEAD set. Until this module the
+/// A conflicted cherry-pick leaves `CHERRY_PICK_HEAD` set. Until this module the
 /// app had no command that clears it: the banner rendered a label and no
 /// buttons, `is_mid_operation` stayed true so force-push refused and background
 /// fetch skipped every poll, and committing through the normal form used git2's

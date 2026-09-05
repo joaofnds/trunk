@@ -39,7 +39,7 @@ are sound either way.
 re-indented, or moved to another file. It does not catch a within-file move or statement reorder
 that preserves the anchor text exactly. It does not catch a test removal reviving a mutant that
 used to die — only a re-run does. And it does not catch a placement change *elsewhere* in the
-file: `placement.rs` holds a second `let min_col = if !head_chain.is_empty() { 1 } else { 0 };`
+file: `placement.rs` holds a second `let min_col = usize::from(!head_chain.is_empty());`
 at 12-space indent that is not an anchor, and editing that phase-1 rule leaves all 65 anchors
 matching exactly once. The goldens catch that one, because it moves a layout.
 
@@ -89,7 +89,7 @@ honest.
 | 21 | placement.rs | unclaimed-parent guard | `                    if col >= active_lanes.len() {` → `                    if col < active_lanes.len() {` | killed | 2026-08-12 |
 | 22 | placement.rs | unclaimed-parent resize | `                        active_lanes.resize(col + 1, None);` → `                        active_lanes.resize(col - 1, None);` | SURVIVES | 2026-08-12 |
 | 23 | placement.rs | unclaimed-parent resize | `                        active_lanes.resize(col + 1, None);` → `                        active_lanes.resize(col * 1, None);` | SURVIVES | 2026-08-12 |
-| 24 | placement.rs | secondary-parent min_col | `                    let min_col = if !head_chain.is_empty() { 1 } else { 0 };` → `                    let min_col = if head_chain.is_empty() { 1 } else { 0 };` | killed | 2026-08-12 |
+| 24 | placement.rs | secondary-parent min_col | `                    let min_col = usize::from(!head_chain.is_empty());` → `                    let min_col = usize::from(head_chain.is_empty());` | killed | 2026-08-12 |
 | 25 | placement.rs | open_lane colour advance | `    lane_colors.insert(col, *next_color);⏎    *next_color += 1;` → `    lane_colors.insert(col, *next_color);⏎    *next_color *= 1;` | killed | 2026-09-02 |
 | 26 | placement.rs | merge ladder | `                    if parent_col < col {` → `                    if parent_col == col {` | killed | 2026-08-12 |
 | 27 | placement.rs | merge ladder | `                    if parent_col < col {` → `                    if parent_col > col {` | killed | 2026-08-12 |
@@ -116,10 +116,10 @@ honest.
 | 48 | graph.rs | capture | `    oids.retain(\|oid\| !stash_internals.contains(oid));` → `    oids.retain(\|oid\| stash_internals.contains(oid));` | killed | 2026-08-12 |
 | 49 | graph.rs | snapshot | `    Ok(GraphSnapshot::new(capture(repo)?, visibility.clone()))` → `    Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))` | killed | 2026-09-03 |
 | 50 | graph_input.rs | parse_oid | `fn parse_oid(hex: &str) -> Oid {` → `fn parse_oid(hex: &str) -> Oid {⏎    if true {⏎        return Default::default();⏎    }` | UNVIABLE | 2026-08-12 |
-| 51 | graph_input.rs | parse_oid | `    if hex.len() != 40 {` → `    if hex.len() == 40 {` | killed | 2026-08-12 |
+| 51 | graph_input.rs | parse_oid | `    assert_eq!(hex.len(), 40, "graph_input: malformed oid {hex}");` → `    assert_ne!(hex.len(), 40, "graph_input: malformed oid {hex}");` | killed | 2026-08-12 |
 | 52 | graph_input.rs | hex | `fn hex(oid: &Oid) -> String {⏎    oid.to_string()⏎}` → `fn hex(oid: &Oid) -> String {⏎    let _ = oid;⏎    String::new()⏎}` | killed | 2026-08-12 |
 | 53 | graph_input.rs | hex | `fn hex(oid: &Oid) -> String {⏎    oid.to_string()⏎}` → `fn hex(oid: &Oid) -> String {⏎    let _ = oid;⏎    "xyzzy".into()⏎}` | killed | 2026-08-12 |
-| 54 | graph_input.rs | CapturedGraph::from_source | `    pub fn from_source(source: &GraphSource) -> CapturedGraph {` → `    pub fn from_source(source: &GraphSource) -> CapturedGraph {⏎        if true {⏎            return Default::default();⏎        }` | UNVIABLE | 2026-08-12 |
+| 54 | graph_input.rs | CapturedGraph::from_source | `    pub fn from_source(source: &GraphSource) -> Self {` → `    pub fn from_source(source: &GraphSource) -> CapturedGraph {⏎        if true {⏎            return Default::default();⏎        }` | UNVIABLE | 2026-08-12 |
 | 55 | graph_input.rs | CapturedGraph::to_source | `    pub fn to_source(&self) -> GraphSource {` → `    pub fn to_source(&self) -> GraphSource {⏎        if true {⏎            return Default::default();⏎        }` | UNVIABLE | 2026-08-12 |
 | 56 | graph_input.rs | commit_facts | `fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {` → `fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {⏎    if true {⏎        return Box::leak(Box::new(Default::default()));⏎    }` | UNVIABLE | 2026-08-12 |
 | 57 | graph_input.rs | parent_list | `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {` → `fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {⏎    if true {⏎        return Vec::leak(Vec::new());⏎    }` | killed | 2026-08-12 |

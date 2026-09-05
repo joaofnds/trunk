@@ -39,7 +39,7 @@ fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
     // Create branches, each with 2 additional commits
     for b in 0..branch_count {
         let branch = repo
-            .branch(&format!("branch-{}", b), &initial_commit, false)
+            .branch(&format!("branch-{b}"), &initial_commit, false)
             .unwrap();
         let branch_ref = branch.into_reference();
         let ref_name = branch_ref.name().unwrap().to_owned();
@@ -47,10 +47,10 @@ fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
         let mut parent_oid = initial_oid;
         for c in 0..2 {
             let blob = repo
-                .blob(format!("branch-{}-commit-{}", b, c).as_bytes())
+                .blob(format!("branch-{b}-commit-{c}").as_bytes())
                 .unwrap();
             let mut tb = repo.treebuilder(None).unwrap();
-            tb.insert(format!("file-{}-{}.txt", b, c), blob, 0o100644)
+            tb.insert(format!("file-{b}-{c}.txt"), blob, 0o100644)
                 .unwrap();
             let tree_oid = tb.write().unwrap();
             let tree = repo.find_tree(tree_oid).unwrap();
@@ -60,7 +60,7 @@ fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
                     Some(&ref_name),
                     &sig,
                     &sig,
-                    &format!("Branch {} commit {}", b, c),
+                    &format!("Branch {b} commit {c}"),
                     &tree,
                     &[&parent],
                 )
@@ -109,7 +109,7 @@ fn make_repo_with_unstaged_changes() -> BenchRepo {
 }
 
 /// Create a fresh repo with an unstaged hunk for `stage_hunk_inner` (mutating operation).
-/// Returns (dir, path_string, state_map) -- dir must live until the iteration ends.
+/// Returns (dir, `path_string`, `state_map`) -- dir must live until the iteration ends.
 fn make_repo_for_stage_hunk() -> (tempfile::TempDir, String, HashMap<String, PathBuf>) {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
@@ -667,7 +667,7 @@ fn bench_calibration_git2(c: &mut Criterion) {
             for oid in walk {
                 let commit = repo.find_commit(oid.unwrap()).unwrap();
                 let tree = commit.tree().unwrap();
-                for entry in tree.iter() {
+                for entry in &tree {
                     let object = entry.to_object(&repo).unwrap();
                     bytes += object.as_blob().map_or(0, |blob| blob.content().len());
                 }

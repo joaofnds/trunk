@@ -162,7 +162,7 @@ fn diff_commit_succeeds_for_head() {
     drop(repo);
 
     let result = ctx.diff_commit(&head_oid);
-    assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+    assert!(result.is_ok(), "expected Ok, got: {result:?}");
 }
 
 #[test]
@@ -177,12 +177,8 @@ fn diff_commit_root_commit_shows_added_files() {
     let mut revwalk = repo.revwalk().unwrap();
     revwalk.push_head().unwrap();
     let root_oid = revwalk
-        .filter_map(|id| id.ok())
-        .find(|&id| {
-            repo.find_commit(id)
-                .map(|c| c.parent_count() == 0)
-                .unwrap_or(false)
-        })
+        .filter_map(std::result::Result::ok)
+        .find(|&id| repo.find_commit(id).is_ok_and(|c| c.parent_count() == 0))
         .expect("no root commit found");
     let root_oid_str = root_oid.to_string();
     drop(repo);
@@ -251,7 +247,7 @@ fn commit_detail_includes_committer_fields() {
 
 #[test]
 fn diff_unstaged_respects_context_lines() {
-    let content: String = (1..=20).map(|i| format!("line {}\n", i)).collect();
+    let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
     let ctx = TestContext::builder()
         .with_file("big.txt", &content)
         .with_commit("Initial commit")
@@ -262,7 +258,7 @@ fn diff_unstaged_respects_context_lines() {
             if i == 10 {
                 "changed line 10\n".to_string()
             } else {
-                format!("line {}\n", i)
+                format!("line {i}\n")
             }
         })
         .collect();
@@ -284,9 +280,7 @@ fn diff_unstaged_respects_context_lines() {
 
     assert!(
         lines_5 > lines_1,
-        "context_lines=5 should produce more lines than context_lines=1: got {} vs {}",
-        lines_5,
-        lines_1
+        "context_lines=5 should produce more lines than context_lines=1: got {lines_5} vs {lines_1}"
     );
 }
 
@@ -374,8 +368,7 @@ fn diff_unstaged_ignores_indentation_whitespace() {
         .count();
     assert_eq!(
         ignore_add_del, 0,
-        "expected no add/delete lines when ignoring indentation-only whitespace change, got {}",
-        ignore_add_del
+        "expected no add/delete lines when ignoring indentation-only whitespace change, got {ignore_add_del}"
     );
 
     // Without ignore_whitespace (default) -- indentation change should be visible
@@ -402,7 +395,7 @@ fn diff_unstaged_ignores_indentation_whitespace() {
 
 #[test]
 fn diff_unstaged_show_full_file_returns_all_lines() {
-    let content: String = (1..=50).map(|i| format!("line {}\n", i)).collect();
+    let content: String = (1..=50).map(|i| format!("line {i}\n")).collect();
     let ctx = TestContext::builder()
         .with_file("full.txt", &content)
         .with_commit("Initial commit")
@@ -413,7 +406,7 @@ fn diff_unstaged_show_full_file_returns_all_lines() {
             if i == 25 {
                 "changed line 25\n".to_string()
             } else {
-                format!("line {}\n", i)
+                format!("line {i}\n")
             }
         })
         .collect();
@@ -429,8 +422,7 @@ fn diff_unstaged_show_full_file_returns_all_lines() {
     // Full file should have at least 50 lines (50 original context + 1 delete + 1 add = ~52)
     assert!(
         total_lines >= 50,
-        "show_full_file should return all lines, got {}",
-        total_lines
+        "show_full_file should return all lines, got {total_lines}"
     );
 }
 
@@ -560,8 +552,7 @@ fn word_span_basic_pair() {
     let del_text = &del_line.content[del_emph.start as usize..del_emph.end as usize];
     assert!(
         del_text.contains("world"),
-        "Delete emphasized span should cover 'world', got '{}'",
-        del_text
+        "Delete emphasized span should cover 'world', got '{del_text}'"
     );
 
     // Verify the emphasized span on Add covers "mars" in content "hello mars\n"
@@ -573,8 +564,7 @@ fn word_span_basic_pair() {
     let add_text = &add_line.content[add_emph.start as usize..add_emph.end as usize];
     assert!(
         add_text.contains("mars"),
-        "Add emphasized span should cover 'mars', got '{}'",
-        add_text
+        "Add emphasized span should cover 'mars', got '{add_text}'"
     );
 }
 
@@ -675,7 +665,7 @@ fn word_span_dissimilar_skipped() {
 
 #[test]
 fn word_span_context_lines_have_no_emphasis() {
-    let content: String = (1..=10).map(|i| format!("line {}\n", i)).collect();
+    let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
     let ctx = TestContext::builder()
         .with_file("ctx.txt", &content)
         .with_commit("Initial commit")
@@ -686,7 +676,7 @@ fn word_span_context_lines_have_no_emphasis() {
             if i == 5 {
                 "changed line 5\n".to_string()
             } else {
-                format!("line {}\n", i)
+                format!("line {i}\n")
             }
         })
         .collect();
@@ -900,13 +890,13 @@ fn syntax_and_word_diff_coexist() {
 
 #[test]
 fn diff_commit_respects_context_lines() {
-    let content: String = (1..=20).map(|i| format!("line {}\n", i)).collect();
+    let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
     let modified: String = (1..=20)
         .map(|i| {
             if i == 10 {
                 "changed line 10\n".to_string()
             } else {
-                format!("line {}\n", i)
+                format!("line {i}\n")
             }
         })
         .collect();
@@ -938,9 +928,7 @@ fn diff_commit_respects_context_lines() {
 
     assert!(
         lines_5 > lines_1,
-        "context_lines=5 should produce more lines than context_lines=1 for commit diff: got {} vs {}",
-        lines_5,
-        lines_1
+        "context_lines=5 should produce more lines than context_lines=1 for commit diff: got {lines_5} vs {lines_1}"
     );
 }
 
@@ -1234,8 +1222,8 @@ fn compare_file_diff_direction_is_base_to_target() {
     assert_eq!(added, vec!["one\n"]);
 }
 
-/// The compare honors DiffRequestOptions like every other diff surface: a
-/// whitespace-only change disappears under ignore_whitespace.
+/// The compare honors `DiffRequestOptions` like every other diff surface: a
+/// whitespace-only change disappears under `ignore_whitespace`.
 #[test]
 fn compare_file_diff_respects_ignore_whitespace() {
     let ctx = TestContext::builder()

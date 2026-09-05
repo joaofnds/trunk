@@ -56,6 +56,7 @@ fn syntax_for_extension(ext: &str) -> Option<&'static SyntaxReference> {
 /// Whether `create_highlighter` would build a highlighter for this extension.
 /// Callers that skip work for unhighlightable paths must agree with it exactly,
 /// so both answer from `syntax_for_extension`.
+#[must_use]
 pub fn can_highlight_extension(ext: &str) -> bool {
     syntax_for_extension(ext).is_some()
 }
@@ -84,6 +85,7 @@ fn is_markdown_grammar(name: &str) -> bool {
 
 /// Create a reusable highlighter for a file extension.
 /// Returns None if the extension has no syntax definition (plain text).
+#[must_use]
 pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
     let syntax = syntax_for_extension(extension)?;
     let theme = &THEME_SET.themes["base16-ocean.dark"];

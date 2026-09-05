@@ -384,7 +384,7 @@ mod tests {
         let temp_dir = std::env::temp_dir();
 
         // Canonicalize to handle symlinked /tmp → /private/tmp on macOS.
-        let temp_canonical = fs::canonicalize(&temp_dir).unwrap_or(temp_dir.clone());
+        let temp_canonical = fs::canonicalize(&temp_dir).unwrap_or(temp_dir);
         let script_canonical =
             fs::canonicalize(handle.script_path()).unwrap_or(handle.script_path().to_path_buf());
         let msg_canonical =

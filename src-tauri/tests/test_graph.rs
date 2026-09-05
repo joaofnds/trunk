@@ -733,7 +733,7 @@ fn snapshot_on_bare_repo_does_not_error() {
     assert!(result.is_ok(), "bare repo walk failed: {:?}", result.err());
 }
 
-/// (max_columns, T1's column, T1's color) for one captured topic-and-stash shape.
+/// (`max_columns`, T1's column, T1's color) for one captured topic-and-stash shape.
 fn topic_layout(name: &str) -> (usize, usize, usize) {
     let result = rule_inputs::walk(name, 0, usize::MAX);
     let t1 = result
@@ -745,7 +745,7 @@ fn topic_layout(name: &str) -> (usize, usize, usize) {
     (result.max_columns, t1.column, t1.color_index)
 }
 
-/// (max_columns, T1's column, T1's color) clean, then with the worktree dirtied. Built from a
+/// (`max_columns`, T1's column, T1's color) clean, then with the worktree dirtied. Built from a
 /// repository rather than a capture: this pair is one of the two tests that still pin the
 /// revwalk's `TOPOLOGICAL | TIME` sort, which a committed capture would freeze (count
 /// re-measured 2026-08-11; `.claude/rules/commit-graph.md` states the same one).

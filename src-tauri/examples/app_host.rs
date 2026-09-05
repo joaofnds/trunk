@@ -58,13 +58,13 @@ enum Request {
 }
 
 impl Request {
-    fn id(&self) -> u64 {
+    const fn id(&self) -> u64 {
         match self {
-            Request::SeedRepo { id, .. }
-            | Request::Invoke { id, .. }
-            | Request::Emit { id, .. }
-            | Request::WatcherCount { id }
-            | Request::Shutdown { id } => *id,
+            Self::SeedRepo { id, .. }
+            | Self::Invoke { id, .. }
+            | Self::Emit { id, .. }
+            | Self::WatcherCount { id }
+            | Self::Shutdown { id } => *id,
         }
     }
 }
@@ -128,7 +128,7 @@ struct Output(Arc<Mutex<std::io::Stdout>>);
 
 impl Output {
     fn new() -> Self {
-        Output(Arc::new(Mutex::new(std::io::stdout())))
+        Self(Arc::new(Mutex::new(std::io::stdout())))
     }
 
     fn send(&self, line: &Value) {

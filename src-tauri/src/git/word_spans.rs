@@ -26,6 +26,7 @@ const WORD_DIFF_GAP_BRIDGE_MAX: u32 = 2;
 /// budget runs out finishes with plain coloring on the remaining runs rather
 /// than arriving seconds late: runs bound their own cost per run, so without
 /// a shared budget a many-run file stacks them into seconds.
+#[must_use]
 pub fn word_diff_budget() -> Instant {
     Instant::now() + Duration::from_millis(500)
 }
@@ -44,6 +45,7 @@ pub struct HunkWordDiff {
 /// reflows lines still emphasizes only the words that changed. The same diff
 /// decides the pairing; positional per-line pairing emphasized nearly
 /// everything on reflowed prose and seated unrelated lines side by side.
+#[must_use]
 pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> HunkWordDiff {
     let mut result = HunkWordDiff {
         spans: vec![Vec::new(); lines.len()],

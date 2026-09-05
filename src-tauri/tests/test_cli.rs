@@ -1223,15 +1223,15 @@ struct WatchChild {
 }
 
 impl WatchChild {
-    fn spawn(ctx: &TestContext) -> WatchChild {
-        WatchChild::spawn_with(ctx, &["review", "watch"])
+    fn spawn(ctx: &TestContext) -> Self {
+        Self::spawn_with(ctx, &["review", "watch"])
     }
 
-    fn spawn_json(ctx: &TestContext) -> WatchChild {
-        WatchChild::spawn_with(ctx, &["review", "watch", "--json"])
+    fn spawn_json(ctx: &TestContext) -> Self {
+        Self::spawn_with(ctx, &["review", "watch", "--json"])
     }
 
-    fn spawn_with(ctx: &TestContext, args: &[&str]) -> WatchChild {
+    fn spawn_with(ctx: &TestContext, args: &[&str]) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_trunk"))
             .args(args)
             .current_dir(ctx.repo_path())
@@ -1254,7 +1254,7 @@ impl WatchChild {
             }
         });
 
-        let watch = WatchChild { child, lines };
+        let watch = Self { child, lines };
         assert!(
             watch
                 .next_line(Duration::from_secs(10))

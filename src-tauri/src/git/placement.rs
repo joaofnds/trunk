@@ -124,9 +124,10 @@ fn head_chain(input: &PlacementInput) -> HashSet<Oid> {
         };
 
         steps += 1;
-        if steps > input.parents.len() {
-            panic!("placement: cycle in parent map at {current}");
-        }
+        assert!(
+            steps <= input.parents.len(),
+            "placement: cycle in parent map at {current}"
+        );
         current = next;
     }
 }
@@ -173,9 +174,10 @@ fn head_lane_extension(input: &PlacementInput) -> (Vec<Oid>, bool) {
         let Some(&next) = children.first() else { break };
 
         steps += 1;
-        if steps > input.parents.len() {
-            panic!("placement: cycle in parent map at {current}");
-        }
+        assert!(
+            steps <= input.parents.len(),
+            "placement: cycle in parent map at {current}"
+        );
         path.push(next);
         current = next;
     }
@@ -201,9 +203,10 @@ fn first_parent_path_to(
         let &next = parents.get(&current)?.first()?;
 
         steps += 1;
-        if steps > parents.len() {
-            panic!("placement: cycle in parent map at {current}");
-        }
+        assert!(
+            steps <= parents.len(),
+            "placement: cycle in parent map at {current}"
+        );
         path.push(current);
         current = next;
     }
@@ -239,6 +242,7 @@ fn open_lane(
     }
 }
 
+#[must_use]
 pub fn assign_lanes(input: &PlacementInput) -> Layout {
     // active_lanes[col] = Some((oid, dashed)) → col is tracking that oid's chain
     // The dashed flag is set by the commit that creates/takes over the lane.
@@ -298,7 +302,7 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
             c
         } else {
             // New chain (regular branch tip OR stash).
-            let min_col = if !head_chain.is_empty() { 1 } else { 0 };
+            let min_col = usize::from(!head_chain.is_empty());
             let parent_oid = commit_parents.first().copied();
             let parent_col = parent_oid.and_then(|pid| pending_parents.get(&pid).copied());
 
@@ -500,7 +504,7 @@ pub fn assign_lanes(input: &PlacementInput) -> Layout {
                     c
                 } else {
                     // Find a free column near the merge commit's column
-                    let min_col = if !head_chain.is_empty() { 1 } else { 0 };
+                    let min_col = usize::from(!head_chain.is_empty());
                     let target = col.max(min_col);
                     let c = find_free_column_near(&mut active_lanes, target, min_col);
                     active_lanes[c] = Some((parent_oid, false));

@@ -127,7 +127,7 @@ fn the_host_carries_no_clipboard_plugin() {
     );
 }
 
-/// `MockRuntime::window_handle()` returns an AppKit handle built from a dangling
+/// `MockRuntime::window_handle()` returns an `AppKit` handle built from a dangling
 /// `NSView*` (`tauri-2.11.5/src/test/mock_runtime.rs:846`), and
 /// `WebviewWindow::ns_window()` dereferences it (`window/mod.rs:1639`). The
 /// application asks for this command in a mount effect, so a host that

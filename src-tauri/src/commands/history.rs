@@ -29,7 +29,7 @@ fn slice(layout: &GraphResult, start: usize, end: usize) -> &[GraphCommit] {
 
 impl GraphResponse {
     /// The `PAGE`-row page of `layout` starting at `offset`, empty past the end.
-    fn page(layout: &GraphResult, offset: usize) -> GraphResponse {
+    fn page(layout: &GraphResult, offset: usize) -> Self {
         Self::rows(layout, offset, offset + PAGE)
     }
 
@@ -38,12 +38,13 @@ impl GraphResponse {
     /// A rebuild answers this way so the caller keeps the depth it had already paged
     /// in. Returning page one alone would drop every later page it holds, and it has
     /// no way to tell that loss from a history that genuinely shrank.
-    pub fn head(layout: &GraphResult, loaded: usize) -> GraphResponse {
+    #[must_use]
+    pub fn head(layout: &GraphResult, loaded: usize) -> Self {
         Self::rows(layout, 0, loaded.max(PAGE))
     }
 
-    fn rows(layout: &GraphResult, start: usize, end: usize) -> GraphResponse {
-        GraphResponse {
+    fn rows(layout: &GraphResult, start: usize, end: usize) -> Self {
+        Self {
             commits: slice(layout, start, end).to_vec(),
             max_columns: layout.max_columns,
         }
@@ -165,7 +166,7 @@ pub fn set_ref_visibility_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
-/// Diff-stat (insertions/deletions/files_changed) for one commit against its
+/// Diff-stat (`insertions/deletions/files_changed`) for one commit against its
 /// first parent — or the empty tree for the root commit. Renames are collapsed
 /// via `find_similar` so a pure move reports 0/0. Uses the cheap `Diff::stats()`
 /// path, never the line-walking enrichment in `walk_diff`.
@@ -196,6 +197,7 @@ pub fn commit_stat_inner(
 /// Compute diff-stats for a batch of oids against a single repo handle. A per-oid
 /// failure (malformed/missing oid, unreadable tree) inserts no entry and is
 /// skipped — one bad commit must never fail the whole page.
+#[must_use]
 pub fn compute_commit_stats_batch(
     path: &str,
     oids: &[String],
@@ -349,7 +351,7 @@ pub fn search_commits_inner(
 
     let graph_result = cache_map
         .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {}", path)))?;
+        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {path}")))?;
 
     let mut results = Vec::new();
     for commit in &graph_result.layout.commits {

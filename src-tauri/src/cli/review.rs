@@ -170,8 +170,8 @@ struct Flags {
 }
 
 impl Flags {
-    fn parse(mut rest: &[&str]) -> Result<Flags, String> {
-        let mut flags = Flags::default();
+    fn parse(mut rest: &[&str]) -> Result<Self, String> {
+        let mut flags = Self::default();
 
         loop {
             rest = match rest {
@@ -527,16 +527,16 @@ mod watch_feed {
     impl WatchChange {
         pub fn review(&self) -> &str {
             match self {
-                WatchChange::ReviewPublished { review, .. }
-                | WatchChange::ReviewRetitled { review, .. }
-                | WatchChange::ReviewStateChanged { review, .. }
-                | WatchChange::ReviewDeleted { review }
-                | WatchChange::ThreadAdded { review, .. }
-                | WatchChange::ThreadEdited { review, .. }
-                | WatchChange::ThreadStateChanged { review, .. }
-                | WatchChange::ThreadStaleChanged { review, .. }
-                | WatchChange::ReplyAdded { review, .. }
-                | WatchChange::ReplyEdited { review, .. } => review,
+                Self::ReviewPublished { review, .. }
+                | Self::ReviewRetitled { review, .. }
+                | Self::ReviewStateChanged { review, .. }
+                | Self::ReviewDeleted { review }
+                | Self::ThreadAdded { review, .. }
+                | Self::ThreadEdited { review, .. }
+                | Self::ThreadStateChanged { review, .. }
+                | Self::ThreadStaleChanged { review, .. }
+                | Self::ReplyAdded { review, .. }
+                | Self::ReplyEdited { review, .. } => review,
             }
         }
     }
@@ -823,8 +823,8 @@ struct RepoPaths {
 impl RepoPaths {
     /// `discover_repo` rejects a bare repository before any render, so the
     /// workdir the CLI renders against is always present.
-    fn of(canonical: &std::path::Path) -> RepoPaths {
-        RepoPaths {
+    fn of(canonical: &std::path::Path) -> Self {
+        Self {
             workdir: Some(canonical.to_path_buf()),
             repo_dir: canonical.join(".git"),
         }
@@ -930,7 +930,7 @@ struct ChainReply<'a> {
 }
 
 impl<'a> ThreadLine<'a> {
-    fn of(review: &'a str, thread: &'a crate::reviewdb::threads::Thread) -> ThreadLine<'a> {
+    fn of(review: &'a str, thread: &'a crate::reviewdb::threads::Thread) -> Self {
         ThreadLine {
             review,
             thread: &thread.id,
@@ -1083,7 +1083,7 @@ fn agent_actions(state: ThreadState) -> String {
 /// stops an agent settling a review. A state with no verb names itself rather
 /// than panicking — this line is printed by a verb an agent runs, and a wrong
 /// word there costs less than a crash.
-fn claiming_verb(next: ThreadState) -> &'static str {
+const fn claiming_verb(next: ThreadState) -> &'static str {
     match next {
         ThreadState::Addressed => "address",
         ThreadState::Open | ThreadState::Done | ThreadState::Dismissed => next.as_str(),
@@ -1140,7 +1140,7 @@ fn render_list(listed: &[reviews::Review]) -> String {
         .collect()
 }
 
-fn state_word(state: reviews::ReviewState) -> &'static str {
+const fn state_word(state: reviews::ReviewState) -> &'static str {
     match state {
         reviews::ReviewState::Composing => "composing",
         reviews::ReviewState::Ready => "ready",
@@ -1153,7 +1153,7 @@ mod tests {
     use super::*;
 
     fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|s| s.to_string()).collect()
+        parts.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]

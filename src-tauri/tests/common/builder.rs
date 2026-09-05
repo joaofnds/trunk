@@ -79,8 +79,8 @@ fn pinned_signature(secs: i64) -> git2::Signature<'static> {
 }
 
 impl TestContextBuilder {
-    pub fn new() -> Self {
-        TestContextBuilder { steps: Vec::new() }
+    pub const fn new() -> Self {
+        Self { steps: Vec::new() }
     }
 
     pub fn with_file(&mut self, path: &str, content: &str) -> &mut Self {
@@ -164,7 +164,7 @@ impl TestContextBuilder {
 
     pub fn with_stash(&mut self, message: Option<&str>) -> &mut Self {
         self.steps.push(BuildStep::Stash {
-            message: message.map(|s| s.to_string()),
+            message: message.map(std::string::ToString::to_string),
         });
         self
     }
@@ -257,23 +257,22 @@ impl TestContextBuilder {
                 }
 
                 BuildStep::Commit { message, secs } => {
-                    let sig = match secs {
-                        Some(secs) => pinned_signature(*secs),
-                        None => {
-                            let sig = pinned_signature(clock);
-                            clock += FIXTURE_DAY_SECS;
-                            sig
-                        }
+                    let sig = if let Some(secs) = secs {
+                        pinned_signature(*secs)
+                    } else {
+                        let sig = pinned_signature(clock);
+                        clock += FIXTURE_DAY_SECS;
+                        sig
                     };
                     let mut index = repo.index().unwrap();
 
                     for change in &pending {
                         match change {
                             PendingChange::Add(file) => {
-                                index.add_path(std::path::Path::new(file)).unwrap()
+                                index.add_path(std::path::Path::new(file)).unwrap();
                             }
                             PendingChange::Remove(file) => {
-                                index.remove_path(std::path::Path::new(file)).unwrap()
+                                index.remove_path(std::path::Path::new(file)).unwrap();
                             }
                         }
                     }
@@ -298,7 +297,7 @@ impl TestContextBuilder {
                 }
 
                 BuildStep::Checkout { name } => {
-                    repo.set_head(&format!("refs/heads/{}", name)).unwrap();
+                    repo.set_head(&format!("refs/heads/{name}")).unwrap();
                     repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
                         .unwrap();
                 }
@@ -329,7 +328,7 @@ impl TestContextBuilder {
                     let tree_oid = merge_index.write_tree_to(&repo).unwrap();
                     let tree = repo.find_tree(tree_oid).unwrap();
 
-                    let msg = format!("Merge branch '{}'", branch);
+                    let msg = format!("Merge branch '{branch}'");
                     repo.commit(
                         Some("HEAD"),
                         &sig,
@@ -388,7 +387,7 @@ impl TestContextBuilder {
                     }
 
                     // Modify the tracked file to create something to stash
-                    std::fs::write(&stash_marker, format!("modified-{}", stash_counter)).unwrap();
+                    std::fs::write(&stash_marker, format!("modified-{stash_counter}")).unwrap();
                     stash_counter += 1;
 
                     let msg = message.as_deref();
@@ -397,7 +396,7 @@ impl TestContextBuilder {
 
                 BuildStep::Remote { name } => {
                     // Create a bare repo as the remote
-                    let bare_path = dir.path().join(format!("{}.git", name));
+                    let bare_path = dir.path().join(format!("{name}.git"));
                     git2::Repository::init_bare(&bare_path).unwrap();
 
                     let bare_url = bare_path.display().to_string();
@@ -406,11 +405,11 @@ impl TestContextBuilder {
 
                 BuildStep::Tracking { remote, branch } => {
                     let mut cfg = repo.config().unwrap();
-                    cfg.set_str(&format!("branch.{}.remote", branch), remote)
+                    cfg.set_str(&format!("branch.{branch}.remote"), remote)
                         .unwrap();
                     cfg.set_str(
-                        &format!("branch.{}.merge", branch),
-                        &format!("refs/heads/{}", branch),
+                        &format!("branch.{branch}.merge"),
+                        &format!("refs/heads/{branch}"),
                     )
                     .unwrap();
                 }
@@ -418,11 +417,11 @@ impl TestContextBuilder {
                 BuildStep::Pushed { remote, branch } => {
                     let mut handle = repo.find_remote(remote).unwrap();
                     handle
-                        .push(&[format!("refs/heads/{0}:refs/heads/{0}", branch)], None)
+                        .push(&[format!("refs/heads/{branch}:refs/heads/{branch}")], None)
                         .unwrap();
 
                     let tip = repo
-                        .find_reference(&format!("refs/heads/{}", branch))
+                        .find_reference(&format!("refs/heads/{branch}"))
                         .unwrap()
                         .peel_to_commit()
                         .unwrap();
@@ -431,7 +430,7 @@ impl TestContextBuilder {
                     // libgit2 need not update the tip, and without it the branch has no
                     // upstream to be ahead of.
                     repo.reference(
-                        &format!("refs/remotes/{}/{}", remote, branch),
+                        &format!("refs/remotes/{remote}/{branch}"),
                         tip.id(),
                         true,
                         "seed the tracking ref",
@@ -449,10 +448,10 @@ impl TestContextBuilder {
                     let sig = pinned_signature(clock);
                     clock += FIXTURE_DAY_SECS;
 
-                    let bare_path = dir.path().join(format!("{}.git", remote));
+                    let bare_path = dir.path().join(format!("{remote}.git"));
                     let bare = git2::Repository::open(&bare_path).unwrap();
                     let tip = bare
-                        .find_reference(&format!("refs/heads/{}", branch))
+                        .find_reference(&format!("refs/heads/{branch}"))
                         .unwrap()
                         .peel_to_commit()
                         .unwrap();
@@ -464,7 +463,7 @@ impl TestContextBuilder {
                     let tree = bare.find_tree(tree.write().unwrap()).unwrap();
 
                     bare.commit(
-                        Some(&format!("refs/heads/{}", branch)),
+                        Some(&format!("refs/heads/{branch}")),
                         &sig,
                         &sig,
                         message,

@@ -166,7 +166,7 @@ fn every_committed_input_has_a_golden_and_an_export() {
     for (name, skip, limit) in PAGED {
         expected_goldens.insert(format!("{name}.rows-{skip}-{limit}"));
     }
-    let mut expected_exports = names.clone();
+    let mut expected_exports = names;
     for (name, _) in HIDDEN {
         expected_goldens.insert(format!("{name}.hidden"));
         expected_exports.insert(format!("{name}.hidden"));

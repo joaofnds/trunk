@@ -173,7 +173,11 @@ fn the_committed_form_keeps_the_stash_order_it_was_given() {
 
     let captured = CapturedGraph::from_source(&source);
 
-    let expected: Vec<String> = source.stash_order.iter().map(|o| o.to_string()).collect();
+    let expected: Vec<String> = source
+        .stash_order
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     assert_eq!(captured.stashes, expected);
 }
 

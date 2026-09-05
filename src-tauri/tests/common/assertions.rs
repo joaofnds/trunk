@@ -51,8 +51,7 @@ impl TestContext {
         let repo = self.repo();
         assert!(
             repo.find_branch(name, git2::BranchType::Local).is_ok(),
-            "expected local branch '{}' to exist",
-            name
+            "expected local branch '{name}' to exist"
         );
     }
 
@@ -60,8 +59,7 @@ impl TestContext {
         let repo = self.repo();
         assert!(
             repo.find_branch(name, git2::BranchType::Local).is_err(),
-            "expected local branch '{}' to NOT exist",
-            name
+            "expected local branch '{name}' to NOT exist"
         );
     }
 
@@ -71,18 +69,16 @@ impl TestContext {
         let shorthand = head.shorthand().unwrap_or("(detached)");
         assert_eq!(
             shorthand, branch,
-            "expected HEAD at '{}', got '{}'",
-            branch, shorthand
+            "expected HEAD at '{branch}', got '{shorthand}'"
         );
     }
 
     pub fn assert_tag_exists(&self, name: &str) {
         let repo = self.repo();
-        let refname = format!("refs/tags/{}", name);
+        let refname = format!("refs/tags/{name}");
         assert!(
             repo.find_reference(&refname).is_ok(),
-            "expected tag '{}' to exist",
-            name
+            "expected tag '{name}' to exist"
         );
     }
 
@@ -91,11 +87,7 @@ impl TestContext {
         let mut revwalk = repo.revwalk().unwrap();
         revwalk.push_head().unwrap();
         let count = revwalk.count();
-        assert_eq!(
-            count, expected,
-            "expected {} commits, got {}",
-            expected, count
-        );
+        assert_eq!(count, expected, "expected {expected} commits, got {count}");
     }
 
     pub fn assert_head_message(&self, expected: &str) {
@@ -104,19 +96,16 @@ impl TestContext {
         let msg = head.message().unwrap_or("");
         assert!(
             msg.contains(expected),
-            "expected HEAD commit message to contain '{}', got '{}'",
-            expected,
-            msg
+            "expected HEAD commit message to contain '{expected}', got '{msg}'"
         );
     }
 
     pub fn assert_file_content(&self, file: &str, expected: &str) {
         let content = std::fs::read_to_string(self.repo_path().join(file))
-            .unwrap_or_else(|e| panic!("failed to read '{}': {}", file, e));
+            .unwrap_or_else(|e| panic!("failed to read '{file}': {e}"));
         assert_eq!(
             content, expected,
-            "expected '{}' content to be '{}', got '{}'",
-            file, expected, content
+            "expected '{file}' content to be '{expected}', got '{content}'"
         );
     }
 

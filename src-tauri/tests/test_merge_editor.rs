@@ -70,7 +70,7 @@ fn save_merge_result_writes_and_stages() {
         .build();
 
     let result = ctx.save_merge_result("file.txt", "resolved content");
-    assert!(result.is_ok(), "expected Ok, got: {:?}", result);
+    assert!(result.is_ok(), "expected Ok, got: {result:?}");
 
     // Assert the file on disk contains "resolved content"
     let content = std::fs::read_to_string(ctx.repo_path().join("file.txt")).unwrap();

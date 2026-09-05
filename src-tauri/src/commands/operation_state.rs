@@ -643,7 +643,7 @@ mod tests {
         Signature::new("Test", "test@example.com", &git2::Time::new(0, 0)).unwrap()
     }
 
-    /// Path string used to key the state_map (what open_repo looks up).
+    /// Path string used to key the `state_map` (what `open_repo` looks up).
     fn path_str(dir: &TempDir) -> String {
         dir.path().to_str().unwrap().to_string()
     }

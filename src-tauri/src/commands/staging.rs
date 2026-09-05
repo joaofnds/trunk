@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tauri::State;
 
-fn classify_index(s: Status) -> Option<FileStatusType> {
+const fn classify_index(s: Status) -> Option<FileStatusType> {
     if s.contains(Status::INDEX_NEW) {
         return Some(FileStatusType::New);
     }
@@ -30,7 +30,7 @@ fn classify_index(s: Status) -> Option<FileStatusType> {
     None
 }
 
-fn classify_workdir(s: Status) -> Option<FileStatusType> {
+const fn classify_workdir(s: Status) -> Option<FileStatusType> {
     if s.contains(Status::WT_NEW) {
         return Some(FileStatusType::New);
     }
@@ -135,8 +135,7 @@ pub fn get_status_inner(
             let path = entry
                 .head_to_index()
                 .and_then(|delta| delta.new_file().path())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| file_path.clone());
+                .map_or_else(|| file_path.clone(), |p| p.to_string_lossy().into_owned());
 
             staged.push(FileStatus {
                 path,
@@ -154,8 +153,7 @@ pub fn get_status_inner(
             let path = entry
                 .head_to_index()
                 .and_then(|delta| delta.new_file().path())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| file_path.clone());
+                .map_or_else(|| file_path.clone(), |p| p.to_string_lossy().into_owned());
 
             unstaged.push(FileStatus {
                 path,
@@ -329,7 +327,7 @@ pub fn discard_file_inner(
     if statuses.is_empty() {
         return Err(TrunkError::new(
             "file_not_found",
-            format!("File not in working tree changes: {}", file_path),
+            format!("File not in working tree changes: {file_path}"),
         ));
     }
 
@@ -339,7 +337,7 @@ pub fn discard_file_inner(
         // Untracked file — delete from disk
         let full_path = repo.workdir().unwrap().join(file_path);
         std::fs::remove_file(&full_path).map_err(|e| {
-            TrunkError::new("io_error", format!("Failed to delete {}: {}", file_path, e))
+            TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
         })?;
     } else if status.intersects(
         Status::WT_MODIFIED | Status::WT_DELETED | Status::WT_RENAMED | Status::WT_TYPECHANGE,
@@ -354,7 +352,7 @@ pub fn discard_file_inner(
     } else {
         return Err(TrunkError::new(
             "file_not_found",
-            format!("File not in working tree changes: {}", file_path),
+            format!("File not in working tree changes: {file_path}"),
         ));
     }
 
@@ -421,7 +419,7 @@ pub fn stage_hunk_inner(
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
             "file_not_found",
-            format!("No unstaged changes for: {}", file_path),
+            format!("No unstaged changes for: {file_path}"),
         ));
     }
 
@@ -432,10 +430,7 @@ pub fn stage_hunk_inner(
     if (hunk_index as usize) >= num_hunks {
         return Err(TrunkError::new(
             "stale_hunk_index",
-            format!(
-                "Hunk index {} out of range (file has {} hunks)",
-                hunk_index, num_hunks
-            ),
+            format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
         ));
     }
     drop(patch); // Release borrow on diff
@@ -505,7 +500,7 @@ pub fn unstage_hunk_inner(
     let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
         TrunkError::new(
             "file_not_found",
-            format!("No staged changes for: {}", file_path),
+            format!("No staged changes for: {file_path}"),
         )
     })?;
 
@@ -515,10 +510,7 @@ pub fn unstage_hunk_inner(
     if (hunk_index as usize) >= num_hunks {
         return Err(TrunkError::new(
             "stale_hunk_index",
-            format!(
-                "Hunk index {} out of range (file has {} hunks)",
-                hunk_index, num_hunks
-            ),
+            format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
         ));
     }
     drop(patch);
@@ -555,7 +547,7 @@ pub fn discard_hunk_inner(
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
             "file_not_found",
-            format!("No unstaged changes for: {}", file_path),
+            format!("No unstaged changes for: {file_path}"),
         ));
     }
 
@@ -566,10 +558,7 @@ pub fn discard_hunk_inner(
     if (hunk_index as usize) >= num_hunks {
         return Err(TrunkError::new(
             "stale_hunk_index",
-            format!(
-                "Hunk index {} out of range (file has {} hunks)",
-                hunk_index, num_hunks
-            ),
+            format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
         ));
     }
     drop(patch);
@@ -948,7 +937,7 @@ pub async fn discard_lines(
 ///   - Selected `-` lines: become `+` (undo the delete)
 ///   - Unselected `+` lines: become context (keep the add)
 ///   - Unselected `-` lines: skipped (keep the delete undone... not present)
-///   - old_start/new_start are swapped (old=new side of original, new=old side)
+///   - `old_start/new_start` are swapped (old=new side of original, new=old side)
 fn build_partial_patch_text(
     file_path: &str,
     patch: &git2::Patch<'_>,
@@ -972,7 +961,7 @@ fn build_partial_patch_text(
         let content_str = if content.ends_with('\n') {
             content.into_owned()
         } else {
-            format!("{}\n", content)
+            format!("{content}\n")
         };
 
         if reverse {
@@ -980,11 +969,11 @@ fn build_partial_patch_text(
                 '+' => {
                     if selected_set.contains(&(line_idx as u32)) {
                         // Selected add -> reverse to delete
-                        patch_lines.push(format!("-{}", content_str));
+                        patch_lines.push(format!("-{content_str}"));
                         old_count += 1;
                     } else {
                         // Unselected add -> keep as context (it stays)
-                        patch_lines.push(format!(" {}", content_str));
+                        patch_lines.push(format!(" {content_str}"));
                         old_count += 1;
                         new_count += 1;
                     }
@@ -992,7 +981,7 @@ fn build_partial_patch_text(
                 '-' => {
                     if selected_set.contains(&(line_idx as u32)) {
                         // Selected delete -> reverse to add (restore)
-                        patch_lines.push(format!("+{}", content_str));
+                        patch_lines.push(format!("+{content_str}"));
                         new_count += 1;
                     }
                     // Unselected delete: skip (it's already absent from the "old" side
@@ -1000,7 +989,7 @@ fn build_partial_patch_text(
                 }
                 _ => {
                     // Context line
-                    patch_lines.push(format!(" {}", content_str));
+                    patch_lines.push(format!(" {content_str}"));
                     old_count += 1;
                     new_count += 1;
                 }
@@ -1009,25 +998,25 @@ fn build_partial_patch_text(
             match line.origin() {
                 '+' => {
                     if selected_set.contains(&(line_idx as u32)) {
-                        patch_lines.push(format!("+{}", content_str));
+                        patch_lines.push(format!("+{content_str}"));
                         new_count += 1;
                     }
                     // Unselected add: skip entirely
                 }
                 '-' => {
                     if selected_set.contains(&(line_idx as u32)) {
-                        patch_lines.push(format!("-{}", content_str));
+                        patch_lines.push(format!("-{content_str}"));
                         old_count += 1;
                     } else {
                         // Unselected delete: convert to context
-                        patch_lines.push(format!(" {}", content_str));
+                        patch_lines.push(format!(" {content_str}"));
                         old_count += 1;
                         new_count += 1;
                     }
                 }
                 _ => {
                     // Context line
-                    patch_lines.push(format!(" {}", content_str));
+                    patch_lines.push(format!(" {content_str}"));
                     old_count += 1;
                     new_count += 1;
                 }
@@ -1048,9 +1037,10 @@ fn build_partial_patch_text(
     let delta = patch.delta();
     let delta_status = delta.status();
     let path_of = |file: git2::DiffFile<'_>| {
-        file.path()
-            .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| file_path.to_string())
+        file.path().map_or_else(
+            || file_path.to_string(),
+            |p| p.to_string_lossy().into_owned(),
+        )
     };
     let (old_path, new_path) = if reverse {
         (path_of(delta.new_file()), path_of(delta.old_file()))
@@ -1063,29 +1053,20 @@ fn build_partial_patch_text(
     {
         "--- /dev/null".to_string()
     } else {
-        format!("--- a/{}", old_path)
+        format!("--- a/{old_path}")
     };
     let new_header = if (!reverse && delta_status == git2::Delta::Deleted)
         || (reverse && delta_status == git2::Delta::Added)
     {
         "+++ /dev/null".to_string()
     } else {
-        format!("+++ b/{}", new_path)
+        format!("+++ b/{new_path}")
     };
 
     let lines_joined = patch_lines.join("");
 
     let patch_text = format!(
         "diff --git a/{old_path} b/{new_path}\n{old_header}\n{new_header}\n@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
-        old_path = old_path,
-        new_path = new_path,
-        old_header = old_header,
-        new_header = new_header,
-        old_start = old_start,
-        old_count = old_count,
-        new_start = new_start,
-        new_count = new_count,
-        lines_joined = lines_joined,
     );
 
     Ok(patch_text)
@@ -1106,7 +1087,7 @@ pub fn stage_lines_inner(
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
             "file_not_found",
-            format!("No unstaged changes for: {}", file_path),
+            format!("No unstaged changes for: {file_path}"),
         ));
     }
 
@@ -1157,7 +1138,7 @@ pub fn unstage_lines_inner(
     let delta_index = delta_index_of(&diff, file_path).ok_or_else(|| {
         TrunkError::new(
             "file_not_found",
-            format!("No staged changes for: {}", file_path),
+            format!("No staged changes for: {file_path}"),
         )
     })?;
 
@@ -1207,7 +1188,7 @@ pub fn discard_lines_inner(
     if diff.deltas().len() == 0 {
         return Err(TrunkError::new(
             "file_not_found",
-            format!("No unstaged changes for: {}", file_path),
+            format!("No unstaged changes for: {file_path}"),
         ));
     }
 

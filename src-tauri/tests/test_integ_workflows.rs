@@ -63,7 +63,7 @@ fn workflow_branch_commit_merge() {
     // Two-step merge: begin stages the clean non-ff merge, continue commits it.
     let message = match ctx.merge_branch_begin("feature").unwrap() {
         MergeBeginResult::Ready { message, .. } => message,
-        other => panic!("expected Ready for a clean non-ff merge, got {:?}", other),
+        other => panic!("expected Ready for a clean non-ff merge, got {other:?}"),
     };
     ctx.merge_continue(Some(&message)).unwrap();
 
@@ -529,8 +529,7 @@ fn state_transition_fast_forward_merge() {
     let result = ctx.merge_branch_begin("feature").unwrap();
     assert!(
         matches!(result, MergeBeginResult::FastForwarded { .. }),
-        "expected FastForwarded, got {:?}",
-        result
+        "expected FastForwarded, got {result:?}"
     );
 
     // State after merge: still None (no merge state for ff)

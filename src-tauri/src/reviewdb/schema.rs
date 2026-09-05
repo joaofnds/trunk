@@ -93,17 +93,17 @@ CREATE INDEX replies_by_thread ON replies(thread_id, created_at);
 /// The commit's subject line, stored at add time so the doc renders with no
 /// repository open (D13) and a gc'd snapshot commit keeps its label. Rows
 /// from before v3 carry '' and render as "(no subject)".
-const V3: &str = r#"
+const V3: &str = r"
 ALTER TABLE review_commits ADD COLUMN subject TEXT NOT NULL DEFAULT '';
-"#;
+";
 
 /// One-row mutation counter (plan §5.3): `data_version` tells the poll that
 /// SOME connection committed; `revision` is what makes the emit meaningful,
 /// because the draft autosave commits without bumping it.
-const V4: &str = r#"
+const V4: &str = r"
 CREATE TABLE store_meta (revision INTEGER NOT NULL);
 INSERT INTO store_meta (revision) VALUES (0);
-"#;
+";
 
 /// Every snapshot this repo has handed to a caller, and whether a thread ever
 /// anchored to it (D8, TRUNK-61).
@@ -115,7 +115,7 @@ INSERT INTO store_meta (revision) VALUES (0);
 /// the first time a thread names the oid, and only an anchored snapshot can
 /// ever become garbage — once its threads are gone, nothing will name it again,
 /// because a fresh comment gets a fresh snapshot.
-const V5: &str = r#"
+const V5: &str = r"
 CREATE TABLE snapshot_pins (
     repo_path TEXT    NOT NULL,
     oid       TEXT    NOT NULL,
@@ -123,7 +123,7 @@ CREATE TABLE snapshot_pins (
     minted_at INTEGER NOT NULL,
     PRIMARY KEY (repo_path, oid)
 );
-"#;
+";
 
 /// Reconcile the two shapes `user_version = 5` ever meant.
 ///
@@ -134,7 +134,7 @@ CREATE TABLE snapshot_pins (
 /// converge here: create the table if it is missing, drop the dead one if it is
 /// present. Losing the old table costs nothing — its rows recorded sweep
 /// observations, which the current design does not use.
-const V6: &str = r#"
+const V6: &str = r"
 CREATE TABLE IF NOT EXISTS snapshot_pins (
     repo_path TEXT    NOT NULL,
     oid       TEXT    NOT NULL,
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS snapshot_pins (
 );
 
 DROP TABLE IF EXISTS unanchored_pins;
-"#;
+";
 
 /// Retire the guard machinery an earlier, unreleased shape of this feature
 /// needed, and accept a store that already ran it.
@@ -157,9 +157,9 @@ DROP TABLE IF EXISTS unanchored_pins;
 /// `snapshot_pins` are left in place, because SQLite would need a table rebuild
 /// to remove them and they cost a byte each. None of it shipped, so no store in
 /// the wild carries data worth keeping.
-const V7: &str = r#"
+const V7: &str = r"
 DROP TABLE IF EXISTS pin_seq;
-"#;
+";
 
 /// A dev store may carry `user_version = 8` from an unreleased commit that
 /// numbered this same cleanup differently. Its schema is what v7 produces, so

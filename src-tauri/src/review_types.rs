@@ -33,19 +33,14 @@ impl ThreadState {
     /// Every other pair, identity transitions included, is illegal: the CLI's
     /// `open -> addressed` claim on an already-`addressed` thread must fail
     /// naming the current state, not silently no-op.
-    pub fn transition(self, next: ThreadState, by: Channel) -> Result<ThreadState, TrunkError> {
+    pub fn transition(self, next: Self, by: Channel) -> Result<Self, TrunkError> {
         use Channel::{Agent, Human};
         use ThreadState::{Addressed, Dismissed, Done, Open};
 
         let legal = matches!(
             (by, self, next),
-            (Human, Open, Done)
-                | (Human, Open, Dismissed)
-                | (Human, Addressed, Done)
-                | (Human, Addressed, Dismissed)
-                | (Human, Addressed, Open)
-                | (Human, Done, Open)
-                | (Human, Dismissed, Open)
+            (Human, Open | Addressed, Done | Dismissed)
+                | (Human, Addressed | Done | Dismissed, Open)
                 | (Agent, Open, Addressed)
         );
 
@@ -63,7 +58,8 @@ impl ThreadState {
     /// legal set, precomputed so the wire can carry it and the frontend renders
     /// entries instead of re-deriving the matrix. Ordered resolutions first,
     /// reopen last: this order is the wire contract the UI presents verbatim.
-    pub fn allowed_transitions(self, by: Channel) -> Vec<ThreadState> {
+    #[must_use]
+    pub fn allowed_transitions(self, by: Channel) -> Vec<Self> {
         use ThreadState::{Addressed, Dismissed, Done, Open};
 
         [Done, Dismissed, Open, Addressed]
@@ -72,12 +68,13 @@ impl ThreadState {
             .collect()
     }
 
-    pub fn as_str(self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
-            ThreadState::Open => "open",
-            ThreadState::Addressed => "addressed",
-            ThreadState::Done => "done",
-            ThreadState::Dismissed => "dismissed",
+            Self::Open => "open",
+            Self::Addressed => "addressed",
+            Self::Done => "done",
+            Self::Dismissed => "dismissed",
         }
     }
 }
@@ -87,10 +84,10 @@ impl std::str::FromStr for ThreadState {
 
     fn from_str(raw: &str) -> Result<Self, TrunkError> {
         match raw {
-            "open" => Ok(ThreadState::Open),
-            "addressed" => Ok(ThreadState::Addressed),
-            "done" => Ok(ThreadState::Done),
-            "dismissed" => Ok(ThreadState::Dismissed),
+            "open" => Ok(Self::Open),
+            "addressed" => Ok(Self::Addressed),
+            "done" => Ok(Self::Done),
+            "dismissed" => Ok(Self::Dismissed),
             other => Err(TrunkError::new(
                 "store",
                 format!("corrupt thread row: unknown state {other:?}"),
@@ -109,10 +106,11 @@ pub enum Channel {
 }
 
 impl Channel {
-    pub fn as_str(self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
-            Channel::Human => "human",
-            Channel::Agent => "agent",
+            Self::Human => "human",
+            Self::Agent => "agent",
         }
     }
 }
@@ -122,8 +120,8 @@ impl std::str::FromStr for Channel {
 
     fn from_str(raw: &str) -> Result<Self, TrunkError> {
         match raw {
-            "human" => Ok(Channel::Human),
-            "agent" => Ok(Channel::Agent),
+            "human" => Ok(Self::Human),
+            "agent" => Ok(Self::Agent),
             other => Err(TrunkError::new(
                 "store",
                 format!("corrupt row: unknown channel {other:?}"),

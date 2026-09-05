@@ -399,7 +399,7 @@ fn a_walk_member_the_parent_map_does_not_describe_is_fatal() {
         worktree_dirty: false,
     };
 
-    assign_lanes(&input);
+    let _ = assign_lanes(&input);
 }
 
 #[test]
@@ -415,7 +415,7 @@ fn a_cycle_below_the_head_tip_is_fatal() {
         worktree_dirty: false,
     };
 
-    assign_lanes(&input);
+    let _ = assign_lanes(&input);
 }
 
 #[test]
@@ -435,7 +435,7 @@ fn a_cycle_above_the_tracked_upstream_is_fatal() {
         worktree_dirty: false,
     };
 
-    assign_lanes(&input);
+    let _ = assign_lanes(&input);
 }
 
 /// The commit that claimed the lane a commit sits in.

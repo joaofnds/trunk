@@ -149,11 +149,11 @@ pub enum DiffRow {
     },
 }
 
-fn is_zero(n: &u32) -> bool {
+const fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
-fn is_false(b: &bool) -> bool {
+const fn is_false(b: &bool) -> bool {
     !*b
 }
 
@@ -215,8 +215,9 @@ struct Leaf {
 /// sourcepos share one coordinate system. `repo`/`file`/`rev` are needed only to
 /// resolve each side's images. The frontend projects every layout from the rows.
 /// `ignore_whitespace` compares line keys with ALL whitespace stripped — git's
-/// `-w`, matching Source's GIT_DIFF_IGNORE_WHITESPACE — while the original
+/// `-w`, matching Source's `GIT_DIFF_IGNORE_WHITESPACE` — while the original
 /// lines still classify blocks and render.
+#[must_use]
 pub fn diff_markdown_blocks(
     before_md: &str,
     after_md: &str,
@@ -615,16 +616,13 @@ fn tokenize(fragment: &str) -> Vec<Token> {
     let mut rest = fragment;
     while let Some(first) = rest.chars().next() {
         if first == '<' {
-            match rest.find('>') {
-                Some(end) => {
-                    let (tag, tail) = rest.split_at(end + 1);
-                    tokens.push(Token::Tag(tag.to_string()));
-                    rest = tail;
-                }
-                None => {
-                    tokens.push(Token::Word(rest.to_string()));
-                    rest = "";
-                }
+            if let Some(end) = rest.find('>') {
+                let (tag, tail) = rest.split_at(end + 1);
+                tokens.push(Token::Tag(tag.to_string()));
+                rest = tail;
+            } else {
+                tokens.push(Token::Word(rest.to_string()));
+                rest = "";
             }
         } else if first.is_whitespace() {
             let end = rest
@@ -678,7 +676,7 @@ fn tag_name(tag: &str) -> String {
     tag.trim_start_matches('<')
         .trim_start_matches('/')
         .chars()
-        .take_while(|c| c.is_ascii_alphanumeric())
+        .take_while(char::is_ascii_alphanumeric)
         .collect::<String>()
         .to_ascii_lowercase()
 }
@@ -817,7 +815,7 @@ fn build_units(tokens: &[Token]) -> Option<Vec<Unit>> {
     for token in tokens {
         match token {
             Token::Word(text) | Token::Space(text) => {
-                units.push(Unit::new(stack.clone(), text.clone()))
+                units.push(Unit::new(stack.clone(), text.clone()));
             }
             Token::Tag(tag) => match classify_tag(tag) {
                 TagClass::InlineOpen => stack.push(tag.clone()),
@@ -1021,7 +1019,7 @@ fn merged_is_balanced(html: &str) -> bool {
         let Some(close) = rest.find('>') else {
             return false;
         };
-        let tag = &rest[..close + 1];
+        let tag = &rest[..=close];
         rest = &rest[close + 1..];
         match classify_tag(tag) {
             TagClass::InlineOpen => stack.push(tag_name(tag)),
@@ -1090,7 +1088,7 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
 /// balanced. `None` when a guard trips (input imbalance, an unbalanced result, or
 /// a merge that marked nothing) — the caller then falls back to the shipped
 /// block-level `Removed`+`Added` pair.
-/// The output is UNsanitized; `changed_fragments` sanitizes it before it crosses IPC.
+/// The output is `UNsanitized`; `changed_fragments` sanitizes it before it crosses IPC.
 fn html_token_merge(before_raw: &str, after_raw: &str) -> Option<String> {
     let (_, after_units, runs) = merge_units(before_raw, after_raw)?;
     let (merged, marked) = merge_emit(&runs, &after_units);
@@ -1260,7 +1258,7 @@ fn element_span(sourcepos_html: &str, tag: &str, sourcepos: &str) -> Option<(usi
         let rest = &sourcepos_html[pos..];
         let next_open = rest.find(&open_marker).map(|i| {
             let after = rest[i + open_marker.len()..].chars().next();
-            (i, matches!(after, Some(' ') | Some('>') | Some('/')))
+            (i, matches!(after, Some(' ' | '>' | '/')))
         });
         let next_close = rest.find(&close_marker)?;
         match next_open {
@@ -1727,19 +1725,11 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                 for k in 0..pairs {
                     let b = &before.leaves[old_index + k];
                     let a = &after.leaves[new_index + k];
-                    match html_token_merge(&b.raw_html, &a.raw_html) {
-                        Some(merged_leaf) => {
-                            frag = replace_leaf(&frag, &a.tag, &a.sourcepos, &merged_leaf)?;
-                        }
-                        None => {
-                            insert_removed_leaves(
-                                &mut frag,
-                                std::slice::from_ref(b),
-                                Some(a),
-                                false,
-                            )?;
-                            tints.push((&a.tag, &a.sourcepos, "md-added"));
-                        }
+                    if let Some(merged_leaf) = html_token_merge(&b.raw_html, &a.raw_html) {
+                        frag = replace_leaf(&frag, &a.tag, &a.sourcepos, &merged_leaf)?;
+                    } else {
+                        insert_removed_leaves(&mut frag, std::slice::from_ref(b), Some(a), false)?;
+                        tints.push((&a.tag, &a.sourcepos, "md-added"));
                     }
                 }
                 for l in &after.leaves[new_index + pairs..new_index + new_len] {
@@ -2471,7 +2461,7 @@ fn apply_image_rewrite<'a>(
     }
 }
 
-/// Format one AST node to raw, UNsanitized HTML. Given a top-level block node
+/// Format one AST node to raw, `UNsanitized` HTML. Given a top-level block node
 /// (not the document root) comrak emits only that block's fragment — the diff
 /// path relies on this to render one fragment per block.
 fn format_node<'a>(node: &'a comrak::nodes::AstNode<'a>, options: &comrak::Options<'_>) -> String {
@@ -2536,7 +2526,7 @@ fn pct_encode(s: &str) -> String {
     for b in s.bytes() {
         match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                out.push(b as char)
+                out.push(b as char);
             }
             _ => write!(out, "%{b:02X}").expect("writing to a String cannot fail"),
         }
@@ -2552,7 +2542,7 @@ fn mime_for_ext(path: &str) -> &'static str {
         .as_deref()
     {
         Some("png") => "image/png",
-        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
         Some("svg") => "image/svg+xml",
         Some("webp") => "image/webp",
@@ -2604,6 +2594,7 @@ pub fn resolve_trunk_asset<R: tauri::Runtime>(
 /// no file/rev, so scheme-less image URLs aren't rewritten (relative images have
 /// nothing to resolve against and are dropped by the sanitizer; remote `http(s)`
 /// images render).
+#[must_use]
 pub fn render_comment_text(text: &str) -> String {
     render_markdown_html(text, &|_| None)
 }
@@ -3687,7 +3678,7 @@ mod tests {
             let Some(close) = rest.find('>') else {
                 return false;
             };
-            let tag = &rest[..close + 1];
+            let tag = &rest[..=close];
             rest = &rest[close + 1..];
             let inner = tag.trim_start_matches('<').trim_end_matches('>');
             if inner.ends_with('/') || inner.starts_with('!') {
@@ -3696,7 +3687,7 @@ mod tests {
             let name: String = inner
                 .trim_start_matches('/')
                 .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
+                .take_while(char::is_ascii_alphanumeric)
                 .collect::<String>()
                 .to_ascii_lowercase();
             const VOID: &[&str] = &["br", "img", "hr", "input", "wbr"];

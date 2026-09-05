@@ -854,7 +854,7 @@ mod tests {
             "got: {message:?}"
         );
         assert!(
-            message.contains(&format!("This reverts commit {}.", oid_str)),
+            message.contains(&format!("This reverts commit {oid_str}.")),
             "message must carry the FULL 40-char OID, not a short OID; got: {message:?}"
         );
         assert_eq!(

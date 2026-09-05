@@ -115,12 +115,9 @@ fn graph_edge_serializes_with_expected_fields() {
 
     // Find a commit with edges
     let commits = json["commits"].as_array().unwrap();
-    let edge_commit = commits.iter().find(|c| {
-        c["edges"]
-            .as_array()
-            .map(|e| !e.is_empty())
-            .unwrap_or(false)
-    });
+    let edge_commit = commits
+        .iter()
+        .find(|c| c["edges"].as_array().is_some_and(|e| !e.is_empty()));
 
     if let Some(commit) = edge_commit {
         let edge = &commit["edges"][0];
@@ -153,9 +150,7 @@ fn graph_edge_serializes_with_expected_fields() {
         ];
         assert!(
             valid_types.contains(&edge_type),
-            "edge_type '{}' not in valid set: {:?}",
-            edge_type,
-            valid_types
+            "edge_type '{edge_type}' not in valid set: {valid_types:?}"
         );
     }
     // If no edges found, the graph was too simple -- that's OK for the serialization test
@@ -181,7 +176,7 @@ fn ref_label_serializes_with_expected_fields() {
     let commits = json["commits"].as_array().unwrap();
     let ref_commit = commits
         .iter()
-        .find(|c| c["refs"].as_array().map(|r| !r.is_empty()).unwrap_or(false))
+        .find(|c| c["refs"].as_array().is_some_and(|r| !r.is_empty()))
         .expect("expected at least one commit with refs");
 
     let refs = ref_commit["refs"].as_array().unwrap();
@@ -209,9 +204,7 @@ fn ref_label_serializes_with_expected_fields() {
     let valid_types = ["LocalBranch", "RemoteBranch", "Tag", "Stash"];
     assert!(
         valid_types.contains(&ref_type),
-        "ref_type '{}' not in valid set: {:?}",
-        ref_type,
-        valid_types
+        "ref_type '{ref_type}' not in valid set: {valid_types:?}"
     );
 }
 
@@ -267,9 +260,7 @@ fn working_tree_status_serializes_correctly() {
     ];
     assert!(
         valid_statuses.contains(&status_type),
-        "status '{}' not in valid set: {:?}",
-        status_type,
-        valid_statuses
+        "status '{status_type}' not in valid set: {valid_statuses:?}"
     );
 }
 
@@ -353,9 +344,7 @@ fn file_diff_serializes_correctly() {
     ];
     assert!(
         valid_statuses.contains(&diff_status),
-        "status '{}' not in valid set: {:?}",
-        diff_status,
-        valid_statuses
+        "status '{diff_status}' not in valid set: {valid_statuses:?}"
     );
 
     // Verify DiffHunk shape
@@ -416,9 +405,7 @@ fn file_diff_serializes_correctly() {
     let valid_origins = ["Context", "Add", "Delete"];
     assert!(
         valid_origins.contains(&origin),
-        "origin '{}' not in valid set: {:?}",
-        origin,
-        valid_origins
+        "origin '{origin}' not in valid set: {valid_origins:?}"
     );
 }
 
@@ -686,9 +673,7 @@ fn search_result_serializes_correctly() {
         let mt_str = mt.as_str().unwrap();
         assert!(
             valid_match_types.contains(&mt_str),
-            "match_type '{}' not in valid set: {:?}",
-            mt_str,
-            valid_match_types
+            "match_type '{mt_str}' not in valid set: {valid_match_types:?}"
         );
     }
 }

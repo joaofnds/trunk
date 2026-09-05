@@ -116,8 +116,8 @@ MUTATIONS = [
      "                        active_lanes.resize(col + 1, None);",
      "                        active_lanes.resize(col * 1, None);"),
     (24, P, "secondary-parent min_col",
-     "                    let min_col = if !head_chain.is_empty() { 1 } else { 0 };",
-     "                    let min_col = if head_chain.is_empty() { 1 } else { 0 };"),
+     "                    let min_col = usize::from(!head_chain.is_empty());",
+     "                    let min_col = usize::from(head_chain.is_empty());"),
     (25, P, "open_lane colour advance",
      "    lane_colors.insert(col, *next_color);\n    *next_color += 1;",
      "    lane_colors.insert(col, *next_color);\n    *next_color *= 1;"),
@@ -208,8 +208,8 @@ MUTATIONS = [
      "fn parse_oid(hex: &str) -> Oid {\n"
      "    if true {\n        return Default::default();\n    }"),
     (51, I, "parse_oid",
-     "    if hex.len() != 40 {",
-     "    if hex.len() == 40 {"),
+     "    assert_eq!(hex.len(), 40, \"graph_input: malformed oid {hex}\");",
+     "    assert_ne!(hex.len(), 40, \"graph_input: malformed oid {hex}\");"),
     (52, I, "hex",
      "fn hex(oid: &Oid) -> String {\n    oid.to_string()\n}",
      "fn hex(oid: &Oid) -> String {\n    let _ = oid;\n    String::new()\n}"),
@@ -217,8 +217,8 @@ MUTATIONS = [
      "fn hex(oid: &Oid) -> String {\n    oid.to_string()\n}",
      "fn hex(oid: &Oid) -> String {\n    let _ = oid;\n    \"xyzzy\".into()\n}"),
     (54, I, "CapturedGraph::from_source",
-     "    pub fn from_source(source: &GraphSource) -> CapturedGraph {",
-     "    pub fn from_source(source: &GraphSource) -> CapturedGraph {\n"
+     "    pub fn from_source(source: &GraphSource) -> Self {",
+     "    pub fn from_source(source: &GraphSource) -> Self {\n"
      "        if true {\n            return Default::default();\n        }"),
     (55, I, "CapturedGraph::to_source",
      "    pub fn to_source(&self) -> GraphSource {",

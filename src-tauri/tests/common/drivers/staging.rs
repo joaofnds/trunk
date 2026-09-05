@@ -183,12 +183,18 @@ impl TestContext {
     }
 
     pub fn stage_files(&self, file_paths: &[&str]) -> Result<(), TrunkError> {
-        let paths: Vec<String> = file_paths.iter().map(|s| s.to_string()).collect();
+        let paths: Vec<String> = file_paths
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         staging::stage_files_inner(self.path(), &paths, self.state_map())
     }
 
     pub fn unstage_files(&self, file_paths: &[&str]) -> Result<(), TrunkError> {
-        let paths: Vec<String> = file_paths.iter().map(|s| s.to_string()).collect();
+        let paths: Vec<String> = file_paths
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         staging::unstage_files_inner(self.path(), &paths, self.state_map())
     }
 }

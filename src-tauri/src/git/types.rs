@@ -169,7 +169,7 @@ pub struct WorkingTreeStatus {
     pub conflicted: Vec<FileStatus>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum DiffOrigin {
     Context,
     Add,
@@ -183,14 +183,14 @@ pub struct WordSpan {
     pub emphasized: bool,
 }
 
-#[derive(Debug, Serialize, Clone, Default, PartialEq)]
+#[derive(Debug, Serialize, Clone, Default, PartialEq, Eq)]
 pub struct SyntaxToken {
     pub start: u32,
     pub end: u32,
     pub scope: &'static str,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, Eq)]
 pub struct MergedSpan {
     pub start: u32,
     pub end: u32,
@@ -229,7 +229,7 @@ impl Default for DiffRequestOptions {
 /// has no counterpart; `Unknown` means no word diff ran over the line's run.
 /// The verdict is per run: a run the word diff skipped is all `Unknown` and
 /// the view pairs it positionally, as before the word diff existed.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LinePairing {
     Partner {
@@ -240,7 +240,7 @@ pub enum LinePairing {
     Unknown,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct DiffLine {
     pub origin: DiffOrigin,
     pub content: String,
@@ -254,7 +254,7 @@ pub struct DiffLine {
     pub pairing: LinePairing,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct DiffHunk {
     pub header: String,
     pub old_start: u32,
@@ -264,7 +264,7 @@ pub struct DiffHunk {
     pub lines: Vec<DiffLine>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum DiffStatus {
     Added,
     Deleted,

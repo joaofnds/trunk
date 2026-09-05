@@ -232,7 +232,7 @@ mod tests {
         }
     }
 
-    /// A commit-level comment (anchor None, commit_oid Some).
+    /// A commit-level comment (anchor None, `commit_oid` Some).
     fn commit_comment(id: &str, commit_oid: &str) -> Comment {
         Comment {
             id: id.to_string(),

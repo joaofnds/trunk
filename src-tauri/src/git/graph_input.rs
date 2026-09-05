@@ -63,9 +63,7 @@ pub struct CapturedGraph {
 /// `Oid::from_str` accepts 1 to 40 hex characters and zero-pads the rest, so a truncated
 /// OID would parse cleanly into a different commit. The length check is what stops that.
 fn parse_oid(hex: &str) -> Oid {
-    if hex.len() != 40 {
-        panic!("graph_input: malformed oid {hex}");
-    }
+    assert_eq!(hex.len(), 40, "graph_input: malformed oid {hex}");
 
     match Oid::from_str(hex) {
         Ok(oid) => oid,
@@ -78,10 +76,10 @@ fn hex(oid: &Oid) -> String {
 }
 
 impl CapturedGraph {
-    pub fn from_source(source: &GraphSource) -> CapturedGraph {
+    pub fn from_source(source: &GraphSource) -> Self {
         let placement = &source.placement;
 
-        CapturedGraph {
+        Self {
             oids: placement.oids.iter().map(hex).collect(),
             parents: placement
                 .parents
@@ -157,6 +155,7 @@ pub struct RefVisibility {
 }
 
 impl RefVisibility {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.hidden_refs.is_empty() && self.hidden_stashes.is_empty()
     }
@@ -187,6 +186,7 @@ impl RefVisibility {
 ///
 /// The surviving OIDs keep the capture's order. A subsequence of a topological order is
 /// still topological over an ancestor-closed subset, so placement sees the walk it expects.
+#[must_use]
 pub fn apply_visibility(source: &GraphSource, visibility: &RefVisibility) -> GraphSource {
     if visibility.is_empty() {
         return source.clone();
@@ -332,6 +332,7 @@ fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {
     }
 }
 
+#[must_use]
 pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult {
     let oids = &source.placement.oids;
     let start = offset.min(oids.len());
@@ -346,7 +347,7 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
         let (column, edges, color_index, is_branch_tip, is_stash, claim) = assigned
             .placements
             .remove(&oid)
-            .map(|p| {
+            .map_or((0, vec![], 0, false, false, None), |p| {
                 (
                     p.column,
                     p.edges,
@@ -355,8 +356,7 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
                     p.is_stash,
                     p.lane_claim,
                 )
-            })
-            .unwrap_or((0, vec![], 0, false, false, None));
+            });
         let mut refs = source.refs.get(&oid).cloned().unwrap_or_default();
         for r in &mut refs {
             r.color_index = color_index;
@@ -367,9 +367,16 @@ pub fn layout(source: &GraphSource, offset: usize, limit: usize) -> GraphResult 
         let is_merge = !is_stash && parents.len() >= 2;
         // For stash commits, only expose the first parent (base commit)
         let parent_oids: Vec<String> = if is_stash {
-            parents.first().map(|o| o.to_string()).into_iter().collect()
+            parents
+                .first()
+                .map(std::string::ToString::to_string)
+                .into_iter()
+                .collect()
         } else {
-            parents.iter().map(|o| o.to_string()).collect()
+            parents
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect()
         };
         let short_oid = &oid.to_string()[..7];
 
@@ -430,31 +437,35 @@ impl Serialize for GraphSnapshot {
 }
 
 impl GraphSnapshot {
-    pub fn new(capture: GraphSource, visibility: RefVisibility) -> GraphSnapshot {
-        GraphSnapshot::lay_out(Arc::new(capture), visibility)
+    #[must_use]
+    pub fn new(capture: GraphSource, visibility: RefVisibility) -> Self {
+        Self::lay_out(Arc::new(capture), visibility)
     }
 
     /// The same capture, laid out under another visibility. No repository access.
-    pub fn with_visibility(&self, visibility: RefVisibility) -> GraphSnapshot {
-        GraphSnapshot::lay_out(Arc::clone(&self.capture), visibility)
+    #[must_use]
+    pub fn with_visibility(&self, visibility: RefVisibility) -> Self {
+        Self::lay_out(Arc::clone(&self.capture), visibility)
     }
 
-    pub fn visibility(&self) -> &RefVisibility {
+    #[must_use]
+    pub const fn visibility(&self) -> &RefVisibility {
         &self.visibility
     }
 
     /// Whether `other` was laid out from the exact same capture as this snapshot, rather
     /// than one a later rebuild produced. `with_visibility` clones the `Arc`, so two
     /// snapshots from the same capture always point at the same allocation.
-    pub fn same_capture_as(&self, other: &GraphSnapshot) -> bool {
+    #[must_use]
+    pub fn same_capture_as(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.capture, &other.capture)
     }
 
-    fn lay_out(capture: Arc<GraphSource>, visibility: RefVisibility) -> GraphSnapshot {
+    fn lay_out(capture: Arc<GraphSource>, visibility: RefVisibility) -> Self {
         let source = apply_visibility(&capture, &visibility);
         let layout = layout(&source, 0, usize::MAX);
 
-        GraphSnapshot {
+        Self {
             capture,
             visibility,
             layout,

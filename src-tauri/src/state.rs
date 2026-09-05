@@ -47,20 +47,21 @@ pub struct CommitStatsCache(
 /// on `tauri::test::MockRuntime` builds its answer from a dangling `NSView*`, so
 /// asking for the native window there segfaults the process — and the frontend asks
 /// for the zoom on its very first render. Off, the command still runs; only the
-/// AppKit call is skipped.
+/// `AppKit` call is skipped.
 pub struct TrafficLights {
     pub enabled: bool,
 }
 
 impl Default for TrafficLights {
     fn default() -> Self {
-        TrafficLights { enabled: true }
+        Self { enabled: true }
     }
 }
 
 impl TrafficLights {
-    pub fn disabled() -> Self {
-        TrafficLights { enabled: false }
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self { enabled: false }
     }
 }
 
@@ -96,11 +97,13 @@ pub struct SweptRepos(Arc<Mutex<HashSet<PathBuf>>>);
 
 impl SweptRepos {
     /// A handle the blocking pool can own, mirroring `StoreSlot`.
-    pub fn clone_handle(&self) -> SweptRepos {
-        SweptRepos(Arc::clone(&self.0))
+    #[must_use]
+    pub fn clone_handle(&self) -> Self {
+        Self(Arc::clone(&self.0))
     }
 
     /// True the first time it is asked about a repo, false forever after.
+    #[must_use]
     pub fn claim(&self, canonical: &Path) -> bool {
         self.0.lock().unwrap().insert(canonical.to_path_buf())
     }
@@ -119,6 +122,7 @@ impl SweptRepos {
 pub struct RefVisibilityState(Arc<Mutex<HashMap<String, crate::git::graph_input::RefVisibility>>>);
 
 impl RefVisibilityState {
+    #[must_use]
     pub fn get(&self, path: &str) -> crate::git::graph_input::RefVisibility {
         self.0
             .lock()

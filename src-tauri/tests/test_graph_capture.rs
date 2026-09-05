@@ -120,8 +120,8 @@ fn linear_topology_repo() -> TestContext {
 fn linear_300_commits_repo() -> TestContext {
     let mut builder = TestContext::builder();
     for i in 0..300 {
-        builder.with_file(&format!("file{}.txt", i), &format!("content {}", i));
-        builder.with_commit(&format!("Commit {}", i));
+        builder.with_file(&format!("file{i}.txt"), &format!("content {i}"));
+        builder.with_commit(&format!("Commit {i}"));
     }
     builder.build()
 }

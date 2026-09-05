@@ -41,6 +41,7 @@ pub fn workdir_tree_oid(repo: &git2::Repository) -> Result<git2::Oid, TrunkError
 }
 
 /// Build the STAGED (index) tree and write it to the ODB, returning its Oid.
+///
 /// Unlike `workdir_tree_oid` this captures ONLY what's staged (HEAD→index): a
 /// staged-diff comment's New side is the *index*, so it must anchor against the
 /// index tree (not the working tree — for a partially-staged file those line
@@ -61,21 +62,22 @@ pub enum SnapshotKind {
 impl SnapshotKind {
     fn tree_oid(self, repo: &git2::Repository) -> Result<git2::Oid, TrunkError> {
         match self {
-            SnapshotKind::Workdir => workdir_tree_oid(repo),
-            SnapshotKind::Index => index_tree_oid(repo),
+            Self::Workdir => workdir_tree_oid(repo),
+            Self::Index => index_tree_oid(repo),
         }
     }
 
-    pub fn label(self) -> &'static str {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
         match self {
-            SnapshotKind::Workdir => "Uncommitted changes",
-            SnapshotKind::Index => "Staged changes",
+            Self::Workdir => "Uncommitted changes",
+            Self::Index => "Staged changes",
         }
     }
 }
 
 /// Get-or-create a review snapshot for a session (the reuse-vs-create decision in a
-/// pure, unit-testable surface — mirrors the validate_range / compute_range_oids
+/// pure, unit-testable surface — mirrors the `validate_range` / `compute_range_oids`
 /// pattern: takes `&Repository`, no Tauri state).
 ///
 /// Returns `(oid, created)`:
@@ -182,6 +184,7 @@ pub fn pinned_snapshot_oids(repo: &git2::Repository) -> Result<Vec<git2::Oid>, T
 }
 
 /// Drop the keepalive ref for one specific superseded snapshot oid (D8).
+///
 /// Named pruning, not glob-based: `refs/trunk/review-snapshots/` holds the
 /// two CURRENT pins, one per kind, plus superseded pins threads still anchor
 /// to, so deleting only the ref this call names is what leaves every other
@@ -209,7 +212,7 @@ mod tests {
     }
 
     /// Init a repo and write one committed file on HEAD so the snapshot has a
-    /// real parent. Returns the TempDir (keep alive) and the open repo.
+    /// real parent. Returns the `TempDir` (keep alive) and the open repo.
     fn repo_with_initial_commit() -> (TempDir, git2::Repository) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();

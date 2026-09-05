@@ -17,6 +17,7 @@ pub mod review;
 /// Run the review subcommand and return the process exit code. Output goes to
 /// stdout, errors to stderr with a nonzero exit and no partial write (§5.1).
 /// Usage mistakes exit 2, store and repo failures exit 1.
+#[must_use]
 pub fn run_review(args: &[String]) -> i32 {
     // The release binary is `windows_subsystem = "windows"` (main.rs): no
     // console is allocated, so `trunk.exe review list` typed into cmd.exe
@@ -57,7 +58,7 @@ mod tests {
     use super::*;
 
     fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|s| s.to_string()).collect()
+        parts.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]

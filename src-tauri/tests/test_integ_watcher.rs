@@ -1,6 +1,6 @@
 //! Integration tests: Filesystem watcher with real notify events
 //! Per D-05, uses real filesystem events with generous timeouts.
-//! Per D-06, uses tauri::test::mock_app() for AppHandle instances.
+//! Per D-06, uses `tauri::test::mock_app()` for `AppHandle` instances.
 
 mod common;
 
@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tauri::Listener;
 use trunk_lib::watcher::{WatcherState, start_watcher, stop_watcher};
 
-/// Poll an AtomicBool flag until it becomes true or timeout is reached.
+/// Poll an `AtomicBool` flag until it becomes true or timeout is reached.
 /// Returns the final value of the flag.
 fn wait_for_flag(flag: &AtomicBool, timeout: Duration) -> bool {
     let deadline = Instant::now() + timeout;
@@ -194,8 +194,8 @@ fn watcher_debounces_rapid_changes() {
     // Write 5 files in rapid succession (no sleep between writes)
     for i in 0..5 {
         std::fs::write(
-            dir.path().join(format!("rapid_{}.txt", i)),
-            format!("content {}", i),
+            dir.path().join(format!("rapid_{i}.txt")),
+            format!("content {i}"),
         )
         .unwrap();
     }

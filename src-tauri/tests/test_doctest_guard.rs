@@ -19,7 +19,7 @@ struct Fence {
 fn is_runnable(info: &str) -> bool {
     let attrs: Vec<&str> = info
         .split(',')
-        .map(|a| a.trim())
+        .map(str::trim)
         .filter(|a| !a.is_empty())
         .collect();
 

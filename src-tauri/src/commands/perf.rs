@@ -9,6 +9,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+#[must_use]
 pub fn samples_path() -> PathBuf {
     PathBuf::from("/tmp/trunk-perf/samples.jsonl")
 }
@@ -20,7 +21,7 @@ fn append_samples(path: &Path, lines: &[String]) -> std::io::Result<()> {
 
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     for line in lines {
-        writeln!(file, "{}", line)?;
+        writeln!(file, "{line}")?;
     }
 
     Ok(())

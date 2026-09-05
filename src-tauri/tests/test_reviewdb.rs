@@ -167,7 +167,7 @@ fn a_reply_survives_a_restart() {
 /// A frozen snapshot of the v1 `reviews` + `threads` DDL, written directly so
 /// this test proves the migration is additive against a REAL v1 store rather
 /// than one this build already upgraded on the way in.
-const V1_SNAPSHOT: &str = r#"
+const V1_SNAPSHOT: &str = r"
 CREATE TABLE reviews (
     id         TEXT PRIMARY KEY,
     repo_path  TEXT    NOT NULL,
@@ -205,7 +205,7 @@ CREATE TABLE review_commits (
 );
 
 PRAGMA user_version = 1;
-"#;
+";
 
 #[test]
 fn migrates_v1_to_v2_additively() {
@@ -296,7 +296,7 @@ fn deleting_a_composing_thread_cascades_to_replies() {
         .read(|c| reviewdb::replies::list_for_threads(c, std::slice::from_ref(&thread_id)))
         .unwrap();
     assert!(
-        replies.get(&thread_id).is_none_or(|rs| rs.is_empty()),
+        replies.get(&thread_id).is_none_or(std::vec::Vec::is_empty),
         "deleting a thread must take its replies with it (ON DELETE CASCADE)",
     );
 }
@@ -764,7 +764,7 @@ fn store_events_survive_a_peer_that_connects_and_says_nothing() {
 
     let socket = std::fs::read_dir(ctx.data_dir().join("w"))
         .unwrap()
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
         .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
         .expect("the subscriber's socket");
@@ -877,7 +877,7 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
 
     let socket = std::fs::read_dir(ctx.data_dir().join("w"))
         .unwrap()
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
         .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
         .expect("the subscriber's socket");
@@ -943,7 +943,7 @@ fn sync_waits_out_a_full_accept_queue_instead_of_reporting_a_dead_feed() {
 
     let socket = std::fs::read_dir(ctx.data_dir().join("w"))
         .unwrap()
-        .filter_map(|entry| entry.ok())
+        .filter_map(std::result::Result::ok)
         .map(|entry| entry.path())
         .find(|path| path.extension().and_then(|e| e.to_str()) == Some("sock"))
         .expect("the subscriber's socket");
@@ -1170,7 +1170,7 @@ fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
             trunk_lib::git::workdir_snapshot::SNAPSHOT_REF_PREFIX
         ))
         .unwrap()
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(|r| r.name().ok().map(str::to_owned))
         .collect();
 
@@ -1187,7 +1187,7 @@ fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
 
 /// Ruling on TRUNK-18 (2026-08-31): supersession alone must not unpin a
 /// snapshot a thread still anchors to — gc would collect it and the thread's
-/// inline diff would resolve CommitGone while the thread is still live.
+/// inline diff would resolve `CommitGone` while the thread is still live.
 #[test]
 fn a_pin_survives_supersession_while_a_thread_anchors_to_it() {
     let ctx = TestContext::builder()
@@ -1510,7 +1510,7 @@ fn publishing_keeps_threads_and_refs() {
     let pins: Vec<String> = repo
         .references_glob("refs/trunk/review-snapshots/*")
         .unwrap()
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .filter_map(|r| r.name().ok().map(str::to_owned))
         .collect();
     assert_eq!(
@@ -2025,7 +2025,7 @@ fn publish_leaves_the_pointer_on_the_published_review() {
         store
             .read(|c| reviewdb::reviews::active(c, &canonical))
             .unwrap(),
-        Some(id.clone()),
+        Some(id),
         "publishing does not touch the pointer — the just-published review keeps \
          receiving gestures",
     );
@@ -3264,7 +3264,7 @@ fn the_sweep_runs_once_per_process_per_repo() {
         .unwrap();
 
     // The repo was already claimed, so no sweep runs and the garbage stays.
-    swept.claim(&canonical);
+    let _ = swept.claim(&canonical);
     sweep_once(&store, &canonical, ctx.path(), &swept);
     sweep_once(&store, &canonical, ctx.path(), &swept);
 
@@ -3684,7 +3684,7 @@ fn a_submit_succeeds_even_when_its_anchor_is_beyond_saving() {
     let repo = git2::Repository::open(ctx.path()).unwrap();
     let mut late = submission("submitted after gc destroyed the anchor");
     late.anchor = Some(Anchor {
-        commit_oid: stale.clone(),
+        commit_oid: stale,
         ..diff_anchor()
     });
 
@@ -4171,7 +4171,6 @@ fn a_snapshot_handed_out_under_a_concurrent_sweep_is_pinned() {
     let sweeper = {
         let store = Arc::clone(&store);
         let canonical = Arc::clone(&canonical);
-        let path = path.clone();
         std::thread::spawn(move || {
             for _ in 0..40 {
                 sweep_unanchored_pins(&store, &canonical, &path, SWEEP_NOW).unwrap();
@@ -4226,7 +4225,7 @@ fn a_mint_and_a_sweep_cannot_interleave() {
             .unwrap();
     let mut first = submission("comment on state A");
     first.anchor = Some(Anchor {
-        commit_oid: s.clone(),
+        commit_oid: s,
         ..diff_anchor()
     });
     let first_id = submit_thread_inner(&store, &canonical, first, 1_000).unwrap();

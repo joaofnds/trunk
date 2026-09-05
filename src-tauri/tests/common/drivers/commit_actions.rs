@@ -72,7 +72,7 @@ impl TestContext {
     }
 
     /// Stage a revert without committing (two-step begin); shells out to git CLI.
-    /// Returns the rebuilt graph + default message read from MERGE_MSG.
+    /// Returns the rebuilt graph + default message read from `MERGE_MSG`.
     pub fn revert_commit_begin(&self, oid: &str) -> Result<RevertBeginResult, TrunkError> {
         commit_actions::revert_commit_begin_inner(
             self.path(),
