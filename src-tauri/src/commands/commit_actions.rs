@@ -16,6 +16,13 @@ pub struct RevertBeginResult {
     pub message: Option<String>,
 }
 
+/// Detach HEAD onto a commit, refusing to overwrite uncommitted work.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `dirty_workdir` when the working
+/// tree has uncommitted changes, and the git error when `oid` does not resolve
+/// or the checkout fails.
 pub fn checkout_commit_inner(
     path: &str,
     oid: &str,
@@ -42,6 +49,12 @@ pub fn checkout_commit_inner(
     graph::snapshot(&mut repo2, visibility)
 }
 
+/// Create an annotated tag on a commit.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when `oid` does
+/// not resolve, the signature is unset, or the tag name is taken.
 pub fn create_tag_inner(
     path: &str,
     oid: &str,
@@ -67,6 +80,12 @@ pub fn create_tag_inner(
     graph::snapshot(&mut repo2, visibility)
 }
 
+/// Delete a tag.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when no such tag
+/// exists or it will not delete.
 pub fn delete_tag_inner(
     path: &str,
     tag_name: &str,
@@ -85,6 +104,13 @@ pub fn delete_tag_inner(
     graph::snapshot(&mut repo2, visibility)
 }
 
+/// Cherry-pick a commit onto HEAD.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `conflict_state` when the pick
+/// conflicts, and `cherry_pick_error` carrying git's own message when `git`
+/// will not run or the pick fails for any other reason.
 pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
@@ -114,6 +140,12 @@ pub fn cherry_pick_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Conclude a conflicted cherry-pick by committing the resolved tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `cherry_pick_error` carrying
+/// git's own message when `git` will not run or the commit fails.
 pub fn cherry_pick_continue_inner(
     path: &str,
     message: &str,
@@ -137,6 +169,12 @@ pub fn cherry_pick_continue_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Abandon an in-progress cherry-pick and restore the previous tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `cherry_pick_error` carrying
+/// git's own message when `git` will not run or the abort fails.
 pub fn cherry_pick_abort_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -159,6 +197,13 @@ pub fn cherry_pick_abort_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Stage a revert without committing, so the message can be edited first.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `conflict_state` when the revert
+/// conflicts, and `revert_error` carrying git's own message when `git` will
+/// not run or the revert fails for any other reason.
 pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
@@ -195,6 +240,12 @@ pub fn revert_commit_begin_inner(
     Ok(RevertBeginResult { graph, message })
 }
 
+/// Conclude a staged revert by committing it.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `revert_error` carrying git's
+/// own message when `git` will not run or the commit fails.
 pub fn revert_continue_inner(
     path: &str,
     message: &str,
@@ -218,6 +269,12 @@ pub fn revert_continue_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Abandon an in-progress revert and restore a clean tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `revert_error` carrying git's
+/// own message when `git` will not run or the abort fails.
 pub fn revert_abort_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -240,6 +297,13 @@ pub fn revert_abort_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Reset HEAD to a commit in soft, mixed or hard mode.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_mode` when `mode` is not
+/// one of soft, mixed or hard, and `reset_error` carrying git's own message
+/// when `git` will not run or the reset fails.
 pub fn reset_to_commit_inner(
     path: &str,
     oid: &str,
@@ -273,6 +337,13 @@ pub fn reset_to_commit_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn reset_to_commit<R: Runtime>(
     path: String,
@@ -298,6 +369,13 @@ pub async fn reset_to_commit<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn checkout_commit<R: Runtime>(
     path: String,
@@ -325,6 +403,13 @@ pub async fn checkout_commit<R: Runtime>(
 // The four leading arguments are the command's wire contract with the frontend, and the rest
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
 #[allow(clippy::too_many_arguments)]
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn create_tag<R: Runtime>(
     path: String,
@@ -358,6 +443,13 @@ pub async fn create_tag<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn delete_tag<R: Runtime>(
     path: String,
@@ -382,6 +474,13 @@ pub async fn delete_tag<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn cherry_pick<R: Runtime>(
     path: String,
@@ -406,6 +505,13 @@ pub async fn cherry_pick<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn revert_commit_begin<R: Runtime>(
     path: String,
@@ -437,6 +543,13 @@ pub async fn revert_commit_begin<R: Runtime>(
     Ok(result)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn cherry_pick_continue<R: Runtime>(
     path: String,
@@ -461,6 +574,13 @@ pub async fn cherry_pick_continue<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn cherry_pick_abort<R: Runtime>(
     path: String,
@@ -484,6 +604,13 @@ pub async fn cherry_pick_abort<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn revert_continue<R: Runtime>(
     path: String,
@@ -508,6 +635,13 @@ pub async fn revert_continue<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn revert_abort<R: Runtime>(
     path: String,
@@ -531,6 +665,13 @@ pub async fn revert_abort<R: Runtime>(
     Ok(())
 }
 
+/// Soft-reset HEAD by one commit, returning the message so it can be redone.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `nothing_to_undo` for the initial
+/// commit, `merge_commit` for a merge, `undo_error` carrying git's own message
+/// when the reset fails, and the git error when HEAD will not read.
 pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -576,6 +717,13 @@ pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult
     })
 }
 
+/// Re-apply an undone commit, refusing if HEAD or the repository has moved.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `redo_stale` when the redo names a
+/// different repository or HEAD has moved since the undo, and whatever
+/// committing returns.
 pub fn redo_commit_inner(
     path: &str,
     subject: &str,
@@ -609,6 +757,12 @@ pub fn redo_commit_inner(
     super::commit::create_commit_inner(path, subject, body, state_map)
 }
 
+/// Whether HEAD is a commit with exactly one parent, so it can be undone.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository. An unborn or unreadable HEAD is
+/// not an error: it answers false.
 pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<bool, TrunkError> {
     let repo = state_map.open(path)?;
     let head = match repo.head() {
@@ -625,6 +779,11 @@ pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<b
 /// Where HEAD is now, or `None` on an unborn branch. A pending redo names the
 /// position it belongs on; comparing it against this is what stops the redo
 /// being replayed onto history it does not describe.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository. An unborn branch is not an error:
+/// it answers `None`.
 pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String>, TrunkError> {
     let repo = state_map.open(path)?;
     match repo.head().and_then(|h| h.peel_to_commit()) {
@@ -633,6 +792,13 @@ pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String
     }
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn undo_commit<R: Runtime>(
     path: String,
@@ -665,6 +831,13 @@ pub async fn undo_commit<R: Runtime>(
 // The four leading arguments are the command's wire contract with the frontend, and the rest
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
 #[allow(clippy::too_many_arguments)]
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn redo_commit<R: Runtime>(
     path: String,
@@ -702,6 +875,13 @@ pub async fn redo_commit<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn check_undo_available(
     path: String,
@@ -714,6 +894,13 @@ pub async fn check_undo_available(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or commit-cache lock is poisoned.
 #[tauri::command]
 pub async fn head_oid(path: String, state: State<'_, RepoState>) -> Result<Option<String>, String> {
     let state_map = state.0.lock().unwrap().clone();

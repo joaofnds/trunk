@@ -95,6 +95,12 @@ fn renamed_from(delta: Option<git2::DiffDelta<'_>>) -> Option<String> {
     Some(old.to_string_lossy().into_owned())
 }
 
+/// The working tree's staged, unstaged and untracked entries.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the status
+/// walk fails.
 pub fn get_status_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -178,6 +184,12 @@ fn present_in_workdir(abs_path: &Path) -> bool {
     abs_path.symlink_metadata().is_ok()
 }
 
+/// Stage one path, recording a deletion when it is gone from the working tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `bare_repo` for a repository with no working tree, and the git error when
+/// the index will not update.
 pub fn stage_file_inner(
     path: &str,
     file_path: &str,
@@ -198,6 +210,12 @@ pub fn stage_file_inner(
     Ok(())
 }
 
+/// Stage several paths in one index write. An empty list is a no-op.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `bare_repo` for a repository with no working tree, and the git error when
+/// the index will not update.
 pub fn stage_files_inner(
     path: &str,
     file_paths: &[String],
@@ -260,6 +278,12 @@ fn is_head_unborn(repo: &git2::Repository) -> bool {
     }
 }
 
+/// Restore one path in the index to its HEAD state.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the index
+/// will not update.
 pub fn unstage_file_inner(
     path: &str,
     file_path: &str,
@@ -281,6 +305,12 @@ pub fn unstage_file_inner(
     Ok(())
 }
 
+/// Restore several paths in the index to their HEAD state.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the index
+/// will not update.
 pub fn unstage_files_inner(
     path: &str,
     file_paths: &[String],
@@ -308,6 +338,14 @@ pub fn unstage_files_inner(
     Ok(())
 }
 
+/// Throw away one path's working-tree changes, deleting it when untracked.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found`
+/// when the path has no working-tree change, `bare_repo` for a repository with
+/// no working tree, `io_error` when an untracked file will not delete, and the
+/// git error when the checkout fails.
 pub fn discard_file_inner(
     path: &str,
     file_path: &str,
@@ -331,11 +369,22 @@ pub fn discard_file_inner(
         ));
     }
 
-    let status = statuses.get(0).unwrap().status();
+    let status = statuses
+        .get(0)
+        .ok_or_else(|| {
+            TrunkError::new(
+                "file_not_found",
+                format!("File not in working tree changes: {file_path}"),
+            )
+        })?
+        .status();
 
     if status.contains(Status::WT_NEW) {
         // Untracked file — delete from disk
-        let full_path = repo.workdir().unwrap().join(file_path);
+        let full_path = repo
+            .workdir()
+            .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?
+            .join(file_path);
         std::fs::remove_file(&full_path).map_err(|e| {
             TrunkError::new("io_error", format!("Failed to delete {file_path}: {e}"))
         })?;
@@ -359,6 +408,12 @@ pub fn discard_file_inner(
     Ok(())
 }
 
+/// Throw away every working-tree change, deleting untracked files too.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `bare_repo` for a
+/// repository with no working tree, and the git error when the checkout fails.
 pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
     let repo = state_map.open(path)?;
 
@@ -368,12 +423,15 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
         .recurse_untracked_dirs(true);
 
     let statuses = repo.statuses(Some(&mut opts))?;
+    let workdir = repo
+        .workdir()
+        .ok_or_else(|| TrunkError::new("bare_repo", "Cannot discard in a bare repository"))?;
 
     // Collect untracked file paths before checkout
     let untracked_paths: Vec<PathBuf> = statuses
         .iter()
         .filter(|entry| entry.status().contains(Status::WT_NEW))
-        .filter_map(|entry| entry.path().ok().map(|p| repo.workdir().unwrap().join(p)))
+        .filter_map(|entry| entry.path().ok().map(|p| workdir.join(p)))
         .collect();
 
     // Force checkout HEAD to restore all tracked modifications
@@ -393,6 +451,12 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
     Ok(())
 }
 
+/// Stage every change in the working tree, untracked files included.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the index
+/// will not update.
 pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
     let repo = state_map.open(path)?;
     let mut index = repo.index()?;
@@ -401,6 +465,13 @@ pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkErr
     Ok(())
 }
 
+/// Stage one hunk of a file's unstaged diff, addressed by its index.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
+/// past the end, and `hunk_apply_failed` when the hunk will not apply.
 pub fn stage_hunk_inner(
     path: &str,
     file_path: &str,
@@ -481,6 +552,13 @@ fn only_delta(apply_opts: &mut git2::ApplyOptions, delta_index: usize) {
     });
 }
 
+/// Unstage one hunk of a file's staged diff, addressed by its index.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no staged change, `stale_hunk_index` when `hunk_index` is past the end, and
+/// `hunk_apply_failed` when the hunk will not apply.
 pub fn unstage_hunk_inner(
     path: &str,
     file_path: &str,
@@ -529,6 +607,13 @@ pub fn unstage_hunk_inner(
     Ok(())
 }
 
+/// Throw away one hunk of a file's unstaged diff, addressed by its index.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
+/// past the end, and `hunk_apply_failed` when the hunk will not apply.
 pub fn discard_hunk_inner(
     path: &str,
     file_path: &str,
@@ -576,6 +661,12 @@ pub fn discard_hunk_inner(
     Ok(())
 }
 
+/// Restore the whole index to HEAD.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when HEAD will
+/// not read or the index will not reset.
 pub fn unstage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
     let repo = state_map.open(path)?;
 
@@ -616,6 +707,12 @@ pub struct DirtyCounts {
     pub typechange: usize,
 }
 
+/// How many entries are staged, unstaged and untracked.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the status
+/// walk fails, which includes a bare repository having no working tree.
 pub fn get_dirty_counts_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -668,6 +765,13 @@ pub fn get_dirty_counts_inner(
     })
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn discard_file(
     path: String,
@@ -681,6 +785,13 @@ pub async fn discard_file(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn discard_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -690,6 +801,13 @@ pub async fn discard_all(path: String, state: State<'_, RepoState>) -> Result<()
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_dirty_counts(
     path: String,
@@ -702,6 +820,13 @@ pub async fn get_dirty_counts(
         .map_err(|e: TrunkError| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_status(
     path: String,
@@ -714,6 +839,13 @@ pub async fn get_status(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stage_file(
     path: String,
@@ -727,6 +859,13 @@ pub async fn stage_file(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn unstage_file(
     path: String,
@@ -740,6 +879,13 @@ pub async fn unstage_file(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stage_files(
     path: String,
@@ -753,6 +899,13 @@ pub async fn stage_files(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn unstage_files(
     path: String,
@@ -768,6 +921,13 @@ pub async fn unstage_files(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stage_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -777,6 +937,13 @@ pub async fn stage_all(path: String, state: State<'_, RepoState>) -> Result<(), 
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn unstage_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -786,6 +953,13 @@ pub async fn unstage_all(path: String, state: State<'_, RepoState>) -> Result<()
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stage_hunk(
     path: String,
@@ -804,6 +978,13 @@ pub async fn stage_hunk(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn unstage_hunk(
     path: String,
@@ -822,6 +1003,13 @@ pub async fn unstage_hunk(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn discard_hunk(
     path: String,
@@ -840,6 +1028,13 @@ pub async fn discard_hunk(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn stage_lines(
     path: String,
@@ -866,6 +1061,13 @@ pub async fn stage_lines(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn unstage_lines(
     path: String,
@@ -892,6 +1094,13 @@ pub async fn unstage_lines(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn discard_lines(
     path: String,
@@ -1066,6 +1275,14 @@ fn build_partial_patch_text(
     Ok(patch_text)
 }
 
+/// Stage selected lines within one hunk of a file's unstaged diff.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
+/// past the end, `patch_parse_failed` when the rebuilt patch will not parse,
+/// and `line_apply_failed` when it will not apply.
 pub fn stage_lines_inner(
     path: &str,
     file_path: &str,
@@ -1115,6 +1332,14 @@ pub fn stage_lines_inner(
     Ok(())
 }
 
+/// Unstage selected lines within one hunk of a file's staged diff.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no staged change, `stale_hunk_index` when `hunk_index` is past the end,
+/// `patch_parse_failed` when the rebuilt patch will not parse, and
+/// `line_apply_failed` when it will not apply.
 pub fn unstage_lines_inner(
     path: &str,
     file_path: &str,
@@ -1165,6 +1390,14 @@ pub fn unstage_lines_inner(
     Ok(())
 }
 
+/// Throw away selected lines within one hunk of a file's unstaged diff.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `file_not_found` when the file has
+/// no unstaged change or is binary, `stale_hunk_index` when `hunk_index` is
+/// past the end, `patch_parse_failed` when the rebuilt patch will not parse,
+/// and `line_apply_failed` when it will not apply.
 pub fn discard_lines_inner(
     path: &str,
     file_path: &str,
