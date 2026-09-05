@@ -15,6 +15,7 @@ import { commitOidForComment } from "../lib/comment-counts.js";
 import { createDraft } from "../lib/draft.svelte.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { ownedTimer } from "../lib/owned-timer.js";
 import {
 	addReply,
 	deleteReply,
@@ -148,18 +149,14 @@ const groups = $derived.by<CommitGroup[]>(() => {
 const hasAnyComment = $derived(comments.length > 0);
 
 let copied = $state(false);
-// Plain handle, not $state — only used to clear; reactivity is on `copied`.
-let copyTimer: ReturnType<typeof setTimeout> | null = null;
+const copiedRevert = ownedTimer();
 
-// Phase 73-02 — End-review two-step confirm. First click flips endConfirming
-// true + arms a 3000ms revert timer; second click within the window invokes
-// publish_review and lets the reviews-changed listener round-trip drive
-// the panel back to the cold state (D-08 — no manual array clear). Pattern
-// carry-forward from `copied` / `copyTimer` above; the danger is the timer
-// leak on unmount (RESEARCH Pitfall 3) — see the $effect teardown below.
+// End-review two-step confirm. First click flips endConfirming true and arms a
+// 3000ms revert; second click within the window invokes publish_review and lets
+// the reviews-changed listener round-trip drive the panel back to the cold
+// state (D-08 — no manual array clear).
 let endConfirming = $state(false);
-// Plain handle, not $state — only used to clear; reactivity is on `endConfirming`.
-let endTimer: ReturnType<typeof setTimeout> | null = null;
+const endConfirmRevert = ownedTimer();
 
 function isOrphan(c: Thread): boolean {
 	const r = resolutionById.get(c.id);
@@ -255,14 +252,9 @@ async function onCopyClick() {
 		if (!activeReviewId) return;
 		const md = await session.generate(repoPath, activeReviewId);
 		await writeText(md);
-		// Pitfall 2 carry-forward: clear any in-flight revert timer before
-		// scheduling a new one. Rapid re-clicks must extend the affordance,
-		// not race against it.
-		if (copyTimer !== null) clearTimeout(copyTimer);
 		copied = true;
-		copyTimer = setTimeout(() => {
+		copiedRevert.arm(() => {
 			copied = false;
-			copyTimer = null;
 		}, 1500);
 	} catch (e) {
 		showToast(`Failed to copy: ${errorMessage(e, "unknown error")}`, "error");
@@ -273,13 +265,9 @@ async function onCopyClick() {
 // revert; second click PUBLISHES. Publishing deletes nothing: the review stays
 // listed, its threads stay visible, and the snapshot keepalive refs stay.
 function startEndConfirm() {
-	// clearTimeout-before-setTimeout discipline (Pattern A): rapid re-clicks
-	// extend the confirm window, not race against the previous revert timer.
-	if (endTimer !== null) clearTimeout(endTimer);
 	endConfirming = true;
-	endTimer = setTimeout(() => {
+	endConfirmRevert.arm(() => {
 		endConfirming = false;
-		endTimer = null;
 	}, 3000);
 }
 
@@ -292,10 +280,7 @@ async function onEndClick() {
 	// the label stays "Click again to confirm" (frozen during await). On success
 	// the owner's reviews-changed refresh re-reads the now-published review and
 	// the button's {#if} gate hides it. On failure we explicitly revert.
-	if (endTimer !== null) {
-		clearTimeout(endTimer);
-		endTimer = null;
-	}
+	endConfirmRevert.cancel();
 	if (!activeReviewId) return;
 	try {
 		await safeInvoke("publish_review", {
@@ -365,22 +350,18 @@ async function commitRename() {
 // Deleting a review is destructive in every state, so it takes the same
 // two-step confirm the publish button uses rather than a single click.
 let deleteConfirmingId = $state<string | null>(null);
-let deleteTimer: ReturnType<typeof setTimeout> | null = null;
+const deleteConfirmRevert = ownedTimer();
 
 async function onDeleteReviewClick(id: string) {
 	if (deleteConfirmingId !== id) {
-		if (deleteTimer !== null) clearTimeout(deleteTimer);
 		deleteConfirmingId = id;
-		deleteTimer = setTimeout(() => {
+		deleteConfirmRevert.arm(() => {
 			deleteConfirmingId = null;
-			deleteTimer = null;
 		}, 3000);
 		return;
 	}
-	if (deleteTimer !== null) {
-		clearTimeout(deleteTimer);
-		deleteTimer = null;
-	}
+
+	deleteConfirmRevert.cancel();
 	deleteConfirmingId = null;
 	try {
 		await safeInvoke("delete_review", { path: repoPath, reviewId: id });
@@ -427,18 +408,6 @@ $effect(() => {
 	toastedError = failure;
 	if (failure === null) return;
 	reportReadFailure(failure);
-});
-
-// Phase 73-02 — Timer cleanup on component destroy (RESEARCH Pitfall 3). If
-// the panel unmounts mid-confirm (e.g. tab close, repo switch), the pending
-// setTimeout would otherwise fire `endConfirming = false` against a torn-down
-// component and Svelte logs an error. This effect's sole purpose is the
-// teardown return — no reactive body.
-$effect(() => {
-	return () => {
-		if (endTimer !== null) clearTimeout(endTimer);
-		if (deleteTimer !== null) clearTimeout(deleteTimer);
-	};
 });
 </script>
 

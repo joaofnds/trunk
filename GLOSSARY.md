@@ -382,6 +382,14 @@ fall back to the real one when nothing set it, so a plain mount and the unit sui
 `vi.useFakeTimers` keep working. Distinct from the **clock** (reading the current time,
 `now.svelte.ts`), which TRUNK-111 owns.
 
+**Owned timer** — a component's single pending callback, created during initialisation
+from `src/lib/owned-timer.ts`. Arming it replaces whatever was pending, and destroying the
+component cancels it, so no callback can fire against a component that is gone. It reads
+the scheduler from context, so the fake scheduler drives it and a plain mount uses real
+time. The review panel's three revert timers and the comment composer's draft autosave are
+its callers; a bare `setTimeout` in a component is the leak TRUNK-22 and TRUNK-169 were
+(TRUNK-22, 2026-09-05).
+
 **Fake scheduler** — the harness's double for the scheduler: timers queue instead of firing.
 Installed through `mount()`'s `context` option before the root mounts, the same shape as the
 transport seam. `flush()` fires whatever is pending now; `elapse()` waits for a timer to be

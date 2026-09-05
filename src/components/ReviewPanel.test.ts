@@ -2,10 +2,12 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommentResolution,
@@ -878,7 +880,11 @@ describe("ReviewPanel", () => {
 		}
 
 		function renderWithComment(
-			opts: { generateDoc?: string; generateRejection?: unknown } = {},
+			opts: {
+				generateDoc?: string;
+				generateRejection?: unknown;
+				scheduler?: FakeScheduler;
+			} = {},
 		) {
 			installReads({
 				commits,
@@ -887,7 +893,7 @@ describe("ReviewPanel", () => {
 				generateDoc: opts.generateDoc ?? "the doc",
 				generateRejection: opts.generateRejection,
 			});
-			render(ReviewPanel, {
+			return render(ReviewPanel, {
 				props: {
 					repoPath: "/repo",
 					session: createReviewSession(),
@@ -895,6 +901,9 @@ describe("ReviewPanel", () => {
 					onJump: vi.fn(),
 					onJumpToCommit: vi.fn(),
 				},
+				...(opts.scheduler
+					? { context: new Map([[SCHEDULER, opts.scheduler]]) }
+					: {}),
 			});
 		}
 
@@ -1032,6 +1041,20 @@ describe("ReviewPanel", () => {
 				"Failed to copy: No comments to include",
 				"error",
 			);
+		});
+
+		it("takes the Copied revert timer down with the panel", async () => {
+			const scheduler = new FakeScheduler();
+			const { unmount } = renderWithComment({ scheduler });
+			await flushFake();
+			await fireEvent.click(getCopyButton());
+			await flushFake();
+			expect(getCopyButton()).toHaveTextContent(/Copied/);
+			expect(scheduler.pending).toBe(1);
+
+			unmount();
+
+			expect(scheduler.pending).toBe(0);
 		});
 
 		it("coerces non-Error rejection", async () => {
