@@ -1327,12 +1327,6 @@ struct ChangedFragments {
 }
 
 fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
-    // BOTH sides must be leaf-bearing to diff by leaf. A blockquote lends its
-    // leaves from the single container it wraps, so leaf-bearing-ness follows
-    // content, not kind, and one row's two sides can disagree: a quoted list
-    // that gains a paragraph is a container before and not after. The container
-    // path reads each side's `sourcepos_html`, which a non-container leaves
-    // empty, and the reader lost that whole side of the diff.
     if before.leaves.is_empty() || after.leaves.is_empty() {
         return single_leaf_fragments(before, after);
     }

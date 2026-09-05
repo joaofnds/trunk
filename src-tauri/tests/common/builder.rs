@@ -264,21 +264,9 @@ impl TestContextBuilder {
                 BuildStep::Remote { name } => remote(&repo, dir.path(), name),
                 BuildStep::Tracking { remote, branch } => tracking(&repo, remote, branch),
                 BuildStep::Pushed { remote, branch } => pushed(&repo, remote, branch),
-                BuildStep::RemoteCommit {
-                    remote,
-                    branch,
-                    path,
-                    content,
-                    message,
-                } => remote_commit(
-                    dir.path(),
-                    remote,
-                    branch,
-                    path,
-                    content,
-                    message,
-                    &mut clock,
-                ),
+                step @ BuildStep::RemoteCommit { .. } => {
+                    remote_commit(dir.path(), step, &mut clock);
+                }
             }
         }
 
@@ -519,15 +507,18 @@ fn pushed(repo: &git2::Repository, remote: &str, branch: &str) {
 }
 
 /// Commit directly into the bare remote, so the local branch falls behind.
-fn remote_commit(
-    root: &std::path::Path,
-    remote: &str,
-    branch: &str,
-    path: &str,
-    content: &str,
-    message: &str,
-    clock: &mut i64,
-) {
+fn remote_commit(root: &std::path::Path, step: &BuildStep, clock: &mut i64) {
+    let BuildStep::RemoteCommit {
+        remote,
+        branch,
+        path,
+        content,
+        message,
+    } = step
+    else {
+        unreachable!("remote_commit is only reached for a RemoteCommit step")
+    };
+
     let sig = pinned_signature(*clock);
     *clock += FIXTURE_DAY_SECS;
 

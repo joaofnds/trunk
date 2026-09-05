@@ -207,8 +207,6 @@ fn bench_stage_hunk(c: &mut Criterion) {
     });
 }
 
-/// Create a repo with a realistic code file (TypeScript) that has multiple changed hunks.
-/// Tests the full enrichment pipeline: syntax highlighting + word-level diff.
 /// The bench fixture's file before the edit: a TypeScript module whose diff
 /// against `CODE_AFTER` exercises the renamed parameter, widened signature,
 /// and added field a real review sees.
@@ -316,6 +314,8 @@ export function computeStats(diffs: FileDiff[]): { added: number; removed: numbe
 }
 "#;
 
+/// Create a repo with a realistic code file (TypeScript) that has multiple changed hunks.
+/// Tests the full enrichment pipeline: syntax highlighting + word-level diff.
 fn make_repo_with_code_changes() -> BenchRepo {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
