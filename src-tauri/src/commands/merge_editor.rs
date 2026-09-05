@@ -122,14 +122,14 @@ pub fn save_merge_result_inner(
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_merge_sides(
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<MergeSides, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         get_merge_sides_inner(&path, &file_path, &state_map)
     })
@@ -145,7 +145,7 @@ pub async fn get_merge_sides(
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn save_merge_result<R: Runtime>(
     path: String,
@@ -157,7 +157,7 @@ pub async fn save_merge_result<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let state_map_clone = state_map.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -170,7 +170,7 @@ pub async fn save_merge_result<R: Runtime>(
     // Repopulate cache and emit repo-changed (same pattern as merge_continue)
     let path_for_cache = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = &state_map.path_for(&path_for_cache)?;
+        let path_buf = state_map.path_for(&path_for_cache)?;
         let mut repo = git2::Repository::open(path_buf)?;
         graph::snapshot(&mut repo, &visibility)
     })

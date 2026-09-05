@@ -108,11 +108,12 @@ pub fn get_head_commit_message_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn create_commit<R: Runtime>(
     path: String,
@@ -124,7 +125,7 @@ pub async fn create_commit<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
@@ -141,11 +142,12 @@ pub async fn create_commit<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn amend_commit<R: Runtime>(
     path: String,
@@ -157,7 +159,7 @@ pub async fn amend_commit<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
@@ -174,17 +176,18 @@ pub async fn amend_commit<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_head_commit_message(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<HeadCommitMessage, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_head_commit_message_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

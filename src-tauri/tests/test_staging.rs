@@ -244,6 +244,23 @@ fn discard_file_reverts_tracked_modification() {
 }
 
 #[test]
+fn discard_file_on_a_path_with_no_changes_reports_it_missing() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    let err = ctx
+        .discard_file("README.md")
+        .expect_err("a path with nothing to discard is refused");
+
+    assert_eq!(
+        err.code, "file_not_found",
+        "expected file_not_found error code"
+    );
+}
+
+#[test]
 fn discard_file_deletes_untracked_file() {
     let ctx = TestContext::builder()
         .with_file("README.md", "hello")

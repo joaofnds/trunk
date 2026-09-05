@@ -14,7 +14,7 @@ use tauri::{AppHandle, Runtime, State};
 ///
 /// # Panics
 ///
-/// Panics when the commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn open_repo<R: Runtime>(
     path: String,
@@ -56,7 +56,7 @@ pub async fn open_repo<R: Runtime>(
 ///
 /// # Panics
 ///
-/// Panics when the commit-cache or stats lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn close_repo(
     path: String,
@@ -82,7 +82,7 @@ pub async fn close_repo(
 ///
 /// # Panics
 ///
-/// Panics when the running-operation, commit-cache or stats lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn force_close_repo(
     path: String,

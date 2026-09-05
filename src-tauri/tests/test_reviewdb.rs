@@ -835,7 +835,10 @@ fn nonblocking_connect(path: &std::path::Path) -> std::io::Result<std::os::unix:
         "the subscriber's socket path does not fit in sockaddr_un",
     );
     for (slot, byte) in addr.sun_path.iter_mut().zip(bytes) {
-        *slot = libc::c_char::try_from(*byte).expect("a path byte fits");
+        // The kernel wants the path's raw bytes back. A byte above 127 is a
+        // reinterpretation here, not a narrowing, so a non-ASCII temp directory
+        // still connects.
+        *slot = byte.cast_signed();
     }
 
     // SAFETY: `addr` is a fully initialised `sockaddr_un` owned by this frame

@@ -54,14 +54,15 @@ impl From<ResolveError> for TrunkError {
     }
 }
 
-/// A fresh random id. Sampled from the OS, not a seeded PRNG: ids are addresses
-/// a user types, and a predictable stream would collide across processes.
-#[must_use]
 /// A fresh random id.
+///
+/// Sampled from the OS, not a seeded PRNG: ids are addresses a user types, and a
+/// predictable stream would collide across processes.
 ///
 /// # Panics
 ///
 /// Panics when the operating system's random source is unavailable.
+#[must_use]
 pub fn mint() -> String {
     let mut bytes = [0u8; ID_LEN];
     getrandom::fill(&mut bytes).expect("the OS random source must be available");

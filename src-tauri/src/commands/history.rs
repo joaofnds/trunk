@@ -56,7 +56,7 @@ impl GraphResponse {
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_commit_graph(
     path: String,
@@ -74,11 +74,12 @@ pub async fn get_commit_graph(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn refresh_commit_graph(
     path: String,
@@ -88,11 +89,11 @@ pub async fn refresh_commit_graph(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<GraphResponse, String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = &state_map.path_for(&path_clone)?;
+        let path_buf = state_map.path_for(&path_clone)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
         graph::snapshot(&mut repo, &visibility)
     })
@@ -115,11 +116,12 @@ pub async fn refresh_commit_graph(
 ///
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn set_ref_visibility(
     path: String,
@@ -132,7 +134,7 @@ pub async fn set_ref_visibility(
     ref_visibility.set(path.clone(), visibility.clone());
 
     let cached = cache.0.lock().unwrap().get(&path).cloned();
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let read = cached.clone();
 
@@ -174,7 +176,6 @@ fn write_relaid_out_graph(
 ///
 /// The cached snapshot answers without touching the repository; only a repository whose
 /// first graph is still being built has none, and that one is walked as it always was.
-/// The graph under a new visibility, from the cache when one is held.
 ///
 /// # Errors
 ///
@@ -211,8 +212,9 @@ fn commit_stat_from_repo(repo: &git2::Repository, oid: git2::Oid) -> Result<Diff
     })
 }
 
-/// Single-commit diff-stat by oid string. Opens the repo once.
-/// One commit's insertions, deletions and file count.
+/// One commit's insertions, deletions and file count, by oid string.
+///
+/// Opens the repo once.
 ///
 /// # Errors
 ///
@@ -308,11 +310,12 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
 ///
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_commit_stats(
     path: String,
@@ -355,7 +358,7 @@ pub async fn get_commit_stats(
         return Ok(result);
     }
 
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let computed = tauri::async_runtime::spawn_blocking(move || {
         compute_commit_stats_batch(&path_clone, &uncached, &state_map)
@@ -378,17 +381,18 @@ pub async fn get_commit_stats(
 ///
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_wip_diff_stats(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<DiffStat, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || wip_diff_stats_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -465,7 +469,7 @@ pub fn search_commits_inner(
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn search_commits(
     path: String,

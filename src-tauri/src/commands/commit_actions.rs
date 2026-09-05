@@ -340,11 +340,12 @@ pub fn reset_to_commit_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn reset_to_commit<R: Runtime>(
     path: String,
@@ -356,7 +357,7 @@ pub async fn reset_to_commit<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         reset_to_commit_inner(&path_clone, &oid, &mode, &state_map, &visibility)
@@ -372,11 +373,12 @@ pub async fn reset_to_commit<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn checkout_commit<R: Runtime>(
     path: String,
@@ -387,7 +389,7 @@ pub async fn checkout_commit<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         checkout_commit_inner(&path_clone, &oid, &state_map, &visibility)
@@ -405,11 +407,12 @@ pub async fn checkout_commit<R: Runtime>(
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn create_tag<R: Runtime>(
     path: String,
@@ -422,7 +425,7 @@ pub async fn create_tag<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         create_tag_inner(
@@ -445,11 +448,12 @@ pub async fn create_tag<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_tag<R: Runtime>(
     path: String,
@@ -460,7 +464,7 @@ pub async fn delete_tag<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         delete_tag_inner(&path_clone, &tag_name, &state_map, &visibility)
@@ -476,11 +480,12 @@ pub async fn delete_tag<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cherry_pick<R: Runtime>(
     path: String,
@@ -491,7 +496,7 @@ pub async fn cherry_pick<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         cherry_pick_inner(&path_clone, &oid, &state_map, &visibility)
@@ -507,11 +512,12 @@ pub async fn cherry_pick<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn revert_commit_begin<R: Runtime>(
     path: String,
@@ -522,7 +528,7 @@ pub async fn revert_commit_begin<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<RevertBeginResult, String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         revert_commit_begin_inner(&path_clone, &oid, &state_map, &visibility)
@@ -545,11 +551,12 @@ pub async fn revert_commit_begin<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cherry_pick_continue<R: Runtime>(
     path: String,
@@ -560,7 +567,7 @@ pub async fn cherry_pick_continue<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         cherry_pick_continue_inner(&path_clone, &message, &state_map, &visibility)
@@ -576,11 +583,12 @@ pub async fn cherry_pick_continue<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cherry_pick_abort<R: Runtime>(
     path: String,
@@ -590,7 +598,7 @@ pub async fn cherry_pick_abort<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         cherry_pick_abort_inner(&path_clone, &state_map, &visibility)
@@ -606,11 +614,12 @@ pub async fn cherry_pick_abort<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn revert_continue<R: Runtime>(
     path: String,
@@ -621,7 +630,7 @@ pub async fn revert_continue<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         revert_continue_inner(&path_clone, &message, &state_map, &visibility)
@@ -637,11 +646,12 @@ pub async fn revert_continue<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn revert_abort<R: Runtime>(
     path: String,
@@ -651,7 +661,7 @@ pub async fn revert_abort<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         revert_abort_inner(&path_clone, &state_map, &visibility)
@@ -776,14 +786,15 @@ pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<b
     Ok(head.parent_count() == 1)
 }
 
-/// Where HEAD is now, or `None` on an unborn branch. A pending redo names the
-/// position it belongs on; comparing it against this is what stops the redo
-/// being replayed onto history it does not describe.
+/// Where HEAD is now, or `None` when it cannot be read as a commit.
+///
+/// A pending redo names the position it belongs on. Comparing it against this is
+/// what stops the redo being replayed onto history it does not describe.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository. An unborn branch is not an error:
-/// it answers `None`.
+/// Returns `not_open` when `path` names no open repository. An unborn or
+/// unreadable HEAD is not an error: it answers `None`.
 pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String>, TrunkError> {
     let repo = state_map.open(path)?;
     Ok(repo
@@ -795,11 +806,12 @@ pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn undo_commit<R: Runtime>(
     path: String,
@@ -809,12 +821,12 @@ pub async fn undo_commit<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<UndoResult, String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let (undo_result, graph_result) = tauri::async_runtime::spawn_blocking(move || {
         let undo = undo_commit_inner(&path_clone, &state_map)?;
         let graph = {
-            let path_buf = &state_map.path_for(&path_clone)?;
+            let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
             graph::snapshot(&mut repo, &visibility)?
         };
@@ -833,11 +845,12 @@ pub async fn undo_commit<R: Runtime>(
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn redo_commit<R: Runtime>(
     path: String,
@@ -851,7 +864,7 @@ pub async fn redo_commit<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         redo_commit_inner(
@@ -862,7 +875,7 @@ pub async fn redo_commit<R: Runtime>(
             &expected_repo_path,
             &state_map,
         )?;
-        let path_buf = &state_map.path_for(&path_clone)?;
+        let path_buf = state_map.path_for(&path_clone)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
         graph::snapshot(&mut repo, &visibility)
     })
@@ -877,17 +890,18 @@ pub async fn redo_commit<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn check_undo_available(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<bool, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || check_undo_available_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -896,14 +910,15 @@ pub async fn check_undo_available(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository or commit-cache lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn head_oid(path: String, state: State<'_, RepoState>) -> Result<Option<String>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || head_oid_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

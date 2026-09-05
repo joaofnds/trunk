@@ -294,11 +294,12 @@ fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_rebase_todo(
     path: String,
@@ -306,7 +307,7 @@ pub async fn get_rebase_todo(
     inclusive: Option<bool>,
     state: State<'_, RepoState>,
 ) -> Result<RebaseTodo, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let incl = inclusive.unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         get_rebase_todo_inner(&path, &base_oid, incl, &state_map)
@@ -318,18 +319,19 @@ pub async fn get_rebase_todo(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_fork_point(
     path: String,
     branch: String,
     state: State<'_, RepoState>,
 ) -> Result<String, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_fork_point_inner(&path, &branch, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -353,11 +355,12 @@ fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn start_interactive_rebase<R: Runtime>(
     path: String,
@@ -369,7 +372,7 @@ pub async fn start_interactive_rebase<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<RebaseStartResult, String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     let session = new_session_dir().map_err(|e| e.to_json())?;

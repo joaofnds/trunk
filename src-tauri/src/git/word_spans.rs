@@ -152,7 +152,7 @@ fn emphasize_run(
             op_spans.push((line_idx, polish_spans(spans, &lines[line_idx].content)));
         }
 
-        let reads_as_edit = emphasis_within(&op_spans, lines, WORD_DIFF_COVERAGE_MAX);
+        let reads_as_edit = emphasis_within(&op_spans, lines);
         if reads_as_edit {
             for (line_idx, spans) in op_spans {
                 result.spans[line_idx] = spans;
@@ -285,11 +285,7 @@ fn word_bytes(words: &std::collections::HashMap<&str, u32>) -> usize {
 /// The edit-vs-rewrite verdict asks this once per op, so a run keeps either
 /// coherent emphasis on every changed region or plain coloring throughout,
 /// never marked lines beside unmarked more-changed ones.
-fn emphasis_within(
-    op_spans: &[(usize, Vec<WordSpan>)],
-    lines: &[DiffLine],
-    max: (u64, u64),
-) -> bool {
+fn emphasis_within(op_spans: &[(usize, Vec<WordSpan>)], lines: &[DiffLine]) -> bool {
     let changed: usize = op_spans
         .iter()
         .map(|(i, _)| lines[*i].content.trim_end_matches(['\n', '\r']).len())
@@ -305,7 +301,7 @@ fn emphasis_within(
     }
 
     // emphasized / changed <= num / den, cross-multiplied so nothing rounds.
-    let (num, den) = max;
+    let (num, den) = WORD_DIFF_COVERAGE_MAX;
     u64::from(emphasized) * den <= changed as u64 * num
 }
 

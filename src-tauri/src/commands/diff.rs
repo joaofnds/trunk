@@ -779,9 +779,10 @@ pub fn diff_commit_inner(
     walk_diff(&diff, &repo, NewSideSource::Odb)
 }
 
-/// Lightweight commit file listing — returns only metadata (path, status, `is_binary`),
-/// no hunks/lines/spans. Used for the commit detail sidebar file list.
 /// The files a commit touched, metadata only.
+///
+/// Returns path, status and `is_binary` per file, with no hunks, lines or spans.
+/// Backs the commit detail sidebar file list.
 ///
 /// # Errors
 ///
@@ -801,8 +802,9 @@ pub fn list_commit_files_inner(
     Ok(file_metadata_list(&diff))
 }
 
-/// Diff a single file from a commit — used when user clicks a file in commit detail.
 /// One file's diff within a commit.
+///
+/// Backs clicking a file in the commit detail view.
 ///
 /// # Errors
 ///
@@ -864,9 +866,9 @@ pub fn list_compare_files_inner(
     Ok(file_metadata_list(&diff))
 }
 
-/// Diff a single file between Base and Target — used when the user clicks a
-/// file in the compare view.
 /// One file's diff between any two commits.
+///
+/// Backs clicking a file in the compare view.
 ///
 /// # Errors
 ///
@@ -891,9 +893,10 @@ pub fn diff_compare_file_inner(
     diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
 }
 
-/// Whole-compare totals via the cheap `Diff::stats()` path, mirroring
-/// `history::commit_stat_from_repo`: renames collapsed, no line walking.
 /// Insertions, deletions and file count between any two commits.
+///
+/// Uses the cheap `Diff::stats()` path, mirroring `history::commit_stat_from_repo`:
+/// renames collapsed, no line walking.
 ///
 /// # Errors
 ///
@@ -928,12 +931,13 @@ fn file_metadata_list(diff: &git2::Diff) -> Vec<FileDiff> {
     diff.deltas().map(|delta| file_diff_of(&delta)).collect()
 }
 
-/// One commit's metadata and the files it touched.
+/// One commit's metadata: its oids, its message, its author and committer, and
+/// its parents. The files it touched come from `list_commit_files_inner`.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
-/// the commit is missing or its diff will not build.
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when
+/// the oid will not parse, and the git error when the commit is missing.
 pub fn get_commit_detail_inner(
     path: &str,
     oid: &str,
@@ -962,11 +966,12 @@ pub fn get_commit_detail_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_unstaged(
     path: String,
@@ -974,7 +979,7 @@ pub async fn diff_unstaged(
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         diff_unstaged_inner(&path, &file_path, &state_map, &options)
     })
@@ -985,11 +990,12 @@ pub async fn diff_unstaged(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_staged(
     path: String,
@@ -997,7 +1003,7 @@ pub async fn diff_staged(
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         diff_staged_inner(&path, &file_path, &state_map, &options)
     })
@@ -1008,18 +1014,19 @@ pub async fn diff_staged(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_commit_files(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || list_commit_files_inner(&path, &oid, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -1028,11 +1035,12 @@ pub async fn list_commit_files(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_commit_file(
     path: String,
@@ -1041,7 +1049,7 @@ pub async fn diff_commit_file(
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         diff_commit_file_inner(&path, &oid, &file_path, &state_map, &options)
     })
@@ -1052,11 +1060,12 @@ pub async fn diff_commit_file(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_compare_files(
     path: String,
@@ -1064,7 +1073,7 @@ pub async fn list_compare_files(
     target_oid: String,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         list_compare_files_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
     })
@@ -1075,11 +1084,12 @@ pub async fn list_compare_files(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn diff_compare_file(
     path: String,
@@ -1089,7 +1099,7 @@ pub async fn diff_compare_file(
     options: DiffRequestOptions,
     state: State<'_, RepoState>,
 ) -> Result<Vec<FileDiff>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         diff_compare_file_inner(
             &path,
@@ -1107,11 +1117,12 @@ pub async fn diff_compare_file(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn compare_stat(
     path: String,
@@ -1119,7 +1130,7 @@ pub async fn compare_stat(
     target_oid: String,
     state: State<'_, RepoState>,
 ) -> Result<crate::git::types::DiffStat, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         compare_stat_inner(&path, base_oid.as_deref(), &target_oid, &state_map)
     })
@@ -1130,18 +1141,19 @@ pub async fn compare_stat(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_commit_detail(
     path: String,
     oid: String,
     state: State<'_, RepoState>,
 ) -> Result<CommitDetail, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_commit_detail_inner(&path, &oid, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?

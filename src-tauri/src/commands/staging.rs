@@ -362,22 +362,14 @@ pub fn discard_file_inner(
 
     let statuses = repo.statuses(Some(&mut opts))?;
 
-    if statuses.is_empty() {
-        return Err(TrunkError::new(
+    let not_in_working_tree = || {
+        TrunkError::new(
             "file_not_found",
             format!("File not in working tree changes: {file_path}"),
-        ));
-    }
+        )
+    };
 
-    let status = statuses
-        .get(0)
-        .ok_or_else(|| {
-            TrunkError::new(
-                "file_not_found",
-                format!("File not in working tree changes: {file_path}"),
-            )
-        })?
-        .status();
+    let status = statuses.get(0).ok_or_else(not_in_working_tree)?.status();
 
     if status.contains(Status::WT_NEW) {
         // Untracked file — delete from disk
@@ -399,10 +391,7 @@ pub fn discard_file_inner(
             .force();
         repo.checkout_head(Some(&mut checkout))?;
     } else {
-        return Err(TrunkError::new(
-            "file_not_found",
-            format!("File not in working tree changes: {file_path}"),
-        ));
+        return Err(not_in_working_tree());
     }
 
     Ok(())
@@ -767,18 +756,19 @@ pub fn get_dirty_counts_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_file(
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || discard_file_inner(&path, &file_path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -787,14 +777,15 @@ pub async fn discard_file(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || discard_all_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -803,17 +794,18 @@ pub async fn discard_all(path: String, state: State<'_, RepoState>) -> Result<()
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_dirty_counts(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<DirtyCounts, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_dirty_counts_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -822,17 +814,18 @@ pub async fn get_dirty_counts(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_status(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<WorkingTreeStatus, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_status_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -841,18 +834,19 @@ pub async fn get_status(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_file(
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || stage_file_inner(&path, &file_path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -861,18 +855,19 @@ pub async fn stage_file(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_file(
     path: String,
     file_path: String,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || unstage_file_inner(&path, &file_path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -881,18 +876,19 @@ pub async fn unstage_file(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_files(
     path: String,
     file_paths: Vec<String>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || stage_files_inner(&path, &file_paths, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -901,18 +897,19 @@ pub async fn stage_files(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_files(
     path: String,
     file_paths: Vec<String>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         unstage_files_inner(&path, &file_paths, &state_map)
     })
@@ -923,14 +920,15 @@ pub async fn unstage_files(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || stage_all_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -939,14 +937,15 @@ pub async fn stage_all(path: String, state: State<'_, RepoState>) -> Result<(), 
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_all(path: String, state: State<'_, RepoState>) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || unstage_all_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -955,11 +954,12 @@ pub async fn unstage_all(path: String, state: State<'_, RepoState>) -> Result<()
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_hunk(
     path: String,
@@ -968,7 +968,7 @@ pub async fn stage_hunk(
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         stage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
@@ -980,11 +980,12 @@ pub async fn stage_hunk(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_hunk(
     path: String,
@@ -993,7 +994,7 @@ pub async fn unstage_hunk(
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         unstage_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
@@ -1005,11 +1006,12 @@ pub async fn unstage_hunk(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_hunk(
     path: String,
@@ -1018,7 +1020,7 @@ pub async fn discard_hunk(
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         discard_hunk_inner(&path, &file_path, hunk_index, &state_map, &options)
@@ -1030,11 +1032,12 @@ pub async fn discard_hunk(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn stage_lines(
     path: String,
@@ -1044,7 +1047,7 @@ pub async fn stage_lines(
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         stage_lines_inner(
@@ -1063,11 +1066,12 @@ pub async fn stage_lines(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn unstage_lines(
     path: String,
@@ -1077,7 +1081,7 @@ pub async fn unstage_lines(
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         unstage_lines_inner(
@@ -1096,11 +1100,12 @@ pub async fn unstage_lines(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn discard_lines(
     path: String,
@@ -1110,7 +1115,7 @@ pub async fn discard_lines(
     options: Option<DiffRequestOptions>,
     state: State<'_, RepoState>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let options = options.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         discard_lines_inner(

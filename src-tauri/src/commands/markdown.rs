@@ -2043,16 +2043,16 @@ fn read_side(
     }
 }
 
-/// Resolve `repo_path`, read `file_path` at both revs, and diff their markdown blocks.
+/// The block-aligned markdown diff for two revisions of a file.
 ///
-/// A `not_found` on one side (added/deleted file) is handled by the caller so the
-/// present side still renders. Render the block-aligned markdown diff for two revisions
-/// of a file.
+/// Resolves `repo_path`, reads `file_path` at both revs, and diffs their markdown
+/// blocks. A `not_found` on one side (added/deleted file) is handled by the caller
+/// so the present side still renders.
 ///
 /// # Errors
 ///
-/// Returns `not_open` when `repo_path` names no open repository, and the git
-/// error when either side will not read.
+/// Returns `not_open` when `repo_path` names no open repository, and whatever
+/// reading either side at its revision returns.
 pub fn render_markdown_diff_from_state(
     repo_path: &str,
     file_path: &str,
@@ -2262,8 +2262,9 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
         .collect()
 }
 
-/// Resolve `repo_path` to its open repo, then read `file_path` at `rev`.
 /// A file's raw bytes at `rev`.
+///
+/// Resolves `repo_path` to its open repo, then reads `file_path` at `rev`.
 ///
 /// # Errors
 ///
@@ -2281,11 +2282,12 @@ pub fn read_file_at_from_state(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn read_file_at(
     repo_path: String,
@@ -2293,7 +2295,7 @@ pub async fn read_file_at(
     rev: RevSpec,
     state: State<'_, RepoState>,
 ) -> Result<Vec<u8>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || {
         read_file_at_from_state(&repo_path, &file_path, &rev, &state_map)
     })
@@ -2349,11 +2351,12 @@ fn diff_cache_key(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn render_markdown_diff(
     repo_path: String,
@@ -2377,7 +2380,7 @@ pub async fn render_markdown_diff(
         return Ok(hit);
     }
 
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let diff = tauri::async_runtime::spawn_blocking(move || {
         render_markdown_diff_from_state(
             &repo_path,
@@ -2608,6 +2611,7 @@ fn mime_for_ext(path: &str) -> &'static str {
 }
 
 /// Decode a `trunk-asset://asset/?repo=&rev=&path=` URL into its parts.
+///
 /// `Url::query_pairs` percent-decodes automatically.
 // TODO: give this a named return struct if a second caller appears.
 fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
@@ -2637,12 +2641,14 @@ fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
 ///
 /// # Errors
 ///
-/// Returns `bad_uri` when the URL does not parse, `not_open` when it names no
-/// open repository, and whatever reading the file at that revision returns.
+/// Returns `bad_uri` when the URL does not parse or omits a parameter,
+/// `invalid_rev` when its `rev` is not a revision token, `not_open` when it
+/// names no open repository, and whatever reading the file at that revision
+/// returns.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 pub fn resolve_trunk_asset<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     uri: &str,
@@ -2650,7 +2656,7 @@ pub fn resolve_trunk_asset<R: tauri::Runtime>(
     use tauri::Manager;
     let (repo, rev, path) = parse_asset_uri(uri)?;
     let state = app.state::<RepoState>();
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let bytes = read_file_at_from_state(&repo, &path, &rev, &state_map)?;
     Ok((bytes, mime_for_ext(&path)))
 }

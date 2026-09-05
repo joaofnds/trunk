@@ -72,11 +72,12 @@ fn ensure_loaded<'a>(
 ///
 /// # Errors
 ///
-/// Returns `io` or `json` when the preferences file exists but will not read.
+/// Returns `io` when the preferences file exists but will not read. An
+/// unparseable file is not an error: it is quarantined and the map starts empty.
 ///
 /// # Panics
 ///
-/// Panics when the preferences lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 pub fn prefs_get_inner(
     data_dir: &Path,
     state: &PrefsState,
@@ -98,7 +99,7 @@ pub fn prefs_get_inner(
 ///
 /// # Panics
 ///
-/// Panics when the preferences lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 pub fn prefs_set_inner(
     data_dir: &Path,
     state: &PrefsState,

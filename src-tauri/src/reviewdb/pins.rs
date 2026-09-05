@@ -226,8 +226,9 @@ pub fn recorded(conn: &Connection, repo_path: &Path, oid: &str) -> Result<bool, 
     .map_err(sqlite_error)
 }
 
-/// Drop the records for pins that have been reclaimed.
-/// Drop this repo's records for `oids`. An oid with no record is not an error.
+/// Drop this repo's records for `oids`, the pins that have been reclaimed.
+///
+/// An oid with no record is not an error.
 ///
 /// # Errors
 ///

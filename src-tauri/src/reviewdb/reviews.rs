@@ -131,6 +131,7 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
 }
 
 /// The repo's active review, if it has one.
+///
 /// The id the repo currently points at, or `None` when it points at nothing.
 ///
 /// # Errors
@@ -169,8 +170,7 @@ pub fn set_active(conn: &Connection, repo_path: &Path, review_id: &str) -> Resul
 /// The active review, creating a fresh composing one when the repo has none.
 ///
 /// This is the whole of the spec's auto-create-at-submit rule: it runs inside the
-/// submit transaction, never at composer open. The repo's active review, creating one
-/// when it points at nothing.
+/// submit transaction, never at composer open.
 ///
 /// # Errors
 ///

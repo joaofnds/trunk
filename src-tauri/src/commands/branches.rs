@@ -127,8 +127,9 @@ pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse
     })
 }
 
-/// Delete a local branch. Rejects deletion of the currently checked-out (HEAD) branch.
 /// Delete a local branch and rebuild the graph cache.
+///
+/// Rejects deletion of the currently checked-out (HEAD) branch.
 ///
 /// # Errors
 ///
@@ -201,22 +202,24 @@ pub fn rename_branch_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn list_refs(path: String, state: State<'_, RepoState>) -> Result<RefsResponse, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || list_refs_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
 }
 
-/// Inner implementation of `resolve_ref` — separated for testability.
 /// The commit oid `ref_name` resolves to.
+///
+/// Separated from the command wrapper so a test can call it directly.
 ///
 /// # Errors
 ///
@@ -235,18 +238,19 @@ pub fn resolve_ref_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn resolve_ref(
     path: String,
     ref_name: String,
     state: State<'_, RepoState>,
 ) -> Result<String, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || resolve_ref_inner(&path, &ref_name, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -325,11 +329,12 @@ pub fn checkout_branch_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn checkout_branch<R: Runtime>(
     path: String,
@@ -340,7 +345,7 @@ pub async fn checkout_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
@@ -393,11 +398,12 @@ pub fn fast_forward_to_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn fast_forward_to<R: Runtime>(
     path: String,
@@ -408,7 +414,7 @@ pub async fn fast_forward_to<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
@@ -493,11 +499,12 @@ pub fn create_branch_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn create_branch<R: Runtime>(
     path: String,
@@ -509,7 +516,7 @@ pub async fn create_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
@@ -532,11 +539,12 @@ pub async fn create_branch<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_branch<R: Runtime>(
     path: String,
@@ -547,7 +555,7 @@ pub async fn delete_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {
@@ -562,11 +570,12 @@ pub async fn delete_branch<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rename_branch<R: Runtime>(
     path: String,
@@ -578,7 +587,7 @@ pub async fn rename_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
 
     rebuild_graph_cache(&cache, move |rebuilt| {

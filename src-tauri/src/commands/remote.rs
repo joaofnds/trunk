@@ -173,11 +173,12 @@ async fn refresh_graph<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_fetch<R: Runtime>(
     path: String,
@@ -187,7 +188,7 @@ pub async fn git_fetch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_buf = state_map
         .path_for(&path)
         .map_err(|e| e.to_json())?
@@ -208,25 +209,22 @@ pub async fn git_fetch<R: Runtime>(
         .map_err(|e| e.to_json())
 }
 
-/// Silent periodic fetch.
+/// Fetch every remote quietly, skipping when the repo is busy.
 ///
 /// Best-effort: skips when the repo is mid-operation (rebase/merge/cherry-pick/revert)
 /// or another remote op is already running, and swallows any error so the UI never
-/// surfaces a popup or toast. # Errors
-///
-/// Returns the inner error as JSON, which is what the frontend parses.
-///
-/// # Panics
-///
-/// Panics when the open-repository lock is poisoned.
-#[tauri::command]
-/// Fetch every remote quietly, skipping when the repo is busy.
+/// surfaces a popup or toast.
 ///
 /// # Errors
 ///
-/// Returns `spawn_error` as JSON when a blocking task cannot be joined.
-/// A repository that is closed, mid-operation, or already running a remote
-/// operation is not an error: the fetch is skipped.
+/// Never returns an error. The `Result` is the shape every command shares. A
+/// repository that is closed, mid-operation, or already running a remote
+/// operation is skipped, and a failed fetch is swallowed.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
 pub async fn git_fetch_background<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
@@ -235,7 +233,7 @@ pub async fn git_fetch_background<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let Some(path_buf) = state_map
         .location_of(&path)
         .map(std::path::Path::to_path_buf)
@@ -284,17 +282,18 @@ pub fn get_push_target_inner(path: &str, state_map: &OpenRepos) -> Result<PushTa
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_push_target(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<PushTarget, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_push_target_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -303,11 +302,12 @@ pub async fn get_push_target(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_pull<R: Runtime>(
     path: String,
@@ -318,7 +318,7 @@ pub async fn git_pull<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     git_pull_inner(
         &path,
         strategy.as_deref(),
@@ -382,11 +382,12 @@ pub async fn git_pull_inner<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_push<R: Runtime>(
     path: String,
@@ -396,7 +397,7 @@ pub async fn git_push<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     git_push_inner(&path, &state_map, &cache, &running.0, &ref_visibility, &app)
         .await
         .map_err(|e| e.to_json())
@@ -489,15 +490,14 @@ pub struct ConfirmedPush<'a> {
     pub branch: &'a str,
 }
 
-// The three leading arguments are the command's wire contract with the frontend, and the rest
-// are state Tauri injects by type; neither half can be grouped without changing one of those.
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn git_push_force<R: Runtime>(
     path: String,
@@ -509,7 +509,7 @@ pub async fn git_push_force<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     git_push_force_inner(
         &path,
         ConfirmedPush {
@@ -596,11 +596,12 @@ pub async fn git_push_force_inner<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn delete_remote_branch<R: Runtime>(
     path: String,
@@ -611,7 +612,7 @@ pub async fn delete_remote_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_buf = state_map
         .path_for(&path)
         .map_err(|e| e.to_json())?
@@ -645,11 +646,11 @@ pub async fn delete_remote_branch<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Never returns an error. The `Result` is the shape every command shares.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn cancel_remote_op(path: String, running: State<'_, RunningOp>) -> Result<(), String> {
     let running = running.0.lock().unwrap().finish(&path);

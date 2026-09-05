@@ -452,18 +452,19 @@ pub fn rebase_branch_inner(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_operation_state(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
 ) -> Result<OperationInfo, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let graph_cache = cache.0.lock().unwrap().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut info = get_operation_state_inner(&path, &state_map)?;
@@ -500,11 +501,12 @@ fn find_branch_color(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn merge_continue<R: Runtime>(
     path: String,
@@ -515,7 +517,7 @@ pub async fn merge_continue<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         merge_continue_inner(&path_clone, message.as_deref(), &state_map, &visibility)
@@ -530,11 +532,12 @@ pub async fn merge_continue<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn merge_abort<R: Runtime>(
     path: String,
@@ -544,7 +547,7 @@ pub async fn merge_abort<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         merge_abort_inner(&path_clone, &state_map, &visibility)
@@ -559,11 +562,12 @@ pub async fn merge_abort<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_continue<R: Runtime>(
     path: String,
@@ -574,7 +578,7 @@ pub async fn rebase_continue<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         rebase_continue_inner(&path_clone, message.as_deref(), &state_map, &visibility)
@@ -589,11 +593,12 @@ pub async fn rebase_continue<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_skip<R: Runtime>(
     path: String,
@@ -603,7 +608,7 @@ pub async fn rebase_skip<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         rebase_skip_inner(&path_clone, &state_map, &visibility)
@@ -618,11 +623,12 @@ pub async fn rebase_skip<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_abort<R: Runtime>(
     path: String,
@@ -632,7 +638,7 @@ pub async fn rebase_abort<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         rebase_abort_inner(&path_clone, &state_map, &visibility)
@@ -647,17 +653,18 @@ pub async fn rebase_abort<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn get_merge_message(
     path: String,
     state: State<'_, RepoState>,
 ) -> Result<Option<String>, String> {
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     tauri::async_runtime::spawn_blocking(move || get_merge_message_inner(&path, &state_map))
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
@@ -666,11 +673,12 @@ pub async fn get_merge_message(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn merge_branch_begin<R: Runtime>(
     path: String,
@@ -681,7 +689,7 @@ pub async fn merge_branch_begin<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<MergeBeginResult, String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         merge_branch_begin_inner(&path_clone, &branch, &state_map, &visibility)
@@ -705,11 +713,12 @@ pub async fn merge_branch_begin<R: Runtime>(
 
 /// # Errors
 ///
-/// Returns the inner error as JSON, which is what the frontend parses.
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
 ///
 /// # Panics
 ///
-/// Panics when the open-repository lock is poisoned.
+/// Panics when one of the shared state locks it takes is poisoned.
 #[tauri::command]
 pub async fn rebase_branch<R: Runtime>(
     path: String,
@@ -720,7 +729,7 @@ pub async fn rebase_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let visibility = ref_visibility.get(&path);
-    let state_map = state.0.lock().unwrap().clone();
+    let state_map = state.snapshot();
     let path_clone = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
         rebase_branch_inner(&path_clone, &onto_branch, &state_map, &visibility)
