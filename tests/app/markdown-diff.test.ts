@@ -45,6 +45,29 @@ const TWO_MARKDOWN_COMMITS: RepoSpec = {
 	],
 };
 
+/** A markdown file renamed in its second commit with one paragraph edited,
+ *  the shape of a moved rules file. The file list already pairs the rename;
+ *  the rendered view must read the before side from the old name. */
+const RENAMED_MARKDOWN: RepoSpec = {
+	steps: [
+		{
+			step: "file",
+			path: "old.md",
+			content:
+				"# Title\n\nfirst paragraph\n\nsecond paragraph\n\nthird paragraph\n",
+		},
+		{ step: "commit", message: "base" },
+		{ step: "removeFile", path: "old.md" },
+		{
+			step: "file",
+			path: "new.md",
+			content:
+				"# Title\n\nfirst paragraph\n\nsecond paragraph\n\nchanged third paragraph\n",
+		},
+		{ step: "commit", message: "move the doc" },
+	],
+};
+
 /** How many times the rendered view has asked the backend for a diff. The
  *  count, not the content, is what says whether a refetch happened. */
 function renders(app: { invokes(): readonly { cmd: string }[] }): number {
@@ -335,6 +358,28 @@ describe("the rendered markdown diff", () => {
 		expect(dels).toEqual(["old"]);
 		expect(app.diffPane.renderedWordAdded()).toEqual(["new"]);
 		expect(app.diffPane.renderedRemoved()).toEqual([]);
+		expect(app.diffPane.renderedAdded()).toEqual([]);
+	});
+
+	// TRUNK-162: a renamed and edited file rendered as one all-green document,
+	// because the before side was read under the new name, where nothing
+	// existed at the parent.
+	it("shows a renamed file's edit against its old content, not as all added", async () => {
+		const app = await setup({ repo: RENAMED_MARKDOWN });
+		await app.repo.open();
+		await app.repo.selectCommit("move the doc");
+		await app.repo.openCommitFile("new.md");
+		await app.settled();
+		await app.diffPane.showRendered();
+		await app.diffPane.showFullFile();
+
+		const unchanged = await waitFor("the untouched rendered blocks", () => {
+			const blocks = app.diffPane.renderedUnchanged();
+			return blocks.includes("second paragraph") ? blocks : null;
+		});
+
+		expect(unchanged).toEqual(["Title", "first paragraph", "second paragraph"]);
+		expect(app.diffPane.renderedWordAdded()).toEqual(["changed"]);
 		expect(app.diffPane.renderedAdded()).toEqual([]);
 	});
 

@@ -89,6 +89,19 @@ export class DiffPaneDriver {
 		return textsOf(REMOVED_BLOCK);
 	}
 
+	/** The text of every rendered block showing no change at all, topmost
+	 *  first: no tint on the block and no word mark inside it. This is the
+	 *  context around a change, which a renamed file must keep. */
+	renderedUnchanged(): string[] {
+		const blocks = document.querySelectorAll<HTMLElement>(
+			".rendered-diff .rendered-block:not(.md-added):not(.md-removed)",
+		);
+
+		return [...blocks]
+			.filter((block) => !block.querySelector(".md-word-delete, .md-word-add"))
+			.map((block) => (block.textContent ?? "").trim());
+	}
+
 	/** The text of every del word mark in the rendered view, topmost first. */
 	renderedWordDeleted(): string[] {
 		return textsOf(".rendered-diff del.md-word-delete");
