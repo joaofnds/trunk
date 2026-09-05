@@ -10,6 +10,7 @@ import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
 import { safeInvoke } from "./lib/invoke.js";
+import { focusInEditable, keyChord } from "./lib/keyboard.js";
 import {
 	createRemoteState,
 	type RemoteState,
@@ -492,101 +493,94 @@ $effect(() => {
 	);
 });
 
+/** Cmd+1..Cmd+8 pick a tab by position; Cmd+9 picks the last tab (TAB-04). */
+const TAB_SLOT_CHORD = /^Meta\+([1-9])$/;
+
+function activateTabSlot(slot: number) {
+	const idx =
+		slot === 9 ? tabs.length - 1 : Math.min(slot - 1, tabs.length - 1);
+	if (idx >= 0 && idx < tabs.length) activeTabId = tabs[idx].id;
+}
+
+function activateNeighbourTab(step: 1 | -1) {
+	const cur = tabs.findIndex((t) => t.id === activeTabId);
+	activeTabId = tabs[(cur + step + tabs.length) % tabs.length].id;
+}
+
+function applyZoom(level: number) {
+	zoomLevel = level;
+	setZoomLevel(level);
+}
+
 // Keyboard shortcuts
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
-		// Tab shortcuts (Cmd/Ctrl key combinations)
-		if (e.metaKey || e.ctrlKey) {
-			// Cmd+T: New tab (TAB-02)
-			if (e.key === "t" || e.key === "T") {
-				if (e.metaKey) {
-					e.preventDefault();
-					addNewTab();
-					return;
-				}
-			}
+		const chord = keyChord(e);
+		const tabSlot = TAB_SLOT_CHORD.exec(chord);
+		if (tabSlot) {
+			e.preventDefault();
+			activateTabSlot(Number(tabSlot[1]));
+			return;
+		}
 
-			// Cmd+W: Close tab (TAB-03, D-10 graceful)
-			// Cmd+Shift+W: Force close tab (D-11)
-			if (e.key === "w" || e.key === "W") {
-				if (e.metaKey) {
-					e.preventDefault();
-					if (e.shiftKey) {
-						forceCloseTab(activeTabId);
-					} else {
-						closeTab(activeTabId);
-					}
-					return;
-				}
-			}
-
-			// Cmd+1-9: Switch to tab by index (TAB-04)
-			const num = parseInt(e.key, 10);
-			if (e.metaKey && num >= 1 && num <= 9) {
+		switch (chord) {
+			case "Meta+t":
 				e.preventDefault();
-				const idx =
-					num === 9 ? tabs.length - 1 : Math.min(num - 1, tabs.length - 1);
-				if (idx >= 0 && idx < tabs.length) {
-					activeTabId = tabs[idx].id;
-				}
+				addNewTab();
 				return;
-			}
-
-			// Ctrl+Tab / Ctrl+Shift+Tab: Next/Prev tab (TAB-04)
-			if (e.ctrlKey && e.key === "Tab") {
+			case "Meta+w":
 				e.preventDefault();
-				const cur = tabs.findIndex((t) => t.id === activeTabId);
-				if (e.shiftKey) {
-					activeTabId = tabs[(cur - 1 + tabs.length) % tabs.length].id;
-				} else {
-					activeTabId = tabs[(cur + 1) % tabs.length].id;
-				}
+				closeTab(activeTabId);
 				return;
-			}
-
-			// Cmd/Ctrl+R: open recent-projects picker (quick-260514-356)
-			if (e.key === "r" || e.key === "R") {
-				const active = document.activeElement;
-				const inEditable =
-					active instanceof HTMLInputElement ||
-					active instanceof HTMLTextAreaElement ||
-					(active instanceof HTMLElement &&
-						active.getAttribute("contenteditable") === "true");
-				if (inEditable) return;
-				if (pickerOpen) {
-					e.preventDefault();
-					return;
-				}
+			case "Meta+Shift+w":
+				e.preventDefault();
+				forceCloseTab(activeTabId);
+				return;
+			case "Ctrl+Tab":
+				e.preventDefault();
+				activateNeighbourTab(1);
+				return;
+			case "Ctrl+Shift+Tab":
+				e.preventDefault();
+				activateNeighbourTab(-1);
+				return;
+			case "Meta+r":
+			case "Ctrl+r":
+				if (focusInEditable(document.activeElement)) return;
 				e.preventDefault();
 				pickerOpen = true;
 				return;
-			}
-
-			// Zoom: Cmd+/Cmd-/Cmd+0
-			if (e.key === "=" || e.key === "+") {
+			case "Meta+=":
+			case "Meta++":
+			case "Meta+Shift++":
+			case "Ctrl+=":
+			case "Ctrl++":
+			case "Ctrl+Shift++":
 				e.preventDefault();
-				zoomLevel = +Math.min(3, zoomLevel + 0.1).toFixed(1);
-				setZoomLevel(zoomLevel);
-			} else if (e.key === "-") {
+				applyZoom(+Math.min(3, zoomLevel + 0.1).toFixed(1));
+				return;
+			case "Meta+-":
+			case "Ctrl+-":
 				e.preventDefault();
-				zoomLevel = +Math.max(0.5, zoomLevel - 0.1).toFixed(1);
-				setZoomLevel(zoomLevel);
-			} else if (e.key === "0") {
+				applyZoom(+Math.max(0.5, zoomLevel - 0.1).toFixed(1));
+				return;
+			case "Meta+0":
+			case "Ctrl+0":
 				e.preventDefault();
-				zoomLevel = 1;
-				setZoomLevel(zoomLevel);
-			}
-
-			// Pane toggles: Cmd+J/Cmd+K
-			if (e.key === "j" || e.key === "J") {
+				applyZoom(1);
+				return;
+			case "Meta+j":
+			case "Ctrl+j":
 				e.preventDefault();
 				leftPaneCollapsed = !leftPaneCollapsed;
 				setLeftPaneCollapsed(leftPaneCollapsed);
-			} else if (e.key === "k" || e.key === "K") {
+				return;
+			case "Meta+k":
+			case "Ctrl+k":
 				e.preventDefault();
 				rightPaneCollapsed = !rightPaneCollapsed;
 				setRightPaneCollapsed(rightPaneCollapsed);
-			}
+				return;
 		}
 	}
 	window.addEventListener("keydown", handleKeydown);

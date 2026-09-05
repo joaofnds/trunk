@@ -15,6 +15,7 @@ import { reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import {
 	addCommitThread,
 	addReply,
@@ -120,20 +121,16 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 
 // j/k step older/newer through the same navigate path as the pager, so review
 // flows without focusing the graph. Vim-style: j = down = older, k = up = newer.
-// Arrow keys are left to CommitGraph's own (container-scoped) handler to avoid
-// double-firing; j/k aren't bound anywhere else.
+// Arrow keys are left to CommitGraph's own (container-scoped) handler.
 function handlePaneKeydown(e: KeyboardEvent) {
-	if (!nav || (e.key !== "j" && e.key !== "k")) return;
-	const active = document.activeElement;
-	if (
-		active instanceof HTMLInputElement ||
-		active instanceof HTMLTextAreaElement ||
-		(active instanceof HTMLElement && active.isContentEditable)
-	) {
-		return;
-	}
-	const target = e.key === "j" ? nav.olderOid : nav.newerOid;
+	if (!nav) return;
+	const chord = keyChord(e);
+	if (chord !== "j" && chord !== "k") return;
+	if (focusInEditable(document.activeElement)) return;
+
+	const target = chord === "j" ? nav.olderOid : nav.newerOid;
 	if (target === null) return;
+
 	e.preventDefault();
 	onnavigate?.(target);
 }

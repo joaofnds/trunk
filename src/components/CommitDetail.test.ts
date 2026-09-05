@@ -149,6 +149,51 @@ describe("CommitDetail", () => {
 			expect(onnavigate).toHaveBeenCalledWith("olderOid456");
 		});
 
+		it("steps older on j and newer on k", async () => {
+			const onnavigate = vi.fn();
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					nav,
+					onnavigate,
+				},
+			});
+
+			await fireEvent.keyDown(window, { key: "j" });
+			expect(onnavigate).toHaveBeenCalledWith("olderOid456");
+
+			await fireEvent.keyDown(window, { key: "k" });
+			expect(onnavigate).toHaveBeenCalledWith("newerOid123");
+		});
+
+		it.each([
+			{ name: "Cmd+J", key: "j", metaKey: true },
+			{ name: "Cmd+K", key: "k", metaKey: true },
+			{ name: "Ctrl+J", key: "j", ctrlKey: true },
+			{ name: "Alt+K", key: "k", altKey: true },
+		])("leaves navigation alone on $name", async ({ name: _, ...init }) => {
+			const onnavigate = vi.fn();
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					nav,
+					onnavigate,
+				},
+			});
+
+			await fireEvent.keyDown(window, init);
+
+			expect(onnavigate).not.toHaveBeenCalled();
+		});
+
 		it("disables the newer chevron at the top of history", () => {
 			render(CommitDetailComponent, {
 				props: {

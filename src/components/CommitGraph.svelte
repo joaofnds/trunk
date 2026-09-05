@@ -49,6 +49,7 @@ import {
 	PILL_PADDING_X,
 } from "../lib/graph-constants.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
+import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneRefForRow } from "../lib/lane-ref.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
@@ -1654,11 +1655,9 @@ function handleSearchClose() {
 
 // Keyboard arrow navigation for commit selection
 function handleKeydown(e: KeyboardEvent) {
-	if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-
-	// Don't intercept keys when search bar input is focused
-	const active = document.activeElement;
-	if (active?.classList.contains("search-bar-input")) return;
+	const chord = keyChord(e);
+	if (chord !== "ArrowDown" && chord !== "ArrowUp") return;
+	if (focusInEditable(document.activeElement)) return;
 
 	e.preventDefault();
 
@@ -1668,7 +1667,7 @@ function handleKeydown(e: KeyboardEvent) {
 	const currentIdx = items.findIndex((c) => c.oid === selectedCommitOid);
 
 	let nextIdx: number;
-	if (e.key === "ArrowDown") {
+	if (chord === "ArrowDown") {
 		if (currentIdx === -1) nextIdx = 0;
 		else if (currentIdx >= items.length - 1) return;
 		else nextIdx = currentIdx + 1;

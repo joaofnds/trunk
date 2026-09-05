@@ -2510,6 +2510,20 @@ describe("DiffPanel hunk navigation", () => {
 		}
 	});
 
+	it.each([
+		{ name: "Cmd+]", key: "]", metaKey: true },
+		{ name: "Ctrl+]", key: "]", ctrlKey: true },
+		{ name: "Alt+]", key: "]", altKey: true },
+	])("stays put on $name", async ({ name: _, ...init }) => {
+		const { container, ready } = renderNav();
+		await ready;
+
+		await fireEvent.keyDown(window, init);
+		await tick();
+
+		expect(viewportOf(container).scrollTop).toBe(0);
+	});
+
 	it("scrolls back to the previous hunk's row on [", async () => {
 		const { container, ready } = renderNav();
 		await ready;

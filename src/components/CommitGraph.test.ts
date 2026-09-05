@@ -33,6 +33,9 @@ if (typeof globalThis.OffscreenCanvas === "undefined") {
 if (typeof Element.prototype.scrollTo === "undefined") {
 	Element.prototype.scrollTo = () => {};
 }
+if (typeof Element.prototype.scrollIntoView === "undefined") {
+	Element.prototype.scrollIntoView = () => {};
+}
 
 // Mock safeInvoke at the wrapper layer so tests can dispatch by command name and
 // reject with TrunkError shapes for the WR-02 error branching tests.
@@ -243,6 +246,38 @@ describe("CommitGraph", () => {
 			},
 		});
 		expect(container.querySelector('[role="listbox"]')).toBeTruthy();
+	});
+
+	describe("arrow keys", () => {
+		it("selects the first commit on ArrowDown", async () => {
+			const oncommitselect = vi.fn();
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true, oncommitselect },
+			});
+			await screen.findByText("first commit");
+
+			await fireEvent.keyDown(screen.getByRole("listbox"), {
+				key: "ArrowDown",
+			});
+
+			expect(oncommitselect).toHaveBeenCalledTimes(1);
+		});
+
+		it.each([
+			{ name: "Cmd+ArrowDown", key: "ArrowDown", metaKey: true },
+			{ name: "Shift+ArrowDown", key: "ArrowDown", shiftKey: true },
+			{ name: "Alt+ArrowDown", key: "ArrowDown", altKey: true },
+		])("leaves the selection alone on $name", async ({ name: _, ...init }) => {
+			const oncommitselect = vi.fn();
+			render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true, oncommitselect },
+			});
+			await screen.findByText("first commit");
+
+			await fireEvent.keyDown(screen.getByRole("listbox"), init);
+
+			expect(oncommitselect).not.toHaveBeenCalled();
+		});
 	});
 
 	it("calls list_stashes on mount", async () => {

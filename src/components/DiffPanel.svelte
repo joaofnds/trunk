@@ -12,6 +12,7 @@ import {
 	fileSelectableIndices,
 } from "../lib/full-file-anchor.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import {
 	getDiffContentMode,
 	getDiffContextLines,
@@ -464,19 +465,19 @@ function toggleFileCollapsed(path: string) {
 
 $effect(() => {
 	function handleKeydown(e: KeyboardEvent) {
-		const tag = (e.target as HTMLElement)?.tagName;
-		if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+		if (focusInEditable(document.activeElement)) return;
 
-		if (e.key === "Escape" && selectedCount > 0) {
+		const chord = keyChord(e);
+		if (chord === "Escape" && selectedCount > 0) {
 			e.preventDefault();
 			clearSelection();
 			return;
 		}
 
-		if (e.key === "]") {
+		if (chord === "]") {
 			e.preventDefault();
 			scrollToHunk(focusedHunkIndex + 1);
-		} else if (e.key === "[") {
+		} else if (chord === "[") {
 			e.preventDefault();
 			scrollToHunk(focusedHunkIndex - 1);
 		}

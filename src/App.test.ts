@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { render, waitFor } from "@testing-library/svelte";
+import { fireEvent, render, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeCommit } from "./__tests__/helpers/factories";
 import App from "./App.svelte";
 
 // Stub OffscreenCanvas for jsdom — text-measure.ts uses it via CommitGraph
@@ -170,6 +171,93 @@ describe("App", () => {
 				return Promise.resolve(undefined);
 		}
 	}
+
+	describe("pane shortcuts", () => {
+		const history = [
+			makeCommit({ oid: "oid-3", summary: "third commit" }),
+			makeCommit({ oid: "oid-2", summary: "second commit" }),
+			makeCommit({ oid: "oid-1", summary: "first commit" }),
+		];
+
+		function detailOf(oid: string) {
+			return {
+				oid,
+				short_oid: oid.slice(0, 7),
+				summary: `commit ${oid}`,
+				body: null,
+				author_name: "Test",
+				author_email: "test@test.com",
+				author_timestamp: 0,
+				committer_name: "Test",
+				committer_email: "test@test.com",
+				committer_timestamp: 0,
+				parent_oids: [],
+			};
+		}
+
+		function commitDetailsRequested(): string[] {
+			return mockInvoke.mock.calls
+				.filter(([cmd]) => cmd === "get_commit_detail")
+				.map(([, args]) => (args as { oid: string }).oid);
+		}
+
+		function rightPaneOf(container: HTMLElement): HTMLElement {
+			const panes = container.querySelectorAll<HTMLElement>(
+				'main > div[style*="width"]',
+			);
+			return panes[panes.length - 1];
+		}
+
+		beforeEach(() => {
+			mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+				switch (cmd) {
+					case "get_commit_graph":
+						return Promise.resolve({ commits: history, max_columns: 1 });
+					case "get_commit_detail":
+						return Promise.resolve(detailOf((args as { oid: string }).oid));
+					case "list_commit_files":
+						return Promise.resolve([]);
+					default:
+						return baseInvoke(cmd, args);
+				}
+			});
+		});
+
+		it("collapses the right pane on Cmd+K and leaves a mid-history selection where it is", async () => {
+			const { container, findAllByTestId } = render(App);
+			const rows = await findAllByTestId("commit-row");
+			await fireEvent.click(rows[1]);
+			await waitFor(() => expect(commitDetailsRequested()).toEqual(["oid-2"]));
+
+			window.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "k", metaKey: true }),
+			);
+			await waitFor(() =>
+				expect(rightPaneOf(container).style.width).toBe("0px"),
+			);
+
+			expect(commitDetailsRequested()).toEqual(["oid-2"]);
+		});
+
+		it("collapses the left pane on Cmd+J and leaves a mid-history selection where it is", async () => {
+			const { container, findAllByTestId } = render(App);
+			const rows = await findAllByTestId("commit-row");
+			await fireEvent.click(rows[1]);
+			await waitFor(() => expect(commitDetailsRequested()).toEqual(["oid-2"]));
+
+			window.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "j", metaKey: true }),
+			);
+			await waitFor(() =>
+				expect(
+					container.querySelector<HTMLElement>('main > div[style*="width"]')
+						?.style.width,
+				).toBe("0px"),
+			);
+
+			expect(commitDetailsRequested()).toEqual(["oid-2"]);
+		});
+	});
 
 	// Known flake: this test has expired its 1 008 ms `waitFor` deadline under
 	// contention without the application being broken. If it fails, read TRUNK-62
