@@ -124,9 +124,6 @@ fn side_from(raw: &str) -> Result<Side, TrunkError> {
     }
 }
 
-/// A stored row this module could not have written. Failing beats defaulting:
-/// an unrecognised `side` silently read as `New` renders a real comment against
-/// the wrong side of the diff, with nothing anomalous on screen.
 /// A stored line number, refusing a value no line number can hold rather than
 /// wrapping it into one.
 fn line_number(row: &Row, column: usize) -> Result<u32, TrunkError> {
@@ -135,6 +132,9 @@ fn line_number(row: &Row, column: usize) -> Result<u32, TrunkError> {
     u32::try_from(stored).map_err(|_| bad_row(&format!("line number out of range: {stored}")))
 }
 
+/// A stored row this module could not have written. Failing beats defaulting:
+/// an unrecognised `side` silently read as `New` renders a real comment against
+/// the wrong side of the diff, with nothing anomalous on screen.
 fn bad_row(what: &str) -> TrunkError {
     TrunkError::new("store", format!("corrupt anchor row: {what}"))
 }
@@ -183,5 +183,49 @@ mod tests {
     #[test]
     fn an_unanchored_body_maps_to_the_none_kind() {
         assert_eq!(to_columns(None, None).kind, NONE);
+    }
+
+    /// Reads one anchor row back through `from_row`, with `start_line` set to
+    /// `stored`. The columns are laid out as `from_row` expects them, starting
+    /// at index 0.
+    fn read_back(stored: i64) -> Result<(Option<Anchor>, Option<String>), TrunkError> {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE a (kind TEXT, commit_oid TEXT, file_path TEXT, source TEXT,
+                             side TEXT, start_line INTEGER, end_line INTEGER);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO a VALUES ('diff', 'abc', 'src/a.rs', 'FullFile', 'Old', ?1, 9)",
+            [stored],
+        )
+        .unwrap();
+
+        conn.query_row("SELECT * FROM a", [], |row| Ok(from_row(row, 0)))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_line_number_that_fits_reads_back_unchanged() {
+        let (anchor, _) = read_back(3).expect("a line number in range reads back");
+
+        assert_eq!(anchor.expect("a diff anchor").start_line, 3);
+    }
+
+    /// Without the range check this wrapped: `4_294_967_299` truncates to 3, so
+    /// a corrupt row rendered a comment against a plausible-looking line rather
+    /// than reporting itself.
+    #[test]
+    fn a_line_number_too_large_for_a_line_number_is_a_corrupt_row() {
+        let err = read_back(i64::from(u32::MAX) + 4).expect_err("out of range is refused");
+
+        assert_eq!(err.code, "store");
+    }
+
+    #[test]
+    fn a_negative_line_number_is_a_corrupt_row() {
+        let err = read_back(-1).expect_err("a negative line number is refused");
+
+        assert_eq!(err.code, "store");
     }
 }
