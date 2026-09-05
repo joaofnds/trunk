@@ -69,10 +69,7 @@ pub struct CapturedGraph {
 fn parse_oid(hex: &str) -> Oid {
     assert_eq!(hex.len(), 40, "graph_input: malformed oid {hex}");
 
-    match Oid::from_str(hex) {
-        Ok(oid) => oid,
-        Err(_) => panic!("graph_input: malformed oid {hex}"),
-    }
+    Oid::from_str(hex).unwrap_or_else(|_| panic!("graph_input: malformed oid {hex}"))
 }
 
 fn hex(oid: &Oid) -> String {
@@ -323,17 +320,18 @@ fn lane_ref(source: &GraphSource, claim: Option<Oid>) -> Option<RefLabel> {
 }
 
 fn commit_facts(source: &GraphSource, oid: Oid) -> &CommitFacts {
-    match source.commits.get(&oid) {
-        Some(facts) => facts,
-        None => panic!("graph_input: no commit facts for {oid}"),
-    }
+    source
+        .commits
+        .get(&oid)
+        .unwrap_or_else(|| panic!("graph_input: no commit facts for {oid}"))
 }
 
 fn parent_list(source: &GraphSource, oid: Oid) -> &[Oid] {
-    match source.placement.parents.get(&oid) {
-        Some(list) => list,
-        None => panic!("graph_input: no parent list for {oid}"),
-    }
+    source
+        .placement
+        .parents
+        .get(&oid)
+        .unwrap_or_else(|| panic!("graph_input: no parent list for {oid}"))
 }
 
 #[must_use]

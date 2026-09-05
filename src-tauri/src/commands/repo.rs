@@ -62,13 +62,13 @@ pub async fn close_repo(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    stats: State<'_, CommitStatsCache>,
+    commit_stats: State<'_, CommitStatsCache>,
     watcher_state: State<'_, WatcherState>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
     state.forget(&path);
     cache.0.lock().unwrap().forget(&path);
-    stats.0.lock().unwrap().forget(&path);
+    commit_stats.0.lock().unwrap().forget(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     Ok(())
@@ -88,7 +88,7 @@ pub async fn force_close_repo(
     path: String,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    stats: State<'_, CommitStatsCache>,
+    commit_stats: State<'_, CommitStatsCache>,
     watcher_state: State<'_, WatcherState>,
     running: State<'_, RunningOp>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
@@ -103,7 +103,7 @@ pub async fn force_close_repo(
     // Then clean up all other state (same as close_repo)
     state.forget(&path);
     cache.0.lock().unwrap().forget(&path);
-    stats.0.lock().unwrap().forget(&path);
+    commit_stats.0.lock().unwrap().forget(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     Ok(())

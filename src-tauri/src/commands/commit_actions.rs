@@ -787,10 +787,11 @@ pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<b
 /// it answers `None`.
 pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String>, TrunkError> {
     let repo = state_map.open(path)?;
-    match repo.head().and_then(|h| h.peel_to_commit()) {
-        Ok(commit) => Ok(Some(commit.id().to_string())),
-        Err(_) => Ok(None),
-    }
+    Ok(repo
+        .head()
+        .and_then(|h| h.peel_to_commit())
+        .ok()
+        .map(|commit| commit.id().to_string()))
 }
 
 /// # Errors

@@ -134,6 +134,33 @@ pub fn run() {
 ///
 /// Panics when a managed state of the same type is already registered, or when
 /// a plugin fails to initialize.
+/// Reposition the macOS traffic lights when the title bar's layout changes.
+///
+/// Off macOS this observes nothing: there are no traffic lights to move.
+#[cfg(target_os = "macos")]
+fn reposition_traffic_lights_on<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
+    event: &tauri::WindowEvent,
+) {
+    use tauri::WindowEvent;
+
+    if matches!(
+        event,
+        WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. }
+    ) && let Ok(ns_window) = window.ns_window()
+    {
+        macos_traffic_lights::reposition(ns_window);
+    }
+}
+
+/// Off macOS this observes nothing: there are no traffic lights to move.
+#[cfg(not(target_os = "macos"))]
+fn reposition_traffic_lights_on<R: tauri::Runtime>(
+    _window: &tauri::Window<R>,
+    _event: &tauri::WindowEvent,
+) {
+}
+
 pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     watcher: WatcherState,
@@ -166,23 +193,10 @@ pub fn configure<R: tauri::Runtime>(
                     .expect("building an empty response cannot fail"),
             }
         })
-        .on_window_event(|_window, _event| {
-            // Live resize is handled flicker-free by the NSWindowDidResize observer
-            // (see macos_traffic_lights); here we cover the other title-bar relayouts:
-            // appearance change and monitor-to-monitor scale changes.
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::WindowEvent;
-                let (window, event) = (_window, _event);
-                if matches!(
-                    event,
-                    WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. }
-                ) && let Ok(ns_window) = window.ns_window()
-                {
-                    macos_traffic_lights::reposition(ns_window);
-                }
-            }
-        })
+        // Live resize is handled flicker-free by the NSWindowDidResize observer
+        // (see macos_traffic_lights); this covers the other title-bar relayouts:
+        // appearance change and monitor-to-monitor scale changes.
+        .on_window_event(reposition_traffic_lights_on)
         .setup(|app| {
             let find = MenuItemBuilder::with_id("find", "Find")
                 .accelerator("CmdOrCtrl+F")

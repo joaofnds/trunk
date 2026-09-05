@@ -492,16 +492,16 @@ pub fn stage_hunk_inner(
     }
 
     // Count hunks via Patch to validate hunk_index
-    let patch = git2::Patch::from_diff(&diff, 0)?
+    let file_patch = git2::Patch::from_diff(&diff, 0)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-    let num_hunks = patch.num_hunks();
+    let num_hunks = file_patch.num_hunks();
     if (hunk_index as usize) >= num_hunks {
         return Err(TrunkError::new(
             "stale_hunk_index",
             format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
         ));
     }
-    drop(patch); // Release borrow on diff
+    drop(file_patch); // Release borrow on diff
 
     seed_index_for_untracked(&repo, file_path)?;
 
@@ -579,16 +579,16 @@ pub fn unstage_hunk_inner(
         )
     })?;
 
-    let patch = git2::Patch::from_diff(&diff, delta_index)?
+    let file_patch = git2::Patch::from_diff(&diff, delta_index)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-    let num_hunks = patch.num_hunks();
+    let num_hunks = file_patch.num_hunks();
     if (hunk_index as usize) >= num_hunks {
         return Err(TrunkError::new(
             "stale_hunk_index",
             format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
         ));
     }
-    drop(patch);
+    drop(file_patch);
 
     // Apply reversed hunk to index
     let target = hunk_index as usize;
@@ -634,16 +634,16 @@ pub fn discard_hunk_inner(
     }
 
     // Validate hunk_index
-    let patch = git2::Patch::from_diff(&diff, 0)?
+    let file_patch = git2::Patch::from_diff(&diff, 0)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
-    let num_hunks = patch.num_hunks();
+    let num_hunks = file_patch.num_hunks();
     if (hunk_index as usize) >= num_hunks {
         return Err(TrunkError::new(
             "stale_hunk_index",
             format!("Hunk index {hunk_index} out of range (file has {num_hunks} hunks)"),
         ));
     }
-    drop(patch);
+    drop(file_patch);
 
     // Apply reversed hunk to workdir
     let target = hunk_index as usize;
@@ -1302,23 +1302,28 @@ pub fn stage_lines_inner(
         ));
     }
 
-    let patch = git2::Patch::from_diff(&diff, 0)?
+    let file_patch = git2::Patch::from_diff(&diff, 0)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
 
-    if (hunk_index as usize) >= patch.num_hunks() {
+    if (hunk_index as usize) >= file_patch.num_hunks() {
         return Err(TrunkError::new(
             "stale_hunk_index",
             format!(
                 "Hunk index {} out of range (file has {} hunks)",
                 hunk_index,
-                patch.num_hunks()
+                file_patch.num_hunks()
             ),
         ));
     }
 
-    let patch_text =
-        build_partial_patch_text(file_path, &patch, hunk_index as usize, line_indices, false)?;
-    drop(patch);
+    let patch_text = build_partial_patch_text(
+        file_path,
+        &file_patch,
+        hunk_index as usize,
+        line_indices,
+        false,
+    )?;
+    drop(file_patch);
     drop(diff);
 
     seed_index_for_untracked(&repo, file_path)?;
@@ -1361,24 +1366,29 @@ pub fn unstage_lines_inner(
         )
     })?;
 
-    let patch = git2::Patch::from_diff(&diff, delta_index)?
+    let file_patch = git2::Patch::from_diff(&diff, delta_index)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
 
-    if (hunk_index as usize) >= patch.num_hunks() {
+    if (hunk_index as usize) >= file_patch.num_hunks() {
         return Err(TrunkError::new(
             "stale_hunk_index",
             format!(
                 "Hunk index {} out of range (file has {} hunks)",
                 hunk_index,
-                patch.num_hunks()
+                file_patch.num_hunks()
             ),
         ));
     }
 
     // Build a reversed partial patch: undoes selected lines in the index
-    let patch_text =
-        build_partial_patch_text(file_path, &patch, hunk_index as usize, line_indices, true)?;
-    drop(patch);
+    let patch_text = build_partial_patch_text(
+        file_path,
+        &file_patch,
+        hunk_index as usize,
+        line_indices,
+        true,
+    )?;
+    drop(file_patch);
     drop(diff);
 
     let partial_diff = git2::Diff::from_buffer(patch_text.as_bytes())
@@ -1419,24 +1429,29 @@ pub fn discard_lines_inner(
         ));
     }
 
-    let patch = git2::Patch::from_diff(&diff, 0)?
+    let file_patch = git2::Patch::from_diff(&diff, 0)?
         .ok_or_else(|| TrunkError::new("file_not_found", "Binary or unchanged file"))?;
 
-    if (hunk_index as usize) >= patch.num_hunks() {
+    if (hunk_index as usize) >= file_patch.num_hunks() {
         return Err(TrunkError::new(
             "stale_hunk_index",
             format!(
                 "Hunk index {} out of range (file has {} hunks)",
                 hunk_index,
-                patch.num_hunks()
+                file_patch.num_hunks()
             ),
         ));
     }
 
     // Build a reversed partial patch: undoes selected lines in the working directory
-    let patch_text =
-        build_partial_patch_text(file_path, &patch, hunk_index as usize, line_indices, true)?;
-    drop(patch);
+    let patch_text = build_partial_patch_text(
+        file_path,
+        &file_patch,
+        hunk_index as usize,
+        line_indices,
+        true,
+    )?;
+    drop(file_patch);
     drop(diff);
 
     let partial_diff = git2::Diff::from_buffer(patch_text.as_bytes())

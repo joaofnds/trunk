@@ -319,7 +319,7 @@ pub async fn get_commit_stats(
     offset: usize,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
-    stats: State<'_, CommitStatsCache>,
+    commit_stats: State<'_, CommitStatsCache>,
 ) -> Result<HashMap<String, DiffStat>, String> {
     // Resolve the page's oids from the topology cache (lock dropped immediately).
     let page_oids: Vec<String> = {
@@ -336,7 +336,7 @@ pub async fn get_commit_stats(
 
     // Partition into already-cached (return verbatim) and uncached (compute).
     let (uncached, mut result): (Vec<String>, HashMap<String, DiffStat>) = {
-        let cached = stats.0.lock().unwrap();
+        let cached = commit_stats.0.lock().unwrap();
         let mut uncached = Vec::new();
         let mut result = HashMap::new();
         for oid in page_oids {
@@ -364,7 +364,7 @@ pub async fn get_commit_stats(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
 
     // Merge the newly computed stats into the immutable per-oid cache.
-    stats
+    commit_stats
         .0
         .lock()
         .unwrap()

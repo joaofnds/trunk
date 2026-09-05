@@ -59,10 +59,7 @@ pub fn create(
     now: i64,
 ) -> Result<String, TrunkError> {
     let id = ids::mint_unique(conn, IdKind::Review)?;
-    let title = match title {
-        Some(t) => t.to_string(),
-        None => default_title(&id, now),
-    };
+    let title = title.map_or_else(|| default_title(&id, now), ToString::to_string);
 
     conn.execute(
         "INSERT INTO reviews (id, repo_path, title, published, created_at, updated_at)

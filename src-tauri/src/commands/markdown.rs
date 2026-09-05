@@ -2101,10 +2101,9 @@ fn front_matter_as_table(md: &str) -> Cow<'_, str> {
     let Some((yaml, rest)) = split_front_matter(md) else {
         return Cow::Borrowed(md);
     };
-    match front_matter_table_markdown(yaml) {
-        Some(table) => Cow::Owned(format!("{table}\n{rest}")),
-        None => Cow::Borrowed(md),
-    }
+    front_matter_table_markdown(yaml).map_or(Cow::Borrowed(md), |table| {
+        Cow::Owned(format!("{table}\n{rest}"))
+    })
 }
 
 /// Build a `| Field | Value |` markdown table from a front-matter YAML mapping,
@@ -2129,9 +2128,10 @@ fn front_matter_table_markdown(yaml: &str) -> Option<String> {
 fn yaml_inline(y: &yaml_rust::Yaml) -> String {
     use yaml_rust::Yaml;
     match y {
-        Yaml::String(s) => s.clone(),
+        // `Real` keeps its source text rather than round-tripping through a
+        // float, which is the same handling `String` gets.
+        Yaml::String(s) | Yaml::Real(s) => s.clone(),
         Yaml::Integer(i) => i.to_string(),
-        Yaml::Real(s) => s.clone(),
         Yaml::Boolean(b) => b.to_string(),
         Yaml::Null => "null".to_string(),
         Yaml::Array(items) => {

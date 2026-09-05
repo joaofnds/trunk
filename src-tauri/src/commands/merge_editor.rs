@@ -19,7 +19,7 @@ fn conflict_entry(
 
     conflicts
         .find(|entry| {
-            if let Ok(c) = entry {
+            entry.as_ref().is_ok_and(|c| {
                 let entry_path = c
                     .our
                     .as_ref()
@@ -27,9 +27,7 @@ fn conflict_entry(
                     .or(c.ancestor.as_ref())
                     .map(|e| String::from_utf8_lossy(&e.path).into_owned());
                 entry_path.as_deref() == Some(file_path)
-            } else {
-                false
-            }
+            })
         })
         .ok_or_else(|| {
             TrunkError::new(

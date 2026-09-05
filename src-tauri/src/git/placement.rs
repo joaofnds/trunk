@@ -100,10 +100,9 @@ fn find_free_column_near(active_lanes: &mut Vec<LaneSlot>, target: usize, min_co
 /// malformed input, not a repository state, so it fails loudly rather than laying out as a
 /// root.
 fn parent_list(parents: &HashMap<Oid, Vec<Oid>>, oid: Oid) -> &[Oid] {
-    match parents.get(&oid) {
-        Some(list) => list,
-        None => panic!("placement: no parent list for {oid}"),
-    }
+    parents
+        .get(&oid)
+        .unwrap_or_else(|| panic!("placement: no parent list for {oid}"))
 }
 
 /// HEAD's own first-parent ancestry, newest first. The descent stops at a commit the map
