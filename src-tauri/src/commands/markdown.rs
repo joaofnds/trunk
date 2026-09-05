@@ -1334,96 +1334,21 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // path reads each side's `sourcepos_html`, which a non-container leaves
     // empty, and the reader lost that whole side of the diff.
     if before.leaves.is_empty() || after.leaves.is_empty() {
-        let merged_html = if before.kind == "code_block" || after.kind == "code_block" {
-            None
-        } else {
-            html_token_merge(&before.raw_html, &after.raw_html).map(|m| sanitize_html(&m))
-        };
-        return ChangedFragments {
-            before_html: before.html.clone(),
-            after_html: after.html.clone(),
-            merged_html,
-            // A single-leaf block is one unit of prose: there is no inner
-            // structure to fold, so hunk mode renders the same copies.
-            hunk_merged_html: None,
-            hunk_before_html: None,
-            hunk_after_html: None,
-            hunk_hidden_leaves: 0,
-            has_tints: false,
-            renders_identically: renders_same(&before.html, &after.html),
-        };
+        return single_leaf_fragments(before, after);
     }
+
     let before_sigs: Vec<String> = before.leaves.iter().map(|l| l.signature.clone()).collect();
     let after_sigs: Vec<String> = after.leaves.iter().map(|l| l.signature.clone()).collect();
-
-    let mut before_tints: Vec<(&str, &str, &str)> = Vec::new();
-    let mut after_tints: Vec<(&str, &str, &str)> = Vec::new();
-    let mut before_frag = before.sourcepos_html.clone();
-    let mut after_frag = after.sourcepos_html.clone();
-    let mut word_marked = false;
     let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &before_sigs, &after_sigs);
-    for op in ops.iter().copied() {
-        match op {
-            similar::DiffOp::Equal {
-                old_index,
-                new_index,
-                len,
-            } => {
-                for k in 0..len {
-                    let b = &before.leaves[old_index + k];
-                    let a = &after.leaves[new_index + k];
-                    if markup_only_change(b, a) {
-                        before_tints.push((&b.tag, &b.sourcepos, "md-removed"));
-                        after_tints.push((&a.tag, &a.sourcepos, "md-added"));
-                    }
-                }
-            }
-            similar::DiffOp::Delete {
-                old_index, old_len, ..
-            } => {
-                for l in &before.leaves[old_index..old_index + old_len] {
-                    before_tints.push((&l.tag, &l.sourcepos, "md-removed"));
-                }
-            }
-            similar::DiffOp::Insert {
-                new_index, new_len, ..
-            } => {
-                for l in &after.leaves[new_index..new_index + new_len] {
-                    after_tints.push((&l.tag, &l.sourcepos, "md-added"));
-                }
-            }
-            similar::DiffOp::Replace {
-                old_index,
-                old_len,
-                new_index,
-                new_len,
-            } => {
-                // Positional pairs word-merge like a paragraph does; a pair
-                // the guards refuse, the uneven tail, and a pair whose
-                // element the splice cannot find keep the whole-leaf wash.
-                for k in 0..old_len.max(new_len) {
-                    let b = (k < old_len).then(|| &before.leaves[old_index + k]);
-                    let a = (k < new_len).then(|| &after.leaves[new_index + k]);
-                    let swapped = match (b, a) {
-                        (Some(b), Some(a)) => {
-                            try_leaf_swap(b, a, &mut before_frag, &mut after_frag)
-                        }
-                        _ => false,
-                    };
-                    if swapped {
-                        word_marked = true;
-                        continue;
-                    }
-                    if let Some(b) = b {
-                        before_tints.push((&b.tag, &b.sourcepos, "md-removed"));
-                    }
-                    if let Some(a) = a {
-                        after_tints.push((&a.tag, &a.sourcepos, "md-added"));
-                    }
-                }
-            }
-        }
-    }
+
+    let LeafMarks {
+        before_tints,
+        after_tints,
+        before_frag,
+        after_frag,
+        word_marked,
+    } = mark_leaves(before, after, &ops);
+
     let merged_raw = merged_container_raw(before, after, &ops);
     // The fold runs per side, each against its own keep set: the split columns
     // are the two tinted fragments, the inline view is the merged copy (which
@@ -1463,6 +1388,130 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
         hunk_hidden_leaves: folded_merged.map_or(0, |(_, n)| n),
         renders_identically: renders_same(&before.html, &after.html),
     }
+}
+
+/// The row a block with no inner structure on one side renders as.
+///
+/// BOTH sides must be leaf-bearing to diff by leaf. A blockquote lends its
+/// leaves from the single container it wraps, so leaf-bearing-ness follows
+/// content, not kind, and one row's two sides can disagree: a quoted list that
+/// gains a paragraph is a container before and not after. The container path
+/// reads each side's `sourcepos_html`, which a non-container leaves empty, and
+/// the reader lost that whole side of the diff.
+fn single_leaf_fragments(before: &Block, after: &Block) -> ChangedFragments {
+    let merged_html = if before.kind == "code_block" || after.kind == "code_block" {
+        None
+    } else {
+        html_token_merge(&before.raw_html, &after.raw_html).map(|m| sanitize_html(&m))
+    };
+
+    ChangedFragments {
+        before_html: before.html.clone(),
+        after_html: after.html.clone(),
+        merged_html,
+        // A single-leaf block is one unit of prose: there is no inner structure
+        // to fold, so hunk mode renders the same copies.
+        hunk_merged_html: None,
+        hunk_before_html: None,
+        hunk_after_html: None,
+        hunk_hidden_leaves: 0,
+        has_tints: false,
+        renders_identically: renders_same(&before.html, &after.html),
+    }
+}
+
+/// Each side's fragment and the tints its leaves earned from one leaf diff.
+struct LeafMarks<'a> {
+    before_tints: Vec<(&'a str, &'a str, &'a str)>,
+    after_tints: Vec<(&'a str, &'a str, &'a str)>,
+    before_frag: String,
+    after_frag: String,
+    word_marked: bool,
+}
+
+/// Walk the leaf diff, tinting whole leaves and word-merging the pairs that take it.
+///
+/// `word_marked` records that at least one pair was spliced in place, which the
+/// fragments themselves cannot report: a word-level mark is not a leaf tint.
+fn mark_leaves<'a>(before: &'a Block, after: &'a Block, ops: &[similar::DiffOp]) -> LeafMarks<'a> {
+    let mut marks = LeafMarks {
+        before_tints: Vec::new(),
+        after_tints: Vec::new(),
+        before_frag: before.sourcepos_html.clone(),
+        after_frag: after.sourcepos_html.clone(),
+        word_marked: false,
+    };
+
+    for op in ops.iter().copied() {
+        match op {
+            similar::DiffOp::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                for k in 0..len {
+                    let b = &before.leaves[old_index + k];
+                    let a = &after.leaves[new_index + k];
+                    if markup_only_change(b, a) {
+                        marks
+                            .before_tints
+                            .push((&b.tag, &b.sourcepos, "md-removed"));
+                        marks.after_tints.push((&a.tag, &a.sourcepos, "md-added"));
+                    }
+                }
+            }
+            similar::DiffOp::Delete {
+                old_index, old_len, ..
+            } => {
+                for l in &before.leaves[old_index..old_index + old_len] {
+                    marks
+                        .before_tints
+                        .push((&l.tag, &l.sourcepos, "md-removed"));
+                }
+            }
+            similar::DiffOp::Insert {
+                new_index, new_len, ..
+            } => {
+                for l in &after.leaves[new_index..new_index + new_len] {
+                    marks.after_tints.push((&l.tag, &l.sourcepos, "md-added"));
+                }
+            }
+            similar::DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                // Positional pairs word-merge like a paragraph does; a pair the
+                // guards refuse, the uneven tail, and a pair whose element the
+                // splice cannot find keep the whole-leaf wash.
+                for k in 0..old_len.max(new_len) {
+                    let b = (k < old_len).then(|| &before.leaves[old_index + k]);
+                    let a = (k < new_len).then(|| &after.leaves[new_index + k]);
+                    let swapped = match (b, a) {
+                        (Some(b), Some(a)) => {
+                            try_leaf_swap(b, a, &mut marks.before_frag, &mut marks.after_frag)
+                        }
+                        _ => false,
+                    };
+                    if swapped {
+                        marks.word_marked = true;
+                        continue;
+                    }
+                    if let Some(b) = b {
+                        marks
+                            .before_tints
+                            .push((&b.tag, &b.sourcepos, "md-removed"));
+                    }
+                    if let Some(a) = a {
+                        marks.after_tints.push((&a.tag, &a.sourcepos, "md-added"));
+                    }
+                }
+            }
+        }
+    }
+
+    marks
 }
 
 /// Whether a shipped fragment actually carries a leaf tint.
