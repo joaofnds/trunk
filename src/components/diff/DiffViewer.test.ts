@@ -14,6 +14,16 @@ vi.mock("../../lib/invoke.js", async (importActual) => ({
 
 const noop = () => {};
 
+// The rendered view mounts only for a path the file list describes, so a test
+// that wants the pane on screen puts the selected file in the list.
+const selectedReadme: FileDiff = {
+	path: "README.md",
+	old_path: null,
+	status: "Modified",
+	is_binary: false,
+	hunks: [],
+};
+
 const baseProps = {
 	contentMode: "hunk" as const,
 	contextLines: 3,
@@ -64,7 +74,12 @@ describe("DiffViewer's wrapper", () => {
 	it("is clipped, never a scroll container, around the rendered markdown view", () => {
 		safeInvoke.mockResolvedValue({ rows: [], whitespaceOnly: false });
 		const { container } = render(DiffViewer, {
-			props: { ...baseProps, renderMode: "rendered", loading: true },
+			props: {
+				...baseProps,
+				renderMode: "rendered",
+				loading: true,
+				fileDiffs: [selectedReadme],
+			},
 		});
 		const pane = container.querySelector(".rendered-diff");
 		expect(pane).not.toBeNull();
@@ -97,6 +112,32 @@ describe("DiffViewer's wrapper", () => {
 				filePath: "docs/new.md",
 				oldPath: "docs/old.md",
 			}),
+		);
+	});
+
+	it("waits for the file list before rendering a path it does not describe", () => {
+		safeInvoke.mockResolvedValue({ rows: [], whitespaceOnly: false });
+		const stale: FileDiff = {
+			path: "docs/other.md",
+			old_path: null,
+			status: "Modified",
+			is_binary: false,
+			hunks: [],
+		};
+
+		render(DiffViewer, {
+			props: {
+				...baseProps,
+				renderMode: "rendered",
+				diffKind: "staged",
+				fileDiffs: [stale],
+				selectedPath: "docs/new.md",
+			},
+		});
+
+		expect(safeInvoke).not.toHaveBeenCalledWith(
+			"render_markdown_diff",
+			expect.anything(),
 		);
 	});
 

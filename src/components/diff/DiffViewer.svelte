@@ -122,9 +122,13 @@ let {
 	refreshToken = 0,
 }: Props = $props();
 
-// The rendered view reads a renamed file's before side by its old name.
-const selectedOldPath = $derived(
-	fileDiffs.find((f) => f.path === selectedPath)?.old_path ?? null,
+// The rendered view reads a renamed file's before side by its old name, which
+// only this list knows. Until it holds the selected path the pairing is unknown
+// rather than absent: selection and the list land on separate clocks in the
+// staging path, and fetching on the gap renders a staged rename as all added
+// before the correcting fetch arrives (TRUNK-162).
+const selectedFileDiff = $derived(
+	fileDiffs.find((f) => f.path === selectedPath),
 );
 </script>
 
@@ -157,11 +161,11 @@ const selectedOldPath = $derived(
     ">
       Empty commit — no changes
     </div>
-  {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath)}
+  {:else if renderMode === "rendered" && selectedPath && isMarkdownPath(selectedPath) && selectedFileDiff}
     <RenderedDiff
       {layoutMode}
       selectedPath={selectedPath}
-      oldPath={selectedOldPath}
+      oldPath={selectedFileDiff.old_path}
       {diffKind}
       {commitOid}
       {repoPath}

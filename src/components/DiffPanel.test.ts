@@ -2631,7 +2631,7 @@ describe("DiffPanel hunk navigation", () => {
 		try {
 			render(DiffPanel, {
 				props: {
-					fileDiffs: [navDiff],
+					fileDiffs: [{ ...navDiff, path: "README.md" }],
 					commitDetail: null,
 					onclose: vi.fn(),
 					diffKind: "unstaged",
