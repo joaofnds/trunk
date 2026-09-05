@@ -325,6 +325,81 @@ describe("CommentComposer", () => {
 
 			expect(allowed).toBe(true);
 		});
+
+		it("deletes the draft row when the operator accepts the discard", async () => {
+			const ask = await getAskMock();
+			ask.mockResolvedValue(true);
+			const { component } = renderComposer();
+			await dirtyTheDraft();
+
+			await component.confirmDiscardIfDirty();
+
+			expect(mockedInvoke.mock.calls.map((c) => c[0])).toContain(
+				"delete_draft",
+			);
+		});
+	});
+
+	// The autosave is an IPC call with no cancel. A discard or submit issued while
+	// one is in flight races it on the backend, and a save that lands last brings
+	// back the draft the user just gave up, so both wait for it to settle.
+	describe("with an autosave in flight", () => {
+		function holdSaveDraft() {
+			let release = () => {};
+			mockedInvoke.mockImplementation((cmd: string) =>
+				cmd === "save_draft"
+					? new Promise<undefined>((resolve) => {
+							release = () => resolve(undefined);
+						})
+					: Promise.resolve(undefined),
+			);
+			return () => release();
+		}
+
+		function commands() {
+			return mockedInvoke.mock.calls.map((c) => c[0]);
+		}
+
+		async function typeAndFireTheAutosave(scheduler: FakeScheduler) {
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "half a thought" },
+			});
+			scheduler.flush();
+			await tick();
+			expect(commands()).toContain("save_draft");
+		}
+
+		it("cancel deletes the draft only once the save has settled", async () => {
+			const scheduler = new FakeScheduler();
+			const releaseSave = holdSaveDraft();
+			renderComposer({ scheduler });
+			await typeAndFireTheAutosave(scheduler);
+
+			await fireEvent.click(screen.getByText("Cancel"));
+			await tick();
+			expect(commands()).not.toContain("delete_draft");
+
+			releaseSave();
+			await flush();
+
+			expect(commands()).toContain("delete_draft");
+		});
+
+		it("submit adds the thread only once the save has settled", async () => {
+			const scheduler = new FakeScheduler();
+			const releaseSave = holdSaveDraft();
+			renderComposer({ scheduler });
+			await typeAndFireTheAutosave(scheduler);
+
+			await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+			await tick();
+			expect(commands()).not.toContain("add_thread");
+
+			releaseSave();
+			await flush();
+
+			expect(commands()).toContain("add_thread");
+		});
 	});
 
 	it("keeps the draft and reports the failure when add_thread rejects", async () => {

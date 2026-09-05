@@ -103,14 +103,32 @@ function scheduleDraftSave() {
 	draftSave.arm(() => void persistDraft(), DRAFT_DEBOUNCE_MS);
 }
 
+// The autosave is an IPC call with no cancel, so anything that writes the draft
+// row after it waits for it to land, or a save arriving last brings the draft back.
+let saveInFlight: Promise<void> = Promise.resolve();
+
 async function persistDraft() {
 	// Never write before the restore has landed: an empty autosave racing the
 	// read would erase the draft it is about to restore.
 	if (!restored) return;
+
+	saveInFlight = saveDraft(repoPath, text, capturedResult.anchor).catch((e) =>
+		reportErrorToast(e, "Save draft failed"),
+	);
+	await saveInFlight;
+}
+
+async function settleDraftSave() {
+	draftSave.cancel();
+	await saveInFlight;
+}
+
+async function discardDraft() {
+	await settleDraftSave();
 	try {
-		await saveDraft(repoPath, text, capturedResult.anchor);
+		await deleteDraft(repoPath);
 	} catch (e) {
-		reportErrorToast(e, "Save draft failed");
+		reportErrorToast(e, "Discard draft failed");
 	}
 }
 
@@ -118,7 +136,7 @@ async function handleSubmit() {
 	if (submitDisabled) return;
 
 	submitting = true;
-	draftSave.cancel();
+	await settleDraftSave();
 	try {
 		// Resolve the anchor's commit_oid now (deferred from open): for the working
 		// tree this starts the session + creates/reuses the snapshot. Null = failure
@@ -148,12 +166,7 @@ async function handleSubmit() {
 // Cancelling abandons the draft, so the row goes with it — otherwise the next
 // composer reopens with text the user already chose to discard.
 async function handleCancel() {
-	draftSave.cancel();
-	try {
-		await deleteDraft(repoPath);
-	} catch (e) {
-		reportErrorToast(e, "Discard draft failed");
-	}
+	await discardDraft();
 	text = "";
 	onclose();
 }
@@ -163,11 +176,15 @@ async function handleCancel() {
 // switches silently. Mirrors DiffPanel.handleDiscardLines' confirm pattern.
 export async function confirmDiscardIfDirty(): Promise<boolean> {
 	if (text.trim() === "") return true;
+
 	const { ask } = await import("@tauri-apps/plugin-dialog");
-	return ask("Discard your unsaved comment?", {
+	const discard = await ask("Discard your unsaved comment?", {
 		title: "Discard Comment",
 		kind: "warning",
 	});
+	if (discard) await discardDraft();
+
+	return discard;
 }
 </script>
 
