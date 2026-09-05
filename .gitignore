@@ -25,3 +25,6 @@ mutants.out.old
 
 # The measurement bridge writes its per-run token here (just measure)
 scripts/measure/.bridge-token.txt
+
+# Python bytecode from the scripts under scripts/
+__pycache__/
