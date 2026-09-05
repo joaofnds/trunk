@@ -23,6 +23,10 @@ interface Props {
 	renderMode: RenderMode;
 	fileDiffs: FileDiff[];
 	commitDetail: CommitDetail | null;
+	// Set only for a compare selection; forwarded to RenderedDiff so its before
+	// side matches the rev the file list's rename pairing was computed against
+	// (TRUNK-163).
+	compareBaseOid?: string | null;
 	selectedPath: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
 	emptyCommit?: boolean;
@@ -86,6 +90,7 @@ let {
 	renderMode,
 	fileDiffs,
 	commitDetail,
+	compareBaseOid = null,
 	selectedPath,
 	diffKind,
 	emptyCommit = false,
@@ -170,6 +175,7 @@ const selectedFileDiff = $derived(
       {commitOid}
       {repoPath}
       {commitDetail}
+      {compareBaseOid}
       {contentMode}
       {contextLines}
       {ignoreWhitespace}

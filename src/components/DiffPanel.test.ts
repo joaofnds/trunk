@@ -2654,6 +2654,59 @@ describe("DiffPanel hunk navigation", () => {
 		}
 	});
 
+	// A compare selection pairs renames across the whole base-to-target range,
+	// so the rendered before side must read at the compare base, not the
+	// target's first parent — otherwise a rename earlier in the range reads a
+	// path that's already gone there (TRUNK-163).
+	it("reads the rendered before side at the compare base oid, not the commit's parent", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+			Promise.resolve("rendered"),
+		);
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "render_markdown_diff"
+				? Promise.resolve({
+						rows: [
+							{
+								kind: "unchanged",
+								html: "<p>alpha</p>",
+								afterStart: 1,
+								afterEnd: 1,
+							},
+						],
+						whitespaceOnly: false,
+					})
+				: Promise.resolve(undefined),
+		);
+
+		try {
+			render(DiffPanel, {
+				props: {
+					fileDiffs: [{ ...navDiff, path: "README.md" }],
+					commitDetail: { oid: "target", parent_oids: ["targetParent"] } as CommitDetail,
+					compareBaseOid: "compareBase",
+					onclose: vi.fn(),
+					diffKind: "commit",
+					repoPath: "/repo",
+					selectedPath: "README.md",
+				},
+			});
+			await flushPrefs();
+			await screen.findByText("alpha");
+
+			expect(safeInvoke).toHaveBeenCalledWith(
+				"render_markdown_diff",
+				expect.objectContaining({
+					beforeRev: { type: "commit", oid: "compareBase" },
+				}),
+			);
+		} finally {
+			vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+				Promise.resolve("source"),
+			);
+		}
+	});
+
 	it("flashes the target hunk's header row and clears it when the flash ends", async () => {
 		const { ready } = renderNav();
 		await ready;

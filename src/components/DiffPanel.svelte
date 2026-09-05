@@ -51,6 +51,10 @@ import type FullFileView from "./diff/FullFileView.svelte";
 interface Props {
 	fileDiffs: FileDiff[];
 	commitDetail: CommitDetail | null;
+	// Set only for a compare selection; overrides commitDetail's parent as the
+	// rendered view's before-side rev so it matches the rev the file list's
+	// rename pairing was computed against (TRUNK-163).
+	compareBaseOid?: string | null;
 	selectedPath?: string | null;
 	onclose: () => void;
 	diffKind?: "unstaged" | "staged" | "commit";
@@ -71,6 +75,7 @@ interface Props {
 let {
 	fileDiffs,
 	commitDetail,
+	compareBaseOid = null,
 	selectedPath = null,
 	onclose,
 	diffKind = "commit",
@@ -901,6 +906,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{renderMode}
 		{fileDiffs}
 		{commitDetail}
+		{compareBaseOid}
 		{selectedPath}
 		{diffKind}
 		{emptyCommit}
