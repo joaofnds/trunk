@@ -73,13 +73,15 @@ function over(top, bottom) {
 // ---------- token parsing ----------
 
 function parseTokens() {
-	const css = readFileSync(APP_CSS, "utf8");
+	// Comments go first: one that quotes a token name followed by a colon
+	// (`--bg-0: body text on …`) would otherwise parse as a definition.
+	const css = readFileSync(APP_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 	const root = css.slice(css.indexOf(":root"));
 	const map = {};
 	const re = /(--[a-z0-9-]+)\s*:\s*([^;]+);/gi;
 	let m;
 	while ((m = re.exec(root))) {
-		map[m[1].trim()] = m[2].replace(/\/\*[\s\S]*?\*\//g, "").trim();
+		map[m[1].trim()] = m[2].trim();
 	}
 	return map;
 }
