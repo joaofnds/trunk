@@ -36,6 +36,10 @@ interface Props {
 	commitOid: string;
 	repoPath: string;
 	commitDetail: CommitDetail | null;
+	// The compare base's oid, set only for a compare selection. Overrides
+	// commitDetail's parent as the before-side rev, so it matches the rev the
+	// file list's rename pairing was computed against (TRUNK-163).
+	compareBaseOid?: string | null;
 	contentMode: "hunk" | "full";
 	contextLines: number;
 	ignoreWhitespace: boolean;
@@ -57,6 +61,7 @@ let {
 	commitOid,
 	repoPath,
 	commitDetail,
+	compareBaseOid = null,
 	contentMode,
 	contextLines,
 	ignoreWhitespace,
@@ -141,6 +146,7 @@ $effect(() => {
 	const kind = diffKind;
 	const oid = commitOid;
 	const parent = parentOid;
+	const compareBase = compareBaseOid;
 	const ignoreWs = ignoreWhitespace;
 	// A dependency only: the token's value never reaches the backend — bumping
 	// it re-runs this effect so the same fetch re-executes against fresh disk.
@@ -153,7 +159,7 @@ $effect(() => {
 	const args = [
 		repo,
 		file,
-		beforeRev(kind, parent),
+		beforeRev(kind, parent, compareBase),
 		afterRev(kind, oid),
 		ignoreWs,
 	] as const;

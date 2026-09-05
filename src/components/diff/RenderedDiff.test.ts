@@ -1204,6 +1204,33 @@ describe("RenderedDiff", () => {
 		expect(Object.keys(hunkElements)).toEqual([]);
 	});
 
+	it("reads the before side at the compare base, not the target's parent, in a compare selection", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+
+		render(RenderedDiff, {
+			props: {
+				...baseProps,
+				diffKind: "commit",
+				commitOid: "target",
+				commitDetail: { parent_oids: ["targetParent"] } as never,
+				compareBaseOid: "compareBase",
+			},
+		});
+		await screen.findByText("alpha");
+
+		expect(safeInvoke).toHaveBeenCalledWith(
+			"render_markdown_diff",
+			expect.objectContaining({
+				beforeRev: { type: "commit", oid: "compareBase" },
+			}),
+		);
+	});
+
 	it("ignores a stale in-flight render when the selected file changes mid-flight", async () => {
 		const first = deferred<MarkdownDiff>();
 		const second = deferred<MarkdownDiff>();
