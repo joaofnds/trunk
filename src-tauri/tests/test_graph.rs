@@ -833,8 +833,6 @@ fn stash_stays_inline_when_worktree_clean() {
 fn build_detached_rebase_repo() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
-
-    let repo = git2::Repository::init(dir.path()).unwrap();
     let mut cfg = repo.config().unwrap();
     cfg.set_str("user.name", "T").unwrap();
     cfg.set_str("user.email", "t@t.com").unwrap();
