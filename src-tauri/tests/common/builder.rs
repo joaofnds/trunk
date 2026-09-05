@@ -1,5 +1,5 @@
 use crate::common::context::TestContext;
-use std::collections::HashMap;
+use trunk_lib::state::OpenRepos;
 
 pub struct TestContextBuilder {
     steps: Vec<BuildStep>,
@@ -478,8 +478,7 @@ impl TestContextBuilder {
         drop(repo);
 
         let path = dir.path().display().to_string();
-        let mut state_map = HashMap::new();
-        state_map.insert(path.clone(), dir.path().to_path_buf());
+        let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
 
         TestContext::from_parts(dir, path, state_map)
     }

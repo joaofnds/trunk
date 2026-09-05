@@ -2,9 +2,9 @@ use crate::commands::diff::{staging_staged_diff, staging_workdir_diff};
 use crate::error::TrunkError;
 use crate::git::status::{STAGED_BITS, UNSTAGED_BITS, dirty_status_options};
 use crate::git::types::{DiffRequestOptions, FileStatus, FileStatusType, WorkingTreeStatus};
-use crate::state::RepoState;
+use crate::state::{OpenRepos, RepoState};
 use git2::{Status, StatusOptions};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -97,9 +97,9 @@ fn renamed_from(delta: Option<git2::DiffDelta<'_>>) -> Option<String> {
 
 pub fn get_status_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<WorkingTreeStatus, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     let mut opts = StatusOptions::new();
     opts.include_untracked(true)
@@ -181,9 +181,9 @@ fn present_in_workdir(abs_path: &Path) -> bool {
 pub fn stage_file_inner(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let mut index = repo.index()?;
     let abs_path = repo
         .workdir()
@@ -201,12 +201,12 @@ pub fn stage_file_inner(
 pub fn stage_files_inner(
     path: &str,
     file_paths: &[String],
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     if file_paths.is_empty() {
         return Ok(());
     }
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let workdir = repo
         .workdir()
         .ok_or_else(|| TrunkError::new("bare_repo", "Cannot stage in a bare repository"))?;
@@ -263,9 +263,9 @@ fn is_head_unborn(repo: &git2::Repository) -> bool {
 pub fn unstage_file_inner(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     if is_head_unborn(&repo) {
         // No commits yet — just remove from index
@@ -284,12 +284,12 @@ pub fn unstage_file_inner(
 pub fn unstage_files_inner(
     path: &str,
     file_paths: &[String],
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     if file_paths.is_empty() {
         return Ok(());
     }
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     if is_head_unborn(&repo) {
         let mut index = repo.index()?;
@@ -311,9 +311,9 @@ pub fn unstage_files_inner(
 pub fn discard_file_inner(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     let mut opts = StatusOptions::new();
     opts.pathspec(file_path)
@@ -359,11 +359,8 @@ pub fn discard_file_inner(
     Ok(())
 }
 
-pub fn discard_all_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
+    let repo = state_map.open(path)?;
 
     let mut opts = StatusOptions::new();
     opts.include_untracked(true)
@@ -396,8 +393,8 @@ pub fn discard_all_inner(
     Ok(())
 }
 
-pub fn stage_all_inner(path: &str, state_map: &HashMap<String, PathBuf>) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
+    let repo = state_map.open(path)?;
     let mut index = repo.index()?;
     index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
     index.write()?;
@@ -408,10 +405,10 @@ pub fn stage_hunk_inner(
     path: &str,
     file_path: &str,
     hunk_index: u32,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     let diff = staging_workdir_diff(&repo, file_path, options, false)?;
 
@@ -488,10 +485,10 @@ pub fn unstage_hunk_inner(
     path: &str,
     file_path: &str,
     hunk_index: u32,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     // Reversed (index -> HEAD), so applying it to the index undoes the staged
     // change.
@@ -536,10 +533,10 @@ pub fn discard_hunk_inner(
     path: &str,
     file_path: &str,
     hunk_index: u32,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     // Reversed (workdir -> index) so applying to the workdir undoes the change.
     let diff = staging_workdir_diff(&repo, file_path, options, true)?;
@@ -579,11 +576,8 @@ pub fn discard_hunk_inner(
     Ok(())
 }
 
-pub fn unstage_all_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn unstage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
+    let repo = state_map.open(path)?;
 
     if is_head_unborn(&repo) {
         let mut index = repo.index()?;
@@ -624,9 +618,9 @@ pub struct DirtyCounts {
 
 pub fn get_dirty_counts_inner(
     path: &str,
-    state_map: &std::collections::HashMap<String, std::path::PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<DirtyCounts, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let mut opts = dirty_status_options();
     let statuses = repo.statuses(Some(&mut opts)).map_err(TrunkError::from)?;
     let mut staged = 0usize;
@@ -1077,10 +1071,10 @@ pub fn stage_lines_inner(
     file_path: &str,
     hunk_index: u32,
     line_indices: Vec<u32>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     let diff = staging_workdir_diff(&repo, file_path, options, false)?;
 
@@ -1126,10 +1120,10 @@ pub fn unstage_lines_inner(
     file_path: &str,
     hunk_index: u32,
     line_indices: Vec<u32>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     // Forward, so line indices match the user's view; the partial patch built
     // from it is reversed instead, to undo the selected lines.
@@ -1176,10 +1170,10 @@ pub fn discard_lines_inner(
     file_path: &str,
     hunk_index: u32,
     line_indices: Vec<u32>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     // Forward, so line indices match the user's view; the partial patch built
     // from it is reversed instead, to undo the selected lines.

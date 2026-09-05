@@ -1,9 +1,7 @@
 use crate::error::TrunkError;
 use crate::git::graph;
 use crate::git::types::MergeSides;
-use crate::state::{CommitCache, RepoState};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// The file's conflict entry, or `not_conflicted` when the index holds none for
@@ -45,9 +43,9 @@ fn conflict_entry(
 pub fn get_merge_sides_inner(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<MergeSides, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let conflict = conflict_entry(&repo, file_path)?;
 
     // `from_utf8_lossy` would replace every invalid byte with U+FFFD and the save
@@ -77,9 +75,9 @@ pub fn save_merge_result_inner(
     path: &str,
     file_path: &str,
     content: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let repo_path = repo
         .workdir()
         .ok_or_else(|| TrunkError::new("no_workdir", "Bare repository"))?;
@@ -143,7 +141,7 @@ pub async fn save_merge_result<R: Runtime>(
     // Repopulate cache and emit repo-changed (same pattern as merge_continue)
     let path_for_cache = path.clone();
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = crate::commands::repo_path_from_state(&path_for_cache, &state_map)?;
+        let path_buf = &state_map.path_for(&path_for_cache)?;
         let mut repo = git2::Repository::open(path_buf)?;
         graph::snapshot(&mut repo, &visibility)
     })

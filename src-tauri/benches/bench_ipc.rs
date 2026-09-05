@@ -1,8 +1,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
+use trunk_lib::state::OpenRepos;
 
 struct BenchRepo {
     _dir: tempfile::TempDir,
@@ -149,8 +148,7 @@ fn bench_ipc_list_refs(c: &mut Criterion) {
 
     let bench_repo = REPO_STARTUP.get_or_init(make_startup_repo);
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     // Measure: list_refs_inner (compute) + serde_json::to_string (serialize)
     group.bench_function("list_refs", |b| {
@@ -168,8 +166,7 @@ fn bench_ipc_diff_unstaged(c: &mut Criterion) {
 
     let bench_repo = REPO_STARTUP.get_or_init(make_startup_repo);
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     // Measure: diff_unstaged_inner (compute) + serde_json::to_string (serialize)
     group.bench_function("diff_unstaged", |b| {
@@ -202,8 +199,7 @@ fn bench_startup_sequence(c: &mut Criterion) {
     let configs: &[(&str, usize)] = &[("100_commits", 100)];
 
     for &(label, _) in configs {
-        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-        state_map.insert(path_str.clone(), bench_repo.path.clone());
+        let state_map = OpenRepos::from_iter([(path_str.clone(), bench_repo.path.clone())]);
 
         group.bench_with_input(
             BenchmarkId::from_parameter(label),

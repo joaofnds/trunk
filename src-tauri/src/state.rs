@@ -2,10 +2,114 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use crate::error::TrunkError;
+
+/// The repositories the app currently has open, keyed by the path the frontend
+/// addresses them with.
+///
+/// Commands take a clone of this rather than holding the lock across their work,
+/// so it is a snapshot: a repository closed after the clone still resolves here.
+/// The window is the command's own duration, and the repository it names is the
+/// one the user was looking at when they acted.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OpenRepos(HashMap<String, PathBuf>);
+
+impl OpenRepos {
+    /// Where `path` lives on disk, or `not_open` when the app has no such
+    /// repository open.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when `path` names no open repository.
+    pub fn path_for(&self, path: &str) -> Result<&Path, TrunkError> {
+        self.location_of(path).ok_or_else(|| {
+            // The message reaches the user as a toast, so it names the
+            // repository rather than spelling out where it lives on disk.
+            let name = Path::new(path)
+                .file_name()
+                .map_or(path, |n| n.to_str().unwrap_or(path));
+
+            TrunkError::new("not_open", format!("Repository not open: {name}"))
+        })
+    }
+
+    /// Open the git repository registered for `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `not_open` when `path` names no open repository, and the
+    /// underlying git error when the repository will not open.
+    pub fn open(&self, path: &str) -> Result<git2::Repository, TrunkError> {
+        git2::Repository::open(self.path_for(path)?).map_err(TrunkError::from)
+    }
+
+    /// Where `path` lives on disk, or `None` when no such repository is open.
+    ///
+    /// For callers that treat a closed repository as nothing to do rather than
+    /// as an error, such as the background fetch.
+    #[must_use]
+    pub fn location_of(&self, path: &str) -> Option<&Path> {
+        self.0.get(path).map(PathBuf::as_path)
+    }
+
+    /// Whether the frontend's `path` names a repository this app has open.
+    #[must_use]
+    pub fn is_open(&self, path: &str) -> bool {
+        self.0.contains_key(path)
+    }
+
+    /// Record `location` as the repository the frontend addresses as `path`.
+    pub fn register(&mut self, path: String, location: PathBuf) {
+        self.0.insert(path, location);
+    }
+
+    /// Drop the repository the frontend addresses as `path`.
+    pub fn forget(&mut self, path: &str) {
+        self.0.remove(path);
+    }
+}
+
+impl FromIterator<(String, PathBuf)> for OpenRepos {
+    fn from_iter<T: IntoIterator<Item = (String, PathBuf)>>(entries: T) -> Self {
+        Self(entries.into_iter().collect())
+    }
+}
+
 // CRITICAL: Store PathBuf ONLY — git2::Repository is not Sync.
 // Each Tauri command opens a fresh Repository::open(path) inside spawn_blocking.
 // Storing Repository handles here would cause cargo build to fail with "not Sync".
-pub struct RepoState(pub Mutex<HashMap<String, PathBuf>>);
+pub struct RepoState(pub Mutex<OpenRepos>);
+
+impl RepoState {
+    /// A snapshot of the open repositories, taken without holding the lock past
+    /// the clone.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned, matching every other reader of it.
+    #[must_use]
+    pub fn snapshot(&self) -> OpenRepos {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// Record `location` as the repository the frontend addresses as `path`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned, matching every other writer of it.
+    pub fn register(&self, path: String, location: PathBuf) {
+        self.0.lock().unwrap().register(path, location);
+    }
+
+    /// Drop the repository the frontend addresses as `path`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned, matching every other writer of it.
+    pub fn forget(&self, path: &str) {
+        self.0.lock().unwrap().forget(path);
+    }
+}
 
 /// Stores the PID of the currently running remote operation per repo.
 ///
@@ -138,5 +242,45 @@ impl RefVisibilityState {
 
     pub fn forget(&self, path: &str) {
         self.0.lock().unwrap().remove(path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OpenRepos;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn an_unregistered_path_is_not_open() {
+        let open = OpenRepos::default();
+
+        let err = open.path_for("/not/a/registered/repo").unwrap_err();
+
+        assert_eq!(err.code, "not_open");
+    }
+
+    #[test]
+    fn the_not_open_message_names_the_repository_not_its_location() {
+        let open = OpenRepos::default();
+
+        let err = open.path_for("/home/someone/code/trunk").unwrap_err();
+
+        assert_eq!(err.message, "Repository not open: trunk");
+    }
+
+    #[test]
+    fn a_key_with_no_final_component_names_itself() {
+        let open = OpenRepos::default();
+
+        let err = open.path_for("/").unwrap_err();
+
+        assert_eq!(err.message, "Repository not open: /");
+    }
+
+    #[test]
+    fn a_registered_path_resolves_to_its_location_on_disk() {
+        let open = OpenRepos::from_iter([("key".to_string(), PathBuf::from("/on/disk"))]);
+
+        assert_eq!(open.path_for("key").unwrap(), Path::new("/on/disk"));
     }
 }

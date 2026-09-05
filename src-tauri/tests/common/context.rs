@@ -1,12 +1,13 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use trunk_lib::git::graph_input::GraphSnapshot;
+use trunk_lib::state::OpenRepos;
 
 pub struct TestContext {
     _dir: tempfile::TempDir,
     _data_dir: tempfile::TempDir,
     pub(crate) path: String,
-    pub(crate) state_map: HashMap<String, PathBuf>,
+    pub(crate) state_map: OpenRepos,
     pub(crate) cache_map: HashMap<String, GraphSnapshot>,
 }
 
@@ -29,8 +30,7 @@ impl TestContext {
         drop(repo);
 
         let path = dir.path().display().to_string();
-        let mut state_map = HashMap::new();
-        state_map.insert(path.clone(), dir.path().to_path_buf());
+        let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
 
         Self {
             _dir: dir,
@@ -62,8 +62,8 @@ impl TestContext {
         git2::Repository::open(self._dir.path()).unwrap()
     }
 
-    /// Immutable borrow of `state_map` (for _inner functions taking &`HashMap`)
-    pub const fn state_map(&self) -> &HashMap<String, PathBuf> {
+    /// Immutable borrow of the open repositories, for `_inner` functions.
+    pub const fn state_map(&self) -> &OpenRepos {
         &self.state_map
     }
 
@@ -73,11 +73,7 @@ impl TestContext {
     }
 
     /// Internal constructor used by the builder
-    pub(crate) fn from_parts(
-        dir: tempfile::TempDir,
-        path: String,
-        state_map: HashMap<String, PathBuf>,
-    ) -> Self {
+    pub(crate) fn from_parts(dir: tempfile::TempDir, path: String, state_map: OpenRepos) -> Self {
         let data_dir = tempfile::tempdir().expect("failed to create data_dir tempdir");
         Self {
             _dir: dir,

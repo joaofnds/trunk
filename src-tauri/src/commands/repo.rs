@@ -31,11 +31,7 @@ pub async fn open_repo<R: Runtime>(
         .map_err(|e| e.to_json())?;
 
     let path_buf = std::path::PathBuf::from(&path);
-    state
-        .0
-        .lock()
-        .unwrap()
-        .insert(path.clone(), path_buf.clone());
+    state.register(path.clone(), path_buf.clone());
     cache.0.lock().unwrap().insert(path.clone(), result);
     watcher::start_watcher(path_buf, app, &watcher_state);
 
@@ -51,7 +47,7 @@ pub async fn close_repo(
     watcher_state: State<'_, WatcherState>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
-    state.0.lock().unwrap().remove(&path);
+    state.forget(&path);
     cache.0.lock().unwrap().remove(&path);
     stats.0.lock().unwrap().remove(&path);
     ref_visibility.forget(&path);
@@ -77,7 +73,7 @@ pub async fn force_close_repo(
         }
     }
     // Then clean up all other state (same as close_repo)
-    state.0.lock().unwrap().remove(&path);
+    state.forget(&path);
     cache.0.lock().unwrap().remove(&path);
     stats.0.lock().unwrap().remove(&path);
     ref_visibility.forget(&path);

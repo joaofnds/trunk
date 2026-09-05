@@ -66,7 +66,7 @@ fn the_real_handler_list_registers_on_a_mock_runtime() {
             .0
             .lock()
             .unwrap()
-            .contains_key(ctx.path()),
+            .is_open(ctx.path()),
         "open_repo should register the repository in RepoState"
     );
 }

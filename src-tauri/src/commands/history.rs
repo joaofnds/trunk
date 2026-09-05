@@ -4,10 +4,9 @@ use crate::git::{
     graph,
     types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
 };
-use crate::state::{CommitCache, CommitStatsCache, RepoState};
+use crate::state::{CommitCache, CommitStatsCache, OpenRepos, RepoState};
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tauri::State;
 
 #[derive(Debug, Serialize, Clone)]
@@ -78,7 +77,7 @@ pub async fn refresh_commit_graph(
     let path_clone = path.clone();
 
     let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
+        let path_buf = &state_map.path_for(&path_clone)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
         graph::snapshot(&mut repo, &visibility)
     })
@@ -155,13 +154,13 @@ pub fn set_ref_visibility_inner(
     path: &str,
     visibility: &crate::git::graph_input::RefVisibility,
     cached: Option<&GraphSnapshot>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<GraphSnapshot, TrunkError> {
     if let Some(snapshot) = cached {
         return Ok(snapshot.with_visibility(visibility.clone()));
     }
 
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
     graph::snapshot(&mut repo, visibility)
 }
@@ -186,9 +185,9 @@ fn commit_stat_from_repo(repo: &git2::Repository, oid: git2::Oid) -> Result<Diff
 pub fn commit_stat_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<DiffStat, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     commit_stat_from_repo(&repo, oid)
@@ -201,9 +200,9 @@ pub fn commit_stat_inner(
 pub fn compute_commit_stats_batch(
     path: &str,
     oids: &[String],
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> HashMap<String, DiffStat> {
-    let Ok(repo) = crate::commands::open_repo_from_state(path, state_map) else {
+    let Ok(repo) = state_map.open(path) else {
         return HashMap::new();
     };
     let mut out = HashMap::with_capacity(oids.len());
@@ -225,11 +224,8 @@ pub fn compute_commit_stats_batch(
 /// `files_changed` counts *distinct* paths across both diffs — a file that is
 /// both staged and unstaged-modified (`MM` in `git status`) is one changed file,
 /// not two — so the count matches the WIP row's `repo.statuses()` badges.
-pub fn wip_diff_stats_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<DiffStat, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffStat, TrunkError> {
+    let repo = state_map.open(path)?;
 
     let mut staged_opts = crate::commands::diff::new_diff_options();
     let staged = crate::commands::diff::staged_diff(&repo, &mut staged_opts)?;

@@ -10,7 +10,7 @@
 //! commits sort arbitrarily; an unpinned shape also cannot be captured, because two builds of
 //! it produce different OIDs and the fidelity check has nothing stable to compare.
 
-use std::collections::HashMap;
+use trunk_lib::state::OpenRepos;
 
 use crate::common::context::TestContext;
 
@@ -54,8 +54,7 @@ pub fn raw_commit(
 /// A `TestContext` over a repository built by raw git2 rather than by the builder.
 pub fn context_at(dir: tempfile::TempDir) -> TestContext {
     let path = dir.path().display().to_string();
-    let mut state_map = HashMap::new();
-    state_map.insert(path.clone(), dir.path().to_path_buf());
+    let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
 
     TestContext::from_parts(dir, path, state_map)
 }

@@ -2,10 +2,8 @@ use crate::error::TrunkError;
 use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, types::RebaseTodoItem};
 use crate::shell_env;
-use crate::state::{CommitCache, RepoState};
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 #[derive(Debug, Deserialize, Clone)]
@@ -30,9 +28,9 @@ pub fn get_rebase_todo_inner(
     path: &str,
     base_oid: &str,
     inclusive: bool,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<RebaseTodo, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
 
     let base =
         git2::Oid::from_str(base_oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
@@ -88,9 +86,9 @@ pub fn get_rebase_todo_inner(
 pub fn get_fork_point_inner(
     path: &str,
     branch: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<String, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     let output = std::process::Command::new("git")
         .args(["merge-base", "--", branch, "HEAD"])
@@ -123,10 +121,10 @@ pub fn start_interactive_rebase_blocking(
     base_oid: Option<&str>,
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(GraphSnapshot, RebaseStartResult), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
     let todo_path = session_dir.join("trunk-rebase-todo");

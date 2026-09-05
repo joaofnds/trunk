@@ -7,7 +7,7 @@ use crate::git::types::{
     LinePairing, SyntaxToken,
 };
 use crate::git::word_spans::compute_word_spans_for_hunk;
-use crate::state::RepoState;
+use crate::state::{OpenRepos, RepoState};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::State;
@@ -704,10 +704,10 @@ fn walk_diff_raw_for_bench(
 pub fn diff_unstaged_raw_for_bench(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<(Vec<FileDiff>, Vec<SideContent>), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
@@ -719,10 +719,10 @@ pub fn diff_unstaged_raw_for_bench(
 pub fn diff_unstaged_inner(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let mut opts = workdir_diff_opts(file_path);
     apply_request_options(&mut opts, options);
     let diff = repo.diff_index_to_workdir(None, Some(&mut opts))?;
@@ -732,10 +732,10 @@ pub fn diff_unstaged_inner(
 pub fn diff_staged_inner(
     path: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let mut opts = new_diff_options();
     apply_request_options(&mut opts, options);
     let diff = staged_diff(&repo, &mut opts)?;
@@ -745,10 +745,10 @@ pub fn diff_staged_inner(
 pub fn diff_commit_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
@@ -763,9 +763,9 @@ pub fn diff_commit_inner(
 pub fn list_commit_files_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
@@ -779,10 +779,10 @@ pub fn diff_commit_file_inner(
     path: &str,
     oid: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;
@@ -811,9 +811,9 @@ pub fn list_compare_files_inner(
     path: &str,
     base_oid: Option<&str>,
     target_oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
     let mut diff = repo.diff_tree_to_tree(
@@ -832,10 +832,10 @@ pub fn diff_compare_file_inner(
     base_oid: Option<&str>,
     target_oid: &str,
     file_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     options: &DiffRequestOptions,
 ) -> Result<Vec<FileDiff>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
     let mut opts = new_diff_options();
@@ -852,9 +852,9 @@ pub fn compare_stat_inner(
     path: &str,
     base_oid: Option<&str>,
     target_oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<crate::git::types::DiffStat, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let base_tree = compare_tree(&repo, base_oid)?;
     let target_tree = compare_tree(&repo, Some(target_oid))?;
     let mut diff = repo.diff_tree_to_tree(
@@ -880,9 +880,9 @@ fn file_metadata_list(diff: &git2::Diff) -> Vec<FileDiff> {
 pub fn get_commit_detail_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<CommitDetail, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let oid =
         git2::Oid::from_str(oid).map_err(|e| TrunkError::new("invalid_oid", e.to_string()))?;
     let commit = repo.find_commit(oid)?;

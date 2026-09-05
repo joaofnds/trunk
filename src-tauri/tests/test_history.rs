@@ -1,7 +1,6 @@
 mod common;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use trunk_lib::state::OpenRepos;
 
 use common::context::TestContext;
 use trunk_lib::commands::history::{GraphResponse, set_ref_visibility_inner};
@@ -451,7 +450,7 @@ fn a_visibility_change_re_lays_out_the_cached_graph_without_the_repository() {
     let cached = ctx.cache_map.get(ctx.path()).unwrap().clone();
     let mut hidden = RefVisibility::default();
     hidden.hidden_refs.insert("refs/heads/feature".to_owned());
-    let no_repositories: HashMap<String, PathBuf> = HashMap::new();
+    let no_repositories = OpenRepos::default();
 
     let toggled =
         set_ref_visibility_inner("/nowhere", &hidden, Some(&cached), &no_repositories).unwrap();

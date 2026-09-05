@@ -1,9 +1,7 @@
 use crate::error::TrunkError;
 use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, types::StashEntry};
-use crate::state::{CommitCache, RepoState};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
@@ -38,9 +36,9 @@ fn stash_index_of(repo: &mut git2::Repository, oid: &str) -> Result<usize, Trunk
 
 pub fn list_stashes_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<Vec<StashEntry>, TrunkError> {
-    let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let mut repo = state_map.open(path)?;
     let mut raw: Vec<(usize, String, git2::Oid)> = Vec::new();
     repo.stash_foreach(|idx, name, oid| {
         raw.push((idx, name.to_owned(), *oid));
@@ -68,10 +66,10 @@ pub fn list_stashes_inner(
 pub fn stash_save_inner(
     path: &str,
     message: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let mut repo = state_map.open(path)?;
     let sig = repo.signature().map_err(TrunkError::from)?;
     let msg = if message.trim().is_empty() {
         let branch = repo
@@ -99,10 +97,10 @@ pub fn stash_save_inner(
 pub fn stash_pop_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
     // when it applied with conflicts, leaving the user's stashed work nowhere once they
@@ -124,10 +122,10 @@ pub fn stash_pop_inner(
 pub fn stash_apply_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_apply(index, None).map_err(|e| {
         if e.message().contains("conflict") || e.message().contains("merge") {
@@ -145,10 +143,10 @@ pub fn stash_apply_inner(
 pub fn stash_drop_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_drop(index).map_err(TrunkError::from)?;
     graph::snapshot(&mut repo, visibility)

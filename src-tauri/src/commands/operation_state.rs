@@ -5,9 +5,7 @@ use crate::git::{
     types::{OperationInfo, OperationType},
 };
 use crate::shell_env;
-use crate::state::{CommitCache, RepoState};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a two-step merge begin. The async wrapper emits `repo-changed`
@@ -55,9 +53,9 @@ fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<Strin
 
 pub fn get_operation_state_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<OperationInfo, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let state = repo.state();
 
     match state {
@@ -157,10 +155,10 @@ pub fn get_operation_state_inner(
 pub fn merge_continue_inner(
     path: &str,
     message: Option<&str>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     // The editor flow always supplies a message (frontend aborts on null and
     // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
     // so conflicted-merge bodies stay clean (MSG-01 fidelity).
@@ -183,10 +181,10 @@ pub fn merge_continue_inner(
 
 pub fn merge_abort_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let output = std::process::Command::new("git")
         .args(["merge", "--abort"])
         .current_dir(path_buf)
@@ -225,10 +223,10 @@ pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Comman
 pub fn rebase_continue_inner(
     path: &str,
     message: Option<&str>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     // Write edited message to .git/rebase-merge/message before continuing
     if let Some(msg) = message {
@@ -266,10 +264,10 @@ pub fn rebase_continue_inner(
 
 pub fn rebase_skip_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let editor = crate::git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--skip")
         .env("GIT_EDITOR", editor.script_path())
@@ -285,10 +283,10 @@ pub fn rebase_skip_inner(
 
 pub fn rebase_abort_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let output = rebase_command(path_buf, "--abort")
         .output()
         .map_err(|e| TrunkError::new("rebase_error", e.to_string()))?;
@@ -304,9 +302,9 @@ pub fn rebase_abort_inner(
 
 pub fn get_merge_message_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<Option<String>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     // Verbatim read — `# Conflicts:` lines are stripped at commit time via
     // --cleanup=strip, never here.
     Ok(std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok())
@@ -315,10 +313,10 @@ pub fn get_merge_message_inner(
 pub fn merge_branch_begin_inner(
     path: &str,
     branch: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<MergeBeginResult, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
     //    ff-able or already-up-to-date merge (no MERGE_HEAD, no merge commit) and
@@ -372,10 +370,10 @@ pub fn merge_branch_begin_inner(
 pub fn rebase_branch_inner(
     path: &str,
     onto_branch: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let output = std::process::Command::new("git")
         .args(["rebase", "--", onto_branch])
         .current_dir(path_buf)
@@ -620,6 +618,7 @@ pub async fn rebase_branch<R: Runtime>(
 mod tests {
     use super::*;
     use git2::{Repository, Signature};
+    use std::path::PathBuf;
     use std::process::Command;
     use tempfile::TempDir;
 
@@ -648,10 +647,8 @@ mod tests {
         dir.path().to_str().unwrap().to_string()
     }
 
-    fn state_map_for(dir: &TempDir) -> HashMap<String, PathBuf> {
-        let mut map = HashMap::new();
-        map.insert(path_str(dir), dir.path().to_path_buf());
-        map
+    fn state_map_for(dir: &TempDir) -> OpenRepos {
+        OpenRepos::from_iter([(path_str(dir), dir.path().to_path_buf())])
     }
 
     /// Commit `file`=`content` onto `parents`, carrying the first parent's tree

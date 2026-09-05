@@ -365,3 +365,11 @@ armed and then fires it, so a test says "the debounce ran" instead of guessing a
 window. `elapseUntil()` fires timers while waiting on a condition, for the actions that emit
 `repo-changed` more than once; `settled()` runs every refresh out before a gesture a
 re-render would disturb. Retires `settle()` and its quiet window.
+
+**Open repositories** — the repositories the app currently has open, mapping the path the
+frontend addresses a repository by to where it lives on disk. Commands take a snapshot of it
+rather than holding the lock across their work, so a repository closed mid-command still
+resolves. The window is the command's own duration. Asking it for a repository it does not
+hold is the `not_open` error every command seam owes the frontend, pinned at each seam by
+`test_not_open_contract.rs`.
+

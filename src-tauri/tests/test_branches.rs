@@ -1,6 +1,7 @@
 mod common;
 
 use common::context::TestContext;
+use trunk_lib::state::OpenRepos;
 
 #[test]
 fn list_refs_returns_local_branches() {
@@ -337,8 +338,7 @@ fn list_refs_ahead_behind_tracking() {
 
     // Build a manual TestContext for the cloned repo
     let path = work_dir.path().to_string_lossy().to_string();
-    let mut state_map = std::collections::HashMap::new();
-    state_map.insert(path.clone(), work_dir.path().to_path_buf());
+    let state_map = OpenRepos::from_iter([(path.clone(), work_dir.path().to_path_buf())]);
 
     let refs = trunk_lib::commands::branches::list_refs_inner(&path, &state_map)
         .expect("list_refs_inner failed");
@@ -404,14 +404,10 @@ fn delete_remote_branch_removes_ref() {
     // Verify the remote branch exists
     let refs_before = trunk_lib::commands::branches::list_refs_inner(
         work_dir.path().to_string_lossy().as_ref(),
-        &{
-            let mut m = std::collections::HashMap::new();
-            m.insert(
-                work_dir.path().to_string_lossy().to_string(),
-                work_dir.path().to_path_buf(),
-            );
-            m
-        },
+        &OpenRepos::from_iter([(
+            work_dir.path().to_string_lossy().to_string(),
+            work_dir.path().to_path_buf(),
+        )]),
     )
     .expect("list_refs_inner failed");
     assert!(
@@ -445,14 +441,10 @@ fn delete_remote_branch_removes_ref() {
     // Verify the remote branch is gone
     let refs_after = trunk_lib::commands::branches::list_refs_inner(
         work_dir.path().to_string_lossy().as_ref(),
-        &{
-            let mut m = std::collections::HashMap::new();
-            m.insert(
-                work_dir.path().to_string_lossy().to_string(),
-                work_dir.path().to_path_buf(),
-            );
-            m
-        },
+        &OpenRepos::from_iter([(
+            work_dir.path().to_string_lossy().to_string(),
+            work_dir.path().to_path_buf(),
+        )]),
     )
     .expect("list_refs_inner failed");
     assert!(

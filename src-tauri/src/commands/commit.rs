@@ -1,17 +1,15 @@
 use crate::error::TrunkError;
 use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, types::HeadCommitMessage};
-use crate::state::{CommitCache, RepoState};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 fn refresh_commit_cache(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
     graph::snapshot(&mut repo, visibility)
 }
@@ -27,9 +25,9 @@ pub fn create_commit_inner(
     path: &str,
     subject: &str,
     body: Option<&str>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let sig = repo.signature()?;
     let mut index = repo.index()?;
     let tree_oid = index.write_tree()?;
@@ -56,9 +54,9 @@ pub fn amend_commit_inner(
     path: &str,
     subject: &str,
     body: Option<&str>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let head_commit = repo.head()?.peel_to_commit()?;
     let sig = repo.signature()?;
     let mut index = repo.index()?;
@@ -79,9 +77,9 @@ pub fn amend_commit_inner(
 
 pub fn get_head_commit_message_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<HeadCommitMessage, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let commit = repo.head()?.peel_to_commit()?;
     Ok(HeadCommitMessage {
         subject: commit.summary().ok().flatten().unwrap_or("").to_owned(),

@@ -1,10 +1,9 @@
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::OnceLock;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
+use trunk_lib::state::OpenRepos;
 
 struct BenchRepo {
     _dir: tempfile::TempDir,
@@ -110,7 +109,7 @@ fn make_repo_with_unstaged_changes() -> BenchRepo {
 
 /// Create a fresh repo with an unstaged hunk for `stage_hunk_inner` (mutating operation).
 /// Returns (dir, `path_string`, `state_map`) -- dir must live until the iteration ends.
-fn make_repo_for_stage_hunk() -> (tempfile::TempDir, String, HashMap<String, PathBuf>) {
+fn make_repo_for_stage_hunk() -> (tempfile::TempDir, String, OpenRepos) {
     let dir = tempfile::tempdir().unwrap();
     let repo = git2::Repository::init(dir.path()).unwrap();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
@@ -136,8 +135,7 @@ fn make_repo_for_stage_hunk() -> (tempfile::TempDir, String, HashMap<String, Pat
     std::fs::write(dir.path().join("README.md"), "modified content\n").unwrap();
 
     let path = dir.path().display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), dir.path().to_path_buf());
+    let state_map = OpenRepos::from_iter([(path.clone(), dir.path().to_path_buf())]);
 
     (dir, path, state_map)
 }
@@ -149,8 +147,7 @@ static REPO_UNSTAGED: OnceLock<BenchRepo> = OnceLock::new();
 fn bench_list_refs(c: &mut Criterion) {
     let bench_repo = REPO_BRANCHES.get_or_init(|| make_repo_with_branches(50));
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     c.bench_function("list_refs_inner", |b| {
         b.iter(|| {
@@ -162,8 +159,7 @@ fn bench_list_refs(c: &mut Criterion) {
 fn bench_diff_unstaged(c: &mut Criterion) {
     let bench_repo = REPO_UNSTAGED.get_or_init(make_repo_with_unstaged_changes);
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     c.bench_function("diff_unstaged_inner", |b| {
         b.iter(|| {
@@ -182,8 +178,7 @@ fn bench_get_status(c: &mut Criterion) {
     // Reuse REPO_UNSTAGED -- get_status reads but doesn't mutate
     let bench_repo = REPO_UNSTAGED.get_or_init(make_repo_with_unstaged_changes);
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     c.bench_function("get_status_inner", |b| {
         b.iter(|| {
@@ -354,8 +349,7 @@ static REPO_CODE: OnceLock<BenchRepo> = OnceLock::new();
 fn bench_diff_code_file(c: &mut Criterion) {
     let bench_repo = REPO_CODE.get_or_init(make_repo_with_code_changes);
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     c.bench_function("diff_ts_full_pipeline", |b| {
         b.iter(|| {
@@ -374,8 +368,7 @@ fn bench_diff_code_file(c: &mut Criterion) {
 fn bench_enrich_new(c: &mut Criterion) {
     let bench_repo = REPO_CODE.get_or_init(make_repo_with_code_changes);
     let path = bench_repo.path.display().to_string();
-    let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-    state_map.insert(path.clone(), bench_repo.path.clone());
+    let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
     // Get raw diffs and their real side content once, outside b.iter, so the
     // benchmark measures enrich_file_diffs's own cost, not side resolution.
@@ -540,8 +533,7 @@ fn bench_diff_large_file(c: &mut Criterion) {
 
     for (id, bench_repo) in [("early_change", early), ("late_change", late)] {
         let path = bench_repo.path.display().to_string();
-        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-        state_map.insert(path.clone(), bench_repo.path.clone());
+        let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
 
         group.bench_function(id, |b| {
             b.iter(|| {
@@ -572,8 +564,7 @@ fn bench_diff_large_file(c: &mut Criterion) {
     ] {
         let path = bench_repo.path.display().to_string();
         let file = bench_repo.path.join("large.ts");
-        let mut state_map: HashMap<String, PathBuf> = HashMap::new();
-        state_map.insert(path.clone(), bench_repo.path.clone());
+        let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
         let options = trunk_lib::git::types::DiffRequestOptions::default();
         let mut nonce = 0usize;
 

@@ -5,18 +5,14 @@ use crate::git::{
     types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry},
 };
 use crate::shell_env;
-use crate::state::{CommitCache, RepoState};
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use git2::BranchType;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Inner implementation of `list_refs` — separated for testability without Tauri state.
-pub fn list_refs_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<RefsResponse, TrunkError> {
-    let mut repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn list_refs_inner(path: &str, state_map: &OpenRepos) -> Result<RefsResponse, TrunkError> {
+    let mut repo = state_map.open(path)?;
 
     // Resolve HEAD name before any mutable borrows
     let head_name: Option<String> = repo
@@ -132,11 +128,11 @@ pub fn list_refs_inner(
 pub fn delete_branch_inner(
     path: &str,
     branch_name: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
     // Check if this is the HEAD branch
@@ -169,11 +165,11 @@ pub fn rename_branch_inner(
     path: &str,
     old_name: &str,
     new_name: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let mut branch = repo.find_branch(old_name, BranchType::Local)?;
     branch.rename(new_name, false)?; // false = no force (fail if new_name exists)
@@ -201,9 +197,9 @@ pub async fn list_refs(path: String, state: State<'_, RepoState>) -> Result<Refs
 pub fn resolve_ref_inner(
     path: &str,
     ref_name: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<String, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let obj = repo.revparse_single(ref_name).map_err(TrunkError::from)?;
     let commit = obj.peel_to_commit().map_err(TrunkError::from)?;
     Ok(commit.id().to_string())
@@ -259,11 +255,11 @@ fn classify_checkout_error(e: git2::Error) -> TrunkError {
 pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
     let branch_ref = format!("refs/heads/{branch_name}");
@@ -313,11 +309,11 @@ pub async fn checkout_branch<R: Runtime>(
 pub fn fast_forward_to_inner(
     path: &str,
     target_oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     let output = std::process::Command::new("git")
         .args(["merge", "--ff-only", "--", target_oid])
@@ -372,11 +368,11 @@ pub fn create_branch_inner(
     path: &str,
     name: &str,
     from_oid: Option<&str>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache_map: &mut HashMap<String, GraphSnapshot>,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
     let target_oid = match from_oid {

@@ -10,7 +10,7 @@ use crate::error::TrunkError;
 use crate::git::graph;
 use crate::git::graph_input::GraphSnapshot;
 use crate::shell_env;
-use crate::state::{CommitCache, RepoState, RunningOp, kill_process};
+use crate::state::{CommitCache, OpenRepos, RepoState, RunningOp, kill_process};
 
 /// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
 /// markers to these is what keeps a hook printing either phrase from turning every
@@ -182,9 +182,10 @@ pub async fn git_fetch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let path_buf = crate::commands::repo_path_from_state(&path, &state_map)
+    let path_buf = state_map
+        .path_for(&path)
         .map_err(|e| e.to_json())?
-        .clone();
+        .to_path_buf();
 
     run_git_remote(
         &["fetch", "--all", "--progress"],
@@ -214,7 +215,10 @@ pub async fn git_fetch_background<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let Some(path_buf) = state_map.get(&path).cloned() else {
+    let Some(path_buf) = state_map
+        .location_of(&path)
+        .map(std::path::Path::to_path_buf)
+    else {
         return Ok(());
     };
 
@@ -246,11 +250,8 @@ pub async fn git_fetch_background<R: Runtime>(
     Ok(())
 }
 
-pub fn get_push_target_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<PushTarget, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn get_push_target_inner(path: &str, state_map: &OpenRepos) -> Result<PushTarget, TrunkError> {
+    let repo = state_map.open(path)?;
     resolve_push_target(&repo)
 }
 
@@ -293,13 +294,13 @@ pub async fn git_pull<R: Runtime>(
 pub async fn git_pull_inner<R: Runtime>(
     path: &str,
     strategy: Option<&str>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
+    let path_buf = state_map.path_for(path)?.to_path_buf();
 
     let args: Vec<&str> = match strategy {
         Some("ff") => vec!["pull", "--ff", "--progress"],
@@ -348,13 +349,13 @@ pub async fn git_push<R: Runtime>(
 
 pub async fn git_push_inner<R: Runtime>(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
+    let path_buf = state_map.path_for(path)?.to_path_buf();
 
     run_git_remote(&["push", "--progress"], &path_buf, app, path, running).await?;
 
@@ -453,14 +454,14 @@ pub async fn git_push_force<R: Runtime>(
 pub async fn git_push_force_inner<R: Runtime>(
     path: &str,
     confirmed: ConfirmedPush<'_>,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     cache: &CommitCache,
     running: &Mutex<HashMap<String, u32>>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
     let (confirmed_remote, confirmed_branch) = (confirmed.remote, confirmed.branch);
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?.clone();
+    let path_buf = state_map.path_for(path)?.to_path_buf();
 
     let target_path = path_buf.clone();
     let target = tauri::async_runtime::spawn_blocking(move || {
@@ -521,9 +522,10 @@ pub async fn delete_remote_branch<R: Runtime>(
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let state_map = state.0.lock().unwrap().clone();
-    let path_buf = crate::commands::repo_path_from_state(&path, &state_map)
+    let path_buf = state_map
+        .path_for(&path)
         .map_err(|e| e.to_json())?
-        .clone();
+        .to_path_buf();
 
     // Parse "origin/feature" into remote="origin", branch="feature"
     let slash = branch_name.find('/').ok_or_else(|| {

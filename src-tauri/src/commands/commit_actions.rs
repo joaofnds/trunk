@@ -2,9 +2,7 @@ use crate::error::TrunkError;
 use crate::git::graph_input::GraphSnapshot;
 use crate::git::{graph, types::UndoResult};
 use crate::shell_env;
-use crate::state::{CommitCache, RepoState};
-use std::collections::HashMap;
-use std::path::PathBuf;
+use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a clean two-step revert begin. The async wrapper emits
@@ -21,10 +19,10 @@ pub struct RevertBeginResult {
 pub fn checkout_commit_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
     if crate::git::repository::is_repo_dirty(&repo)? {
@@ -49,10 +47,10 @@ pub fn create_tag_inner(
     oid: &str,
     tag_name: &str,
     message: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let obj = repo.revparse_single(oid)?;
     let sig = repo.signature().map_err(TrunkError::from)?;
@@ -72,10 +70,10 @@ pub fn create_tag_inner(
 pub fn delete_tag_inner(
     path: &str,
     tag_name: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let tag_ref_name = format!("refs/tags/{tag_name}");
     let mut reference = repo.find_reference(&tag_ref_name)?;
@@ -90,10 +88,10 @@ pub fn delete_tag_inner(
 pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     let output = std::process::Command::new("git")
         .args(["cherry-pick", "--", oid])
@@ -119,10 +117,10 @@ pub fn cherry_pick_inner(
 pub fn cherry_pick_continue_inner(
     path: &str,
     message: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
     // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
     let output = std::process::Command::new("git")
@@ -141,10 +139,10 @@ pub fn cherry_pick_continue_inner(
 
 pub fn cherry_pick_abort_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
     // which a cherry-pick never sets.
     let output = std::process::Command::new("git")
@@ -164,10 +162,10 @@ pub fn cherry_pick_abort_inner(
 pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<RevertBeginResult, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     // Stage the revert without committing so the editor can edit the message.
     // git writes the default message (Revert "<subject>" + full 40-char OID) to
@@ -200,10 +198,10 @@ pub fn revert_commit_begin_inner(
 pub fn revert_continue_inner(
     path: &str,
     message: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
     // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
     let output = std::process::Command::new("git")
@@ -222,10 +220,10 @@ pub fn revert_continue_inner(
 
 pub fn revert_abort_inner(
     path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
     // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
     // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
     let output = std::process::Command::new("git")
@@ -246,10 +244,10 @@ pub fn reset_to_commit_inner(
     path: &str,
     oid: &str,
     mode: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<GraphSnapshot, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+    let path_buf = state_map.path_for(path)?;
 
     let valid_modes = ["soft", "mixed", "hard"];
     if !valid_modes.contains(&mode) {
@@ -533,11 +531,8 @@ pub async fn revert_abort<R: Runtime>(
     Ok(())
 }
 
-pub fn undo_commit_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<UndoResult, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+pub fn undo_commit_inner(path: &str, state_map: &OpenRepos) -> Result<UndoResult, TrunkError> {
+    let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let head = repo.head()?.peel_to_commit()?;
 
@@ -587,7 +582,7 @@ pub fn redo_commit_inner(
     body: Option<&str>,
     expected_head_oid: &str,
     expected_path: &str,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<(), TrunkError> {
     // Two clones of one repository share every oid, so the position alone cannot
     // tell them apart. `path` names which repository this redo is allowed to
@@ -598,7 +593,7 @@ pub fn redo_commit_inner(
             "This redo belongs to a different repository",
         ));
     }
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+    let repo = state_map.open(path)?;
     let current = repo
         .head()
         .and_then(|h| h.peel_to_commit())
@@ -614,11 +609,8 @@ pub fn redo_commit_inner(
     super::commit::create_commit_inner(path, subject, body, state_map)
 }
 
-pub fn check_undo_available_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<bool, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn check_undo_available_inner(path: &str, state_map: &OpenRepos) -> Result<bool, TrunkError> {
+    let repo = state_map.open(path)?;
     let head = match repo.head() {
         Ok(h) => match h.peel_to_commit() {
             Ok(c) => c,
@@ -633,11 +625,8 @@ pub fn check_undo_available_inner(
 /// Where HEAD is now, or `None` on an unborn branch. A pending redo names the
 /// position it belongs on; comparing it against this is what stops the redo
 /// being replayed onto history it does not describe.
-pub fn head_oid_inner(
-    path: &str,
-    state_map: &HashMap<String, PathBuf>,
-) -> Result<Option<String>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(path, state_map)?;
+pub fn head_oid_inner(path: &str, state_map: &OpenRepos) -> Result<Option<String>, TrunkError> {
+    let repo = state_map.open(path)?;
     match repo.head().and_then(|h| h.peel_to_commit()) {
         Ok(commit) => Ok(Some(commit.id().to_string())),
         Err(_) => Ok(None),
@@ -658,7 +647,7 @@ pub async fn undo_commit<R: Runtime>(
     let (undo_result, graph_result) = tauri::async_runtime::spawn_blocking(move || {
         let undo = undo_commit_inner(&path_clone, &state_map)?;
         let graph = {
-            let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
+            let path_buf = &state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
             graph::snapshot(&mut repo, &visibility)?
         };
@@ -700,7 +689,7 @@ pub async fn redo_commit<R: Runtime>(
             &expected_repo_path,
             &state_map,
         )?;
-        let path_buf = crate::commands::repo_path_from_state(&path_clone, &state_map)?;
+        let path_buf = &state_map.path_for(&path_clone)?;
         let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
         graph::snapshot(&mut repo, &visibility)
     })
@@ -738,6 +727,7 @@ pub async fn head_oid(path: String, state: State<'_, RepoState>) -> Result<Optio
 mod tests {
     use super::*;
     use git2::{Repository, Signature};
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     // Temp-repo harness (mirrors operation_state.rs tests / git/review.rs:662).
@@ -767,10 +757,8 @@ mod tests {
         crate::git::graph_input::RefVisibility::default()
     }
 
-    fn state_map_for(dir: &TempDir) -> HashMap<String, PathBuf> {
-        let mut map = HashMap::new();
-        map.insert(path_str(dir), dir.path().to_path_buf());
-        map
+    fn state_map_for(dir: &TempDir) -> OpenRepos {
+        OpenRepos::from_iter([(path_str(dir), dir.path().to_path_buf())])
     }
 
     /// Commit `file`=`content` onto `parents`, carrying the first parent's tree
@@ -1011,7 +999,7 @@ mod tests {
         assert_eq!(base_a, base_b, "both repos must share the same commit oid");
 
         let mut map = state_map_for(&dir_a);
-        map.insert(path_str(&dir_b), dir_b.path().to_path_buf());
+        map.register(path_str(&dir_b), dir_b.path().to_path_buf());
 
         let err = redo_commit_inner(
             &path_str(&dir_b),

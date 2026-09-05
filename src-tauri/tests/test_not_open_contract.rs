@@ -1,9 +1,9 @@
-//! Every command seam resolves its repo path through `repo_path_from_state`, so
-//! they all owe the frontend the same `not_open` code. `repo_path_from_state` is
-//! `pub(crate)`, so this crate pins the contract one layer out, at each seam.
+//! Every command seam resolves its repo path through `OpenRepos::path_for`, so
+//! they all owe the frontend the same `not_open` code. This suite pins the
+//! contract at each seam, where the frontend actually meets it.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::Manager;
 use trunk_lib::commands::branches::{
@@ -26,14 +26,14 @@ use trunk_lib::commands::operation_state::{
 use trunk_lib::commands::remote::{git_pull_inner, git_push_force_inner, git_push_inner};
 use trunk_lib::error::TrunkError;
 use trunk_lib::git::graph_input::RefVisibility;
-use trunk_lib::state::{CommitCache, RefVisibilityState, RepoState};
+use trunk_lib::state::{CommitCache, OpenRepos, RefVisibilityState, RepoState};
 
 const UNREGISTERED: &str = "/not/a/registered/repo";
 
 fn assert_reports_not_open<T: std::fmt::Debug>(
-    seam: impl Fn(&str, &HashMap<String, PathBuf>) -> Result<T, TrunkError>,
+    seam: impl Fn(&str, &OpenRepos) -> Result<T, TrunkError>,
 ) {
-    let err = seam(UNREGISTERED, &HashMap::new()).unwrap_err();
+    let err = seam(UNREGISTERED, &OpenRepos::default()).unwrap_err();
 
     assert_eq!(err.code, "not_open");
 }
@@ -107,7 +107,7 @@ fn git_pull_reports_not_open_for_an_unregistered_repo() {
     let err = tauri::async_runtime::block_on(git_pull_inner(
         UNREGISTERED,
         None,
-        &HashMap::new(),
+        &OpenRepos::default(),
         &cache,
         &running,
         &RefVisibilityState::default(),
@@ -126,7 +126,7 @@ fn git_push_reports_not_open_for_an_unregistered_repo() {
 
     let err = tauri::async_runtime::block_on(git_push_inner(
         UNREGISTERED,
-        &HashMap::new(),
+        &OpenRepos::default(),
         &cache,
         &running,
         &RefVisibilityState::default(),
@@ -149,7 +149,7 @@ fn git_push_force_reports_not_open_for_an_unregistered_repo() {
             remote: "origin",
             branch: "main",
         },
-        &HashMap::new(),
+        &OpenRepos::default(),
         &cache,
         &running,
         &RefVisibilityState::default(),
@@ -165,7 +165,7 @@ fn git_push_force_reports_not_open_for_an_unregistered_repo() {
 #[test]
 fn a_command_wrapper_carries_not_open_through_its_json() {
     let app = tauri::test::mock_app();
-    app.manage(RepoState(Mutex::new(HashMap::new())));
+    app.manage(RepoState(Mutex::new(OpenRepos::default())));
     app.manage(CommitCache(Mutex::new(HashMap::new())));
     app.manage(RefVisibilityState::default());
 

@@ -13,18 +13,17 @@ use crate::git::review_range::{compute_range_oids, intersect_graph_order, valida
 use crate::git::review_resolution::{CommentResolution, resolve_all};
 use crate::git::types::SessionCommit;
 use crate::reviewdb::{Store, commits, drafts, pins, replies, reviews, snapshots, threads};
-use crate::state::{CommitCache, RepoState, ReviewStoreState};
+use crate::state::{CommitCache, OpenRepos, RepoState, ReviewStoreState};
 use reviews::Review;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Look the repo up in `RepoState`'s map and canonicalize its `PathBuf`.
 /// Returns `not_open` when the path is not a currently-open repo.
-fn canonical_of(path: &str, state_map: &HashMap<String, PathBuf>) -> Result<PathBuf, TrunkError> {
-    let path_buf = crate::commands::repo_path_from_state(path, state_map)?;
+fn canonical_of(path: &str, state_map: &OpenRepos) -> Result<PathBuf, TrunkError> {
+    let path_buf = state_map.path_for(path)?;
     std::fs::canonicalize(path_buf).map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
@@ -1333,7 +1332,6 @@ pub async fn canonical_repo_path(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     /// Canonicalizing here is what makes a repo opened through a symlink reach
     /// the same reviews — every `_inner` test canonicalizes in its own body, so
@@ -1346,9 +1344,8 @@ mod tests {
         let link = dir.path().join("link-to-repo");
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
-        let mut state_map = HashMap::new();
-        state_map.insert("real".to_string(), real);
-        state_map.insert("link".to_string(), link);
+        let state_map =
+            OpenRepos::from_iter([("real".to_string(), real), ("link".to_string(), link)]);
 
         assert_eq!(
             canonical_of("link", &state_map).unwrap(),
@@ -1358,7 +1355,7 @@ mod tests {
 
     #[test]
     fn a_path_that_is_not_open_reports_not_open() {
-        let err = canonical_of("nowhere", &HashMap::new()).unwrap_err();
+        let err = canonical_of("nowhere", &OpenRepos::default()).unwrap_err();
 
         assert_eq!(err.code, "not_open");
     }

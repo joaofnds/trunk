@@ -9,14 +9,14 @@
 use crate::error::TrunkError;
 use crate::git::blob_reader::{RevSpec, read_file_at_inner};
 use crate::git::syntax;
-use crate::state::RepoState;
+use crate::state::{OpenRepos, RepoState};
 use comrak::adapters::SyntaxHighlighterAdapter;
 use comrak::nodes::NodeValue;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as FmtWrite;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 use tauri::State;
 
@@ -2010,7 +2010,7 @@ fn read_side(
     repo_path: &str,
     file_path: &str,
     rev: &RevSpec,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<Option<String>, TrunkError> {
     match read_file_at_from_state(repo_path, file_path, rev, state_map) {
         Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
@@ -2028,7 +2028,7 @@ pub fn render_markdown_diff_from_state(
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<MarkdownDiff, TrunkError> {
     let before = read_side(repo_path, file_path, before_rev, state_map)?;
     let after = read_side(repo_path, file_path, after_rev, state_map)?;
@@ -2235,9 +2235,9 @@ pub fn read_file_at_from_state(
     repo_path: &str,
     file_path: &str,
     rev: &RevSpec,
-    state_map: &HashMap<String, PathBuf>,
+    state_map: &OpenRepos,
 ) -> Result<Vec<u8>, TrunkError> {
-    let repo = crate::commands::open_repo_from_state(repo_path, state_map)?;
+    let repo = state_map.open(repo_path)?;
     read_file_at_inner(&repo, file_path, rev)
 }
 
@@ -2618,6 +2618,7 @@ mod tests {
     use super::*;
     use crate::git::blob_reader::test_repo::{sig, with_three_revs};
     use std::fs;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn no_rewrite(_: &str) -> Option<String> {
@@ -3854,11 +3855,10 @@ mod tests {
         // new.md exists only in the working tree — absent at HEAD.
         fs::write(dir.path().join("new.md"), b"# added\n\nbody para").unwrap();
 
-        let mut state_map = HashMap::new();
-        state_map.insert(
+        let state_map = OpenRepos::from_iter([(
             dir.path().to_string_lossy().to_string(),
             dir.path().to_path_buf(),
-        );
+        )]);
         let repo_str = dir.path().to_string_lossy().to_string();
 
         let added = render_markdown_diff_from_state(
@@ -3902,11 +3902,10 @@ mod tests {
             idx.add_path(Path::new("new.md")).unwrap();
             idx.write().unwrap();
         }
-        let mut state_map = HashMap::new();
-        state_map.insert(
+        let state_map = OpenRepos::from_iter([(
             dir.path().to_string_lossy().to_string(),
             dir.path().to_path_buf(),
-        );
+        )]);
 
         let rows = render_markdown_diff_from_state(
             &dir.path().to_string_lossy(),
@@ -3931,11 +3930,10 @@ mod tests {
         // file diffs "staged"→"workdir". Any fallback to HEAD would re-show the
         // already-staged edit ("committed"→…) as if it were unstaged.
         let (dir, _repo, _oid) = with_three_revs();
-        let mut state_map = HashMap::new();
-        state_map.insert(
+        let state_map = OpenRepos::from_iter([(
             dir.path().to_string_lossy().to_string(),
             dir.path().to_path_buf(),
-        );
+        )]);
         let repo_str = dir.path().to_string_lossy().to_string();
 
         let rows = render_markdown_diff_from_state(
@@ -3966,11 +3964,10 @@ mod tests {
         // HEAD. `doc.md` exists at HEAD here, so any fallback to HEAD would
         // produce Unchanged/Changed rows instead of a pure all-added diff.
         let (dir, _repo, _oid) = with_three_revs();
-        let mut state_map = HashMap::new();
-        state_map.insert(
+        let state_map = OpenRepos::from_iter([(
             dir.path().to_string_lossy().to_string(),
             dir.path().to_path_buf(),
-        );
+        )]);
         let repo_str = dir.path().to_string_lossy().to_string();
 
         let rows = render_markdown_diff_from_state(
