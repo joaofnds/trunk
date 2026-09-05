@@ -39,17 +39,26 @@ export function afterRev(
 // index→workdir, staged is HEAD→index, commit is first-parent→commit. A
 // parentless (root) commit has no before side at all — the empty rev renders it
 // as an all-added file.
+//
+// `compareBaseOid`, when given, overrides the commit case: a compare selection
+// pairs renames across the whole base-to-target range (list_compare_files_inner
+// in diff.rs), so the before side must read at that same base, not the
+// target's first parent — otherwise a rename earlier in the range reads the
+// old path at a rev where it's already gone (TRUNK-163).
 export function beforeRev(
 	diffKind: "unstaged" | "staged" | "commit",
 	parentOid: string | null,
+	compareBaseOid?: string | null,
 ): RevSpec {
 	switch (diffKind) {
 		case "unstaged":
 			return { type: "index" };
 		case "staged":
 			return { type: "head" };
-		case "commit":
-			return parentOid ? { type: "commit", oid: parentOid } : { type: "empty" };
+		case "commit": {
+			const oid = compareBaseOid ?? parentOid;
+			return oid ? { type: "commit", oid } : { type: "empty" };
+		}
 	}
 }
 

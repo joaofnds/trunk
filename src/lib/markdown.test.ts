@@ -58,6 +58,13 @@ describe("rev derivation", () => {
 	it("maps a parentless (root) commit's before side to the empty rev", () => {
 		expect(beforeRev("commit", null)).toEqual({ type: "empty" });
 	});
+
+	it("resolves a compare selection's before side to the compare base, not the target's parent", () => {
+		expect(beforeRev("commit", "targetParent", "compareBase")).toEqual({
+			type: "commit",
+			oid: "compareBase",
+		});
+	});
 });
 
 describe("renderMarkdownDiff", () => {
