@@ -1153,97 +1153,100 @@ fn build_partial_patch_text(
     selected_indices: &[u32],
     reverse: bool,
 ) -> Result<String, TrunkError> {
-    let selected_set: HashSet<u32> = selected_indices.iter().copied().collect();
-
     let (hunk, _) = patch.hunk(hunk_idx)?;
-    let num_lines = patch.num_lines_in_hunk(hunk_idx)?;
+    let body = rewrite_hunk_lines(patch, hunk_idx, selected_indices, reverse)?;
 
-    let mut patch_lines: Vec<String> = Vec::new();
-    let mut old_count: u32 = 0;
-    let mut new_count: u32 = 0;
-
-    for line_idx in 0..num_lines {
-        let line = patch.line_in_hunk(hunk_idx, line_idx)?;
-        let content = String::from_utf8_lossy(line.content());
-        // Ensure content ends with newline for patch format
-        let content_str = if content.ends_with('\n') {
-            content.into_owned()
-        } else {
-            format!("{content}\n")
-        };
-
-        if reverse {
-            match line.origin() {
-                '+' => {
-                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
-                        // Selected add -> reverse to delete
-                        patch_lines.push(format!("-{content_str}"));
-                        old_count += 1;
-                    } else {
-                        // Unselected add -> keep as context (it stays)
-                        patch_lines.push(format!(" {content_str}"));
-                        old_count += 1;
-                        new_count += 1;
-                    }
-                }
-                '-' => {
-                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
-                        // Selected delete -> reverse to add (restore)
-                        patch_lines.push(format!("+{content_str}"));
-                        new_count += 1;
-                    }
-                    // Unselected delete: skip (it's already absent from the "old" side
-                    // in reverse perspective)
-                }
-                _ => {
-                    // Context line
-                    patch_lines.push(format!(" {content_str}"));
-                    old_count += 1;
-                    new_count += 1;
-                }
-            }
-        } else {
-            match line.origin() {
-                '+' => {
-                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
-                        patch_lines.push(format!("+{content_str}"));
-                        new_count += 1;
-                    }
-                    // Unselected add: skip entirely
-                }
-                '-' => {
-                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
-                        patch_lines.push(format!("-{content_str}"));
-                        old_count += 1;
-                    } else {
-                        // Unselected delete: convert to context
-                        patch_lines.push(format!(" {content_str}"));
-                        old_count += 1;
-                        new_count += 1;
-                    }
-                }
-                _ => {
-                    // Context line
-                    patch_lines.push(format!(" {content_str}"));
-                    old_count += 1;
-                    new_count += 1;
-                }
-            }
-        }
-    }
-
-    // For reversed patches, old/new sides are swapped
     let (old_start, new_start) = if reverse {
         (hunk.new_start(), hunk.old_start())
     } else {
         (hunk.old_start(), hunk.new_start())
     };
 
-    // Each side names its own path. They differ for a rename, and a header
-    // that repeats one of them is rejected outright ("mismatched new path
-    // names"). Reversing the patch swaps which side is which.
+    let header = patch_header(file_path, patch, reverse);
+    let HunkBody {
+        lines,
+        old_count,
+        new_count,
+    } = body;
+    let lines_joined = lines.join("");
+
+    Ok(format!(
+        "{header}@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
+    ))
+}
+
+/// One hunk's rewritten lines, with the line counts its header must declare.
+struct HunkBody {
+    lines: Vec<String>,
+    old_count: u32,
+    new_count: u32,
+}
+
+/// Rewrite one hunk's lines, keeping only what the selection stages.
+///
+/// Each line becomes an addition, a deletion, context, or nothing, per the origin
+/// and selection table on `build_partial_patch_text`.
+fn rewrite_hunk_lines(
+    patch: &git2::Patch<'_>,
+    hunk_idx: usize,
+    selected_indices: &[u32],
+    reverse: bool,
+) -> Result<HunkBody, TrunkError> {
+    let selected_set: HashSet<u32> = selected_indices.iter().copied().collect();
+    let num_lines = patch.num_lines_in_hunk(hunk_idx)?;
+
+    let mut body = HunkBody {
+        lines: Vec::new(),
+        old_count: 0,
+        new_count: 0,
+    };
+
+    for line_idx in 0..num_lines {
+        let line = patch.line_in_hunk(hunk_idx, line_idx)?;
+        let content = String::from_utf8_lossy(line.content());
+        let content_str = if content.ends_with('\n') {
+            content.into_owned()
+        } else {
+            format!("{content}\n")
+        };
+
+        let selected = selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX));
+
+        match (line.origin(), selected, reverse) {
+            // A selected line is staged onto one side. Reversing swaps which one,
+            // so an add undone reads as a delete and a delete undone as an add.
+            ('+', true, false) | ('-', true, true) => {
+                body.lines.push(format!("+{content_str}"));
+                body.new_count += 1;
+            }
+            ('+', true, true) | ('-', true, false) => {
+                body.lines.push(format!("-{content_str}"));
+                body.old_count += 1;
+            }
+            // Contributes nothing: an unselected add is not staged, and an
+            // unselected delete is already absent from the reversed old side.
+            ('+', false, false) | ('-', false, true) => {}
+            // Everything else survives on both sides, so it becomes context.
+            _ => {
+                body.lines.push(format!(" {content_str}"));
+                body.old_count += 1;
+                body.new_count += 1;
+            }
+        }
+    }
+
+    Ok(body)
+}
+
+/// The `diff --git` and `---`/`+++` lines a hunk's patch must carry, newline-terminated.
+///
+/// Each side names its own path. They differ for a rename, and a header that repeats
+/// one of them is rejected outright ("mismatched new path names"). Reversing the patch
+/// swaps which side is which.
+fn patch_header(file_path: &str, patch: &git2::Patch<'_>, reverse: bool) -> String {
     let delta = patch.delta();
     let delta_status = delta.status();
+
     let path_of = |file: git2::DiffFile<'_>| {
         file.path().map_or_else(
             || file_path.to_string(),
@@ -1271,13 +1274,7 @@ fn build_partial_patch_text(
         format!("+++ b/{new_path}")
     };
 
-    let lines_joined = patch_lines.join("");
-
-    let patch_text = format!(
-        "diff --git a/{old_path} b/{new_path}\n{old_header}\n{new_header}\n@@ -{old_start},{old_count} +{new_start},{new_count} @@\n{lines_joined}",
-    );
-
-    Ok(patch_text)
+    format!("diff --git a/{old_path} b/{new_path}\n{old_header}\n{new_header}\n")
 }
 
 /// Stage selected lines within one hunk of a file's unstaged diff.
