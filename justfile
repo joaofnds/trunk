@@ -25,6 +25,15 @@ default:
 dev:
     bun run tauri dev -c tauri.dev.conf.json
 
+# Build and launch a dev .app bundle an agent's screen tools can see (docs/build-environment.md)
+dev-app:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # mise's python ships an `xattr` that shadows the system one and rejects the
+    # `-r` that tauri's bundling step passes it.
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" bun run tauri build --debug -b app -c tauri.dev.conf.json
+    open -n src-tauri/target/debug/bundle/macos/trunk.app
+
 # Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
 perf:
     VITE_PERF=1 bun run tauri dev -c tauri.dev.conf.json

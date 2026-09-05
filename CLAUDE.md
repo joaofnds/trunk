@@ -11,7 +11,8 @@ instead of the pinned one.
 
 ```bash
 just              # List all recipes
-just dev          # Vite dev + Tauri watch
+just dev          # Vite dev + Tauri watch (no .app bundle, so your screen tools cannot see it)
+just dev-app      # Debug .app you can drive and screenshot (docs/build-environment.md)
 just build        # Production build
 just quick        # Static only: fmt, biome, svelte-check (~3s)
 just front        # biome, svelte-check, vitest (~14s)

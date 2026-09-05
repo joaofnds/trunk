@@ -116,6 +116,44 @@ dir is fast because it is empty, not because it is private, and seeding one by
 cloning is worse than useless: `cp -c` is a per-inode operation, so cloning the
 accumulated tree measured 525s against building it from empty in 46s.
 
+## `just dev` cannot be driven by an agent's screen tools
+
+`just dev` runs `target/debug/trunk` directly. A bare Mach-O executable has no
+`.app` around it, so macOS registers no bundle identity for it: LaunchServices
+never lists it, and the accessibility APIs that a session's screenshot and click
+tools go through return no window for it. The process runs and draws on screen,
+and a session cannot see or reach it.
+
+The identifier is not what is missing. `tauri.dev.conf.json` already overrides it
+to `com.joaofnds.trunk.dev`, and that override is real — it is what keeps dev
+state out of the installed app's. It just has nothing to attach to without a
+bundle, so changing it does not help.
+
+`just dev-app` is the route that works. It builds a debug `.app` under the dev
+identifier and opens it:
+
+```bash
+just dev-app
+```
+
+The result is addressable as `com.joaofnds.trunk.dev`, distinct from the
+installed `/Applications/trunk.app` (`com.joaofnds.trunk`), so a session can
+drive its own copy while the developer's stays untouched. It embeds the built
+frontend rather than pointing at Vite, so it needs no dev server and does not
+hot-reload: rebuild to see a change.
+
+Two things the recipe encodes, both of which cost a session an hour on
+2026-09-05:
+
+- **`--no-bundle` is the wrong flag.** It skips producing the `.app`, which is
+  the only part that matters here. The recipe passes `-b app` to get the bundle
+  and skip the dmg.
+- **mise's python shadows the system `xattr`.** Tauri's bundling step shells out
+  to `xattr -cr`; the python one in mise's path does not accept `-r`, and the
+  build fails at the bundling step with `failed to run xattr`. The recipe puts
+  the system paths first. Prefixing `PATH` outside `mise exec` does not survive:
+  mise re-resolves it, so the override has to be inside.
+
 ## Scanners must not walk `src-tauri/target`
 
 The target dir is orders of magnitude bigger than the source. Biome's scanner is
