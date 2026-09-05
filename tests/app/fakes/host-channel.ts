@@ -14,7 +14,7 @@ interface Unanswered {
  */
 export class FakeHostChannel implements HostChannel {
 	private readonly handlers: EventHandler[] = [];
-	private unanswered: Unanswered[] = [];
+	private readonly unanswered: Unanswered[] = [];
 
 	invoke<T>(
 		_cmd: string,
@@ -45,9 +45,5 @@ export class FakeHostChannel implements HostChannel {
 	/** Pushes an event, the way one event line does. */
 	push(event: string, payload: unknown): void {
 		for (const handler of this.handlers) handler(event, payload);
-	}
-
-	reset(): void {
-		this.unanswered = [];
 	}
 }
