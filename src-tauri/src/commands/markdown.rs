@@ -1691,7 +1691,7 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                 insert_removed_leaves(
                     &mut frag,
                     &before.leaves[old_index..old_index + old_len],
-                    after.leaves.get(new_index).or(after.leaves.last()),
+                    after.leaves.get(new_index).or_else(|| after.leaves.last()),
                     new_index >= after.leaves.len(),
                 )?;
             }
@@ -1705,7 +1705,7 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
                 insert_removed_leaves(
                     &mut frag,
                     &before.leaves[old_index + new_len..old_index + old_len],
-                    after.leaves.get(anchor_idx).or(after.leaves.last()),
+                    after.leaves.get(anchor_idx).or_else(|| after.leaves.last()),
                     anchor_idx >= after.leaves.len(),
                 )?;
             }
@@ -2630,8 +2630,9 @@ fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
 }
 
 /// Resolve a `trunk-asset://` request to its file bytes + MIME. Backs the custom
-/// protocol handler wired in lib.rs; reuses the same `read_file_at` resolver, so
-/// the working-tree path-escape guard applies to images too.
+/// protocol handler wired in lib.rs; reuses the same `read_file_at` resolver, so the
+/// working-tree path-escape guard applies to images too.
+///
 /// Serve a `trunk-asset://` URL as bytes plus a MIME type.
 ///
 /// # Errors

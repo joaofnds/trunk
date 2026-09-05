@@ -1572,9 +1572,10 @@ pub async fn generate_review_doc<R: Runtime>(
     blocking_store(move || generate_review_doc_inner(&store, &canonical, &path, &review_id)).await
 }
 
-/// The canonical path the backend keys this repo's reviews by. The
-/// `reviews-changed` payload is that string, so the frontend filters on it
-/// without re-canonicalizing (it cannot call `std::fs::canonicalize`).
+/// The canonical path the backend keys this repo's reviews by.
+///
+/// The `reviews-changed` payload is that string, so the frontend filters on it without
+/// re-canonicalizing (it cannot call `std::fs::canonicalize`).
 ///
 /// # Errors
 ///

@@ -11,7 +11,11 @@ pub mod state;
 mod storage;
 pub mod watcher;
 
-use state::{CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp, TrafficLights};
+use std::sync::Mutex;
+
+use state::{
+    CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp, StoreSlot, TrafficLights,
+};
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
@@ -169,10 +173,11 @@ pub fn configure<R: tauri::Runtime>(
             #[cfg(target_os = "macos")]
             {
                 use tauri::WindowEvent;
+                let (window, event) = (_window, _event);
                 if matches!(
-                    _event,
+                    event,
                     WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. }
-                ) && let Ok(ns_window) = _window.ns_window()
+                ) && let Ok(ns_window) = window.ns_window()
                 {
                     macos_traffic_lights::reposition(ns_window);
                 }
@@ -261,17 +266,17 @@ pub fn configure<R: tauri::Runtime>(
 
             Ok(())
         })
-        .manage(RepoState(Default::default()))
-        .manage(CommitCache(Default::default()))
-        .manage(CommitStatsCache(Default::default()))
-        .manage(RunningOp(Default::default()))
+        .manage(RepoState(Mutex::default()))
+        .manage(CommitCache(Mutex::default()))
+        .manage(CommitStatsCache(Mutex::default()))
+        .manage(RunningOp(Mutex::default()))
         .manage(watcher)
         .manage(traffic_lights)
-        .manage(ReviewStoreState(Default::default()))
+        .manage(ReviewStoreState(StoreSlot::default()))
         .manage(crate::state::SweptRepos::default())
         .manage(crate::state::RefVisibilityState::default())
         .manage(commands::prefs::PrefsState::default())
-        .manage(commands::markdown::MarkdownDiffCache(Default::default()))
+        .manage(commands::markdown::MarkdownDiffCache(Mutex::default()))
         .invoke_handler(tauri::generate_handler![
             set_traffic_light_zoom,
             commands::perf::perf_append,

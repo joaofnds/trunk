@@ -33,9 +33,8 @@ const fn color_to_css_class(color: Color) -> &'static str {
         (171, 121, 103) => "syn-punctuation",
         // Event-directive prefix: the `on` in Svelte's on:click (two-face)
         (150, 181, 180) => "syn-attribute",
-        // Default foreground text -- skip (punctuation, operators, identifiers)
-        (192, 197, 206) | (239, 241, 245) => "",
-        // Catch-all fallback for any unrecognized color
+        // Default foreground text (punctuation, operators, identifiers) falls in
+        // with the catch-all: neither gets a class.
         _ => "",
     }
 }

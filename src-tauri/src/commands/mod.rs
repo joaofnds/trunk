@@ -23,7 +23,11 @@ pub(crate) fn store_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, 
     if derived != resolved {
         return Err(TrunkError::new(
             "data_dir_disagreement",
-            format!("identifier derives {derived:?}, the app resolves {resolved:?}"),
+            format!(
+                "identifier derives {}, the app resolves {}",
+                derived.display(),
+                resolved.display()
+            ),
         )
         .to_json());
     }

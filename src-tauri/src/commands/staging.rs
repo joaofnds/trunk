@@ -256,7 +256,7 @@ fn seed_index_for_untracked(repo: &git2::Repository, file_path: &str) -> Result<
             mtime: git2::IndexTime::new(0, 0),
             dev: 0,
             ino: 0,
-            mode: 0o100644,
+            mode: 0o100_644,
             uid: 0,
             gid: 0,
             file_size: 0,
