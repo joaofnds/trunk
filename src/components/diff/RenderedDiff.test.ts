@@ -25,6 +25,7 @@ vi.mock("../../lib/invoke.js", async (importActual) => ({
 const baseProps = {
 	layoutMode: "inline" as const,
 	selectedPath: "README.md",
+	oldPath: null as string | null,
 	diffKind: "unstaged" as const,
 	commitOid: "",
 	repoPath: "/repo",
@@ -937,6 +938,38 @@ describe("RenderedDiff", () => {
 				safeInvoke.mock.calls.map((c) => JSON.stringify(c)),
 			);
 			expect(distinct.size).toBe(1);
+		} finally {
+			await unmount(app);
+			target.remove();
+		}
+	});
+
+	it("sends the old path with the fetch and refetches when it changes", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({ ...baseProps });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+			expect(safeInvoke).toHaveBeenLastCalledWith(
+				"render_markdown_diff",
+				expect.objectContaining({ filePath: "README.md", oldPath: null }),
+			);
+
+			props.oldPath = "OLD.md";
+			flushSync();
+
+			expect(safeInvoke).toHaveBeenCalledTimes(2);
+			expect(safeInvoke).toHaveBeenLastCalledWith(
+				"render_markdown_diff",
+				expect.objectContaining({ filePath: "README.md", oldPath: "OLD.md" }),
+			);
 		} finally {
 			await unmount(app);
 			target.remove();

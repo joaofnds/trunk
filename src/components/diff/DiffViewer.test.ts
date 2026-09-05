@@ -1,5 +1,6 @@
 import { render } from "@testing-library/svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { FileDiff } from "../../lib/types.js";
 import DiffViewer from "./DiffViewer.svelte";
 
 // The rendered view fetches its rows through the shared IPC helper; keep the
@@ -69,6 +70,34 @@ describe("DiffViewer's wrapper", () => {
 		expect(pane).not.toBeNull();
 		const wrapper = pane?.parentElement as HTMLElement;
 		expect(wrapper.getAttribute("style")).toContain("overflow: clip");
+	});
+
+	it("hands the selected file's old path to the rendered view", () => {
+		safeInvoke.mockResolvedValue({ rows: [], whitespaceOnly: false });
+		const renamed: FileDiff = {
+			path: "docs/new.md",
+			old_path: "docs/old.md",
+			status: "Renamed",
+			is_binary: false,
+			hunks: [],
+		};
+
+		render(DiffViewer, {
+			props: {
+				...baseProps,
+				renderMode: "rendered",
+				fileDiffs: [renamed],
+				selectedPath: "docs/new.md",
+			},
+		});
+
+		expect(safeInvoke).toHaveBeenCalledWith(
+			"render_markdown_diff",
+			expect.objectContaining({
+				filePath: "docs/new.md",
+				oldPath: "docs/old.md",
+			}),
+		);
 	});
 
 	it("is clipped around the source view too", () => {

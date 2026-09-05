@@ -29,6 +29,9 @@ const colSync = createHorizontalScrollSync();
 interface Props {
 	layoutMode: "inline" | "split";
 	selectedPath: string;
+	// Where a renamed file came from, so the before side is read by that name.
+	// Null for every other status.
+	oldPath: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
 	commitOid: string;
 	repoPath: string;
@@ -49,6 +52,7 @@ interface Props {
 let {
 	layoutMode,
 	selectedPath,
+	oldPath,
 	diffKind,
 	commitOid,
 	repoPath,
@@ -134,6 +138,7 @@ $effect(() => {
 	const my = ++seq;
 	const repo = repoPath;
 	const path = selectedPath;
+	const from = oldPath;
 	const kind = diffKind;
 	const oid = commitOid;
 	const parent = parentOid;
@@ -149,6 +154,7 @@ $effect(() => {
 	const args = [
 		repo,
 		path,
+		from,
 		beforeRev(kind, parent),
 		afterRev(kind, oid),
 		ignoreWs,

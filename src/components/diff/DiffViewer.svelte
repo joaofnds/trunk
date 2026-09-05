@@ -121,6 +121,11 @@ let {
 	diffNav = $bindable(null),
 	refreshToken = 0,
 }: Props = $props();
+
+// The rendered view reads a renamed file's before side by its old name.
+const selectedOldPath = $derived(
+	fileDiffs.find((f) => f.path === selectedPath)?.old_path ?? null,
+);
 </script>
 
 <!-- Every view mounted here owns its own scroller, so this wrapper must never be
@@ -156,6 +161,7 @@ let {
     <RenderedDiff
       {layoutMode}
       selectedPath={selectedPath}
+      oldPath={selectedOldPath}
       {diffKind}
       {commitOid}
       {repoPath}

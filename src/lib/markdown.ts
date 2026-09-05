@@ -118,10 +118,12 @@ export type MarkdownDiff = {
 
 // Diff a markdown file between two revs. The frontend projects every layout
 // (inline/split × full/hunk) from the returned diff's rows without re-invoking
-// Rust.
+// Rust. A renamed file's before side is read by `oldPath`, where it lived at
+// the before rev; null for every other status.
 export function renderMarkdownDiff(
 	repoPath: string,
 	filePath: string,
+	oldPath: string | null,
 	beforeRev: RevSpec,
 	afterRev: RevSpec,
 	ignoreWhitespace: boolean,
@@ -129,6 +131,7 @@ export function renderMarkdownDiff(
 	return safeInvoke<MarkdownDiff>("render_markdown_diff", {
 		repoPath,
 		filePath,
+		oldPath,
 		beforeRev,
 		afterRev,
 		ignoreWhitespace,
