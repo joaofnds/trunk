@@ -168,22 +168,22 @@ jobs:
 
             on_intel do
               sha256 "${intel_sha256}"
-              url "https://github.com/joaofnds/trunk/releases/download/v#{version}/trunk_${TAURI_VERSION}_x64.dmg"
+              url "https://github.com/joaofnds/trunk/releases/download/v#{version}/Trunk_${TAURI_VERSION}_x64.dmg"
             end
             on_arm do
               sha256 "${arm_sha256}"
-              url "https://github.com/joaofnds/trunk/releases/download/v#{version}/trunk_${TAURI_VERSION}_aarch64.dmg"
+              url "https://github.com/joaofnds/trunk/releases/download/v#{version}/Trunk_${TAURI_VERSION}_aarch64.dmg"
             end
 
             name "Trunk"
             desc "Desktop Git GUI"
             homepage "https://github.com/joaofnds/trunk"
 
-            app "trunk.app"
+            app "Trunk.app"
 
             postflight do
               system_command "/usr/bin/xattr",
-                             args: ["-cr", "#{appdir}/trunk.app"]
+                             args: ["-cr", "#{appdir}/Trunk.app"]
             end
 
             zap trash: [

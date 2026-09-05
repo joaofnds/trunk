@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "trunk",
+  "productName": "Trunk",
   "version": "0.12.8",
   "identifier": "com.joaofnds.trunk",
   "build": {

@@ -14,7 +14,7 @@ human-facing reference.
 The binary is the installed app's executable:
 
 ```bash
-/Applications/trunk.app/Contents/MacOS/trunk review list
+/Applications/Trunk.app/Contents/MacOS/trunk review list
 ```
 
 A dev build (`just dev`) compiles the dev identifier into

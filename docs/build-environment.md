@@ -137,7 +137,7 @@ just dev-app
 ```
 
 The result is addressable as `com.joaofnds.trunk.dev`, distinct from the
-installed `/Applications/trunk.app` (`com.joaofnds.trunk`), so a session can
+installed `/Applications/Trunk.app` (`com.joaofnds.trunk`), so a session can
 drive its own copy while the developer's stays untouched. It embeds the built
 frontend rather than pointing at Vite, so it needs no dev server and does not
 hot-reload: rebuild to see a change.

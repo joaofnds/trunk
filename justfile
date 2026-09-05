@@ -32,7 +32,7 @@ dev-app:
     # mise's python ships an `xattr` that shadows the system one and rejects the
     # `-r` that tauri's bundling step passes it.
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" bun run tauri build --debug -b app -c tauri.dev.conf.json
-    open -n src-tauri/target/debug/bundle/macos/trunk.app
+    open -n src-tauri/target/debug/bundle/macos/Trunk.app
 
 # Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
 perf:
