@@ -112,6 +112,17 @@ export class DiffPaneDriver {
 		return textsOf(".rendered-diff ins.md-word-add");
 	}
 
+	/** The text of every word mark in one side-by-side column, topmost first:
+	 *  what left, read off the before column, or what arrived, read off the
+	 *  after one. Inline has one stream and no columns, so this is empty there. */
+	renderedColumnMarks(side: "before" | "after"): string[] {
+		const cell = `.rendered-diff .split-cell[data-side="${
+			side === "before" ? "left" : "right"
+		}"]`;
+
+		return textsOf(`${cell} del.md-word-delete, ${cell} ins.md-word-add`);
+	}
+
 	/** The text of every list item the rendered view shows, topmost first. */
 	renderedListItems(): string[] {
 		return textsOf(".rendered-diff li");

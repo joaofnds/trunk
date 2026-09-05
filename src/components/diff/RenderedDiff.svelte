@@ -504,11 +504,12 @@ function toSplitRow(r: DiffRow, changeIndex: number | null): SplitRow {
 			right: null,
 			changeIndex,
 		};
-	// changed: whole before(red) on the left, after(green) on the right — split
-	// stays block-level (word-level lives in the inline view). The wash goes only
-	// where the leaf tints already mark what changed. In hunk mode a container
-	// uses its folded column fragments, so both columns hide the same leaves and
-	// stay row-aligned (TRUNK-93).
+	// changed: the before copy on the left, the after on the right, each marking
+	// its own side of the change, `md-word-*` del/ins through the block and leaf
+	// tints inside a container. The wash goes only where neither fragment marks
+	// anything, and is then the only thing saying the row changed. In hunk mode a
+	// container uses its folded column fragments, so both columns hide the same
+	// leaves and stay row-aligned (TRUNK-93).
 	const wash = !r.hasTints;
 	const folded = contentMode === "hunk" && r.hunkBeforeHtml && r.hunkAfterHtml;
 	return {

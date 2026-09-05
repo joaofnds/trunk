@@ -274,7 +274,8 @@ describe("RenderedDiff", () => {
 				kind: "changed",
 				beforeHtml: "<p>bef</p>",
 				afterHtml: "<p>aft</p>",
-				// Even with a word merge available, split stays whole-block red/green.
+				// The columns render the row's own fragments; the merged copy is
+				// the inline layout's.
 				mergedHtml: '<p><ins class="md-word-add">aft</ins></p>',
 				afterStart: 5,
 				afterEnd: 5,

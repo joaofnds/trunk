@@ -1416,15 +1416,42 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
 /// reads each side's `sourcepos_html`, which a non-container leaves empty, and
 /// the reader lost that whole side of the diff.
 fn single_leaf_fragments(before: &Block, after: &Block) -> ChangedFragments {
-    let merged_html = if before.kind == "code_block" || after.kind == "code_block" {
-        None
-    } else {
-        html_token_merge(&before.raw_html, &after.raw_html).map(|m| sanitize_html(&m))
-    };
+    // A fenced code block never reaches the token merge (invariant §4), for the
+    // inline copy or for the columns.
+    let merges = before.kind != "code_block" && after.kind != "code_block";
+
+    let merged_html = merges
+        .then(|| html_token_merge(&before.raw_html, &after.raw_html))
+        .flatten()
+        .map(|m| sanitize_html(&m));
+
+    // A reflow renders the same words on both sides, but its moved line break
+    // still pairs as a changed run carrying a word, and the columns would mark
+    // a word the reader can see did not change. The plain renders and the wash
+    // stay, and the row's identical-render declaration explains it.
+    let renders_identically = renders_same(&before.html, &after.html);
+
+    // The split columns carry the same word marks the inline copy does, each
+    // side showing only its own. Without them a one-clause edit reached the
+    // reader as two whole paragraphs washed red and green, and finding the
+    // clause meant reading both. Every guard the merge applies (density,
+    // balance, a merge that marks nothing) drops the pair back to the plain
+    // renders, and the wash with it.
+    let (before_html, after_html) = (merges && !renders_identically)
+        .then(|| leaf_word_merge(&before.raw_html, &after.raw_html))
+        .flatten()
+        .map_or_else(
+            || (before.html.clone(), after.html.clone()),
+            |(b, a)| (sanitize_html(&b), sanitize_html(&a)),
+        );
 
     ChangedFragments {
-        before_html: before.html.clone(),
-        after_html: after.html.clone(),
+        // Read off the SHIPPED fragments for the reason `changed_fragments`
+        // states. A mark the merge claims but sanitize stripped would have the
+        // row drop its wash and show the reader nothing.
+        has_tints: has_word_mark(&before_html) || has_word_mark(&after_html),
+        before_html,
+        after_html,
         merged_html,
         // A single-leaf block is one unit of prose: there is no inner structure
         // to fold, so hunk mode renders the same copies.
@@ -1432,8 +1459,7 @@ fn single_leaf_fragments(before: &Block, after: &Block) -> ChangedFragments {
         hunk_before_html: None,
         hunk_after_html: None,
         hunk_hidden_leaves: 0,
-        has_tints: false,
-        renders_identically: renders_same(&before.html, &after.html),
+        renders_identically,
     }
 }
 
@@ -1538,6 +1564,15 @@ fn tinted(html: &str) -> bool {
         .any(|c| html.contains(&format!("class=\"{c}\"")))
 }
 
+/// Whether a shipped fragment actually carries a word mark. Keyed on the whole
+/// opening tag the emission writes, never the bare class name: a document is
+/// free to contain `md-word-delete` as prose.
+fn has_word_mark(html: &str) -> bool {
+    MD_WORD_CLASSES
+        .iter()
+        .any(|c| html.contains(&format!("class=\"{c}\">")))
+}
+
 /// Whether a rendered fragment puts nothing at all in front of the reader.
 ///
 /// The rendered view's recurring question, asked at every point where a block
@@ -1635,6 +1670,25 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
                 "changed, but carries no mark, no tint, no identical-render \
                  declaration, and no visibly differing before/after pair"
                     .to_string(),
+            ));
+        }
+
+        // What the SPLIT view puts on screen is the pair, always. It has no
+        // merged copy to fall back on. A row the merged copy marks while
+        // neither column does sends that reader two washed blocks to compare
+        // word by word, legible as changed and unreadable as a change, which is
+        // how a whole class of paragraph edits reached the screen. A reflow is
+        // exempt, because it declares that no rendered word moved and a mark
+        // there would point at something the reader cannot see.
+        if !is_pair
+            && marks(&shown) > 0
+            && marks(before_html) == 0
+            && marks(after_html) == 0
+            && !renders_identically
+        {
+            out.push((
+                i,
+                "the split columns carry no mark while the merged copy does".to_string(),
             ));
         }
 
@@ -2943,7 +2997,8 @@ mod tests {
         ] {
             let rows = diff_rows(before, after);
             let DiffRow::Changed {
-                has_tints,
+                before_html,
+                after_html,
                 merged_html,
                 ..
             } = &rows[0]
@@ -2951,7 +3006,10 @@ mod tests {
                 panic!("one changed quote: {rows:?}");
             };
 
-            assert!(!has_tints, "no leaves, so no leaf tint: {rows:?}");
+            assert!(
+                !before_html.contains("md-removed") && !after_html.contains("md-added"),
+                "no leaves, so no leaf tint: {rows:?}"
+            );
             let merged = merged_html.as_deref().expect("the word merge runs");
             assert!(
                 merged.contains("md-word-add"),
@@ -3510,8 +3568,8 @@ mod tests {
                     Some(
                         "<p>one <del class=\"md-word-delete\">a</del><ins class=\"md-word-add\">b</ins></p>",
                     ),
-                    "<p>one a</p>",
-                    "<p>one b</p>",
+                    "<p>one <del class=\"md-word-delete\">a</del></p>",
+                    "<p>one <ins class=\"md-word-add\">b</ins></p>",
                     false,
                     false,
                 ),
@@ -3521,7 +3579,7 @@ mod tests {
                 base(
                     Some("<ul><li class=\"md-added\">x</li></ul>"),
                     "<ul></ul>",
-                    "<ul><li>x</li></ul>",
+                    "<ul><li class=\"md-added\">x</li></ul>",
                     true,
                     false,
                 ),
@@ -3539,6 +3597,18 @@ mod tests {
             (
                 "a before/after pair whose sides differ",
                 base(None, "<p>old text</p>", "<p>new text</p>", false, false),
+            ),
+            (
+                "a reflow whose merged copy marked its moved line break",
+                base(
+                    Some(
+                        "<p>one <del class=\"md-word-delete\">two </del><ins class=\"md-word-add\"> two</ins> three</p>",
+                    ),
+                    "<p>one two\nthree</p>",
+                    "<p>one\ntwo three</p>",
+                    false,
+                    true,
+                ),
             ),
         ];
         for (name, rows) in cases {
@@ -3637,14 +3707,42 @@ mod tests {
         assert_eq!(illegible_rows(&rows).len(), 1, "{rows:?}");
     }
 
+    /// The split view has no merged copy to fall back on. The pair IS what it
+    /// shows, so a row the merge marked while its columns stayed plain reaches
+    /// that reader as two washed blocks to compare word by word.
+    #[test]
+    fn illegible_rows_reports_a_marked_merge_whose_columns_are_plain() {
+        let rows = vec![DiffRow::Changed {
+            before_html: "<p>one a</p>".into(),
+            after_html: "<p>one b</p>".into(),
+            merged_html: Some(
+                "<p>one <del class=\"md-word-delete\">a</del><ins class=\"md-word-add\">b</ins></p>"
+                    .into(),
+            ),
+            hunk_merged_html: None,
+            hunk_before_html: None,
+            hunk_after_html: None,
+            hunk_hidden_leaves: 0,
+            has_tints: false,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 1,
+        }];
+
+        let found = illegible_rows(&rows);
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].1.contains("split columns"), "{found:?}");
+    }
+
     #[test]
     fn illegible_rows_reports_a_fold_that_hid_the_only_mark() {
         // Hunk mode is the default view, so a fold that drops every mark shows
         // the reader the unfixed defect while the unfolded copy looks correct.
         // The emptiness check does not catch it: the fold still has content.
         let rows = vec![DiffRow::Changed {
-            before_html: "<ul><li>a</li><li>b</li></ul>".into(),
-            after_html: "<ul><li>a</li><li>b</li></ul>".into(),
+            before_html: "<ul><li>b</li></ul>".into(),
+            after_html: "<ul><li class=\"md-added\">a</li><li>b</li></ul>".into(),
             merged_html: Some("<ul><li class=\"md-added\">a</li><li>b</li></ul>".into()),
             hunk_merged_html: Some("<ul><li>b</li></ul>".into()),
             hunk_before_html: None,
@@ -3764,6 +3862,8 @@ mod tests {
             "fold-emptied"
         } else if why.contains("fold hid") {
             "fold-hid-the-mark"
+        } else if why.contains("split columns") {
+            "split-unmarked"
         } else {
             "unmarked"
         }
@@ -4885,6 +4985,87 @@ mod tests {
     }
 
     #[test]
+    fn changed_paragraph_word_marks_each_split_column() {
+        // The split columns of a single-leaf block used to ship the two plain
+        // renders, leaving the frontend nothing to point at but the whole-block
+        // wash: the reader compared two full paragraphs to find the edit and read
+        // the prose through a red or green field. Each column now marks its own
+        // side of the change, the way a container leaf has since TRUNK-71.
+        let before = "the quick brown fox";
+        let after = "the slow brown fox";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            has_tints,
+            ..
+        } = &rows[0]
+        else {
+            panic!("a small word edit is a Changed row: {rows:?}");
+        };
+
+        assert!(
+            before_html.contains(r#"<del class="md-word-delete">quick</del>"#),
+            "the before column marks the word that left: {before_html}"
+        );
+        assert!(
+            !visible(before_html).iter().any(|w| w == "slow"),
+            "and never shows the word that arrived: {before_html}"
+        );
+        assert!(
+            after_html.contains(r#"<ins class="md-word-add">slow</ins>"#),
+            "the after column marks the word that arrived: {after_html}"
+        );
+        assert!(
+            !visible(after_html).iter().any(|w| w == "quick"),
+            "and never shows the word that left: {after_html}"
+        );
+        assert!(
+            has_tints,
+            "the marks carry the highlight, so the wash comes off: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn a_paragraph_the_word_merge_refuses_keeps_the_split_wash() {
+        // Every shape the merge declines ships the two plain renders: a
+        // rewrite past the density fence, a code fence (invariant §4), and a
+        // reflow that changes no rendered word. The wash is then the only thing on screen
+        // saying the row changed, so `has_tints` must not claim otherwise.
+        for (before, after) in [
+            (
+                "alpha beta gamma delta epsilon zeta",
+                "one two three four five six",
+            ),
+            ("```rust\nlet x = 1;\n```", "```rust\nlet x = 2;\n```"),
+            (
+                "one two three\nfour five six",
+                "one two\nthree four five six",
+            ),
+        ] {
+            let rows = diff_rows(before, after);
+            let DiffRow::Changed {
+                before_html,
+                after_html,
+                has_tints,
+                ..
+            } = &rows[0]
+            else {
+                panic!("{before:?} -> {after:?} is a Changed row: {rows:?}");
+            };
+
+            assert!(
+                !before_html.contains("md-word-delete") && !after_html.contains("md-word-add"),
+                "{before:?} -> {after:?} carries no word mark: {before_html} / {after_html}"
+            );
+            assert!(
+                !has_tints,
+                "{before:?} -> {after:?} keeps the wash: {rows:?}"
+            );
+        }
+    }
+
+    #[test]
     fn code_block_change_has_before_after_but_no_merged_copy() {
         // A fenced code block is single-leaf but must never reach the word-token
         // merge (invariant §4): merged_html stays None so highlighted <pre><code>
@@ -5291,8 +5472,13 @@ mod tests {
             })
             .expect("a real word edit stays visible under the flag");
         assert!(
-            changed.contains("the  slow fox"),
+            changed.contains("  slow"),
             "rendered content is the original line, not the stripped key: {changed}"
+        );
+        assert_eq!(
+            visible(changed).join(" "),
+            "the slow fox",
+            "and the whole line reaches the screen: {changed}"
         );
         assert!(!diff.whitespace_only);
     }

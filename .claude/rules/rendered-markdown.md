@@ -43,6 +43,12 @@ defect while the full copy looks correct.
 **Neither side of a pair is blank.** A side with nothing on it is the content
 missing from the screen, not a difference the reader can compare against.
 
+**The split columns carry every mark the merged copy carries.** Side by side has
+no merged copy to fall back on, so the two columns are the whole of what that
+reader sees. A row the merge marked while both columns stayed plain reaches them
+as two washed blocks to compare word by word. A reflow is exempt, because it
+declares that no rendered word moved.
+
 `illegible_rows` in `markdown.rs` is this rule as code, and
 `every_fixture_scenario_renders_legibly` runs it over the whole fixture corpus.
 Neither is a runtime check: the pipeline must satisfy the rule, never consult
