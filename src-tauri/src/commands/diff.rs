@@ -718,6 +718,12 @@ pub fn diff_unstaged_raw_for_bench(
     Ok((file_diffs, sides))
 }
 
+/// One file's unstaged diff, index to working tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the diff
+/// will not build.
 pub fn diff_unstaged_inner(
     path: &str,
     file_path: &str,
@@ -731,6 +737,12 @@ pub fn diff_unstaged_inner(
     walk_diff(diff, &repo, NewSideSource::Workdir)
 }
 
+/// One file's staged diff, HEAD to index.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the diff
+/// will not build.
 pub fn diff_staged_inner(
     path: &str,
     file_path: &str,
@@ -744,6 +756,12 @@ pub fn diff_staged_inner(
     diff_one_file(&diff, &repo, NewSideSource::Odb, file_path)
 }
 
+/// A commit's full diff against its first parent.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// the commit is missing or the diff will not build.
 pub fn diff_commit_inner(
     path: &str,
     oid: &str,
@@ -762,6 +780,12 @@ pub fn diff_commit_inner(
 
 /// Lightweight commit file listing — returns only metadata (path, status, `is_binary`),
 /// no hunks/lines/spans. Used for the commit detail sidebar file list.
+/// The files a commit touched, metadata only.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// the commit is missing or the diff will not build.
 pub fn list_commit_files_inner(
     path: &str,
     oid: &str,
@@ -777,6 +801,12 @@ pub fn list_commit_files_inner(
 }
 
 /// Diff a single file from a commit — used when user clicks a file in commit detail.
+/// One file's diff within a commit.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// the commit is missing or the diff will not build.
 pub fn diff_commit_file_inner(
     path: &str,
     oid: &str,
@@ -810,6 +840,11 @@ fn compare_tree<'r>(
 ///
 /// Two-tree diff with no ancestry requirement — unlike a review range, any pair of
 /// commits compares. Metadata only, like `list_commit_files_inner`.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// either commit is missing or the diff will not build.
 pub fn list_compare_files_inner(
     path: &str,
     base_oid: Option<&str>,
@@ -830,6 +865,12 @@ pub fn list_compare_files_inner(
 
 /// Diff a single file between Base and Target — used when the user clicks a
 /// file in the compare view.
+/// One file's diff between any two commits.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// either commit is missing or the diff will not build.
 pub fn diff_compare_file_inner(
     path: &str,
     base_oid: Option<&str>,
@@ -851,6 +892,12 @@ pub fn diff_compare_file_inner(
 
 /// Whole-compare totals via the cheap `Diff::stats()` path, mirroring
 /// `history::commit_stat_from_repo`: renames collapsed, no line walking.
+/// Insertions, deletions and file count between any two commits.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// either commit is missing or the diff will not build.
 pub fn compare_stat_inner(
     path: &str,
     base_oid: Option<&str>,
@@ -880,6 +927,12 @@ fn file_metadata_list(diff: &git2::Diff) -> Vec<FileDiff> {
     diff.deltas().map(|delta| file_diff_of(&delta)).collect()
 }
 
+/// One commit's metadata and the files it touched.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will not parse, and the git error when
+/// the commit is missing or its diff will not build.
 pub fn get_commit_detail_inner(
     path: &str,
     oid: &str,

@@ -460,7 +460,7 @@ pub fn discard_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkE
 pub fn stage_all_inner(path: &str, state_map: &OpenRepos) -> Result<(), TrunkError> {
     let repo = state_map.open(path)?;
     let mut index = repo.index()?;
-    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+    index.add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)?;
     index.write()?;
     Ok(())
 }

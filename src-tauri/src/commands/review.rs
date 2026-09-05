@@ -151,6 +151,11 @@ pub struct SubmitThreadRequest {
 /// thread, clear the draft — so a submit either lands whole or not at all. A
 /// partial commit would strand a review with no thread, which is a review the
 /// user can neither publish nor explain.
+///
+/// # Errors
+///
+/// Returns whatever the store returns when the transaction fails. Nothing is
+/// written on the error path.
 pub fn submit_thread_inner(
     store: &Store,
     canonical: &Path,
@@ -166,6 +171,11 @@ pub fn submit_thread_inner(
 /// That happens when a submit outlives `IN_FLIGHT_GRACE_SECS` — a machine asleep with
 /// the composer open. Without this the thread lands on a commit gc will collect,
 /// silently, which is the loss this design exists to prevent.
+///
+/// # Errors
+///
+/// Returns whatever the store returns when the transaction fails. A failure to
+/// re-pin afterwards is not an error: the thread has already committed.
 pub fn submit_thread_into(
     store: &Store,
     canonical: &Path,
@@ -331,6 +341,10 @@ impl RenderedThread {
 ///
 /// A repo with no active review has no threads to show — an empty list, not an error:
 /// there is no "session is active" concept left to report.
+///
+/// # Errors
+///
+/// Returns whatever the store returns when the read fails.
 pub fn list_threads_inner(
     store: &Store,
     canonical: &Path,
@@ -481,6 +495,11 @@ pub async fn delete_thread<R: Runtime>(
 /// Add a human-attributed reply to a thread. A UI write always records
 /// `Channel::Human` — the CLI is the only writer that may ever record
 /// `Channel::Agent` (spec §2).
+///
+/// # Errors
+///
+/// Returns `not_found` when `thread_id` names no thread in this repo, and
+/// whatever the store returns when the write fails.
 pub fn add_reply_inner(
     store: &Store,
     repo_path: &Path,
@@ -595,6 +614,12 @@ pub async fn delete_reply<R: Runtime>(
 
 /// Move a thread's state from a UI gesture — always `Channel::Human`; the CLI
 /// is the only caller that may claim `Channel::Agent` (spec §2).
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no thread in this repo,
+/// `illegal_transition` when a human may not make that move, and whatever the
+/// store returns when the write fails.
 pub fn set_thread_state_inner(
     store: &Store,
     canonical: &Path,
@@ -872,6 +897,10 @@ pub async fn delete_review<R: Runtime>(
 /// Write the per-repo draft row. Emits nothing: drafts are not panel-visible and
 /// a per-keystroke emit would cause reload storms — today's deliberate silence,
 /// kept.
+///
+/// # Errors
+///
+/// Returns whatever the store returns when the write fails.
 pub fn save_draft_inner(
     store: &Store,
     canonical: &Path,
@@ -884,6 +913,11 @@ pub fn save_draft_inner(
     store.write_quiet(|tx| drafts::save(tx, canonical, text, anchor, now))
 }
 
+/// The repo's draft, or `None` when it has none.
+///
+/// # Errors
+///
+/// Returns whatever the store returns when the read fails.
 pub fn get_draft_inner(
     store: &Store,
     canonical: &Path,
@@ -1159,6 +1193,11 @@ pub async fn list_session_commits<R: Runtime>(
 /// it: a submit resolves its snapshot and lands its thread in two separate
 /// calls, so pruning on the supersession that falls between them would unpin
 /// the commit an in-flight thread is about to anchor to (TRUNK-61).
+///
+/// # Errors
+///
+/// Returns the git error when the repository will not open or the snapshot
+/// will not build, and whatever the store returns when the write fails.
 pub fn ensure_review_snapshot_inner(
     store: &Store,
     canonical: &Path,
@@ -1221,6 +1260,11 @@ pub fn ensure_review_snapshot_inner(
 /// A ref that will not delete is skipped, not fatal: it keeps its row and the
 /// next sweep tries again. The transaction still commits, because the rows it
 /// drops describe refs that are actually gone.
+///
+/// # Errors
+///
+/// Returns the git error when the repository will not open or its pins will
+/// not enumerate, and whatever the store returns when the write fails.
 pub fn sweep_unanchored_pins(
     store: &Store,
     canonical: &Path,
@@ -1266,6 +1310,11 @@ pub fn sweep_unanchored_pins(
     })
 }
 
+/// The repo's two current snapshot pins, one per kind.
+///
+/// # Errors
+///
+/// Returns whatever the store returns when the read fails.
 pub fn read_snapshots_inner(
     store: &Store,
     canonical: &Path,
@@ -1420,6 +1469,12 @@ pub async fn resolve_threads<R: Runtime>(
 /// Markdown injection in thread text is a DELIBERATE non-mitigation. The
 /// recipient is an AI coding agent; escaping a user's fence or heading would
 /// hide signal the reviewer intentionally put there. Do not add escaping.
+///
+/// # Errors
+///
+/// Returns the git error when `repo_path` will not open, `not_found` when
+/// `review_id` names no review, and whatever the store returns when the read
+/// fails.
 pub fn generate_review_doc_inner(
     store: &Store,
     canonical: &Path,
@@ -1443,6 +1498,11 @@ pub fn generate_review_doc_inner(
 /// Render `review_id`'s doc from stored rows. `workdir` and `repo_dir` are
 /// the caller's two path facts: the app takes them from its open repo, the
 /// CLI from discovery — neither reads repository content for the doc (D13).
+///
+/// # Errors
+///
+/// Returns `not_found` when `review_id` names no review, and whatever the
+/// store returns when the read fails.
 pub fn render_review_doc(
     store: &Store,
     canonical: &Path,

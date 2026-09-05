@@ -35,6 +35,11 @@ impl ThreadState {
     /// Every other pair, identity transitions included, is illegal: the CLI's
     /// `open -> addressed` claim on an already-`addressed` thread must fail
     /// naming the current state, not silently no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns `illegal_transition`, naming the current state, when `by` may not
+    /// make that move.
     pub fn transition(self, next: Self, by: Channel) -> Result<Self, TrunkError> {
         use Channel::{Agent, Human};
         use ThreadState::{Addressed, Dismissed, Done, Open};

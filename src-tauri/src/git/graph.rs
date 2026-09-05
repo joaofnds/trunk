@@ -49,6 +49,12 @@ fn parent_map(
 
 /// Everything one walk reads from the repository, in one pass. Every git2 call in the
 /// commit-graph pipeline lives here; `graph_input::layout` takes it from plain data.
+/// Read everything one graph walk needs out of a repository.
+///
+/// # Errors
+///
+/// Returns the git error when the revwalk, the refs, or the stash reflog will
+/// not read.
 pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
     // Step 0: Worktree state, read once — the frontend draws a WIP row in column 0
     // whenever this is true, so inline stash placement has to yield the lane.
@@ -156,6 +162,10 @@ pub fn capture(repo: &mut git2::Repository) -> Result<GraphSource, TrunkError> {
 /// after a commit, a checkout or a stash honouring the same visibility the graph was drawn
 /// with. `visibility` is a parameter rather than a lookup so a new rebuild site cannot
 /// forget it.
+///
+/// # Errors
+///
+/// Returns whatever `capture` returns.
 pub fn snapshot(
     repo: &mut git2::Repository,
     visibility: &RefVisibility,

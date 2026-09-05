@@ -4,6 +4,10 @@ use std::collections::HashMap;
 
 /// Returns true if the repo has any tracked modifications that would block checkout.
 /// Untracked files (`WT_NEW`) are deliberately excluded — git allows checkout with untracked files.
+///
+/// # Errors
+///
+/// Returns the git error when the status walk fails.
 pub fn is_repo_dirty(repo: &git2::Repository) -> Result<bool, git2::Error> {
     use git2::{Status, StatusOptions};
     let mut opts = StatusOptions::new();
@@ -28,6 +32,10 @@ pub fn is_repo_dirty(repo: &git2::Repository) -> Result<bool, git2::Error> {
 /// A pull whose autostash restore conflicts exits 0, leaves no rebase directory, and
 /// reads `repo.state() == Clean`, so the unmerged paths are the only evidence the pull
 /// did not finish the job.
+///
+/// # Errors
+///
+/// Returns the git error when the status walk fails.
 pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
     let statuses = repo.statuses(None).map_err(TrunkError::from)?;
     Ok(statuses
@@ -40,10 +48,19 @@ pub fn has_unmerged_paths(repo: &git2::Repository) -> Result<bool, TrunkError> {
 ///
 /// `repo.state()` alone is insufficient: a conflicted stash or autostash restore leaves
 /// unmerged paths while it reads `Clean`.
+///
+/// # Errors
+///
+/// Returns the git error when the status walk fails.
 pub fn is_mid_operation(repo: &git2::Repository) -> Result<bool, TrunkError> {
     Ok(repo.state() != git2::RepositoryState::Clean || has_unmerged_paths(repo)?)
 }
 
+/// Check that `path` is a repository this build can open.
+///
+/// # Errors
+///
+/// Returns `not_a_git_repo` carrying git's own message when it is not.
 pub fn validate_and_open(path: &std::path::Path) -> Result<(), TrunkError> {
     git2::Repository::open(path).map_err(|e| TrunkError {
         code: "not_a_git_repo".into(),

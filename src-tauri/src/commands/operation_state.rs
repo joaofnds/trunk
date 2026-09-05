@@ -53,6 +53,12 @@ fn resolve_oid_to_branch(repo: &git2::Repository, oid_str: &str) -> Option<Strin
     Some(oid_str.chars().take(7).collect())
 }
 
+/// Which operation the repository is in the middle of, if any.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when the
+/// repository state or its refs will not read.
 pub fn get_operation_state_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -154,6 +160,12 @@ pub fn get_operation_state_inner(
 
 // --- CLI operation inner functions ---
 
+/// Conclude a conflicted merge by committing the resolved tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `merge_error` when no message
+/// was supplied, `git` will not run, or the commit fails.
 pub fn merge_continue_inner(
     path: &str,
     message: Option<&str>,
@@ -181,6 +193,12 @@ pub fn merge_continue_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Abandon an in-progress merge and restore the previous tree.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `merge_error` carrying git's
+/// own message when `git` will not run or the abort fails.
 pub fn merge_abort_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -222,6 +240,12 @@ pub fn rebase_command(dir: &std::path::Path, step: &str) -> std::process::Comman
     cmd
 }
 
+/// Continue a paused rebase past the conflict just resolved.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
+/// own message when `git` will not run or the step fails.
 pub fn rebase_continue_inner(
     path: &str,
     message: Option<&str>,
@@ -264,6 +288,12 @@ pub fn rebase_continue_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Skip the commit a rebase is stuck on and carry on.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
+/// own message when `git` will not run or the skip fails.
 pub fn rebase_skip_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -283,6 +313,12 @@ pub fn rebase_skip_inner(
     graph::snapshot(&mut repo, visibility)
 }
 
+/// Abandon an in-progress rebase and restore the original branch.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
+/// own message when `git` will not run or the abort fails.
 pub fn rebase_abort_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -302,6 +338,12 @@ pub fn rebase_abort_inner(
 
 // --- Start merge/rebase ---
 
+/// The message git prepared for an in-progress merge, if there is one.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository. A missing `MERGE_MSG` is not an
+/// error: it answers `None`.
 pub fn get_merge_message_inner(
     path: &str,
     state_map: &OpenRepos,
@@ -312,6 +354,12 @@ pub fn get_merge_message_inner(
     Ok(std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok())
 }
 
+/// Start a merge without committing, so the message can be edited first.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `merge_error` carrying git's
+/// own message when `git` will not run or the merge fails.
 pub fn merge_branch_begin_inner(
     path: &str,
     branch: &str,
@@ -369,6 +417,12 @@ pub fn merge_branch_begin_inner(
     Ok(MergeBeginResult::Ready { graph, message })
 }
 
+/// Rebase the current branch onto another.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
+/// own message when `git` will not run or the rebase fails.
 pub fn rebase_branch_inner(
     path: &str,
     onto_branch: &str,

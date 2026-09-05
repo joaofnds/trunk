@@ -173,6 +173,12 @@ fn write_relaid_out_graph(
 ///
 /// The cached snapshot answers without touching the repository; only a repository whose
 /// first graph is still being built has none, and that one is walked as it always was.
+/// The graph under a new visibility, from the cache when one is held.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository and no cached snapshot was
+/// given, and the git error when the walk fails.
 pub fn set_ref_visibility_inner(
     path: &str,
     visibility: &crate::git::graph_input::RefVisibility,
@@ -205,6 +211,13 @@ fn commit_stat_from_repo(repo: &git2::Repository, oid: git2::Oid) -> Result<Diff
 }
 
 /// Single-commit diff-stat by oid string. Opens the repo once.
+/// One commit's insertions, deletions and file count.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when the oid will
+/// not parse, and the git error when the commit is missing or its diff will
+/// not build.
 pub fn commit_stat_inner(
     path: &str,
     oid: &str,
@@ -249,6 +262,12 @@ pub fn compute_commit_stats_batch(
 /// `files_changed` counts *distinct* paths across both diffs — a file that is
 /// both staged and unstaged-modified (`MM` in `git status`) is one changed file,
 /// not two — so the count matches the WIP row's `repo.statuses()` badges.
+/// The working tree's combined staged and unstaged stats, for the WIP row.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error when either
+/// diff will not build.
 pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffStat, TrunkError> {
     let repo = state_map.open(path)?;
 
@@ -376,6 +395,12 @@ pub async fn get_wip_diff_stats(
         .map_err(|e| e.to_json())
 }
 
+/// Commits in the cached graph whose subject or oid matches `query`.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no repository in the graph cache. An
+/// empty query is not an error: it answers with no results.
 pub fn search_commits_inner(
     path: &str,
     query: &str,

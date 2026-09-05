@@ -23,6 +23,11 @@ use crate::error::TrunkError;
 /// Deterministic by construction: two calls on an unchanged workdir produce the
 /// same tree content → the same Oid. This is what lets `decide_snapshot` reuse a
 /// prior snapshot whose commit tree equals the current workdir tree.
+///
+/// # Errors
+///
+/// Returns the git error when the in-memory index will not build or the tree
+/// will not write to the object database.
 pub fn workdir_tree_oid(repo: &git2::Repository) -> Result<git2::Oid, TrunkError> {
     // 1. Associate an EMPTY in-memory index with the repo. Starting from empty +
     //    add_all("*") captures the full current workdir (staged + unstaged +
@@ -33,9 +38,9 @@ pub fn workdir_tree_oid(repo: &git2::Repository) -> Result<git2::Oid, TrunkError
     // 2. Re-fetch the now-associated index and add the whole workdir.
     //    IndexAddOption::DEFAULT respects .gitignore: it includes
     //    untracked-but-not-ignored files and excludes ignored ones (identical to
-    //    the shipped call at commands/staging.rs:344). NEVER call idx.write().
+    //    the shipped call in `commands::staging::stage_all_inner`). NEVER call idx.write().
     let mut idx = repo.index()?;
-    idx.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+    idx.add_all(std::iter::once(&"*"), git2::IndexAddOption::DEFAULT, None)?;
 
     // 3. Write the tree objects to the ODB (does NOT persist the on-disk index).
     Ok(idx.write_tree_to(repo)?)
@@ -48,6 +53,11 @@ pub fn workdir_tree_oid(repo: &git2::Repository) -> Result<git2::Oid, TrunkError
 /// index tree (not the working tree — for a partially-staged file those line
 /// numbers diverge). `repo.index().write_tree()` writes a tree object from the
 /// current on-disk index WITHOUT modifying the index file.
+///
+/// # Errors
+///
+/// Returns the git error when the index will not read or the tree will not
+/// write to the object database.
 pub fn index_tree_oid(repo: &git2::Repository) -> Result<git2::Oid, TrunkError> {
     Ok(repo.index()?.write_tree()?)
 }
@@ -77,9 +87,11 @@ impl SnapshotKind {
     }
 }
 
-/// Get-or-create a review snapshot for a session (the reuse-vs-create decision in a
-/// pure, unit-testable surface — mirrors the `validate_range` / `compute_range_oids`
-/// pattern: takes `&Repository`, no Tauri state).
+/// Get-or-create a review snapshot for a session.
+///
+/// The reuse-vs-create decision in a pure, unit-testable surface — mirrors the
+/// `validate_range` / `compute_range_oids` pattern: takes `&Repository`, no
+/// Tauri state.
 ///
 /// Returns `(oid, created)`:
 /// - When `prior` is `Some` and its COMMIT TREE equals the current tree for `kind`,
@@ -88,6 +100,11 @@ impl SnapshotKind {
 ///   a COMMIT oid, never compared against the tree oid directly.
 /// - Otherwise (changed tree, or `prior` is `None`) create a fresh snapshot commit
 ///   → `(new_oid, true)`.
+///
+/// # Errors
+///
+/// Returns the git error when the current tree will not build, `prior` names no
+/// commit, or a fresh snapshot will not write.
 pub fn decide_snapshot(
     repo: &git2::Repository,
     kind: SnapshotKind,
@@ -107,6 +124,11 @@ pub fn decide_snapshot(
 /// Snapshot the tree for `kind` into a dangling commit (parent = HEAD) and return
 /// its Oid. Builds the tree via the kind's tree fn (neither persists the real
 /// `.git/index`) then commits it parent = HEAD.
+///
+/// # Errors
+///
+/// Returns the git error when the tree will not build, HEAD will not read, or
+/// the commit will not write.
 pub fn snapshot(repo: &git2::Repository, kind: SnapshotKind) -> Result<git2::Oid, TrunkError> {
     // 1–3. Build the target tree (no idx.write(), real index untouched).
     let tree = repo.find_tree(kind.tree_oid(repo)?)?;
@@ -138,6 +160,10 @@ pub fn snapshot(repo: &git2::Repository, kind: SnapshotKind) -> Result<git2::Oid
 
 /// Workdir convenience wrapper (the original entry point; kept for existing
 /// callers and tests).
+///
+/// # Errors
+///
+/// Returns whatever `snapshot` returns for `SnapshotKind::Workdir`.
 pub fn snapshot_working_tree(repo: &git2::Repository) -> Result<git2::Oid, TrunkError> {
     snapshot(repo, SnapshotKind::Workdir)
 }
@@ -161,6 +187,10 @@ pub const SNAPSHOT_REF_PREFIX: &str = "refs/trunk/review-snapshots/";
 /// Without it the snapshot is a dangling commit that gc prunes, silently orphaning
 /// every comment anchored to it. Named by the oid so re-pinning a reused snapshot is
 /// idempotent; `force = true` tolerates an already-present ref.
+///
+/// # Errors
+///
+/// Returns the git error when the ref will not write.
 pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), TrunkError> {
     let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
     repo.reference(&name, oid, true, "trunk working-tree review snapshot")?;
@@ -172,6 +202,10 @@ pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), 
 /// Read from each ref's target, not parsed out of its name. The two agree by
 /// `keep_snapshot_ref`'s construction, but nothing enforces that, and a name
 /// that is not a valid oid would otherwise have to be parsed and could fail.
+///
+/// # Errors
+///
+/// Returns the git error when the refs will not enumerate.
 pub fn pinned_snapshot_oids(repo: &git2::Repository) -> Result<Vec<git2::Oid>, TrunkError> {
     let refs = repo.references_glob(&format!("{SNAPSHOT_REF_PREFIX}*"))?;
 
@@ -195,6 +229,11 @@ pub fn pinned_snapshot_oids(repo: &git2::Repository) -> Result<Vec<git2::Oid>, T
 /// (`keep_snapshot_ref`'s contract; the gate lives at the call site, which
 /// holds the review store). A missing ref is not an error — pruning is
 /// idempotent, same as `keep_snapshot_ref`.
+///
+/// # Errors
+///
+/// Returns the git error when the ref exists but will not delete. A missing ref
+/// is not an error.
 pub fn prune_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), TrunkError> {
     let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
     if let Ok(mut reference) = repo.find_reference(&name) {

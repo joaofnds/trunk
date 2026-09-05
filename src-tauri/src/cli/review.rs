@@ -55,8 +55,12 @@ pub enum ReplyText {
     Stdin,
 }
 
-/// Parse the argv slice after `trunk review`. Errors are the usage line the
-/// caller prints to stderr.
+/// Parse the argv slice after `trunk review`.
+///
+/// # Errors
+///
+/// Returns the usage line, which the caller prints to stderr, when the verb is
+/// missing or unknown or a flag is wrong for it.
 pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
     let mut words = args.iter().map(String::as_str);
     let verb = words.next().ok_or_else(usage)?;
@@ -226,8 +230,14 @@ fn usage() -> String {
 }
 
 /// Run a parsed command against the store the compiled-in identifier names.
+///
 /// Output is markdown on stdout; errors go to stderr with a nonzero exit and
 /// no partial write (§5.1).
+///
+/// # Errors
+///
+/// Returns whatever opening the store, resolving the repository, or the command
+/// itself returns. Nothing is written on the error path.
 pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
     let store = reviewdb::open(&reviewdb::data_dir_for(identifier))?;
 

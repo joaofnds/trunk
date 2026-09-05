@@ -58,6 +58,12 @@ impl RevSpec {
         }
     }
 
+    /// The rev a `trunk-asset://` URL token names.
+    ///
+    /// # Errors
+    ///
+    /// Returns `invalid_rev` when the token is not one of the fixed names and
+    /// is not a `commit-<oid>` form.
     pub fn from_url_token(token: &str) -> Result<Self, TrunkError> {
         match token {
             "working-tree" => Ok(Self::WorkingTree),
@@ -82,6 +88,14 @@ impl RevSpec {
 /// inherently sandboxed; the working-tree case is the only one that touches the
 /// filesystem, so it rejects any path escaping the repo root (canonicalized to defeat
 /// `..` and symlink traversal).
+///
+/// # Errors
+///
+/// Returns `not_found` for the empty rev or a path absent at that revision,
+/// `bare_repo` when a working-tree read has no working tree, `invalid_oid` when
+/// a commit rev will not parse, `not_a_blob` when the path is not a file, and
+/// `io_error` when a working-tree file will not read or escapes the repository
+/// root.
 pub fn read_file_at_inner(
     repo: &git2::Repository,
     file_path: &str,

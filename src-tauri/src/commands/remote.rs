@@ -221,6 +221,13 @@ pub async fn git_fetch<R: Runtime>(
 ///
 /// Panics when the open-repository lock is poisoned.
 #[tauri::command]
+/// Fetch every remote quietly, skipping when the repo is busy.
+///
+/// # Errors
+///
+/// Returns `spawn_error` as JSON when a blocking task cannot be joined.
+/// A repository that is closed, mid-operation, or already running a remote
+/// operation is not an error: the fetch is skipped.
 pub async fn git_fetch_background<R: Runtime>(
     path: String,
     state: State<'_, RepoState>,
@@ -265,6 +272,12 @@ pub async fn git_fetch_background<R: Runtime>(
     Ok(())
 }
 
+/// Which remote and branch a push from here would target.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and the git error
+/// when the repository config will not read.
 pub fn get_push_target_inner(path: &str, state_map: &OpenRepos) -> Result<PushTarget, TrunkError> {
     let repo = state_map.open(path)?;
     resolve_push_target(&repo)
@@ -320,6 +333,13 @@ pub async fn git_pull<R: Runtime>(
     .map_err(|e| e.to_json())
 }
 
+/// Pull with the chosen strategy, then rebuild the graph.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `rebase_conflict` when an
+/// autostash restore conflicts, `auth_failure` when the remote refuses the
+/// credentials, and `remote_error` carrying git's own message otherwise.
 pub async fn git_pull_inner<R: Runtime>(
     path: &str,
     strategy: Option<&str>,
@@ -383,6 +403,14 @@ pub async fn git_push<R: Runtime>(
         .map_err(|e| e.to_json())
 }
 
+/// Push HEAD to its target, then rebuild the graph.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `no_upstream` when HEAD has no
+/// push target, `non_fast_forward` when the remote has moved on,
+/// `auth_failure` when the remote refuses the credentials, and `remote_error`
+/// carrying git's own message otherwise.
 pub async fn git_push_inner<R: Runtime>(
     path: &str,
     state_map: &OpenRepos,
@@ -424,6 +452,11 @@ pub struct PushTarget {
 /// The *branch* is HEAD's shorthand and nothing else: `branch.<name>.merge`,
 /// `push.default` and a renaming `remote.<name>.push` are not consulted, so under
 /// those configs this names a different ref than a bare `git push` would.
+///
+/// # Errors
+///
+/// Returns the git error when the repository config will not read. A detached
+/// HEAD or a missing remote is not an error: the corresponding field is `None`.
 pub fn resolve_push_target(repo: &git2::Repository) -> Result<PushTarget, TrunkError> {
     let head = repo.head().ok();
     let branch = head
@@ -495,6 +528,14 @@ pub async fn git_push_force<R: Runtime>(
     .map_err(|e| e.to_json())
 }
 
+/// Force-push HEAD with a lease, refusing if the remote moved unexpectedly.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `no_upstream` when HEAD has no
+/// push target, `push_lease_refused` when the remote moved since the last
+/// fetch, `push_declined` when the remote rejects it, `auth_failure` when the
+/// remote refuses the credentials, and `remote_error` otherwise.
 pub async fn git_push_force_inner<R: Runtime>(
     path: &str,
     confirmed: ConfirmedPush<'_>,

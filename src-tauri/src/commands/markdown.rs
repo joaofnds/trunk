@@ -2029,6 +2029,12 @@ fn read_side(
 /// Resolve `repo_path`, read `file_path` at both revs, and diff their markdown
 /// blocks. A `not_found` on one side (added/deleted file) is handled by the caller
 /// so the present side still renders.
+/// Render the block-aligned markdown diff for two revisions of a file.
+///
+/// # Errors
+///
+/// Returns `not_open` when `repo_path` names no open repository, and the git
+/// error when either side will not read.
 pub fn render_markdown_diff_from_state(
     repo_path: &str,
     file_path: &str,
@@ -2238,6 +2244,12 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
 }
 
 /// Resolve `repo_path` to its open repo, then read `file_path` at `rev`.
+/// A file's raw bytes at `rev`.
+///
+/// # Errors
+///
+/// Returns `not_open` when `repo_path` names no open repository, and whatever
+/// reading the file at that revision returns.
 pub fn read_file_at_from_state(
     repo_path: &str,
     file_path: &str,
@@ -2601,6 +2613,12 @@ fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
 /// Resolve a `trunk-asset://` request to its file bytes + MIME. Backs the custom
 /// protocol handler wired in lib.rs; reuses the same `read_file_at` resolver, so
 /// the working-tree path-escape guard applies to images too.
+/// Serve a `trunk-asset://` URL as bytes plus a MIME type.
+///
+/// # Errors
+///
+/// Returns `bad_uri` when the URL does not parse, `not_open` when it names no
+/// open repository, and whatever reading the file at that revision returns.
 pub fn resolve_trunk_asset<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     uri: &str,

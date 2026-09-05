@@ -68,6 +68,11 @@ impl Drop for EditorHandle {
 /// On any internal failure, partial state is cleaned up before returning
 /// `Err` — the `Drop` impl only runs once `EditorHandle` is constructed, so
 /// the pre-construction window is handled by hand inside this function.
+///
+/// # Errors
+///
+/// Returns `io_error` when the message file or the editor script will not
+/// write. Partial state is cleaned up first.
 pub fn prepare(message: &str) -> Result<EditorHandle, TrunkError> {
     // T-75-T01 hard mitigation: write through the `tempfile::Builder::tempfile()`
     // file handle BEFORE `.keep()` hands the path back. This preserves the
@@ -155,6 +160,10 @@ impl Drop for KeyedEditor {
 }
 
 /// Write the keyed editor script and hand back a handle that removes it on drop.
+///
+/// # Errors
+///
+/// Returns `io_error` when the script will not write.
 pub fn keyed_rebase_editor() -> Result<KeyedEditor, TrunkError> {
     let script = KEYED_REBASE_EDITOR.replace("@MESSAGE_DIR@", MESSAGE_DIR);
     let script_path = write_executable_temp_file("trunk-rebase-editor-", ".sh", script.as_bytes())?;

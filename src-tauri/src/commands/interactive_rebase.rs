@@ -26,6 +26,12 @@ pub struct RebaseTodo {
     pub items: Vec<RebaseTodoItem>,
 }
 
+/// The commits an interactive rebase from `base_oid` would replay.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `invalid_oid` when `base_oid`
+/// will not parse, and the git error when the walk fails.
 pub fn get_rebase_todo_inner(
     path: &str,
     base_oid: &str,
@@ -85,6 +91,12 @@ pub fn get_rebase_todo_inner(
     })
 }
 
+/// Where the current branch diverged from `branch`.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, and `fork_point_error` carrying
+/// git's own message when `git` will not run or the branches share no history.
 pub fn get_fork_point_inner(
     path: &str,
     branch: &str,
@@ -120,6 +132,13 @@ pub enum RebaseStartResult {
     Stopped,
 }
 
+/// Run an interactive rebase from a prepared todo list.
+///
+/// # Errors
+///
+/// Returns `not_open` when `path` names no open repository, `io_error` when the todo file
+/// will not write, and `rebase_error` carrying git's own message when `git`
+/// will not run or the rebase fails.
 pub fn start_interactive_rebase_blocking(
     path: &str,
     base_oid: Option<&str>,
