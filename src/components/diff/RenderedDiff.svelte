@@ -176,7 +176,6 @@ $effect(() => {
 	// without this an idle commit view refetches on that timer for nothing.
 	if (kind === "commit" && showing === "rows" && request === lastRequest)
 		return;
-	fetched = request;
 
 	// Hold the rows already on screen while the replacement is in flight. The
 	// placeholder empties the scroller, and a scroller with no content is
@@ -186,12 +185,18 @@ $effect(() => {
 	if (showing !== "rows") state = { kind: "loading" };
 	renderMarkdownDiff(...args)
 		.then((diff) => {
-			if (my === seq)
+			if (my === seq) {
+				// Recorded with the rows, never at request time: the skip above
+				// reads it as "the rows on screen already answer this request",
+				// and a re-run landing while the first fetch is still in flight
+				// would otherwise skip and leave the previous file on screen.
+				fetched = request;
 				state = {
 					kind: "rows",
 					rows: diff.rows,
 					whitespaceOnly: diff.whitespaceOnly,
 				};
+			}
 		})
 		.catch((e) => {
 			if (my !== seq) return;
