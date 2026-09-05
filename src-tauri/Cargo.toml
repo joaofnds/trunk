@@ -140,10 +140,20 @@ comparison_chain = "allow"
 # an enum changes the JSON both sides agree on, for no gain to either.
 struct_excessive_bools = "allow"
 
-# Six functions run past 100 lines, and splitting them is refactoring of working
-# code rather than a lint fix — the longest is the graph's lane assignment,
-# whose body the commit-graph mutation ledger anchors in a dozen places. TRUNK-89
-# left them as their own task rather than restructure hot code at the tail of a
-# lint pass. Delete this the moment that task lands.
+# Two sites, and no third: TRUNK-157 split the other eight this lint found.
+#
+# `configure` in `lib.rs` is 130 lines, of which 121 are one `generate_handler!`
+# invocation listing one command per line. Tauri cannot split it: `invoke_handler`
+# stores a single closure and a second call replaces the first, and the macro's
+# fall-through arm takes `Invoke` by value, so two generated handlers cannot be
+# chained. Whatever function holds that list is over the limit by construction.
+#
+# `assign_lanes` in `git/placement.rs` is 231 lines, and 30 of the commit-graph
+# mutation ledger's 65 anchors are exact source lines inside it, each carrying a
+# measured killed/survives verdict. Extracting those lines invalidates the anchors
+# and the evidence behind them. Splitting it is its own task, with the re-anchor
+# and re-measure the graph rules require; it is not a lint fix.
+#
+# A third site means splitting it, not adding it here.
 too_many_lines = "allow"
 
