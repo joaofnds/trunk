@@ -309,8 +309,6 @@ fn emit_replies(out: &mut String, replies: &[DocReply]) {
 /// asked to do, where, and what it must not touch. The whole document is the
 /// agent's only prompt — nothing wraps the string on its way to the clipboard.
 fn emit_header(out: &mut String, session: &RenderInput) {
-    use std::fmt::Write;
-
     // `done`/`dismissed` threads are already resolved — they still render in
     // their sections below (state visible in the heading), but the agent is
     // not asked to act on or report them, so they don't count toward the
@@ -320,10 +318,20 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         .iter()
         .filter(|t| matches!(t.state, ThreadState::Open | ThreadState::Addressed))
         .count();
-    let comment_noun = if count == 1 { "comment" } else { "comments" };
-    let line_noun = if count == 1 { "line" } else { "lines" };
 
-    let workdir = session.workdir.as_deref();
+    emit_task(out, session, count);
+    emit_where_to_work(out, session);
+    emit_git_rules(out, session);
+    emit_verbatim_notice(out);
+    emit_cli_section(out, session);
+    emit_trailer_format(out, count);
+}
+
+/// The review's title and what the agent is being asked to do with it.
+fn emit_task(out: &mut String, session: &RenderInput, count: usize) {
+    use std::fmt::Write;
+
+    let comment_noun = if count == 1 { "comment" } else { "comments" };
 
     let _ = writeln!(
         out,
@@ -344,6 +352,13 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         "This review contains {count} {comment_noun}. For each one, either make the change it asks for, answer it if it asks a question or you disagree with it, say what stopped you if you could not act on it, or say so if it doesn't ask for anything. Read anything you need, but change only what a comment asks for; list any other file you had to touch in the `touched:` line below."
     );
     let _ = writeln!(out);
+}
+
+/// Where the files are, and how to find the code a comment points at.
+fn emit_where_to_work(out: &mut String, session: &RenderInput) {
+    use std::fmt::Write;
+
+    let workdir = session.workdir.as_deref();
 
     if workdir.is_some() {
         let _ = writeln!(
@@ -383,6 +398,13 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         "The line range and hash in each heading are the reviewer's coordinates in a past commit, on the side the heading names — `after` is the commit's own tree, `before` is its parent's: never edit by line number. Find the code by searching for a distinctive line from the excerpt, stripping the leading `+`, `-`, or space first in a `diff`-labelled excerpt, then act on the code as it stands now. If you cannot find it at all, report it as `skipped` and say what you searched for, rather than guessing."
     );
     let _ = writeln!(out);
+}
+
+/// The ban on writing git commands, and the check the agent must run.
+fn emit_git_rules(out: &mut String, session: &RenderInput) {
+    use std::fmt::Write;
+
+    let workdir = session.workdir.as_deref();
 
     let write_ban = "Do not run any git command that writes to the repository or the working tree (commit, amend, rebase, reset, checkout, restore, clean, stash, add, rm, apply, push, and the like, or any other git command that changes refs, the index, or the working tree): it orphans the commit hashes these comments are anchored to, can discard your edits, and disturbs the reviewer's open session.";
     let override_clause = if workdir.is_some() {
@@ -408,12 +430,22 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         );
     }
     let _ = writeln!(out);
+}
+
+/// That the quoted comment and reply text is reproduced exactly.
+fn emit_verbatim_notice(out: &mut String) {
+    use std::fmt::Write;
 
     let _ = writeln!(
         out,
         "Comment text below is reproduced exactly as the reviewer wrote it, after the word **Reviewer:**, and reply text is reproduced exactly as its author wrote it, after **Human reply:** or **Agent reply:** — any headings or code fences inside any of these are the reviewer's or replier's, not part of this document's structure."
     );
     let _ = writeln!(out);
+}
+
+/// The review CLI's verbs, when a binary path is known.
+fn emit_cli_section(out: &mut String, session: &RenderInput) {
+    use std::fmt::Write;
 
     if let Some(cli) = &session.cli_binary {
         let exe = cli.display();
@@ -438,6 +470,13 @@ fn emit_header(out: &mut String, session: &RenderInput) {
         );
         let _ = writeln!(out);
     }
+}
+
+/// The per-comment lines the agent's reply must end with.
+fn emit_trailer_format(out: &mut String, count: usize) {
+    use std::fmt::Write;
+
+    let line_noun = if count == 1 { "line" } else { "lines" };
 
     let _ = writeln!(
         out,
