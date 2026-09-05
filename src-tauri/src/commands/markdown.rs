@@ -780,9 +780,17 @@ impl Ord for Unit {
     }
 }
 
-/// Blank the `rev` value of every `trunk-asset://` URL in a fragment, so the two
-/// sides of a diff compare an image by what it points at rather than by which
-/// revision rendered it.
+/// Blank the `rev` value, and the directory half of the `path` value, of every
+/// `trunk-asset://` URL in a fragment, so the two sides of a diff compare an
+/// image by what it points at rather than by which revision rendered it or
+/// which directory the document sat in.
+///
+/// The directory goes because a renamed file resolves its relative images
+/// against the path it had at each rev (TRUNK-162), so a document moved between
+/// directories renders one untouched image as two different URLs. Only the
+/// segments before the last `%2F` are dropped: two genuinely different images
+/// still differ by their file name, which is the invariant
+/// `strip_asset_rev_blanks_only_the_rev_and_leaves_other_text` pins.
 ///
 /// The match is anchored on the whole prefix `build_image_rewrite` emits, up to
 /// and including `rev=`, because `rev=` on its own is ordinary prose in a Git
@@ -798,6 +806,27 @@ fn strip_asset_rev(text: &str) -> String {
             .unwrap_or(s.len())
     }
 
+    /// Rewrite one param's value in place, keeping the tail `keep` returns.
+    /// `&` is `&amp;` once the URL is an HTML attribute, so accept both.
+    fn rewrite_param(url: &str, name: &str, keep: impl Fn(&str) -> usize) -> Option<String> {
+        for sep in [format!("&amp;{name}="), format!("&{name}=")] {
+            let Some(at) = url.find(&sep) else {
+                continue;
+            };
+            let value_at = at + sep.len();
+            let value_len = url[value_at..].find('&').unwrap_or(url.len() - value_at);
+            let value = &url[value_at..value_at + value_len];
+
+            return Some(format!(
+                "{}{}{}",
+                &url[..value_at],
+                &value[keep(value)..],
+                &url[value_at + value_len..]
+            ));
+        }
+        None
+    }
+
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(at) = rest.find(SCHEME) {
@@ -805,23 +834,14 @@ fn strip_asset_rev(text: &str) -> String {
         let url = &rest[at..at + url_end(&rest[at..])];
         rest = &rest[at + url.len()..];
 
-        // Blank the rev value in this one URL, leaving every other param intact.
-        // `&` is `&amp;` once the URL is an HTML attribute, so accept both.
-        let mut wrote = false;
-        for sep in ["&amp;rev=", "&rev="] {
-            let Some(rev_at) = url.find(sep) else {
-                continue;
-            };
-            let value_at = rev_at + sep.len();
-            let value_len = url[value_at..].find('&').unwrap_or(url.len() - value_at);
-            out.push_str(&url[..value_at]);
-            out.push_str(&url[value_at + value_len..]);
-            wrote = true;
-            break;
-        }
-        if !wrote {
-            out.push_str(url);
-        }
+        let blanked = rewrite_param(url, "rev", str::len);
+        let url = blanked.as_deref().unwrap_or(url);
+        // The path's directory is everything up to the last encoded separator.
+        let named = rewrite_param(url, "path", |value| {
+            value.rfind("%2F").map_or(0, |slash| slash + "%2F".len())
+        });
+
+        out.push_str(named.as_deref().unwrap_or(url));
     }
     out.push_str(rest);
     out
@@ -4303,6 +4323,72 @@ mod tests {
         assert!(
             after_html.contains("path=new%2Fimg%2Flogo.png"),
             "after side resolves against the new path: {after_html}"
+        );
+    }
+
+    #[test]
+    fn an_untouched_image_survives_a_directory_crossing_rename_unmarked() {
+        let before = "a para with ![logo](img/logo.png) here\n";
+        let after = "a para with ![logo](img/logo.png) HERE\n";
+
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "b/doc.md",
+            Some("a/doc.md"),
+            &RevSpec::Head,
+            &RevSpec::Index,
+            false,
+        )
+        .rows;
+
+        let DiffRow::Changed {
+            merged_html: Some(merged),
+            ..
+        } = &rows[0]
+        else {
+            panic!("an edited paragraph merges into one copy: {rows:?}");
+        };
+        assert_eq!(
+            merged.matches("<img").count(),
+            1,
+            "the image moved with its document, so it is not deleted and re-added: {merged}"
+        );
+    }
+
+    #[test]
+    fn an_untouched_image_leaf_survives_a_directory_crossing_rename_untinted() {
+        let before = "- alpha\n- ![logo](img/logo.png)\n- gamma\n";
+        let after = "- ALPHA\n- ![logo](img/logo.png)\n- gamma\n";
+
+        let rows = diff_markdown_blocks(
+            before,
+            after,
+            "/r",
+            "b/doc.md",
+            Some("a/doc.md"),
+            &RevSpec::Head,
+            &RevSpec::Index,
+            false,
+        )
+        .rows;
+
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = &rows[0]
+        else {
+            panic!("an edited list is a changed row: {rows:?}");
+        };
+        assert!(
+            !before_html.contains("md-removed\"><img"),
+            "the untouched image item is not tinted as removed: {before_html}"
+        );
+        assert!(
+            !after_html.contains("md-added\"><img"),
+            "the untouched image item is not tinted as added: {after_html}"
         );
     }
 
