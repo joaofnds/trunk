@@ -75,7 +75,8 @@ pub(crate) fn classify_anchor(
     // 1-based inclusive bounds matching Phase 67/68 capture (RESEARCH A2). `str::lines()`
     // does NOT count a trailing newline as a final empty line, so a comment on the
     // exact last line (end_line == line_count) is in-range.
-    let line_count = String::from_utf8_lossy(blob.content()).lines().count() as u32;
+    let line_count =
+        u32::try_from(String::from_utf8_lossy(blob.content()).lines().count()).unwrap_or(u32::MAX);
     // The Anchor struct has no validating constructor (just Deserialize), so a
     // corrupted session file or a future capture bug could produce an inverted
     // range (start_line > end_line). The classifier is the chokepoint every

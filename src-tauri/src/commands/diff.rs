@@ -554,7 +554,7 @@ fn build_side_lines<'a>(
     };
 
     for (idx, raw_line) in text.split('\n').enumerate() {
-        let lineno = (idx + 1) as u32;
+        let lineno = u32::try_from(idx + 1).unwrap_or(u32::MAX);
         if lineno < start {
             continue;
         }
@@ -637,7 +637,8 @@ pub fn enrich_file_diffs(file_diffs: &mut [FileDiff], sides: &[SideContent]) {
                         .unwrap_or_default();
 
                 if !syntax_tokens.is_empty() || !ws.is_empty() {
-                    line.spans = syntax::merge_spans(syntax_tokens, ws, line.content.len() as u32);
+                    let len = u32::try_from(line.content.len()).unwrap_or(u32::MAX);
+                    line.spans = syntax::merge_spans(syntax_tokens, ws, len);
                     syntax::merged_spans_to_utf16(&mut line.spans, &line.content);
                 }
             }

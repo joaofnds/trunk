@@ -17,7 +17,10 @@ const WORD_DIFF_LINE_BYTES_MAX: usize = 500;
 /// rewritten, not edited: plain add/delete coloring says that better than
 /// near-total marks. One verdict per op — judging lines one by one left the
 /// most-changed lines as the only unmarked ones.
-const WORD_DIFF_COVERAGE_MAX: f32 = 0.7;
+///
+/// A fraction rather than a float so the comparison is exact integer
+/// arithmetic: the counters it weighs are character counts.
+const WORD_DIFF_COVERAGE_MAX: (u64, u64) = (7, 10);
 /// An unemphasized whitespace gap this short between two emphasized spans is
 /// visual confetti; bridging it yields fewer, larger spans.
 const WORD_DIFF_GAP_BRIDGE_MAX: u32 = 2;
@@ -134,7 +137,7 @@ fn emphasize_run(
             let mut spans = Vec::new();
             let mut offset: u32 = 0;
             for (emphasized, segment) in change.values() {
-                let len = segment.len() as u32;
+                let len = u32::try_from(segment.len()).unwrap_or(u32::MAX);
                 if *emphasized && len > 0 {
                     refined = true;
                     spans.push(WordSpan {
@@ -149,7 +152,7 @@ fn emphasize_run(
             op_spans.push((line_idx, polish_spans(spans, &lines[line_idx].content)));
         }
 
-        let reads_as_edit = emphasis_coverage(&op_spans, lines) <= WORD_DIFF_COVERAGE_MAX;
+        let reads_as_edit = emphasis_within(&op_spans, lines, WORD_DIFF_COVERAGE_MAX);
         if reads_as_edit {
             for (line_idx, spans) in op_spans {
                 result.spans[line_idx] = spans;
@@ -211,13 +214,17 @@ fn pair_op_lines(
 
         if let Some(o) = old_idx {
             pairing[o] = match (homologous, new_idx) {
-                (true, Some(n)) => LinePairing::Partner { line: n as u32 },
+                (true, Some(n)) => LinePairing::Partner {
+                    line: u32::try_from(n).unwrap_or(u32::MAX),
+                },
                 _ => LinePairing::Alone,
             };
         }
         if let Some(n) = new_idx {
             pairing[n] = match (homologous, old_idx) {
-                (true, Some(o)) => LinePairing::Partner { line: o as u32 },
+                (true, Some(o)) => LinePairing::Partner {
+                    line: u32::try_from(o).unwrap_or(u32::MAX),
+                },
                 _ => LinePairing::Alone,
             };
         }
@@ -272,11 +279,17 @@ fn word_bytes(words: &std::collections::HashMap<&str, u32>) -> usize {
         .sum()
 }
 
-/// The share of the op's changed lines that its polished spans emphasize.
-/// The edit-vs-rewrite verdict compares this once per op, so a run keeps
-/// either coherent emphasis on every changed region or plain coloring
-/// throughout, never marked lines beside unmarked more-changed ones.
-fn emphasis_coverage(op_spans: &[(usize, Vec<WordSpan>)], lines: &[DiffLine]) -> f32 {
+/// Whether the op's polished spans emphasize at most `max` of its changed
+/// lines, `max` being a fraction.
+///
+/// The edit-vs-rewrite verdict asks this once per op, so a run keeps either
+/// coherent emphasis on every changed region or plain coloring throughout,
+/// never marked lines beside unmarked more-changed ones.
+fn emphasis_within(
+    op_spans: &[(usize, Vec<WordSpan>)],
+    lines: &[DiffLine],
+    max: (u64, u64),
+) -> bool {
     let changed: usize = op_spans
         .iter()
         .map(|(i, _)| lines[*i].content.trim_end_matches(['\n', '\r']).len())
@@ -288,9 +301,12 @@ fn emphasis_coverage(op_spans: &[(usize, Vec<WordSpan>)], lines: &[DiffLine]) ->
         .sum();
 
     if changed == 0 {
-        return 0.0;
+        return true;
     }
-    emphasized as f32 / changed as f32
+
+    // emphasized / changed <= num / den, cross-multiplied so nothing rounds.
+    let (num, den) = max;
+    u64::from(emphasized) * den <= changed as u64 * num
 }
 
 /// Apply the readability rules to one line's emphasized spans: bridge tiny

@@ -84,8 +84,8 @@ pub fn from_row(row: &Row, first: usize) -> Result<(Option<Anchor>, Option<Strin
             &row.get::<_, String>(first + 4)
                 .map_err(super::sqlite_error)?,
         )?,
-        start_line: row.get::<_, i64>(first + 5).map_err(super::sqlite_error)? as u32,
-        end_line: row.get::<_, i64>(first + 6).map_err(super::sqlite_error)? as u32,
+        start_line: line_number(row, first + 5)?,
+        end_line: line_number(row, first + 6)?,
     };
 
     Ok((Some(anchor), None))
@@ -127,6 +127,14 @@ fn side_from(raw: &str) -> Result<Side, TrunkError> {
 /// A stored row this module could not have written. Failing beats defaulting:
 /// an unrecognised `side` silently read as `New` renders a real comment against
 /// the wrong side of the diff, with nothing anomalous on screen.
+/// A stored line number, refusing a value no line number can hold rather than
+/// wrapping it into one.
+fn line_number(row: &Row, column: usize) -> Result<u32, TrunkError> {
+    let stored: i64 = row.get(column).map_err(super::sqlite_error)?;
+
+    u32::try_from(stored).map_err(|_| bad_row(&format!("line number out of range: {stored}")))
+}
+
 fn bad_row(what: &str) -> TrunkError {
     TrunkError::new("store", format!("corrupt anchor row: {what}"))
 }

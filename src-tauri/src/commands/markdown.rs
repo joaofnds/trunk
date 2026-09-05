@@ -315,12 +315,18 @@ fn dirty_lines(ops: &[similar::DiffOp]) -> (HashSet<u32>, HashSet<u32>) {
             similar::DiffOp::Delete {
                 old_index, old_len, ..
             } => {
-                before_lines.extend((old_index + 1..=old_index + old_len).map(|l| l as u32));
+                before_lines.extend(
+                    (old_index + 1..=old_index + old_len)
+                        .map(|l| u32::try_from(l).unwrap_or(u32::MAX)),
+                );
             }
             similar::DiffOp::Insert {
                 new_index, new_len, ..
             } => {
-                after_lines.extend((new_index + 1..=new_index + new_len).map(|l| l as u32));
+                after_lines.extend(
+                    (new_index + 1..=new_index + new_len)
+                        .map(|l| u32::try_from(l).unwrap_or(u32::MAX)),
+                );
             }
             similar::DiffOp::Replace {
                 old_index,
@@ -328,8 +334,14 @@ fn dirty_lines(ops: &[similar::DiffOp]) -> (HashSet<u32>, HashSet<u32>) {
                 new_index,
                 new_len,
             } => {
-                before_lines.extend((old_index + 1..=old_index + old_len).map(|l| l as u32));
-                after_lines.extend((new_index + 1..=new_index + new_len).map(|l| l as u32));
+                before_lines.extend(
+                    (old_index + 1..=old_index + old_len)
+                        .map(|l| u32::try_from(l).unwrap_or(u32::MAX)),
+                );
+                after_lines.extend(
+                    (new_index + 1..=new_index + new_len)
+                        .map(|l| u32::try_from(l).unwrap_or(u32::MAX)),
+                );
             }
         }
     }
@@ -369,8 +381,8 @@ fn counterpart_pairs(
         };
 
         for k in 0..len {
-            let before_line = (old_index + 1 + k) as u32;
-            let after_line = (new_index + 1 + k) as u32;
+            let before_line = u32::try_from(old_index + 1 + k).unwrap_or(u32::MAX);
+            let after_line = u32::try_from(new_index + 1 + k).unwrap_or(u32::MAX);
             if let (Some(bi), Some(ai)) =
                 (block_at(before, before_line), block_at(after, after_line))
             {
@@ -1044,7 +1056,10 @@ fn merged_is_balanced(html: &str) -> bool {
 /// back — the "confetti" fence. Measured on words only (not tags/whitespace) so a
 /// formatting-only move (e.g. un-bolding a word) leaves every word Equal and stays
 /// cheap, while a genuine rewrite pushes it over the threshold.
-const MAX_CHANGED_SHARE: f64 = 0.5;
+///
+/// A fraction rather than a float so the comparison is exact integer
+/// arithmetic: the counters it weighs are word counts.
+const MAX_CHANGED_SHARE: (usize, usize) = (1, 2);
 
 /// Count the `Word` tokens in a slice. Density is measured on words only: the
 /// always-shared structural tokens (`<p>`/`</p>` tags, aligned whitespace) would
@@ -1086,7 +1101,9 @@ fn too_dense(before: &[Token], after: &[Token]) -> bool {
             }
         }
     }
-    changed as f64 / total as f64 > MAX_CHANGED_SHARE
+    // changed / total > num / den, cross-multiplied so nothing rounds.
+    let (num, den) = MAX_CHANGED_SHARE;
+    changed * den > total * num
 }
 
 /// Merge the raw (unsanitized) before/after HTML of one changed leaf block into a
@@ -2236,8 +2253,8 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                 source,
                 leaves,
                 sourcepos_html,
-                start_line: start_line as u32,
-                end_line: end_line as u32,
+                start_line: u32::try_from(start_line).unwrap_or(u32::MAX),
+                end_line: u32::try_from(end_line).unwrap_or(u32::MAX),
             }
         })
         .collect()
@@ -2423,7 +2440,8 @@ fn write_highlighted_lines(
     let mut lines = code.split('\n').peekable();
     while let Some(line) = lines.next() {
         let tokens = syntax::highlight_line_with(hl, line);
-        let spans = syntax::merge_spans(&tokens, &[], line.len() as u32);
+        let spans =
+            syntax::merge_spans(&tokens, &[], u32::try_from(line.len()).unwrap_or(u32::MAX));
         if spans.is_empty() {
             comrak::html::escape(output, line)?;
         } else {

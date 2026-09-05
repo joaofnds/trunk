@@ -119,10 +119,17 @@ impl RepoState {
 pub struct RunningOp(pub Mutex<HashMap<String, u32>>);
 
 /// Terminate a process by PID. Uses SIGTERM on Unix and taskkill on Windows.
+///
+/// A pid that does not fit `i32` is ignored rather than wrapped: a wrapped value
+/// is negative, and a negative pid signals a whole process group.
 pub fn kill_process(pid: u32) {
     #[cfg(unix)]
-    unsafe {
-        libc::kill(pid as i32, libc::SIGTERM);
+    if let Ok(pid) = i32::try_from(pid) {
+        // SAFETY: `kill` with a positive pid and a valid signal has no
+        // preconditions this call can violate.
+        unsafe {
+            libc::kill(pid, libc::SIGTERM);
+        }
     }
     #[cfg(windows)]
     {

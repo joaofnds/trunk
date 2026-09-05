@@ -114,7 +114,9 @@ fn inset(window: &NSWindow, bar_height: f64) {
     let space_between = miniaturize.frame().origin.x - close_rect.origin.x;
     for (i, button) in [close, miniaturize, zoom].into_iter().enumerate() {
         let mut origin = button.frame().origin;
-        origin.x = (i as f64).mul_add(space_between, INSET_X);
+        // Three buttons, so the index always fits.
+        let i = f64::from(u8::try_from(i).unwrap_or(u8::MAX));
+        origin.x = i.mul_add(space_between, INSET_X);
         button.setFrameOrigin(origin);
     }
 }

@@ -1170,7 +1170,7 @@ fn build_partial_patch_text(
         if reverse {
             match line.origin() {
                 '+' => {
-                    if selected_set.contains(&(line_idx as u32)) {
+                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
                         // Selected add -> reverse to delete
                         patch_lines.push(format!("-{content_str}"));
                         old_count += 1;
@@ -1182,7 +1182,7 @@ fn build_partial_patch_text(
                     }
                 }
                 '-' => {
-                    if selected_set.contains(&(line_idx as u32)) {
+                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
                         // Selected delete -> reverse to add (restore)
                         patch_lines.push(format!("+{content_str}"));
                         new_count += 1;
@@ -1200,14 +1200,14 @@ fn build_partial_patch_text(
         } else {
             match line.origin() {
                 '+' => {
-                    if selected_set.contains(&(line_idx as u32)) {
+                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
                         patch_lines.push(format!("+{content_str}"));
                         new_count += 1;
                     }
                     // Unselected add: skip entirely
                 }
                 '-' => {
-                    if selected_set.contains(&(line_idx as u32)) {
+                    if selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX)) {
                         patch_lines.push(format!("-{content_str}"));
                         old_count += 1;
                     } else {

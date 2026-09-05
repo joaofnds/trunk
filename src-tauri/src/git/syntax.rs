@@ -133,10 +133,10 @@ pub fn highlight_line_with(
 
     let mut tokens = Vec::new();
     let mut offset: u32 = 0;
-    let content_len = content.len() as u32;
+    let content_len = u32::try_from(content.len()).unwrap_or(u32::MAX);
 
     for (style, text) in &ranges {
-        let len = text.len() as u32;
+        let len = u32::try_from(text.len()).unwrap_or(u32::MAX);
         let end = (offset + len).min(content_len);
         if offset < content_len && end > offset {
             let class = color_to_css_class(style.foreground);
@@ -239,8 +239,9 @@ pub fn merged_spans_to_utf16(spans: &mut [MergedSpan], content: &str) {
     let mut advance_to = |target: u32| {
         while byte < target {
             let Some(c) = chars.next() else { break };
-            byte += c.len_utf8() as u32;
-            utf16 += c.len_utf16() as u32;
+            // Both are at most 4, so neither conversion can fail.
+            byte += u32::from(u8::try_from(c.len_utf8()).unwrap_or(4));
+            utf16 += u32::from(u8::try_from(c.len_utf16()).unwrap_or(2));
         }
         utf16
     };
