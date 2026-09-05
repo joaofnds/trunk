@@ -62,7 +62,7 @@ check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-swee
 
 # Every audited text/background pair in src/app.css still clears its WCAG target (milliseconds)
 contrast:
-    node scripts/contrast/re-audit-verify.mjs
+    bun scripts/contrast/re-audit-verify.mjs
 
 # Verify every file naming the rust version names the same one (milliseconds)
 toolchain-parity:

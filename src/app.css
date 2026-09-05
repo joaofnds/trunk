@@ -76,9 +76,8 @@
 	--warn: oklch(0.82 0.14 90);
 	/* err lifted to 0.76 so red text (errors, "D" status, danger labels) clears
 	   AAA — including the Discard/Abort danger buttons whose red label sits on a
-	   doubly-stacked info-tinted hunk header / operation banner. Verified to keep
-	   diff-delete syntax AAA and the word-emphasis-delete stack within its
-	   documented AA exemption (see diff_contrast_aaa). */
+	   doubly-stacked info-tinted hunk header / operation banner. Diff-delete
+	   syntax stays AAA; scripts/contrast/re-audit-verify.mjs holds the pairs. */
 	--err: oklch(0.76 0.16 25);
 	--info: oklch(0.72 0.1 235);
 
@@ -175,22 +174,17 @@
 	--color-diff-add-bg-selected: var(--diff-add-hi);
 	--color-diff-delete-bg-selected: var(--diff-del-hi);
 
-	/* Word-level diff highlights. The patch stacks on the line tint, and the
-	   text on it is forced to --color-diff-text by the diff views, so the
-	   syntax hues never meet it. That is what lets it sit at 35%: the patch
-	   reads 2.0:1 against its line (1.3:1 at the old 16%), and fg-0 on it is
-	   8.29:1 (add) / 8.72:1 (delete), 7.32 / 7.73 on a selected line, all AAA.
-	   The dimmest syntax hue would be 3.9:1 here, which is why it is not
-	   allowed on the patch. */
+	/* Word-level diff highlights. The patch stacks on the line tint and the
+	   diff views force text on it to --color-diff-text, so no syntax hue ever
+	   meets it. That is what lets it sit at 35%, a 2:1 step against its line.
+	   Numbers and floors: scripts/contrast/re-audit-verify.mjs; the reasoning:
+	   docs/decisions/2026-09-05-text-on-a-word-patch-is-the-primary-color.md. */
 	--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 35%, transparent);
 	--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 35%, transparent);
 	/* The rendered markdown pair. A merged rendered block drops its wash by
-	   design, so these sit alone on the page. 38% puts them at the same step
-	   the source-view patch has against its line, 2.11:1 (add) / 2.02:1
-	   (delete) against --bg-0. Text on them is forced to --color-diff-text
-	   like the source view: 9.28 / 9.72, and 8.08 / 8.48 inside a code span,
-	   all AAA. The strike and underline rules are 4.47 / 4.34, above the 3:1
-	   non-text floor. */
+	   design, so these sit alone on the page; 38% puts them at the same 2:1
+	   step the source-view patch has against its line. Text on them is forced
+	   to --color-diff-text like the source view. Same gate, same record. */
 	--color-md-word-add-bg: color-mix(in oklch, var(--ok) 38%, transparent);
 	--color-md-word-delete-bg: color-mix(in oklch, var(--err) 38%, transparent);
 	--color-diff-phantom-bg: color-mix(in oklch, var(--fg-3) 5%, transparent);
@@ -199,9 +193,9 @@
 	   The six dim hues (keyword, string, comment, punctuation, tag, regex) were
 	   brightened so every token clears WCAG AAA (7:1) on context, add, delete,
 	   and selected lines; the nine already-passing hues are unchanged. Punctuation
-	   is a neutral gray (no hue to wash), so it was lifted further to #cccccc to
-	   also clear AAA on the word-emphasis stack where the colored hues stay at the
-	   documented AA exemption. */
+	   was lifted further to #cccccc for a word-patch stack that no longer exists
+	   (text on a patch is --color-diff-text now); it stays because lowering it
+	   is a design change with no reason behind it yet. */
 	--color-syn-keyword: #6db2ee;
 	--color-syn-string: #dc9e84;
 	--color-syn-comment: #88b974;
@@ -282,7 +276,8 @@
 	/* Trailing whitespace warning (Phase 63 — D-12). The ·/→ substitution glyphs
 	   sit on the red trailing-ws tint stacked over a diff-line tint, so they need
 	   a brighter opaque foreground than ordinary invisibles to clear AAA on the
-	   worst (selected delete + word-emphasis) stack. */
+	   worst (selected delete) stack. Inside a word patch the span keeps the
+	   patch color and its glyph is --color-diff-text, so no third tint stacks. */
 	--color-trailing-ws-bg: color-mix(in oklch, var(--err) 12%, transparent);
 	--color-trailing-ws-fg: oklch(0.9 0.004 260);
 
@@ -629,7 +624,7 @@ li.md-removed::before {
    fragments (the Rust html_token_merge output) that Svelte scoped styles never
    reach. Keyed strictly on the md-word-* classes — never bare <del>/<ins> — so an
    author's ~~strikethrough~~ (a classless <del>) is never read as a diff deletion.
-   Color is NOT the sole carrier (AAA invariant, app.css:490-494): the deletion adds
+   Color is NOT the sole carrier (the accessibility floor in coding-style-frontend §6): the deletion adds
    line-through, the insertion adds an underline, both surviving grayscale. Each rule
    takes its own hue so the mark reads without the source view's row tint
    underneath, and so a deletion's strikethrough does not out-shout an insertion's

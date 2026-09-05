@@ -226,14 +226,20 @@ describe("merge editor conflict header", () => {
 	});
 });
 
+/* indexOf returns -1 for a missing needle, and -1 loses every ordering
+   comparison silently. An ordering test must know it found both rules. */
+function ruleIndex(needle: string): number {
+	const i = css.indexOf(needle);
+	if (i < 0) throw new Error(`rule not found in app.css: ${needle}`);
+	return i;
+}
+
 describe("rendered markdown word marks", () => {
-	/* The source view stacks the word tint on an 11% row tint, so a mark reads
-	   there. A merged rendered block drops its background wash by design, leaving
-	   the tint alone on the page. Both the tint and the rule were lifted so the
-	   mark carries on its own. Measured with scripts/contrast/contrast.mjs
-	   against --bg-0: body text over the 30% tint is 7.97:1 (add) and 8.26:1
-	   (delete), both AAA; the colored rule, a non-text indicator at a 3:1 floor,
-	   is 5.53:1 and 5.32:1. */
+	/* A rendered mark sits alone on the page, with no row tint under it, so it
+	   carries the change by itself: a tint at the same 2:1 step the source-view
+	   patch has against its line, plus a strike or underline in the mark's own
+	   hue so the mark survives grayscale. The ratios are measured by
+	   scripts/contrast/re-audit-verify.mjs, not here. */
 	it("colors the underline with the add/delete hue, not the text color", () => {
 		const addRule = css.match(/\.md-word-add\s*\{([^}]*)\}/)?.[1] ?? "";
 		const deleteRule = css.match(/\.md-word-delete\s*\{([^}]*)\}/)?.[1] ?? "";
@@ -254,41 +260,22 @@ describe("rendered markdown word marks", () => {
 		expect(deleteRule).not.toMatch(/text-decoration-thickness/);
 	});
 
-	it("keeps the rendered word marks at the step the source patch has against its line", () => {
-		/* A rendered mark sits alone on the page, a source patch on an 11% row
-		   tint. 38% here and 35% there both land at about 2:1 against what they
-		   sit on (2.11 / 2.02 and 2.08 / 2.00), so a changed word reads the same
-		   in both views. The rendered pair exists so lifting one does not move
-		   the other. Numbers: scripts/contrast/re-audit-verify.mjs. */
-		expect(css).toContain(
-			"--color-md-word-add-bg: color-mix(in oklch, var(--ok) 38%, transparent)",
-		);
-		expect(css).toContain(
-			"--color-md-word-delete-bg: color-mix(in oklch, var(--err) 38%, transparent)",
-		);
-		expect(css).toContain(
-			"--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 35%, transparent)",
-		);
-		expect(css).toContain(
-			"--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 35%, transparent)",
-		);
-	});
-
 	it("draws everything on a rendered mark in the primary diff color", () => {
-		/* At 38% no other hue in the theme clears AAA on the mark: body text is
-		   6.98:1, a link's accent 4.56:1. The primary color is 9.28 / 9.72. The
-		   rule reaches descendants so a marked link or code span does not keep
-		   its own color, and comes after .markdown-body's link, code, del and
-		   syntax rules so it wins the tie on specificity. */
+		/* At 38% no other hue in the theme clears AAA on the mark. The rule
+		   reaches descendants so a marked link or code span does not keep its
+		   own color, and it comes after every .markdown-body color rule it ties
+		   with on specificity (the .syn-* set), so source order makes it win. */
 		const rule = css.match(
 			/\.markdown-body \.md-word-delete,\s*\.markdown-body \.md-word-add,\s*\.markdown-body \.md-word-delete \*,\s*\.markdown-body \.md-word-add \*\s*\{([^}]*)\}/,
 		)?.[1];
 		expect(rule).toBeDefined();
 		expect(rule).toMatch(/color:\s*var\(--color-diff-text\)/);
-		const linkRule = css.indexOf(".markdown-body a {");
-		const synRule = css.indexOf(".markdown-body .syn-keyword {");
-		const markRule = css.indexOf(".markdown-body .md-word-delete,");
-		expect(markRule).toBeGreaterThan(linkRule);
-		expect(markRule).toBeGreaterThan(synRule);
+
+		const markRule = ruleIndex(".markdown-body .md-word-delete,");
+		const synRules = [...css.matchAll(/\.markdown-body \.syn-[a-z]+ \{/g)].map(
+			(m) => m.index,
+		);
+		expect(synRules.length).toBeGreaterThan(0);
+		expect(Math.max(...synRules)).toBeLessThan(markRule);
 	});
 });

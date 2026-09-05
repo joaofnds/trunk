@@ -756,7 +756,7 @@ function originClass(origin: string): string {
   .word-delete::before {
     color: var(--color-diff-text);
   }
-  /* Trailing whitespace inside a word patch keeps the patch colour: its own red
+  /* Trailing whitespace inside a word patch keeps the patch color: its own red
      tint on top would take the glyph below AAA on a selected line, and the
      patch plus the marker glyph already say everything the tint said. */
   .word-add.trailing-ws {
