@@ -21,11 +21,11 @@ import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createOwnedTimer } from "../lib/owned-timer.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
-import { getScheduler } from "../lib/scheduler.js";
 import {
 	clearCommitDraft,
 	getCommitDraft,
@@ -138,7 +138,7 @@ let {
 	onrightpanewidthchange,
 }: Props = $props();
 
-const scheduler = getScheduler();
+const repoChangedRefresh = createOwnedTimer();
 
 // Center-pane Review-mode state (UI-SPEC:133, LOCKED to the center pane). The
 // rune owns rightPaneMode (panel|diff); jumpTo composes the existing
@@ -1016,13 +1016,11 @@ $effect(() => {
 // Listen for repo-changed events scoped to this repo
 $effect(() => {
 	let unlisten: (() => void) | undefined;
-	let debounceTimer: number | undefined;
 	const path = repoPath;
 
 	listen<string>("repo-changed", (event) => {
 		if (event.payload === path) {
-			if (debounceTimer !== undefined) scheduler.clearTimeout(debounceTimer);
-			debounceTimer = scheduler.setTimeout(() => {
+			repoChangedRefresh.arm(() => {
 				handleRefresh();
 				loadDirtyCounts();
 				loadHeadBranch();
@@ -1038,7 +1036,7 @@ $effect(() => {
 
 	return () => {
 		unlisten?.();
-		if (debounceTimer !== undefined) scheduler.clearTimeout(debounceTimer);
+		repoChangedRefresh.cancel();
 	};
 });
 
