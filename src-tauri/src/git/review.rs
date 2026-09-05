@@ -557,7 +557,7 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             // D-06: excerpt FIRST, comment text after — straight from the
             // stored row, never re-resolved from the repository.
             if let Some(excerpt) = &thread.excerpt {
-                emit_fence(out, excerpt, info)
+                emit_fence(out, excerpt, info);
             } else {
                 let _ = writeln!(out, "No excerpt was captured for this thread.");
                 let _ = writeln!(out);

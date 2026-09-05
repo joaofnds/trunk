@@ -33,6 +33,12 @@ impl WatcherState {
     }
 }
 
+/// Watch `path` and emit `repo-changed` when it changes. A disabled state
+/// watches nothing.
+///
+/// # Panics
+///
+/// Panics when the watcher lock is poisoned.
 pub fn start_watcher<R: Runtime>(path: PathBuf, app: AppHandle<R>, state: &WatcherState) {
     if !state.enabled {
         return;
@@ -61,6 +67,11 @@ pub fn start_watcher<R: Runtime>(path: PathBuf, app: AppHandle<R>, state: &Watch
         .insert(path.to_string_lossy().to_string(), debouncer);
 }
 
+/// Stop watching `path`. A path with no watcher is not an error.
+///
+/// # Panics
+///
+/// Panics when the watcher lock is poisoned.
 pub fn stop_watcher(path: &str, state: &WatcherState) {
     state.watchers.lock().unwrap().remove(path);
 }

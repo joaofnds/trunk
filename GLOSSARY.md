@@ -383,3 +383,8 @@ refresh of another repository is not rolled back.
 process id. It answers two questions with one entry: which process the cancel button
 signals, and whether a second remote operation may start on that repository at all.
 
+**Stats cache** — the diff stat computed for each commit, per repository, filling the
+graph's Diff column. A commit's diff never changes, so an entry is never invalidated,
+only dropped wholesale when its repository closes. Filled lazily and only while that
+column is visible.
+

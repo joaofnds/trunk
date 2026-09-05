@@ -63,12 +63,13 @@ pub async fn get_commit_graph(
     offset: usize,
     cache: State<'_, CommitCache>,
 ) -> Result<GraphResponse, String> {
-    let lock = cache.0.lock().unwrap();
-    let graph_result = lock
+    let cached = cache.0.lock().unwrap();
+    let page = cached
         .get(&path)
-        .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
+        .map(|graph| GraphResponse::page(&graph.layout, offset));
+    drop(cached);
 
-    Ok(GraphResponse::page(&graph_result.layout, offset))
+    page.ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())
 }
 
 /// # Errors
@@ -322,30 +323,31 @@ pub async fn get_commit_stats(
 ) -> Result<HashMap<String, DiffStat>, String> {
     // Resolve the page's oids from the topology cache (lock dropped immediately).
     let page_oids: Vec<String> = {
-        let lock = cache.0.lock().unwrap();
-        let graph_result = lock
-            .get(&path)
-            .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
-        slice(&graph_result.layout, offset, offset + PAGE)
-            .iter()
-            .map(|c| c.oid.clone())
-            .collect()
+        let cached = cache.0.lock().unwrap();
+        let oids = cached.get(&path).map(|graph| {
+            slice(&graph.layout, offset, offset + PAGE)
+                .iter()
+                .map(|c| c.oid.clone())
+                .collect()
+        });
+        drop(cached);
+        oids.ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?
     };
 
     // Partition into already-cached (return verbatim) and uncached (compute).
     let (uncached, mut result): (Vec<String>, HashMap<String, DiffStat>) = {
-        let lock = stats.0.lock().unwrap();
-        let existing = lock.get(&path);
+        let cached = stats.0.lock().unwrap();
         let mut uncached = Vec::new();
         let mut result = HashMap::new();
         for oid in page_oids {
-            match existing.and_then(|m| m.get(&oid)) {
+            match cached.get(&path, &oid) {
                 Some(stat) => {
                     result.insert(oid, stat.clone());
                 }
                 None => uncached.push(oid),
             }
         }
+        drop(cached);
         (uncached, result)
     };
 
@@ -362,13 +364,11 @@ pub async fn get_commit_stats(
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?;
 
     // Merge the newly computed stats into the immutable per-oid cache.
-    {
-        let mut lock = stats.0.lock().unwrap();
-        let entry = lock.entry(path).or_default();
-        for (oid, stat) in &computed {
-            entry.insert(oid.clone(), stat.clone());
-        }
-    }
+    stats
+        .0
+        .lock()
+        .unwrap()
+        .extend(path, computed.iter().map(|(o, s)| (o.clone(), s.clone())));
     result.extend(computed);
     Ok(result)
 }

@@ -83,8 +83,10 @@ pub fn prefs_get_inner(
     key: &str,
 ) -> Result<Option<Value>, TrunkError> {
     let mut cache = state.0.lock().unwrap();
-    let map = ensure_loaded(data_dir, &mut cache)?;
-    Ok(map.get(key).cloned())
+    let value = ensure_loaded(data_dir, &mut cache)?.get(key).cloned();
+    drop(cache);
+
+    Ok(value)
 }
 
 /// Store one preference, rolling the in-memory value back if the write fails.
@@ -103,6 +105,8 @@ pub fn prefs_set_inner(
     key: String,
     value: Value,
 ) -> Result<(), TrunkError> {
+    // The lock is held across the write so the rollback below restores the
+    // value this call replaced, not one a concurrent write left behind.
     let mut cache = state.0.lock().unwrap();
     let map = ensure_loaded(data_dir, &mut cache)?;
     let previous = map.insert(key.clone(), value);
@@ -115,6 +119,8 @@ pub fn prefs_set_inner(
             None => map.remove(&key),
         };
     }
+    drop(cache);
+
     written
 }
 

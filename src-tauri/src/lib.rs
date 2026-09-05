@@ -85,6 +85,11 @@ pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }
 
+/// Start the application, or run the `trunk review` subcommand and exit.
+///
+/// # Panics
+///
+/// Panics when the Tauri runtime cannot start.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
@@ -120,6 +125,11 @@ pub fn run() {
 /// The two managed states it takes as parameters are the ones a test host
 /// overrides — `Builder::manage` panics on a duplicate type, so they cannot be
 /// added afterwards.
+///
+/// # Panics
+///
+/// Panics when a managed state of the same type is already registered, or when
+/// a plugin fails to initialize.
 pub fn configure<R: tauri::Runtime>(
     builder: tauri::Builder<R>,
     watcher: WatcherState,

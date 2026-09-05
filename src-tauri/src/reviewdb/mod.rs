@@ -230,6 +230,9 @@ impl Store {
                 .map_err(sqlite_error)?;
         }
         tx.commit().map_err(sqlite_error)?;
+        // The ring needs no connection, and holding the lock through it would
+        // block the next writer on a syscall that is not its business.
+        drop(conn);
 
         // Ring only after the commit is durable: a subscriber woken early
         // would read the pre-commit revision and swallow the ring.
@@ -248,6 +251,10 @@ impl Store {
     ///
     /// Returns whatever `f` returns, and `store_newer` when the store's schema
     /// is newer than this build.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the store's connection lock is poisoned.
     pub fn read<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, TrunkError>,

@@ -244,6 +244,13 @@ fn open_lane(
     }
 }
 
+/// Assign every commit a column, a colour and its edges.
+///
+/// # Panics
+///
+/// Panics when the parent map holds a cycle. The walk is bounded by the map's
+/// own size, so a chain longer than that cannot be history and is a bug in
+/// whatever built the input rather than a shape to render.
 #[must_use]
 pub fn assign_lanes(input: &PlacementInput) -> Layout {
     // active_lanes[col] = Some((oid, dashed)) → col is tracking that oid's chain

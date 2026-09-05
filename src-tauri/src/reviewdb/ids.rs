@@ -57,6 +57,11 @@ impl From<ResolveError> for TrunkError {
 /// A fresh random id. Sampled from the OS, not a seeded PRNG: ids are addresses
 /// a user types, and a predictable stream would collide across processes.
 #[must_use]
+/// A fresh random id.
+///
+/// # Panics
+///
+/// Panics when the operating system's random source is unavailable.
 pub fn mint() -> String {
     let mut bytes = [0u8; ID_LEN];
     getrandom::fill(&mut bytes).expect("the OS random source must be available");
@@ -123,6 +128,10 @@ pub fn mint_unique_with(
 /// Returns `NotFound` when nothing matches or `raw` holds a character a
 /// minted id cannot, `Ambiguous` with the candidates when the prefix matches
 /// more than one, and `Store` when the query fails.
+///
+/// # Panics
+///
+/// Panics when the store's lock is poisoned.
 pub fn resolve_prefix(store: &Store, kind: IdKind, raw: &str) -> Result<String, ResolveError> {
     let needle = normalize(raw);
     // The needle reaches `LIKE ?1 || '%'`, where `%` and `_` are wildcards. A

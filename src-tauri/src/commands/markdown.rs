@@ -2637,6 +2637,10 @@ fn parse_asset_uri(uri: &str) -> Result<(String, RevSpec, String), TrunkError> {
 ///
 /// Returns `bad_uri` when the URL does not parse, `not_open` when it names no
 /// open repository, and whatever reading the file at that revision returns.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 pub fn resolve_trunk_asset<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     uri: &str,

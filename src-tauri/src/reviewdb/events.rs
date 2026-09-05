@@ -76,6 +76,10 @@ impl StoreEvents {
     /// at subscribe or by announcing its way up to it. A commit at or below
     /// this revision needs no event; one above it has been lost. That is what
     /// separates "nothing to announce" from "the startup window dropped it".
+    ///
+    /// # Panics
+    ///
+    /// Panics when the revision lock is poisoned.
     #[cfg(feature = "test-util")]
     #[must_use]
     pub fn baseline(&self) -> Option<i64> {
@@ -346,11 +350,14 @@ fn announce_if_moved(
 
     let revision = super::revision(conn).ok();
     let mut last = last_revision.lock().unwrap();
-    if revision != *last {
+    let moved = revision != *last;
+    if moved {
         *last = revision;
-        if let Some(revision) = revision {
-            let _ = sender.send(StoreEvent::Changed { revision });
-        }
+    }
+    drop(last);
+
+    if moved && let Some(revision) = revision {
+        let _ = sender.send(StoreEvent::Changed { revision });
     }
 
     true

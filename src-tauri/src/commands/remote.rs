@@ -653,8 +653,8 @@ pub async fn delete_remote_branch<R: Runtime>(
 /// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn cancel_remote_op(path: String, running: State<'_, RunningOp>) -> Result<(), String> {
-    let mut guard = running.0.lock().unwrap();
-    if let Some(pid) = guard.finish(&path) {
+    let running = running.0.lock().unwrap().finish(&path);
+    if let Some(pid) = running {
         kill_process(pid);
     }
     Ok(())

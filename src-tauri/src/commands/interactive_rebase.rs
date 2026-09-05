@@ -139,6 +139,10 @@ pub enum RebaseStartResult {
 /// Returns `not_open` when `path` names no open repository, `io_error` when the todo file
 /// will not write, and `rebase_error` carrying git's own message when `git`
 /// will not run or the rebase fails.
+///
+/// # Panics
+///
+/// Panics when the session directory's path is not valid UTF-8.
 pub fn start_interactive_rebase_blocking(
     path: &str,
     base_oid: Option<&str>,

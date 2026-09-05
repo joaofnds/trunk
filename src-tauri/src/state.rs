@@ -204,14 +204,38 @@ impl GraphCache {
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
 pub struct CommitCache(pub Mutex<GraphCache>);
 
+/// The diff stat computed for each commit, per repository.
+///
+/// A commit's diff never changes, so an entry is never invalidated, only
+/// dropped wholesale when its repository closes. Filled lazily by the Diff
+/// column and only while that column is visible.
+#[derive(Debug, Default)]
+pub struct StatsCache(HashMap<String, HashMap<String, crate::git::types::DiffStat>>);
+
+impl StatsCache {
+    /// The stat held for `oid` in `path`, if one has been computed.
+    #[must_use]
+    pub fn get(&self, path: &str, oid: &str) -> Option<&crate::git::types::DiffStat> {
+        self.0.get(path)?.get(oid)
+    }
+
+    /// Store every stat in `stats` against `path`, keeping what is already there.
+    pub fn extend(
+        &mut self,
+        path: String,
+        stats: impl IntoIterator<Item = (String, crate::git::types::DiffStat)>,
+    ) {
+        self.0.entry(path).or_default().extend(stats);
+    }
+
+    /// Drop every stat held for `path`.
+    pub fn forget(&mut self, path: &str) {
+        self.0.remove(path);
+    }
+}
+
 // Lazy per-commit diff-stats for the graph's Diff column.
-// Outer key: repo path · inner key: commit oid · value: immutable per-oid stat.
-// A commit's diff never changes, so entries are never invalidated — only cleared
-// wholesale on close_repo. Populated lazily by get_commit_stats, gated on the
-// column being visible.
-pub struct CommitStatsCache(
-    pub Mutex<HashMap<String, HashMap<String, crate::git::types::DiffStat>>>,
-);
+pub struct CommitStatsCache(pub Mutex<StatsCache>);
 
 /// Whether the application repositions the macOS traffic-light buttons.
 ///
@@ -275,6 +299,10 @@ impl SweptRepos {
     }
 
     /// True the first time it is asked about a repo, false forever after.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
     #[must_use]
     pub fn claim(&self, canonical: &Path) -> bool {
         self.0.lock().unwrap().insert(canonical.to_path_buf())
@@ -294,6 +322,11 @@ impl SweptRepos {
 pub struct RefVisibilityState(Arc<Mutex<HashMap<String, crate::git::graph_input::RefVisibility>>>);
 
 impl RefVisibilityState {
+    /// The refs `path` has hidden. A repository with none gets the empty set.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
     #[must_use]
     pub fn get(&self, path: &str) -> crate::git::graph_input::RefVisibility {
         self.0
@@ -304,10 +337,20 @@ impl RefVisibilityState {
             .unwrap_or_default()
     }
 
+    /// Record the refs `path` has hidden, replacing any earlier set.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
     pub fn set(&self, path: String, visibility: crate::git::graph_input::RefVisibility) {
         self.0.lock().unwrap().insert(path, visibility);
     }
 
+    /// Drop what `path` had hidden.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
     pub fn forget(&self, path: &str) {
         self.0.lock().unwrap().remove(path);
     }

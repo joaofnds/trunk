@@ -68,7 +68,7 @@ pub async fn close_repo(
 ) -> Result<(), String> {
     state.forget(&path);
     cache.0.lock().unwrap().forget(&path);
-    stats.0.lock().unwrap().remove(&path);
+    stats.0.lock().unwrap().forget(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     Ok(())
@@ -103,7 +103,7 @@ pub async fn force_close_repo(
     // Then clean up all other state (same as close_repo)
     state.forget(&path);
     cache.0.lock().unwrap().forget(&path);
-    stats.0.lock().unwrap().remove(&path);
+    stats.0.lock().unwrap().forget(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
     Ok(())

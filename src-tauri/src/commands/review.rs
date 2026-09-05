@@ -32,13 +32,15 @@ fn open_cached(
     slot: &Mutex<Option<Arc<Store>>>,
     data_dir: &Path,
 ) -> Result<Arc<Store>, TrunkError> {
+    // The lock is held across the open on purpose: releasing it to open and
+    // re-taking it to store would let two callers each open the store, and the
+    // loser's handle would be dropped after it had already been handed out.
     let mut slot = slot.lock().unwrap();
-    if let Some(store) = slot.as_ref() {
-        return Ok(Arc::clone(store));
-    }
-
-    let store = Arc::new(crate::reviewdb::open(data_dir)?);
-    *slot = Some(Arc::clone(&store));
+    let store = match slot.as_ref() {
+        Some(store) => Arc::clone(store),
+        None => Arc::clone(slot.insert(Arc::new(crate::reviewdb::open(data_dir)?))),
+    };
+    drop(slot);
 
     Ok(store)
 }
