@@ -46,6 +46,10 @@ perf-report over="":
 build:
     bun run tauri build
 
+# Rebuild every platform icon from one 1024px master; the icns stays under 1 MiB (scripts/icons.sh)
+icons master="src-tauri/icons/icon.png":
+    scripts/icons.sh {{ master }}
+
 # ── Checks ───────────────────────────────────────────
 
 # Static checks only — no compile, no tests (~3s)
