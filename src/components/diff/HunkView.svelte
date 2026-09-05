@@ -680,4 +680,24 @@ function lineColor(): string {
   .trailing-ws::before {
     color: var(--color-trailing-ws-fg);
   }
+
+  /* Text on a word patch is the primary diff color, whatever its syntax class
+     or marker role. The patch is strong enough that no syntax hue clears AAA
+     on it (see --color-diff-word-add-bg); last so it wins every equal-
+     specificity color rule above. */
+  .word-add,
+  .word-delete,
+  .word-add::before,
+  .word-delete::before {
+    color: var(--color-diff-text);
+  }
+  /* Trailing whitespace inside a word patch keeps the patch colour: its own red
+     tint on top would take the glyph below AAA on a selected line, and the
+     patch plus the marker glyph already say everything the tint said. */
+  .word-add.trailing-ws {
+    background-color: var(--color-diff-word-add-bg);
+  }
+  .word-delete.trailing-ws {
+    background-color: var(--color-diff-word-delete-bg);
+  }
 </style>

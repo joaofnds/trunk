@@ -175,20 +175,24 @@
 	--color-diff-add-bg-selected: var(--diff-add-hi);
 	--color-diff-delete-bg-selected: var(--diff-del-hi);
 
-	/* Word-level diff highlights (Phase 60) — kept low so the emphasis patch,
-	   which stacks on top of the line tint, leaves a dark-enough background for
-	   colored tokens. Same-hue cases (a green number on the green add patch, a
-	   green number on the red delete patch) need the extra headroom for both
-	   luminance and hue separation, not just the WCAG ratio. */
-	--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 16%, transparent);
-	--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 16%, transparent);
-	/* The rendered markdown pair. Source-view marks stack on an 11% row tint;
-	   a merged rendered block drops its wash by design, so the same 16% sits
-	   alone on the page and reads faint. These carry the mark unaided at 30%:
-	   text over them is 7.97:1 (add) and 8.26:1 (delete), still AAA, where the
-	   source-view stack at 30% would fall to AA. */
-	--color-md-word-add-bg: color-mix(in oklch, var(--ok) 30%, transparent);
-	--color-md-word-delete-bg: color-mix(in oklch, var(--err) 30%, transparent);
+	/* Word-level diff highlights. The patch stacks on the line tint, and the
+	   text on it is forced to --color-diff-text by the diff views, so the
+	   syntax hues never meet it. That is what lets it sit at 35%: the patch
+	   reads 2.0:1 against its line (1.3:1 at the old 16%), and fg-0 on it is
+	   8.29:1 (add) / 8.72:1 (delete), 7.32 / 7.73 on a selected line, all AAA.
+	   The dimmest syntax hue would be 3.9:1 here, which is why it is not
+	   allowed on the patch. */
+	--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 35%, transparent);
+	--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 35%, transparent);
+	/* The rendered markdown pair. A merged rendered block drops its wash by
+	   design, so these sit alone on the page. 38% puts them at the same step
+	   the source-view patch has against its line, 2.11:1 (add) / 2.02:1
+	   (delete) against --bg-0. Text on them is forced to --color-diff-text
+	   like the source view: 9.28 / 9.72, and 8.08 / 8.48 inside a code span,
+	   all AAA. The strike and underline rules are 4.47 / 4.34, above the 3:1
+	   non-text floor. */
+	--color-md-word-add-bg: color-mix(in oklch, var(--ok) 38%, transparent);
+	--color-md-word-delete-bg: color-mix(in oklch, var(--err) 38%, transparent);
 	--color-diff-phantom-bg: color-mix(in oklch, var(--fg-3) 5%, transparent);
 
 	/* Syntax highlighting (Phase 61) — VSCode-dark base, lifted for contrast.
@@ -631,9 +635,8 @@ li.md-removed::before {
    underneath, and so a deletion's strikethrough does not out-shout an insertion's
    underline. Weight is left to the browser: a pinned thickness read heavy across
    the long marked runs a prose edit produces, and the hairline tracks font size
-   and zoom. Verified with scripts/contrast/contrast.mjs over --bg-0: body text on
-   the 30% tints is 7.97:1 (add) and 8.26:1 (delete), both AAA; the rules, non-text
-   indicators at a 3:1 floor, are 5.53:1 and 5.32:1. */
+   and zoom. The numbers are on the --color-md-word-*-bg tokens and checked by
+   scripts/contrast/re-audit-verify.mjs. */
 .md-word-delete {
 	background: var(--color-md-word-delete-bg);
 	text-decoration: line-through;
@@ -645,10 +648,16 @@ li.md-removed::before {
 	text-decoration-color: var(--ok);
 	text-underline-offset: 3px;
 }
-/* Override .markdown-body del's muted color so a struck diff word stays full-
-   brightness and AAA-legible on the red tint (authored strikethrough stays muted). */
-.markdown-body del.md-word-delete {
-	color: var(--color-text);
+/* Text on a mark is the primary diff color, whatever it is: body text, a link,
+   a code span, .markdown-body del's muted strikethrough. The same rule the
+   source views apply to a word patch, for the same reason: the patch is strong
+   enough that no other hue in the theme clears AAA on it. Descendants too, so
+   a marked link does not keep its accent. */
+.markdown-body .md-word-delete,
+.markdown-body .md-word-add,
+.markdown-body .md-word-delete *,
+.markdown-body .md-word-add * {
+	color: var(--color-diff-text);
 }
 /* Screen-reader cue: without it, a merged paragraph reads as nonsense prose ("the
    quick slow brown fox") with no del/ins signal. Prefix each diff run with a

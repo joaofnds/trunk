@@ -254,26 +254,41 @@ describe("rendered markdown word marks", () => {
 		expect(deleteRule).not.toMatch(/text-decoration-thickness/);
 	});
 
-	it("keeps the rendered word tints at an opacity body text clears AAA over", () => {
-		/* 30% measures 7.97:1 / 8.26:1. Going much past it drops below 7:1: at
-		   40% the add tint is 6.10:1, AA only. */
+	it("keeps the rendered word marks at the step the source patch has against its line", () => {
+		/* A rendered mark sits alone on the page, a source patch on an 11% row
+		   tint. 38% here and 35% there both land at about 2:1 against what they
+		   sit on (2.11 / 2.02 and 2.08 / 2.00), so a changed word reads the same
+		   in both views. The rendered pair exists so lifting one does not move
+		   the other. Numbers: scripts/contrast/re-audit-verify.mjs. */
 		expect(css).toContain(
-			"--color-md-word-add-bg: color-mix(in oklch, var(--ok) 30%, transparent)",
+			"--color-md-word-add-bg: color-mix(in oklch, var(--ok) 38%, transparent)",
 		);
 		expect(css).toContain(
-			"--color-md-word-delete-bg: color-mix(in oklch, var(--err) 30%, transparent)",
+			"--color-md-word-delete-bg: color-mix(in oklch, var(--err) 38%, transparent)",
+		);
+		expect(css).toContain(
+			"--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 35%, transparent)",
+		);
+		expect(css).toContain(
+			"--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 35%, transparent)",
 		);
 	});
 
-	it("leaves the source-view word tints alone, where they stack on a row tint", () => {
-		/* The same 30% under a source-view row tint measures 6.49:1 — AA, not the
-		   AAA that view holds. The rendered pair exists so lifting one does not
-		   move the other. */
-		expect(css).toContain(
-			"--color-diff-word-add-bg: color-mix(in oklch, var(--ok) 16%, transparent)",
-		);
-		expect(css).toContain(
-			"--color-diff-word-delete-bg: color-mix(in oklch, var(--err) 16%, transparent)",
-		);
+	it("draws everything on a rendered mark in the primary diff color", () => {
+		/* At 38% no other hue in the theme clears AAA on the mark: body text is
+		   6.98:1, a link's accent 4.56:1. The primary color is 9.28 / 9.72. The
+		   rule reaches descendants so a marked link or code span does not keep
+		   its own color, and comes after .markdown-body's link, code, del and
+		   syntax rules so it wins the tie on specificity. */
+		const rule = css.match(
+			/\.markdown-body \.md-word-delete,\s*\.markdown-body \.md-word-add,\s*\.markdown-body \.md-word-delete \*,\s*\.markdown-body \.md-word-add \*\s*\{([^}]*)\}/,
+		)?.[1];
+		expect(rule).toBeDefined();
+		expect(rule).toMatch(/color:\s*var\(--color-diff-text\)/);
+		const linkRule = css.indexOf(".markdown-body a {");
+		const synRule = css.indexOf(".markdown-body .syn-keyword {");
+		const markRule = css.indexOf(".markdown-body .md-word-delete,");
+		expect(markRule).toBeGreaterThan(linkRule);
+		expect(markRule).toBeGreaterThan(synRule);
 	});
 });

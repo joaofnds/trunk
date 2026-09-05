@@ -27,6 +27,7 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 | [decisions/2026-09-01-how-a-renamed-file-reads-on-one-row.md](decisions/2026-09-01-how-a-renamed-file-reads-on-one-row.md) | Why a renamed file row names both paths in full rather than shortening the shared directory: the two shortened forms that were tried and what was wrong with each. TRUNK-88 holds the research for a future attempt. Read before changing how a renamed row is written. |
 | [decisions/2026-09-02-fixtures-built-by-libgit2.md](decisions/2026-09-02-fixtures-built-by-libgit2.md) | Why the fixture corpus is built by git2 inside trunk rather than by shell generators in a sibling repository, the byte rules that make git2's objects match the git binary's (message newlines, the hand-rolled stash and its reflog, git's `MERGE_MSG`, the spelled-out bare clone, the remote HEAD on first fetch), the isolation finding (libgit2 ignores `GIT_CONFIG_GLOBAL`; the search paths are blanked), the accepted differences (`AUTO_MERGE`, `ORIG_HEAD` after a reset, HEAD's reflog text), and the risk that a shape only the CLI produces can no longer appear. |
 | [decisions/2026-09-02-no-pre-commit-gate.md](decisions/2026-09-02-no-pre-commit-gate.md) | Why nothing prevents a commit that fails `just check`: no git hook, no new CI job. The existing CI workflow already runs on push to `main` and its `check-parity` job keeps it mirroring the recipe list, so a second gate would be redundant; a hook running the full gate invites `--no-verify`, which hides the control rather than enforcing it. Records what this accepts — a red `main` is detected at push, not at commit — and what would reopen it. |
+| [decisions/2026-09-05-text-on-a-word-patch-is-the-primary-color.md](decisions/2026-09-05-text-on-a-word-patch-is-the-primary-color.md) | Why a changed word sits on a strong patch (2:1 against its line) and is drawn in the primary text color rather than its syntax hue: no patch strength keeps the dim hues at AAA, and the faint patch that kept them was the defect. Numbers for the source views and the rendered markdown marks, what a changed keyword gives up, and the `just contrast` gate that holds it. Read before touching a diff tint or a word-mark token. |
 | [decisions/2026-09-02-redo-checks-position-and-repository.md](decisions/2026-09-02-redo-checks-position-and-repository.md) | Why redo compares HEAD's oid and the repository path instead of clearing the redo stack on named events: a missed event silently reopens the bug, and two clones of one repository share every oid, so position alone cannot tell them apart either. Both checks run in the Svelte toolbar and, authoritatively, in `redo_commit_inner` itself. Names what the fix does not cover: nothing confirms the subject/body actually came from a prior undo. Read before changing undo/redo or adding another caller of `redo_commit`. |
 
 ## Research
@@ -38,9 +39,10 @@ specs, plans, review reports — stays in the gitignored `.boris/` tree instead.
 
 ## Accessibility
 
-The theme targets WCAG AAA for text contrast. `scripts/contrast/re-audit-verify.mjs` is the
-gate: it parses the tokens live from `src/app.css` and exits 1 if any target is missed. Run it
-after touching a color token.
+The theme targets WCAG AAA for text contrast. `just contrast` is the gate: it runs
+`scripts/contrast/re-audit-verify.mjs`, which parses the tokens live from `src/app.css` and
+exits 1 if any target is missed. It is part of `just check`. Add a pair there when you add a
+color token.
 
 | Doc | What it covers |
 |-----|----------------|
