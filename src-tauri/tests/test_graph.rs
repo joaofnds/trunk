@@ -822,86 +822,97 @@ fn stash_stays_inline_when_worktree_clean() {
     );
 }
 
+/// The mid-rebase shape: HEAD detached at a1 (parent r2), reachable from no ref.
+///
+/// Remote chain base -> r1 -> r2 (`refs/remotes/origin/main` + tag), local main
+/// base -> m1 -> m2 -> m3 with newer timestamps so it sorts on top.
+///
+/// Stays repository-built rather than moving to a capture: the "Two kinds of
+/// test" rule lists this test under set (b), and migrating it reaches
+/// `just graph-capture`.
+fn build_detached_rebase_repo() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("user.name", "T").unwrap();
+    cfg.set_str("user.email", "t@t.com").unwrap();
+    drop(cfg);
+    let remote_ref = "refs/remotes/origin/main";
+    let base = raw_commit(&repo, &sig_at(1000), remote_ref, "base", "b.txt", "b", &[]);
+    let base_c = repo.find_commit(base).unwrap();
+    let r1 = raw_commit(
+        &repo,
+        &sig_at(2000),
+        remote_ref,
+        "r1",
+        "r1.txt",
+        "r1",
+        &[&base_c],
+    );
+    let r1_c = repo.find_commit(r1).unwrap();
+    let r2 = raw_commit(
+        &repo,
+        &sig_at(3000),
+        remote_ref,
+        "r2",
+        "r2.txt",
+        "r2",
+        &[&r1_c],
+    );
+    let r2_c = repo.find_commit(r2).unwrap();
+    repo.tag_lightweight("v1", r2_c.as_object(), false).unwrap();
+
+    let m1 = raw_commit(
+        &repo,
+        &sig_at(4000),
+        "refs/heads/main",
+        "m1",
+        "m1.txt",
+        "m1",
+        &[&base_c],
+    );
+    let m1_c = repo.find_commit(m1).unwrap();
+    let m2 = raw_commit(
+        &repo,
+        &sig_at(5000),
+        "refs/heads/main",
+        "m2",
+        "m2.txt",
+        "m2",
+        &[&m1_c],
+    );
+    let m2_c = repo.find_commit(m2).unwrap();
+    let _m3 = raw_commit(
+        &repo,
+        &sig_at(6000),
+        "refs/heads/main",
+        "m3",
+        "m3.txt",
+        "m3",
+        &[&m2_c],
+    );
+
+    // a1: applied rebase commit on r2, reachable only from detached HEAD
+    std::fs::write(dir.path().join("a1.txt"), "a1").unwrap();
+    let mut idx = repo.index().unwrap();
+    idx.add_path(std::path::Path::new("a1.txt")).unwrap();
+    idx.write().unwrap();
+    let tree_oid = idx.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    let sig = sig_at(7000);
+    let a1 = repo
+        .commit(None, &sig, &sig, "a1", &tree, &[&r2_c])
+        .unwrap();
+    repo.set_head_detached(a1).unwrap();
+
+    dir
+}
+
 #[test]
 fn detached_head_marks_first_parent_chain() {
-    // Mid-rebase shape: HEAD detached at a1 (parent r2), reachable from no ref.
-    // Remote chain base -> r1 -> r2 (refs/remotes/origin/main + tag), local
-    // main base -> m1 -> m2 -> m3 with newer timestamps so it sorts on top.
-    let dir = tempfile::tempdir().unwrap();
-    {
-        let repo = git2::Repository::init(dir.path()).unwrap();
-        let mut cfg = repo.config().unwrap();
-        cfg.set_str("user.name", "T").unwrap();
-        cfg.set_str("user.email", "t@t.com").unwrap();
-        drop(cfg);
-        let remote_ref = "refs/remotes/origin/main";
-        let base = raw_commit(&repo, &sig_at(1000), remote_ref, "base", "b.txt", "b", &[]);
-        let base_c = repo.find_commit(base).unwrap();
-        let r1 = raw_commit(
-            &repo,
-            &sig_at(2000),
-            remote_ref,
-            "r1",
-            "r1.txt",
-            "r1",
-            &[&base_c],
-        );
-        let r1_c = repo.find_commit(r1).unwrap();
-        let r2 = raw_commit(
-            &repo,
-            &sig_at(3000),
-            remote_ref,
-            "r2",
-            "r2.txt",
-            "r2",
-            &[&r1_c],
-        );
-        let r2_c = repo.find_commit(r2).unwrap();
-        repo.tag_lightweight("v1", r2_c.as_object(), false).unwrap();
-
-        let m1 = raw_commit(
-            &repo,
-            &sig_at(4000),
-            "refs/heads/main",
-            "m1",
-            "m1.txt",
-            "m1",
-            &[&base_c],
-        );
-        let m1_c = repo.find_commit(m1).unwrap();
-        let m2 = raw_commit(
-            &repo,
-            &sig_at(5000),
-            "refs/heads/main",
-            "m2",
-            "m2.txt",
-            "m2",
-            &[&m1_c],
-        );
-        let m2_c = repo.find_commit(m2).unwrap();
-        let _m3 = raw_commit(
-            &repo,
-            &sig_at(6000),
-            "refs/heads/main",
-            "m3",
-            "m3.txt",
-            "m3",
-            &[&m2_c],
-        );
-
-        // a1: applied rebase commit on r2, reachable only from detached HEAD
-        std::fs::write(dir.path().join("a1.txt"), "a1").unwrap();
-        let mut idx = repo.index().unwrap();
-        idx.add_path(std::path::Path::new("a1.txt")).unwrap();
-        idx.write().unwrap();
-        let tree_oid = idx.write_tree().unwrap();
-        let tree = repo.find_tree(tree_oid).unwrap();
-        let sig = sig_at(7000);
-        let a1 = repo
-            .commit(None, &sig, &sig, "a1", &tree, &[&r2_c])
-            .unwrap();
-        repo.set_head_detached(a1).unwrap();
-    }
+    let dir = build_detached_rebase_repo();
 
     let ctx = context_at(dir);
     let mut repo = ctx.repo();
