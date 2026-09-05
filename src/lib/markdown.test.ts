@@ -65,7 +65,13 @@ describe("renderMarkdownDiff", () => {
 		safeInvoke.mockResolvedValue({ rows: [], whitespaceOnly: false });
 		const before = beforeRev("unstaged", null);
 		const after = afterRev("unstaged", "");
-		renderMarkdownDiff("/repo", "README.md", null, before, after, true);
+		renderMarkdownDiff(
+			"/repo",
+			{ path: "README.md", oldPath: null },
+			before,
+			after,
+			true,
+		);
 		expect(safeInvoke).toHaveBeenCalledWith("render_markdown_diff", {
 			repoPath: "/repo",
 			filePath: "README.md",
@@ -82,8 +88,7 @@ describe("renderMarkdownDiff", () => {
 		const after = afterRev("commit", "c");
 		renderMarkdownDiff(
 			"/repo",
-			"docs/new.md",
-			"docs/old.md",
+			{ path: "docs/new.md", oldPath: "docs/old.md" },
 			before,
 			after,
 			false,

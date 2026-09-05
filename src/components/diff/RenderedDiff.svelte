@@ -137,8 +137,7 @@ $effect(() => {
 	// they re-project the held array, they must not re-fetch.
 	const my = ++seq;
 	const repo = repoPath;
-	const path = selectedPath;
-	const from = oldPath;
+	const file = { path: selectedPath, oldPath };
 	const kind = diffKind;
 	const oid = commitOid;
 	const parent = parentOid;
@@ -153,8 +152,7 @@ $effect(() => {
 	// stale pane on screen.
 	const args = [
 		repo,
-		path,
-		from,
+		file,
 		beforeRev(kind, parent),
 		afterRev(kind, oid),
 		ignoreWs,
