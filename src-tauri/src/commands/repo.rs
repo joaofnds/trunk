@@ -67,7 +67,7 @@ pub async fn close_repo(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
     state.forget(&path);
-    cache.0.lock().unwrap().remove(&path);
+    cache.0.lock().unwrap().forget(&path);
     stats.0.lock().unwrap().remove(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
@@ -96,13 +96,13 @@ pub async fn force_close_repo(
     // Cancel running remote op first (D-03)
     {
         let mut guard = running.0.lock().unwrap();
-        if let Some(pid) = guard.remove(&path) {
+        if let Some(pid) = guard.finish(&path) {
             kill_process(pid);
         }
     }
     // Then clean up all other state (same as close_repo)
     state.forget(&path);
-    cache.0.lock().unwrap().remove(&path);
+    cache.0.lock().unwrap().forget(&path);
     stats.0.lock().unwrap().remove(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);

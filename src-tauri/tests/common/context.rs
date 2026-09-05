@@ -1,14 +1,12 @@
-use std::collections::HashMap;
 use std::path::Path;
-use trunk_lib::git::graph_input::GraphSnapshot;
-use trunk_lib::state::OpenRepos;
+use trunk_lib::state::{GraphCache, OpenRepos};
 
 pub struct TestContext {
     _dir: tempfile::TempDir,
     _data_dir: tempfile::TempDir,
     pub(crate) path: String,
     pub(crate) state_map: OpenRepos,
-    pub(crate) cache_map: HashMap<String, GraphSnapshot>,
+    pub(crate) cache_map: GraphCache,
 }
 
 impl TestContext {
@@ -37,7 +35,7 @@ impl TestContext {
             _data_dir: data_dir,
             path,
             state_map,
-            cache_map: HashMap::new(),
+            cache_map: GraphCache::default(),
         }
     }
 
@@ -67,8 +65,8 @@ impl TestContext {
         &self.state_map
     }
 
-    /// Mutable borrow of `cache_map` (for branch _inner functions taking &mut `HashMap`)
-    pub const fn cache_map(&mut self) -> &mut HashMap<String, GraphSnapshot> {
+    /// Mutable borrow of the graph cache, for branch `_inner` functions.
+    pub const fn cache_map(&mut self) -> &mut GraphCache {
         &mut self.cache_map
     }
 
@@ -80,7 +78,7 @@ impl TestContext {
             _data_dir: data_dir,
             path,
             state_map,
-            cache_map: HashMap::new(),
+            cache_map: GraphCache::default(),
         }
     }
 }

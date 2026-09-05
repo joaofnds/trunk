@@ -158,10 +158,11 @@ pub fn reclaimable(
 pub fn reconcile(
     conn: &Connection,
     repo_path: &Path,
-    refs: &HashSet<String>,
+    on_disk: &[String],
     now: i64,
 ) -> Result<(), TrunkError> {
     let key = repo_key(repo_path);
+    let refs: HashSet<&str> = on_disk.iter().map(String::as_str).collect();
 
     let mut stmt = conn
         .prepare("SELECT oid FROM snapshot_pins WHERE repo_path = ?1")
@@ -172,7 +173,7 @@ pub fn reconcile(
         .collect::<Result<HashSet<String>, _>>()
         .map_err(sqlite_error)?;
 
-    for oid in refs.difference(&recorded) {
+    for oid in refs.iter().filter(|oid| !recorded.contains(**oid)) {
         mark_minted(conn, repo_path, oid, now)?;
     }
 
@@ -181,7 +182,7 @@ pub fn reconcile(
     // the walk simply predates it, and dropping it would make the record lie
     // about a pin an in-flight submit is holding.
     let mut vanished = Vec::new();
-    for oid in recorded.difference(refs) {
+    for oid in recorded.iter().filter(|oid| !refs.contains(oid.as_str())) {
         if !minted_since(conn, repo_path, oid, now)? {
             vanished.push(oid.clone());
         }

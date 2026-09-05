@@ -373,3 +373,13 @@ resolves. The window is the command's own duration. Asking it for a repository i
 hold is the `not_open` error every command seam owes the frontend, pinned at each seam by
 `test_not_open_contract.rs`.
 
+**Graph cache** — the built commit graph held for each open repository. A rebuild writes a
+whole entry rather than mutating one, so a reader sees either the graph as it was or the
+graph as it now is, never a half-updated one. An operation that rebuilds several
+repositories' graphs builds them aside and absorbs them in one step, so a concurrent
+refresh of another repository is not rolled back.
+
+**Remote operation registry** — the fetch, pull or push running for each repository, by
+process id. It answers two questions with one entry: which process the cancel button
+signals, and whether a second remote operation may start on that repository at all.
+

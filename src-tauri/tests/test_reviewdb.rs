@@ -4033,7 +4033,7 @@ fn reconciliation_keeps_the_row_of_a_ref_minted_after_the_walk() {
         .write(|tx| reviewdb::pins::mark_minted(tx, &canonical, &unseen, 5_000))
         .unwrap();
 
-    let empty = std::collections::HashSet::new();
+    let empty: Vec<String> = Vec::new();
     store
         .write(|tx| reviewdb::pins::reconcile(tx, &canonical, &empty, 5_000))
         .unwrap();

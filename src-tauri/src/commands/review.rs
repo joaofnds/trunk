@@ -1277,8 +1277,7 @@ pub fn sweep_unanchored_pins(
 
     store.write_quiet(|tx| {
         let pinned = pinned_snapshot_oids(&repo)?;
-        let on_disk: std::collections::HashSet<String> =
-            pinned.iter().map(git2::Oid::to_string).collect();
+        let on_disk: Vec<String> = pinned.iter().map(git2::Oid::to_string).collect();
         pins::reconcile(tx, canonical, &on_disk, now)?;
 
         let anchored = threads::anchored_oids(tx, canonical)?;

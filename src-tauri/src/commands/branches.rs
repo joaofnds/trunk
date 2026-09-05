@@ -1,13 +1,11 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
 use crate::git::{
     graph,
     types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry},
 };
 use crate::shell_env;
-use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
 use git2::BranchType;
-use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Inner implementation of `list_refs` — separated for testability without Tauri state.
@@ -141,7 +139,7 @@ pub fn delete_branch_inner(
     path: &str,
     branch_name: &str,
     state_map: &OpenRepos,
-    cache_map: &mut HashMap<String, GraphSnapshot>,
+    cache_map: &mut GraphCache,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
@@ -183,7 +181,7 @@ pub fn rename_branch_inner(
     old_name: &str,
     new_name: &str,
     state_map: &OpenRepos,
-    cache_map: &mut HashMap<String, GraphSnapshot>,
+    cache_map: &mut GraphCache,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
@@ -261,16 +259,16 @@ pub async fn resolve_ref(
 /// refreshed while this operation was running.
 async fn rebuild_graph_cache<F>(cache: &CommitCache, op: F) -> Result<(), TrunkError>
 where
-    F: FnOnce(&mut HashMap<String, GraphSnapshot>) -> Result<(), TrunkError> + Send + 'static,
+    F: FnOnce(&mut GraphCache) -> Result<(), TrunkError> + Send + 'static,
 {
     let rebuilt = tauri::async_runtime::spawn_blocking(move || {
-        let mut rebuilt = HashMap::new();
+        let mut rebuilt = GraphCache::default();
         op(&mut rebuilt).map(|()| rebuilt)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
-    cache.0.lock().unwrap().extend(rebuilt);
+    cache.0.lock().unwrap().absorb(rebuilt);
     Ok(())
 }
 
@@ -299,7 +297,7 @@ pub fn checkout_branch_inner(
     path: &str,
     branch_name: &str,
     state_map: &OpenRepos,
-    cache_map: &mut HashMap<String, GraphSnapshot>,
+    cache_map: &mut GraphCache,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
@@ -368,7 +366,7 @@ pub fn fast_forward_to_inner(
     path: &str,
     target_oid: &str,
     state_map: &OpenRepos,
-    cache_map: &mut HashMap<String, GraphSnapshot>,
+    cache_map: &mut GraphCache,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
@@ -441,7 +439,7 @@ pub fn create_branch_inner(
     name: &str,
     from_oid: Option<&str>,
     state_map: &OpenRepos,
-    cache_map: &mut HashMap<String, GraphSnapshot>,
+    cache_map: &mut GraphCache,
     visibility: &crate::git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
@@ -603,6 +601,7 @@ pub async fn rename_branch<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::graph_input::GraphSnapshot;
     use std::sync::{Arc, Mutex};
 
     /// An empty graph tagged by the ref it hides, so the assertions can tell which
@@ -616,7 +615,7 @@ mod tests {
 
     #[test]
     fn another_repos_graph_refreshed_mid_operation_is_not_rolled_back() {
-        let cache = Arc::new(CommitCache(Mutex::new(HashMap::new())));
+        let cache = Arc::new(CommitCache(Mutex::new(GraphCache::default())));
         cache
             .0
             .lock()
@@ -636,9 +635,12 @@ mod tests {
         .unwrap();
 
         let cached = cache.0.lock().unwrap();
-        assert_eq!(cached["/repo/a"].visibility(), graph(1).visibility());
         assert_eq!(
-            cached["/repo/b"].visibility(),
+            cached.get("/repo/a").unwrap().visibility(),
+            graph(1).visibility()
+        );
+        assert_eq!(
+            cached.get("/repo/b").unwrap().visibility(),
             graph(9).visibility(),
             "/repo/b was reverted to the pre-operation snapshot"
         );
@@ -646,7 +648,7 @@ mod tests {
 
     #[test]
     fn a_failed_operation_leaves_the_cache_untouched() {
-        let cache = CommitCache(Mutex::new(HashMap::new()));
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
         cache
             .0
             .lock()
@@ -661,7 +663,10 @@ mod tests {
 
         assert_eq!(err.code, "boom");
         let cached = cache.0.lock().unwrap();
-        assert!(!cached.contains_key("/repo/a"));
-        assert_eq!(cached["/repo/b"].visibility(), graph(7).visibility());
+        assert!(!cached.holds("/repo/a"));
+        assert_eq!(
+            cached.get("/repo/b").unwrap().visibility(),
+            graph(7).visibility()
+        );
     }
 }

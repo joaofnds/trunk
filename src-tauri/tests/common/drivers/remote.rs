@@ -1,11 +1,10 @@
 use crate::common::context::TestContext;
-use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::test::MockRuntime;
 use trunk_lib::commands::remote;
 use trunk_lib::error::TrunkError;
 use trunk_lib::git::graph_input::GraphSnapshot;
-use trunk_lib::state::{CommitCache, RunningOp};
+use trunk_lib::state::{CommitCache, GraphCache, RemoteOps, RunningOp};
 
 /// Drives the remote commands against a real `git` subprocess and a real bare
 /// remote. Owns the Tauri state the commands write to, so a test can read the
@@ -22,8 +21,8 @@ impl TestContext {
         RemoteDriver {
             ctx: self,
             app: tauri::test::mock_app(),
-            cache: CommitCache(Mutex::new(HashMap::new())),
-            running: RunningOp(Mutex::new(HashMap::new())),
+            cache: CommitCache(Mutex::new(GraphCache::default())),
+            running: RunningOp(Mutex::new(RemoteOps::default())),
         }
     }
 }
@@ -67,7 +66,7 @@ impl RemoteDriver<'_> {
     /// Mark `path` as having a remote op in flight, as a live `git` child would. Lets a
     /// test observe the mutual-exclusion guard without a real process to signal.
     pub fn seed_running_op(&self, path: &str, pid: u32) {
-        self.running.0.lock().unwrap().insert(path.to_owned(), pid);
+        self.running.0.lock().unwrap().start(path.to_owned(), pid);
     }
 
     /// The graph the last successful command cached, as the UI would receive it.

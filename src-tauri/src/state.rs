@@ -111,12 +111,37 @@ impl RepoState {
     }
 }
 
+/// The remote operation running for each repository, by process id.
+///
+/// It serves two purposes at once: the cancel button needs the pid to signal,
+/// and the presence of an entry is what keeps a second remote operation off the
+/// same repository.
+#[derive(Debug, Default)]
+pub struct RemoteOps(HashMap<String, u32>);
+
+impl RemoteOps {
+    /// Whether a remote operation is already running for `path`.
+    #[must_use]
+    pub fn busy(&self, path: &str) -> bool {
+        self.0.contains_key(path)
+    }
+
+    /// Record `pid` as the operation running for `path`.
+    pub fn start(&mut self, path: String, pid: u32) {
+        self.0.insert(path, pid);
+    }
+
+    /// Forget the operation for `path`, answering the pid it was running under.
+    pub fn finish(&mut self, path: &str) -> Option<u32> {
+        self.0.remove(path)
+    }
+}
+
 /// Stores the PID of the currently running remote operation per repo.
 ///
-/// Key: repo path (String), Value: PID (u32).
 /// Used for: (a) cancel button kills the subprocess, (b) mutual exclusion prevents
 /// concurrent ops on the SAME repo.
-pub struct RunningOp(pub Mutex<HashMap<String, u32>>);
+pub struct RunningOp(pub Mutex<RemoteOps>);
 
 /// Terminate a process by PID. Uses SIGTERM on Unix and taskkill on Windows.
 ///
@@ -139,9 +164,45 @@ pub fn kill_process(pid: u32) {
     }
 }
 
+/// The cached graph for each open repository, keyed by the frontend's path.
+///
+/// A rebuild writes a whole entry rather than mutating one, so a reader either
+/// sees the graph as it was or the graph as it now is, never a half-updated one.
+#[derive(Clone, Debug, Default)]
+pub struct GraphCache(HashMap<String, crate::git::graph_input::GraphSnapshot>);
+
+impl GraphCache {
+    /// The cached graph for `path`, or `None` when nothing has been built yet.
+    #[must_use]
+    pub fn get(&self, path: &str) -> Option<&crate::git::graph_input::GraphSnapshot> {
+        self.0.get(path)
+    }
+
+    /// Store `snapshot` as the graph for `path`, replacing any earlier one.
+    pub fn insert(&mut self, path: String, snapshot: crate::git::graph_input::GraphSnapshot) {
+        self.0.insert(path, snapshot);
+    }
+
+    /// Whether a graph has been cached for `path`.
+    #[must_use]
+    pub fn holds(&self, path: &str) -> bool {
+        self.0.contains_key(path)
+    }
+
+    /// Drop the cached graph for `path`.
+    pub fn forget(&mut self, path: &str) {
+        self.0.remove(path);
+    }
+
+    /// Take every entry of `other`, replacing any entry of the same name here.
+    pub fn absorb(&mut self, other: Self) {
+        self.0.extend(other.0);
+    }
+}
+
 // Caches the full commit graph per open repo path.
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
-pub struct CommitCache(pub Mutex<HashMap<String, crate::git::graph_input::GraphSnapshot>>);
+pub struct CommitCache(pub Mutex<GraphCache>);
 
 // Lazy per-commit diff-stats for the graph's Diff column.
 // Outer key: repo path · inner key: commit oid · value: immutable per-oid stat.

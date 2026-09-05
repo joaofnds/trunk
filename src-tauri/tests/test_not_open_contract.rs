@@ -2,7 +2,6 @@
 //! they all owe the frontend the same `not_open` code. This suite pins the
 //! contract at each seam, where the frontend actually meets it.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -26,7 +25,9 @@ use trunk_lib::commands::operation_state::{
 use trunk_lib::commands::remote::{git_pull_inner, git_push_force_inner, git_push_inner};
 use trunk_lib::error::TrunkError;
 use trunk_lib::git::graph_input::RefVisibility;
-use trunk_lib::state::{CommitCache, OpenRepos, RefVisibilityState, RepoState};
+use trunk_lib::state::{
+    CommitCache, GraphCache, OpenRepos, RefVisibilityState, RemoteOps, RepoState,
+};
 
 const UNREGISTERED: &str = "/not/a/registered/repo";
 
@@ -75,17 +76,17 @@ not_open_contract! {
     reset_to_commit_reports_not_open_for_an_unregistered_repo =>
         |path, state| reset_to_commit_inner(path, "HEAD", "hard", state, &RefVisibility::default());
     fast_forward_to_reports_not_open_for_an_unregistered_repo =>
-        |path, state| fast_forward_to_inner(path, "HEAD", state, &mut HashMap::new(), &RefVisibility::default());
+        |path, state| fast_forward_to_inner(path, "HEAD", state, &mut GraphCache::default(), &RefVisibility::default());
     get_fork_point_reports_not_open_for_an_unregistered_repo =>
         |path, state| get_fork_point_inner(path, "main", state);
     delete_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| delete_branch_inner(path, "feature", state, &mut HashMap::new(), &RefVisibility::default());
+        |path, state| delete_branch_inner(path, "feature", state, &mut GraphCache::default(), &RefVisibility::default());
     rename_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rename_branch_inner(path, "feature", "renamed", state, &mut HashMap::new(), &RefVisibility::default());
+        |path, state| rename_branch_inner(path, "feature", "renamed", state, &mut GraphCache::default(), &RefVisibility::default());
     checkout_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| checkout_branch_inner(path, "feature", state, &mut HashMap::new(), &RefVisibility::default());
+        |path, state| checkout_branch_inner(path, "feature", state, &mut GraphCache::default(), &RefVisibility::default());
     create_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| create_branch_inner(path, "feature", None, state, &mut HashMap::new(), &RefVisibility::default());
+        |path, state| create_branch_inner(path, "feature", None, state, &mut GraphCache::default(), &RefVisibility::default());
     checkout_commit_reports_not_open_for_an_unregistered_repo =>
         |path, state| checkout_commit_inner(path, "HEAD", state, &RefVisibility::default());
     create_tag_reports_not_open_for_an_unregistered_repo =>
@@ -101,8 +102,8 @@ not_open_contract! {
 #[test]
 fn git_pull_reports_not_open_for_an_unregistered_repo() {
     let app = tauri::test::mock_app();
-    let cache = CommitCache(Mutex::new(HashMap::new()));
-    let running = Mutex::new(HashMap::new());
+    let cache = CommitCache(Mutex::new(GraphCache::default()));
+    let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_pull_inner(
         UNREGISTERED,
@@ -121,8 +122,8 @@ fn git_pull_reports_not_open_for_an_unregistered_repo() {
 #[test]
 fn git_push_reports_not_open_for_an_unregistered_repo() {
     let app = tauri::test::mock_app();
-    let cache = CommitCache(Mutex::new(HashMap::new()));
-    let running = Mutex::new(HashMap::new());
+    let cache = CommitCache(Mutex::new(GraphCache::default()));
+    let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_push_inner(
         UNREGISTERED,
@@ -140,8 +141,8 @@ fn git_push_reports_not_open_for_an_unregistered_repo() {
 #[test]
 fn git_push_force_reports_not_open_for_an_unregistered_repo() {
     let app = tauri::test::mock_app();
-    let cache = CommitCache(Mutex::new(HashMap::new()));
-    let running = Mutex::new(HashMap::new());
+    let cache = CommitCache(Mutex::new(GraphCache::default()));
+    let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_push_force_inner(
         UNREGISTERED,
@@ -166,7 +167,7 @@ fn git_push_force_reports_not_open_for_an_unregistered_repo() {
 fn a_command_wrapper_carries_not_open_through_its_json() {
     let app = tauri::test::mock_app();
     app.manage(RepoState(Mutex::new(OpenRepos::default())));
-    app.manage(CommitCache(Mutex::new(HashMap::new())));
+    app.manage(CommitCache(Mutex::new(GraphCache::default())));
     app.manage(RefVisibilityState::default());
 
     let json = tauri::async_runtime::block_on(refresh_commit_graph(

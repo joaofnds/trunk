@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -10,7 +9,7 @@ use crate::error::TrunkError;
 use crate::git::graph;
 use crate::git::graph_input::GraphSnapshot;
 use crate::shell_env;
-use crate::state::{CommitCache, OpenRepos, RepoState, RunningOp, kill_process};
+use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp, kill_process};
 
 /// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
 /// markers to these is what keeps a hook printing either phrase from turning every
@@ -69,12 +68,12 @@ async fn run_git_remote<R: Runtime>(
     cwd: &std::path::Path,
     app: &AppHandle<R>,
     repo_path: &str,
-    running: &Mutex<HashMap<String, u32>>,
+    running: &Mutex<RemoteOps>,
 ) -> Result<(), TrunkError> {
     // Check mutual exclusion (per-repo)
     {
         let guard = running.lock().unwrap();
-        if guard.contains_key(repo_path) {
+        if guard.busy(repo_path) {
             return Err(TrunkError::new(
                 "op_in_progress",
                 "A remote operation is already running for this repository",
@@ -96,7 +95,7 @@ async fn run_git_remote<R: Runtime>(
     // Store PID for cancel support (keyed by repo path)
     if let Some(pid) = child.id() {
         let mut guard = running.lock().unwrap();
-        guard.insert(repo_path.to_owned(), pid);
+        guard.start(repo_path.to_owned(), pid);
     }
 
     // Read stderr lines and emit progress events
@@ -134,7 +133,7 @@ async fn run_git_remote<R: Runtime>(
     // Clear RunningOp for this repo regardless of outcome
     {
         let mut guard = running.lock().unwrap();
-        guard.remove(repo_path);
+        guard.finish(repo_path);
     }
 
     if !status.success() {
@@ -345,7 +344,7 @@ pub async fn git_pull_inner<R: Runtime>(
     strategy: Option<&str>,
     state_map: &OpenRepos,
     cache: &CommitCache,
-    running: &Mutex<HashMap<String, u32>>,
+    running: &Mutex<RemoteOps>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
@@ -415,7 +414,7 @@ pub async fn git_push_inner<R: Runtime>(
     path: &str,
     state_map: &OpenRepos,
     cache: &CommitCache,
-    running: &Mutex<HashMap<String, u32>>,
+    running: &Mutex<RemoteOps>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
@@ -541,7 +540,7 @@ pub async fn git_push_force_inner<R: Runtime>(
     confirmed: ConfirmedPush<'_>,
     state_map: &OpenRepos,
     cache: &CommitCache,
-    running: &Mutex<HashMap<String, u32>>,
+    running: &Mutex<RemoteOps>,
     ref_visibility: &crate::state::RefVisibilityState,
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
@@ -655,7 +654,7 @@ pub async fn delete_remote_branch<R: Runtime>(
 #[tauri::command]
 pub async fn cancel_remote_op(path: String, running: State<'_, RunningOp>) -> Result<(), String> {
     let mut guard = running.0.lock().unwrap();
-    if let Some(pid) = guard.remove(&path) {
+    if let Some(pid) = guard.finish(&path) {
         kill_process(pid);
     }
     Ok(())

@@ -4,7 +4,7 @@ use crate::git::{
     graph,
     types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
 };
-use crate::state::{CommitCache, CommitStatsCache, OpenRepos, RepoState};
+use crate::state::{CommitCache, CommitStatsCache, GraphCache, OpenRepos, RepoState};
 use serde::Serialize;
 use std::collections::HashMap;
 use tauri::State;
@@ -404,7 +404,7 @@ pub async fn get_wip_diff_stats(
 pub fn search_commits_inner(
     path: &str,
     query: &str,
-    cache_map: &HashMap<String, GraphSnapshot>,
+    cache_map: &GraphCache,
 ) -> Result<Vec<SearchResult>, TrunkError> {
     let query = query.trim();
     if query.is_empty() {
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn a_toggle_does_not_overwrite_a_rebuild_that_landed_while_it_relaid_out() {
-        let cache = CommitCache(Mutex::new(HashMap::new()));
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
         let read = graph("pre-commit");
         cache
             .0
@@ -514,7 +514,7 @@ mod tests {
 
         let cached = cache.0.lock().unwrap();
         assert_eq!(
-            cached["/repo"].visibility(),
+            cached.get("/repo").unwrap().visibility(),
             fresher.visibility(),
             "the toggle overwrote a rebuild that landed after it read the cache"
         );
@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn a_toggle_writes_its_graph_when_nothing_landed_ahead_of_it() {
-        let cache = CommitCache(Mutex::new(HashMap::new()));
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
         let read = graph("pre-toggle");
         cache
             .0
@@ -534,6 +534,9 @@ mod tests {
         write_relaid_out_graph(&cache, "/repo".to_owned(), Some(&read), relaid_out.clone());
 
         let cached = cache.0.lock().unwrap();
-        assert_eq!(cached["/repo"].visibility(), relaid_out.visibility());
+        assert_eq!(
+            cached.get("/repo").unwrap().visibility(),
+            relaid_out.visibility()
+        );
     }
 }
