@@ -58,7 +58,7 @@ front: biome svelte-check vitest
 rust: fmt clippy clippy-shipped cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity
+check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity dev-conf-parity
 
 # Verify every file naming the rust version names the same one (milliseconds)
 toolchain-parity:
@@ -73,6 +73,22 @@ toolchain-parity:
             exit 1
         fi
     done
+
+# Verify the dev overlay's window equals the shipped one plus its one dev-only key (milliseconds)
+dev-conf-parity:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 - <<'EOF'
+    import json, sys
+    shipped = json.load(open("src-tauri/tauri.conf.json"))["app"]["windows"]
+    dev = json.load(open("tauri.dev.conf.json"))["app"]["windows"]
+    dev_only = {"acceptFirstMouse": True}
+    stripped = [{k: v for k, v in w.items() if k not in dev_only} for w in dev]
+    missing = [k for w in dev for k, v in dev_only.items() if w.get(k) != v]
+    if stripped != shipped or missing:
+        print("::error::tauri.dev.conf.json's windows must equal tauri.conf.json's plus acceptFirstMouse=true. The overlay replaces the array whole (RFC 7396), so a shipped window change not copied there is silently absent from `just dev-app`, and without acceptFirstMouse a session's background clicks never reach the webview.")
+        sys.exit(1)
+    EOF
 
 # Check Rust formatting
 fmt:

@@ -142,6 +142,23 @@ drive its own copy while the developer's stays untouched. It embeds the built
 frontend rather than pointing at Vite, so it needs no dev server and does not
 hot-reload: rebuild to see a change.
 
+Screenshots of the dev window work from the background as they are. Clicks
+need one more thing: WebKit drops a mouse event aimed at a window that is not
+key, so a background click is delivered and nothing happens. The overlay sets
+`acceptFirstMouse` on the window, which lets a click on an inactive window
+reach the webview, so clicks land without bringing the app forward and the
+developer keeps working in whatever is in front. The shipped app keeps the
+default, which is the GitKraken behaviour, so the setting lives only in the
+overlay. The click tool still activates the app for an instant and refuses
+while the developer is typing; wait a few seconds and retry rather than
+escalating to full-screen control.
+
+The overlay merges as an RFC 7396 patch, and a patch replaces an array whole:
+the dev config must carry the entire window object, not just the extra key.
+`just dev-conf-parity` fails the gate when the two windows differ by anything
+but that key, so a change to the shipped window that is not copied into the
+overlay cannot silently vanish from the dev build.
+
 Two things the recipe encodes, both of which cost a session an hour on
 2026-09-05:
 

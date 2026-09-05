@@ -1,3 +1,15 @@
 {
-	"identifier": "com.joaofnds.trunk.dev"
+	"identifier": "com.joaofnds.trunk.dev",
+	"app": {
+		"windows": [
+			{
+				"title": "",
+				"width": 800,
+				"height": 600,
+				"titleBarStyle": "Overlay",
+				"hiddenTitle": true,
+				"acceptFirstMouse": true
+			}
+		]
+	}
 }
