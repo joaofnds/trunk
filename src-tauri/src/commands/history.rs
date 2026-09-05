@@ -50,6 +50,13 @@ impl GraphResponse {
     }
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_commit_graph(
     path: String,
@@ -64,6 +71,13 @@ pub async fn get_commit_graph(
     Ok(GraphResponse::page(&graph_result.layout, offset))
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn refresh_commit_graph(
     path: String,
@@ -97,6 +111,13 @@ pub async fn refresh_commit_graph(
 /// The visibility is stored before the walk, so every later rebuild — a commit, a checkout,
 /// a stash, the file watcher — sees the same set without the frontend having to resend it.
 /// The frontend persists it to prefs in parallel with this call.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn set_ref_visibility(
     path: String,
@@ -259,6 +280,13 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
 /// computes only the uncached ones on a blocking thread — caching them
 /// immutably (a commit's diff never changes). Gated on the column being visible
 /// by the caller, so a hidden column does zero work.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_commit_stats(
     path: String,
@@ -322,6 +350,13 @@ pub async fn get_commit_stats(
 
 /// Uncached diff-stat for the synthetic WIP row. Recomputed on every refresh,
 /// gated on column visibility by the caller.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_wip_diff_stats(
     path: String,
@@ -392,6 +427,13 @@ pub fn search_commits_inner(
     Ok(results)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn search_commits(
     path: String,

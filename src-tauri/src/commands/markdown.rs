@@ -2241,6 +2241,13 @@ pub fn read_file_at_from_state(
     read_file_at_inner(&repo, file_path, rev)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn read_file_at(
     repo_path: String,
@@ -2302,6 +2309,13 @@ fn diff_cache_key(
     }
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn render_markdown_diff(
     repo_path: String,

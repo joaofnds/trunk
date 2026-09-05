@@ -172,6 +172,13 @@ async fn refresh_graph<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn git_fetch<R: Runtime>(
     path: String,
@@ -205,6 +212,13 @@ pub async fn git_fetch<R: Runtime>(
 /// Silent periodic fetch. Best-effort: skips when the repo is mid-operation
 /// (rebase/merge/cherry-pick/revert) or another remote op is already running,
 /// and swallows any error so the UI never surfaces a popup or toast.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn git_fetch_background<R: Runtime>(
     path: String,
@@ -255,6 +269,13 @@ pub fn get_push_target_inner(path: &str, state_map: &OpenRepos) -> Result<PushTa
     resolve_push_target(&repo)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_push_target(
     path: String,
@@ -267,6 +288,13 @@ pub async fn get_push_target(
         .map_err(|e: TrunkError| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn git_pull<R: Runtime>(
     path: String,
@@ -332,6 +360,13 @@ pub async fn git_pull_inner<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn git_push<R: Runtime>(
     path: String,
@@ -423,6 +458,13 @@ pub struct ConfirmedPush<'a> {
 // The three leading arguments are the command's wire contract with the frontend, and the rest
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
 #[allow(clippy::too_many_arguments)]
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn git_push_force<R: Runtime>(
     path: String,
@@ -511,6 +553,13 @@ pub async fn git_push_force_inner<R: Runtime>(
     refresh_graph(path, path_buf, cache, ref_visibility, app).await
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn delete_remote_branch<R: Runtime>(
     path: String,
@@ -553,6 +602,13 @@ pub async fn delete_remote_branch<R: Runtime>(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn cancel_remote_op(path: String, running: State<'_, RunningOp>) -> Result<(), String> {
     let mut guard = running.0.lock().unwrap();

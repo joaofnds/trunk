@@ -903,6 +903,13 @@ pub fn get_commit_detail_inner(
     })
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn diff_unstaged(
     path: String,
@@ -919,6 +926,13 @@ pub async fn diff_unstaged(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn diff_staged(
     path: String,
@@ -935,6 +949,13 @@ pub async fn diff_staged(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn list_commit_files(
     path: String,
@@ -948,6 +969,13 @@ pub async fn list_commit_files(
         .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn diff_commit_file(
     path: String,
@@ -965,6 +993,13 @@ pub async fn diff_commit_file(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn list_compare_files(
     path: String,
@@ -981,6 +1016,13 @@ pub async fn list_compare_files(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn diff_compare_file(
     path: String,
@@ -1006,6 +1048,13 @@ pub async fn diff_compare_file(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn compare_stat(
     path: String,
@@ -1022,6 +1071,13 @@ pub async fn compare_stat(
     .map_err(|e| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_commit_detail(
     path: String,

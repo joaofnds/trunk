@@ -265,6 +265,13 @@ fn message_bindings(todo_items: &[RebaseTodoAction]) -> Vec<(String, String)> {
     bindings
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_rebase_todo(
     path: String,
@@ -282,6 +289,13 @@ pub async fn get_rebase_todo(
     .map_err(|e: TrunkError| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_fork_point(
     path: String,
@@ -310,6 +324,13 @@ fn new_session_dir() -> Result<tempfile::TempDir, TrunkError> {
         .map_err(|e| TrunkError::new("io_error", e.to_string()))
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn start_interactive_rebase<R: Runtime>(
     path: String,

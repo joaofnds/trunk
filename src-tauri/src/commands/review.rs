@@ -347,6 +347,13 @@ pub fn list_threads_inner(
     })
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn add_thread<R: Runtime>(
     path: String,
@@ -378,6 +385,13 @@ pub async fn add_thread<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn add_commit_thread<R: Runtime>(
     path: String,
@@ -408,6 +422,13 @@ pub async fn add_commit_thread<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn edit_thread<R: Runtime>(
     path: String,
@@ -430,6 +451,13 @@ pub async fn edit_thread<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn delete_thread<R: Runtime>(
     path: String,
@@ -469,6 +497,13 @@ pub fn add_reply_inner(
     })
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn add_reply<R: Runtime>(
     path: String,
@@ -496,6 +531,13 @@ pub async fn add_reply<R: Runtime>(
 /// own), while this command adds no logic beyond the write — `replies::edit`
 /// already does the full refusal check and is exercised directly in
 /// `test_reviewdb.rs`.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn edit_reply<R: Runtime>(
     path: String,
@@ -520,6 +562,13 @@ pub async fn edit_reply<R: Runtime>(
 
 /// No `_inner` seam here either, for the same reason as `edit_reply`:
 /// `replies::delete` carries the whole refusal check and is tested directly.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn delete_reply<R: Runtime>(
     path: String,
@@ -558,6 +607,13 @@ pub fn set_thread_state_inner(
     })
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn set_thread_state<R: Runtime>(
     path: String,
@@ -580,6 +636,13 @@ pub async fn set_thread_state<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn list_threads<R: Runtime>(
     path: String,
@@ -601,6 +664,13 @@ pub async fn list_threads<R: Runtime>(
 
 // ── Reviews ──────────────────────────────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn list_reviews<R: Runtime>(
     path: String,
@@ -613,6 +683,13 @@ pub async fn list_reviews<R: Runtime>(
     blocking_store(move || store.read(|conn| reviews::list(conn, &canonical))).await
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn create_review<R: Runtime>(
     path: String,
@@ -638,6 +715,13 @@ pub async fn create_review<R: Runtime>(
     Ok(id)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn get_active_review<R: Runtime>(
     path: String,
@@ -650,6 +734,13 @@ pub async fn get_active_review<R: Runtime>(
     blocking_store(move || store.read(|conn| reviews::active(conn, &canonical))).await
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn set_active_review<R: Runtime>(
     path: String,
@@ -667,6 +758,13 @@ pub async fn set_active_review<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn rename_review<R: Runtime>(
     path: String,
@@ -693,6 +791,13 @@ pub async fn rename_review<R: Runtime>(
 /// snapshot keepalive refs stay, and the active pointer stays on the published
 /// review. Pruning superseded refs is milestone 2's, deliberately paired with
 /// the renderer's excerpt-source flip.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn publish_review<R: Runtime>(
     path: String,
@@ -714,6 +819,13 @@ pub async fn publish_review<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn delete_review<R: Runtime>(
     path: String,
@@ -770,6 +882,13 @@ pub fn get_draft_inner(
     store.read(|conn| drafts::get(conn, canonical))
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn save_draft<R: Runtime>(
     path: String,
@@ -788,6 +907,13 @@ pub async fn save_draft<R: Runtime>(
     .await
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn delete_draft<R: Runtime>(
     path: String,
@@ -800,6 +926,13 @@ pub async fn delete_draft<R: Runtime>(
     blocking_store(move || store.write(|tx| drafts::delete(tx, &canonical))).await
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn get_draft<R: Runtime>(
     path: String,
@@ -814,6 +947,13 @@ pub async fn get_draft<R: Runtime>(
 
 // ── The active review's commit set ───────────────────────────────────────────
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn seed_review_range<R: Runtime>(
     path: String,
@@ -857,6 +997,13 @@ pub async fn seed_review_range<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn add_review_commit<R: Runtime>(
     path: String,
@@ -908,6 +1055,13 @@ fn commit_summary(repo: &git2::Repository, oid: &str) -> String {
         .unwrap_or_default()
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn remove_review_commit<R: Runtime>(
     path: String,
@@ -937,6 +1091,13 @@ pub async fn remove_review_commit<R: Runtime>(
 ///
 /// Dual path-keying: the commit set is read by CANONICAL key from the store; the
 /// graph order comes from `CommitCache` by RAW path.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn list_session_commits<R: Runtime>(
     path: String,
@@ -1102,6 +1263,13 @@ pub fn read_snapshots_inner(
     store.read(|conn| snapshots::get(conn, canonical))
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn ensure_review_snapshot<R: Runtime>(
     path: String,
@@ -1134,6 +1302,13 @@ pub async fn ensure_review_snapshot<R: Runtime>(
     Ok(oid)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn get_review_snapshots<R: Runtime>(
     path: String,
@@ -1192,6 +1367,13 @@ fn as_doc_threads(
 /// Eagerly resolve every thread's anchor against the live repo: one
 /// `CommentResolution` per thread so the panel shows orphan badges at load
 /// without a click. Read-only.
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn resolve_threads<R: Runtime>(
     path: String,
@@ -1302,6 +1484,13 @@ pub fn render_review_doc(
     Ok(crate::git::review::render(&input))
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn generate_review_doc<R: Runtime>(
     path: String,
@@ -1318,6 +1507,13 @@ pub async fn generate_review_doc<R: Runtime>(
 /// The canonical path the backend keys this repo's reviews by. The
 /// `reviews-changed` payload is that string, so the frontend filters on it
 /// without re-canonicalizing (it cannot call `std::fs::canonicalize`).
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository or review-store lock is poisoned.
 #[tauri::command]
 pub async fn canonical_repo_path(
     path: String,

@@ -201,6 +201,13 @@ pub fn rename_branch_inner(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn list_refs(path: String, state: State<'_, RepoState>) -> Result<RefsResponse, String> {
     let state_map = state.0.lock().unwrap().clone();
@@ -228,6 +235,13 @@ pub fn resolve_ref_inner(
     Ok(commit.id().to_string())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn resolve_ref(
     path: String,
@@ -311,6 +325,13 @@ pub fn checkout_branch_inner(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn checkout_branch<R: Runtime>(
     path: String,
@@ -372,6 +393,13 @@ pub fn fast_forward_to_inner(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn fast_forward_to<R: Runtime>(
     path: String,
@@ -465,6 +493,13 @@ pub fn create_branch_inner(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn create_branch<R: Runtime>(
     path: String,
@@ -497,6 +532,13 @@ pub async fn create_branch<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn delete_branch<R: Runtime>(
     path: String,
@@ -520,6 +562,13 @@ pub async fn delete_branch<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn rename_branch<R: Runtime>(
     path: String,

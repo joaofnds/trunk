@@ -394,6 +394,13 @@ pub fn rebase_branch_inner(
 
 // --- Tauri command wrappers ---
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_operation_state(
     path: String,
@@ -435,6 +442,13 @@ fn find_branch_color(
     None
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn merge_continue<R: Runtime>(
     path: String,
@@ -458,6 +472,13 @@ pub async fn merge_continue<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn merge_abort<R: Runtime>(
     path: String,
@@ -480,6 +501,13 @@ pub async fn merge_abort<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn rebase_continue<R: Runtime>(
     path: String,
@@ -503,6 +531,13 @@ pub async fn rebase_continue<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn rebase_skip<R: Runtime>(
     path: String,
@@ -525,6 +560,13 @@ pub async fn rebase_skip<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn rebase_abort<R: Runtime>(
     path: String,
@@ -547,6 +589,13 @@ pub async fn rebase_abort<R: Runtime>(
     Ok(())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn get_merge_message(
     path: String,
@@ -559,6 +608,13 @@ pub async fn get_merge_message(
         .map_err(|e: TrunkError| e.to_json())
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn merge_branch_begin<R: Runtime>(
     path: String,
@@ -591,6 +647,13 @@ pub async fn merge_branch_begin<R: Runtime>(
     Ok(result)
 }
 
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses.
+///
+/// # Panics
+///
+/// Panics when the open-repository lock is poisoned.
 #[tauri::command]
 pub async fn rebase_branch<R: Runtime>(
     path: String,
