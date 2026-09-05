@@ -60,6 +60,11 @@ pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns 
 
 /// Read the anchor columns back, given the index of `anchor_kind` and the six
 /// columns following it in the same order `to_columns` writes them.
+///
+/// # Errors
+///
+/// Returns `store` when the row's anchor columns do not describe an anchor
+/// this build knows, and the `SQLite` error when a column will not read.
 pub fn from_row(row: &Row, first: usize) -> Result<(Option<Anchor>, Option<String>), TrunkError> {
     let kind: String = row.get(first).map_err(super::sqlite_error)?;
     let commit_oid: Option<String> = row.get(first + 1).map_err(super::sqlite_error)?;

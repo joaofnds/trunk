@@ -158,6 +158,11 @@ static SUBSCRIBER_SEQ: AtomicU64 = AtomicU64::new(0);
 /// after the socket binds, so a commit can only be ordered before the
 /// baseline (already included) or after the bind (its ring is queued): no
 /// gap loses an event.
+///
+/// # Errors
+///
+/// Returns `io` when the store will not open or the ring directory cannot be
+/// created, and `watch` when the socket will not bind.
 pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
     let conn = Connection::open(data_dir.join(super::DB_FILE))
         .map_err(|e| TrunkError::new("io", e.to_string()))?;

@@ -20,6 +20,11 @@ pub struct Reply {
 /// Add a reply to a thread. Scoped by `repo_path`, same ownership subquery as
 /// `edit`/`delete`: a `thread_id` belonging to another repo is `not_found`,
 /// never a foreign-key error from an unscoped insert.
+///
+/// # Errors
+///
+/// Returns `not_found` when `thread_id` names no thread in `repo_path`, and
+/// the `SQLite` error when minting the id or the insert fails.
 pub fn add(
     conn: &Connection,
     repo_path: &Path,
@@ -60,6 +65,12 @@ pub fn add(
 /// Update a reply's text. Same refusal shape as `threads::edit`: agent-
 /// attributed text is not editable from the UI (`not_editable`), publication
 /// gates nothing here (criterion 4), and a missing id is `not_found`.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no reply in `repo_path`,
+/// `not_editable` when the reply is agent-authored, and the `SQLite` error
+/// when a query or the write fails.
 pub fn edit(
     conn: &Connection,
     repo_path: &Path,
@@ -99,6 +110,12 @@ pub fn edit(
 /// permanent, so a reply belonging to one refuses with `review_published`
 /// before anything is written — same read-then-check shape as
 /// `threads::delete`.
+///
+/// # Errors
+///
+/// Returns `review_published` when the reply's review is published, and the
+/// `SQLite` error when a query or the delete fails. A missing id is not an
+/// error.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
     let published: Option<bool> = conn
         .query_row(
@@ -128,6 +145,10 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
 /// ties within one second break on `rowid`, never `id`: ids are random, so a
 /// same-second pair would sort by a coin flip — permanently, since the order
 /// is deterministic once written.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn list_for_threads(
     conn: &Connection,
     thread_ids: &[String],

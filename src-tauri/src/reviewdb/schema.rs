@@ -166,6 +166,11 @@ DROP TABLE IF EXISTS pin_seq;
 /// the version is the only thing wrong: renumber it rather than refuse the
 /// store. `version_guard` would otherwise tell the user to restart, which never
 /// helps, and leave the app unusable against that store forever.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when reading the version, probing for the
+/// table, or restamping the version fails.
 pub fn accept_unreleased_v8(conn: &Connection) -> Result<(), TrunkError> {
     if user_version(conn)? != 8 {
         return Ok(());
@@ -192,6 +197,11 @@ pub fn accept_unreleased_v8(conn: &Connection) -> Result<(), TrunkError> {
     Ok(())
 }
 
+/// The schema version stamped on the store.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the pragma will not read.
 pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
     conn.pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(sqlite_error)
@@ -199,6 +209,11 @@ pub fn user_version(conn: &Connection) -> Result<i64, TrunkError> {
 
 /// Refuse a store whose schema this build does not know. Explicit, never silent,
 /// never destructive — the caller surfaces a restart prompt.
+///
+/// # Errors
+///
+/// Returns `store_newer` when the store's schema is newer than this build
+/// knows, and the `SQLite` error when the version will not read.
 pub fn version_guard(conn: &Connection) -> Result<(), TrunkError> {
     if user_version(conn)? > CURRENT_VERSION {
         return Err(TrunkError::new(
@@ -217,6 +232,11 @@ pub fn version_guard(conn: &Connection) -> Result<(), TrunkError> {
 /// version 0, the loser's `CREATE TABLE` fails "already exists", and — before
 /// `sqlite_error` learned to classify corruption — that error quarantined a
 /// perfectly healthy database.
+///
+/// # Errors
+///
+/// Returns `store_newer` when the store is newer than this build, and the
+/// `SQLite` error when a migration step or the transaction fails.
 pub fn migrate(conn: &Connection) -> Result<(), TrunkError> {
     version_guard(conn)?;
 

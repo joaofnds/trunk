@@ -83,12 +83,20 @@ pub fn normalize(raw: &str) -> String {
 }
 
 /// Mint an id that is free in `kind`'s table, regenerating on conflict.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn mint_unique(conn: &Connection, kind: IdKind) -> Result<String, TrunkError> {
     mint_unique_with(conn, kind, mint)
 }
 
 /// The seam `mint_unique` is built on: `next` supplies candidates so a test can
 /// force the conflict a random source reaches once in 32^8 tries.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn mint_unique_with(
     conn: &Connection,
     kind: IdKind,
@@ -109,6 +117,12 @@ pub fn mint_unique_with(
 
 /// git-style prefix addressing: an exact id wins outright, otherwise the prefix
 /// must match exactly one row.
+///
+/// # Errors
+///
+/// Returns `NotFound` when nothing matches or `raw` holds a character a
+/// minted id cannot, `Ambiguous` with the candidates when the prefix matches
+/// more than one, and `Store` when the query fails.
 pub fn resolve_prefix(store: &Store, kind: IdKind, raw: &str) -> Result<String, ResolveError> {
     let needle = normalize(raw);
     // The needle reaches `LIKE ?1 || '%'`, where `%` and `_` are wildcards. A

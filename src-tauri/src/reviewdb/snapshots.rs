@@ -43,6 +43,11 @@ impl RepoSnapshots {
     }
 }
 
+/// The repo's pinned snapshots. A repo with none gets the empty pair.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn get(conn: &Connection, repo_path: &Path) -> Result<RepoSnapshots, TrunkError> {
     let mut stmt = conn
         .prepare(
@@ -65,6 +70,10 @@ pub fn get(conn: &Connection, repo_path: &Path) -> Result<RepoSnapshots, TrunkEr
 }
 
 /// Point one of the repo's snapshot fields at `oid`, leaving the other alone.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn set(
     conn: &Connection,
     repo_path: &Path,

@@ -42,6 +42,11 @@ const SELECT: &str = "
 
 const ANCHOR_FIRST_COLUMN: usize = 7;
 
+/// Add a thread to a review and return its id.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when minting the id or inserting the row fails.
 pub fn insert(
     conn: &Connection,
     review_id: &str,
@@ -79,6 +84,12 @@ pub fn insert(
     Ok(id)
 }
 
+/// The review's threads, oldest first.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails, and the stored value when a
+/// row's state or channel is not one this build knows.
 pub fn list_for_review(conn: &Connection, review_id: &str) -> Result<Vec<Thread>, TrunkError> {
     // rowid, never id: ids are random, so two threads inside one second would
     // sort by a coin flip — permanently, since the order is deterministic.
@@ -97,6 +108,10 @@ pub fn list_for_review(conn: &Connection, review_id: &str) -> Result<Vec<Thread>
 /// query. Callers no longer hand-drain the reply map themselves — a call
 /// site that forgot `unwrap_or_default()` on a no-reply thread would panic
 /// or silently drop replies.
+///
+/// # Errors
+///
+/// Returns whatever reading the threads or their replies returns.
 pub fn list_with_replies(
     conn: &Connection,
     review_id: &str,
@@ -138,6 +153,10 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
 /// Scoped by repo because one database holds every repo: without the
 /// `repo_path` clause another repo's thread would keep this repo's pin alive
 /// on an oid collision.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn anchored_oids(conn: &Connection, repo_path: &Path) -> Result<HashSet<String>, TrunkError> {
     let mut stmt = conn
         .prepare(
@@ -157,6 +176,12 @@ pub fn anchored_oids(conn: &Connection, repo_path: &Path) -> Result<HashSet<Stri
 /// Move a thread's state, enforcing `ThreadState::transition` inside the same
 /// read-then-write pass. A missing id is `not_found`, matching `edit`'s
 /// convention: state changes target by id, never by list position.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no thread in `repo_path`,
+/// `illegal_transition` when `channel` may not make that move, and the
+/// `SQLite` error when a query or the write fails.
 pub fn set_state(
     conn: &Connection,
     repo_path: &Path,
@@ -198,6 +223,12 @@ pub fn set_state(
 /// agent-authored edit with `not_editable`, distinct from `not_found`, means
 /// an agent-authored id is never indistinguishable from a missing one. Edits
 /// target by id, never by list position.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no thread in `repo_path`,
+/// `not_editable` when the thread is agent-authored, and the `SQLite` error
+/// when a query or the write fails.
 pub fn edit(
     conn: &Connection,
     repo_path: &Path,
@@ -233,6 +264,11 @@ pub fn edit(
 /// (criterion 12): a published review's threads are permanent, and that check
 /// happens before anything is written, same read-then-check shape as `edit`'s
 /// channel refusal.
+///
+/// # Errors
+///
+/// Returns `review_published` when the thread's review is published, and the
+/// `SQLite` error when a query or the delete fails. A missing id is not an error.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
     let published: Option<bool> = conn
         .query_row(

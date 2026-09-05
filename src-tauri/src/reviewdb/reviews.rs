@@ -48,6 +48,10 @@ const SELECT: &str = "
            (SELECT COUNT(*) FROM threads t WHERE t.review_id = r.id)";
 
 /// Create a composing review for `repo_path` and return its id.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when minting the id or inserting the row fails.
 pub fn create(
     conn: &Connection,
     repo_path: &Path,
@@ -77,6 +81,11 @@ pub fn default_title(id: &str, now: i64) -> String {
     format!("Review {} · {}", iso_date(now), id)
 }
 
+/// Every review for `repo_path`, oldest first.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn list(conn: &Connection, repo_path: &Path) -> Result<Vec<Review>, TrunkError> {
     let sql = format!(
         "{SELECT}, {STATE_SQL} FROM reviews r WHERE r.repo_path = ?1 ORDER BY r.created_at, r.rowid"
@@ -91,6 +100,11 @@ pub fn list(conn: &Connection, repo_path: &Path) -> Result<Vec<Review>, TrunkErr
     Ok(rows)
 }
 
+/// The review with `id`, or `None` when no review has it.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn get(conn: &Connection, id: &str) -> Result<Option<Review>, TrunkError> {
     let sql = format!("{SELECT}, {STATE_SQL} FROM reviews r WHERE r.id = ?1");
     let mut stmt = conn.prepare(&sql).map_err(sqlite_error)?;
@@ -120,6 +134,11 @@ fn read_review(row: &rusqlite::Row) -> rusqlite::Result<Review> {
 }
 
 /// The repo's active review, if it has one.
+/// The id the repo currently points at, or `None` when it points at nothing.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn active(conn: &Connection, repo_path: &Path) -> Result<Option<String>, TrunkError> {
     let mut stmt = conn
         .prepare("SELECT review_id FROM active_review WHERE repo_path = ?1")
@@ -134,6 +153,11 @@ pub fn active(conn: &Connection, repo_path: &Path) -> Result<Option<String>, Tru
     }
 }
 
+/// Point the repo at `review_id` without checking that it belongs there.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn set_active(conn: &Connection, repo_path: &Path, review_id: &str) -> Result<(), TrunkError> {
     conn.execute(
         "INSERT INTO active_review (repo_path, review_id) VALUES (?1, ?2)
@@ -148,6 +172,12 @@ pub fn set_active(conn: &Connection, repo_path: &Path, review_id: &str) -> Resul
 /// The active review, creating a fresh composing one when the repo has none.
 /// This is the whole of the spec's auto-create-at-submit rule: it runs inside
 /// the submit transaction, never at composer open.
+/// The repo's active review, creating one when it points at nothing.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when reading the pointer, creating the review, or
+/// writing the pointer back fails.
 pub fn ensure_active(conn: &Connection, repo_path: &Path, now: i64) -> Result<String, TrunkError> {
     if let Some(id) = active(conn, repo_path)? {
         return Ok(id);
@@ -159,6 +189,12 @@ pub fn ensure_active(conn: &Connection, repo_path: &Path, now: i64) -> Result<St
     Ok(id)
 }
 
+/// Retitle a review.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no review in `repo_path`, and the
+/// `SQLite` error when the write fails.
 pub fn rename(
     conn: &Connection,
     repo_path: &Path,
@@ -205,6 +241,12 @@ fn belongs_to(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
 /// Set the `published` latch. Refuses a review with no threads, adopting the
 /// floor that gates doc generation today; publishing cannot be undone, so no
 /// unpublish function exists.
+///
+/// # Errors
+///
+/// Returns `not_found` when `id` names no review in `repo_path`, `no_threads`
+/// when the review has none, and the `SQLite` error when a query or the write
+/// fails.
 pub fn publish(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Result<(), TrunkError> {
     // Resolve the review BEFORE counting threads: COUNT over a missing id
     // returns 0, which would report "add a comment first" for a review that is
@@ -238,6 +280,11 @@ pub fn publish(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Resul
 /// Delete a review. `threads`, `review_commits` and `active_review` all cascade,
 /// which is what `PRAGMA foreign_keys = ON` buys — `SQLite` defaults it off, and a
 /// cascade that silently does not fire leaves a dangling pointer row.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the delete fails. Deleting a review that is
+/// not there is not an error.
 pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), TrunkError> {
     conn.execute(
         "DELETE FROM reviews WHERE id = ?1 AND repo_path = ?2",
@@ -249,6 +296,11 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
 }
 
 /// Point the repo at `review_id`, refusing an id that belongs to another repo.
+///
+/// # Errors
+///
+/// Returns `not_found` when `review_id` belongs to another repo or to none, and
+/// the `SQLite` error when a query or the write fails.
 pub fn set_active_checked(
     conn: &Connection,
     repo_path: &Path,

@@ -24,6 +24,10 @@ pub struct ReviewCommit {
 /// and leaving anything already there untouched — including its stored
 /// subject. One statement per member, one transaction from the caller — never
 /// decomposed into N separate gestures.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn seed(
     conn: &Connection,
     review_id: &str,
@@ -48,6 +52,10 @@ pub fn seed(
 }
 
 /// Add one commit if absent. Idempotent.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn add(conn: &Connection, review_id: &str, oid: &str, subject: &str) -> Result<(), TrunkError> {
     seed(
         conn,
@@ -60,6 +68,10 @@ pub fn add(conn: &Connection, review_id: &str, oid: &str, subject: &str) -> Resu
 }
 
 /// Remove one commit. A miss is a no-op.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn remove(conn: &Connection, review_id: &str, oid: &str) -> Result<(), TrunkError> {
     conn.execute(
         "DELETE FROM review_commits WHERE review_id = ?1 AND oid = ?2",
@@ -70,6 +82,11 @@ pub fn remove(conn: &Connection, review_id: &str, oid: &str) -> Result<(), Trunk
     Ok(())
 }
 
+/// The review's commits, in the order they were added.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn list(conn: &Connection, review_id: &str) -> Result<Vec<ReviewCommit>, TrunkError> {
     let mut stmt = conn
         .prepare("SELECT oid, subject FROM review_commits WHERE review_id = ?1 ORDER BY position")

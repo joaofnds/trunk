@@ -81,6 +81,12 @@ fn home() -> PathBuf {
 /// migrations under the write lock. A store whose `user_version` exceeds this
 /// build is refused with `store_newer` and left untouched; an unreadable one is
 /// quarantined together with its `-wal` and `-shm` sidecars and started empty.
+///
+/// # Errors
+///
+/// Returns `store_newer` when the store's schema is newer than this build,
+/// `io` when `data_dir` cannot be created, and the `SQLite` error when the
+/// store will not open or migrate.
 pub fn open(data_dir: &Path) -> Result<Store, TrunkError> {
     std::fs::create_dir_all(data_dir).map_err(|e| TrunkError::new("io", e.to_string()))?;
     let path = data_dir.join(DB_FILE);
@@ -174,6 +180,11 @@ impl Store {
     /// `f` receives the transaction, never the `Store`: calling back into
     /// `read`/`write` from inside would deadlock on this non-reentrant mutex —
     /// a frozen app with no error, not a panic.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `f` returns, `store_newer` when the store's schema is
+    /// newer than this build, and the `SQLite` error when the transaction fails.
     pub fn write<T>(
         &self,
         f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
@@ -184,6 +195,11 @@ impl Store {
     /// A write the poll must not announce: today only the per-keystroke draft
     /// autosave, whose bump would refetch every thread while the user types
     /// (plan §3). Everything else goes through `write`.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `f` returns, `store_newer` when the store's schema is
+    /// newer than this build, and the `SQLite` error when the transaction fails.
     pub fn write_quiet<T>(
         &self,
         f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
@@ -224,6 +240,11 @@ impl Store {
 
     /// Run `f` against the connection for a read. The version guard runs here
     /// too: a process must never read a store whose schema it does not know.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `f` returns, and `store_newer` when the store's schema
+    /// is newer than this build.
     pub fn read<T>(
         &self,
         f: impl FnOnce(&Connection) -> Result<T, TrunkError>,
@@ -237,6 +258,10 @@ impl Store {
 
 /// The store's mutation counter — what the poll compares to decide whether a
 /// `data_version` movement deserves an emit.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn revision(conn: &Connection) -> Result<i64, TrunkError> {
     conn.query_row("SELECT revision FROM store_meta", [], |row| row.get(0))
         .map_err(sqlite_error)
@@ -273,6 +298,11 @@ pub fn repo_key(repo_path: &Path) -> String {
 /// agent-attributed text is not editable from the UI. `channel` is `None` when
 /// the row itself is missing, in which case `missing` supplies the caller's
 /// own `not_found` error (its message names the row kind, thread or reply).
+///
+/// # Errors
+///
+/// Returns whatever `missing` builds when `channel` is `None`, and
+/// `not_editable` when the text is agent-attributed.
 pub fn require_human(
     channel: Option<String>,
     missing: impl FnOnce() -> TrunkError,
@@ -294,6 +324,10 @@ pub fn require_human(
 /// what's permanent in the error message (`"threads"` / `"replies"`); the
 /// missing-row case is each caller's own idempotent no-op, not this guard's
 /// concern.
+///
+/// # Errors
+///
+/// Returns `review_published` when `published` is true.
 pub fn require_unpublished(published: bool, noun: &str) -> Result<(), TrunkError> {
     if published {
         Err(TrunkError::new(

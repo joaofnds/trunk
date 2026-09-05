@@ -30,6 +30,10 @@ use std::path::Path;
 /// is a fresh submit in flight, whatever the oid's history, and a stale
 /// `anchored = 1` from that history would let the sweep reclaim the pin while
 /// that submit is still unfinished.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn mark_minted(
     conn: &Connection,
     repo_path: &Path,
@@ -57,6 +61,10 @@ pub fn mark_minted(
 /// with no row means the sweep reclaimed it while this submit was in flight,
 /// which is the comment loss this whole design exists to prevent. Re-record it
 /// so the pin is restored and protected: the caller re-pins the ref.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn mark_anchored(
     conn: &Connection,
     repo_path: &Path,
@@ -103,6 +111,10 @@ pub const IN_FLIGHT_GRACE_SECS: i64 = 24 * 60 * 60;
 
 /// The repo's snapshots that may be reclaimed: those a thread has anchored to,
 /// plus those handed out so long ago that no submit can still be holding one.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn reclaimable(
     conn: &Connection,
     repo_path: &Path,
@@ -138,6 +150,10 @@ pub fn reclaimable(
 ///
 /// Returns nothing: the caller re-reads the reconciled state in the same
 /// transaction.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when a query or a write fails.
 pub fn reconcile(
     conn: &Connection,
     repo_path: &Path,
@@ -195,6 +211,10 @@ fn minted_since(
 }
 
 /// Whether this repo has a record for `oid`.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn recorded(conn: &Connection, repo_path: &Path, oid: &str) -> Result<bool, TrunkError> {
     conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM snapshot_pins WHERE repo_path = ?1 AND oid = ?2)",
@@ -205,6 +225,11 @@ pub fn recorded(conn: &Connection, repo_path: &Path, oid: &str) -> Result<bool, 
 }
 
 /// Drop the records for pins that have been reclaimed.
+/// Drop this repo's records for `oids`. An oid with no record is not an error.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn forget(conn: &Connection, repo_path: &Path, oids: &[String]) -> Result<(), TrunkError> {
     let key = repo_key(repo_path);
 

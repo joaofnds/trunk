@@ -18,6 +18,11 @@ pub struct Draft {
     pub anchor: Option<Anchor>,
 }
 
+/// Store the repo's single draft, replacing whatever was there.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn save(
     conn: &Connection,
     repo_path: &Path,
@@ -61,6 +66,11 @@ pub fn save(
     Ok(())
 }
 
+/// The repo's draft, or `None` when it has none.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the query fails.
 pub fn get(conn: &Connection, repo_path: &Path) -> Result<Option<Draft>, TrunkError> {
     let mut stmt = conn
         .prepare(&format!(
@@ -87,6 +97,11 @@ pub fn get(conn: &Connection, repo_path: &Path) -> Result<Option<Draft>, TrunkEr
     }
 }
 
+/// Discard the repo's draft. A repo with none is not an error.
+///
+/// # Errors
+///
+/// Returns the `SQLite` error when the write fails.
 pub fn delete(conn: &Connection, repo_path: &Path) -> Result<(), TrunkError> {
     conn.execute(
         "DELETE FROM drafts WHERE repo_path = ?1",
