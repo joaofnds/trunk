@@ -209,12 +209,10 @@ fn bench_stage_hunk(c: &mut Criterion) {
 
 /// Create a repo with a realistic code file (TypeScript) that has multiple changed hunks.
 /// Tests the full enrichment pipeline: syntax highlighting + word-level diff.
-fn make_repo_with_code_changes() -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
-    let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
-
-    let original = r#"import { invoke } from "@tauri-apps/api/core";
+/// The bench fixture's file before the edit: a TypeScript module whose diff
+/// against `CODE_AFTER` exercises the renamed parameter, widened signature,
+/// and added field a real review sees.
+const CODE_BEFORE: &str = r#"import { invoke } from "@tauri-apps/api/core";
 import type { FileDiff, DiffRequestOptions } from "../lib/types";
 
 export async function loadDiff(path: string, options: DiffRequestOptions): Promise<FileDiff[]> {
@@ -262,7 +260,8 @@ export function computeStats(diffs: FileDiff[]): { added: number; removed: numbe
 }
 "#;
 
-    let modified = r#"import { invoke } from "@tauri-apps/api/core";
+/// The same module after the edit.
+const CODE_AFTER: &str = r#"import { invoke } from "@tauri-apps/api/core";
 import type { FileDiff, DiffRequestOptions, ViewMode } from "../lib/types";
 
 export async function loadDiff(
@@ -317,7 +316,12 @@ export function computeStats(diffs: FileDiff[]): { added: number; removed: numbe
 }
 "#;
 
-    std::fs::write(dir.path().join("diff-utils.ts"), original).unwrap();
+fn make_repo_with_code_changes() -> BenchRepo {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
+
+    std::fs::write(dir.path().join("diff-utils.ts"), CODE_BEFORE).unwrap();
     let mut index = repo.index().unwrap();
     index
         .add_path(std::path::Path::new("diff-utils.ts"))
@@ -335,7 +339,7 @@ export function computeStats(diffs: FileDiff[]): { added: number; removed: numbe
     )
     .unwrap();
 
-    std::fs::write(dir.path().join("diff-utils.ts"), modified).unwrap();
+    std::fs::write(dir.path().join("diff-utils.ts"), CODE_AFTER).unwrap();
 
     BenchRepo {
         path: dir.path().to_path_buf(),
