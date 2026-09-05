@@ -2683,7 +2683,10 @@ describe("DiffPanel hunk navigation", () => {
 			render(DiffPanel, {
 				props: {
 					fileDiffs: [{ ...navDiff, path: "README.md" }],
-					commitDetail: { oid: "target", parent_oids: ["targetParent"] } as CommitDetail,
+					commitDetail: {
+						oid: "target",
+						parent_oids: ["targetParent"],
+					} as CommitDetail,
 					compareBaseOid: "compareBase",
 					onclose: vi.fn(),
 					diffKind: "commit",

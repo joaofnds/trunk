@@ -67,6 +67,40 @@ export class RepoDriver {
 		);
 	}
 
+	/**
+	 * Picks a Base → Target compare pair the way the user does: click the base
+	 * commit, then cmd/ctrl-click the target. Returns once the compare panel is
+	 * listing the pair's files.
+	 */
+	async selectCompare(
+		baseSummary: string,
+		targetSummary: string,
+	): Promise<void> {
+		await this.selectCommit(baseSummary);
+
+		const target = await waitFor(`the ${targetSummary} row`, () =>
+			commitRow(targetSummary),
+		);
+		target.dispatchEvent(
+			new MouseEvent("click", { bubbles: true, ctrlKey: true }),
+		);
+
+		await waitFor("the compare panel's files", () =>
+			document.querySelector<HTMLElement>('[data-testid="compare-header"]')
+				? true
+				: null,
+		);
+	}
+
+	/** Opens a file from the compare panel's file list in the center pane. */
+	async openCompareFile(path: string): Promise<void> {
+		const row = await waitFor(`the ${path} compare row`, () =>
+			firstMatching(FILE_ROW, (text) => text.includes(path)),
+		);
+
+		row.click();
+	}
+
 	/** Opens the selected commit's diff of one file in the center pane. */
 	async openCommitFile(path: string): Promise<void> {
 		const row = await waitFor(`the ${path} row`, () =>

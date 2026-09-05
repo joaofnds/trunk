@@ -1352,6 +1352,7 @@ function startRightResize(e: MouseEvent) {
           bind:this={diffPanelRef}
           fileDiffs={currentDiffFiles}
           commitDetail={selectedCompareFile ? compareTargetDetail : commitDetail}
+          compareBaseOid={selectedCompareFile ? (compareBaseDetail?.oid ?? null) : null}
           selectedPath={selectedCompareFile ?? selectedDiffPath}
           {diffKind}
           emptyCommit={commitEmpty}

@@ -68,6 +68,57 @@ const RENAMED_MARKDOWN: RepoSpec = {
 	],
 };
 
+/** Three commits: A renames nothing, B renames doc.md to new.md, C edits
+ *  new.md. Comparing base A to target C pairs the rename across the whole
+ *  range; the before side must read at A, where doc.md still holds its
+ *  original content, not at C's parent B, where doc.md is already gone
+ *  (TRUNK-163). */
+const RENAMED_THEN_EDITED_ACROSS_COMPARE: RepoSpec = {
+	steps: [
+		{
+			step: "file",
+			path: "doc.md",
+			content: "# Title\n\nfirst paragraph\n\nsecond paragraph\n",
+		},
+		{ step: "commit", message: "A: add the doc" },
+		{ step: "removeFile", path: "doc.md" },
+		{
+			step: "file",
+			path: "new.md",
+			content: "# Title\n\nfirst paragraph\n\nsecond paragraph\n",
+		},
+		{ step: "commit", message: "B: rename the doc" },
+		{
+			step: "file",
+			path: "new.md",
+			content: "# Title\n\nfirst paragraph\n\nchanged second paragraph\n",
+		},
+		{ step: "commit", message: "C: edit the doc" },
+	],
+};
+
+/** Same shape as above but with no edit at C: the rename is the only change in
+ *  the range. Every block must render unchanged, not just the untouched ones. */
+const RENAMED_ONLY_ACROSS_COMPARE: RepoSpec = {
+	steps: [
+		{
+			step: "file",
+			path: "doc.md",
+			content: "# Title\n\nfirst paragraph\n\nsecond paragraph\n",
+		},
+		{ step: "commit", message: "A: add the doc" },
+		{ step: "removeFile", path: "doc.md" },
+		{
+			step: "file",
+			path: "new.md",
+			content: "# Title\n\nfirst paragraph\n\nsecond paragraph\n",
+		},
+		{ step: "commit", message: "B: rename the doc" },
+		{ step: "file", path: "unrelated.md", content: "# Unrelated\n" },
+		{ step: "commit", message: "C: unrelated change" },
+	],
+};
+
 /** How many times the rendered view has asked the backend for a diff. The
  *  count, not the content, is what says whether a refetch happened. */
 function renders(app: { invokes(): readonly { cmd: string }[] }): number {
@@ -380,6 +431,46 @@ describe("the rendered markdown diff", () => {
 
 		expect(unchanged).toEqual(["Title", "first paragraph", "second paragraph"]);
 		expect(app.diffPane.renderedWordAdded()).toEqual(["changed"]);
+		expect(app.diffPane.renderedAdded()).toEqual([]);
+	});
+
+	// TRUNK-163: comparing base A to target C, where the rename happened at B in
+	// between, read the before side at C's parent (B) instead of the compare
+	// base (A). At B the old path is already gone, so every block rendered
+	// added.
+	it("shows a compared file's untouched content unchanged across a rename earlier in the range", async () => {
+		const app = await setup({ repo: RENAMED_THEN_EDITED_ACROSS_COMPARE });
+		await app.repo.open();
+		await app.repo.selectCompare("A: add the doc", "C: edit the doc");
+		await app.repo.openCompareFile("new.md");
+		await app.settled();
+		await app.diffPane.showRendered();
+		await app.diffPane.showFullFile();
+
+		const unchanged = await waitFor("the untouched rendered blocks", () => {
+			const blocks = app.diffPane.renderedUnchanged();
+			return blocks.includes("first paragraph") ? blocks : null;
+		});
+
+		expect(unchanged).toEqual(["Title", "first paragraph"]);
+		expect(app.diffPane.renderedAdded()).toEqual([]);
+	});
+
+	it("shows every block unchanged when a rename is the only change across the compared range", async () => {
+		const app = await setup({ repo: RENAMED_ONLY_ACROSS_COMPARE });
+		await app.repo.open();
+		await app.repo.selectCompare("A: add the doc", "C: unrelated change");
+		await app.repo.openCompareFile("new.md");
+		await app.settled();
+		await app.diffPane.showRendered();
+		await app.diffPane.showFullFile();
+
+		const unchanged = await waitFor("the untouched rendered blocks", () => {
+			const blocks = app.diffPane.renderedUnchanged();
+			return blocks.includes("second paragraph") ? blocks : null;
+		});
+
+		expect(unchanged).toEqual(["Title", "first paragraph", "second paragraph"]);
 		expect(app.diffPane.renderedAdded()).toEqual([]);
 	});
 
