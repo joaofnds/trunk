@@ -224,13 +224,11 @@ impl TestContextBuilder {
         // left the graph's TOPOLOGICAL | TIME sort resolving by tie-break at machine speed.
         let mut clock = FIXTURE_BASE_SECS;
 
-        // Configure user identity
         let mut cfg = repo.config().expect("failed to get config");
         cfg.set_str("user.name", "Test User").unwrap();
         cfg.set_str("user.email", "test@example.com").unwrap();
         drop(cfg);
 
-        // Set HEAD to point at main branch
         repo.set_head("refs/heads/main").unwrap();
 
         // Index edits waiting for the next Commit, in declaration order: a step
@@ -243,236 +241,44 @@ impl TestContextBuilder {
             match step {
                 BuildStep::WriteFile { path, content }
                 | BuildStep::WriteBinaryFile { path, content } => {
-                    let full_path = dir.path().join(path);
-                    if let Some(parent) = full_path.parent() {
-                        std::fs::create_dir_all(parent).unwrap();
-                    }
-                    std::fs::write(&full_path, content).unwrap();
-                    pending.push(PendingChange::Add(path.clone()));
+                    write_file(dir.path(), path, content, &mut pending);
                 }
-
                 BuildStep::RemoveFile { path } => {
-                    std::fs::remove_file(dir.path().join(path)).unwrap();
-                    pending.push(PendingChange::Remove(path.clone()));
+                    remove_file(dir.path(), path, &mut pending);
                 }
-
                 BuildStep::Commit { message, secs } => {
-                    let sig = secs.map_or_else(
-                        || {
-                            let sig = pinned_signature(clock);
-                            clock += FIXTURE_DAY_SECS;
-                            sig
-                        },
-                        pinned_signature,
-                    );
-                    let mut index = repo.index().unwrap();
-
-                    for change in &pending {
-                        match change {
-                            PendingChange::Add(file) => {
-                                index.add_path(std::path::Path::new(file)).unwrap();
-                            }
-                            PendingChange::Remove(file) => {
-                                index.remove_path(std::path::Path::new(file)).unwrap();
-                            }
-                        }
-                    }
-                    index.write().unwrap();
-                    pending.clear();
-
-                    let tree_oid = index.write_tree().unwrap();
-                    let tree = repo.find_tree(tree_oid).unwrap();
-
-                    // Get current HEAD as parent (if it exists)
-                    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-                    let parents: Vec<&git2::Commit> =
-                        parent.as_ref().map(|p| vec![p]).unwrap_or_default();
-
-                    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
-                        .unwrap();
+                    commit(&repo, message, *secs, &mut clock, &mut pending);
                 }
-
-                BuildStep::Branch { name } => {
-                    let head = repo.head().unwrap().peel_to_commit().unwrap();
-                    repo.branch(name, &head, false).unwrap();
-                }
-
-                BuildStep::Checkout { name } => {
-                    repo.set_head(&format!("refs/heads/{name}")).unwrap();
-                    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
-                        .unwrap();
-                }
-
-                BuildStep::Merge { branch } => {
-                    let sig = pinned_signature(clock);
-                    clock += FIXTURE_DAY_SECS;
-
-                    // Find the branch tip
-                    let branch_ref = repo.find_branch(branch, git2::BranchType::Local).unwrap();
-                    let their_commit = branch_ref.get().peel_to_commit().unwrap();
-
-                    // Get current HEAD
-                    let our_commit = repo.head().unwrap().peel_to_commit().unwrap();
-
-                    // Merge the two trees
-                    let ancestor = repo
-                        .find_commit(repo.merge_base(our_commit.id(), their_commit.id()).unwrap())
-                        .unwrap();
-                    let ancestor_tree = ancestor.tree().unwrap();
-                    let our_tree = our_commit.tree().unwrap();
-                    let their_tree = their_commit.tree().unwrap();
-
-                    let mut merge_index = repo
-                        .merge_trees(&ancestor_tree, &our_tree, &their_tree, None)
-                        .unwrap();
-
-                    let tree_oid = merge_index.write_tree_to(&repo).unwrap();
-                    let tree = repo.find_tree(tree_oid).unwrap();
-
-                    let msg = format!("Merge branch '{branch}'");
-                    repo.commit(
-                        Some("HEAD"),
-                        &sig,
-                        &sig,
-                        &msg,
-                        &tree,
-                        &[&our_commit, &their_commit],
-                    )
-                    .unwrap();
-                }
-
-                BuildStep::Conflict { branch } => {
-                    let branch_ref = repo.find_branch(branch, git2::BranchType::Local).unwrap();
-                    let their_commit = branch_ref.get().peel_to_commit().unwrap();
-                    let annotated = repo.find_annotated_commit(their_commit.id()).unwrap();
-
-                    repo.merge(&[&annotated], None, None).unwrap();
-                    // Leave the repo in merge/conflict state -- do NOT commit
-                }
-
-                BuildStep::Tag { name } => {
-                    let head = repo.head().unwrap().peel_to_commit().unwrap();
-                    let obj = head.as_object();
-                    repo.tag_lightweight(name, obj, false).unwrap();
-                }
-
-                BuildStep::Stash { message } => {
-                    let sig = pinned_signature(clock);
-                    clock += FIXTURE_DAY_SECS;
-
-                    // Need a tracked file that is modified to create a stash
-                    let stash_marker = dir.path().join(".stash_marker");
-                    if !stash_marker.exists() {
-                        // Create and commit the marker file first
-                        std::fs::write(&stash_marker, "initial").unwrap();
-                        let mut index = repo.index().unwrap();
-                        index
-                            .add_path(std::path::Path::new(".stash_marker"))
-                            .unwrap();
-                        index.write().unwrap();
-
-                        let tree_oid = index.write_tree().unwrap();
-                        let tree = repo.find_tree(tree_oid).unwrap();
-                        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-                        let parents: Vec<&git2::Commit> =
-                            parent.as_ref().map(|p| vec![p]).unwrap_or_default();
-                        repo.commit(
-                            Some("HEAD"),
-                            &sig,
-                            &sig,
-                            "Add stash marker",
-                            &tree,
-                            &parents,
-                        )
-                        .unwrap();
-                    }
-
-                    // Modify the tracked file to create something to stash
-                    std::fs::write(&stash_marker, format!("modified-{stash_counter}")).unwrap();
-                    stash_counter += 1;
-
-                    let msg = message.as_deref();
-                    repo.stash_save(&sig, msg.unwrap_or("stash"), None).unwrap();
-                }
-
-                BuildStep::Remote { name } => {
-                    // Create a bare repo as the remote
-                    let bare_path = dir.path().join(format!("{name}.git"));
-                    git2::Repository::init_bare(&bare_path).unwrap();
-
-                    let bare_url = bare_path.display().to_string();
-                    repo.remote(name, &bare_url).unwrap();
-                }
-
-                BuildStep::Tracking { remote, branch } => {
-                    let mut cfg = repo.config().unwrap();
-                    cfg.set_str(&format!("branch.{branch}.remote"), remote)
-                        .unwrap();
-                    cfg.set_str(
-                        &format!("branch.{branch}.merge"),
-                        &format!("refs/heads/{branch}"),
-                    )
-                    .unwrap();
-                }
-
-                BuildStep::Pushed { remote, branch } => {
-                    let mut handle = repo.find_remote(remote).unwrap();
-                    handle
-                        .push(&[format!("refs/heads/{branch}:refs/heads/{branch}")], None)
-                        .unwrap();
-
-                    let tip = repo
-                        .find_reference(&format!("refs/heads/{branch}"))
-                        .unwrap()
-                        .peel_to_commit()
-                        .unwrap();
-
-                    // Written here rather than left to the push: over the local transport
-                    // libgit2 need not update the tip, and without it the branch has no
-                    // upstream to be ahead of.
-                    repo.reference(
-                        &format!("refs/remotes/{remote}/{branch}"),
-                        tip.id(),
-                        true,
-                        "seed the tracking ref",
-                    )
-                    .unwrap();
-                }
-
+                BuildStep::Branch { name } => branch(&repo, name),
+                BuildStep::Checkout { name } => checkout(&repo, name),
+                BuildStep::Merge { branch } => merge(&repo, branch, &mut clock),
+                BuildStep::Conflict { branch } => conflict(&repo, branch),
+                BuildStep::Tag { name } => tag(&repo, name),
+                BuildStep::Stash { message } => stash(
+                    &mut repo,
+                    dir.path(),
+                    message.as_deref(),
+                    &mut clock,
+                    &mut stash_counter,
+                ),
+                BuildStep::Remote { name } => remote(&repo, dir.path(), name),
+                BuildStep::Tracking { remote, branch } => tracking(&repo, remote, branch),
+                BuildStep::Pushed { remote, branch } => pushed(&repo, remote, branch),
                 BuildStep::RemoteCommit {
                     remote,
                     branch,
                     path,
                     content,
                     message,
-                } => {
-                    let sig = pinned_signature(clock);
-                    clock += FIXTURE_DAY_SECS;
-
-                    let bare_path = dir.path().join(format!("{remote}.git"));
-                    let bare = git2::Repository::open(&bare_path).unwrap();
-                    let tip = bare
-                        .find_reference(&format!("refs/heads/{branch}"))
-                        .unwrap()
-                        .peel_to_commit()
-                        .unwrap();
-
-                    let blob = bare.blob(content.as_bytes()).unwrap();
-                    let mut tree = bare.treebuilder(Some(&tip.tree().unwrap())).unwrap();
-                    tree.insert(path, blob, git2::FileMode::Blob.into())
-                        .unwrap();
-                    let tree = bare.find_tree(tree.write().unwrap()).unwrap();
-
-                    bare.commit(
-                        Some(&format!("refs/heads/{branch}")),
-                        &sig,
-                        &sig,
-                        message,
-                        &tree,
-                        &[&tip],
-                    )
-                    .unwrap();
-                }
+                } => remote_commit(
+                    dir.path(),
+                    remote,
+                    branch,
+                    path,
+                    content,
+                    message,
+                    &mut clock,
+                ),
             }
         }
 
@@ -483,4 +289,269 @@ impl TestContextBuilder {
 
         TestContext::from_parts(dir, path, state_map)
     }
+}
+
+/// Write a file into the working tree and queue it for the next commit.
+fn write_file(
+    root: &std::path::Path,
+    path: &str,
+    content: &[u8],
+    pending: &mut Vec<PendingChange>,
+) {
+    let full_path = root.join(path);
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
+    std::fs::write(&full_path, content).unwrap();
+    pending.push(PendingChange::Add(path.to_string()));
+}
+
+/// Delete a file from the working tree and queue its removal.
+fn remove_file(root: &std::path::Path, path: &str, pending: &mut Vec<PendingChange>) {
+    std::fs::remove_file(root.join(path)).unwrap();
+    pending.push(PendingChange::Remove(path.to_string()));
+}
+
+/// Commit every queued change, taking the next day off the clock unless pinned.
+fn commit(
+    repo: &git2::Repository,
+    message: &str,
+    secs: Option<i64>,
+    clock: &mut i64,
+    pending: &mut Vec<PendingChange>,
+) {
+    let sig = secs.map_or_else(
+        || {
+            let sig = pinned_signature(*clock);
+            *clock += FIXTURE_DAY_SECS;
+            sig
+        },
+        pinned_signature,
+    );
+    let mut index = repo.index().unwrap();
+
+    for change in pending.iter() {
+        match change {
+            PendingChange::Add(file) => {
+                index.add_path(std::path::Path::new(file.as_str())).unwrap();
+            }
+            PendingChange::Remove(file) => {
+                index
+                    .remove_path(std::path::Path::new(file.as_str()))
+                    .unwrap();
+            }
+        }
+    }
+    index.write().unwrap();
+    pending.clear();
+
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+
+    // Get current HEAD as parent (if it exists)
+    let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+    let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
+
+    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+        .unwrap();
+}
+
+/// Branch at the current HEAD.
+fn branch(repo: &git2::Repository, name: &str) {
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    repo.branch(name, &head, false).unwrap();
+}
+
+/// Point HEAD at a branch and force the working tree to match.
+fn checkout(repo: &git2::Repository, name: &str) {
+    repo.set_head(&format!("refs/heads/{name}")).unwrap();
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+        .unwrap();
+}
+
+/// Merge a branch into HEAD, committing the result.
+fn merge(repo: &git2::Repository, branch: &str, clock: &mut i64) {
+    let sig = pinned_signature(*clock);
+    *clock += FIXTURE_DAY_SECS;
+
+    // Find the branch tip
+    let branch_ref = repo.find_branch(branch, git2::BranchType::Local).unwrap();
+    let their_commit = branch_ref.get().peel_to_commit().unwrap();
+
+    // Get current HEAD
+    let our_commit = repo.head().unwrap().peel_to_commit().unwrap();
+
+    // Merge the two trees
+    let ancestor = repo
+        .find_commit(repo.merge_base(our_commit.id(), their_commit.id()).unwrap())
+        .unwrap();
+    let ancestor_tree = ancestor.tree().unwrap();
+    let our_tree = our_commit.tree().unwrap();
+    let their_tree = their_commit.tree().unwrap();
+
+    let mut merge_index = repo
+        .merge_trees(&ancestor_tree, &our_tree, &their_tree, None)
+        .unwrap();
+
+    let tree_oid = merge_index.write_tree_to(repo).unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+
+    let msg = format!("Merge branch '{branch}'");
+    repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &msg,
+        &tree,
+        &[&our_commit, &their_commit],
+    )
+    .unwrap();
+}
+
+/// Start a merge and leave the repository in its conflicted state.
+fn conflict(repo: &git2::Repository, branch: &str) {
+    let branch_ref = repo.find_branch(branch, git2::BranchType::Local).unwrap();
+    let their_commit = branch_ref.get().peel_to_commit().unwrap();
+    let annotated = repo.find_annotated_commit(their_commit.id()).unwrap();
+
+    repo.merge(&[&annotated], None, None).unwrap();
+    // Leave the repo in merge/conflict state -- do NOT commit
+}
+
+/// Tag the current HEAD.
+fn tag(repo: &git2::Repository, name: &str) {
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    let obj = head.as_object();
+    repo.tag_lightweight(name, obj, false).unwrap();
+}
+
+/// Stash a modification, committing a marker file the first time so there is
+/// something tracked to stash.
+fn stash(
+    repo: &mut git2::Repository,
+    root: &std::path::Path,
+    message: Option<&str>,
+    clock: &mut i64,
+    stash_counter: &mut usize,
+) {
+    let sig = pinned_signature(*clock);
+    *clock += FIXTURE_DAY_SECS;
+
+    // Need a tracked file that is modified to create a stash
+    let stash_marker = root.join(".stash_marker");
+    if !stash_marker.exists() {
+        // Create and commit the marker file first
+        std::fs::write(&stash_marker, "initial").unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new(".stash_marker"))
+            .unwrap();
+        index.write().unwrap();
+
+        let tree_oid = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_oid).unwrap();
+        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+        let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "Add stash marker",
+            &tree,
+            &parents,
+        )
+        .unwrap();
+    }
+
+    // Modify the tracked file to create something to stash
+    std::fs::write(&stash_marker, format!("modified-{}", *stash_counter)).unwrap();
+    *stash_counter += 1;
+
+    repo.stash_save(&sig, message.unwrap_or("stash"), None)
+        .unwrap();
+}
+
+/// Add a bare repository alongside the working one and register it as a remote.
+fn remote(repo: &git2::Repository, root: &std::path::Path, name: &str) {
+    // Create a bare repo as the remote
+    let bare_path = root.join(format!("{name}.git"));
+    git2::Repository::init_bare(&bare_path).unwrap();
+
+    let bare_url = bare_path.display().to_string();
+    repo.remote(name, &bare_url).unwrap();
+}
+
+/// Configure a branch's upstream.
+fn tracking(repo: &git2::Repository, remote: &str, branch: &str) {
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str(&format!("branch.{branch}.remote"), remote)
+        .unwrap();
+    cfg.set_str(
+        &format!("branch.{branch}.merge"),
+        &format!("refs/heads/{branch}"),
+    )
+    .unwrap();
+}
+
+/// Push a branch to its remote and seed the tracking ref.
+fn pushed(repo: &git2::Repository, remote: &str, branch: &str) {
+    let mut handle = repo.find_remote(remote).unwrap();
+    handle
+        .push(&[format!("refs/heads/{branch}:refs/heads/{branch}")], None)
+        .unwrap();
+
+    let tip = repo
+        .find_reference(&format!("refs/heads/{branch}"))
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+
+    // Written here rather than left to the push: over the local transport
+    // libgit2 need not update the tip, and without it the branch has no
+    // upstream to be ahead of.
+    repo.reference(
+        &format!("refs/remotes/{remote}/{branch}"),
+        tip.id(),
+        true,
+        "seed the tracking ref",
+    )
+    .unwrap();
+}
+
+/// Commit directly into the bare remote, so the local branch falls behind.
+fn remote_commit(
+    root: &std::path::Path,
+    remote: &str,
+    branch: &str,
+    path: &str,
+    content: &str,
+    message: &str,
+    clock: &mut i64,
+) {
+    let sig = pinned_signature(*clock);
+    *clock += FIXTURE_DAY_SECS;
+
+    let bare_path = root.join(format!("{remote}.git"));
+    let bare = git2::Repository::open(&bare_path).unwrap();
+    let tip = bare
+        .find_reference(&format!("refs/heads/{branch}"))
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+
+    let blob = bare.blob(content.as_bytes()).unwrap();
+    let mut tree = bare.treebuilder(Some(&tip.tree().unwrap())).unwrap();
+    tree.insert(path, blob, git2::FileMode::Blob.into())
+        .unwrap();
+    let tree = bare.find_tree(tree.write().unwrap()).unwrap();
+
+    bare.commit(
+        Some(&format!("refs/heads/{branch}")),
+        &sig,
+        &sig,
+        message,
+        &tree,
+        &[&tip],
+    )
+    .unwrap();
 }
