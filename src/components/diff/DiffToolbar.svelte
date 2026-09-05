@@ -9,9 +9,20 @@ import Space from "@lucide/svelte/icons/space";
 import TextWrap from "@lucide/svelte/icons/text-wrap";
 import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import { onMount } from "svelte";
+import { fileStatusOf } from "../../lib/file-status.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
+import { renamePartsOf } from "../../lib/rename-display.js";
 import { DIFF_ROW_FONT, measureRowMetrics } from "../../lib/row-metrics.js";
-import type { ContentMode, LayoutMode, RenderMode } from "../../lib/types.js";
+import {
+	STATUS_BADGES,
+	UNKNOWN_STATUS_BADGE,
+} from "../../lib/status-badges.js";
+import type {
+	ContentMode,
+	DiffStatus,
+	LayoutMode,
+	RenderMode,
+} from "../../lib/types.js";
 
 interface Props {
 	contentMode: ContentMode;
@@ -21,6 +32,8 @@ interface Props {
 	onlayoutmodechange: (mode: LayoutMode) => void;
 	onrendermodechange: (mode: RenderMode) => void;
 	selectedPath: string | null;
+	selectedStatus?: DiffStatus | null;
+	selectedOldPath?: string | null;
 	diffKind: "unstaged" | "staged" | "commit";
 	hunkOperationInFlight: boolean;
 	ignoreWhitespace: boolean;
@@ -45,6 +58,8 @@ let {
 	onlayoutmodechange,
 	onrendermodechange,
 	selectedPath,
+	selectedStatus = null,
+	selectedOldPath = null,
 	diffKind,
 	hunkOperationInFlight,
 	ignoreWhitespace,
@@ -75,6 +90,19 @@ onMount(() => {
 	if (fontProbe) fixedPitch = measureRowMetrics(fontProbe).monospace;
 });
 
+// The header repeats the file list's own badge and rename form so the two
+// surfaces name the same change the same way. Both come from the shared
+// helpers rather than a second mapping here.
+const badge = $derived(
+	selectedStatus === null
+		? null
+		: (STATUS_BADGES[fileStatusOf(selectedStatus)] ?? UNKNOWN_STATUS_BADGE),
+);
+
+const rename = $derived(
+	selectedPath === null ? null : renamePartsOf(selectedPath, selectedOldPath),
+);
+
 const renderedActive = $derived(
 	renderMode === "rendered" &&
 		selectedPath !== null &&
@@ -83,8 +111,25 @@ const renderedActive = $derived(
 </script>
 
 <div class="toolbar">
+  {#if badge !== null}
+    <span
+      data-testid="diff-status-badge"
+      class="status-badge"
+      title={badge.title}
+      style="color: {badge.color}; background: color-mix(in oklch, {badge.color} 6%, transparent);"
+    >{badge.letter}</span>
+  {/if}
+
   <span class="filename">
-    {#if selectedPath}{selectedPath}{/if}
+    {#if rename !== null}
+      <!-- The old path yields space first, matching FileRow: it shrinks and
+           ellipsizes while the new path keeps its width. -->
+      <span data-testid="diff-old-path" class="old-path">{rename.from}</span>
+      <span aria-hidden="true" class="rename-arrow">&rarr;</span>
+      <span data-testid="diff-path" class="new-path">{rename.to}</span>
+    {:else if selectedPath}
+      <span data-testid="diff-path" class="new-path">{selectedPath}</span>
+    {/if}
   </span>
 
   {#if selectedPath && isMarkdownPath(selectedPath)}
@@ -238,12 +283,46 @@ const renderedActive = $derived(
 
   .filename {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
     font-size: 11px;
     color: var(--color-text-muted);
+    text-align: left;
+  }
+
+  .old-path {
+    flex-shrink: 1;
+    min-width: 2ch;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    text-align: left;
+  }
+
+  .rename-arrow {
+    flex-shrink: 0;
+  }
+
+  .new-path {
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .status-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 10px;
+    line-height: 1;
   }
 
   .action-btn {

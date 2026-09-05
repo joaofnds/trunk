@@ -1,4 +1,9 @@
-import type { FileDiff, FileStatus, FileStatusType } from "./types.js";
+import type {
+	DiffStatus,
+	FileDiff,
+	FileStatus,
+	FileStatusType,
+} from "./types.js";
 
 // Diff deltas speak git2's vocabulary; the file lists speak the staging
 // panel's. One mapping, shared by every changed-file list.
@@ -12,11 +17,15 @@ const DIFF_STATUS_MAP: Record<string, FileStatusType> = {
 	Unknown: "Modified",
 };
 
+export function fileStatusOf(status: DiffStatus): FileStatusType {
+	return DIFF_STATUS_MAP[status] ?? "Modified";
+}
+
 export function toFileStatusList(fileDiffs: FileDiff[]): FileStatus[] {
 	return fileDiffs.map((fd) => ({
 		path: fd.path,
 		old_path: fd.old_path,
-		status: DIFF_STATUS_MAP[fd.status] ?? "Modified",
+		status: fileStatusOf(fd.status),
 		is_binary: fd.is_binary,
 	}));
 }

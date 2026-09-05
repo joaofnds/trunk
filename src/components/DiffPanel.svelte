@@ -142,6 +142,14 @@ const commitOid = $derived(
 		: (commitDetail?.oid ?? ""),
 );
 const isMerge = $derived((commitDetail?.parent_oids.length ?? 0) > 1);
+// The toolbar names the selected file's status and, for a rename, where it came
+// from. Both live on the diff itself, so the header reads them from the same
+// list the viewer renders.
+const selectedFile = $derived(
+	selectedPath === null
+		? undefined
+		: fileDiffs.find((fd) => fd.path === selectedPath),
+);
 let composerOpen = $state(false);
 // The diff-path capture is built ONCE, synchronously, when the composer opens (range +
 // excerpt from the hunk) and injected as a stable `captured` result — NOT derived
@@ -868,6 +876,8 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		onlayoutmodechange={handleLayoutModeChange}
 		onrendermodechange={handleRenderModeChange}
 		selectedPath={selectedPath}
+		selectedStatus={selectedFile?.status ?? null}
+		selectedOldPath={selectedFile?.old_path ?? null}
 		{diffKind}
 		{hunkOperationInFlight}
 		{ignoreWhitespace}

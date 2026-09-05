@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { patchLoadedDiff, toFileStatusList } from "./file-status.js";
+import {
+	fileStatusOf,
+	patchLoadedDiff,
+	toFileStatusList,
+} from "./file-status.js";
 import type { FileDiff } from "./types.js";
 
 function fd(path: string, status: FileDiff["status"] = "Modified"): FileDiff {
@@ -62,5 +66,17 @@ describe("patchLoadedDiff", () => {
 	it("keeps the entry when the load came back empty", () => {
 		const list = [fd("a.ts")];
 		expect(patchLoadedDiff(list, "a.ts", [])).toEqual(list);
+	});
+});
+
+describe("fileStatusOf", () => {
+	it("maps one git2 delta status onto the staging vocabulary", () => {
+		expect(fileStatusOf("Added")).toBe("New");
+		expect(fileStatusOf("Untracked")).toBe("New");
+		expect(fileStatusOf("Renamed")).toBe("Renamed");
+	});
+
+	it("falls back to Modified for a status it does not know", () => {
+		expect(fileStatusOf("Typechange" as never)).toBe("Modified");
 	});
 });

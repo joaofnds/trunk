@@ -142,3 +142,49 @@ describe("DiffToolbar rendered markdown", () => {
 		expect(screen.getByTitle("Side-by-side view")).toBeEnabled();
 	});
 });
+
+describe("DiffToolbar file header", () => {
+	it("marks the file with its status letter", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				selectedStatus: "Added" as const,
+			},
+		});
+		expect(screen.getByTitle("Added")).toHaveTextContent("A");
+	});
+
+	it("names both paths when the file was renamed", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "code/math-util.ts",
+				selectedStatus: "Renamed" as const,
+				selectedOldPath: "util.ts",
+			},
+		});
+		expect(screen.getByTestId("diff-old-path")).toHaveTextContent("util.ts");
+		expect(screen.getByTestId("diff-path")).toHaveTextContent(
+			"code/math-util.ts",
+		);
+	});
+
+	it("names one path when the file was not renamed", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				selectedStatus: "Modified" as const,
+				selectedOldPath: null,
+			},
+		});
+		expect(screen.queryByTestId("diff-old-path")).toBeNull();
+		expect(screen.getByTestId("diff-path")).toHaveTextContent("src/main.rs");
+	});
+
+	it("shows no badge until a file is selected", () => {
+		render(DiffToolbar, { props: { ...baseProps, selectedPath: null } });
+		expect(screen.queryByTestId("diff-status-badge")).toBeNull();
+	});
+});
