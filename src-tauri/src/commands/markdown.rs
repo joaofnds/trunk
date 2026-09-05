@@ -20,10 +20,12 @@ use std::path::Path;
 use std::sync::Mutex;
 use tauri::State;
 
-/// Block-diff cache keyed `(repo, file, before-oid, after-oid)`. Only commit-vs-
-/// commit diffs are cached (both revs immutable); any working-tree/index side is
-/// recomputed on every `repo-changed`. `cache_put` bounds it at cap-128, dropping
-/// the whole map on overflow. Registered as Tauri managed state in lib.rs.
+/// Block-diff cache keyed `(repo, file, before-oid, after-oid)`.
+///
+/// Only commit-vs-commit diffs are cached (both revs immutable); any
+/// working-tree/index side is recomputed on every `repo-changed`. `cache_put` bounds it
+/// at cap-128, dropping the whole map on overflow. Registered as Tauri managed state in
+/// lib.rs.
 #[derive(Default)]
 pub struct MarkdownDiffCache(pub Mutex<HashMap<String, MarkdownDiff>>);
 
@@ -68,11 +70,12 @@ const MD_TINT_CLASSES: &[&str] = &["md-added", "md-removed"];
 /// `<del>`/`<ins>`) so an author's `~~strikethrough~~` is never tinted (invariant §5).
 const MD_WORD_CLASSES: &[&str] = &["md-word-delete", "md-word-add"];
 
-/// One row of a rendered-markdown block diff, in document reading order. Mirrors
-/// the frontend `DiffRow` union (serde `kind` tag). `Changed` always carries its
-/// before/after fragments (the split columns) and, when one can be built, a
-/// `merged_html`: ONE copy of the block carrying `md-word-*` del/ins marks, which
-/// is what the inline view renders.
+/// One row of a rendered-markdown block diff, in document reading order.
+///
+/// Mirrors the frontend `DiffRow` union (serde `kind` tag). `Changed` always carries
+/// its before/after fragments (the split columns) and, when one can be built, a
+/// `merged_html`: ONE copy of the block carrying `md-word-*` del/ins marks, which is
+/// what the inline view renders.
 ///
 /// Every row carries its 1-based inclusive source-line span so the frontend can
 /// budget hunk context by line distance, matching Source's `diff_context_lines`.
@@ -157,10 +160,13 @@ const fn is_false(b: &bool) -> bool {
     !*b
 }
 
-/// A rendered-markdown diff crossing IPC: the aligned rows plus whether the
-/// line diff found only changes the rendered view cannot represent (whitespace
-/// between blocks) — every row `Unchanged` yet the sources differ. The frontend
-/// then explains the untinted state instead of claiming "No changes".
+/// A rendered-markdown diff crossing IPC.
+///
+/// Carries the aligned rows plus whether the line diff found only changes the
+/// rendered view cannot represent (whitespace between blocks) — every row
+/// `Unchanged` yet the sources differ.
+///
+/// The frontend then explains the untinted state instead of claiming "No changes".
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MarkdownDiff {
@@ -207,9 +213,10 @@ struct Leaf {
     tag: String,
 }
 
-/// Diff two markdown documents, returning an aligned row per top-level block in
-/// reading order. Row semantics derive from the plain-text LINE diff of the two
-/// sources — the same diff Source mode shows — mapped onto blocks via sourcepos:
+/// Diff two markdown documents, one aligned row per top-level block.
+///
+/// Rows come back in reading order. Their semantics derive from the plain-text
+/// LINE diff of the two sources — the same diff Source mode shows — mapped onto blocks via sourcepos:
 /// a block is dirty iff its line span intersects its side's changed lines. Both
 /// texts are front-matter-rewritten BEFORE the line diff so line numbers and
 /// sourcepos share one coordinate system. `repo`/`file`/`rev` are needed only to
@@ -2427,10 +2434,12 @@ fn write_highlighted_lines(
 }
 
 /// Render GFM markdown → sanitized HTML. `rewrite_image` maps an image URL to a
-/// replacement (or None to leave it) — the caller supplies the `trunk-asset://`
-/// rewrite for local images; tests pass a no-op. Raw HTML is stripped and
-/// dangerous hrefs emptied (comrak `unsafe_` off), then ammonia re-checks as
-/// defense-in-depth so a `{@html}` on the frontend can't execute injected markup.
+/// replacement (or None to leave it) — the caller supplies the `trunk-asset://` rewrite
+/// for local images; tests pass a no-op.
+///
+/// Raw HTML is stripped and dangerous hrefs emptied (comrak `unsafe_` off), then
+/// ammonia re-checks as defense-in-depth so a `{@html}` on the frontend can't execute
+/// injected markup.
 pub fn render_markdown_html(
     markdown: &str,
     rewrite_image: &dyn Fn(&str) -> Option<String>,

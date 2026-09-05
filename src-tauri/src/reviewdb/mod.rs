@@ -39,11 +39,12 @@ pub struct Store {
     data_dir: PathBuf,
 }
 
-/// The store's data directory for a compiled-in app identifier — the CLI's
-/// whole store discovery (D4): no filesystem probing, the dev binary reads
-/// the dev store because its identifier says so. Must name the exact
-/// directory Tauri's `app_data_dir` resolves for the same identifier;
-/// `data_dir_matches_the_app_handles` pins the agreement.
+/// The store's data directory for a compiled-in app identifier — the CLI's whole store
+/// discovery (D4): no filesystem probing, the dev binary reads the dev store because
+/// its identifier says so.
+///
+/// Must name the exact directory Tauri's `app_data_dir` resolves for the same
+/// identifier; `data_dir_matches_the_app_handles` pins the agreement.
 ///
 /// `TRUNK_DATA_DIR` overrides the derivation, in the app and the CLI both
 /// (§5.2). It is the one sanctioned escape from the identifier: a test-built
@@ -77,10 +78,12 @@ fn home() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").expect("HOME is unset"))
 }
 
-/// Open (creating if absent) the review store under `data_dir`, applying
-/// migrations under the write lock. A store whose `user_version` exceeds this
-/// build is refused with `store_newer` and left untouched; an unreadable one is
-/// quarantined together with its `-wal` and `-shm` sidecars and started empty.
+/// Open (creating if absent) the review store under `data_dir`, applying migrations
+/// under the write lock.
+///
+/// A store whose `user_version` exceeds this build is refused with `store_newer` and
+/// left untouched; an unreadable one is quarantined together with its `-wal` and `-shm`
+/// sidecars and started empty.
 ///
 /// # Errors
 ///
@@ -319,11 +322,11 @@ pub fn require_human(
     Ok(())
 }
 
-/// The published-is-permanent policy shared by `threads::delete` and
-/// `replies::delete`: a published review's rows are permanent. `noun` names
-/// what's permanent in the error message (`"threads"` / `"replies"`); the
-/// missing-row case is each caller's own idempotent no-op, not this guard's
-/// concern.
+/// The published-is-permanent policy shared by `threads::delete` and `replies::delete`:
+/// a published review's rows are permanent.
+///
+/// `noun` names what's permanent in the error message (`"threads"` / `"replies"`); the
+/// missing-row case is each caller's own idempotent no-op, not this guard's concern.
 ///
 /// # Errors
 ///

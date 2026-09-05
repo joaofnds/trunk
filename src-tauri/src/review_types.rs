@@ -1,16 +1,18 @@
-//! Review-domain vocabulary shared across the store (`reviewdb`), the doc
-//! renderer (`git::review`) and the command layer (`commands::review`). None
-//! of those three owns these types, so they live here instead of inside any
-//! one of them — `git::types` is git2→DTO conversion only (its own header),
-//! and these enums carry no git meaning.
+//! Review-domain vocabulary shared across the store (`reviewdb`), the doc renderer
+//! (`git::review`) and the command layer (`commands::review`).
+//!
+//! None of those three owns these types, so they live here instead of inside any one of
+//! them — `git::types` is git2→DTO conversion only (its own header), and these enums
+//! carry no git meaning.
 
 use crate::error::TrunkError;
 use serde::{Deserialize, Serialize};
 
-/// The thread state matrix's closed set (spec §2). `open` is the default at
-/// creation; `addressed` is the agent's claim, reachable only via `Channel::Agent`;
-/// `done`/`dismissed` are the user's resolutions. Serializes lowercase, matching
-/// the shipped TS union and the store's CHECK constraint — unlike
+/// The thread state matrix's closed set (spec §2).
+///
+/// `open` is the default at creation; `addressed` is the agent's claim, reachable only
+/// via `Channel::Agent`; `done`/`dismissed` are the user's resolutions. Serializes
+/// lowercase, matching the shipped TS union and the store's CHECK constraint — unlike
 /// `git::types::Side`/`Source`, which carry no `rename_all` and must not gain one.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

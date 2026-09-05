@@ -92,11 +92,13 @@ pub fn create_highlighter(extension: &str) -> Option<HighlightLines<'static>> {
     Some(HighlightLines::new(syntax, theme))
 }
 
-/// Create a reusable highlighter for a language *token* (e.g. "rust", "python"),
-/// as fenced code blocks name their language. Unlike `create_highlighter` (which
-/// resolves by file extension for the diff path), this resolves the token syntect
-/// exposes — the two are not interchangeable, which is why both exist.
-/// Returns None when the token has no syntax definition.
+/// Create a reusable highlighter for a language *token*.
+///
+/// The token is what fenced code blocks name their language with, "rust" or
+/// "python". Unlike `create_highlighter` (which resolves by file extension for
+/// the diff path), this resolves the token syntect exposes — the two are not
+/// interchangeable, which is why both exist. Returns None when the token has no
+/// syntax definition.
 pub fn create_highlighter_by_token(token: &str) -> Option<HighlightLines<'static>> {
     // Second path to the pathological Markdown grammar (see MARKDOWN_GRAMMAR_EXTENSIONS):
     // a ```markdown / ```md fenced block in the Rendered view resolves the same grammar
@@ -219,12 +221,13 @@ pub fn merge_spans(
     result
 }
 
-/// Re-express merged span offsets as UTF-16 code units, in place. Rust-side
-/// span math is UTF-8 byte-based; the frontend renders with
-/// `content.slice(start, end)`, which indexes UTF-16 code units, so spans
-/// convert here, once, before they ship. Requires spans sorted and
-/// non-overlapping, as `merge_spans` emits them: the walker only moves
-/// forward, so an offset behind a previously visited one converts wrong.
+/// Re-express merged span offsets as UTF-16 code units, in place.
+///
+/// Rust-side span math is UTF-8 byte-based; the frontend renders with
+/// `content.slice(start, end)`, which indexes UTF-16 code units, so spans convert here,
+/// once, before they ship. Requires spans sorted and non-overlapping, as `merge_spans`
+/// emits them: the walker only moves forward, so an offset behind a previously visited
+/// one converts wrong.
 pub fn merged_spans_to_utf16(spans: &mut [MergedSpan], content: &str) {
     if content.is_ascii() {
         return;

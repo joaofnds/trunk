@@ -82,9 +82,10 @@ pub struct GraphResult {
     pub max_columns: usize,
 }
 
-/// A single commit in the review session, rendered by the panel (D-05) and
-/// consumed as a membership set by the graph (D-04/D-06). Serialize-default
-/// `snake_case` matches `GraphCommit`, whose fields it copies 1:1.
+/// A single commit in the review session, rendered by the panel (D-05) and consumed as
+/// a membership set by the graph (D-04/D-06).
+///
+/// Serialize-default `snake_case` matches `GraphCommit`, whose fields it copies 1:1.
 #[derive(Debug, Serialize, Clone)]
 pub struct SessionCommit {
     pub oid: String,
@@ -223,12 +224,13 @@ impl Default for DiffRequestOptions {
     }
 }
 
-/// How the split view should seat a changed line relative to the other side,
-/// decided by the run-level word diff. `Partner` names the hunk-line index of
-/// the homologous opposite-side line; `Alone` is a line the word diff decided
-/// has no counterpart; `Unknown` means no word diff ran over the line's run.
-/// The verdict is per run: a run the word diff skipped is all `Unknown` and
-/// the view pairs it positionally, as before the word diff existed.
+/// How the split view should seat a changed line relative to the other side, decided by
+/// the run-level word diff.
+///
+/// `Partner` names the hunk-line index of the homologous opposite-side line; `Alone` is
+/// a line the word diff decided has no counterpart; `Unknown` means no word diff ran
+/// over the line's run. The verdict is per run: a run the word diff skipped is all
+/// `Unknown` and the view pairs it positionally, as before the word diff existed.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LinePairing {
@@ -275,10 +277,11 @@ pub enum DiffStatus {
     Unknown,
 }
 
-/// One file's place in a diff. `path` is the new-side path, and for a delta
-/// libgit2's rename detection paired, `old_path` names where the content came
-/// from; every other status leaves it `None`, so a `Some` is the file list's
-/// signal to render one entry naming both paths.
+/// One file's place in a diff.
+///
+/// `path` is the new-side path, and for a delta libgit2's rename detection paired,
+/// `old_path` names where the content came from; every other status leaves it `None`,
+/// so a `Some` is the file list's signal to render one entry naming both paths.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct FileDiff {
     pub path: String,

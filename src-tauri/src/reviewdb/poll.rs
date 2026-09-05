@@ -1,9 +1,9 @@
-//! Live reflection's primitive (plan §3, D3): `PRAGMA data_version` on a
-//! dedicated autocommit connection moves when any OTHER connection commits —
-//! a CLI reply, a second app instance — and never for this connection's own
-//! work. `store_meta.revision` then decides whether the movement deserves an
-//! emit: the draft autosave commits without bumping it, so typing never
-//! triggers a refetch storm.
+//! Live reflection's primitive (plan §3, D3): `PRAGMA data_version` on a dedicated
+//! autocommit connection moves when any OTHER connection commits — a CLI reply, a
+//! second app instance — and never for this connection's own work.
+//!
+//! `store_meta.revision` then decides whether the movement deserves an emit: the draft
+//! autosave commits without bumping it, so typing never triggers a refetch storm.
 //!
 //! The connection must stay autocommit: a held read transaction under WAL
 //! freezes the snapshot and `data_version` stops moving (grilled §3.3). A
@@ -48,10 +48,11 @@ impl Ticker for ClockTicker {
     }
 }
 
-/// A ticker a test drives by hand. [`PollDriver::run_cycle`] releases exactly
-/// one loop pass and blocks until that pass is complete, which is what lets a
-/// poll test assert without a timeout: after `run_cycle` returns, whatever the
-/// cycle was going to do has already happened.
+/// A ticker a test drives by hand.
+///
+/// [`PollDriver::run_cycle`] releases exactly one loop pass and blocks until that pass
+/// is complete, which is what lets a poll test assert without a timeout: after
+/// `run_cycle` returns, whatever the cycle was going to do has already happened.
 ///
 /// The loop parks in `recv` between cycles, where the stop flag cannot reach
 /// it, so [`PollHandle::stop`] does not stop a ticked loop. Stopping works by
@@ -161,12 +162,13 @@ impl Drop for PollHandle {
     }
 }
 
-/// Watch the store under `data_dir`, calling `on_change` when another
-/// connection committed a revision-bumping write. Only movement after the
-/// baseline is announced, and the baseline is read before this function
-/// returns: a write the caller makes after `spawn` is always seen. Reading it
-/// on the spawned thread instead would lose any write that landed before that
-/// thread was first scheduled.
+/// Watch the store under `data_dir`, calling `on_change` when another connection
+/// committed a revision-bumping write.
+///
+/// Only movement after the baseline is announced, and the baseline is read before this
+/// function returns: a write the caller makes after `spawn` is always seen. Reading it
+/// on the spawned thread instead would lose any write that landed before that thread
+/// was first scheduled.
 pub fn spawn(data_dir: &Path, on_change: impl Fn() + Send + 'static) -> PollHandle {
     let stop = Arc::new(AtomicBool::new(false));
     let ticker = ClockTicker {

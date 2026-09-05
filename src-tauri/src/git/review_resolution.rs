@@ -10,9 +10,11 @@ use crate::git::types::Comment;
 use serde::Serialize;
 use std::path::Path;
 
-/// Why a comment no longer resolves against the repo (D-08). `PascalCase` strings,
-/// NO `rename_all`, mirroring `Source`/`Side` (`types.rs:295-305`); the TS
-/// `OrphanReason` union (`types.ts:311`) mirrors these variant names string-for-string.
+/// Why a comment no longer resolves against the repo (D-08).
+///
+/// `PascalCase` strings, NO `rename_all`, mirroring `Source`/`Side`
+/// (`types.rs:295-305`); the TS `OrphanReason` union (`types.ts:311`) mirrors these
+/// variant names string-for-string.
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub enum OrphanReason {
     /// The anchor/comment's commit is unknown to the repo (or its oid is unparseable).
@@ -24,10 +26,11 @@ pub enum OrphanReason {
     LineOutOfRange,
 }
 
-/// Per-comment resolvability (D-08). Serialize, `snake_case` fields; `reason` is
-/// `None` (JSON `null`) when resolvable. Mirrors the TS `CommentResolution`
-/// interface (`types.ts:315-319`) — do NOT `skip_serializing_if` `reason`, the TS
-/// side expects the field present-and-null.
+/// Per-comment resolvability (D-08).
+///
+/// Serialize, `snake_case` fields; `reason` is `None` (JSON `null`) when resolvable.
+/// Mirrors the TS `CommentResolution` interface (`types.ts:315-319`) — do NOT
+/// `skip_serializing_if` `reason`, the TS side expects the field present-and-null.
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 pub struct CommentResolution {
     pub id: String,
@@ -87,10 +90,11 @@ pub(crate) fn classify_anchor(
     }
 }
 
-/// Resolve every comment against the repo, returning exactly one
-/// `CommentResolution` per input (count in == count out) — never dropping or
-/// panicking (D-06/D-08). Commit-level comments (`anchor: None`) only need the
-/// commit to exist; line-anchored comments run the full side-aware bound check.
+/// Resolve every comment against the repo, returning exactly one `CommentResolution`
+/// per input (count in == count out) — never dropping or panicking (D-06/D-08).
+///
+/// Commit-level comments (`anchor: None`) only need the commit to exist; line-anchored
+/// comments run the full side-aware bound check.
 #[must_use]
 pub fn resolve_all(comments: &[Comment], repo: &git2::Repository) -> Vec<CommentResolution> {
     comments

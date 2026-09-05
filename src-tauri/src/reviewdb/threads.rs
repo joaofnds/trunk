@@ -1,7 +1,9 @@
-//! Threads: the persisted form of today's comments — root text plus anchor,
-//! now carrying a state and a channel. `ThreadState::transition`
-//! (`review_types`) is the single place the state matrix (spec §2) is
-//! enforced; every writer of `threads.state` goes through it via `set_state`.
+//! Threads: the persisted form of today's comments — root text plus anchor, now
+//! carrying a state and a channel.
+//!
+//! `ThreadState::transition` (`review_types`) is the single place the state matrix
+//! (spec §2) is enforced; every writer of `threads.state` goes through it via
+//! `set_state`.
 
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
@@ -104,10 +106,10 @@ pub fn list_for_review(conn: &Connection, review_id: &str) -> Result<Vec<Thread>
     rows.into_iter().collect()
 }
 
-/// Each of the review's threads paired with its replies, fetched in one
-/// query. Callers no longer hand-drain the reply map themselves — a call
-/// site that forgot `unwrap_or_default()` on a no-reply thread would panic
-/// or silently drop replies.
+/// Each of the review's threads paired with its replies, fetched in one query.
+///
+/// Callers no longer hand-drain the reply map themselves — a call site that forgot
+/// `unwrap_or_default()` on a no-reply thread would panic or silently drop replies.
 ///
 /// # Errors
 ///
@@ -174,8 +176,10 @@ pub fn anchored_oids(conn: &Connection, repo_path: &Path) -> Result<HashSet<Stri
 }
 
 /// Move a thread's state, enforcing `ThreadState::transition` inside the same
-/// read-then-write pass. A missing id is `not_found`, matching `edit`'s
-/// convention: state changes target by id, never by list position.
+/// read-then-write pass.
+///
+/// A missing id is `not_found`, matching `edit`'s convention: state changes target by
+/// id, never by list position.
 ///
 /// # Errors
 ///
@@ -218,10 +222,11 @@ pub fn set_state(
     Ok(())
 }
 
-/// Human-authored text is editable at any time, published review included —
-/// publication gates deletion, never editing (criterion 4). Refusing an
-/// agent-authored edit with `not_editable`, distinct from `not_found`, means
-/// an agent-authored id is never indistinguishable from a missing one. Edits
+/// Human-authored text is editable at any time, published review included — publication
+/// gates deletion, never editing (criterion 4).
+///
+/// Refusing an agent-authored edit with `not_editable`, distinct from `not_found`,
+/// means an agent-authored id is never indistinguishable from a missing one. Edits
 /// target by id, never by list position.
 ///
 /// # Errors
@@ -259,11 +264,12 @@ pub fn edit(
     Ok(())
 }
 
-/// A missing id is an idempotent no-op, so a double-delete or a stale id from
-/// another window never errors. Publication gates this — not editing
-/// (criterion 12): a published review's threads are permanent, and that check
-/// happens before anything is written, same read-then-check shape as `edit`'s
-/// channel refusal.
+/// A missing id is an idempotent no-op, so a double-delete or a stale id from another
+/// window never errors.
+///
+/// Publication gates this — not editing (criterion 12): a published review's threads
+/// are permanent, and that check happens before anything is written, same
+/// read-then-check shape as `edit`'s channel refusal.
 ///
 /// # Errors
 ///

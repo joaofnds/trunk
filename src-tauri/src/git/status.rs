@@ -1,8 +1,10 @@
 use git2::{Repository, Status, StatusOptions};
 
-/// The one definition of "dirty" in Trunk, shared by the graph walk and the dirty counters so
-/// the two cannot drift. `include_ignored(false)` keeps ignored trees out of the scan, which
-/// libgit2's defaults would otherwise walk on every refresh.
+/// The one definition of "dirty" in Trunk, shared by the graph walk and the dirty
+/// counters so the two cannot drift.
+///
+/// `include_ignored(false)` keeps ignored trees out of the scan, which libgit2's
+/// defaults would otherwise walk on every refresh.
 #[must_use]
 pub fn dirty_status_options() -> StatusOptions {
     let mut opts = StatusOptions::new();

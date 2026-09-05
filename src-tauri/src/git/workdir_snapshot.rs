@@ -1,10 +1,11 @@
-//! Capture the current working tree as a REAL but DANGLING commit so it can be
-//! reviewed exactly like a hand-picked commit. The snapshot commit's own tree is
-//! the working tree (staged + unstaged + untracked-not-ignored); its parent is
-//! HEAD. The existing review pipeline then resolves `Side::Old` against the
-//! parent tree (= HEAD) and `Side::New` against the snapshot tree (= working
-//! tree) — precisely "before vs after" for uncommitted work, with no new
-//! Source/Side variant.
+//! Capture the current working tree as a REAL but DANGLING commit so it can be reviewed
+//! exactly like a hand-picked commit.
+//!
+//! The snapshot commit's own tree is the working tree (staged + unstaged +
+//! untracked-not-ignored); its parent is HEAD. The existing review pipeline then
+//! resolves `Side::Old` against the parent tree (= HEAD) and `Side::New` against the
+//! snapshot tree (= working tree) — precisely "before vs after" for uncommitted work,
+//! with no new Source/Side variant.
 
 use crate::error::TrunkError;
 
@@ -155,10 +156,11 @@ fn is_head_unborn(repo: &git2::Repository) -> bool {
 /// the branch/commit graph.
 pub const SNAPSHOT_REF_PREFIX: &str = "refs/trunk/review-snapshots/";
 
-/// Pin a snapshot commit with a keepalive ref (260531-l02 C3). Without it the snapshot
-/// is a dangling commit that gc prunes, silently orphaning every comment anchored to
-/// it. Named by the oid so re-pinning a reused snapshot is idempotent; `force = true`
-/// tolerates an already-present ref.
+/// Pin a snapshot commit with a keepalive ref (260531-l02 C3).
+///
+/// Without it the snapshot is a dangling commit that gc prunes, silently orphaning
+/// every comment anchored to it. Named by the oid so re-pinning a reused snapshot is
+/// idempotent; `force = true` tolerates an already-present ref.
 pub fn keep_snapshot_ref(repo: &git2::Repository, oid: git2::Oid) -> Result<(), TrunkError> {
     let name = format!("{SNAPSHOT_REF_PREFIX}{oid}");
     repo.reference(&name, oid, true, "trunk working-tree review snapshot")?;

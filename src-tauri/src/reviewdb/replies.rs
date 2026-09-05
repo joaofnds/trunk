@@ -62,9 +62,11 @@ pub fn add(
     Ok(id)
 }
 
-/// Update a reply's text. Same refusal shape as `threads::edit`: agent-
-/// attributed text is not editable from the UI (`not_editable`), publication
-/// gates nothing here (criterion 4), and a missing id is `not_found`.
+/// Update a reply's text.
+///
+/// Same refusal shape as `threads::edit`: agent-attributed text is not editable from
+/// the UI (`not_editable`), publication gates nothing here (criterion 4), and a missing
+/// id is `not_found`.
 ///
 /// # Errors
 ///
@@ -105,10 +107,11 @@ pub fn edit(
     Ok(())
 }
 
-/// Remove a reply. A missing id is an idempotent no-op. Publication gates
-/// this, not editing (criterion 12): a published review's replies are
-/// permanent, so a reply belonging to one refuses with `review_published`
-/// before anything is written — same read-then-check shape as
+/// Remove a reply.
+///
+/// A missing id is an idempotent no-op. Publication gates this, not editing (criterion
+/// 12): a published review's replies are permanent, so a reply belonging to one refuses
+/// with `review_published` before anything is written — same read-then-check shape as
 /// `threads::delete`.
 ///
 /// # Errors
@@ -140,11 +143,12 @@ pub fn delete(conn: &Connection, repo_path: &Path, id: &str) -> Result<(), Trunk
     Ok(())
 }
 
-/// Every reply for a set of threads, keyed by thread id — one query over an
-/// `IN` list rather than N+1. Within each thread, replies are oldest first;
-/// ties within one second break on `rowid`, never `id`: ids are random, so a
-/// same-second pair would sort by a coin flip — permanently, since the order
-/// is deterministic once written.
+/// Every reply for a set of threads, keyed by thread id — one query over an `IN` list
+/// rather than N+1.
+///
+/// Within each thread, replies are oldest first; ties within one second break on
+/// `rowid`, never `id`: ids are random, so a same-second pair would sort by a coin flip
+/// — permanently, since the order is deterministic once written.
 ///
 /// # Errors
 ///

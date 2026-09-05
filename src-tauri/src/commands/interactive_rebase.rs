@@ -15,9 +15,11 @@ pub struct RebaseTodoAction {
     pub new_message: Option<String>,
 }
 
-/// The listing and the base it was built from, so a rebase started from this
-/// listing cannot pick the commit it replays onto. `base_oid` is `None` when the
-/// clicked commit is the repository root, which rebases from `--root`.
+/// The listing and the base it was built from, so a rebase started from this listing
+/// cannot pick the commit it replays onto.
+///
+/// `base_oid` is `None` when the clicked commit is the repository root, which rebases
+/// from `--root`.
 #[derive(Debug, Serialize)]
 pub struct RebaseTodo {
     pub base_oid: Option<String>,
@@ -106,9 +108,11 @@ pub fn get_fork_point_inner(
     Ok(oid)
 }
 
-/// How a started rebase ended. `Stopped` is a pause the staging panel's banner
-/// owns, not a failure, so it stays on the `Ok` path and keeps the graph insert
-/// and the `repo-changed` emit the conflict-resolution UI needs.
+/// How a started rebase ended.
+///
+/// `Stopped` is a pause the staging panel's banner owns, not a failure, so it stays on
+/// the `Ok` path and keeps the graph insert and the `repo-changed` emit the
+/// conflict-resolution UI needs.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RebaseStartResult {

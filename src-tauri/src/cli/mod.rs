@@ -1,10 +1,13 @@
-//! The `trunk review` argv branch. It runs before any Tauri machinery — the
-//! builder, the single-instance socket, every plugin — so a CLI invocation
-//! never activates the GUI, and a running app never sees it (D4).
+//! The `trunk review` argv branch.
+//!
+//! It runs before any Tauri machinery — the builder, the single-instance
+//! socket, every plugin — so a CLI invocation never activates the GUI, and a
+//! running app never sees it (D4).
 
-/// The review-subcommand arguments when `args` is a `trunk review …`
-/// invocation, `None` when the process should start the GUI. `args` is the
-/// full argv including the program name.
+/// The review-subcommand arguments, or `None` to start the GUI.
+///
+/// `args` is the full argv including the program name, and the result is what
+/// follows `trunk review`.
 pub fn review_args(args: &[String]) -> Option<&[String]> {
     match args.get(1).map(String::as_str) {
         Some("review") => Some(&args[2..]),
@@ -14,9 +17,10 @@ pub fn review_args(args: &[String]) -> Option<&[String]> {
 
 pub mod review;
 
-/// Run the review subcommand and return the process exit code. Output goes to
-/// stdout, errors to stderr with a nonzero exit and no partial write (§5.1).
-/// Usage mistakes exit 2, store and repo failures exit 1.
+/// Run the review subcommand and return the process exit code.
+///
+/// Output goes to stdout, errors to stderr with a nonzero exit and no partial write
+/// (§5.1). Usage mistakes exit 2, store and repo failures exit 1.
 #[must_use]
 pub fn run_review(args: &[String]) -> i32 {
     // The release binary is `windows_subsystem = "windows"` (main.rs): no

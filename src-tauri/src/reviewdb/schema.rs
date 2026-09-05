@@ -161,11 +161,12 @@ const V7: &str = r"
 DROP TABLE IF EXISTS pin_seq;
 ";
 
-/// A dev store may carry `user_version = 8` from an unreleased commit that
-/// numbered this same cleanup differently. Its schema is what v7 produces, so
-/// the version is the only thing wrong: renumber it rather than refuse the
-/// store. `version_guard` would otherwise tell the user to restart, which never
-/// helps, and leave the app unusable against that store forever.
+/// A dev store may carry `user_version = 8` from an unreleased commit that numbered
+/// this same cleanup differently.
+///
+/// Its schema is what v7 produces, so the version is the only thing wrong: renumber it
+/// rather than refuse the store. `version_guard` would otherwise tell the user to
+/// restart, which never helps, and leave the app unusable against that store forever.
 ///
 /// # Errors
 ///

@@ -5,11 +5,12 @@ use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-/// Outcome of a clean two-step revert begin. The async wrapper emits
-/// `repo-changed` (`REVERT_HEAD` is set before the editor opens), so a later
-/// cancel still surfaces the in-progress UI. A conflicted revert returns
-/// `Err(conflict_state)` instead — there is a single editor outcome, so a
-/// 2-field struct is simpler than a tagged enum here.
+/// Outcome of a clean two-step revert begin.
+///
+/// The async wrapper emits `repo-changed` (`REVERT_HEAD` is set before the
+/// editor opens), so a later cancel still surfaces the in-progress UI. A
+/// conflicted revert returns `Err(conflict_state)` instead — there is a single
+/// editor outcome, so a 2-field struct is simpler than a tagged enum here.
 #[derive(Debug, serde::Serialize)]
 pub struct RevertBeginResult {
     pub graph: GraphSnapshot,

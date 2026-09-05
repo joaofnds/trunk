@@ -23,10 +23,12 @@ pub struct CommitFacts {
     pub author_timestamp: i64,
 }
 
-/// Everything one walk reads from a repository. `commits` is keyed over the walk members;
-/// `refs` is filtered to them, since only a page member is ever hydrated. `stash_order`
-/// carries `stash_foreach`'s order, which the algorithm does not need and the serialized
-/// form does — a `HashSet`'s iteration order would differ between processes.
+/// Everything one walk reads from a repository.
+///
+/// `commits` is keyed over the walk members; `refs` is filtered to them, since only a
+/// page member is ever hydrated. `stash_order` carries `stash_foreach`'s order, which
+/// the algorithm does not need and the serialized form does — a `HashSet`'s iteration
+/// order would differ between processes.
 #[derive(Debug, Clone, Default)]
 pub struct GraphSource {
     pub placement: PlacementInput,
@@ -44,10 +46,12 @@ pub struct FixtureInput {
     pub capture: CapturedGraph,
 }
 
-/// The committed form of a `GraphSource`. Every map is a `BTreeMap` and `stashes` is the
-/// `stash_foreach` order rather than the algorithm's set, so two captures of one repository
-/// produce the same bytes. This shape never appears on a production path — routing the app
-/// through it would cost an OID round-trip per commit on every graph refresh.
+/// The committed form of a `GraphSource`.
+///
+/// Every map is a `BTreeMap` and `stashes` is the `stash_foreach` order rather than the
+/// algorithm's set, so two captures of one repository produce the same bytes. This
+/// shape never appears on a production path — routing the app through it would cost an
+/// OID round-trip per commit on every graph refresh.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CapturedGraph {
     pub oids: Vec<String>,

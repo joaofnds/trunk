@@ -20,10 +20,11 @@ pub struct ReviewCommit {
     pub subject: String,
 }
 
-/// Union `members` into the review's set, preserving the order they arrive in
-/// and leaving anything already there untouched — including its stored
-/// subject. One statement per member, one transaction from the caller — never
-/// decomposed into N separate gestures.
+/// Union `members` into the review's set, preserving the order they arrive in and
+/// leaving anything already there untouched — including its stored subject.
+///
+/// One statement per member, one transaction from the caller — never decomposed into N
+/// separate gestures.
 ///
 /// # Errors
 ///

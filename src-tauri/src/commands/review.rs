@@ -161,10 +161,11 @@ pub fn submit_thread_inner(
 }
 
 /// `submit_thread_inner` with the repo available, so a thread landing against a
-/// snapshot whose pin was already reclaimed can restore it. That happens when a
-/// submit outlives `IN_FLIGHT_GRACE_SECS` — a machine asleep with the composer
-/// open. Without this the thread lands on a commit gc will collect, silently,
-/// which is the loss this design exists to prevent.
+/// snapshot whose pin was already reclaimed can restore it.
+///
+/// That happens when a submit outlives `IN_FLIGHT_GRACE_SECS` — a machine asleep with
+/// the composer open. Without this the thread lands on a commit gc will collect,
+/// silently, which is the loss this design exists to prevent.
 pub fn submit_thread_into(
     store: &Store,
     canonical: &Path,
@@ -274,10 +275,11 @@ impl RenderedReply {
     }
 }
 
-/// A stored thread plus its markdown body rendered to sanitized HTML and its
-/// replies. The persisted body stays raw source (the composer round-trips
-/// it); `text_html` is derived at list time so the frontend can `{@html}` the
-/// body without a per-card render IPC.
+/// A stored thread plus its markdown body rendered to sanitized HTML and its replies.
+///
+/// The persisted body stays raw source (the composer round-trips it); `text_html` is
+/// derived at list time so the frontend can `{@html}` the body without a per-card
+/// render IPC.
 #[derive(Debug, Serialize, Clone)]
 pub struct RenderedThread {
     pub id: String,
@@ -325,9 +327,10 @@ impl RenderedThread {
     }
 }
 
-/// The threads of the repo's active review, each with its replies. A repo
-/// with no active review has no threads to show — an empty list, not an
-/// error: there is no "session is active" concept left to report.
+/// The threads of the repo's active review, each with its replies.
+///
+/// A repo with no active review has no threads to show — an empty list, not an error:
+/// there is no "session is active" concept left to report.
 pub fn list_threads_inner(
     store: &Store,
     canonical: &Path,
@@ -526,11 +529,14 @@ pub async fn add_reply<R: Runtime>(
     Ok(())
 }
 
+/// Edit a reply's text.
+///
 /// No `_inner` seam here, unlike `add_reply_inner`/`set_thread_state_inner`:
 /// those hardcode `Channel::Human` (a command-layer rule worth testing on its
 /// own), while this command adds no logic beyond the write — `replies::edit`
 /// already does the full refusal check and is exercised directly in
 /// `test_reviewdb.rs`.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -562,6 +568,7 @@ pub async fn edit_reply<R: Runtime>(
 
 /// No `_inner` seam here either, for the same reason as `edit_reply`:
 /// `replies::delete` carries the whole refusal check and is tested directly.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -787,10 +794,12 @@ pub async fn rename_review<R: Runtime>(
     Ok(())
 }
 
-/// Ending a review is a publish, never a delete: nothing is removed, the
-/// snapshot keepalive refs stay, and the active pointer stays on the published
-/// review. Pruning superseded refs is milestone 2's, deliberately paired with
-/// the renderer's excerpt-source flip.
+/// Ending a review is a publish, never a delete: nothing is removed, the snapshot
+/// keepalive refs stay, and the active pointer stays on the published review.
+///
+/// Pruning superseded refs is milestone 2's, deliberately paired with the renderer's
+/// excerpt-source flip.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -1091,6 +1100,7 @@ pub async fn remove_review_commit<R: Runtime>(
 ///
 /// Dual path-keying: the commit set is read by CANONICAL key from the store; the
 /// graph order comes from `CommitCache` by RAW path.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -1367,6 +1377,7 @@ fn as_doc_threads(
 /// Eagerly resolve every thread's anchor against the live repo: one
 /// `CommentResolution` per thread so the panel shows orphan badges at load
 /// without a click. Read-only.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -1507,6 +1518,7 @@ pub async fn generate_review_doc<R: Runtime>(
 /// The canonical path the backend keys this repo's reviews by. The
 /// `reviews-changed` payload is that string, so the frontend filters on it
 /// without re-canonicalizing (it cannot call `std::fs::canonicalize`).
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.

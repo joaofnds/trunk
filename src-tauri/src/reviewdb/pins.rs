@@ -102,10 +102,11 @@ pub enum Anchored {
     Restored,
 }
 
-/// How long a snapshot that never carried a thread is protected. It covers a
-/// submit that is still in flight; past it, the submit failed or was abandoned,
-/// and the snapshot is garbage no gesture will ever name. Generous on purpose —
-/// the cost of waiting is a ref file, and the cost of being early is a lost
+/// How long a snapshot that never carried a thread is protected.
+///
+/// It covers a submit that is still in flight; past it, the submit failed or was
+/// abandoned, and the snapshot is garbage no gesture will ever name. Generous on
+/// purpose — the cost of waiting is a ref file, and the cost of being early is a lost
 /// comment.
 pub const IN_FLIGHT_GRACE_SECS: i64 = 24 * 60 * 60;
 

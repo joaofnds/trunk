@@ -449,11 +449,13 @@ fn walk_diff(
 }
 
 /// Real content of a file's old and new version, keyed by the same index as the
-/// `FileDiff` it enriches. `None` means that side's content could not be resolved
-/// (missing blob, unreadable file, bare repo, or binary) — that side contributes
-/// no syntax tokens, but word-diff emphasis is unaffected. A side whose window
-/// runs past `MAX_SYNTAX_PARSE_LINES` resolves its content and then yields no
-/// tokens, which is the same outcome by a different route.
+/// `FileDiff` it enriches.
+///
+/// `None` means that side's content could not be resolved (missing blob, unreadable
+/// file, bare repo, or binary) — that side contributes no syntax tokens, but word-diff
+/// emphasis is unaffected. A side whose window runs past `MAX_SYNTAX_PARSE_LINES`
+/// resolves its content and then yields no tokens, which is the same outcome by a
+/// different route.
 #[derive(Debug, Default, Clone)]
 pub struct SideContent {
     pub old: Option<Vec<u8>>,
@@ -804,9 +806,10 @@ fn compare_tree<'r>(
     Ok(Some(repo.find_commit(oid)?.tree()?))
 }
 
-/// Lightweight Base → Target file listing (TRUNK-1 compare). Two-tree diff
-/// with no ancestry requirement — unlike a review range, any pair of commits
-/// compares. Metadata only, like `list_commit_files_inner`.
+/// Lightweight Base → Target file listing (TRUNK-1 compare).
+///
+/// Two-tree diff with no ancestry requirement — unlike a review range, any pair of
+/// commits compares. Metadata only, like `list_commit_files_inner`.
 pub fn list_compare_files_inner(
     path: &str,
     base_oid: Option<&str>,

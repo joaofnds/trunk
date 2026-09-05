@@ -74,11 +74,12 @@ fn navigation_guard<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
-/// The application's real `Context`: the config, the bundled assets and the
-/// capability set from `capabilities/default.json`. The macro behind it defines
-/// `__EMBED_INFO_PLIST`, which a binary can carry only once, so a second
-/// expansion anywhere in a link unit fails; the test host takes the context from
-/// here instead.
+/// The application's real `Context`: the config, the bundled assets and the capability
+/// set from `capabilities/default.json`.
+///
+/// The macro behind it defines `__EMBED_INFO_PLIST`, which a binary can carry only
+/// once, so a second expansion anywhere in a link unit fails; the test host takes the
+/// context from here instead.
 #[must_use]
 pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
@@ -106,9 +107,10 @@ pub fn run() {
     .expect("error while running tauri application");
 }
 
-/// The whole application except the runtime it runs on and two plugins: plugins,
-/// the asset protocol, the window and menu setup, every managed state and the
-/// command list. The test host builds the same application on `MockRuntime`.
+/// The whole application except the runtime it runs on and two plugins: plugins, the
+/// asset protocol, the window and menu setup, every managed state and the command list.
+///
+/// The test host builds the same application on `MockRuntime`.
 ///
 /// `tauri_plugin_single_instance` stays out because it binds a per-identifier
 /// socket that parallel hosts would fight over. `tauri_plugin_clipboard_manager`

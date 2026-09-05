@@ -111,6 +111,7 @@ pub async fn refresh_commit_graph(
 /// The visibility is stored before the walk, so every later rebuild — a commit, a checkout,
 /// a stash, the file watcher — sees the same set without the frontend having to resend it.
 /// The frontend persists it to prefs in parallel with this call.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -168,9 +169,10 @@ fn write_relaid_out_graph(
     }
 }
 
-/// The graph under a new visibility. The cached snapshot answers without touching the
-/// repository; only a repository whose first graph is still being built has none, and that
-/// one is walked as it always was.
+/// The graph under a new visibility.
+///
+/// The cached snapshot answers without touching the repository; only a repository whose
+/// first graph is still being built has none, and that one is walked as it always was.
 pub fn set_ref_visibility_inner(
     path: &str,
     visibility: &crate::git::graph_input::RefVisibility,
@@ -214,8 +216,9 @@ pub fn commit_stat_inner(
     commit_stat_from_repo(&repo, oid)
 }
 
-/// Compute diff-stats for a batch of oids against a single repo handle. A per-oid
-/// failure (malformed/missing oid, unreadable tree) inserts no entry and is
+/// Compute diff-stats for a batch of oids against a single repo handle.
+///
+/// A per-oid failure (malformed/missing oid, unreadable tree) inserts no entry and is
 /// skipped — one bad commit must never fail the whole page.
 #[must_use]
 pub fn compute_commit_stats_batch(
@@ -238,9 +241,10 @@ pub fn compute_commit_stats_batch(
     out
 }
 
-/// Combined working-state diff-stat: staged (HEAD→index) plus unstaged
-/// (index→workdir, untracked files counted as insertions). Renames collapsed on
-/// each side. Never cached — the working tree changes constantly.
+/// Combined working-state diff-stat: staged (HEAD→index) plus unstaged (index→workdir,
+/// untracked files counted as insertions).
+///
+/// Renames collapsed on each side. Never cached — the working tree changes constantly.
 ///
 /// `files_changed` counts *distinct* paths across both diffs — a file that is
 /// both staged and unstaged-modified (`MM` in `git status`) is one changed file,
@@ -275,11 +279,13 @@ pub fn wip_diff_stats_inner(path: &str, state_map: &OpenRepos) -> Result<DiffSta
     })
 }
 
-/// Lazy per-page diff-stats for the graph's Diff column. Reads the cached graph
-/// to resolve the page's oids, returns already-cached stats immediately, and
-/// computes only the uncached ones on a blocking thread — caching them
-/// immutably (a commit's diff never changes). Gated on the column being visible
-/// by the caller, so a hidden column does zero work.
+/// Lazy per-page diff-stats for the graph's Diff column.
+///
+/// Reads the cached graph to resolve the page's oids, returns already-cached
+/// stats immediately, and computes only the uncached ones on a blocking thread —
+/// caching them immutably (a commit's diff never changes). Gated on the column
+/// being visible by the caller, so a hidden column does zero work.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -350,6 +356,7 @@ pub async fn get_commit_stats(
 
 /// Uncached diff-stat for the synthetic WIP row. Recomputed on every refresh,
 /// gated on column visibility by the caller.
+///
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.

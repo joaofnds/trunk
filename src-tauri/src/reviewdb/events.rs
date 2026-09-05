@@ -154,10 +154,11 @@ impl Drop for StoreEvents {
 
 static SUBSCRIBER_SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// Subscribe to the store under `data_dir`. The baseline revision is read
-/// after the socket binds, so a commit can only be ordered before the
-/// baseline (already included) or after the bind (its ring is queued): no
-/// gap loses an event.
+/// Subscribe to the store under `data_dir`.
+///
+/// The baseline revision is read after the socket binds, so a commit can only be
+/// ordered before the baseline (already included) or after the bind (its ring is
+/// queued): no gap loses an event.
 ///
 /// # Errors
 ///
@@ -219,11 +220,12 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
     })
 }
 
-/// Ring every subscriber of the store under `data_dir`. Called by
-/// `Store::write` after a revision-bumping commit; best-effort by design — a
-/// dead subscriber's leftover socket is cleaned up here (see [`abandoned`]
-/// for how that is told apart from a live subscriber that is merely busy),
-/// and no failure of a doorbell may fail the write that rang it.
+/// Ring every subscriber of the store under `data_dir`.
+///
+/// Called by `Store::write` after a revision-bumping commit; best-effort by design — a
+/// dead subscriber's leftover socket is cleaned up here (see [`abandoned`] for how that
+/// is told apart from a live subscriber that is merely busy), and no failure of a
+/// doorbell may fail the write that rang it.
 pub fn ring(data_dir: &Path) {
     let Ok(entries) = std::fs::read_dir(data_dir.join(RING_DIR)) else {
         return;

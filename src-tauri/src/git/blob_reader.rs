@@ -21,9 +21,11 @@ use crate::error::TrunkError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Which version of a file to read. Shared by `read_file_at`, the block-diff
-/// renderer, and the `trunk-asset://` protocol handler so all agree on what "the
-/// file at this rev" means. The frontend derives it from `diffKind` + side.
+/// Which version of a file to read.
+///
+/// Shared by `read_file_at`, the block-diff renderer, and the `trunk-asset://` protocol
+/// handler so all agree on what "the file at this rev" means. The frontend derives it
+/// from `diffKind` + side.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RevSpec {
@@ -74,10 +76,12 @@ impl RevSpec {
     }
 }
 
-/// Read a file's raw bytes at `rev`. Committed revs (Head/Index/Commit) read git
-/// blobs from a tree/index and are inherently sandboxed; the working-tree case is
-/// the only one that touches the filesystem, so it rejects any path escaping the
-/// repo root (canonicalized to defeat `..` and symlink traversal).
+/// Read a file's raw bytes at `rev`.
+///
+/// Committed revs (Head/Index/Commit) read git blobs from a tree/index and are
+/// inherently sandboxed; the working-tree case is the only one that touches the
+/// filesystem, so it rejects any path escaping the repo root (canonicalized to defeat
+/// `..` and symlink traversal).
 pub fn read_file_at_inner(
     repo: &git2::Repository,
     file_path: &str,

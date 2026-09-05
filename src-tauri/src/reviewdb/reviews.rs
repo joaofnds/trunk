@@ -170,9 +170,10 @@ pub fn set_active(conn: &Connection, repo_path: &Path, review_id: &str) -> Resul
 }
 
 /// The active review, creating a fresh composing one when the repo has none.
-/// This is the whole of the spec's auto-create-at-submit rule: it runs inside
-/// the submit transaction, never at composer open.
-/// The repo's active review, creating one when it points at nothing.
+///
+/// This is the whole of the spec's auto-create-at-submit rule: it runs inside the
+/// submit transaction, never at composer open. The repo's active review, creating one
+/// when it points at nothing.
 ///
 /// # Errors
 ///
@@ -277,9 +278,11 @@ pub fn publish(conn: &Connection, repo_path: &Path, id: &str, now: i64) -> Resul
     Ok(())
 }
 
-/// Delete a review. `threads`, `review_commits` and `active_review` all cascade,
-/// which is what `PRAGMA foreign_keys = ON` buys — `SQLite` defaults it off, and a
-/// cascade that silently does not fire leaves a dangling pointer row.
+/// Delete a review.
+///
+/// `threads`, `review_commits` and `active_review` all cascade, which is what `PRAGMA
+/// foreign_keys = ON` buys — `SQLite` defaults it off, and a cascade that silently does
+/// not fire leaves a dangling pointer row.
 ///
 /// # Errors
 ///

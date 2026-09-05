@@ -8,9 +8,11 @@ use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-/// Outcome of a two-step merge begin. The async wrapper emits `repo-changed`
-/// for every variant (the repo is mutated before the editor opens). The
-/// frontend (Plan 03) discriminates on the serialized `kind` tag.
+/// Outcome of a two-step merge begin.
+///
+/// The async wrapper emits `repo-changed` for every variant (the repo is mutated before
+/// the editor opens). The frontend (Plan 03) discriminates on the serialized `kind`
+/// tag.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum MergeBeginResult {

@@ -209,10 +209,11 @@ pub async fn git_fetch<R: Runtime>(
         .map_err(|e| e.to_json())
 }
 
-/// Silent periodic fetch. Best-effort: skips when the repo is mid-operation
-/// (rebase/merge/cherry-pick/revert) or another remote op is already running,
-/// and swallows any error so the UI never surfaces a popup or toast.
-/// # Errors
+/// Silent periodic fetch.
+///
+/// Best-effort: skips when the repo is mid-operation (rebase/merge/cherry-pick/revert)
+/// or another remote op is already running, and swallows any error so the UI never
+/// surfaces a popup or toast. # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
 ///
@@ -397,10 +398,11 @@ pub async fn git_push_inner<R: Runtime>(
     refresh_graph(path, path_buf, cache, ref_visibility, app).await
 }
 
-/// Fixed prefix of the recovery force push. Both lease flags are mandatory:
-/// `--force-with-lease` alone is unsafe in Trunk because the background fetch can
-/// refresh the lease, so `--force-if-includes` requires the remote tip to be in the
-/// local reflog. Never a bare `--force`.
+/// Fixed prefix of the recovery force push.
+///
+/// Both lease flags are mandatory: `--force-with-lease` alone is unsafe in Trunk
+/// because the background fetch can refresh the lease, so `--force-if-includes`
+/// requires the remote tip to be in the local reflog. Never a bare `--force`.
 pub const FORCE_PUSH_ARGS: [&str; 4] = [
     "push",
     "--force-with-lease",

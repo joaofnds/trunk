@@ -17,9 +17,11 @@ use crate::git::types::{Anchor, Side, Source};
 use crate::review_types::{Channel, ThreadState};
 use std::path::PathBuf;
 
-/// What the renderer needs from one review. Store-shaped: the command layer
-/// and the CLI both fill it from `reviews`, `threads` and `replies` rows plus
-/// the repo paths they already hold — neither opens the repository for it.
+/// What the renderer needs from one review.
+///
+/// Store-shaped: the command layer and the CLI both fill it from `reviews`, `threads`
+/// and `replies` rows plus the repo paths they already hold — neither opens the
+/// repository for it.
 pub struct RenderInput {
     pub review_id: String,
     pub title: String,
@@ -50,10 +52,11 @@ pub struct DocCommit {
     pub subject: String,
 }
 
-/// One thread as the renderer wants it — `Doc*`, not `Rendered*`: the IPC
-/// payloads (`commands/review.rs`) already own that prefix, and two
-/// near-identical names in one crate is a defect waiting to happen. Every
-/// excerpt comes from `excerpt`; no repository lookup decides which section a
+/// One thread as the renderer wants it — `Doc*`, not `Rendered*`: the IPC payloads
+/// (`commands/review.rs`) already own that prefix, and two near-identical names in one
+/// crate is a defect waiting to happen.
+///
+/// Every excerpt comes from `excerpt`; no repository lookup decides which section a
 /// thread renders in (D8/D13).
 pub struct DocThread {
     pub id: String,
@@ -586,10 +589,11 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
     emit_replies(out, &thread.replies);
 }
 
-/// Top-level pure renderer (L-01, L-04, L-09, L-10). Returns a single `String`
-/// containing the full markdown document; never panics. Per D-11, the caller
-/// is responsible for the ≥1 thread gate — render does NOT defend against
-/// zero threads (it just produces a doc with empty sections).
+/// Top-level pure renderer (L-01, L-04, L-09, L-10).
+///
+/// Returns a single `String` containing the full markdown document; never panics. Per
+/// D-11, the caller is responsible for the ≥1 thread gate — render does NOT defend
+/// against zero threads (it just produces a doc with empty sections).
 pub fn render(session: &RenderInput) -> String {
     use std::fmt::Write;
 
