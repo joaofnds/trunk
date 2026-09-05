@@ -180,6 +180,21 @@ spaced timestamps resolve by time, and the two can yield different row orders. F
 `TestContext::builder` always take the tie-break path, since it has no timestamp control; the
 shell fixture corpus is day-spaced and takes the time path.
 
+## Diff surfaces
+
+**Old path** — where a renamed file came from, carried on every file diff as `old_path`
+and null for every other status (TRUNK-82). Rename pairing runs over the whole tree
+before a single file is picked out, so a rename arrives already paired from commit,
+compare and staged diffs; an unstaged workdir rename is deliberately not paired, matching
+git. A surface that reads a file's before side reads it by the old path, because at the
+before rev the file exists only under that name: the rendered markdown view learned this
+in TRUNK-162, where reading by the new path showed a moved document as all added.
+
+**Rendered view** — the diff pane's markdown mode: both sides of a `.md` file are read at
+their revs, parsed into blocks, and shown as one document with the changed blocks tinted
+or word-marked, rather than as source lines. One fetch per file and rev pair; every
+layout (inline/split × hunk/full) is a projection of the returned rows.
+
 ## Dates (trunk-55)
 
 **Relative date** — the compact age label (`5m ago`, `2d ago`, `just now`) produced by
