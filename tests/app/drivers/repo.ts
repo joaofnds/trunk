@@ -94,16 +94,16 @@ export class RepoDriver {
 
 	/** Opens a file from the compare panel's file list in the center pane. */
 	async openCompareFile(path: string): Promise<void> {
-		const row = await waitFor(`the ${path} compare row`, () =>
-			firstMatching(FILE_ROW, (text) => text.includes(path)),
-		);
-
-		row.click();
+		await this.clickFileRow(path, `the ${path} compare row`);
 	}
 
 	/** Opens the selected commit's diff of one file in the center pane. */
 	async openCommitFile(path: string): Promise<void> {
-		const row = await waitFor(`the ${path} row`, () =>
+		await this.clickFileRow(path, `the ${path} row`);
+	}
+
+	private async clickFileRow(path: string, waitMessage: string): Promise<void> {
+		const row = await waitFor(waitMessage, () =>
 			firstMatching(FILE_ROW, (text) => text.includes(path)),
 		);
 
