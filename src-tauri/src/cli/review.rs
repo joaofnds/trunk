@@ -243,122 +243,150 @@ pub fn run(cmd: ReviewCmd, identifier: &str) -> Result<String, TrunkError> {
     let store = reviewdb::open(&reviewdb::data_dir_for(identifier))?;
 
     match cmd {
-        ReviewCmd::List { repo } => {
-            let canonical = discover_repo(repo)?;
-            let listed = store.read(|conn| reviews::list(conn, &canonical))?;
-
-            Ok(render_list(&listed))
-        }
-        ReviewCmd::Show { id, repo } => {
-            let canonical = discover_repo(repo)?;
-            let review = published_review(&store, &canonical, &id)?;
-
-            let paths = RepoPaths::of(&canonical);
-
-            crate::commands::review::render_review_doc(
-                &store,
-                &canonical,
-                &review.id,
-                paths.workdir.as_deref(),
-                &paths.repo_dir,
-            )
-        }
-        ReviewCmd::Reply { id, text, repo } => {
-            let canonical = discover_repo(repo)?;
-            let thread = published_thread(&store, &canonical, &id)?;
-
-            let body = match text {
-                ReplyText::Inline(s) => s,
-                ReplyText::Stdin => {
-                    use std::io::Read;
-                    let mut buf = String::new();
-                    std::io::stdin()
-                        .read_to_string(&mut buf)
-                        .map_err(|e| TrunkError::new("io", e.to_string()))?;
-                    buf
-                }
-            };
-            if body.trim().is_empty() {
-                return Err(TrunkError::new("bad_request", "reply text is empty"));
-            }
-
-            let now = reviewdb::now_secs();
-            let reply_id = store.write(|tx| {
-                reviewdb::replies::add(
-                    tx,
-                    &canonical,
-                    &thread.id,
-                    &body,
-                    crate::review_types::Channel::Agent,
-                    now,
-                )
-            })?;
-
-            Ok(format!("replied to {} as agent ({reply_id})\n", thread.id))
-        }
-        ReviewCmd::Address { id, repo } => {
-            let canonical = discover_repo(repo)?;
-            let thread = published_thread(&store, &canonical, &id)?;
-
-            // `set_state` runs `ThreadState::transition` with the agent
-            // channel — the one matrix, never re-derived here (TRUNK-17). An
-            // illegal claim fails naming the current state and writes nothing.
-            let now = reviewdb::now_secs();
-            store.write(|tx| {
-                reviewdb::threads::set_state(
-                    tx,
-                    &canonical,
-                    &thread.id,
-                    crate::review_types::ThreadState::Addressed,
-                    crate::review_types::Channel::Agent,
-                    now,
-                )
-            })?;
-
-            Ok(format!("{} claimed as addressed\n", thread.id))
-        }
-        ReviewCmd::Watch { repo, json } => {
-            let canonical = discover_repo(repo)?;
-            watch(&store, &canonical, json)
-        }
+        ReviewCmd::List { repo } => list(&store, discover_repo(repo)?),
+        ReviewCmd::Show { id, repo } => show(&store, discover_repo(repo)?, &id),
+        ReviewCmd::Reply { id, text, repo } => reply(&store, discover_repo(repo)?, &id, text),
+        ReviewCmd::Address { id, repo } => address(&store, discover_repo(repo)?, &id),
+        ReviewCmd::Watch { repo, json } => watch(&store, &discover_repo(repo)?, json),
         ReviewCmd::Threads {
             review,
             state,
             json,
             repo,
-        } => {
-            let canonical = discover_repo(repo)?;
-            let review = published_review(&store, &canonical, &review)?;
-            let listed =
-                store.read(|conn| crate::reviewdb::threads::list_for_review(conn, &review.id))?;
-            let matching: Vec<_> = listed
-                .into_iter()
-                .filter(|t| state.is_none_or(|wanted| t.state == wanted))
-                .collect();
+        } => threads(&store, discover_repo(repo)?, &review, state, json),
+        ReviewCmd::Thread { id, json, repo } => thread(&store, discover_repo(repo)?, &id, json),
+    }
+}
 
-            if json {
-                render_threads_json(&review.id, &matching)
-            } else {
-                Ok(render_threads(&matching))
-            }
-        }
-        ReviewCmd::Thread { id, json, repo } => {
-            let canonical = discover_repo(repo)?;
-            let thread = published_thread(&store, &canonical, &id)?;
-            // Keyed by thread id, and one id went in, so the chain is that
-            // one key's value. Draining the map instead would interleave on
-            // `HashMap`'s unspecified order the day a second id is passed.
-            let replies = store.read(|conn| {
-                crate::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
-            })?;
-            let replies = replies.get(&thread.id).cloned().unwrap_or_default();
+/// Every published review in the repository, one per line.
+fn list(store: &reviewdb::Store, canonical: PathBuf) -> Result<String, TrunkError> {
+    let listed = store.read(|conn| reviews::list(conn, &canonical))?;
 
-            if json {
-                render_thread_json(&thread, &replies)
-            } else {
-                Ok(render_thread(&store, &canonical, &thread, replies)?)
-            }
-        }
+    Ok(render_list(&listed))
+}
+
+/// One published review rendered as its full markdown document.
+fn show(store: &reviewdb::Store, canonical: PathBuf, id: &str) -> Result<String, TrunkError> {
+    let review = published_review(store, &canonical, id)?;
+    let paths = RepoPaths::of(&canonical);
+
+    crate::commands::review::render_review_doc(
+        store,
+        &canonical,
+        &review.id,
+        paths.workdir.as_deref(),
+        &paths.repo_dir,
+    )
+}
+
+/// Append an agent reply to a published thread.
+fn reply(
+    store: &reviewdb::Store,
+    canonical: PathBuf,
+    id: &str,
+    text: ReplyText,
+) -> Result<String, TrunkError> {
+    let thread = published_thread(store, &canonical, id)?;
+
+    let body = match text {
+        ReplyText::Inline(s) => s,
+        ReplyText::Stdin => read_stdin()?,
+    };
+    if body.trim().is_empty() {
+        return Err(TrunkError::new("bad_request", "reply text is empty"));
+    }
+
+    let now = reviewdb::now_secs();
+    let reply_id = store.write(|tx| {
+        reviewdb::replies::add(
+            tx,
+            &canonical,
+            &thread.id,
+            &body,
+            crate::review_types::Channel::Agent,
+            now,
+        )
+    })?;
+
+    Ok(format!("replied to {} as agent ({reply_id})\n", thread.id))
+}
+
+fn read_stdin() -> Result<String, TrunkError> {
+    use std::io::Read;
+
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| TrunkError::new("io", e.to_string()))?;
+
+    Ok(buf)
+}
+
+/// Claim a published thread as addressed, on the agent channel.
+fn address(store: &reviewdb::Store, canonical: PathBuf, id: &str) -> Result<String, TrunkError> {
+    let thread = published_thread(store, &canonical, id)?;
+
+    // `set_state` runs `ThreadState::transition` with the agent channel — the
+    // one matrix, never re-derived here (TRUNK-17). An illegal claim fails
+    // naming the current state and writes nothing.
+    let now = reviewdb::now_secs();
+    store.write(|tx| {
+        reviewdb::threads::set_state(
+            tx,
+            &canonical,
+            &thread.id,
+            crate::review_types::ThreadState::Addressed,
+            crate::review_types::Channel::Agent,
+            now,
+        )
+    })?;
+
+    Ok(format!("{} claimed as addressed\n", thread.id))
+}
+
+/// A published review's threads, optionally narrowed to one state.
+fn threads(
+    store: &reviewdb::Store,
+    canonical: PathBuf,
+    review: &str,
+    state: Option<ThreadState>,
+    json: bool,
+) -> Result<String, TrunkError> {
+    let review = published_review(store, &canonical, review)?;
+    let listed = store.read(|conn| crate::reviewdb::threads::list_for_review(conn, &review.id))?;
+    let matching: Vec<_> = listed
+        .into_iter()
+        .filter(|t| state.is_none_or(|wanted| t.state == wanted))
+        .collect();
+
+    if json {
+        render_threads_json(&review.id, &matching)
+    } else {
+        Ok(render_threads(&matching))
+    }
+}
+
+/// One published thread with its replies.
+fn thread(
+    store: &reviewdb::Store,
+    canonical: PathBuf,
+    id: &str,
+    json: bool,
+) -> Result<String, TrunkError> {
+    let thread = published_thread(store, &canonical, id)?;
+
+    // Keyed by thread id, and one id went in, so the chain is that one key's
+    // value. Draining the map instead would interleave on `HashMap`'s
+    // unspecified order the day a second id is passed.
+    let replies = store.read(|conn| {
+        crate::reviewdb::replies::list_for_threads(conn, std::slice::from_ref(&thread.id))
+    })?;
+    let replies = replies.get(&thread.id).cloned().unwrap_or_default();
+
+    if json {
+        render_thread_json(&thread, &replies)
+    } else {
+        render_thread(store, &canonical, &thread, replies)
     }
 }
 
