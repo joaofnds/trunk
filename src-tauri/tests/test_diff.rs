@@ -1,6 +1,7 @@
 mod common;
 
 use common::context::TestContext;
+use std::fmt::Write as _;
 use trunk_lib::git::types::{DiffOrigin, DiffRequestOptions, DiffStatus};
 
 // -- diff_unstaged tests --
@@ -247,7 +248,10 @@ fn commit_detail_includes_committer_fields() {
 
 #[test]
 fn diff_unstaged_respects_context_lines() {
-    let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
+    let content: String = (1..=20).fold(String::new(), |mut out, i| {
+        let _ = writeln!(out, "line {i}");
+        out
+    });
     let ctx = TestContext::builder()
         .with_file("big.txt", &content)
         .with_commit("Initial commit")
@@ -395,7 +399,10 @@ fn diff_unstaged_ignores_indentation_whitespace() {
 
 #[test]
 fn diff_unstaged_show_full_file_returns_all_lines() {
-    let content: String = (1..=50).map(|i| format!("line {i}\n")).collect();
+    let content: String = (1..=50).fold(String::new(), |mut out, i| {
+        let _ = writeln!(out, "line {i}");
+        out
+    });
     let ctx = TestContext::builder()
         .with_file("full.txt", &content)
         .with_commit("Initial commit")
@@ -665,7 +672,10 @@ fn word_span_dissimilar_skipped() {
 
 #[test]
 fn word_span_context_lines_have_no_emphasis() {
-    let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
+    let content: String = (1..=10).fold(String::new(), |mut out, i| {
+        let _ = writeln!(out, "line {i}");
+        out
+    });
     let ctx = TestContext::builder()
         .with_file("ctx.txt", &content)
         .with_commit("Initial commit")
@@ -890,7 +900,10 @@ fn syntax_and_word_diff_coexist() {
 
 #[test]
 fn diff_commit_respects_context_lines() {
-    let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
+    let content: String = (1..=20).fold(String::new(), |mut out, i| {
+        let _ = writeln!(out, "line {i}");
+        out
+    });
     let modified: String = (1..=20)
         .map(|i| {
             if i == 10 {

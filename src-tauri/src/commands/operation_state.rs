@@ -736,6 +736,7 @@ pub async fn rebase_branch<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::graph_input::RefVisibility;
     use git2::{Repository, Signature};
     use std::path::PathBuf;
     use std::process::Command;
@@ -886,7 +887,7 @@ mod tests {
         let (dir, _repo) = ff_repo();
         let map = state_map_for(&dir);
         let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
                 .unwrap();
         assert_eq!(kind_of(&result), "fast_forwarded");
         assert!(
@@ -900,7 +901,7 @@ mod tests {
         let (dir, _repo) = clean_divergent_repo();
         let map = state_map_for(&dir);
         let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
                 .unwrap();
         assert_eq!(kind_of(&result), "ready");
         let message = match result {
@@ -931,7 +932,7 @@ mod tests {
         repo.set_head("refs/heads/devel").unwrap();
         let map = state_map_for(&dir);
         let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
                 .unwrap();
         let message = match result {
             MergeBeginResult::Ready { message, .. } => message,
@@ -948,7 +949,7 @@ mod tests {
         let (dir, _repo) = conflict_divergent_repo();
         let map = state_map_for(&dir);
         let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
                 .unwrap();
         assert_eq!(kind_of(&result), "conflicts");
         assert!(
@@ -987,7 +988,7 @@ mod tests {
         let map = state_map_for(&dir);
         // Begin the conflicted merge so MERGE_HEAD + `# Conflicts:` MERGE_MSG exist.
         let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &Default::default())
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
                 .unwrap();
         assert_eq!(kind_of(&result), "conflicts");
         // Resolve the conflict by staging a fixed version of the file.
@@ -1017,7 +1018,13 @@ mod tests {
             raw_msg.contains("# Conflicts:"),
             "precondition: {raw_msg:?}"
         );
-        merge_continue_inner(&path_str(&dir), Some(&raw_msg), &map, &Default::default()).unwrap();
+        merge_continue_inner(
+            &path_str(&dir),
+            Some(&raw_msg),
+            &map,
+            &RefVisibility::default(),
+        )
+        .unwrap();
 
         // HEAD body must NOT contain any `#`-leading line (--cleanup=strip).
         let head_msg = repo
