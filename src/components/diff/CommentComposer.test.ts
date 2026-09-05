@@ -476,6 +476,21 @@ describe("CommentComposer", () => {
 		expect(args.anchor.start_line).toBe(40);
 	});
 
+	it("never saves the draft once the composer is gone", async () => {
+		vi.useFakeTimers();
+		const { unmount } = renderComposer();
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "typed, then closed" },
+		});
+
+		unmount();
+		await vi.advanceTimersByTimeAsync(300);
+
+		expect(
+			mockedInvoke.mock.calls.filter((c) => c[0] === "save_draft"),
+		).toHaveLength(0);
+	});
+
 	it("produces a New-side anchor for a split/new-side (Add-only) selection", async () => {
 		render(CommentComposer, {
 			props: {

@@ -3,6 +3,7 @@ import { untrack } from "svelte";
 import { buildDiffAnchor } from "../../lib/diff-anchor.js";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
+import { ownedTimer } from "../../lib/owned-timer.js";
 import {
 	deleteDraft,
 	getDraft,
@@ -73,7 +74,7 @@ $effect(() => {
 });
 
 const DRAFT_DEBOUNCE_MS = 300;
-let draftTimer: ReturnType<typeof setTimeout> | null = null;
+const draftSave = ownedTimer();
 
 // The capture-time adapter is the single source of truth for both the persisted
 // range (start_line..end_line) and the excerpt. When the host injects a captured
@@ -99,11 +100,7 @@ const capturedResult = $derived(captured ?? deriveDiffCapture());
 const submitDisabled = $derived(text.trim() === "" || submitting);
 
 function scheduleDraftSave() {
-	if (draftTimer !== null) clearTimeout(draftTimer);
-	draftTimer = setTimeout(() => {
-		draftTimer = null;
-		void persistDraft();
-	}, DRAFT_DEBOUNCE_MS);
+	draftSave.arm(() => void persistDraft(), DRAFT_DEBOUNCE_MS);
 }
 
 async function persistDraft() {
@@ -124,10 +121,7 @@ function handleInput() {
 async function handleSubmit() {
 	if (submitDisabled) return;
 	submitting = true;
-	if (draftTimer !== null) {
-		clearTimeout(draftTimer);
-		draftTimer = null;
-	}
+	draftSave.cancel();
 	try {
 		// Resolve the anchor's commit_oid now (deferred from open): for the working
 		// tree this starts the session + creates/reuses the snapshot. Null = failure
@@ -157,10 +151,7 @@ async function handleSubmit() {
 // Cancelling abandons the draft, so the row goes with it — otherwise the next
 // composer reopens with text the user already chose to discard.
 async function handleCancel() {
-	if (draftTimer !== null) {
-		clearTimeout(draftTimer);
-		draftTimer = null;
-	}
+	draftSave.cancel();
 	try {
 		await deleteDraft(repoPath);
 	} catch (e) {
