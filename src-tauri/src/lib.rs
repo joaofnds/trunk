@@ -137,7 +137,7 @@ fn reposition_traffic_lights_on<R: tauri::Runtime>(
 
 /// Off macOS this observes nothing: there are no traffic lights to move.
 #[cfg(not(target_os = "macos"))]
-fn reposition_traffic_lights_on<R: tauri::Runtime>(
+const fn reposition_traffic_lights_on<R: tauri::Runtime>(
     _window: &tauri::Window<R>,
     _event: &tauri::WindowEvent,
 ) {
