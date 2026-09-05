@@ -345,14 +345,26 @@ fn commit(
     index.write().unwrap();
     pending.clear();
 
+    commit_index_onto_head(repo, &mut index, &sig, message);
+}
+
+/// Commit the index's tree onto HEAD, parenting on it when it already exists.
+///
+/// The first commit in a repository has no parent, which is the only reason
+/// this takes the parent list from `repo.head()` rather than being told one.
+fn commit_index_onto_head(
+    repo: &git2::Repository,
+    index: &mut git2::Index,
+    sig: &git2::Signature<'_>,
+    message: &str,
+) {
     let tree_oid = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_oid).unwrap();
 
-    // Get current HEAD as parent (if it exists)
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
     let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
 
-    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
+    repo.commit(Some("HEAD"), sig, sig, message, &tree, &parents)
         .unwrap();
 }
 
@@ -448,19 +460,7 @@ fn stash(
             .unwrap();
         index.write().unwrap();
 
-        let tree_oid = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_oid).unwrap();
-        let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-        let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
-        repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            "Add stash marker",
-            &tree,
-            &parents,
-        )
-        .unwrap();
+        commit_index_onto_head(repo, &mut index, &sig, "Add stash marker");
     }
 
     // Modify the tracked file to create something to stash
