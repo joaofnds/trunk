@@ -74,17 +74,15 @@ fn fences(path: &Path) -> Vec<Fence> {
         };
         // An inline `` ``` `` inside prose is escaped in backticks and never starts a
         // line's content, so reaching here means a real fence.
-        match open.take() {
-            // This is a closing fence; its info string is not an attribute list.
-            Some(_) => {}
-            None => {
-                open = Some(info.to_string());
-                found.push(Fence {
-                    file: path.to_path_buf(),
-                    line: i + 1,
-                    info: info.trim().to_string(),
-                });
-            }
+        // A closing fence's info string is not an attribute list, so only an
+        // opening one is recorded.
+        if open.take().is_none() {
+            open = Some(info.to_string());
+            found.push(Fence {
+                file: path.to_path_buf(),
+                line: i + 1,
+                info: info.trim().to_string(),
+            });
         }
     }
 

@@ -216,7 +216,7 @@ impl TestContextBuilder {
         self
     }
 
-    pub fn build(&mut self) -> TestContext {
+    pub fn build(&self) -> TestContext {
         let dir = tempfile::tempdir().expect("failed to create tempdir");
         let mut repo = git2::Repository::init(dir.path()).expect("failed to init repo");
         // Every commit-producing step takes the next day off this clock. `repo.signature()`
@@ -257,13 +257,14 @@ impl TestContextBuilder {
                 }
 
                 BuildStep::Commit { message, secs } => {
-                    let sig = if let Some(secs) = secs {
-                        pinned_signature(*secs)
-                    } else {
-                        let sig = pinned_signature(clock);
-                        clock += FIXTURE_DAY_SECS;
-                        sig
-                    };
+                    let sig = secs.map_or_else(
+                        || {
+                            let sig = pinned_signature(clock);
+                            clock += FIXTURE_DAY_SECS;
+                            sig
+                        },
+                        pinned_signature,
+                    );
                     let mut index = repo.index().unwrap();
 
                     for change in &pending {

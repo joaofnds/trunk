@@ -1,6 +1,7 @@
 mod common;
 
 use common::context::TestContext;
+use std::fmt::Write as _;
 use trunk_lib::git::types::{DiffOrigin, DiffRequestOptions, FileStatusType};
 
 // -- get_status tests --
@@ -635,20 +636,19 @@ fn stage_lines_stages_selected_add_lines() {
         "expected staged diff after staging add lines"
     );
     let staged_hunk0 = &staged[0].hunks[0];
-    let staged_adds: Vec<_> = staged_hunk0
-        .lines
-        .iter()
-        .filter(|l| matches!(l.origin, DiffOrigin::Add))
-        .collect();
-    assert!(!staged_adds.is_empty(), "expected add lines in staged diff");
-
-    let staged_deletes: Vec<_> = staged_hunk0
-        .lines
-        .iter()
-        .filter(|l| matches!(l.origin, DiffOrigin::Delete))
-        .collect();
     assert!(
-        staged_deletes.is_empty(),
+        staged_hunk0
+            .lines
+            .iter()
+            .any(|l| matches!(l.origin, DiffOrigin::Add)),
+        "expected add lines in staged diff"
+    );
+
+    assert!(
+        !staged_hunk0
+            .lines
+            .iter()
+            .any(|l| matches!(l.origin, DiffOrigin::Delete)),
         "expected no delete lines in staged diff when only adds were staged"
     );
 }
@@ -688,23 +688,19 @@ fn stage_lines_stages_selected_delete_lines() {
         "expected staged diff after staging delete lines"
     );
     let staged_hunk0 = &staged[0].hunks[0];
-    let staged_deletes: Vec<_> = staged_hunk0
-        .lines
-        .iter()
-        .filter(|l| matches!(l.origin, DiffOrigin::Delete))
-        .collect();
     assert!(
-        !staged_deletes.is_empty(),
+        staged_hunk0
+            .lines
+            .iter()
+            .any(|l| matches!(l.origin, DiffOrigin::Delete)),
         "expected delete lines in staged diff"
     );
 
-    let staged_adds: Vec<_> = staged_hunk0
-        .lines
-        .iter()
-        .filter(|l| matches!(l.origin, DiffOrigin::Add))
-        .collect();
     assert!(
-        staged_adds.is_empty(),
+        !staged_hunk0
+            .lines
+            .iter()
+            .any(|l| matches!(l.origin, DiffOrigin::Add)),
         "expected no add lines in staged diff when only deletes were staged"
     );
 }
@@ -1326,9 +1322,10 @@ fn staging_many_keeps_a_symlink_that_now_dangles_in_the_index() {
 /// without rename detection sees a whole-file add instead, and its hunk 0 is the
 /// entire file rather than the line the user clicked (TRUNK-73's failure mode).
 fn staged_rename_with_one_edit() -> TestContext {
-    let original = (1..=20)
-        .map(|n| format!("export const value{n} = {n};\n"))
-        .collect::<String>();
+    let original = (1..=20).fold(String::new(), |mut out, n| {
+        let _ = writeln!(out, "export const value{n} = {n};");
+        out
+    });
     let edited = original.replace(
         "export const value7 = 7;",
         "export const value7 = 7 + offset;",

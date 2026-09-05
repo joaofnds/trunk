@@ -667,7 +667,7 @@ fn store_events_announce_where_two_commits_left_the_store() {
     while let Some(event) = events.try_recv() {
         match event {
             reviewdb::events::StoreEvent::Changed { revision } => last_seen = Some(revision),
-            other => panic!("unexpected event: {other:?}"),
+            reviewdb::events::StoreEvent::Refused => panic!("unexpected event: Refused"),
         }
     }
 
@@ -828,14 +828,14 @@ fn nonblocking_connect(path: &std::path::Path) -> std::io::Result<std::os::unix:
     stream.set_nonblocking(true)?;
 
     let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
-    addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
+    addr.sun_family = libc::sa_family_t::try_from(libc::AF_UNIX).expect("AF_UNIX fits");
     let bytes = path.as_os_str().as_encoded_bytes();
     assert!(
         bytes.len() < std::mem::size_of_val(&addr.sun_path),
         "the subscriber's socket path does not fit in sockaddr_un",
     );
     for (slot, byte) in addr.sun_path.iter_mut().zip(bytes) {
-        *slot = *byte as libc::c_char;
+        *slot = libc::c_char::try_from(*byte).expect("a path byte fits");
     }
 
     // SAFETY: `addr` is a fully initialised `sockaddr_un` owned by this frame
@@ -844,7 +844,8 @@ fn nonblocking_connect(path: &std::path::Path) -> std::io::Result<std::os::unix:
         libc::connect(
             fd,
             std::ptr::addr_of!(addr).cast::<libc::sockaddr>(),
-            std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t,
+            libc::socklen_t::try_from(std::mem::size_of::<libc::sockaddr_un>())
+                .expect("the address size fits"),
         )
     };
     if rc == 0 {
@@ -888,7 +889,7 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
     //
     // Filled with connections that cannot block: on Linux a blocking connect to
     // a full backlog sleeps forever instead of refusing.
-    let _mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
+    let mute = std::os::unix::net::UnixStream::connect(&socket).unwrap();
     let mut pending = Vec::new();
     loop {
         match nonblocking_connect(&socket) {
@@ -914,7 +915,7 @@ fn store_events_survive_a_doorbell_that_cannot_connect() {
 
     // And the feed must still work end to end once the wedge clears.
     drop(pending);
-    drop(_mute);
+    drop(mute);
     let foreign = reviewdb::open(ctx.data_dir()).unwrap();
     submit_thread_inner(&foreign, &canonical, submission("after a refusal"), 1_000).unwrap();
 
@@ -1156,7 +1157,7 @@ fn the_sweep_reclaims_superseded_pins_nothing_anchors_to() {
             &canonical,
             ctx.path(),
             SnapshotKind::Workdir,
-            1_000 + i as i64,
+            1_000 + i64::try_from(i).expect("the loop counter fits"),
         )
         .unwrap();
     }
@@ -3960,7 +3961,7 @@ fn one_undeletable_ref_does_not_strand_the_rest_of_the_batch() {
                 &canonical,
                 ctx.path(),
                 SnapshotKind::Workdir,
-                1_000 + i as i64,
+                1_000 + i64::try_from(i).expect("the loop counter fits"),
             )
             .unwrap(),
         );

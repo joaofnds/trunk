@@ -491,7 +491,6 @@ pub struct ConfirmedPush<'a> {
 
 // The three leading arguments are the command's wire contract with the frontend, and the rest
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
-#[allow(clippy::too_many_arguments)]
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.

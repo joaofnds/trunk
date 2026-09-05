@@ -2,6 +2,7 @@ mod common;
 
 use common::context::TestContext;
 use std::fmt::Write as _;
+use trunk_lib::git::types::LinePairing;
 use trunk_lib::git::types::{DiffOrigin, DiffRequestOptions, DiffStatus};
 
 // -- diff_unstaged tests --
@@ -487,7 +488,6 @@ fn reflowed_paragraph_lines_carry_their_partner() {
         .map(|l| l.pairing)
         .collect();
 
-    use trunk_lib::git::types::LinePairing;
     assert_eq!(
         pairings,
         vec![
@@ -1332,9 +1332,10 @@ fn compare_stat_totals_the_two_tree_diff() {
 /// renamed delta at ~80% similarity; without `find_similar` libgit2 reports
 /// two unrelated deltas and the file list misstates what happened.
 fn renamed_with_one_edit() -> TestContext {
-    let original = (1..=20)
-        .map(|n| format!("export const value{n} = {n};\n"))
-        .collect::<String>();
+    let original = (1..=20).fold(String::new(), |mut out, n| {
+        let _ = writeln!(out, "export const value{n} = {n};");
+        out
+    });
     let edited = original.replace(
         "export const value7 = 7;",
         "export const value7 = 7 + offset;",
@@ -1423,9 +1424,10 @@ fn renamed_file_diff_shows_only_the_changed_line() {
 
 #[test]
 fn pure_rename_has_no_hunks() {
-    let content = (1..=20)
-        .map(|n| format!("export const value{n} = {n};\n"))
-        .collect::<String>();
+    let content = (1..=20).fold(String::new(), |mut out, n| {
+        let _ = writeln!(out, "export const value{n} = {n};");
+        out
+    });
 
     let ctx = TestContext::builder()
         .with_file("util.ts", &content)

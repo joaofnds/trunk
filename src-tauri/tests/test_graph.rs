@@ -344,12 +344,8 @@ fn freed_column_reuse() {
 fn head_lane_carries_two_colors_above_a_non_upstream_continuation() {
     let commits = rule_inputs::commits("non-upstream-continuation");
 
-    let lane_zero: Vec<usize> = commits
-        .iter()
-        .filter(|c| c.column == 0)
-        .map(|c| c.color_index)
-        .collect();
-    assert_eq!(lane_zero.len(), 3, "all three rows share lane 0");
+    let lane_zero = commits.iter().filter(|c| c.column == 0).count();
+    assert_eq!(lane_zero, 3, "all three rows share lane 0");
     assert_ne!(
         row(&commits, "later1").color_index,
         row(&commits, "base2").color_index,
@@ -522,14 +518,13 @@ fn multiple_stashes_on_same_parent() {
         c1.edges
     );
 
-    let dashed_forks: Vec<_> = c1
+    let dashed_forks = c1
         .edges
         .iter()
         .filter(|e| matches!(e.edge_type, EdgeType::ForkRight) && e.dashed)
-        .collect();
+        .count();
     assert_eq!(
-        dashed_forks.len(),
-        1,
+        dashed_forks, 1,
         "ForkRight edge should be dashed, edges: {:?}",
         c1.edges
     );

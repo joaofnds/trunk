@@ -185,7 +185,7 @@ fn boot() -> (App<MockRuntime>, WebviewWindow<MockRuntime>) {
     )
     .build(trunk_lib::context())
     .expect("build the app on MockRuntime");
-    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
         .build()
         .expect("create the main webview");
 
@@ -289,7 +289,7 @@ fn invoke(webview: &WebviewWindow<MockRuntime>, cmd: &str, args: Value) -> Resul
         error: CallbackFn(1),
         url: WEBVIEW_URL.parse().expect("a valid webview URL"),
         body: InvokeBody::Json(args),
-        headers: Default::default(),
+        headers: tauri::http::HeaderMap::default(),
         invoke_key: INVOKE_KEY.to_string(),
     };
 

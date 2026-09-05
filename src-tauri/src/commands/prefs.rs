@@ -309,7 +309,11 @@ mod tests {
         let tmp_leftovers: Vec<String> = fs::read_dir(dir.path())
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-            .filter(|name| name.ends_with(".tmp"))
+            .filter(|name| {
+                std::path::Path::new(name)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("tmp"))
+            })
             .collect();
         assert_eq!(tmp_leftovers, Vec::<String>::new());
     }

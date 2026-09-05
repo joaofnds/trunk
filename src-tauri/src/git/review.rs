@@ -824,7 +824,6 @@ mod tests {
     // ── Task 3: render() doc assembly (D-03..D-10, 14 goldens) ────────────
 
     // fixture builder: arg count is intentional
-    #[allow(clippy::too_many_arguments)]
     fn line_comment(
         id: &str,
         text: &str,
@@ -851,7 +850,6 @@ mod tests {
     }
 
     // fixture builder: arg count is intentional
-    #[allow(clippy::too_many_arguments)]
     fn orphan_line_comment(
         id: &str,
         text: &str,
@@ -1342,7 +1340,7 @@ mod tests {
         src_builder.insert("main.rs", file_blob, 0o100_644).unwrap();
         let src_tree_oid = src_builder.write().unwrap();
         let mut root_builder = repo.treebuilder(None).unwrap();
-        root_builder.insert("src", src_tree_oid, 0o040000).unwrap();
+        root_builder.insert("src", src_tree_oid, 0o040_000).unwrap();
         let root_tree = repo.find_tree(root_builder.write().unwrap()).unwrap();
         let b = repo
             .commit(None, &sig(), &sig(), "B", &root_tree, &[])

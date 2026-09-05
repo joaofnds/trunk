@@ -159,7 +159,7 @@ fn a_stash_on_the_tracked_upstream_path_blocks_the_head_lane_extension() {
 
 #[test]
 fn a_merge_secondary_parent_never_takes_the_head_lane() {
-    let (a, b, m, f, s, y, h, r) = (
+    let (above_merge, other_tip, merge, first_parent, second_parent, other_mid, head, root) = (
         oid(1),
         oid(2),
         oid(3),
@@ -170,28 +170,40 @@ fn a_merge_secondary_parent_never_takes_the_head_lane() {
         oid(8),
     );
     let input = PlacementInput {
-        oids: vec![a, b, m, f, s, y, h, r],
+        oids: vec![
+            above_merge,
+            other_tip,
+            merge,
+            first_parent,
+            second_parent,
+            other_mid,
+            head,
+            root,
+        ],
         parents: HashMap::from([
-            (a, vec![m]),
-            (b, vec![y]),
-            (m, vec![f, s]),
-            (f, vec![r]),
-            (s, vec![r]),
-            (y, vec![r]),
-            (h, vec![r]),
-            (r, vec![]),
+            (above_merge, vec![merge]),
+            (other_tip, vec![other_mid]),
+            (merge, vec![first_parent, second_parent]),
+            (first_parent, vec![root]),
+            (second_parent, vec![root]),
+            (other_mid, vec![root]),
+            (head, vec![root]),
+            (root, vec![]),
         ]),
         stashes: HashSet::new(),
-        head_tip: Some(h),
+        head_tip: Some(head),
         tracked_upstream: None,
         worktree_dirty: false,
     };
 
     let layout = assign_lanes(&input);
 
-    assert_eq!((layout.placements[&s].column, layout.max_columns), (3, 4));
     assert_eq!(
-        edge_kinds(&layout, m),
+        (layout.placements[&second_parent].column, layout.max_columns),
+        (3, 4)
+    );
+    assert_eq!(
+        edge_kinds(&layout, merge),
         ["Straight(2->2)", "Straight(1->1)", "MergeRight(1->3)"]
     );
 }

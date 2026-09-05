@@ -403,7 +403,6 @@ pub async fn checkout_commit<R: Runtime>(
 
 // The four leading arguments are the command's wire contract with the frontend, and the rest
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
-#[allow(clippy::too_many_arguments)]
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.
@@ -832,7 +831,6 @@ pub async fn undo_commit<R: Runtime>(
 
 // The four leading arguments are the command's wire contract with the frontend, and the rest
 // are state Tauri injects by type; neither half can be grouped without changing one of those.
-#[allow(clippy::too_many_arguments)]
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses.

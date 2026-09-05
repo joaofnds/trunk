@@ -23,7 +23,7 @@ fn request(cmd: &str, args: Value) -> InvokeRequest {
         error: CallbackFn(1),
         url: WEBVIEW_URL.parse().unwrap(),
         body: InvokeBody::Json(args),
-        headers: Default::default(),
+        headers: tauri::http::HeaderMap::default(),
         invoke_key: INVOKE_KEY.to_string(),
     }
 }
@@ -42,7 +42,7 @@ fn boot(watcher: WatcherState) -> (App<MockRuntime>, WebviewWindow<MockRuntime>)
     let app = trunk_lib::configure(mock_builder(), watcher, TrafficLights::disabled())
         .build(trunk_lib::context())
         .expect("build the app on MockRuntime");
-    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", tauri::WebviewUrl::default())
         .build()
         .expect("create the main webview");
 

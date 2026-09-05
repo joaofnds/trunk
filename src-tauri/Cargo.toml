@@ -104,3 +104,46 @@ members = ["fixtures"]
 
 [workspace.dependencies]
 git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
+
+# Every clippy lint is denied except the ones listed below, and the exceptions
+# live here rather than as `#[allow]` in the source. An allow next to code reads
+# as permission to add another one; a manifest entry has to be argued for.
+#
+# Each exception names the constraint that makes the lint unsatisfiable, not a
+# preference. Delete one and fix the code the moment its constraint goes away.
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+
+# Tauri owns these signatures. A command's arguments are deserialized by value
+# and its injected state arrives by value, so neither can become a reference.
+# Serde's `skip_serializing_if` predicates must take `&T` for the same reason,
+# in the opposite direction.
+needless_pass_by_value = "allow"
+trivially_copy_pass_by_ref = "allow"
+
+# A command's parameter list is its wire contract with the frontend plus the
+# state Tauri injects by type. Neither half can be grouped into a struct without
+# changing one of them, so the count is not the author's to choose. This
+# replaces five `#[allow]`s that said the same thing next to the code.
+too_many_arguments = "allow"
+
+# The one site is the merge-edge ladder in `placement.rs`, whose `if parent_col
+# < col` line is the anchor for three rows of the commit-graph mutation ledger,
+# each carrying a measured verdict. Rewriting it as `match` would invalidate
+# those anchors and the evidence behind them, which the graph rules treat as the
+# record rather than as code to reformat.
+comparison_chain = "allow"
+
+# `GraphCommit`'s five flags are the IPC contract: the frontend reads them by
+# name and the committed graph goldens pin them. Folding them into a bitfield or
+# an enum changes the JSON both sides agree on, for no gain to either.
+struct_excessive_bools = "allow"
+
+# Six functions run past 100 lines, and splitting them is refactoring of working
+# code rather than a lint fix — the longest is the graph's lane assignment,
+# whose body the commit-graph mutation ledger anchors in a dozen places. TRUNK-89
+# left them as their own task rather than restructure hot code at the tail of a
+# lint pass. Delete this the moment that task lands.
+too_many_lines = "allow"
+

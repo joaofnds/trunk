@@ -394,10 +394,10 @@ mod tests {
 
         // Canonicalize to handle symlinked /tmp → /private/tmp on macOS.
         let temp_canonical = fs::canonicalize(&temp_dir).unwrap_or(temp_dir);
-        let script_canonical =
-            fs::canonicalize(handle.script_path()).unwrap_or(handle.script_path().to_path_buf());
+        let script_canonical = fs::canonicalize(handle.script_path())
+            .unwrap_or_else(|_| handle.script_path().to_path_buf());
         let msg_canonical =
-            fs::canonicalize(handle.msg_path()).unwrap_or(handle.msg_path().to_path_buf());
+            fs::canonicalize(handle.msg_path()).unwrap_or_else(|_| handle.msg_path().to_path_buf());
 
         assert!(
             script_canonical.starts_with(&temp_canonical),

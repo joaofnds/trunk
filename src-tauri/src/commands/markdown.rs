@@ -1534,10 +1534,10 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
 
         // What the inline view actually puts on screen: the merged copy when
         // one exists, otherwise the before/after pair.
-        let (shown, is_pair) = match merged_html {
-            Some(m) => (m.clone(), false),
-            None => (format!("{before_html}{after_html}"), true),
-        };
+        let (shown, is_pair) = merged_html.as_ref().map_or_else(
+            || (format!("{before_html}{after_html}"), true),
+            |m| (m.clone(), false),
+        );
         // Keyed on the whole opening tag the emission writes, never on the bare
         // class name: a document may contain `md-word-delete` as prose, and an
         // author's own `<del class="md-word-delete">` is sanitized to plain text
@@ -3218,12 +3218,13 @@ mod tests {
             let mut md = String::new();
             for i in 0..3 {
                 if i == 2 {
-                    md.push_str(&format!(
-                        "{}. compare against {emphasis}the baseline{emphasis} first\n",
+                    let _ = writeln!(
+                        md,
+                        "{}. compare against {emphasis}the baseline{emphasis} first",
                         i + 1
-                    ));
+                    );
                 } else {
-                    md.push_str(&format!("{}. plain step {i}\n", i + 1));
+                    let _ = writeln!(md, "{}. plain step {i}", i + 1);
                 }
             }
             md
@@ -3305,9 +3306,9 @@ mod tests {
             let mut md = String::from("| a | b |\n| --- | --- |\n");
             for i in 0..20 {
                 if i == changed_at {
-                    md.push_str(&format!("| r{i} | {text} |\n"));
+                    let _ = writeln!(md, "| r{i} | {text} |");
                 } else {
-                    md.push_str(&format!("| r{i} | v |\n"));
+                    let _ = writeln!(md, "| r{i} | v |");
                 }
             }
             md
@@ -3335,10 +3336,11 @@ mod tests {
         let doc = |text: &str| {
             let mut md = String::from("# Rules\n\n");
             for i in 0..17 {
-                md.push_str(&format!(
-                    "- rule {i}: a long paragraph of prose about the pipeline stage,\n  wrapping onto a second line for realism{}\n",
+                let _ = writeln!(
+                    md,
+                    "- rule {i}: a long paragraph of prose about the pipeline stage,\n  wrapping onto a second line for realism{}",
                     if i == 2 { text } else { "" }
-                ));
+                );
             }
             md
         };
@@ -3724,7 +3726,11 @@ mod tests {
             }
             for path in git(&["diff-tree", "--no-commit-id", "--name-only", "-r", oid])
                 .lines()
-                .filter(|p| p.ends_with(".md"))
+                .filter(|p| {
+                    std::path::Path::new(p)
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("md"))
+                })
             {
                 let before = git(&["show", &format!("{oid}^:{path}")]);
                 let after = git(&["show", &format!("{oid}:{path}")]);
@@ -3757,8 +3763,7 @@ mod tests {
                 .take_while(char::is_ascii_alphanumeric)
                 .collect::<String>()
                 .to_ascii_lowercase();
-            const VOID: &[&str] = &["br", "img", "hr", "input", "wbr"];
-            if VOID.contains(&name.as_str()) {
+            if VOID_TAGS.contains(&name.as_str()) {
                 continue;
             }
             if inner.starts_with('/') {
@@ -3862,8 +3867,8 @@ mod tests {
         let mut before = String::new();
         let mut after = String::new();
         for i in 0..2000 {
-            before.push_str(&format!("paragraph number {i}\n\n"));
-            after.push_str(&format!("paragraph number {}\n\n", i + 1));
+            let _ = writeln!(before, "paragraph number {i}\n");
+            let _ = writeln!(after, "paragraph number {}\n", i + 1);
         }
         // deeply nested quote + a ```markdown fence (the historically pathological
         // grammar): both must stay bounded via the grammar-refusal guard.
@@ -4013,7 +4018,10 @@ mod tests {
         .unwrap()
         .rows;
 
-        let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
+        let dump = rows.iter().fold(String::new(), |mut out, r| {
+            let _ = write!(out, "{r:?}");
+            out
+        });
         assert!(
             dump.contains("staged") && dump.contains("workdir"),
             "diffs the index content against the working tree: {dump}"
@@ -4078,7 +4086,10 @@ mod tests {
         let before = "clean paragraph";
         let after = "<script>alert(1)</script>\n\ntext md-added here";
         let rows = diff_rows(before, after);
-        let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
+        let dump = rows.iter().fold(String::new(), |mut out, r| {
+            let _ = write!(out, "{r:?}");
+            out
+        });
         assert!(!dump.contains("<script"), "raw <script> stripped: {dump}");
         assert!(
             !dump.contains("class=\"md-added\""),
@@ -5657,7 +5668,10 @@ mod tests {
     fn invalid_frontmatter_yaml_is_suppressed_not_rendered_as_a_table() {
         let md = "---\nfoo: [1, 2\n---\n\n# Body\n\npara";
         let rows = diff_rows(md, md);
-        let dump: String = rows.iter().map(|r| format!("{r:?}")).collect();
+        let dump = rows.iter().fold(String::new(), |mut out, r| {
+            let _ = write!(out, "{r:?}");
+            out
+        });
         assert!(
             !dump.contains("<table"),
             "invalid front matter falls back to suppression, not a broken table: {dump}"
