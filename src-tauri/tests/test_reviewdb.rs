@@ -1017,6 +1017,64 @@ fn store_events_reclaim_a_socket_whose_owner_is_gone() {
     );
 }
 
+/// The bind-to-accept window `subscribe` documents (TRUNK-117) rests on one
+/// kernel property: a socket that is bound but not yet being accepted on still
+/// completes an incoming connection, queueing it until the listener starts.
+/// `subscribe`'s doc comment argues from that property, and nothing tied the
+/// argument to an executable check until this test.
+///
+/// The window is stood up directly rather than raced for: a socket bound and
+/// held with no thread ever accepting on it is exactly the state `subscribe`
+/// is in between its bind and its `thread::spawn`. A doorbell arriving then
+/// must be delivered, not refused, so `ring` never reaches the branch that
+/// could unlink it.
+///
+/// This is not the busy-listener case above. There a thread accepts and is
+/// merely behind, and the connection is genuinely refused; the pid check is
+/// what saves the socket. Here nothing has ever accepted and the connect
+/// succeeds outright, which is the stronger guarantee and the one the doc
+/// comment claims.
+#[test]
+fn a_doorbell_is_queued_by_a_socket_that_is_bound_but_not_yet_accepting() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let ring_dir = ctx.data_dir().join("w");
+    std::fs::create_dir_all(&ring_dir).unwrap();
+
+    // A subscriber caught mid-`subscribe`: this process owns the pid in the
+    // name, and the listener is bound and held without ever accepting.
+    let socket = ring_dir.join(format!("{}-0.sock", std::process::id()));
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+
+    std::os::unix::net::UnixStream::connect(&socket).expect(
+        "a socket bound but not yet accepted on must queue a doorbell rather \
+         than refuse it: `subscribe` reads the store and allocates between its \
+         bind and its spawn, and the window is only harmless because a \
+         doorbell landing in it is still delivered",
+    );
+
+    reviewdb::events::ring(ctx.data_dir());
+
+    assert!(
+        socket.exists(),
+        "a doorbell arriving before the listener accepts must not unlink the \
+         subscriber: it is mid-`subscribe`, and deleting its path makes every \
+         later ring blind to a feed that is about to come up",
+    );
+
+    // The queued connection is really there to be taken, which is what makes
+    // the window lossless rather than merely non-destructive.
+    listener
+        .set_nonblocking(true)
+        .expect("the listener accepts a mode change");
+    listener
+        .accept()
+        .expect("the doorbell queued during the window must still be waiting");
+}
+
 #[test]
 fn store_events_stay_silent_for_a_draft_autosave() {
     let ctx = TestContext::builder()

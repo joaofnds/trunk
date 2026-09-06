@@ -169,9 +169,11 @@ static SUBSCRIBER_SEQ: AtomicU64 = AtomicU64::new(0);
 /// doorbell landing in that window does not fail: the kernel's accept backlog queues
 /// the connection, and the listener picks it up as soon as its thread starts, no
 /// different from any doorbell that arrives while the listener is busy handling a
-/// prior one. `ring` no longer deletes a socket on a refused connection either — it
-/// checks the owning pid first (see [`abandoned`]) — so a doorbell refused in this
-/// window cannot unlink the subscriber out from under it (TRUNK-114).
+/// prior one. That queueing is pinned by
+/// `a_doorbell_is_queued_by_a_socket_that_is_bound_but_not_yet_accepting`. Behind it,
+/// `ring` no longer deletes a socket on a refused connection: it checks the owning pid
+/// first (see [`abandoned`]), so even a doorbell that did meet a refusal here could not
+/// unlink the subscriber out from under it (TRUNK-114).
 ///
 /// That safety depends on nothing between the bind and the `accept` loop treating a
 /// connection's success or failure as meaningful. The code from the bind to the
