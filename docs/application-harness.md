@@ -101,6 +101,11 @@ paragraph read from the plain diff, then the rendered toggle, and the same parag
 back from the red and green blocks. A paragraph merely reworded would collapse to word-level
 marks inside one block, so the fixture keeps the two changes structurally apart.
 
+The rendered markdown diff side by side, in `tests/app/markdown-diff-split.test.ts`:
+a paragraph with one word rewritten, read back as a del mark in the before column and
+an ins mark in the after one, with no block left carrying the full wash. Its own file
+because the inline scenarios already fill one.
+
 The merge editor, in `tests/app/merge-editor.test.ts`: a rebase conflict opened from the
 conflicted row, the incoming side taken whole, and the save that leaves that side's content
 on disk with the file in the resolved section.

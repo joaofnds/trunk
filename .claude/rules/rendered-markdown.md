@@ -7,6 +7,7 @@ paths:
   - "src/components/diff/RenderedDiff.svelte"
   - "src/components/diff/RenderedDiff.test.ts"
   - "tests/app/markdown-diff.test.ts"
+  - "tests/app/markdown-diff-split.test.ts"
   - "tests/app/drivers/diff-pane.ts"
 ---
 
@@ -40,14 +41,24 @@ and the reader is left with an empty container.
 default view, so a fold that drops the marks shows the reader the unfixed
 defect while the full copy looks correct.
 
-**Neither side of a pair is blank.** A side with nothing on it is the content
-missing from the screen, not a difference the reader can compare against.
+**Neither side is blank.** A side with nothing on it is the content missing from
+the screen, not a difference the reader can compare against. This binds every
+changed row, not only one with no merged copy, because the split view always
+shows the two columns and nothing else.
 
-**The split columns carry every mark the merged copy carries.** Side by side has
-no merged copy to fall back on, so the two columns are the whole of what that
-reader sees. A row the merge marked while both columns stayed plain reaches them
-as two washed blocks to compare word by word. A reflow is exempt, because it
-declares that no rendered word moved.
+**A marked merge leaves neither split column plain.** Side by side has no merged
+copy to fall back on, so the two columns are the whole of what that reader sees.
+A row the merge marked while both columns stayed plain reaches them as two
+washed blocks to compare word by word. Two rows are exempt. A reflow declares
+that no rendered word moved. And a row whose two columns share no word was
+replaced whole rather than edited, so there is nothing inside it to point at.
+
+**A mark points at something the reader can see.** A mark can wrap content the
+sanitizer removed, a raw-HTML placeholder among them, and paint nothing at all.
+A mark can also swallow the whole block. A heading whose level changed does
+exactly that, because its `<h2>` tags pair as a changed run and the
+strike-through then covers every word. Where a marked pair has no marked word, or no unmarked text
+left to read the change against, the plain renders and the block wash say more.
 
 `illegible_rows` in `markdown.rs` is this rule as code, and
 `every_fixture_scenario_renders_legibly` runs it over the whole fixture corpus.
@@ -129,6 +140,7 @@ that is a defect in the CI setup, not an acceptable state.
 before every commit and push.
 
 The frontend tests hand-build `DiffRow` literals and never see real backend
-output; the app scenarios in `tests/app/markdown-diff.test.ts` are the only
-place the real pipeline reaches the real Svelte tree. A behaviour that matters
-to a reader belongs there, not only in a component test.
+output. The app scenarios reach the real Svelte tree through the real pipeline,
+and a behaviour that matters to a reader belongs there rather than only in a
+component test. They live one workflow per file: `tests/app/markdown-diff.test.ts`
+for the inline view, `tests/app/markdown-diff-split.test.ts` for side by side.

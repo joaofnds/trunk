@@ -315,7 +315,8 @@ describe("RenderedDiff", () => {
 		expect(left[2].querySelector(".md-removed")).not.toBeNull();
 		expect(left[2].textContent).toContain("deletion");
 		expect(right[2].classList.contains("rendered-phantom")).toBe(true);
-		// changed: whole before(red) left, after(green) right — NOT the word merge.
+		// changed: the row's own before/after fragments, red left and green
+		// right. The merged copy belongs to inline and never reaches a column.
 		expect(left[3].querySelector(".md-removed")).not.toBeNull();
 		expect(left[3].textContent).toContain("bef");
 		expect(right[3].querySelector(".md-added")).not.toBeNull();

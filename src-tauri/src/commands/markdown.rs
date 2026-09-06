@@ -1417,10 +1417,13 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
 /// the reader lost that whole side of the diff.
 fn single_leaf_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // A fenced code block never reaches the token merge (invariant §4), for the
-    // inline copy or for the columns.
-    let merges = before.kind != "code_block" && after.kind != "code_block";
+    // inline copy or for the columns: a mark splices the highlighted `<code>`
+    // into three siblings around it. Kind alone misses a fence inside a
+    // blockquote, whose kind is the quote, so the fragments are asked directly.
+    let holds_a_fence = |b: &Block| b.kind == "code_block" || b.raw_html.contains("<pre>");
+    let can_merge = !holds_a_fence(before) && !holds_a_fence(after);
 
-    let merged_html = merges
+    let merged_html = can_merge
         .then(|| html_token_merge(&before.raw_html, &after.raw_html))
         .flatten()
         .map(|m| sanitize_html(&m));
@@ -1431,19 +1434,26 @@ fn single_leaf_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // stay, and the row's identical-render declaration explains it.
     let renders_identically = renders_same(&before.html, &after.html);
 
+    // One row's two sides can disagree about being leaf-bearing (a quoted list
+    // that becomes a quoted image), and a leaf-bearing side carries no
+    // `raw_html`. Merging an empty fragment emits an EMPTY column, which is the
+    // whole of that side missing from the split view. The density fence does not
+    // catch it: with no word on either side it has nothing to weigh.
+    let both_sides_have_a_fragment = !before.raw_html.is_empty() && !after.raw_html.is_empty();
+
     // The split columns carry the same word marks the inline copy does, each
     // side showing only its own. Without them a one-clause edit reached the
     // reader as two whole paragraphs washed red and green, and finding the
     // clause meant reading both. Every guard the merge applies (density,
     // balance, a merge that marks nothing) drops the pair back to the plain
     // renders, and the wash with it.
-    let (before_html, after_html) = (merges && !renders_identically)
-        .then(|| leaf_word_merge(&before.raw_html, &after.raw_html))
-        .flatten()
-        .map_or_else(
-            || (before.html.clone(), after.html.clone()),
-            |(b, a)| (sanitize_html(&b), sanitize_html(&a)),
-        );
+    let (before_html, after_html) =
+        (can_merge && both_sides_have_a_fragment && !renders_identically)
+            .then(|| leaf_word_merge(&before.raw_html, &after.raw_html))
+            .flatten()
+            .map(|(b, a)| (sanitize_html(&b), sanitize_html(&a)))
+            .filter(|(b, a)| marks_point_at_words(b, a))
+            .unwrap_or_else(|| (before.html.clone(), after.html.clone()));
 
     ChangedFragments {
         // Read off the SHIPPED fragments for the reason `changed_fragments`
@@ -1573,6 +1583,82 @@ fn has_word_mark(html: &str) -> bool {
         .any(|c| html.contains(&format!("class=\"{c}\">")))
 }
 
+/// Stands for an image in the scan below. An `<img>` is content the reader
+/// sees, so a mark wrapping one points at something even with no text inside
+/// it, and a fragment whose only content is one is not blank.
+const IMAGE_TOKEN: &str = " \u{fffc} ";
+
+/// A fragment's visible content, split into what a word mark wraps and what it
+/// does not, counted in words with each image as one. An author's own `<del>`
+/// may sit inside a mark run, so the scan counts `del`/`ins` nesting rather
+/// than stopping at the first close.
+fn words_in_and_out_of_marks(html: &str) -> (Vec<String>, Vec<String>) {
+    let (mut inside, mut outside) = (String::new(), String::new());
+    let mut depth = 0usize;
+    let mut rest = html;
+
+    while let Some(open) = rest.find('<') {
+        if depth > 0 {
+            inside.push_str(&rest[..open]);
+        } else {
+            outside.push_str(&rest[..open]);
+        }
+        rest = &rest[open..];
+        let Some(close) = rest.find('>') else {
+            break;
+        };
+        let tag = &rest[..=close];
+        rest = &rest[close + 1..];
+
+        let name = tag_name(tag);
+        if name == "img" {
+            if depth > 0 {
+                inside.push_str(IMAGE_TOKEN);
+            } else {
+                outside.push_str(IMAGE_TOKEN);
+            }
+            continue;
+        }
+        if !matches!(name.as_str(), "del" | "ins") {
+            continue;
+        }
+        if tag.starts_with("</") {
+            depth = depth.saturating_sub(1);
+        } else if depth > 0 || MD_WORD_CLASSES.iter().any(|c| tag.contains(c)) {
+            depth += 1;
+        }
+    }
+    if depth > 0 {
+        inside.push_str(rest);
+    } else {
+        outside.push_str(rest);
+    }
+
+    (words_of(&inside), words_of(&outside))
+}
+
+fn words_of(text: &str) -> Vec<String> {
+    text.split_whitespace().map(str::to_string).collect()
+}
+
+/// Whether a marked pair shows the reader what changed, asked of the shipped
+/// fragments rather than of the merge's report. Both halves have been observed
+/// failing. A mark can wrap content the sanitizer removed, a raw-HTML
+/// placeholder among them, and then paint nothing at all. And a mark can
+/// swallow the whole block, which is what a heading whose level changed does:
+/// its `<h2>` tags pair as a changed run and the strike-through runs over every
+/// word. Either way the plain renders and the block wash say more, so the pair
+/// goes back.
+fn marks_point_at_words(before: &str, after: &str) -> bool {
+    let (before_marked, before_plain) = words_in_and_out_of_marks(before);
+    let (after_marked, after_plain) = words_in_and_out_of_marks(after);
+
+    let marks_a_word = !before_marked.is_empty() || !after_marked.is_empty();
+    let leaves_text_to_read_it_against = !before_plain.is_empty() && !after_plain.is_empty();
+
+    marks_a_word && leaves_text_to_read_it_against
+}
+
 /// Whether a rendered fragment puts nothing at all in front of the reader.
 ///
 /// The rendered view's recurring question, asked at every point where a block
@@ -1664,7 +1750,17 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
         // side (TRUNK-132).
         let identical_and_visible = *renders_identically && !shows_nothing(after_html);
 
-        if !marked && !has_tints && !identical_and_visible && !pair_differs {
+        // A column with no markup at all is that side of the row missing from
+        // the split view, which has nothing else to show. `shows_nothing` is
+        // text-only and an image-only block legitimately shows no text, so this
+        // asks whether the fragment carries anything. It is reported instead of
+        // the legibility arm below, never as well: one defect, one name.
+        let empty_column = before_html.trim().is_empty() || after_html.trim().is_empty();
+        if empty_column {
+            out.push((i, "a split column is empty".to_string()));
+        }
+
+        if !empty_column && !marked && !has_tints && !identical_and_visible && !pair_differs {
             out.push((
                 i,
                 "changed, but carries no mark, no tint, no identical-render \
@@ -1677,14 +1773,21 @@ fn illegible_rows(rows: &[DiffRow]) -> Vec<(usize, String)> {
         // merged copy to fall back on. A row the merged copy marks while
         // neither column does sends that reader two washed blocks to compare
         // word by word, legible as changed and unreadable as a change, which is
-        // how a whole class of paragraph edits reached the screen. A reflow is
-        // exempt, because it declares that no rendered word moved and a mark
-        // there would point at something the reader cannot see.
+        // how a whole class of paragraph edits reached the screen.
+        //
+        // Two rows are exempt. A reflow declares that no rendered word moved, so
+        // a mark would point at something the reader cannot see. And a row whose
+        // two columns share no word at all was replaced whole rather than
+        // edited, so there is nothing inside it to point at and the wash is the
+        // right signal.
+        let after_words = visible(after_html);
+        let columns_share_a_word = visible(before_html).iter().any(|w| after_words.contains(w));
         if !is_pair
             && marks(&shown) > 0
             && marks(before_html) == 0
             && marks(after_html) == 0
             && !renders_identically
+            && columns_share_a_word
         {
             out.push((
                 i,
@@ -3864,6 +3967,8 @@ mod tests {
             "fold-hid-the-mark"
         } else if why.contains("split columns") {
             "split-unmarked"
+        } else if why.contains("column is empty") {
+            "empty-column"
         } else {
             "unmarked"
         }
@@ -5027,10 +5132,86 @@ mod tests {
     }
 
     #[test]
+    fn a_mark_the_reader_cannot_see_sends_the_columns_back_to_the_wash() {
+        // Three shapes where a mark reaches the fragment and shows nothing. A
+        // heading whose level changed pairs its `<h2>` tags as a changed run, so
+        // the strike covers every word and no unmarked text is left to read it
+        // against. A raw HTML placeholder the sanitizer removes leaves an empty
+        // mark that paints nothing. An image-only paragraph has no text to mark
+        // at all, and its plain renders are the source lines, where the edit
+        // shows. Each one dropped the wash while pointing at nothing.
+        for (before, after) in [
+            ("## a title", "### a title"),
+            ("line one<br>line two", "line one line two"),
+            ("![one](a.png)", "![two](a.png)"),
+        ] {
+            let rows = diff_rows(before, after);
+            let DiffRow::Changed {
+                before_html,
+                after_html,
+                has_tints,
+                ..
+            } = &rows[0]
+            else {
+                panic!("{before:?} -> {after:?} is a Changed row: {rows:?}");
+            };
+
+            assert!(
+                !before_html.contains("md-word") && !after_html.contains("md-word"),
+                "{before:?} -> {after:?} ships the plain renders: {before_html:?} / {after_html:?}"
+            );
+            assert!(
+                !has_tints,
+                "{before:?} -> {after:?} keeps the wash: {rows:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quote_that_swaps_its_only_leaf_for_an_image_keeps_both_columns() {
+        // `raw_html` is empty for a leaf-bearing side, and one row's two sides
+        // can disagree about being leaf-bearing. Where the other side carries no
+        // word either, the density fence has nothing to weigh and lets the merge
+        // through, and merging an empty fragment emits an empty column: the
+        // whole old side, or the whole new one, missing from the split view.
+        for (before, after) in [
+            ("> - one\n> - two", "> ![alt](img.png)"),
+            ("> ![alt](img.png)", "> - one\n> - two"),
+            ("> - one\n> - two", "> <!-- c -->"),
+        ] {
+            let rows = diff_rows(before, after);
+            let DiffRow::Changed {
+                before_html,
+                after_html,
+                ..
+            } = &rows[0]
+            else {
+                panic!("{before:?} -> {after:?} is a Changed row: {rows:?}");
+            };
+
+            assert!(
+                !before_html.trim().is_empty() && !after_html.trim().is_empty(),
+                "{before:?} -> {after:?} keeps both columns: {before_html:?} / {after_html:?}"
+            );
+            assert!(
+                illegible_rows(&rows).is_empty(),
+                "{before:?} -> {after:?}: {:?}",
+                illegible_rows(&rows)
+            );
+            assert!(
+                !before_html.contains("md-word") && !after_html.contains("md-word"),
+                "{before:?} -> {after:?} takes the plain renders and the wash: \
+                 {before_html:?} / {after_html:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_paragraph_the_word_merge_refuses_keeps_the_split_wash() {
         // Every shape the merge declines ships the two plain renders: a
-        // rewrite past the density fence, a code fence (invariant §4), and a
-        // reflow that changes no rendered word. The wash is then the only thing on screen
+        // rewrite past the density fence, a code fence and a quoted code fence
+        // (invariant §4, which kind alone misses inside a quote), and a reflow
+        // that changes no rendered word. The wash is then the only thing on screen
         // saying the row changed, so `has_tints` must not claim otherwise.
         for (before, after) in [
             (
@@ -5038,6 +5219,10 @@ mod tests {
                 "one two three four five six",
             ),
             ("```rust\nlet x = 1;\n```", "```rust\nlet x = 2;\n```"),
+            (
+                "> text\n>\n> ```rust\n> let x = 1;\n> ```",
+                "> text\n>\n> ```rust\n> let x = 2;\n> ```",
+            ),
             (
                 "one two three\nfour five six",
                 "one two\nthree four five six",

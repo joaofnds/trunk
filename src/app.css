@@ -619,7 +619,9 @@ li.md-removed::before {
 	background: var(--color-diff-delete-bg);
 }
 
-/* ── Word-level inline diff marks (inside a merged single-leaf Changed block) ──
+/* ── Word-level inline diff marks ──
+   They reach the screen in the merged copy the inline view renders, in both
+   split columns of a changed block, and inside a changed container leaf.
    GLOBAL for the same reason as .md-added above: they live in {@html}-injected
    fragments (the Rust html_token_merge output) that Svelte scoped styles never
    reach. Keyed strictly on the md-word-* classes — never bare <del>/<ins> — so an
