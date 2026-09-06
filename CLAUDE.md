@@ -43,6 +43,8 @@ the `check-parity` job fails if that list and the workflow drift apart.
 
 - When a UX or Git-semantics detail is undecided, behave like GitKraken (João, 2026-08-30)
 - Never hammer the machine just to "test stuff": no spawning processes that saturate every core, no stress loads or busy loops to see how something behaves. This laptop runs several sessions at once. Load and stress experiments happen only on João's explicit direction, scoped and bounded (João, 2026-08-31)
+- To wait for a command that exits, background that command and read the completion notification, inside the same turn. Never wrap it in a second watcher process. Where you do watch for a string, because the command never exits like `just dev` or because you did not launch it, run the grep once and see it match before putting it in a loop. A pattern that matches nothing is indistinguishable from a job still running, so the loop never exits (João, 2026-09-06)
+- Never pipe a backgrounded command through `tail` or `head`. The pipe reports the exit code of `tail` rather than the job's, so a failure arrives as success, and it discards the output you would need to tell them apart (João, 2026-09-06)
 - Never inline colors — always use CSS custom properties from the theme
 - `docs/performance-patterns.md` holds the measured slow patterns (barrel imports of large libraries, scenario files accumulating serial tests, deciding from priced models instead of measurements, wall-clock waits in scenarios). Review new frontend and harness code against it (João, 2026-08-31)
 - Never fight layout with positioning hacks — use grid/flexbox so elements flow naturally
