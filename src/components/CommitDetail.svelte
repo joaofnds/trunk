@@ -29,6 +29,7 @@ import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type {
 	CommitDetail,
 	CommitNav,
+	DiffStat,
 	FileDiff,
 	FileStatus,
 } from "../lib/types.js";
@@ -38,6 +39,8 @@ import TreeFileList from "./TreeFileList.svelte";
 
 interface Props {
 	commitDetail: CommitDetail;
+	/** Whole-commit totals; null while they load (the bar shows the file count only). */
+	stat?: DiffStat | null;
 	fileDiffs: FileDiff[];
 	selectedFile: string | null;
 	onfileselect: (path: string) => void;
@@ -56,6 +59,7 @@ interface Props {
 
 let {
 	commitDetail,
+	stat = null,
 	fileDiffs,
 	selectedFile,
 	onfileselect,
@@ -151,20 +155,8 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 	await menu.popup();
 }
 
-function countOrigin(origin: "Add" | "Delete"): number {
-	return fileDiffs.reduce(
-		(sum, fd) =>
-			sum +
-			fd.hunks.reduce(
-				(h, hunk) => h + hunk.lines.filter((l) => l.origin === origin).length,
-				0,
-			),
-		0,
-	);
-}
-
-let totalAdds = $derived(countOrigin("Add"));
-let totalDels = $derived(countOrigin("Delete"));
+let totalAdds = $derived(stat?.insertions ?? 0);
+let totalDels = $derived(stat?.deletions ?? 0);
 
 // Commit-level notes (anchor === null) for THIS commit, read from the shared
 // rune. Whole-commit notes carry no anchor; they belong to the commit by

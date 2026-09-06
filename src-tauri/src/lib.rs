@@ -194,6 +194,7 @@ pub fn configure<R: tauri::Runtime>(
         commands::history::refresh_commit_graph,
         commands::history::set_ref_visibility,
         commands::history::get_commit_stats,
+        commands::history::commit_stat,
         commands::history::get_wip_diff_stats,
         commands::history::search_commits,
         commands::branches::list_refs,

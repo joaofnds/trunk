@@ -2,7 +2,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BODY_CLAMP_LINES } from "../lib/commit-body-clamp.js";
-import type { CommitDetail, FileDiff } from "../lib/types.js";
+import type { CommitDetail, DiffStat, FileDiff } from "../lib/types.js";
 import CommitDetailComponent from "./CommitDetail.svelte";
 
 // Shared Tauri mock
@@ -253,6 +253,134 @@ describe("CommitDetail", () => {
 			},
 		});
 		expect(screen.getByText("2 files changed")).toBeInTheDocument();
+	});
+
+	describe("stats bar", () => {
+		const stat: DiffStat = { insertions: 12, deletions: 3, files_changed: 2 };
+
+		it("shows the stat's insertions and deletions before any file's hunks have loaded", () => {
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					stat,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+				},
+			});
+			expect(screen.getByText("+12")).toBeInTheDocument();
+			expect(screen.getByText("−3")).toBeInTheDocument();
+		});
+
+		it("shows nothing for insertions and deletions while the stat has not loaded yet", () => {
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+				},
+			});
+			expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
+			expect(screen.queryByText(/^−/)).not.toBeInTheDocument();
+		});
+
+		it("does not change when a file's hunks load", async () => {
+			const { rerender } = render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					stat,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+				},
+			});
+			expect(screen.getByText("+12")).toBeInTheDocument();
+
+			const loadedFileDiffs: FileDiff[] = [
+				{
+					...fileDiffs[0],
+					hunks: [
+						{
+							header: "@@ -1,3 +1,5 @@",
+							old_start: 1,
+							old_lines: 3,
+							new_start: 1,
+							new_lines: 5,
+							lines: [
+								{
+									origin: "Add",
+									content: "new line\n",
+									old_lineno: null,
+									new_lineno: 2,
+									spans: [],
+								},
+							],
+						},
+					],
+				},
+				fileDiffs[1],
+			];
+			await rerender({
+				commitDetail: detail,
+				stat,
+				fileDiffs: loadedFileDiffs,
+			});
+
+			expect(screen.getByText("+12")).toBeInTheDocument();
+			expect(screen.getByText("−3")).toBeInTheDocument();
+		});
+
+		it("reports a nonzero files-changed count for a commit whose only change is binary", () => {
+			const binaryFileDiffs: FileDiff[] = [
+				{
+					path: "assets/blob.bin",
+					old_path: null,
+					status: "Modified",
+					is_binary: true,
+					hunks: [],
+				},
+			];
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					stat: { insertions: 0, deletions: 0, files_changed: 1 },
+					fileDiffs: binaryFileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+				},
+			});
+			expect(screen.getByText("1 file changed")).toBeInTheDocument();
+			expect(screen.queryByText("+0")).not.toBeInTheDocument();
+			expect(screen.queryByText("−0")).not.toBeInTheDocument();
+		});
+
+		it("counts a rename as one changed file, consistent with the compare panel", () => {
+			const renameFileDiffs: FileDiff[] = [
+				{
+					path: "code/math-util.ts",
+					old_path: "code/util.ts",
+					status: "Renamed",
+					is_binary: false,
+					hunks: [],
+				},
+			];
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					stat: { insertions: 1, deletions: 1, files_changed: 1 },
+					fileDiffs: renameFileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+				},
+			});
+			expect(screen.getByText("1 file changed")).toBeInTheDocument();
+		});
 	});
 
 	it("calls onclose when close button clicked", async () => {

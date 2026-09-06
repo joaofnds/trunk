@@ -274,6 +274,7 @@ let stagingPanelRef = $state<StagingPanel | null>(null);
 // Commit selection (from CommitGraph)
 let selectedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
+let commitDetailStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
 // push here updates nothing on screen.
 let commitFileDiffs = $state.raw<FileDiff[]>([]);
@@ -330,6 +331,7 @@ let rebaseBaseOid = $state<string | null>(null);
 let rebaseBranchName = $state("");
 let rebaseBaseName = $state("");
 let rebaseFocusedCommitDetail = $state<CommitDetailType | null>(null);
+let rebaseFocusedCommitStat = $state<DiffStat | null>(null);
 // Replace this array wholesale: $state.raw ignores an in-place mutation, so a
 // push here updates nothing on screen.
 let rebaseFocusedFileDiffs = $state.raw<FileDiff[]>([]);
@@ -498,6 +500,7 @@ function clearCommitFileDiff() {
 function clearCommit() {
 	selectedCommitOid = null;
 	commitDetail = null;
+	commitDetailStat = null;
 	commitFileDiffs = [];
 	selectedCommitFile = null;
 	diffInViewPath = null;
@@ -645,7 +648,7 @@ async function selectCommitIdempotent(oid: string) {
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
 	if (!repoPath) return;
 	try {
-		const [files, detail] = await Promise.all([
+		const [files, detail, stat] = await Promise.all([
 			safeInvoke<FileDiff[]>("list_commit_files", {
 				path: repoPath,
 				oid,
@@ -654,10 +657,15 @@ async function selectCommitIdempotent(oid: string) {
 				path: repoPath,
 				oid,
 			}),
+			safeInvoke<DiffStat>("commit_stat", {
+				path: repoPath,
+				oid,
+			}).catch(() => null),
 		]);
 		if (gen !== commitSelectGeneration) return;
 		commitFileDiffs = files;
 		commitDetail = detail;
+		commitDetailStat = stat;
 
 		// Diff-in-view navigation: reconcile the remembered path against the new
 		// commit's file list. Lives inline here, never in an $effect — an effect
@@ -678,6 +686,7 @@ async function selectCommitIdempotent(oid: string) {
 		if (gen !== commitSelectGeneration) return;
 		commitFileDiffs = [];
 		commitDetail = null;
+		commitDetailStat = null;
 		commitEmpty = false;
 		diffInViewPath = null;
 	}
@@ -1118,6 +1127,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 		clearStagingDiff();
 		clearCommit();
 		rebaseFocusedCommitDetail = null;
+		rebaseFocusedCommitStat = null;
 		rebaseFocusedFileDiffs = [];
 		rebaseFocusedFileSelected = null;
 		showRebaseEditor = true;
@@ -1133,6 +1143,7 @@ function handleRebaseEditorClose() {
 	rebaseBranchName = "";
 	rebaseBaseName = "";
 	rebaseFocusedCommitDetail = null;
+	rebaseFocusedCommitStat = null;
 	rebaseFocusedFileDiffs = [];
 	rebaseFocusedFileSelected = null;
 	rebaseDiffFile = null;
@@ -1143,7 +1154,7 @@ async function handleRebaseFocusChange(oid: string) {
 	rebaseFocusedFileSelected = null;
 	rebaseDiffFile = null;
 	try {
-		const [detail, files] = await Promise.all([
+		const [detail, files, stat] = await Promise.all([
 			safeInvoke<CommitDetailType>("get_commit_detail", {
 				path: repoPath,
 				oid,
@@ -1152,12 +1163,18 @@ async function handleRebaseFocusChange(oid: string) {
 				path: repoPath,
 				oid,
 			}),
+			safeInvoke<DiffStat>("commit_stat", {
+				path: repoPath,
+				oid,
+			}).catch(() => null),
 		]);
 		rebaseFocusedCommitDetail = detail;
 		rebaseFocusedFileDiffs = files;
+		rebaseFocusedCommitStat = stat;
 	} catch {
 		rebaseFocusedCommitDetail = null;
 		rebaseFocusedFileDiffs = [];
+		rebaseFocusedCommitStat = null;
 	}
 }
 
@@ -1293,6 +1310,7 @@ function startRightResize(e: MouseEvent) {
         {#if rebaseFocusedCommitDetail}
           <CommitDetail
             commitDetail={rebaseFocusedCommitDetail}
+            stat={rebaseFocusedCommitStat}
             fileDiffs={rebaseFocusedFileDiffs}
             selectedFile={rebaseFocusedFileSelected}
             onfileselect={(path) => {
@@ -1304,7 +1322,7 @@ function startRightResize(e: MouseEvent) {
                 rebaseDiffFile = path;
               }
             }}
-            onclose={() => { rebaseFocusedCommitDetail = null; }}
+            onclose={() => { rebaseFocusedCommitDetail = null; rebaseFocusedCommitStat = null; }}
             {repoPath}
             {treeViewEnabled}
             ontreeviewtoggle={handleTreeViewToggle}
@@ -1422,6 +1440,7 @@ function startRightResize(e: MouseEvent) {
       {:else if selectedCommitOid && commitDetail}
         <CommitDetail
           {commitDetail}
+          stat={commitDetailStat}
           fileDiffs={commitFileDiffs}
           selectedFile={selectedCommitFile}
           onfileselect={handleCommitFileSelect}

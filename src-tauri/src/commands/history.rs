@@ -399,6 +399,49 @@ pub async fn get_wip_diff_stats(
         .map_err(|e| e.to_json())
 }
 
+/// One commit's diff-stat, for `CommitDetail`'s stats bar.
+///
+/// Reuses `commit_stats` when the graph's Diff column (or an earlier call here)
+/// already computed this commit, and never depends on that column's
+/// page/visibility gate.
+///
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn commit_stat(
+    path: String,
+    oid: String,
+    state: State<'_, RepoState>,
+    commit_stats: State<'_, CommitStatsCache>,
+) -> Result<DiffStat, String> {
+    if let Some(stat) = commit_stats.0.lock().unwrap().get(&path, &oid) {
+        return Ok(stat.clone());
+    }
+
+    let state_map = state.snapshot();
+    let path_clone = path.clone();
+    let oid_clone = oid.clone();
+    let stat = tauri::async_runtime::spawn_blocking(move || {
+        commit_stat_inner(&path_clone, &oid_clone, &state_map)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())?;
+
+    commit_stats
+        .0
+        .lock()
+        .unwrap()
+        .extend(path, [(oid, stat.clone())]);
+    Ok(stat)
+}
+
 /// Commits in the cached graph whose subject or oid matches `query`.
 ///
 /// # Errors
