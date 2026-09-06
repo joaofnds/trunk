@@ -216,9 +216,10 @@ struct Leaf {
     /// sourcepos alone finds the container and tints or splices that instead of
     /// the item (TRUNK-112). Both lookups match tag and sourcepos together.
     tag: String,
-    /// 1-based inclusive source-line span, parsed from the same comrak
-    /// sourcepos `sourcepos` stringifies. The fold budgets context by line
-    /// distance to a changed line, not by how many leaves away a leaf sits.
+    /// 1-based inclusive source-line span, read off the same comrak
+    /// `Sourcepos` that `sourcepos` stringifies. The fold budgets context by
+    /// line distance to a changed line, not by how many leaves away a leaf
+    /// sits.
     start_line: u32,
     end_line: u32,
 }
@@ -280,14 +281,17 @@ pub fn diff_markdown_blocks(
         &counterpart_pairs(&ops, &before, &after),
     );
 
+    let dirty = DirtyLines {
+        before: &before_lines,
+        after: &after_lines,
+    };
     let rows = emit_rows(
         &before,
         &before_dirty,
         &after,
         &after_dirty,
         ignore_whitespace,
-        &before_lines,
-        &after_lines,
+        &dirty,
         context_lines,
     );
     let whitespace_only = differs
@@ -495,8 +499,7 @@ fn emit_rows(
     after: &[Block],
     after_dirty: &[bool],
     ignore_whitespace: bool,
-    dirty_before_lines: &HashSet<u32>,
-    dirty_after_lines: &HashSet<u32>,
+    dirty: &DirtyLines<'_>,
     context_lines: u32,
 ) -> Vec<DiffRow> {
     let sources_match = |b: &Block, a: &Block| {
@@ -544,8 +547,7 @@ fn emit_rows(
                     &mut before_run,
                     &mut after_run,
                     a.start_line,
-                    dirty_before_lines,
-                    dirty_after_lines,
+                    dirty,
                     context_lines,
                 );
                 rows.push(unchanged(a));
@@ -579,8 +581,7 @@ fn emit_rows(
         &mut before_run,
         &mut after_run,
         after_cursor + 1,
-        dirty_before_lines,
-        dirty_after_lines,
+        dirty,
         context_lines,
     );
     rows
@@ -597,8 +598,7 @@ fn flush_runs(
     before_run: &mut Vec<&Block>,
     after_run: &mut Vec<&Block>,
     deletion_anchor: u32,
-    dirty_before_lines: &HashSet<u32>,
-    dirty_after_lines: &HashSet<u32>,
+    dirty: &DirtyLines<'_>,
     context_lines: u32,
 ) {
     let paired = before_run.len().min(after_run.len());
@@ -606,7 +606,7 @@ fn flush_runs(
         let b = before_run[k];
         let a = after_run[k];
         if b.kind == a.kind {
-            let cf = changed_fragments(b, a, dirty_before_lines, dirty_after_lines, context_lines);
+            let cf = changed_fragments(b, a, dirty, context_lines);
             rows.push(DiffRow::Changed {
                 before_html: cf.before_html,
                 after_html: cf.after_html,
@@ -1392,8 +1392,7 @@ struct ChangedFragments {
 fn changed_fragments(
     before: &Block,
     after: &Block,
-    dirty_before: &HashSet<u32>,
-    dirty_after: &HashSet<u32>,
+    dirty: &DirtyLines<'_>,
     context_lines: u32,
 ) -> ChangedFragments {
     if before.leaves.is_empty() || after.leaves.is_empty() {
@@ -1421,7 +1420,7 @@ fn changed_fragments(
         &before.leaves,
         &after.leaves,
         Side::After,
-        dirty_after,
+        dirty,
         context_lines,
     );
     let keep_before = leaves_to_keep(
@@ -1429,7 +1428,7 @@ fn changed_fragments(
         &before.leaves,
         &after.leaves,
         Side::Before,
-        dirty_before,
+        dirty,
         context_lines,
     );
     let folded_merged = merged_raw
@@ -2058,6 +2057,27 @@ enum Side {
     After,
 }
 
+/// The two axes `dirty_lines` returns, kept as one value rather than two
+/// same-typed parameters: `before`/`after` are adjacent `HashSet<u32>`s with no
+/// type difference between them, so a caller passing them positionally could
+/// swap the roles and still compile (`coding-style.md` §3, "a call must not
+/// compile with its arguments transposed"). `for_side` reads the correct one by
+/// the same `Side` a caller already threads for the leaf slices, so the axis is
+/// picked once, at the one place that knows it, rather than at every call site.
+struct DirtyLines<'a> {
+    before: &'a HashSet<u32>,
+    after: &'a HashSet<u32>,
+}
+
+impl DirtyLines<'_> {
+    const fn for_side(&self, side: Side) -> &HashSet<u32> {
+        match side {
+            Side::Before => self.before,
+            Side::After => self.after,
+        }
+    }
+}
+
 /// Edge-to-edge source-line distance from a span to the nearest line in a
 /// dirty set — mirrors `lineDistance` in `RenderedDiff.svelte`: a line inside
 /// the span is distance 0, an adjacent one is 1, so "within N lines" is
@@ -2101,7 +2121,7 @@ fn leaves_to_keep(
     before: &[Leaf],
     after: &[Leaf],
     side: Side,
-    dirty: &HashSet<u32>,
+    dirty: &DirtyLines<'_>,
     context_lines: u32,
 ) -> Option<Vec<bool>> {
     let leaves = match side {
@@ -2112,9 +2132,10 @@ fn leaves_to_keep(
     if n == 0 {
         return None;
     }
+    let dirty_side = dirty.for_side(side);
     let mut keep: Vec<bool> = leaves
         .iter()
-        .map(|l| distance_to_dirty_line(l.start_line, l.end_line, dirty) <= context_lines)
+        .map(|l| distance_to_dirty_line(l.start_line, l.end_line, dirty_side) <= context_lines)
         .collect();
     for op in ops.iter().copied() {
         if let similar::DiffOp::Equal {
@@ -3131,8 +3152,12 @@ mod tests {
         other_sigs[2] = "item 2 changed".to_string();
         let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &sigs, &other_sigs);
         let empty_dirty = HashSet::new();
+        let dirty = DirtyLines {
+            before: &empty_dirty,
+            after: &empty_dirty,
+        };
 
-        let keep = leaves_to_keep(&ops, &leaves, &leaves, Side::After, &empty_dirty, 0);
+        let keep = leaves_to_keep(&ops, &leaves, &leaves, Side::After, &dirty, 0);
         assert!(
             keep.is_none(),
             "an empty dirty set must not fold to an all-hidden container: {keep:?}"
