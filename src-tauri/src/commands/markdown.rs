@@ -177,6 +177,10 @@ const fn is_false(b: &bool) -> bool {
 pub struct MarkdownDiff {
     pub rows: Vec<DiffRow>,
     pub whitespace_only: bool,
+    /// The after-axis source lines `dirty_lines` marked changed, sorted. The
+    /// frontend's row-level hunk fold measures context distance to these
+    /// lines directly, rather than to a changed row's whole span.
+    pub changed_lines: Vec<u32>,
 }
 
 /// A top-level block reduced to what the diff needs: its node kind (the pairing
@@ -298,9 +302,12 @@ pub fn diff_markdown_blocks(
         && !before_dropped
         && !after_dropped
         && rows.iter().all(|r| matches!(r, DiffRow::Unchanged { .. }));
+    let mut changed_lines: Vec<u32> = after_lines.into_iter().collect();
+    changed_lines.sort_unstable();
     MarkdownDiff {
         rows,
         whitespace_only,
+        changed_lines,
     }
 }
 
@@ -6243,6 +6250,19 @@ mod tests {
         assert_eq!(
             block_kind, "heading",
             "the first block is a heading: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn the_diff_carries_the_after_axis_changed_lines() {
+        // before: "# Title\n\nold body\n\nkept para"; after edits line 3 only.
+        let before = "# Title\n\nold body\n\nkept para";
+        let after = "# Title\n\nnew body\n\nkept para";
+        let diff = diff_md(before, after);
+        assert_eq!(
+            diff.changed_lines,
+            vec![3],
+            "only line 3 changed on the after axis: {diff:?}"
         );
     }
 
