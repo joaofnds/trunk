@@ -164,6 +164,22 @@ static SUBSCRIBER_SEQ: AtomicU64 = AtomicU64::new(0);
 /// ordered before the baseline (already included) or after the bind (its ring is
 /// queued): no gap loses an event.
 ///
+/// Between the bind below and the listener thread's first `accept`, the socket path
+/// is already visible under `<data_dir>/w/`, and nothing is accepting on it yet. A
+/// doorbell landing in that window does not fail: the kernel's accept backlog queues
+/// the connection, and the listener picks it up as soon as its thread starts, no
+/// different from any doorbell that arrives while the listener is busy handling a
+/// prior one. `ring` no longer deletes a socket on a refused connection either — it
+/// checks the owning pid first (see [`abandoned`]) — so a doorbell refused in this
+/// window cannot unlink the subscriber out from under it (TRUNK-114).
+///
+/// That safety depends on nothing between the bind and the `accept` loop treating a
+/// connection's success or failure as meaningful. The code from the bind to the
+/// `thread::spawn` below must stay that way: it may read the store or allocate, but it
+/// must never connect to `socket_path` itself or branch on whether something else has.
+/// The moment it does, a doorbell arriving in the window stops being equivalent to one
+/// arriving later, and the window becomes a real gap again (TRUNK-117).
+///
 /// # Errors
 ///
 /// Returns `io` when the store will not open or the ring directory cannot be
@@ -179,6 +195,9 @@ pub fn subscribe(data_dir: &Path) -> Result<StoreEvents, TrunkError> {
         std::process::id(),
         SUBSCRIBER_SEQ.fetch_add(1, Ordering::Relaxed),
     ));
+    // Bind-to-spawn region (TRUNK-117): nothing from here to `thread::spawn` may
+    // connect to `socket_path` or treat a connection's success or failure as
+    // meaningful. See the doc comment above for why that keeps the window harmless.
     let listener = std::os::unix::net::UnixListener::bind(&socket_path)
         .map_err(|e| TrunkError::new("watch", e.to_string()))?;
 
