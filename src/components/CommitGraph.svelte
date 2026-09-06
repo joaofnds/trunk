@@ -110,6 +110,13 @@ interface Props {
 	showInlineComments?: boolean;
 	/** Shared comments store; supplies the per-commit count map. */
 	reviewComments?: ReviewCommentsManager;
+	/** Whether BranchSidebar's stored-visibility read for this repo has resolved
+	 *  (and, if it hid anything, pushed to the backend). The first page load
+	 *  waits on this so it never paints against the backend's unfiltered
+	 *  default -- open_repo always builds its first graph with nothing hidden,
+	 *  since the backend has nothing stored for a path it has not seen yet.
+	 *  Defaults true: only RepoView has a BranchSidebar sibling to gate on. */
+	visibilityResolved?: boolean;
 }
 
 let {
@@ -128,6 +135,11 @@ let {
 	tabActive,
 	showInlineComments = false,
 	reviewComments,
+	// Defaults true (load immediately) rather than false: RepoView is the one
+	// caller that has a BranchSidebar sibling to gate on and opts in explicitly.
+	// Every other caller -- tests included -- has nothing else resolving a
+	// visibility set for this repo, so there is nothing to wait for.
+	visibilityResolved: refVisibilityResolved = true,
 }: Props = $props();
 
 // Per-row comment badge count. Gated on the toggle + an active session so the
@@ -199,7 +211,7 @@ let wipDiffStat = $state<DiffStat | undefined>(undefined);
 // don't know the real visibility, so no stat fetch fires — otherwise a user who
 // persisted diff:false pays a full page + WIP diff computation on every load for
 // a column they turned off.
-let visibilityResolved = $state(false);
+let columnVisibilityResolved = $state(false);
 // Plain (non-reactive) latch for the hidden→visible backfill trigger.
 let diffColumnWasVisible = false;
 // Monotonic token so out-of-order WIP-stat responses can't clobber a newer one
@@ -256,7 +268,7 @@ $effect(() => {
 $effect(() => {
 	getColumnVisibility().then((v) => {
 		columnVisibility = v;
-		visibilityResolved = true;
+		columnVisibilityResolved = true;
 	});
 });
 
@@ -1330,7 +1342,7 @@ function overlayMouseLeave() {
 // await (synchronous read-modify-write) so concurrent page fetches can't drop
 // each other's entries. Gated on the column being visible.
 async function fetchPageStats(pageOffset: number) {
-	if (!visibilityResolved || !columnVisibility.diff) return;
+	if (!columnVisibilityResolved || !columnVisibility.diff) return;
 	try {
 		const stats = await safeInvoke<Record<string, DiffStat>>(
 			"get_commit_stats",
@@ -1350,7 +1362,7 @@ async function fetchPageStats(pageOffset: number) {
 // Backfill every loaded page's stats — used when the column is toggled on after
 // pages were loaded with it hidden (so no per-page fetch fired at load time).
 async function backfillAllPageStats() {
-	if (!visibilityResolved || !columnVisibility.diff) return;
+	if (!columnVisibilityResolved || !columnVisibility.diff) return;
 	for (let o = 0; o < commits.length; o += BATCH) {
 		await fetchPageStats(o);
 	}
@@ -1363,7 +1375,7 @@ async function backfillAllPageStats() {
 // so get_wip_diff_stats returns the correct value; when wipCount catches up and
 // the WIP row appears, its stat is already loaded.
 async function fetchWipStats() {
-	if (!visibilityResolved || !columnVisibility.diff) {
+	if (!columnVisibilityResolved || !columnVisibility.diff) {
 		wipDiffStat = undefined;
 		return;
 	}
@@ -1383,6 +1395,12 @@ async function fetchWipStats() {
 }
 
 async function loadMore(): Promise<PageResult> {
+	// Blocks every caller -- the mount effect below, VirtualList's own
+	// infinite-scroll trigger (which fires immediately on an empty first render,
+	// independent of that effect), and scrollToOid -- until BranchSidebar's
+	// stored-visibility read has resolved. Otherwise this pages against
+	// open_repo's unfiltered default, which is the paint TRUNK-128 fixed.
+	if (!refVisibilityResolved) return "idle";
 	if (loading || !hasMore) return "idle";
 	loading = true;
 	error = null;
@@ -1499,7 +1517,13 @@ async function refresh() {
 	}
 }
 
+// Waits on the parent's ref-visibility resolution before the first page load, so
+// this never paints against open_repo's unfiltered default -- the backend has
+// nothing stored for a path it has not seen yet, and BranchSidebar's read of the
+// persisted set is an independent sibling effect with no ordering against this
+// one otherwise (TRUNK-128).
 $effect(() => {
+	if (!refVisibilityResolved) return;
 	untrack(async () => {
 		await loadMore();
 		await loadStashMap();
@@ -1518,7 +1542,7 @@ $effect(() => {
 	// still holds the optimistic default, and latching against it would suppress
 	// the real backfill once the store resolves. This is also the single trigger
 	// that loads the initial page's stats once visibility is known.
-	if (!visibilityResolved) return;
+	if (!columnVisibilityResolved) return;
 	const visible = columnVisibility.diff;
 	if (visible && !diffColumnWasVisible) {
 		untrack(() => {
@@ -1536,8 +1560,16 @@ $effect(() => {
 	pendingBase = null;
 });
 
+// A repo-changed refresh (the file watcher, or a BranchSidebar action) reads the
+// same backend snapshot open_repo does, so it is exposed to the identical
+// unfiltered-default race this file's other gates close: a refresh that lands in
+// the window before BranchSidebar's stored-visibility read resolves would repaint
+// the hidden refs right back in. Waiting on refVisibilityResolved here means a
+// refresh signalled during that window fires the moment the gate opens, rather
+// than running unfiltered now or being dropped.
 $effect(() => {
 	// Access refreshSignal to create reactive dependency
+	if (!refVisibilityResolved) return;
 	if (refreshSignal !== undefined && refreshSignal > 0) {
 		untrack(() => refresh());
 	}

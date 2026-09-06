@@ -105,6 +105,20 @@ export class AppDriver {
 		return this.internals.invokes;
 	}
 
+	/** Writes a pref directly to the host, the way the application's own
+	 *  `prefs_set` would, so a test can arrange stored state (e.g. a persisted
+	 *  hidden-ref set) before the gesture that reads it back. */
+	async seedPref(key: string, value: unknown): Promise<void> {
+		await this.host.invoke("prefs_set", { key, value });
+	}
+
+	/** Freezes every read of the named pref before it reaches the host, so a test
+	 *  can inspect a render from between two mount effects that race to resolve.
+	 *  Returns the release. */
+	holdPrefsGet(key: string): () => void {
+		return this.internals.holdPrefsGet(key);
+	}
+
 	/** How many times the application has refetched the commit graph. What a
 	 *  debounced refresh is observable as when the graph it produces is
 	 *  unchanged. */

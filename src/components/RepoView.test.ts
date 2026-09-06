@@ -1347,7 +1347,16 @@ describe("RepoView", () => {
 					? Promise.resolve({ staged: 1, unstaged: 0, conflicted: 0 })
 					: withCompare(cmd, args),
 			);
-			const rows = await renderAndGetRows();
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+			// The WIP row and the three commit rows resolve from independent fetches
+			// (get_dirty_counts vs. get_commit_graph); wait for all four rather than
+			// the first row findAllByTestId happens to see.
+			const rows = await vi.waitFor(() => {
+				const found = screen.getAllByTestId("commit-row");
+				if (found.length < 4) throw new Error("not all rows painted yet");
+				return found;
+			});
+			await flush();
 			// rows[0] is the WIP row; commits shift down one.
 			await fireEvent.click(rows[3]); // oid-1
 			await flush();

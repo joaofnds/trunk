@@ -46,6 +46,11 @@ interface Props {
 	loadedRows?: () => number;
 	onstashselect?: (oid: string) => void;
 	onrefnavigate?: (refNameOrOid: string) => void;
+	/** Fires once the persisted hidden-ref set for this repo is known and, if it
+	 *  hides anything, has been pushed to the backend -- whether that read
+	 *  succeeded or failed. CommitGraph's first page load waits on it so it
+	 *  never paints against the backend's unfiltered default. */
+	onvisibilityresolved?: () => void;
 	refreshSignal?: number;
 	workingTreeDirty?: boolean;
 	onopenrebaseeditor?: (baseOid: string, inclusive?: boolean) => void;
@@ -62,6 +67,7 @@ let {
 	loadedRows,
 	onstashselect,
 	onrefnavigate,
+	onvisibilityresolved,
 	refreshSignal,
 	workingTreeDirty,
 	onopenrebaseeditor,
@@ -141,11 +147,19 @@ async function saveVisibility(next: RefVisibility) {
 }
 
 async function loadVisibility(path: string) {
-	const stored = await getRefVisibility(path);
-	visibility = stored;
-	// Opening a repository walks with everything visible, so a repo with a stored set
-	// needs it pushed before its first graph is drawn.
-	if (!hidesNothing(stored)) await pushVisibility(path, stored);
+	try {
+		const stored = await getRefVisibility(path);
+		visibility = stored;
+		// Opening a repository walks with everything visible, so a repo with a stored set
+		// needs it pushed before its first graph is drawn.
+		if (!hidesNothing(stored)) await pushVisibility(path, stored);
+	} catch {
+		showToast("Could not load which refs are hidden", "error");
+	} finally {
+		// Fires on failure too: CommitGraph's first load is gated on this signal, and
+		// a stuck gate would leave the graph with no first page at all.
+		onvisibilityresolved?.();
+	}
 }
 
 let filteredLocal = $derived(

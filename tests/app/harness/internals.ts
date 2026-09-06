@@ -56,6 +56,13 @@ const WINDOW_LABEL = "main";
  * Tauri delivers an event by evaluating a script this side cannot observe, so
  * the host mirrors each emit onto stdout and dispatch runs from the id map here.
  */
+/** A held `prefs_get` call, keyed by the pref it asked for, and how to let it
+ *  proceed to the real host. */
+interface HeldRead {
+	key: string;
+	release: () => void;
+}
+
 export class TauriInternals {
 	private readonly callbacks = new Map<number, Callback>();
 	private readonly listeners = new Map<number, Listener>();
@@ -64,8 +71,28 @@ export class TauriInternals {
 	private readonly fakes = new Map<string, TauriFake>();
 	private nextCallbackId = 1;
 	private closed = false;
+	/** Set by `holdPrefsGet`; every `prefs_get` for that key stalls at this seam
+	 *  until `release()` runs, rather than reaching the host. */
+	private heldPrefsKey: string | null = null;
+	private readonly heldReads: HeldRead[] = [];
 
 	constructor(private readonly host: HostChannel) {}
+
+	/**
+	 * Freezes every `prefs_get` for `key` at this seam instead of forwarding it,
+	 * so a test can inspect a render from before the read resolves — a barrier on
+	 * the call itself, not a wall-clock delay. Returns the release: call it once
+	 * the test has taken its snapshot, and every call gated so far (there may be
+	 * more than one caller of the same pref) proceeds to the host.
+	 */
+	holdPrefsGet(key: string): () => void {
+		this.heldPrefsKey = key;
+		return () => {
+			this.heldPrefsKey = null;
+			const held = this.heldReads.splice(0);
+			for (const read of held) read.release();
+		};
+	}
 
 	/** Points every `plugin:` command at the Fake that owns it. Separate from
 	 *  construction because a Fake whose surface is callback-driven needs this
@@ -130,7 +157,14 @@ export class TauriInternals {
 		// them, and an unhandled rejection is all the test sees.
 		if (cmd === UNLISTEN || cmd === EMIT)
 			return await this.host.invoke(cmd, args);
-		if (!cmd.startsWith("plugin:")) return await this.host.invoke(cmd, args);
+		if (!cmd.startsWith("plugin:")) {
+			if (cmd === "prefs_get" && args.key === this.heldPrefsKey) {
+				await new Promise<void>((release) => {
+					this.heldReads.push({ key: args.key as string, release });
+				});
+			}
+			return await this.host.invoke(cmd, args);
+		}
 
 		return this.fake(cmd).answer(commandOf(cmd), args);
 	}

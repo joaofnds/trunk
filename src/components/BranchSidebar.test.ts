@@ -780,6 +780,36 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
+	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-
+	// visibility read that fails must still release it -- a stuck gate would leave the
+	// graph with no first page at all, worse than the flash this card fixes.
+	it("resolves visibility even when the stored-visibility read fails", async () => {
+		const base = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd, args) => {
+			if (
+				cmd === "prefs_get" &&
+				(args as { key: string })?.key === "ref_visibility"
+			)
+				return Promise.reject(
+					JSON.stringify({ code: "io_error", message: "disk full" }),
+				);
+			return base ? base(cmd, args) : Promise.resolve(undefined);
+		});
+		const resolved = vi.fn();
+		render(BranchSidebar, {
+			props: { repoPath: "/test/repo", onvisibilityresolved: resolved },
+		});
+
+		await waitFor(() => {
+			expect(resolved).toHaveBeenCalledOnce();
+		});
+		await waitFor(() => {
+			expect(toasts.items.map((t) => t.message)).toContain(
+				"Could not load which refs are hidden",
+			);
+		});
+	});
+
 	// TRUNK-129: saving the hidden set is not on the path between the click and the graph,
 	// and a save that fails must not take the toggled graph back with it.
 	it("keeps the toggled graph and reports when the hidden set cannot be saved", async () => {

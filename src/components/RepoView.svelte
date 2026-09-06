@@ -324,6 +324,12 @@ let commitGraphRef = $state<{
 	loadedRows: () => number;
 } | null>(null);
 
+// Gates CommitGraph's first page load on BranchSidebar's stored-visibility read, so
+// the graph never paints open_repo's unfiltered default first (TRUNK-128). Starts
+// false on every mount -- RepoView is remounted per repoPath via {#key} in App.svelte,
+// so this does not need its own reset effect.
+let refVisibilityResolved = $state(false);
+
 // Rebase editor state
 let showRebaseEditor = $state(false);
 let rebaseEditorCommits = $state<RebaseTodoItem[]>([]);
@@ -1335,7 +1341,7 @@ function startRightResize(e: MouseEvent) {
       </div>
     {:else}
     <div style="width: {leftPaneCollapsed ? 0 : leftPaneWidth}px; flex-shrink: 0; overflow: hidden; display: flex; flex-direction: column;">
-      <BranchSidebar {repoPath} onrefreshed={handleRefresh} onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)} loadedRows={() => commitGraphRef?.loadedRows() ?? 0} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} workingTreeDirty={wipCount > 0} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
+      <BranchSidebar {repoPath} onrefreshed={handleRefresh} onvisibilitychanged={(graph) => commitGraphRef?.showGraph(graph)} onvisibilityresolved={() => { refVisibilityResolved = true; }} loadedRows={() => commitGraphRef?.loadedRows() ?? 0} onstashselect={handleCommitSelect} onrefnavigate={handleRefNavigate} {refreshSignal} workingTreeDirty={wipCount > 0} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} />
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="pane-divider" style="display: {leftPaneCollapsed ? 'none' : 'block'};" onmousedown={startLeftResize}></div>
@@ -1418,7 +1424,7 @@ function startRightResize(e: MouseEvent) {
             : handleDiffClose}
         />
       {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} {tabActive} {showInlineComments} {reviewComments} {compareOids} />
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} {tabActive} {showInlineComments} {reviewComments} {compareOids} visibilityResolved={refVisibilityResolved} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { firstMatching } from "./drivers/dom.js";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
@@ -178,5 +179,70 @@ describe("ref visibility", () => {
 		expect(app.repo.commitRows().join("\n")).not.toContain("Topic two");
 		expect(app.repo.refPills()).not.toContain("topic");
 		expect(app.branches.isHidden("topic")).toBe(true);
+	});
+
+	// TRUNK-128: BranchSidebar's stored-visibility read and CommitGraph's first page
+	// load are independent sibling mount effects with no ordering between them.
+	// open_repo always builds its first graph against an empty backend visibility
+	// (nothing is stored there for a path the backend has not seen before), so a
+	// repository opened with a non-empty stored hidden set can paint that first,
+	// unfiltered graph before BranchSidebar's async prefs read comes back and
+	// pushes the real set. Unlike every other case in this file, this test must
+	// catch that frame itself rather than only the state the app eventually
+	// settles into -- holding the prefs read open is what makes the frame
+	// observable at all.
+	it("never paints the hidden branch's commits or pill while its stored visibility is still loading", async () => {
+		const app = await setup({ repo: DIVERGED });
+		await app.seedPref("ref_visibility", {
+			[app.repo.path]: { hiddenRefs: ["refs/heads/topic"], hiddenStashes: [] },
+		});
+
+		const release = app.holdPrefsGet("ref_visibility");
+		// Click the recent entry directly, without RepoDriver.open()'s own wait for
+		// commits to appear -- that wait would deadlock against the held gate,
+		// since the fix this test pins means no commits appear until release().
+		const entry = await waitFor(`the recent entry for ${app.repo.path}`, () =>
+			firstMatching('[role="button"]', (text) => text.includes(app.repo.path)),
+		);
+		entry.click();
+
+		// The gated read is recorded the instant BranchSidebar's mount effect issues
+		// it, before this promise blocks -- so by the time it shows up here,
+		// open_repo has resolved and every effect mounted.
+		await waitFor("BranchSidebar's visibility read to be gated", () =>
+			app
+				.invokes()
+				.some((i) => i.cmd === "prefs_get" && i.args.key === "ref_visibility")
+				? true
+				: null,
+		);
+		// CommitGraph's own first page request is a second, independent host round
+		// trip. Give it every chance to be issued and to return before the
+		// assertion below runs -- the fixed code never issues this call until
+		// release(), so this deliberately either finds the unfiltered page or times
+		// out; both are meaningful, and the assertion below is what actually
+		// distinguishes them.
+		await waitFor(
+			"the graph's first page to paint",
+			() => (app.repo.commitRows().length > 0 ? true : null),
+			500,
+		).catch(() => undefined);
+
+		// The graph's first page has not painted while the stored hidden set is
+		// still held back -- the exact frame the bug produced.
+		expect(app.repo.commitRows().join("\n")).not.toContain("Topic two");
+		expect(app.repo.refPills()).not.toContain("topic");
+
+		release();
+		await waitFor("the repository's commits", () =>
+			app.repo.commitRows().length > 0 ? true : null,
+		);
+		await app.elapseUntil("the graph to settle", () =>
+			app.repo.commitRows().join("\n").includes("Main one") ? true : null,
+		);
+		await app.settled();
+
+		expect(app.repo.commitRows().join("\n")).not.toContain("Topic two");
+		expect(app.repo.refPills()).not.toContain("topic");
 	});
 });
