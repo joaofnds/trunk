@@ -91,6 +91,11 @@ const MD_WORD_CLASSES: &[&str] = &["md-word-delete", "md-word-add"];
 pub enum DiffRow {
     Unchanged {
         html: String,
+        /// The block's node kind (`heading`, `paragraph`, `list`, …), so the
+        /// frontend's heading exception can tell an unchanged heading from an
+        /// unchanged paragraph without re-parsing the html. Named `block_kind`,
+        /// never `kind`, because `kind` is `DiffRow`'s own serde tag.
+        block_kind: String,
         after_start: u32,
         after_end: u32,
     },
@@ -494,6 +499,7 @@ fn emit_rows(
     // tail arms below used to commit.
     let unchanged = |a: &Block| DiffRow::Unchanged {
         html: a.html.clone(),
+        block_kind: a.kind.clone(),
         after_start: a.start_line,
         after_end: a.end_line,
     };
@@ -5994,6 +6000,19 @@ mod tests {
             (*after_start, *after_end),
             (3, 5),
             "the wrapped paragraph spans lines 3-5 inclusive: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_heading_row_reports_kind_heading() {
+        let md = "# Title\n\nbody";
+        let rows = diff_rows(md, md);
+        let DiffRow::Unchanged { block_kind, .. } = &rows[0] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            block_kind, "heading",
+            "the first block is a heading: {rows:?}"
         );
     }
 

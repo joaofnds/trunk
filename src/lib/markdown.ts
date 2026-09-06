@@ -73,7 +73,13 @@ export function beforeRev(
 // after side: it carries its before span plus `afterAnchor` — the after-side
 // line the deletion sits at — keeping all context math on one axis.
 export type DiffRow =
-	| { kind: "unchanged"; html: string; afterStart: number; afterEnd: number }
+	| {
+			kind: "unchanged";
+			html: string;
+			blockKind: string;
+			afterStart: number;
+			afterEnd: number;
+	  }
 	| { kind: "added"; html: string; afterStart: number; afterEnd: number }
 	| {
 			kind: "removed";

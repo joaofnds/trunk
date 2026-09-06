@@ -2669,6 +2669,7 @@ describe("DiffPanel hunk navigation", () => {
 						rows: [
 							{
 								kind: "unchanged",
+								blockKind: "paragraph",
 								html: "<p>alpha</p>",
 								afterStart: 1,
 								afterEnd: 1,

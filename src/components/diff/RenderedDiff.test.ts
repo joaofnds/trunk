@@ -139,7 +139,13 @@ describe("RenderedDiff", () => {
 
 	it("renders a changed row WITHOUT a merged copy as removed-before then added-after (inline)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "unchanged", html: "<p>intro</p>", afterStart: 1, afterEnd: 1 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>intro</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
 			{
 				kind: "removed",
 				html: "<p>gone</p>",
@@ -261,7 +267,13 @@ describe("RenderedDiff", () => {
 
 	it("stacks all rows of a run inside exactly two synced column scrollers (split)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "unchanged", html: "<p>same</p>", afterStart: 1, afterEnd: 1 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>same</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
 			{ kind: "added", html: "<p>addition</p>", afterStart: 3, afterEnd: 3 },
 			{
 				kind: "removed",
@@ -391,6 +403,7 @@ describe("RenderedDiff", () => {
 		for (let i = 0; i < 10; i++)
 			rows.push({
 				kind: "unchanged",
+				blockKind: "paragraph",
 				html: `<p>u${i}</p>`,
 				afterStart: 2 + i,
 				afterEnd: 2 + i,
@@ -553,7 +566,13 @@ describe("RenderedDiff", () => {
 				afterEnd: 1,
 			},
 			// 8 lines from both changes: outside any contextLines=3 window.
-			{ kind: "unchanged", html: "<p>far</p>", afterStart: 10, afterEnd: 10 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>far</p>",
+				afterStart: 10,
+				afterEnd: 10,
+			},
 			{
 				kind: "changed",
 				beforeHtml: "<p>oe</p>",
@@ -584,6 +603,7 @@ describe("RenderedDiff", () => {
 		for (let i = 0; i < 5; i++)
 			rows.push({
 				kind: "unchanged",
+				blockKind: "paragraph",
 				html: `<p>lead${i}</p>`,
 				afterStart: 1 + 2 * i,
 				afterEnd: 1 + 2 * i,
@@ -598,6 +618,7 @@ describe("RenderedDiff", () => {
 		for (let i = 0; i < 5; i++)
 			rows.push({
 				kind: "unchanged",
+				blockKind: "paragraph",
 				html: `<p>tail${i}</p>`,
 				afterStart: 13 + 2 * i,
 				afterEnd: 13 + 2 * i,
@@ -627,10 +648,34 @@ describe("RenderedDiff", () => {
 				afterStart: 1,
 				afterEnd: 1,
 			},
-			{ kind: "unchanged", html: "<p>u1</p>", afterStart: 3, afterEnd: 3 },
-			{ kind: "unchanged", html: "<p>u2</p>", afterStart: 5, afterEnd: 5 },
-			{ kind: "unchanged", html: "<p>u3</p>", afterStart: 7, afterEnd: 7 },
-			{ kind: "unchanged", html: "<p>u4</p>", afterStart: 9, afterEnd: 9 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u1</p>",
+				afterStart: 3,
+				afterEnd: 3,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u2</p>",
+				afterStart: 5,
+				afterEnd: 5,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u3</p>",
+				afterStart: 7,
+				afterEnd: 7,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u4</p>",
+				afterStart: 9,
+				afterEnd: 9,
+			},
 			// The deleted paragraph sat right after line 9 on the after axis.
 			{
 				kind: "removed",
@@ -639,7 +684,13 @@ describe("RenderedDiff", () => {
 				beforeEnd: 11,
 				afterAnchor: 9,
 			},
-			{ kind: "unchanged", html: "<p>u5</p>", afterStart: 11, afterEnd: 11 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u5</p>",
+				afterStart: 11,
+				afterEnd: 11,
+			},
 		];
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 
@@ -674,9 +725,27 @@ describe("RenderedDiff", () => {
 				afterStart: 1,
 				afterEnd: 1,
 			},
-			{ kind: "unchanged", html: "<p>u1</p>", afterStart: 2, afterEnd: 2 },
-			{ kind: "unchanged", html: "<p>u2</p>", afterStart: 3, afterEnd: 3 },
-			{ kind: "unchanged", html: "<p>u3</p>", afterStart: 4, afterEnd: 4 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u1</p>",
+				afterStart: 2,
+				afterEnd: 2,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u2</p>",
+				afterStart: 3,
+				afterEnd: 3,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>u3</p>",
+				afterStart: 4,
+				afterEnd: 4,
+			},
 			{
 				kind: "changed",
 				beforeHtml: "<p>oe</p>",
@@ -733,8 +802,20 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
-				{ kind: "unchanged", html: "<p>beta</p>", afterStart: 3, afterEnd: 3 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>beta</p>",
+					afterStart: 3,
+					afterEnd: 3,
+				},
 			] satisfies DiffRow[],
 		});
 
@@ -757,7 +838,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: true,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 
@@ -783,7 +870,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 
@@ -810,7 +903,13 @@ describe("RenderedDiff", () => {
 					afterStart: 1,
 					afterEnd: 1,
 				},
-				{ kind: "unchanged", html: "<p>ctx</p>", afterStart: 3, afterEnd: 3 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>ctx</p>",
+					afterStart: 3,
+					afterEnd: 3,
+				},
 			] satisfies DiffRow[],
 		});
 
@@ -851,6 +950,7 @@ describe("RenderedDiff", () => {
 			rows: [
 				{
 					kind: "unchanged",
+					blockKind: "paragraph",
 					html: "<pre><code>long line</code></pre>",
 					afterStart: 1,
 					afterEnd: 1,
@@ -887,7 +987,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>same</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>same</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 
@@ -919,7 +1025,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
@@ -950,7 +1062,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 		const props = reactiveProps({ ...baseProps });
@@ -982,7 +1100,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
@@ -1014,7 +1138,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValueOnce({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
@@ -1049,7 +1179,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 		const props = reactiveProps({
@@ -1087,7 +1223,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
@@ -1111,7 +1253,13 @@ describe("RenderedDiff", () => {
 
 	it("registers one element per changed row into hunkElements in document order (inline)", async () => {
 		const rows: DiffRow[] = [
-			{ kind: "unchanged", html: "<p>intro</p>", afterStart: 1, afterEnd: 1 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>intro</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
 			{
 				kind: "changed",
 				beforeHtml: "<p>the quick fox</p>",
@@ -1136,7 +1284,13 @@ describe("RenderedDiff", () => {
 				afterStart: 7,
 				afterEnd: 7,
 			},
-			{ kind: "unchanged", html: "<p>outro</p>", afterStart: 9, afterEnd: 9 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>outro</p>",
+				afterStart: 9,
+				afterEnd: 9,
+			},
 		];
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 		const hunkElements: Record<string, HTMLDivElement> = {};
@@ -1170,7 +1324,13 @@ describe("RenderedDiff", () => {
 				beforeEnd: 3,
 				afterAnchor: 1,
 			},
-			{ kind: "unchanged", html: "<p>same</p>", afterStart: 3, afterEnd: 3 },
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>same</p>",
+				afterStart: 3,
+				afterEnd: 3,
+			},
 		];
 		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
 		const hunkElements: Record<string, HTMLDivElement> = {};
@@ -1190,7 +1350,13 @@ describe("RenderedDiff", () => {
 			whitespaceOnly: false,
 			rows: [
 				{ kind: "added", html: "<p>fresh</p>", afterStart: 1, afterEnd: 1 },
-				{ kind: "unchanged", html: "<p>ctx</p>", afterStart: 3, afterEnd: 3 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>ctx</p>",
+					afterStart: 3,
+					afterEnd: 3,
+				},
 			] satisfies DiffRow[],
 		});
 		const hunkElements: Record<string, HTMLDivElement> = {};
@@ -1210,7 +1376,13 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
 			rows: [
-				{ kind: "unchanged", html: "<p>alpha</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			] satisfies DiffRow[],
 		});
 
@@ -1253,6 +1425,7 @@ describe("RenderedDiff", () => {
 			rows: [
 				{
 					kind: "unchanged",
+					blockKind: "paragraph",
 					html: "<p>SECOND</p>",
 					afterStart: 1,
 					afterEnd: 1,
@@ -1264,7 +1437,13 @@ describe("RenderedDiff", () => {
 
 		first.resolve({
 			rows: [
-				{ kind: "unchanged", html: "<p>FIRST</p>", afterStart: 1, afterEnd: 1 },
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>FIRST</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
 			],
 			whitespaceOnly: false,
 		});
