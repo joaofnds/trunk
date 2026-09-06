@@ -216,6 +216,11 @@ struct Leaf {
     /// sourcepos alone finds the container and tints or splices that instead of
     /// the item (TRUNK-112). Both lookups match tag and sourcepos together.
     tag: String,
+    /// 1-based inclusive source-line span, parsed from the same comrak
+    /// sourcepos `sourcepos` stringifies. The fold budgets context by line
+    /// distance to a changed line, not by how many leaves away a leaf sits.
+    start_line: u32,
+    end_line: u32,
 }
 
 /// Diff two markdown documents, one aligned row per top-level block.
@@ -229,7 +234,10 @@ struct Leaf {
 /// so its images resolve from there. The frontend projects every layout from the rows.
 /// `ignore_whitespace` compares line keys with ALL whitespace stripped — git's
 /// `-w`, matching Source's `GIT_DIFF_IGNORE_WHITESPACE` — while the original
-/// lines still classify blocks and render.
+/// lines still classify blocks and render. `context_lines` is the hunk-mode
+/// fold's budget, matching Source's `diff_context_lines`: a leaf inside a
+/// changed container stays iff a source line of its own falls within that
+/// many lines of a line `dirty_lines` marked changed.
 #[must_use]
 pub fn diff_markdown_blocks(
     before_md: &str,
@@ -240,6 +248,7 @@ pub fn diff_markdown_blocks(
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
+    context_lines: u32,
 ) -> MarkdownDiff {
     let differs = before_md != after_md;
     // comrak counts a lone \r as a line ending (CommonMark); str::lines() and
@@ -277,6 +286,9 @@ pub fn diff_markdown_blocks(
         &after,
         &after_dirty,
         ignore_whitespace,
+        &before_lines,
+        &after_lines,
+        context_lines,
     );
     let whitespace_only = differs
         && !before_dropped
@@ -483,6 +495,9 @@ fn emit_rows(
     after: &[Block],
     after_dirty: &[bool],
     ignore_whitespace: bool,
+    dirty_before_lines: &HashSet<u32>,
+    dirty_after_lines: &HashSet<u32>,
+    context_lines: u32,
 ) -> Vec<DiffRow> {
     let sources_match = |b: &Block, a: &Block| {
         if ignore_whitespace {
@@ -524,7 +539,15 @@ fn emit_rows(
         }
         match (before.get(i), after.get(j)) {
             (Some(b), Some(a)) if b.kind == a.kind && sources_match(b, a) => {
-                flush_runs(&mut rows, &mut before_run, &mut after_run, a.start_line);
+                flush_runs(
+                    &mut rows,
+                    &mut before_run,
+                    &mut after_run,
+                    a.start_line,
+                    dirty_before_lines,
+                    dirty_after_lines,
+                    context_lines,
+                );
                 rows.push(unchanged(a));
                 after_cursor = a.end_line;
                 i += 1;
@@ -551,7 +574,15 @@ fn emit_rows(
             (None, None) => unreachable!("loop condition guarantees one side has blocks left"),
         }
     }
-    flush_runs(&mut rows, &mut before_run, &mut after_run, after_cursor + 1);
+    flush_runs(
+        &mut rows,
+        &mut before_run,
+        &mut after_run,
+        after_cursor + 1,
+        dirty_before_lines,
+        dirty_after_lines,
+        context_lines,
+    );
     rows
 }
 
@@ -566,13 +597,16 @@ fn flush_runs(
     before_run: &mut Vec<&Block>,
     after_run: &mut Vec<&Block>,
     deletion_anchor: u32,
+    dirty_before_lines: &HashSet<u32>,
+    dirty_after_lines: &HashSet<u32>,
+    context_lines: u32,
 ) {
     let paired = before_run.len().min(after_run.len());
     for k in 0..paired {
         let b = before_run[k];
         let a = after_run[k];
         if b.kind == a.kind {
-            let cf = changed_fragments(b, a);
+            let cf = changed_fragments(b, a, dirty_before_lines, dirty_after_lines, context_lines);
             rows.push(DiffRow::Changed {
                 before_html: cf.before_html,
                 after_html: cf.after_html,
@@ -1355,7 +1389,13 @@ struct ChangedFragments {
     renders_identically: bool,
 }
 
-fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
+fn changed_fragments(
+    before: &Block,
+    after: &Block,
+    dirty_before: &HashSet<u32>,
+    dirty_after: &HashSet<u32>,
+    context_lines: u32,
+) -> ChangedFragments {
     if before.leaves.is_empty() || after.leaves.is_empty() {
         return single_leaf_fragments(before, after);
     }
@@ -1376,8 +1416,22 @@ fn changed_fragments(before: &Block, after: &Block) -> ChangedFragments {
     // The fold runs per side, each against its own keep set: the split columns
     // are the two tinted fragments, the inline view is the merged copy (which
     // lives on the AFTER skeleton, so it folds by the after side's set).
-    let keep_after = leaves_to_keep(&ops, &before.leaves, &after.leaves, Side::After);
-    let keep_before = leaves_to_keep(&ops, &before.leaves, &after.leaves, Side::Before);
+    let keep_after = leaves_to_keep(
+        &ops,
+        &before.leaves,
+        &after.leaves,
+        Side::After,
+        dirty_after,
+        context_lines,
+    );
+    let keep_before = leaves_to_keep(
+        &ops,
+        &before.leaves,
+        &after.leaves,
+        Side::Before,
+        dirty_before,
+        context_lines,
+    );
     let folded_merged = merged_raw
         .as_deref()
         .zip(keep_after.as_deref())
@@ -1995,63 +2049,73 @@ fn merged_container_raw(before: &Block, after: &Block, ops: &[similar::DiffOp]) 
     Some(tint_leaves(&frag, &tints))
 }
 
-/// The hunk-mode copy of a changed container: the merged fragment with every
-/// unchanged leaf outside the context window removed, plus how many it dropped.
-/// `None` when there is nothing to fold — a container whose leaves all changed,
-/// or one small enough that the window already covers it — and the frontend
-/// then renders the full merged copy in both modes.
-///
-/// The window mirrors `collapseUnchanged`'s always-keep-the-adjacent rule
-/// (RenderedDiff.svelte): a change is never left bare. Context is counted in
-/// LEAVES, not source lines: inside a container a leaf is the unit the reader
-/// scans, and one list item can be twenty lines on its own.
-///
-/// Only leaves the merge left untouched can be dropped — a spliced or
-/// word-marked leaf no longer carries its `data-sourcepos`, and `element_span`
-/// will not find it. That is exactly the set this fold wants to keep anyway.
-/// How many unchanged leaves stay either side of a changed one. Mirrors
-/// `collapseUnchanged`'s always-keep-the-adjacent rule (RenderedDiff.svelte):
-/// a change is never left bare. Counted in LEAVES, not source lines — inside a
-/// container a leaf is the unit the reader scans, and one list item can be
-/// twenty lines on its own.
-const LEAF_CONTEXT: usize = 1;
-
 /// Which side of the leaf diff a fold is reading. The two are mirrors: each
-/// asks for the ranges an op touched on its own side.
+/// asks for the ranges an op touched on its own side, and tests leaves against
+/// that side's dirty-line set from `dirty_lines`.
 #[derive(Clone, Copy)]
 enum Side {
     Before,
     After,
 }
 
-/// Which leaves of one side must stay visible: every leaf an op touched on that
-/// side, widened by `LEAF_CONTEXT`. `None` when there is nothing to fold —
-/// either every leaf must stay, or NO leaf changed at all.
+/// Edge-to-edge source-line distance from a span to the nearest line in a
+/// dirty set — mirrors `lineDistance` in `RenderedDiff.svelte`: a line inside
+/// the span is distance 0, an adjacent one is 1, so "within N lines" is
+/// exactly Source's N context lines. `u32::MAX` when the set is empty — every
+/// leaf on this axis then fails the line test, and only the unconditional
+/// markup-only/anchor widening below can still keep one.
+fn distance_to_dirty_line(start: u32, end: u32, dirty: &HashSet<u32>) -> u32 {
+    dirty
+        .iter()
+        .map(|&line| start.saturating_sub(line).max(line.saturating_sub(end)))
+        .min()
+        .unwrap_or(u32::MAX)
+}
+
+/// Which leaves of one side must stay visible: every leaf with a source line
+/// within `context_lines` of a line `dirty_lines` marked changed on that axis.
+/// `None` when there is nothing to fold — either every leaf must stay, or NO
+/// leaf changed at all.
+///
+/// Budgeted in SOURCE LINES, not leaf count: a leaf many indices away can sit
+/// closer in lines than an adjacent one (a run of one-line items beside a
+/// twenty-line item), and the old leaf-count radius could neither keep the
+/// first case nor exclude the second. Reads the same before/after dirty-line
+/// sets the row-level classification (`dirty_blocks`) already computed from
+/// `dirty_lines`, so the leaf fold, the row fold and the row kinds all answer
+/// one question about what changed.
 ///
 /// An `Equal` op holds leaves the signature diff matched, and a leaf's
 /// signature is its visible text — so a markup-only edit (unbolding a phrase,
-/// relinking a URL) sits inside one. Those pairs are tinted, and a fold must
-/// keep a leaf the unfolded copy marks as changed, so they widen the keep set
-/// like any other change. Skipping every `Equal` op hid the one item the
-/// reader was meant to see, in the default (hunk) view.
+/// relinking a URL) sits inside one and touches no source line at all. Those
+/// pairs are tinted, and a fold must keep a leaf the unfolded copy marks as
+/// changed, so they widen the keep set unconditionally, same as before. The
+/// line rule is the CONTEXT rule; this is the CHANGE rule, and it must survive
+/// under either.
 ///
-/// An op that touches no leaf on this side — an insertion read from the before
-/// side, a deletion from the after — still anchors one position, so the fold
-/// keeps the leaves the change landed between and the reader sees where it went.
+/// A deleted leaf has no after-axis sourcepos — there is nothing on that side
+/// to test a line distance against — so it keeps the op-index anchor the fold
+/// always used: the after leaves the deletion falls between.
 fn leaves_to_keep(
     ops: &[similar::DiffOp],
     before: &[Leaf],
     after: &[Leaf],
     side: Side,
+    dirty: &HashSet<u32>,
+    context_lines: u32,
 ) -> Option<Vec<bool>> {
-    let n = match side {
-        Side::Before => before.len(),
-        Side::After => after.len(),
+    let leaves = match side {
+        Side::Before => before,
+        Side::After => after,
     };
+    let n = leaves.len();
     if n == 0 {
         return None;
     }
-    let mut keep = vec![false; n];
+    let mut keep: Vec<bool> = leaves
+        .iter()
+        .map(|l| distance_to_dirty_line(l.start_line, l.end_line, dirty) <= context_lines)
+        .collect();
     for op in ops.iter().copied() {
         if let similar::DiffOp::Equal {
             old_index,
@@ -2067,24 +2131,24 @@ fn leaves_to_keep(
                     Side::Before => old_index + k,
                     Side::After => new_index + k,
                 };
-                let lo = at.saturating_sub(LEAF_CONTEXT);
-                let hi = (at + 1 + LEAF_CONTEXT).min(n);
-                for slot in keep.iter_mut().take(hi).skip(lo) {
-                    *slot = true;
-                }
+                keep[at] = true;
             }
             continue;
         }
+        // An op with no leaf of its own on this side (an insertion read from
+        // the before side, a deletion from the after) still anchors at its
+        // position, so widen there — the neighbours it falls between.
         let range = match side {
             Side::Before => op.old_range(),
             Side::After => op.new_range(),
         };
-        // An empty range is a change with no leaf of its own on this side; it
-        // still anchors at its position, so widen from there.
-        let lo = range.start.saturating_sub(LEAF_CONTEXT);
-        let hi = (range.end.max(range.start + 1) + LEAF_CONTEXT).min(n);
-        for k in keep.iter_mut().take(hi).skip(lo) {
-            *k = true;
+        if range.is_empty() {
+            let at = range.start.min(n.saturating_sub(1));
+            let lo = at.saturating_sub(1);
+            let hi = (at + 2).min(n);
+            for slot in keep.iter_mut().take(hi).skip(lo) {
+                *slot = true;
+            }
         }
     }
     let kept = keep.iter().filter(|&&k| k).count();
@@ -2290,6 +2354,7 @@ pub fn render_markdown_diff_from_state(
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
+    context_lines: u32,
     state_map: &OpenRepos,
 ) -> Result<MarkdownDiff, TrunkError> {
     let before_path = old_path.unwrap_or(file_path);
@@ -2304,6 +2369,7 @@ pub fn render_markdown_diff_from_state(
         before_rev,
         after_rev,
         ignore_whitespace,
+        context_lines,
     ))
 }
 
@@ -2454,11 +2520,17 @@ fn extract_blocks(markdown: &str, repo_path: &str, file_path: &str, rev: &RevSpe
                 |container| {
                     let leaves = container
                         .children()
-                        .map(|c| Leaf {
-                            signature: block_signature(c),
-                            sourcepos: c.data.borrow().sourcepos.to_string(),
-                            raw_html: strip_table_section(&format_node(c, &options)).to_string(),
-                            tag: leaf_tag(c).to_string(),
+                        .map(|c| {
+                            let sp = c.data.borrow().sourcepos;
+                            Leaf {
+                                signature: block_signature(c),
+                                sourcepos: sp.to_string(),
+                                raw_html: strip_table_section(&format_node(c, &options))
+                                    .to_string(),
+                                tag: leaf_tag(c).to_string(),
+                                start_line: u32::try_from(sp.start.line).unwrap_or(u32::MAX),
+                                end_line: u32::try_from(sp.end.line).unwrap_or(u32::MAX),
+                            }
                         })
                         .collect();
                     (leaves, format_node(n, &options_sp), String::new())
@@ -2568,7 +2640,9 @@ fn build_image_rewrite(
 /// Cache key for a block diff — `Some` only when both revs are immutable commits,
 /// so working-tree/index diffs always recompute (they move on every `repo-changed`).
 /// The old path is part of the key: one new path diffed from two different old
-/// paths is two different diffs.
+/// paths is two different diffs. `context_lines` is part of it too: it changes
+/// which leaves the hunk-mode fold keeps, so a changed setting must miss the
+/// cache rather than serve a fold computed under the old value.
 fn diff_cache_key(
     repo_path: &str,
     file_path: &str,
@@ -2576,11 +2650,12 @@ fn diff_cache_key(
     before_rev: &RevSpec,
     after_rev: &RevSpec,
     ignore_whitespace: bool,
+    context_lines: u32,
 ) -> Option<String> {
     let old_path = old_path.unwrap_or_default();
     match (before_rev, after_rev) {
         (RevSpec::Commit { oid: before }, RevSpec::Commit { oid: after }) => Some(format!(
-            "{repo_path}\u{1f}{file_path}\u{1f}{old_path}\u{1f}{before}\u{1f}{after}\u{1f}{ignore_whitespace}"
+            "{repo_path}\u{1f}{file_path}\u{1f}{old_path}\u{1f}{before}\u{1f}{after}\u{1f}{ignore_whitespace}\u{1f}{context_lines}"
         )),
         _ => None,
     }
@@ -2602,6 +2677,7 @@ pub async fn render_markdown_diff(
     before_rev: RevSpec,
     after_rev: RevSpec,
     ignore_whitespace: bool,
+    context_lines: u32,
     state: State<'_, RepoState>,
     cache: State<'_, MarkdownDiffCache>,
 ) -> Result<MarkdownDiff, String> {
@@ -2612,6 +2688,7 @@ pub async fn render_markdown_diff(
         &before_rev,
         &after_rev,
         ignore_whitespace,
+        context_lines,
     );
     if let Some(ref key) = cache_key
         && let Some(hit) = cache.0.lock().unwrap().get(key).cloned()
@@ -2628,6 +2705,7 @@ pub async fn render_markdown_diff(
             &before_rev,
             &after_rev,
             ignore_whitespace,
+            context_lines,
             &state_map,
         )
     })
@@ -2937,6 +3015,10 @@ mod tests {
         None
     }
 
+    /// The app's own default (`src/lib/store.ts` `getDiffContextLines`), used
+    /// by every test that isn't itself about the context-lines value.
+    const DEFAULT_CONTEXT_LINES: u32 = 3;
+
     /// The full markdown diff of two docs; repo/file/rev args (image resolution
     /// only) are irrelevant to row semantics and defaulted.
     fn diff_md(before: &str, after: &str) -> MarkdownDiff {
@@ -2944,6 +3026,15 @@ mod tests {
     }
 
     fn diff_md_ws(before: &str, after: &str, ignore_whitespace: bool) -> MarkdownDiff {
+        diff_md_context(before, after, ignore_whitespace, DEFAULT_CONTEXT_LINES)
+    }
+
+    fn diff_md_context(
+        before: &str,
+        after: &str,
+        ignore_whitespace: bool,
+        context_lines: u32,
+    ) -> MarkdownDiff {
         diff_markdown_blocks(
             before,
             after,
@@ -2953,6 +3044,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::WorkingTree,
             ignore_whitespace,
+            context_lines,
         )
     }
 
@@ -3022,6 +3114,56 @@ mod tests {
 
     fn diff_rows(before: &str, after: &str) -> Vec<DiffRow> {
         diff_md(before, after).rows
+    }
+
+    /// The risk the design named directly: with no unconditional neighbour
+    /// left, a keep set built from an empty (or irrelevant) dirty-line set can
+    /// come back with nothing kept at all. `leaves_to_keep` must still return
+    /// `None` in that case — the fold-never-empties-a-block invariant —
+    /// exercised here at the unit the invariant actually lives in, since the
+    /// full pipeline never manages to pass it an all-false case (the changed
+    /// leaf's own line is always in the real dirty set).
+    #[test]
+    fn an_irrelevant_dirty_set_yields_no_keep_set_rather_than_an_empty_one() {
+        let leaves = blocks_of(&list_doc(5, 99, "")).remove(0).leaves;
+        let sigs: Vec<String> = leaves.iter().map(|l| l.signature.clone()).collect();
+        let mut other_sigs = sigs.clone();
+        other_sigs[2] = "item 2 changed".to_string();
+        let ops = similar::capture_diff_slices(similar::Algorithm::Myers, &sigs, &other_sigs);
+        let empty_dirty = HashSet::new();
+
+        let keep = leaves_to_keep(&ops, &leaves, &leaves, Side::After, &empty_dirty, 0);
+        assert!(
+            keep.is_none(),
+            "an empty dirty set must not fold to an all-hidden container: {keep:?}"
+        );
+    }
+
+    /// A relinked URL changes no source line the document-level diff marks
+    /// dirty in the sense that matters here: it sits far outside the context
+    /// window of the item that genuinely changed. The line rule alone would
+    /// hide it; `markup_only_change`'s unconditional widening must still keep
+    /// it, same as before this fold measured in source lines.
+    #[test]
+    fn a_relinked_leaf_outside_the_context_window_still_shows_in_hunk_mode() {
+        let before = list_doc(20, 10, "old").replace("- item 0", "- item 0 [x](http://a.example)");
+        let after = list_doc(20, 10, "new").replace("- item 0", "- item 0 [x](http://b.example)");
+        let rows = diff_md_context(&before, &after, false, 0).rows;
+        let DiffRow::Changed {
+            hunk_merged_html, ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        let folded = hunk_merged_html.as_ref().expect("the long list folds");
+        assert!(
+            folded.contains("item 0"),
+            "the relinked item survives the fold despite sitting outside the window: {folded}"
+        );
+        assert!(
+            folded.contains("http://b.example"),
+            "and keeps its new target: {folded}"
+        );
     }
 
     fn blocks_of(markdown: &str) -> Vec<Block> {
@@ -3336,14 +3478,15 @@ mod tests {
         );
 
         let folded = hunk_merged_html.as_ref().expect("folded copy");
-        // items 9, 10, 11 survive: the change plus one adjacent leaf each side.
-        assert_eq!(folded.matches("<li").count(), 3, "{folded}");
-        assert!(folded.contains("item 10"), "{folded}");
-        assert!(folded.contains("item 9"), "{folded}");
-        assert!(folded.contains("item 11"), "{folded}");
-        assert!(!folded.contains("item 0"), "{folded}");
-        assert!(!folded.contains("item 19"), "{folded}");
-        assert_eq!(*hunk_hidden_leaves, 17, "{folded}");
+        // Items 7-13 survive: one-line items, so a 3-line context window
+        // reaches 3 whole neighbours each side of the change at item 10.
+        assert_eq!(folded.matches("<li").count(), 7, "{folded}");
+        for i in 7..=13 {
+            assert!(folded.contains(&format!("item {i}")), "{folded}");
+        }
+        assert!(!folded.contains("item 6<"), "{folded}");
+        assert!(!folded.contains("item 14<"), "{folded}");
+        assert_eq!(*hunk_hidden_leaves, 13, "{folded}");
     }
 
     /// The fold removes whole elements, so its output must nest as cleanly as
@@ -3385,14 +3528,16 @@ mod tests {
 
         let fb = hunk_before_html.as_ref().expect("folded before");
         let fa = hunk_after_html.as_ref().expect("folded after");
-        assert_eq!(fb.matches("<li").count(), 3, "{fb}");
-        assert_eq!(fa.matches("<li").count(), 3, "{fa}");
+        // One-line items: a 3-line context window reaches 3 whole neighbours
+        // each side of the change at item 10 (items 7-13, 7 total).
+        assert_eq!(fb.matches("<li").count(), 7, "{fb}");
+        assert_eq!(fa.matches("<li").count(), 7, "{fa}");
         // The changed leaf survives the fold. Its text is word-marked, so the
         // raw source string is split across tags — assert on the changed word,
         // which is what the reader is there to see.
         assert!(fb.contains("item 10 ") && fb.contains(">old<"), "{fb}");
         assert!(fa.contains("item 10 ") && fa.contains(">new<"), "{fa}");
-        assert!(!fb.contains("item 0<"), "{fb}");
+        assert!(!fb.contains("item 6<"), "{fb}");
         assert!(is_tag_balanced(fb), "{fb}");
         assert!(is_tag_balanced(fa), "{fa}");
     }
@@ -3619,11 +3764,16 @@ mod tests {
             "full mode still shows every rule"
         );
         let folded = hunk_merged_html.as_ref().expect("folded copy");
-        assert_eq!(folded.matches("<li").count(), 3, "{folded}");
+        // Each item is two lines. Item 2 changes; within a 3-line window that
+        // reaches items 1 and 3 (distance 1) and item 4 (distance 3, its
+        // nearest line is one past the changed item's shorter, unedited
+        // siblings), but not item 0 (distance 4) — asymmetric because the
+        // edited item's appended clause pushes every later item's lines down.
+        assert_eq!(folded.matches("<li").count(), 4, "{folded}");
         // The merge splits the changed word out into its own <ins>, so the
         // source phrase never appears whole — assert on the word itself.
         assert!(folded.contains(">new</ins>"), "{folded}");
-        assert_eq!(*hunk_hidden_leaves, 14, "{folded}");
+        assert_eq!(*hunk_hidden_leaves, 13, "{folded}");
     }
 
     /// The gate's own subject: a row the reader cannot tell from unchanged
@@ -3795,6 +3945,32 @@ mod tests {
         );
     }
 
+    /// `leaves_to_keep` must widen by SOURCE-LINE distance to a changed line,
+    /// not by a fixed number of neighbouring leaves. Three one-line items: only
+    /// the last changes. By leaf index, item 0 sits two leaves away and the old
+    /// `LEAF_CONTEXT` radius of 1 would drop it — but at 3 lines apart it is
+    /// well inside a 3-line context window, so a fold reading source lines must
+    /// keep it.
+    #[test]
+    fn a_fold_keeps_a_leaf_within_the_line_context_window_even_several_leaves_away() {
+        let before = "- item 0\n- item 1\n- item 2\n";
+        let after = "- item 0\n- item 1\n- item 2 changed\n";
+        let rows = diff_rows(before, after);
+        let DiffRow::Changed {
+            hunk_merged_html, ..
+        } = &rows[0]
+        else {
+            panic!("expected Changed: {rows:?}");
+        };
+        // Nothing to fold at all in this short list — every leaf sits inside
+        // the window — so the row carries no folded copy and the frontend
+        // shows the full merged copy in hunk mode too.
+        assert!(
+            hunk_merged_html.is_none(),
+            "every leaf is within 3 source lines of the change: {rows:?}"
+        );
+    }
+
     #[test]
     fn illegible_rows_reports_a_pair_with_one_blank_side() {
         // A blank side is the content missing, not a difference to read. The
@@ -3928,6 +4104,7 @@ mod tests {
                 &RevSpec::Head,
                 &RevSpec::WorkingTree,
                 false,
+                DEFAULT_CONTEXT_LINES,
             );
             for (row, why) in illegible_rows(&diff.rows) {
                 // Match on the scenario AND the kind of violation. Suppressing
@@ -4179,11 +4356,11 @@ mod tests {
             oid: oid.to_string(),
         };
         assert!(
-            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false).is_some(),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false, 3).is_some(),
             "commit-vs-commit is cacheable"
         );
         assert!(
-            diff_cache_key("/r", "d.md", None, &RevSpec::Head, &commit("bbb"), false).is_none(),
+            diff_cache_key("/r", "d.md", None, &RevSpec::Head, &commit("bbb"), false, 3).is_none(),
             "a HEAD side is not cacheable"
         );
         assert!(
@@ -4193,7 +4370,8 @@ mod tests {
                 None,
                 &commit("aaa"),
                 &RevSpec::WorkingTree,
-                false
+                false,
+                3
             )
             .is_none(),
             "a working-tree side is not cacheable"
@@ -4208,8 +4386,21 @@ mod tests {
             oid: oid.to_string(),
         };
         assert_ne!(
-            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false),
-            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), true),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false, 3),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), true, 3),
+        );
+    }
+
+    #[test]
+    fn diff_cache_key_separates_context_lines() {
+        // Different context, same everything else → different entries; a
+        // shared key would serve a fold computed under the old context value.
+        let commit = |oid: &str| RevSpec::Commit {
+            oid: oid.to_string(),
+        };
+        assert_ne!(
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false, 1),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false, 3),
         );
     }
 
@@ -4243,6 +4434,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::WorkingTree,
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4259,6 +4451,7 @@ mod tests {
             &RevSpec::WorkingTree,
             &RevSpec::Head,
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4291,6 +4484,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::Index,
             false,
+            3,
             &state_map,
         )
         .expect("an unborn HEAD is an absent before side, not a failure")
@@ -4321,6 +4515,7 @@ mod tests {
             &RevSpec::Index,
             &RevSpec::WorkingTree,
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4359,6 +4554,7 @@ mod tests {
             &RevSpec::Empty,
             &RevSpec::WorkingTree,
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4425,6 +4621,7 @@ mod tests {
                 oid: second.to_string(),
             },
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4450,6 +4647,7 @@ mod tests {
                 oid: second.to_string(),
             },
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4494,6 +4692,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::Index,
             false,
+            3,
             &state_map,
         )
         .unwrap()
@@ -4516,6 +4715,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::Index,
             false,
+            DEFAULT_CONTEXT_LINES,
         )
         .rows;
 
@@ -4551,6 +4751,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::Index,
             false,
+            DEFAULT_CONTEXT_LINES,
         )
         .rows;
 
@@ -4582,6 +4783,7 @@ mod tests {
             &RevSpec::Head,
             &RevSpec::Index,
             false,
+            DEFAULT_CONTEXT_LINES,
         )
         .rows;
 
@@ -4615,7 +4817,8 @@ mod tests {
                 Some("a.md"),
                 &commit("aaa"),
                 &commit("bbb"),
-                false
+                false,
+                3
             ),
             diff_cache_key(
                 "/r",
@@ -4623,18 +4826,20 @@ mod tests {
                 Some("b.md"),
                 &commit("aaa"),
                 &commit("bbb"),
-                false
+                false,
+                3
             ),
         );
         assert_ne!(
-            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false),
+            diff_cache_key("/r", "d.md", None, &commit("aaa"), &commit("bbb"), false, 3),
             diff_cache_key(
                 "/r",
                 "d.md",
                 Some("d.md"),
                 &commit("aaa"),
                 &commit("bbb"),
-                false
+                false,
+                3
             ),
         );
     }

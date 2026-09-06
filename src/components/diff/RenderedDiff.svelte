@@ -148,6 +148,11 @@ $effect(() => {
 	const parent = parentOid;
 	const compareBase = compareBaseOid;
 	const ignoreWs = ignoreWhitespace;
+	// Unlike contentMode, this changes what the BACKEND folds, not just how
+	// the frontend projects the held rows — so it belongs in the fetch's own
+	// dependencies and its request identity, not left to a client-side
+	// re-projection.
+	const context = contextLines;
 	// A dependency only: the token's value never reaches the backend — bumping
 	// it re-runs this effect so the same fetch re-executes against fresh disk.
 	void refreshToken;
@@ -162,6 +167,7 @@ $effect(() => {
 		beforeRev(kind, parent, compareBase),
 		afterRev(kind, oid),
 		ignoreWs,
+		context,
 	] as const;
 
 	// Two runs asking for the same thing differ only in the refresh token, which

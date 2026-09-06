@@ -219,11 +219,20 @@ describe("the rendered markdown diff", () => {
 			const rendered = app.diffPane.renderedListItems();
 			return rendered.length > 0 ? rendered : null;
 		});
-		// The changed item plus one neighbour each side — not all twenty. The
+		// One-line items, so the default 3-line context window reaches three
+		// whole neighbours each side of the change — not all twenty. The
 		// changed item reads "old new": the merged copy carries the del and the
 		// ins together, which is the whole point of the inline view.
-		expect(items).toEqual(["item 9", "item 10 old new", "item 11"]);
-		expect(app.diffPane.renderedFoldNotes()).toEqual(["17 items hidden"]);
+		expect(items).toEqual([
+			"item 7",
+			"item 8",
+			"item 9",
+			"item 10 old new",
+			"item 11",
+			"item 12",
+			"item 13",
+		]);
+		expect(app.diffPane.renderedFoldNotes()).toEqual(["13 items hidden"]);
 
 		await app.diffPane.showFullFile();
 

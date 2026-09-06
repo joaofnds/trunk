@@ -148,6 +148,7 @@ export function renderMarkdownDiff(
 	beforeRev: RevSpec,
 	afterRev: RevSpec,
 	ignoreWhitespace: boolean,
+	contextLines: number,
 ): Promise<MarkdownDiff> {
 	return safeInvoke<MarkdownDiff>("render_markdown_diff", {
 		repoPath,
@@ -156,5 +157,6 @@ export function renderMarkdownDiff(
 		beforeRev,
 		afterRev,
 		ignoreWhitespace,
+		contextLines,
 	});
 }

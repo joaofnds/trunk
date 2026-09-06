@@ -926,7 +926,7 @@ describe("RenderedDiff", () => {
 		const toggles = [
 			{ layoutMode: "split", contentMode: "full", contextLines: 3 },
 			{ layoutMode: "split", contentMode: "hunk", contextLines: 3 },
-			{ layoutMode: "inline", contentMode: "hunk", contextLines: 1 },
+			{ layoutMode: "inline", contentMode: "hunk", contextLines: 3 },
 		] as const;
 		for (const t of toggles) {
 			await rerender({ ...baseProps, ...t });
@@ -1240,11 +1240,42 @@ describe("RenderedDiff", () => {
 			await screen.findByText("alpha");
 			const before = safeInvoke.mock.calls.length;
 
-			props.contextLines = 1;
 			props.wordWrap = true;
 			flushSync();
 
 			expect(safeInvoke.mock.calls.length).toBe(before);
+		} finally {
+			await unmount(app);
+			target.remove();
+		}
+	});
+
+	it("refetches when contextLines changes, since it changes the backend's fold", async () => {
+		safeInvoke.mockResolvedValue({
+			whitespaceOnly: false,
+			rows: [
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>alpha</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
+			] satisfies DiffRow[],
+		});
+		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, { target, props });
+		try {
+			flushSync();
+			await screen.findByText("alpha");
+			const before = safeInvoke.mock.calls.length;
+
+			props.contextLines = props.contextLines + 1;
+			flushSync();
+			await screen.findByText("alpha");
+
+			expect(safeInvoke.mock.calls.length).toBe(before + 1);
 		} finally {
 			await unmount(app);
 			target.remove();

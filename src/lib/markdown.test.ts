@@ -78,6 +78,7 @@ describe("renderMarkdownDiff", () => {
 			before,
 			after,
 			true,
+			3,
 		);
 		expect(safeInvoke).toHaveBeenCalledWith("render_markdown_diff", {
 			repoPath: "/repo",
@@ -86,6 +87,7 @@ describe("renderMarkdownDiff", () => {
 			beforeRev: before,
 			afterRev: after,
 			ignoreWhitespace: true,
+			contextLines: 3,
 		});
 	});
 
@@ -99,6 +101,7 @@ describe("renderMarkdownDiff", () => {
 			before,
 			after,
 			false,
+			3,
 		);
 		expect(safeInvoke).toHaveBeenCalledWith(
 			"render_markdown_diff",
