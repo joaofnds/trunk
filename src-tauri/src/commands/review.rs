@@ -1461,17 +1461,8 @@ pub async fn resolve_threads<R: Runtime>(
     .await
 }
 
-/// Assemble the review doc for one review from store rows.
-///
-/// The excerpt source still replays diffs live; flipping it to the stored
-/// excerpt rows is milestone 2's, paired with the ref pruning that needs it.
-///
-/// The zero-thread gate lives here, not in the renderer: the pure renderer
-/// assumes >= 1 and has no defensive branch.
-///
-/// Markdown injection in thread text is a DELIBERATE non-mitigation. The
-/// recipient is an AI coding agent; escaping a user's fence or heading would
-/// hide signal the reviewer intentionally put there. Do not add escaping.
+/// Open `repo_path` for its two path facts and assemble the review doc from
+/// store rows; see `git::review::render_review_doc` for the assembly itself.
 ///
 /// # Errors
 ///

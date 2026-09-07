@@ -1,22 +1,27 @@
-//! Phase 70: pure markdown renderer for review sessions.
+//! Phase 70: pure markdown renderer for review sessions, plus the store-backed
+//! assembly that feeds it.
 //!
-//! Pure Rust logic: takes `&RenderInput`, returns a single `String`. No
-//! `tauri::*` imports (L-01), no calls into `crate::git::syntax` (L-10),
-//! never panics (L-04). No repository access at all (D13): everything the
-//! doc says comes from stored rows plus the two path facts in the input, so
-//! the CLI renders it with the repo closed.
+//! [`render`] and [`render_thread_section`] are pure Rust logic: take
+//! `&RenderInput`, return a single `String`. No `tauri::*` imports (L-01), no
+//! calls into `crate::git::syntax` (L-10), never panic (L-04). No repository
+//! access at all (D13): everything the doc says comes from stored rows plus
+//! the two path facts in the input, so the CLI renders it with the repo
+//! closed. All resolution failures are routed INTO the returned markdown (per
+//! L-04 + L-09); these two NEVER return an error.
 //!
-//! This module is `tauri`-free. It exposes [`render`] for the whole document
-//! and [`render_thread_section`] for one thread's section of it, so the CLI's
-//! `thread` verb prints the same bytes the document carries rather than a
-//! second implementation that has to agree. All resolution failures are
-//! routed INTO the returned markdown (per L-04 + L-09); the renderer NEVER
-//! returns an error.
+//! [`render_review_doc`] is the exception: it reads a `reviewdb::Store` to
+//! build the `RenderInput` those two render, and can fail (`not_found`,
+//! `no_threads`, or whatever the store read returns) — still no `tauri::*`
+//! and no git2 repository access, just not pure.
+//!
+//! This module is `tauri`-free. `render`/`render_thread_section` and the CLI's
+//! `thread` verb print the same bytes the document carries rather than a
+//! second implementation that has to agree.
 
 use crate::error::TrunkError;
 use crate::git::types::{Anchor, Side, Source};
 use crate::review_types::{Channel, ThreadState};
-use crate::reviewdb::{Store, reviews, snapshots, threads};
+use crate::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
 use std::path::{Path, PathBuf};
 
 /// What the renderer needs from one review.
@@ -638,6 +643,16 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
 /// its open repo, the CLI from discovery — neither reads repository content for the doc
 /// (D13).
 ///
+/// The excerpt source still replays diffs live; flipping it to the stored
+/// excerpt rows is milestone 2's, paired with the ref pruning that needs it.
+///
+/// The zero-thread gate lives here, not in `render`: that pure renderer
+/// assumes >= 1 and has no defensive branch.
+///
+/// Markdown injection in thread text is a DELIBERATE non-mitigation. The
+/// recipient is an AI coding agent; escaping a user's fence or heading would
+/// hide signal the reviewer intentionally put there. Do not add escaping.
+///
 /// # Errors
 ///
 /// Returns `not_found` when `review_id` names no review, and whatever the
@@ -669,7 +684,7 @@ pub fn render_review_doc(
             },
             workdir: workdir.map(std::path::Path::to_path_buf),
             repo_dir: repo_dir.to_path_buf(),
-            commits: crate::reviewdb::commits::list(conn, &review.id)?
+            commits: commits::list(conn, &review.id)?
                 .into_iter()
                 .map(|c| DocCommit {
                     oid: c.oid,
@@ -695,7 +710,7 @@ pub fn render_review_doc(
 /// The renderer's input shape: each thread with its state and its replies,
 /// each carrying its channel attribution.
 fn as_doc_threads(
-    threads_with_replies: Vec<(threads::Thread, Vec<crate::reviewdb::replies::Reply>)>,
+    threads_with_replies: Vec<(threads::Thread, Vec<replies::Reply>)>,
 ) -> Vec<DocThread> {
     threads_with_replies
         .into_iter()
