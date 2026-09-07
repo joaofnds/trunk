@@ -245,6 +245,57 @@ describe("the rendered markdown diff", () => {
 		expect(app.diffPane.renderedFoldNotes()).toEqual([]);
 	});
 
+	// João, 2026-09-07: "I still want the block level heading on the hunk view,
+	// so if I'm editing a huge list of items under a heading, the heading shows
+	// as context so I can know where that list is." The heading sits far
+	// outside the context window — the filler paragraph between it and the list
+	// is itself dropped — so only the heading exception puts it on screen.
+	it("keeps the heading above an edited list, while the paragraph between it and the list folds away", async () => {
+		const doc = (third: string) =>
+			[
+				"# Severity",
+				"",
+				Array.from(
+					{ length: 12 },
+					(_, i) => `Filler sentence ${i} that is not part of the list.`,
+				).join("\n\n"),
+				"",
+				...Array.from({ length: 12 }, (_, i) =>
+					i === 6 ? `- item ${i} ${third}` : `- item ${i}`,
+				),
+			].join("\n");
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${doc("old")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${doc("new")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		await waitFor("the rendered list", () => {
+			const rendered = app.diffPane.renderedListItems();
+			return rendered.length > 0 ? rendered : null;
+		});
+
+		const unchanged = app.diffPane.renderedUnchanged();
+		expect(unchanged).toContain("Severity");
+		// Every filler paragraph is more than three source lines from the
+		// change, so none of them survives. If one did, the heading might be on
+		// screen for its sake rather than by the heading rule.
+		expect(unchanged.filter((t) => t.startsWith("Filler sentence"))).toEqual(
+			[],
+		);
+	});
+
 	// A markup-only edit inside one list item: the leaf signature is visible
 	// text, so every leaf compares equal. The item that changed must still be
 	// tinted, or the reader sees a plain list indistinguishable from an
