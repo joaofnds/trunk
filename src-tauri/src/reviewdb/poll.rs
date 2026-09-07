@@ -141,10 +141,19 @@ impl PollHandle {
     /// Whether a loop was spawned and has since exited. Distinguishes the
     /// refused-store posture from a poll that never started, which
     /// [`PollHandle::is_stopped`] reports alike.
-    pub fn ran_and_stopped(&self) -> bool {
-        self.thread
-            .as_ref()
-            .is_some_and(std::thread::JoinHandle::is_finished)
+    ///
+    /// Blocks on the loop's exit rather than sampling `is_finished`, which is
+    /// true only once the thread has been marked finished. A caller that spawns,
+    /// ticks once and asks immediately reads that flag before the marking on a
+    /// contended machine, and a loop that ran then reports as one that never
+    /// started. Consumes the handle, since a loop that never exits would hang
+    /// here rather than answer.
+    #[must_use]
+    pub fn ran_and_stopped(mut self) -> bool {
+        let Some(thread) = self.thread.take() else {
+            return false;
+        };
+        thread.join().is_ok()
     }
 
     fn halt(&mut self) {
