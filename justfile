@@ -169,6 +169,31 @@ cargo-test-cov:
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --html --output-dir rust-coverage-html
     {{scrubbed_env}} cargo llvm-cov report --manifest-path {{manifest}} --fail-under-lines 65
 
+# Repeat the Rust workspace under coverage the way CI runs it (`just flake-hunt-cov 5`)
+flake-hunt-cov runs="10":
+    #!/usr/bin/env bash
+    # Hunts test_reviewdb's intermittent failure (TRUNK-180). Plain `nextest run
+    # --test test_reviewdb` passes 10/10 on the runner that fails CI, so the
+    # coverage instrumentation and the workspace-wide concurrency are both part
+    # of the condition and neither can be dropped to make this cheaper.
+    set -uo pipefail
+    failures=0
+    for i in $(seq {{runs}}); do
+        if ! {{scrubbed_env}} cargo llvm-cov nextest --workspace \
+            --manifest-path {{manifest}} --no-fail-fast \
+            >/tmp/flake-cov-$i.log 2>&1; then
+            failures=$((failures + 1))
+            echo "::group::coverage run $i failed"
+            cat /tmp/flake-cov-$i.log
+            echo "::endgroup::"
+        fi
+    done
+    echo "{{runs}} coverage runs, $failures failed"
+    if [ "$failures" -ne 0 ]; then
+        echo "::error::the workspace failed $failures time(s) over {{runs}} coverage runs; read TRUNK-180 (backlog task 180 --plain) before investigating, it records what is already ruled out."
+        exit 1
+    fi
+
 # Run frontend tests
 vitest:
     bun run test
@@ -182,7 +207,7 @@ app-test:
     cargo build --manifest-path {{manifest}} --example app_host
     TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
 
-# Repeat the flaky suites to catch a wait that only fails sometimes (`just flake-hunt 20`)
+# Repeat the frontend suites to catch a wait that only fails sometimes (`just flake-hunt 20`)
 flake-hunt runs="10":
     #!/usr/bin/env bash
     set -uo pipefail
@@ -199,20 +224,6 @@ flake-hunt runs="10":
             failures=$((failures + 1))
             echo "::group::vitest run $i failed"
             cat /tmp/flake-vitest-$i.log
-            echo "::endgroup::"
-        fi
-        # test_reviewdb fails intermittently on CI and never locally (TRUNK-180).
-        # Run it the way CI does, under llvm-cov and across the workspace: ten
-        # plain `nextest run --test test_reviewdb` passes proved nothing, because
-        # neither the instrumentation nor the workspace-wide concurrency was
-        # present. Repeat the whole workspace rather than the failing names, since
-        # the cause is unknown and naming them would hide a fourth.
-        if ! {{scrubbed_env}} cargo llvm-cov nextest --workspace \
-            --manifest-path {{manifest}} --no-fail-fast \
-            >/tmp/flake-reviewdb-$i.log 2>&1; then
-            failures=$((failures + 1))
-            echo "::group::test_reviewdb run $i failed"
-            cat /tmp/flake-reviewdb-$i.log
             echo "::endgroup::"
         fi
     done

@@ -21,9 +21,13 @@ on:
   workflow_dispatch:
     inputs:
       runs:
-        description: "How many times to repeat each suite"
+        description: "How many times to repeat each frontend suite"
         required: false
         default: "10"
+      cov_runs:
+        description: "How many times to repeat the workspace under coverage"
+        required: false
+        default: "5"
 
 concurrency:
   group: flake-hunt-${{ github.ref }}
@@ -37,7 +41,7 @@ jobs:
     name: Repeat Flaky Suites
     runs-on: ubuntu-latest
     # Ten runs of each suite, plus the Rust example build on a cold cache.
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install system dependencies
@@ -70,3 +74,7 @@ jobs:
       # suite, so this job needs both toolchains, as the Application Harness job
       # does.
       - run: just flake-hunt ${{ github.event.inputs.runs || '10' }}
+      # Separate from the frontend repeat above: a coverage pass over the whole
+      # workspace takes about half a minute, so multiplying it by the frontend
+      # suites' runs overran the job's timeout and produced no evidence.
+      - run: just flake-hunt-cov ${{ github.event.inputs.cov_runs || '5' }}
