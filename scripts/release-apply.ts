@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Bumps the three version manifests in lockstep for `just release <version>`.
+ * Bumps the four version manifests in lockstep for `just release <version>`.
  *
  * Usage:
  *   bun run scripts/release-apply.ts <version>
  *
  * Refuses a version that is not a strict increment over tauri.conf.json's
- * current one. Writes package.json, src-tauri/Cargo.toml and
- * src-tauri/tauri.conf.json; the justfile recipe stages, commits and tags.
+ * current one. Writes package.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock
+ * and src-tauri/tauri.conf.json; the justfile recipe stages, commits and tags.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

@@ -9,6 +9,19 @@ export function currentVersion(tauriConfContents: string): string {
 	return JSON.parse(tauriConfContents).version;
 }
 
+// Anchored so a trailing shell metacharacter or extra segment ("1.0.0foo",
+// `1.0.0"; rm -rf ~`) fails the match instead of producing a NaN component
+// that Number-based comparison silently treats as "greater". A version
+// matching this shape is also safe to splice into the justfile's `git commit`
+// and `git tag` arguments unquoted, since it can hold no shell metacharacter.
+const VERSION_SHAPE = /^\d+\.\d+\.\d+$/;
+
+function requireVersionShape(version: string): void {
+	if (!VERSION_SHAPE.test(version)) {
+		throw new ReleaseError(`"${version}" is not a valid x.y.z version`);
+	}
+}
+
 // Numeric triplet comparison, not lexicographic ("0.9.0" < "0.10.0"). The
 // three manifests this script bumps only ever carry a plain x.y.z, so a
 // semver library's pre-release/build-metadata handling has nothing to do.
@@ -23,6 +36,7 @@ function order(a: string, b: string): number {
 }
 
 export function requireIncrement(current: string, next: string): void {
+	requireVersionShape(next);
 	if (order(next, current) <= 0) {
 		throw new ReleaseError(
 			`${next} is not greater than the current version ${current}`,
@@ -53,7 +67,10 @@ export function bumpCargoToml(contents: string, version: string): string {
 	if (!CARGO_VERSION_LINE.test(contents)) {
 		throw new ReleaseError("no [package] version line found in Cargo.toml");
 	}
-	return contents.replace(CARGO_VERSION_LINE, `version = "${version}"`);
+	// A replacer function, not a template string: String.replace treats "$&",
+	// "$1", etc. in a string replacement as its own substitution syntax, which
+	// would corrupt output for a version containing a literal "$".
+	return contents.replace(CARGO_VERSION_LINE, () => `version = "${version}"`);
 }
 
 // Cargo silently rewrites this entry back to Cargo.toml's on-disk version the
@@ -67,5 +84,10 @@ export function bumpCargoLock(contents: string, version: string): string {
 			'no [[package]] entry named "trunk" found in Cargo.lock',
 		);
 	}
-	return contents.replace(TRUNK_LOCK_ENTRY, `$1"${version}"`);
+	// A replacer function so a "$" in version is never read as replacement
+	// syntax — same reason as bumpCargoToml above.
+	return contents.replace(
+		TRUNK_LOCK_ENTRY,
+		(_match, prefix: string) => `${prefix}"${version}"`,
+	);
 }

@@ -52,7 +52,7 @@ icons master="src-tauri/icons/icon.png":
 
 # ── Release ──────────────────────────────────────────
 
-# Bump package.json, Cargo.toml and tauri.conf.json to <version> in one commit and tag it (scripts/release.ts)
+# Bump the four version manifests to <version> in one commit and tag it (scripts/release-apply.ts)
 release version:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -71,10 +71,14 @@ release version:
             exit 1
         fi
     fi
-    bun run scripts/release-apply.ts {{ version }}
+    # scripts/release.ts's requireIncrement also rejects a non-x.y.z shape,
+    # but that check only runs after this line, so quote() here is what keeps
+    # a shell metacharacter in {{ version }} from being interpreted below —
+    # defense in depth, following the quote() precedent at graph-accept/graph-svg.
+    bun run scripts/release-apply.ts {{ quote(version) }}
     git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
-    git commit -m "chore(release): bump version to {{ version }}"
-    git tag "v{{ version }}"
+    git commit -m {{ quote("chore(release): bump version to " + version) }}
+    git tag {{ quote("v" + version) }}
 
 # ── Checks ───────────────────────────────────────────
 

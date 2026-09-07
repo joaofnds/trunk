@@ -37,6 +37,34 @@ describe("requireIncrement", () => {
 			new ReleaseError("0.43.0 is not greater than the current version 0.44.0"),
 		);
 	});
+
+	it("rejects a non-numeric version instead of silently accepting it", () => {
+		expect(() => requireIncrement("0.44.0", "not-a-version")).toThrowError(
+			new ReleaseError('"not-a-version" is not a valid x.y.z version'),
+		);
+	});
+
+	it("rejects a version with a non-numeric patch segment", () => {
+		expect(() => requireIncrement("1.0.0", "1.0.0foo")).toThrowError(
+			new ReleaseError('"1.0.0foo" is not a valid x.y.z version'),
+		);
+	});
+
+	it("rejects a version with too few segments", () => {
+		expect(() => requireIncrement("0.44.0", "0.44")).toThrowError(
+			new ReleaseError('"0.44" is not a valid x.y.z version'),
+		);
+	});
+
+	it("rejects a version carrying shell metacharacters", () => {
+		expect(() =>
+			requireIncrement("0.44.0", '1.0.0"; touch pwned; echo "'),
+		).toThrowError(
+			new ReleaseError(
+				'"1.0.0"; touch pwned; echo "" is not a valid x.y.z version',
+			),
+		);
+	});
 });
 
 describe("bumpTauriConf", () => {
@@ -111,6 +139,19 @@ describe("bumpCargoToml", () => {
 		expect(bumped).not.toContain('version = "0.1.0"');
 	});
 
+	it("treats a $-bearing version as literal text, not a replacement pattern", () => {
+		const contents = [
+			"[package]",
+			'name = "trunk"',
+			'version = "0.1.0"',
+			"",
+		].join("\n");
+
+		const bumped = bumpCargoToml(contents, "9.9.9$&$`$'");
+
+		expect(bumped).toContain('version = "9.9.9$&$`$\'"');
+	});
+
 	it("throws when no package version line is found", () => {
 		const contents = "[dependencies]\n";
 
@@ -147,6 +188,19 @@ describe("bumpCargoLock", () => {
 		);
 		expect(bumped).toContain('name = "tauri"\nversion = "2.9.1"');
 		expect(bumped).toContain('name = "windows-sys"\nversion = "0.61.2"');
+	});
+
+	it("treats a $-bearing version as literal text, not a replacement pattern", () => {
+		const contents = [
+			"[[package]]",
+			'name = "trunk"',
+			'version = "0.1.0"',
+			"",
+		].join("\n");
+
+		const bumped = bumpCargoLock(contents, "9.9.9$1$2");
+
+		expect(bumped).toContain('version = "9.9.9$1$2"');
 	});
 
 	it("throws when no trunk package entry is found", () => {
