@@ -6,13 +6,19 @@ use crate::reviewdb;
 use std::io::Write;
 
 /// Block on the store's doorbell and stream changes to published reviews.
+///
 /// Plain mode writes one review id per changed review; `--json` writes one
 /// self-contained NDJSON event per change with its full data, so a harness
 /// never refetches or rediffs. Both modes read off the same entity diff.
 /// Composing reviews never enter the snapshot, so their edits wake the
 /// process and write nothing. Output is unbounded, unlike the other verbs.
+///
+/// # Errors
+///
+/// Returns `store_newer` when a newer Trunk has migrated the store, and
+/// whatever reading a snapshot off the store returns.
 #[cfg(unix)]
-pub(crate) fn watch(
+pub fn watch(
     store: &reviewdb::Store,
     canonical: &std::path::Path,
     json: bool,
@@ -67,8 +73,11 @@ pub(crate) fn watch(
     Ok(())
 }
 
+/// # Errors
+///
+/// Always returns `unsupported`: `watch` is unix-only today.
 #[cfg(not(unix))]
-pub(crate) fn watch(
+pub fn watch(
     _store: &reviewdb::Store,
     _canonical: &std::path::Path,
     _json: bool,

@@ -1419,6 +1419,88 @@ fn watch_json_streams_the_events_full_data() {
     assert_eq!(event["anchor"]["end_line"], 9);
 }
 
+/// `watch` driven straight through `run`'s sink on a background thread, with
+/// no child process: the split that gave every verb a sink (TRUNK-182.2) is
+/// what makes this possible, where before `watch` only ever wrote to the
+/// real stdout.
+struct WatchThread {
+    lines: std::sync::mpsc::Receiver<String>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl WatchThread {
+    fn spawn(ctx: &TestContext, canonical: &Path, json: bool) -> Self {
+        let (reader, mut writer) = std::io::pipe().unwrap();
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        let canonical = canonical.to_path_buf();
+
+        let handle = std::thread::spawn(move || {
+            let _ = trunk_lib::cli::watch::watch(&store, &canonical, json, &mut writer);
+        });
+
+        let (sender, lines) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(reader).lines() {
+                let Ok(line) = line else { return };
+                if sender.send(line).is_err() {
+                    return;
+                }
+            }
+        });
+
+        let watch = Self {
+            lines,
+            handle: Some(handle),
+        };
+        assert!(
+            watch
+                .next_line(Duration::from_secs(10))
+                .is_some_and(|l| l.starts_with("# watching")),
+            "the readiness line must come first",
+        );
+        watch
+    }
+
+    fn next_line(&self, timeout: Duration) -> Option<String> {
+        self.lines.recv_timeout(timeout).ok()
+    }
+}
+
+impl Drop for WatchThread {
+    fn drop(&mut self) {
+        // `watch` blocks on `recv()` forever absent a `Refused` event, so the
+        // thread is intentionally left running rather than joined: the
+        // process exit reclaims it, exactly as the built-binary tests reclaim
+        // `WatchChild` by killing it rather than waiting for a normal exit.
+        self.handle.take();
+    }
+}
+
+#[test]
+fn watch_can_be_driven_to_completion_through_its_sink_with_no_process() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let thread_id = published_thread_id(&ctx, &published);
+    let watch = WatchThread::spawn(&ctx, &canonical, false);
+
+    trunk_review_in(
+        ctx.repo_path(),
+        &["reply", &thread_id, "waking the watcher"],
+        ctx.data_dir(),
+    );
+
+    assert_eq!(
+        watch.next_line(Duration::from_secs(10)).as_deref(),
+        Some(published.as_str()),
+        "the changed review's id, one line, nothing else",
+    );
+}
+
 #[test]
 fn the_review_subcommand_exits_without_a_window() {
     let scratch = tempfile::TempDir::new().unwrap();
