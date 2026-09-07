@@ -182,7 +182,7 @@ app-test:
     cargo build --manifest-path {{manifest}} --example app_host
     TRUNK_APP_HOST="{{target}}/debug/examples/app_host" bun run test:app
 
-# Repeat the two frontend suites to catch a wait that only fails sometimes (`just flake-hunt 20`)
+# Repeat the flaky suites to catch a wait that only fails sometimes (`just flake-hunt 20`)
 flake-hunt runs="10":
     #!/usr/bin/env bash
     set -uo pipefail
@@ -201,10 +201,21 @@ flake-hunt runs="10":
             cat /tmp/flake-vitest-$i.log
             echo "::endgroup::"
         fi
+        # test_reviewdb has produced three single-occurrence CI failures in
+        # different tests (TRUNK-180), each green locally. Repeat the whole
+        # suite rather than the three names, since the shared cause is unknown
+        # and naming them would hide a fourth.
+        if ! cargo nextest run --manifest-path {{manifest}} --test test_reviewdb \
+            --no-fail-fast >/tmp/flake-reviewdb-$i.log 2>&1; then
+            failures=$((failures + 1))
+            echo "::group::test_reviewdb run $i failed"
+            cat /tmp/flake-reviewdb-$i.log
+            echo "::endgroup::"
+        fi
     done
     echo "{{runs}} runs of each suite, $failures failed"
     if [ "$failures" -ne 0 ]; then
-        echo "::error::a frontend suite failed $failures time(s) over {{runs}} runs; a wait that fails under contention is the defect, not the runner. Read TRUNK-62 (backlog task 62 --plain) before investigating: it records what is already ruled out."
+        echo "::error::a suite failed $failures time(s) over {{runs}} runs; a wait that fails under contention is the defect, not the runner. Read TRUNK-62 (frontend suites) and TRUNK-180 (test_reviewdb) before investigating: they record what is already ruled out."
         exit 1
     fi
 

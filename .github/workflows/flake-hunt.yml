@@ -1,8 +1,9 @@
 name: Flake Hunt
 
 # The two frontend suites have failed on wall-clock waits under contention
-# (TRUNK-62). A single green run proves nothing about a wait that only expires
-# sometimes, so this repeats them and fails if any run does.
+# (TRUNK-62), and test_reviewdb has produced three single-occurrence failures in
+# different tests (TRUNK-180). A single green run proves nothing about a wait that
+# only expires sometimes, so this repeats them and fails if any run does.
 #
 # A shared CI runner is the loaded machine this needs. Reproducing the condition
 # by saturating a developer's own laptop was tried and withdrawn: TRUNK-44 leaked
@@ -33,9 +34,9 @@ permissions:
 
 jobs:
   flake-hunt:
-    name: Repeat Frontend Suites
+    name: Repeat Flaky Suites
     runs-on: ubuntu-latest
-    # Ten runs of both suites, plus the Rust example build on a cold cache.
+    # Ten runs of each suite, plus the Rust example build on a cold cache.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +61,7 @@ jobs:
           # one deciding what the shared cache holds.
           save-if: "false"
       - run: bun install --frozen-lockfile
-      # Builds a Rust example and runs vitest over it, so this job needs both
-      # toolchains, as the Application Harness job does.
+      # Builds a Rust example and runs vitest over it, and repeats a Rust test
+      # suite, so this job needs both toolchains, as the Application Harness job
+      # does.
       - run: just flake-hunt ${{ github.event.inputs.runs || '10' }}
