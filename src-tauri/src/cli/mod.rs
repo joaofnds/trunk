@@ -16,7 +16,9 @@ pub fn review_args(args: &[String]) -> Option<&[String]> {
 }
 
 pub mod lookup;
+pub mod render;
 pub mod review;
+pub mod watch;
 
 /// Run the review subcommand and return the process exit code.
 ///
@@ -46,11 +48,8 @@ pub fn run_review(args: &[String]) -> i32 {
     };
 
     let identifier = crate::context::<tauri::Wry>().config().identifier.clone();
-    match review::run(cmd, &identifier) {
-        Ok(out) => {
-            print!("{out}");
-            0
-        }
+    match review::run(cmd, &identifier, &mut std::io::stdout()) {
+        Ok(()) => 0,
         Err(e) => {
             eprintln!("{}: {}", e.code, e.message);
             1
