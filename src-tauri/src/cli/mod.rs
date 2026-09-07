@@ -15,6 +15,7 @@ pub fn review_args(args: &[String]) -> Option<&[String]> {
     }
 }
 
+pub mod lookup;
 pub mod review;
 
 /// Run the review subcommand and return the process exit code.
