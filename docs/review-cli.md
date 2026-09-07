@@ -1,9 +1,8 @@
 # The review CLI
 
 `trunk review` is the agent's way into a code review. It is a subcommand of the
-app binary itself — nothing extra ships or installs — and it reads and writes
-the same store the GUI uses, fully offline. The running app reflects CLI writes
-within about a second, no restart.
+app binary itself, and it reads and writes the same store the GUI uses, fully
+offline. The running app reflects CLI writes within about a second, no restart.
 
 The published review document teaches agents everything below automatically:
 its header names the absolute binary path and every verb. This page is the
@@ -11,7 +10,15 @@ human-facing reference.
 
 ## Invocation
 
-The binary is the installed app's executable:
+The Homebrew cask links the app's executable onto your `PATH`, so the bare name
+works:
+
+```bash
+trunk review list
+```
+
+That symlink points at the app's own executable, which is also the way in
+without the cask:
 
 ```bash
 /Applications/Trunk.app/Contents/MacOS/trunk review list

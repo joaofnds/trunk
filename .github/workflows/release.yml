@@ -180,6 +180,7 @@ jobs:
             homepage "https://github.com/joaofnds/trunk"
 
             app "Trunk.app"
+            binary "#{appdir}/Trunk.app/Contents/MacOS/trunk"
 
             postflight do
               system_command "/usr/bin/xattr",
