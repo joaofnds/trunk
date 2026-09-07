@@ -306,9 +306,11 @@ function distanceToNearestChange(span: Span, changedLines: number[]): number {
 
 // Keep unchanged blocks as context around each change so hunk context matches
 // Source's `diff_context_lines`: a row stays iff it has a source line within
-// `contextLines` of a line the backend's line diff marked changed — never a
-// changed ROW'S whole span, which would pull in every block near any part of
-// a long changed block. There is no unconditional neighbour: a row right next
+// `contextLines` of a changed point — never a changed ROW'S whole span, which
+// would pull in every block near any part of a long changed block. The
+// changed points are the backend's dirty lines plus each removed row's
+// anchor, since a pure deletion marks no after-axis line and would otherwise
+// give context on neither side. There is no unconditional neighbour: a row right next
 // to a change is kept only because line distance already puts it inside the
 // window for any `contextLines >= 0` (TRUNK-144.2). A heading is the one
 // exception — it stays whenever a kept row follows it before the next heading,

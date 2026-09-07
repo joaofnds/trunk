@@ -70,7 +70,7 @@ table says what each case is for. `tests/catalogue.rs` fails when a case is miss
 | `08-merge-conflict` | 1 | The merge editor's conflict header bars, which need several conflicts on screen at once to compare against each other. |
 | `09-kitchen-sink` | 1 | Every graph shape at once: 18 branches, 5 tags of both kinds, 3 stashes, an orphan root, a criss-cross merge, a dirty worktree. |
 | `10-nested-conflict` | 1 | A stopped merge across four directory levels, plus one file git calls resolved that still contains conflict markers. |
-| `11-rendered-markdown` | 1 | The rendered markdown diff, one commit pair per defect: an unchanged image beside changed words, a markup-only edit, the fold inside a list and inside a blockquote, a quote that stops being a container, a task list. |
+| `11-rendered-markdown` | 1 | The rendered markdown diff, one commit pair per defect or design case: an unchanged image beside changed words, a markup-only edit, the fold inside a list and inside a blockquote and a table, a quote that stops being a container, a task list, the row-level fold's distance-to-changed-line rule, the heading-stays-as-context exception, and two gaps surviving between far-apart changes. |
 | `12-deep-history` | 1 | History several pages deep, for the jumps that must page commits in before they can land: a branch tip and a search hit that both sit below the first 200-row page (TRUNK-137). |
 
 Cases 04, 05 and 06 are also the corpus Trunk's committed graph inputs are captured

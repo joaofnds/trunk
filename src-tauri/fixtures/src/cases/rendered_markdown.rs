@@ -67,6 +67,36 @@ fn long_list(changed_at: usize, text: &str, prefix: &str) -> String {
     list.trim_end_matches('\n').to_owned()
 }
 
+/// A thirty-item list carrying two changed items far enough apart (indices 5
+/// and 24) that a gap of unchanged items survives between their two
+/// three-line context windows.
+fn two_far_changes(first: &str, second: &str) -> String {
+    (0..30)
+        .map(|i| match i {
+            5 => format!("- step {i} {first}\n"),
+            24 => format!("- step {i} {second}\n"),
+            _ => format!("- step {i}\n"),
+        })
+        .collect::<String>()
+        .trim_end_matches('\n')
+        .to_owned()
+}
+
+/// A twenty-row markdown table, one row carrying `text` in its second column.
+fn table_rows(changed_at: usize, text: &str) -> String {
+    (0..20)
+        .map(|i| {
+            if i == changed_at {
+                format!("| r{i} | {text} |\n")
+            } else {
+                format!("| r{i} | v |\n")
+            }
+        })
+        .collect::<String>()
+        .trim_end_matches('\n')
+        .to_owned()
+}
+
 fn build(out: &Path) {
     let mut repo = Repo::init(&out.join("rendered-markdown"), "main", FIXTURE);
     repo.config("commit.gpgsign", "false");
@@ -336,14 +366,141 @@ Rendered view: the first item's added word is marked, and the checkboxes
 render on every item. No mark anywhere, or a missing merged copy, is the
 defect (TRUNK-112) — a task item is an ordinary list item to the reader."##,
     );
+    fixture_write(
+        &mut repo,
+        "ROWFOLD.md",
+        &format!(
+            "# Row fold\n\nA paragraph far from the change, kept unchanged across both \
+             revisions.\n\n{}",
+            long_list(9, "before the row-level fix", "")
+        ),
+    );
+    fixture_commit(
+        &mut repo,
+        16,
+        r##"docs: add a paragraph far from a twenty-item list"##,
+    );
+    fixture_write(
+        &mut repo,
+        "ROWFOLD.md",
+        &format!(
+            "# Row fold\n\nA paragraph far from the change, kept unchanged across both \
+             revisions.\n\n{}",
+            long_list(9, "after the row-level fix", "")
+        ),
+    );
+    fixture_commit(
+        &mut repo,
+        17,
+        r##"docs: edit a list item far from an unrelated paragraph
+
+Rendered view: hunk mode hides the paragraph, the same as source mode. Both
+measure distance to the changed LINE, not to the whole changed block's span
+(TRUNK-144, doc-60 finding F3). The paragraph on screen in hunk mode is the
+defect — it sits more than three source lines from the one changed line, so
+neither mode should show it."##,
+    );
+    fixture_write(
+        &mut repo,
+        "HEADING.md",
+        &format!(
+            "# Severity\n\n{}\n\n{}",
+            (0..8)
+                .map(|i| format!("Filler sentence {i}, not part of the list below."))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            long_list(5, "before", "")
+        ),
+    );
+    fixture_commit(
+        &mut repo,
+        18,
+        r##"docs: add a heading, filler prose, then a twenty-item list"##,
+    );
+    fixture_write(
+        &mut repo,
+        "HEADING.md",
+        &format!(
+            "# Severity\n\n{}\n\n{}",
+            (0..8)
+                .map(|i| format!("Filler sentence {i}, not part of the list below."))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            long_list(5, "after", "")
+        ),
+    );
+    fixture_commit(
+        &mut repo,
+        19,
+        r##"docs: edit one item of a list far below a heading
+
+Rendered view: the heading '# Severity' stays on screen as context even though
+it sits far outside the change's context window — the heading exception
+(João, 2026-09-07, TRUNK-144 AC #9). Every filler sentence between the heading
+and the list folds away: none of them is within three source lines of the
+changed line, and only the heading itself is exempt from that rule."##,
+    );
+    fixture_write(
+        &mut repo,
+        "TWOGAPS.md",
+        &format!(
+            "# Two gaps\n\n{}",
+            two_far_changes("before first", "before second")
+        ),
+    );
+    fixture_commit(&mut repo, 20, r##"docs: add a thirty-item list"##);
+    fixture_write(
+        &mut repo,
+        "TWOGAPS.md",
+        &format!(
+            "# Two gaps\n\n{}",
+            two_far_changes("after first", "after second")
+        ),
+    );
+    fixture_commit(
+        &mut repo,
+        21,
+        r##"docs: edit two list items far enough apart to leave a gap between them
+
+Rendered view: hunk mode shows THREE runs of visible items separated by TWO
+fold notes — above the first change, between the two changes, and below the
+second — because a surviving gap sits between the two context windows
+(TRUNK-144 AC #4 doc-60 finding, the per-gap note)."##,
+    );
+    fixture_write(
+        &mut repo,
+        "TABLEFOLD.md",
+        &format!(
+            "# Table fold\n\n| step | detail |\n| --- | --- |\n{}",
+            table_rows(10, "before")
+        ),
+    );
+    fixture_commit(&mut repo, 22, r##"docs: add a twenty-row table"##);
+    fixture_write(
+        &mut repo,
+        "TABLEFOLD.md",
+        &format!(
+            "# Table fold\n\n| step | detail |\n| --- | --- |\n{}",
+            table_rows(10, "after")
+        ),
+    );
+    fixture_commit(
+        &mut repo,
+        23,
+        r##"docs: edit one row of a twenty-row table
+
+Rendered view: the table folds like the lists above, and the hidden-rows note
+spans both columns of its own row rather than sitting beside them — a table
+row is a leaf like a list item, and its note must respect the table's shape."##,
+    );
     fixture_scenario(
         &mut repo,
         r##"# Rendered markdown diff
 
-Eight defects, one commit pair each. Open a commit, switch the centre pane to
-the rendered view (the toggle beside the diff), and compare against the
-commit's own message: each says what the rendered view should show and what
-would count as wrong.
+Thirteen defects and design cases, one commit pair each. Open a commit,
+switch the centre pane to the rendered view (the toggle beside the diff), and
+compare against the commit's own message: each says what the rendered view
+should show and what would count as wrong.
 
 Start with the working tree. `README.md` is edited and unstaged, which is
 the path where the two sides carry different revisions — the case where an
@@ -360,14 +517,50 @@ unchanged image used to render struck through and duplicated.
 | `docs: edit one item of a task list` | The added word marked, checkboxes on every item | No mark anywhere, or the item rendered without its checkbox |
 | `docs: edit quoted prose and rewrap a paragraph` | Quoted prose word-marked; the rewrap renders as two washed copies under the note 'Reflowed — renders identically' | A del/ins mark on a rewrapped word, or the note missing so two identical copies say nothing |
 | `docs: edit prose inside a raw-HTML block` | The block's source on screen, both sides, as a code block | An empty tinted block, or an empty one under the note 'Reflowed — renders identically' |
+| `docs: edit a list item far from an unrelated paragraph` | The paragraph hidden in hunk mode, same as source | The paragraph on screen in hunk mode (TRUNK-144, the row-level fix) |
+| `docs: edit one item of a list far below a heading` | The heading on screen as context; every filler sentence between it and the list gone | A filler sentence surviving, or the heading itself gone |
+| `docs: edit two list items far enough apart to leave a gap between them` | Three visible runs, two separate fold notes | One run, or one note covering both changes |
+| `docs: edit one row of a twenty-row table` | The table folds; its note spans both columns of its own row | The note beside the row instead of spanning it, or the table unfolded |
 
 The rendered view has an inline (merged) mode and a split mode, and a hunk
 (folded) mode and a full-file mode. The fold rows above are about hunk mode,
 which is the default; check the fold rows in full-file mode too, where every
 item should be present.
+
+## Where preview and source still disagree
+
+Hunk mode's row and leaf folds now measure distance to the nearest changed
+source line rather than to a whole changed block's span, which is what
+source-mode hunks measure against too. Three disagreements survive that
+change (TRUNK-144):
+
+- **A list item longer than the context window.** Source shows a partial
+  item — as many of its lines as the window reaches. Preview's smallest unit
+  is a leaf, so it shows the item whole. Neither mode is wrong; a leaf cannot
+  render half of itself.
+- **A rewrap that moves no rendered word.** Source's changed-line set comes
+  from the line diff, so a paragraph whose wrapping changed sits inside
+  source's context window and source shows the lines around it. Preview
+  treats a rewrap as no visible change (the 'Reflowed — renders identically'
+  case above) and shows nothing extra for it. This is by design: the
+  rendered view exists to hide exactly this kind of source-only churn.
+- **A markup-only edit, or a leaf an insertion or deletion anchors between.**
+  Preview keeps these leaves even when no source line inside them is within
+  the context window of a changed line, because the leaf fold widens its
+  keep set for them regardless of distance (`leaves_to_keep` in
+  `markdown.rs`). Source has no equivalent leaf concept, so it never widens
+  to match; a leaf preview keeps this way can sit further from the change
+  than anything source's window would show.
+
+The first two are named in the TRUNK-144 design (doc-60) as the residue of
+choosing leaves as preview's unit; closing them would mean rendering partial
+leaves, which is a different and larger design. The third follows from the
+change rule that keeps a changed leaf legible (`.claude/rules/rendered-markdown.md`
+'A fold never hides every mark the unfolded copy carries'), which has no
+source-mode counterpart to disagree with.
 "##,
     );
-    fixture_commit(&mut repo, 16, r##"docs: record what to look at"##);
+    fixture_commit(&mut repo, 25, r##"docs: record what to look at"##);
     fixture_write(
         &mut repo,
         "README.md",

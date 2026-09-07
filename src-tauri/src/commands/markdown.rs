@@ -2192,7 +2192,7 @@ fn leaves_to_keep(
         }
         // An op with no leaf of its own on this side (an insertion read from
         // the before side, a deletion from the after) still anchors at its
-        // position, so widen there — the neighbours it falls between.
+        // position, so widen there: the slot it anchors at and one each way.
         let range = match side {
             Side::Before => op.old_range(),
             Side::After => op.new_range(),
