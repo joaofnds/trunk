@@ -29,6 +29,12 @@ A dev build (`just dev`) compiles the dev identifier into
 your real one. `TRUNK_DATA_DIR` overrides the store location in both the app
 and the CLI; it exists for tests.
 
+`trunk --help`, `-h`, `help`, `--version` and `-V` answer directly, without
+opening the app: the binary is one CLI parsed by `clap`, and only `review` and
+those help/version words are the CLI's own — any other argument (a bare
+`trunk`, or the file paths a bundled app is handed to open) starts the GUI.
+`trunk review <verb> --help` prints that verb's own positionals and flags.
+
 ## Verbs
 
 ```
@@ -114,11 +120,14 @@ normalization (`O`→`0`, `I`/`L`→`1`).
 ## Error contract
 
 Output is markdown on stdout. Errors go to stderr with a nonzero exit and no
-partial write: usage mistakes exit 2, everything else exits 1. An illegal
-state claim fails naming the thread's current state and changes nothing. A
-target inside an unpublished (composing) review answers exactly as a missing
-id does — an unpublished review's existence never leaks through the CLI, not
-even through an ambiguous prefix.
+partial write: usage mistakes exit 2, help and `--version` exit 0, everything
+else exits 1. A mistyped verb is refused naming the closest real one when one
+is close enough to suggest. `--json` on a verb with no JSON form (`list`,
+`show`, `reply`, `address`) is a usage error, not accepted and ignored. An
+illegal state claim fails naming the thread's current state and changes
+nothing. A target inside an unpublished (composing) review answers exactly as
+a missing id does — an unpublished review's existence never leaks through the
+CLI, not even through an ambiguous prefix.
 
 ## Concurrency and versions
 

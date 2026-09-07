@@ -5159,6 +5159,7 @@ version = "0.45.1"
 dependencies = [
  "ammonia",
  "block2",
+ "clap",
  "comrak",
  "criterion",
  "getrandom 0.4.3",

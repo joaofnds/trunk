@@ -2,6 +2,7 @@ pub mod cli;
 pub mod commands;
 pub mod error;
 pub mod git;
+pub mod launch;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;
 pub mod review_types;
@@ -89,7 +90,7 @@ pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
 }
 
-/// Start the application, or run the `trunk review` subcommand and exit.
+/// Start the application, or run the `trunk` CLI and exit.
 ///
 /// # Panics
 ///
@@ -97,10 +98,19 @@ pub fn context<R: tauri::Runtime>() -> tauri::Context<R> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let args: Vec<String> = std::env::args().collect();
-    if let Some(review) = cli::review_args(&args) {
-        std::process::exit(cli::run_review(review));
-    }
 
+    match launch::Launch::of(&args) {
+        launch::Launch::Cli(cli_args) => std::process::exit(cli::run(cli_args)),
+        launch::Launch::Gui => run_gui(),
+    }
+}
+
+/// Build and start the GUI application. Never returns.
+///
+/// # Panics
+///
+/// Panics when the Tauri runtime cannot start.
+fn run_gui() {
     configure(
         tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {

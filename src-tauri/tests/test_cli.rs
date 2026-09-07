@@ -73,8 +73,15 @@ fn trunk_review(args: &[&str], data_dir: &Path) -> Output {
 /// Run `trunk review …` with `cwd` as the working directory — repo discovery
 /// starts there when `--repo` is absent.
 fn trunk_review_in(cwd: &Path, args: &[&str], data_dir: &Path) -> Output {
+    let mut full = vec!["review"];
+    full.extend_from_slice(args);
+    trunk(cwd, &full, data_dir)
+}
+
+/// Run `trunk …` with the given argv (no `review` prepended), `cwd` as the
+/// working directory and `data_dir` as the store location.
+fn trunk(cwd: &Path, args: &[&str], data_dir: &Path) -> Output {
     let child = Command::new(env!("CARGO_BIN_EXE_trunk"))
-        .arg("review")
         .args(args)
         .current_dir(cwd)
         .env("TRUNK_DATA_DIR", data_dir)
@@ -1514,9 +1521,92 @@ fn the_review_subcommand_exits_without_a_window() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("usage: trunk review"),
+        stderr.contains("Usage: trunk review") && stderr.contains("list"),
         "stderr must teach the verbs, got {stderr:?}",
     );
+}
+
+#[test]
+fn trunk_help_names_the_review_subcommand_and_exits_zero_without_a_window() {
+    let scratch = tempfile::TempDir::new().unwrap();
+
+    for word in ["--help", "-h", "help"] {
+        let out = trunk(scratch.path(), &[word], scratch.path());
+
+        assert_eq!(out.status.code(), Some(0), "`{word}` must exit 0");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("review"),
+            "`{word}` must name the review subcommand, got {stdout:?}",
+        );
+    }
+}
+
+#[test]
+fn trunk_version_prints_the_crate_version_and_exits_zero_without_a_window() {
+    let scratch = tempfile::TempDir::new().unwrap();
+
+    for word in ["--version", "-V"] {
+        let out = trunk(scratch.path(), &[word], scratch.path());
+
+        assert_eq!(out.status.code(), Some(0), "`{word}` must exit 0");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains(env!("CARGO_PKG_VERSION")),
+            "`{word}` must print the crate version, got {stdout:?}",
+        );
+    }
+}
+
+#[test]
+fn review_threads_help_exits_zero_and_names_its_own_flags() {
+    let scratch = tempfile::TempDir::new().unwrap();
+
+    let out = trunk_review(&["threads", "--help"], scratch.path());
+
+    assert_eq!(out.status.code(), Some(0), "per-verb --help must exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("--state"),
+        "threads --help must name its own flags, got {stdout:?}",
+    );
+}
+
+#[test]
+fn a_mistyped_verb_suggests_the_closest_real_one() {
+    let scratch = tempfile::TempDir::new().unwrap();
+
+    let out = trunk_review(&["treads", "3F7K"], scratch.path());
+
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("similar") && stderr.contains("threads"),
+        "the mistyped verb must suggest the real one, got {stderr:?}",
+    );
+}
+
+#[test]
+fn json_on_a_verb_with_no_json_form_is_a_usage_error() {
+    let scratch = tempfile::TempDir::new().unwrap();
+
+    for verb in [
+        vec!["list", "--json"],
+        vec!["show", "3F7K", "--json"],
+        vec!["reply", "3F7K", "text", "--json"],
+        vec!["address", "3F7K", "--json"],
+    ] {
+        let args: Vec<&str> = verb;
+        let out = trunk_review(&args, scratch.path());
+
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{args:?} must refuse --json, got stdout {:?} stderr {:?}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr),
+        );
+    }
 }
 
 /// The stored excerpt is the reviewed code itself — lines authored by whoever

@@ -1,6 +1,6 @@
-//! The review verbs (§5.1). Parsing is hand-rolled over the argv slice: a
-//! handful of verbs, at most two positionals and three flags, and the parse
-//! function is a pure unit under test.
+//! The review verbs (§5.1), declared as a clap `Subcommand` so `--help`,
+//! arity checking and "did you mean" on a typo all follow from the
+//! declaration instead of being hand-maintained (TRUNK-182.3).
 //!
 //! The CLI reads the store, never the repository — repo *discovery* may touch
 //! the filesystem to find and canonicalize the repo root, rendering may not
@@ -11,42 +11,84 @@ use crate::cli::lookup::{RepoPaths, discover_repo, published_review, published_t
 use crate::error::TrunkError;
 use crate::review_types::ThreadState;
 use crate::reviewdb::{self, reviews};
+use clap::Subcommand;
 use std::io::Write;
 use std::path::PathBuf;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum ReviewCmd {
+    /// Every published review in this repository
     List {
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
+    /// One review in full, as the same markdown document Copy-as-markdown produces
     Show {
+        /// A review id, or any unambiguous prefix of one
         id: String,
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
+    /// Post a reply to a thread, attributed to the agent channel
     Reply {
+        /// A thread id, or any unambiguous prefix of one
         id: String,
-        text: ReplyText,
+        /// The reply body. Omit it and pass --stdin for multi-line text
+        #[arg(required_unless_present = "stdin", conflicts_with = "stdin")]
+        text: Option<String>,
+        /// Read the reply body from stdin
+        #[arg(long)]
+        stdin: bool,
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
+    /// Claim an open thread as addressed
     Address {
+        /// A thread id, or any unambiguous prefix of one
         id: String,
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
+    /// Block and stream changes to the repo's published reviews
     Watch {
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
+        /// Print one NDJSON event per change instead of the review id
+        #[arg(long)]
         json: bool,
     },
+    /// The review's threads, one line each
     Threads {
+        /// A review id, or any unambiguous prefix of one
         review: String,
+        /// Keep only threads in this state: open, addressed, done or dismissed
+        #[arg(long, value_name = "STATE", value_parser = parse_state)]
         state: Option<ThreadState>,
+        /// Print one NDJSON object per thread instead of the index lines
+        #[arg(long)]
         json: bool,
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
+    /// One thread in full, with its replies
     Thread {
+        /// A thread id, or any unambiguous prefix of one
         id: String,
+        /// Print a single NDJSON object instead of markdown
+        #[arg(long)]
         json: bool,
+        #[arg(long, value_name = "PATH")]
         repo: Option<PathBuf>,
     },
+}
+
+/// `--state`'s values, read through `ThreadState`'s own parser so the CLI and
+/// the store cannot disagree on the set. The domain type stays free of a UI
+/// framework: this is what keeps `ThreadState` from gaining a clap derive.
+fn parse_state(raw: &str) -> Result<ThreadState, String> {
+    raw.parse().map_err(|_: TrunkError| {
+        format!("expected open, addressed, done or dismissed, not `{raw}`")
+    })
 }
 
 /// Where the reply body comes from: an argv word, or stdin for multi-line
@@ -55,180 +97,6 @@ pub enum ReviewCmd {
 pub enum ReplyText {
     Inline(String),
     Stdin,
-}
-
-/// Parse the argv slice after `trunk review`.
-///
-/// # Errors
-///
-/// Returns the usage line, which the caller prints to stderr, when the verb is
-/// missing or unknown or a flag is wrong for it.
-pub fn parse(args: &[String]) -> Result<ReviewCmd, String> {
-    let mut words = args.iter().map(String::as_str);
-    let verb = words.next().ok_or_else(usage)?;
-    let rest: Vec<&str> = words.collect();
-
-    match verb {
-        "list" => {
-            let flags = Flags::parse(&rest)?;
-            flags.reject_state()?;
-            Ok(ReviewCmd::List { repo: flags.repo })
-        }
-        "show" => {
-            let (id, rest) = take_id(&rest, "show", "a review id")?;
-            let flags = Flags::parse(rest)?;
-            flags.reject_state()?;
-            Ok(ReviewCmd::Show {
-                id: id.to_string(),
-                repo: flags.repo,
-            })
-        }
-        "reply" => {
-            let (id, text, rest) = match rest.as_slice() {
-                [id, "--stdin", rest @ ..] => (id, ReplyText::Stdin, rest),
-                [id, text, rest @ ..] if !text.starts_with("--") => {
-                    (id, ReplyText::Inline((*text).to_string()), rest)
-                }
-                _ => {
-                    return Err(format!(
-                        "reply needs a thread id and text (or --stdin)\n{}",
-                        usage()
-                    ));
-                }
-            };
-            let flags = Flags::parse(rest)?;
-            flags.reject_state()?;
-            Ok(ReviewCmd::Reply {
-                id: id.to_string(),
-                text,
-                repo: flags.repo,
-            })
-        }
-        "watch" => {
-            let flags = Flags::parse(&rest)?;
-            flags.reject_state()?;
-            Ok(ReviewCmd::Watch {
-                repo: flags.repo,
-                json: flags.json,
-            })
-        }
-        "threads" => {
-            let (review, rest) = take_id(&rest, "threads", "a review id")?;
-            let flags = Flags::parse(rest)?;
-            Ok(ReviewCmd::Threads {
-                review: review.to_string(),
-                state: flags.state,
-                json: flags.json,
-                repo: flags.repo,
-            })
-        }
-        "thread" => {
-            let (id, rest) = take_id(&rest, "thread", "a thread id")?;
-            let flags = Flags::parse(rest)?;
-            flags.reject_state()?;
-            Ok(ReviewCmd::Thread {
-                id: id.to_string(),
-                json: flags.json,
-                repo: flags.repo,
-            })
-        }
-        "address" => {
-            let (id, rest) = take_id(&rest, "address", "a thread id")?;
-            let flags = Flags::parse(rest)?;
-            flags.reject_state()?;
-            Ok(ReviewCmd::Address {
-                id: id.to_string(),
-                repo: flags.repo,
-            })
-        }
-        other => Err(format!("unknown verb `{other}`\n{}", usage())),
-    }
-}
-
-/// The leading positional a verb needs, and the words after it. A word
-/// starting with `--` is a flag the user typed instead of the id, not an id
-/// that happens to look like one: reading it as an id turns a forgotten
-/// argument into a `not_found` for something nobody named.
-fn take_id<'a>(
-    rest: &'a [&'a str],
-    verb: &str,
-    noun: &str,
-) -> Result<(&'a str, &'a [&'a str]), String> {
-    match rest {
-        [id, tail @ ..] if !is_flag(id) => Ok((id, tail)),
-        _ => Err(format!("{verb} needs {noun}\n{}", usage())),
-    }
-}
-
-/// A word the parser must never consume as a value.
-fn is_flag(word: &str) -> bool {
-    word.starts_with("--")
-}
-
-/// Every flag any verb takes, parsed in one place so a stray word is one
-/// usage error wherever it appears. A verb that does not take `--state`
-/// refuses it through `reject_state` rather than ignoring it.
-#[derive(Default)]
-struct Flags {
-    repo: Option<PathBuf>,
-    json: bool,
-    state: Option<ThreadState>,
-}
-
-impl Flags {
-    fn parse(mut rest: &[&str]) -> Result<Self, String> {
-        let mut flags = Self::default();
-
-        loop {
-            rest = match rest {
-                [] => return Ok(flags),
-                ["--repo", path, tail @ ..] if !is_flag(path) => {
-                    if flags.repo.is_some() {
-                        return Err(twice("--repo"));
-                    }
-                    flags.repo = Some(PathBuf::from(path));
-                    tail
-                }
-                ["--repo", ..] => return Err(format!("--repo needs a path\n{}", usage())),
-                ["--json", tail @ ..] => {
-                    if flags.json {
-                        return Err(twice("--json"));
-                    }
-                    flags.json = true;
-                    tail
-                }
-                ["--state", word, tail @ ..] if !is_flag(word) => {
-                    if flags.state.is_some() {
-                        return Err(twice("--state"));
-                    }
-                    flags.state = Some(word.parse().map_err(|_| {
-                        format!("--state takes open|addressed|done|dismissed, not `{word}`")
-                    })?);
-                    tail
-                }
-                ["--state", ..] => return Err(format!("--state needs a state\n{}", usage())),
-                other => return Err(format!("unexpected arguments {other:?}\n{}", usage())),
-            };
-        }
-    }
-
-    fn reject_state(&self) -> Result<(), String> {
-        match self.state {
-            None => Ok(()),
-            Some(_) => Err(format!("--state filters `threads` only\n{}", usage())),
-        }
-    }
-}
-
-/// A flag given twice is a usage error, not last-wins: `--state done --state
-/// open` would otherwise answer a differently-narrowed question in silence,
-/// the same defect as ignoring the flag outright.
-fn twice(flag: &str) -> String {
-    format!("{flag} given twice\n{}", usage())
-}
-
-fn usage() -> String {
-    "usage: trunk review <list|show|threads|thread|reply|address|watch> [--repo <path>]".to_string()
 }
 
 /// Run a parsed command against the store the compiled-in identifier names,
@@ -249,7 +117,15 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
     match cmd {
         ReviewCmd::List { repo } => list(&store, discover_repo(repo)?, out),
         ReviewCmd::Show { id, repo } => show(&store, discover_repo(repo)?, &id, out),
-        ReviewCmd::Reply { id, text, repo } => reply(&store, discover_repo(repo)?, &id, text, out),
+        ReviewCmd::Reply {
+            id,
+            text,
+            stdin: _,
+            repo,
+        } => {
+            let text = text.map_or(ReplyText::Stdin, ReplyText::Inline);
+            reply(&store, discover_repo(repo)?, &id, text, out)
+        }
         ReviewCmd::Address { id, repo } => address(&store, discover_repo(repo)?, &id, out),
         ReviewCmd::Watch { repo, json } => {
             crate::cli::watch::watch(&store, &discover_repo(repo)?, json, out)
@@ -424,101 +300,73 @@ fn thread(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
-    fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(std::string::ToString::to_string).collect()
+    /// `ReviewCmd` is a clap `Subcommand`, not a standalone `Parser`: wrap it
+    /// the same way `crate::cli::Command::Review` does, so a test drives the
+    /// exact grammar the binary parses.
+    #[derive(Parser)]
+    struct Harness {
+        #[command(subcommand)]
+        cmd: ReviewCmd,
+    }
+
+    fn try_parse(words: &[&str]) -> Result<ReviewCmd, clap::Error> {
+        let mut argv = vec!["review"];
+        argv.extend_from_slice(words);
+        Harness::try_parse_from(argv).map(|h| h.cmd)
+    }
+
+    fn parse(args: &[&str]) -> ReviewCmd {
+        try_parse(args).unwrap_or_else(|e| panic!("{args:?} must parse, got {e}"))
     }
 
     #[test]
     fn list_parses_with_and_without_a_repo() {
-        assert_eq!(parse(&argv(&["list"])), Ok(ReviewCmd::List { repo: None }),);
+        assert_eq!(parse(&["list"]), ReviewCmd::List { repo: None });
         assert_eq!(
-            parse(&argv(&["list", "--repo", "/tmp/r"])),
-            Ok(ReviewCmd::List {
+            parse(&["list", "--repo", "/tmp/r"]),
+            ReviewCmd::List {
                 repo: Some(PathBuf::from("/tmp/r")),
-            }),
+            },
         );
-    }
-
-    #[test]
-    fn an_unknown_verb_is_a_usage_error() {
-        let err = parse(&argv(&["frobnicate"])).unwrap_err();
-
-        assert!(err.contains("unknown verb `frobnicate`"));
-        assert!(err.contains("usage:"));
-    }
-
-    #[test]
-    fn a_stray_argument_after_list_is_a_usage_error() {
-        let err = parse(&argv(&["list", "extra"])).unwrap_err();
-
-        assert!(err.contains("unexpected arguments"));
     }
 
     #[test]
     fn threads_parses_its_review_id_and_optional_filters() {
         assert_eq!(
-            parse(&argv(&["threads", "3F7K"])),
-            Ok(ReviewCmd::Threads {
+            parse(&["threads", "3F7K"]),
+            ReviewCmd::Threads {
                 review: "3F7K".to_string(),
                 state: None,
                 json: false,
                 repo: None,
-            }),
+            },
         );
         assert_eq!(
-            parse(&argv(&["threads", "3F7K", "--state", "open", "--json"])),
-            Ok(ReviewCmd::Threads {
+            parse(&["threads", "3F7K", "--state", "open", "--json"]),
+            ReviewCmd::Threads {
                 review: "3F7K".to_string(),
                 state: Some(ThreadState::Open),
                 json: true,
                 repo: None,
-            }),
+            },
         );
     }
 
     #[test]
     fn only_threads_takes_a_state_filter() {
-        // Silently ignoring --state on the other verbs would answer a
+        // A verb that does not declare --state refuses it as an unknown
+        // argument, structurally: silently ignoring it would answer a
         // narrowed question with the unnarrowed result.
         for verb in [
-            argv(&["list", "--state", "open"]),
-            argv(&["show", "3F7K", "--state", "open"]),
-            argv(&["thread", "ab12", "--state", "open"]),
-            argv(&["watch", "--state", "open"]),
-            argv(&["address", "ab12", "--state", "open"]),
+            vec!["list", "--state", "open"],
+            vec!["show", "3F7K", "--state", "open"],
+            vec!["thread", "ab12", "--state", "open"],
+            vec!["watch", "--state", "open"],
+            vec!["address", "ab12", "--state", "open"],
         ] {
-            let err = parse(&verb).unwrap_err();
-
-            assert!(
-                err.contains("--state filters `threads` only"),
-                "{verb:?} must refuse --state, got {err:?}",
-            );
-        }
-    }
-
-    #[test]
-    fn a_repeated_flag_is_a_usage_error() {
-        // Last-wins is the same defect as ignoring the flag: `--state done
-        // --state open` answers a differently-narrowed question with no
-        // signal, and `--repo a --repo b` would read the wrong repository.
-        for (verb, flag) in [
-            (
-                argv(&["threads", "3F7K", "--state", "done", "--state", "open"]),
-                "--state",
-            ),
-            (argv(&["threads", "3F7K", "--json", "--json"]), "--json"),
-            (
-                argv(&["threads", "3F7K", "--repo", "/a", "--repo", "/b"]),
-                "--repo",
-            ),
-        ] {
-            let err = parse(&verb).unwrap_err();
-
-            assert!(
-                err.contains(&format!("{flag} given twice")),
-                "{verb:?} must refuse a repeated {flag}, got {err:?}",
-            );
+            assert!(try_parse(&verb).is_err(), "{verb:?} must refuse --state");
         }
     }
 
@@ -529,76 +377,73 @@ mod tests {
         // and answers not_found, which sends the agent hunting for an id it
         // never had.
         for args in [
-            argv(&["thread", "--json"]),
-            argv(&["threads", "--json"]),
-            argv(&["threads", "--state", "open"]),
-            argv(&["show", "--repo", "/tmp/r"]),
-            argv(&["address", "--repo", "/tmp/r"]),
+            vec!["thread", "--json"],
+            vec!["threads", "--json"],
+            vec!["threads", "--state", "open"],
+            vec!["show", "--repo", "/tmp/r"],
+            vec!["address", "--repo", "/tmp/r"],
         ] {
-            let err = parse(&args).unwrap_err();
-
             assert!(
-                err.contains("needs a") && err.contains("usage:"),
-                "{args:?} must read as a missing positional, got {err:?}",
+                try_parse(&args).is_err(),
+                "{args:?} must read as a missing positional",
             );
         }
     }
 
     #[test]
-    fn repo_does_not_swallow_the_flag_after_it() {
-        // Taking the next word unconditionally turns a forgotten path into a
-        // repo named `--json`, and the failure names a git path rather than
-        // the usage mistake it is.
-        let err = parse(&argv(&["threads", "3F7K", "--repo", "--json"])).unwrap_err();
-
-        assert!(err.contains("--repo needs a path"), "got {err:?}");
-    }
-
-    #[test]
     fn threads_rejects_a_state_outside_the_matrix() {
-        let err = parse(&argv(&["threads", "3F7K", "--state", "pending"])).unwrap_err();
+        let err = try_parse(&["threads", "3F7K", "--state", "pending"]).unwrap_err();
 
-        assert!(err.contains("pending"), "got {err:?}");
-    }
-
-    #[test]
-    fn threads_without_a_review_id_is_a_usage_error() {
-        let err = parse(&argv(&["threads"])).unwrap_err();
-
-        assert!(err.contains("threads needs a review id"), "got {err:?}");
+        assert!(err.to_string().contains("pending"), "got {err}");
     }
 
     #[test]
     fn thread_parses_its_id_with_and_without_json() {
         assert_eq!(
-            parse(&argv(&["thread", "ab12"])),
-            Ok(ReviewCmd::Thread {
+            parse(&["thread", "ab12"]),
+            ReviewCmd::Thread {
                 id: "ab12".to_string(),
                 json: false,
                 repo: None,
-            }),
+            },
         );
         assert_eq!(
-            parse(&argv(&["thread", "ab12", "--json", "--repo", "/tmp/r"])),
-            Ok(ReviewCmd::Thread {
+            parse(&["thread", "ab12", "--json", "--repo", "/tmp/r"]),
+            ReviewCmd::Thread {
                 id: "ab12".to_string(),
                 json: true,
                 repo: Some(PathBuf::from("/tmp/r")),
-            }),
+            },
         );
     }
 
     #[test]
-    fn thread_without_an_id_is_a_usage_error() {
-        let err = parse(&argv(&["thread"])).unwrap_err();
-
-        assert!(err.contains("thread needs a thread id"), "got {err:?}");
-    }
-
-    #[test]
-    fn a_bare_repo_flag_is_a_usage_error() {
-        let err = parse(&argv(&["list", "--repo"])).unwrap_err();
-
-        assert!(err.contains("--repo needs a path"));
+    fn reply_takes_inline_text_or_stdin_but_not_both() {
+        assert_eq!(
+            parse(&["reply", "ab12", "hello"]),
+            ReviewCmd::Reply {
+                id: "ab12".to_string(),
+                text: Some("hello".to_string()),
+                stdin: false,
+                repo: None,
+            },
+        );
+        assert_eq!(
+            parse(&["reply", "ab12", "--stdin"]),
+            ReviewCmd::Reply {
+                id: "ab12".to_string(),
+                text: None,
+                stdin: true,
+                repo: None,
+            },
+        );
+        assert!(
+            try_parse(&["reply", "ab12"]).is_err(),
+            "text or --stdin is required",
+        );
+        assert!(
+            try_parse(&["reply", "ab12", "hello", "--stdin"]).is_err(),
+            "text and --stdin are mutually exclusive",
+        );
     }
 }

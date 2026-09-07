@@ -41,6 +41,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 comrak = "0.54"
+clap = { version = "4", features = ["derive"] }
 ammonia = "4"
 # Already in the tree via syntect; used here to parse markdown front matter into a
 # diffable key/value table. Pinned to the version syntect resolves so nothing new
