@@ -50,6 +50,32 @@ build:
 icons master="src-tauri/icons/icon.png":
     scripts/icons.sh {{ master }}
 
+# ── Release ──────────────────────────────────────────
+
+# Bump package.json, Cargo.toml and tauri.conf.json to <version> in one commit and tag it (scripts/release.ts)
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "::error::working tree is dirty; commit or stash before releasing, so a tag is always cut from exactly what it claims to ship." >&2
+        exit 1
+    fi
+    # A prior run that committed but failed before tagging (or was interrupted
+    # between the two) leaves HEAD on a bump commit with no matching tag. A
+    # retry must not re-commit on top of it — recognize the state and refuse.
+    head_subject="$(git log -1 --format=%s)"
+    if [[ "$head_subject" == "chore(release): bump version to "* ]]; then
+        stuck_version="${head_subject#chore(release): bump version to }"
+        if [ -z "$(git tag --points-at HEAD --list "v${stuck_version}")" ]; then
+            echo "::error::HEAD is already a bump commit for ${stuck_version} with no v${stuck_version} tag on it — a prior run committed but never tagged. Tag it by hand (git tag v${stuck_version}) or reset past it before retrying." >&2
+            exit 1
+        fi
+    fi
+    bun run scripts/release-apply.ts {{ version }}
+    git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+    git commit -m "chore(release): bump version to {{ version }}"
+    git tag "v{{ version }}"
+
 # ── Checks ───────────────────────────────────────────
 
 # Static checks only — no compile, no tests (~3s)
