@@ -2621,6 +2621,7 @@ describe("DiffPanel hunk navigation", () => {
 							},
 						],
 						whitespaceOnly: false,
+						changedLines: [1, 2],
 					})
 				: Promise.resolve(undefined),
 		);
@@ -2676,6 +2677,7 @@ describe("DiffPanel hunk navigation", () => {
 							},
 						],
 						whitespaceOnly: false,
+						changedLines: [],
 					})
 				: Promise.resolve(undefined),
 		);
