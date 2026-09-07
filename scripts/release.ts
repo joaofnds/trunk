@@ -35,6 +35,24 @@ function order(a: string, b: string): number {
 	return a1 - b1 || a2 - b2 || a3 - b3;
 }
 
+// The manifest version is the wrong baseline on its own: it sat frozen at
+// 0.12.8 while releases ran past v0.44.0, so comparing against it alone accepts
+// a version far below the newest tag and cuts a backwards release. Take the
+// highest released tag when there is one, and fall back to the manifest only on
+// a repository with no release tags yet.
+export function releaseBaseline(
+	manifestVersion: string,
+	tags: readonly string[],
+): string {
+	const released = tags
+		.map((tag) => tag.replace(/^v/, ""))
+		.filter((version) => VERSION_SHAPE.test(version));
+
+	return [manifestVersion, ...released].reduce((highest, version) =>
+		order(version, highest) > 0 ? version : highest,
+	);
+}
+
 export function requireIncrement(current: string, next: string): void {
 	requireVersionShape(next);
 	if (order(next, current) <= 0) {

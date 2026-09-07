@@ -6,6 +6,7 @@ import {
 	bumpTauriConf,
 	currentVersion,
 	ReleaseError,
+	releaseBaseline,
 	requireIncrement,
 } from "./release.js";
 
@@ -210,6 +211,40 @@ describe("bumpCargoLock", () => {
 			new ReleaseError(
 				'no [[package]] entry named "trunk" found in Cargo.lock',
 			),
+		);
+	});
+});
+
+describe("releaseBaseline", () => {
+	it("takes the highest release tag when it is ahead of the manifest", () => {
+		expect(releaseBaseline("0.12.8", ["v0.43.0", "v0.44.0", "v0.9.0"])).toBe(
+			"0.44.0",
+		);
+	});
+
+	it("orders tags numerically rather than lexicographically", () => {
+		expect(releaseBaseline("0.1.0", ["v0.9.0", "v0.10.0"])).toBe("0.10.0");
+	});
+
+	it("falls back to the manifest when no release tags exist", () => {
+		expect(releaseBaseline("0.12.8", [])).toBe("0.12.8");
+	});
+
+	it("takes the manifest when it is ahead of every tag", () => {
+		expect(releaseBaseline("0.45.0", ["v0.44.0"])).toBe("0.45.0");
+	});
+
+	it("ignores tags that are not a plain x.y.z release", () => {
+		expect(
+			releaseBaseline("0.12.8", ["v0.44.0", "v1.0.0-rc.1", "nightly"]),
+		).toBe("0.44.0");
+	});
+
+	it("refuses a version below the newest tag once used as the baseline", () => {
+		const baseline = releaseBaseline("0.12.8", ["v0.44.0"]);
+
+		expect(() => requireIncrement(baseline, "0.30.5")).toThrowError(
+			new ReleaseError("0.30.5 is not greater than the current version 0.44.0"),
 		);
 	});
 });

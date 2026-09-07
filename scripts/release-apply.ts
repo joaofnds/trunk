@@ -5,11 +5,13 @@
  * Usage:
  *   bun run scripts/release-apply.ts <version>
  *
- * Refuses a version that is not a strict increment over tauri.conf.json's
- * current one. Writes package.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock
- * and src-tauri/tauri.conf.json; the justfile recipe stages, commits and tags.
+ * Refuses a version that is not a strict increment over the newest release tag,
+ * or over tauri.conf.json's version on a repository with no release tags yet.
+ * Writes package.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock and
+ * src-tauri/tauri.conf.json; the justfile recipe stages, commits and tags.
  */
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import {
 	bumpCargoLock,
@@ -18,6 +20,7 @@ import {
 	bumpTauriConf,
 	currentVersion,
 	ReleaseError,
+	releaseBaseline,
 	requireIncrement,
 } from "./release.js";
 
@@ -35,7 +38,12 @@ if (!version) {
 
 try {
 	const tauriConf = readFileSync(TAURI_CONF, "utf8");
-	requireIncrement(currentVersion(tauriConf), version);
+	const tags = execFileSync("git", ["tag", "--list", "v*"], {
+		encoding: "utf8",
+	})
+		.split("\n")
+		.filter(Boolean);
+	requireIncrement(releaseBaseline(currentVersion(tauriConf), tags), version);
 
 	writeFileSync(TAURI_CONF, bumpTauriConf(tauriConf, version));
 	writeFileSync(
