@@ -56,6 +56,7 @@ jobs:
       # dtolnay/rust-toolchain instead, per the comment on that step.
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
+          version: 2026.9.2
           install_args: bun
           # Same reason as the rust-cache below.
           cache_save: false

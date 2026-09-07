@@ -21,6 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: bun install --frozen-lockfile
       - run: just biome
 
@@ -30,6 +32,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: rustup component add rustfmt
       - run: just fmt
 
@@ -39,6 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: bun install --frozen-lockfile
       - run: just svelte-check
 
@@ -48,6 +54,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       # Pure string matching over two source files: no bun install, no cargo invocation.
       - run: just graph-sweep-check
 
@@ -57,8 +65,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       # Pure string matching over three config files: no bun install, no cargo invocation.
       - run: just toolchain-parity
+
+  mise-parity:
+    name: Mise Pin Agreement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
+      # Pure string matching over the workflow files: no bun install, no cargo invocation.
+      - run: just mise-parity
 
   dev-conf-parity:
     name: Dev Overlay Window Agreement
@@ -66,6 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       # Two JSON files compared with the stdlib: no bun install, no cargo invocation.
       - run: just dev-conf-parity
 
@@ -75,6 +98,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       # Pure arithmetic over src/app.css under the pinned bun: no bun install, no cargo invocation.
       - run: just contrast
 
@@ -85,7 +110,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Every recipe in `just check` has a CI job
         run: |
-          mirrored=$(printf '%s\n' app-test biome cargo-test clippy clippy-shipped contrast dev-conf-parity fmt graph-sweep-check svelte-check toolchain-parity vitest | sort)
+          mirrored=$(printf '%s\n' app-test biome cargo-test clippy clippy-shipped contrast dev-conf-parity fmt graph-sweep-check mise-parity svelte-check toolchain-parity vitest | sort)
           recipes=$(sed -n 's/^check: *//p' justfile | tr ' ' '\n' | sort)
           if ! diff <(echo "$mirrored") <(echo "$recipes"); then
             echo "::error::just check and this workflow disagree; add or remove the CI job, then update the mirrored list in ci.yml"
@@ -114,6 +139,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: rustup component add clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -147,6 +174,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: rustup component add llvm-tools-preview
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -173,6 +202,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: rustup component add clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
@@ -209,6 +240,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "src-tauri -> target"
@@ -225,6 +258,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.9.2
       - run: bun install --frozen-lockfile
       - name: Run tests with coverage
         run: just vitest-cov

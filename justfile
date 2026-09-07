@@ -92,7 +92,7 @@ front: biome svelte-check vitest
 rust: fmt clippy clippy-shipped cargo-test
 
 # Run all checks (run before committing)
-check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity dev-conf-parity contrast
+check: fmt biome svelte-check clippy clippy-shipped cargo-test vitest graph-sweep-check app-test toolchain-parity mise-parity dev-conf-parity contrast
 
 # Every audited text/background pair in src/app.css still clears its WCAG target (milliseconds)
 contrast:
@@ -111,6 +111,22 @@ toolchain-parity:
             exit 1
         fi
     done
+
+# Verify every mise-action step pins the same mise version (milliseconds)
+mise-parity:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uses=$(grep -c 'uses: jdx/mise-action' .github/workflows/*.yml | cut -d: -f2 | paste -sd+ - | bc)
+    pinned=$(grep -A 2 'uses: jdx/mise-action' .github/workflows/*.yml | grep -c 'version: ' || true)
+    if [ "$uses" != "$pinned" ]; then
+        echo "::error::$uses mise-action steps but $pinned carry a 'version:' on the two lines after 'uses:'. Without it the action installs whatever mise tagged most recently. A tag is readable before its release binaries finish uploading, and every runner 404s during that window. Pin the same version as the others."
+        exit 1
+    fi
+    versions=$(grep -A 2 'uses: jdx/mise-action' .github/workflows/*.yml | sed -n 's/.*version: *//p' | sort -u)
+    if [ "$(echo "$versions" | wc -l)" -ne 1 ]; then
+        echo "::error::mise-action steps disagree on the version: $(echo "$versions" | paste -sd' ' -). CI and release must install the same mise. Make them equal."
+        exit 1
+    fi
 
 # Verify the dev overlay's window equals the shipped one plus its one dev-only key (milliseconds)
 dev-conf-parity:
