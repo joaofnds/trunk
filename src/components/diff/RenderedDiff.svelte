@@ -397,9 +397,6 @@ type InlineItem =
 			html: string;
 			changeIndex: number | null;
 			wash: boolean;
-			// Leaves the backend folded out of this block's hunk-mode copy, for
-			// the "N items hidden" note under it. 0 when nothing was folded.
-			hiddenLeaves: number;
 			// The note under a block whose two sides render the same text: a
 			// reflow has nothing to tint, so without this it draws as an
 			// untinted block with no reason to be there. Null when it changed
@@ -420,13 +417,9 @@ function reflowNote(r: DiffRow & { kind: "changed" }): string | null {
 	return r.rendersIdentically ? "Reflowed — renders identically" : null;
 }
 
-function mergedCopy(r: DiffRow & { kind: "changed" }): {
-	html: string | undefined;
-	hiddenLeaves: number;
-} {
-	if (contentMode === "hunk" && r.hunkMergedHtml)
-		return { html: r.hunkMergedHtml, hiddenLeaves: r.hunkHiddenLeaves ?? 0 };
-	return { html: r.mergedHtml, hiddenLeaves: 0 };
+function mergedCopy(r: DiffRow & { kind: "changed" }): string | undefined {
+	if (contentMode === "hunk" && r.hunkMergedHtml) return r.hunkMergedHtml;
+	return r.mergedHtml;
 }
 
 const inlineItems = $derived.by((): InlineItem[] =>
@@ -442,7 +435,6 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					html: r.html,
 					changeIndex: null,
 					wash: true,
-					hiddenLeaves: 0,
 					note: null,
 				},
 			];
@@ -454,7 +446,6 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					html: r.html,
 					changeIndex,
 					wash: true,
-					hiddenLeaves: 0,
 					note: null,
 				},
 			];
@@ -466,7 +457,6 @@ const inlineItems = $derived.by((): InlineItem[] =>
 					html: r.html,
 					changeIndex,
 					wash: true,
-					hiddenLeaves: 0,
 					note: null,
 				},
 			];
@@ -474,15 +464,14 @@ const inlineItems = $derived.by((): InlineItem[] =>
 		// red/green leaves together. A block with no merged copy (code, dense
 		// rewrite, structural failure) falls through to the before/after pair.
 		const merged = mergedCopy(r);
-		if (merged.html)
+		if (merged)
 			return [
 				{
 					type: "block",
 					tint: "unchanged",
-					html: merged.html,
+					html: merged,
 					changeIndex,
 					wash: true,
-					hiddenLeaves: merged.hiddenLeaves,
 					note: reflowNote(r),
 				},
 			];
@@ -499,7 +488,6 @@ const inlineItems = $derived.by((): InlineItem[] =>
 				html: r.beforeHtml,
 				changeIndex,
 				wash,
-				hiddenLeaves: 0,
 				note: null,
 			},
 			{
@@ -508,7 +496,6 @@ const inlineItems = $derived.by((): InlineItem[] =>
 				html: r.afterHtml,
 				changeIndex: null,
 				wash,
-				hiddenLeaves: 0,
 				note: reflowNote(r),
 			},
 		];
@@ -675,15 +662,6 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
   ><div class="markdown-body">{@html html}</div></div>
 {/snippet}
 
-<!-- What the container fold dropped from this block's hunk-mode copy. Sits
-     under the block, reading as part of it rather than as a document-level
-     seam (that is `.rendered-sep`). Non-expandable, like the separator. -->
-{#snippet foldNote(count: number)}
-  <div class="rendered-fold">
-    {count} item{count === 1 ? "" : "s"} hidden
-  </div>
-{/snippet}
-
 {#snippet separator(count: number)}
   <div class="rendered-sep" role="separator">
     <span class="rendered-sep-label"
@@ -788,7 +766,6 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
         {:else}
           {@render block(item.tint, item.html, item.changeIndex, item.wash)}
           {#if item.note}<div class="rendered-fold">{item.note}</div>{/if}
-          {#if item.hiddenLeaves > 0}{@render foldNote(item.hiddenLeaves)}{/if}
         {/if}
       {/each}
     {/if}
@@ -893,14 +870,34 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
     height: 1px;
     background: var(--color-border);
   }
-  /* The container fold's note. Muted and indented to the block's own padding,
-     so it reads as a footnote to the block above rather than a divider. */
+  /* The reflow note: a block whose two sides render the same visible text,
+     drawn as a sibling div under the block. Muted and indented to the
+     block's own padding, so it reads as a footnote rather than a divider. */
   .rendered-fold {
     padding: 0 var(--space-4) var(--space-2);
     color: var(--color-text-muted);
     font-size: 11px;
     font-style: italic;
     letter-spacing: 0.02em;
+  }
+  /* The backend's per-gap fold note (TRUNK-144.4): a real `<li>`/`<tr>` the
+     fold spliced into the folded fragment itself, so it sits inside the
+     list/table it hid items from rather than after it. `:global` reaches
+     past scoping into the `{@html}`-injected markdown body. */
+  :global(.markdown-body .rendered-fold-note) {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-style: italic;
+    letter-spacing: 0.02em;
+  }
+  /* A list note carries no bullet — it reports a gap, not an item. */
+  :global(.markdown-body li.rendered-fold-note) {
+    list-style: none;
+  }
+  /* A table note's cell already spans every column (backend-set colspan);
+     center it so the row reads as a seam rather than a left-aligned label. */
+  :global(.markdown-body tr.rendered-fold-note td) {
+    text-align: center;
   }
   .rendered-sep-label {
     color: var(--color-text-muted);

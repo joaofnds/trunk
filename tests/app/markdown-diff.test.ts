@@ -232,7 +232,18 @@ describe("the rendered markdown diff", () => {
 			"item 12",
 			"item 13",
 		]);
-		expect(app.diffPane.renderedFoldNotes()).toEqual(["13 items hidden"]);
+		// Two gaps — items 0-6 above the window, items 14-19 below it — so two
+		// notes rather than one summary count (TRUNK-144.4).
+		expect(app.diffPane.renderedFoldNotes()).toEqual([
+			"7 items hidden",
+			"6 items hidden",
+		]);
+		// The note is a real <li> inside the <ul>, not a document-level aside.
+		// jsdom does not implement list-marker rendering, so the no-bullet half
+		// of this (AC #5) is a claim to observe on screen, not to assert here.
+		for (const note of app.diffPane.renderedFoldNoteElements()) {
+			expect(note.tagName).toBe("LI");
+		}
 
 		await app.diffPane.showFullFile();
 
@@ -397,6 +408,45 @@ describe("the rendered markdown diff", () => {
 		expect(full[9]).toContain("NINE");
 	});
 
+	// A table is the other container kind, and its rows are leaves too
+	// (TRUNK-144.4 AC #5): the note's cell must carry a colspan that reaches
+	// every column, so it draws as a seam across the row rather than a label
+	// stranded in the row's first cell with empty cells beside it.
+	it("spans a table row with the fold note", async () => {
+		const table = (changedAt: number, text: string) => {
+			const rows = ["| a | b |", "| --- | --- |"];
+			for (let i = 0; i < 20; i++)
+				rows.push(i === changedAt ? `| r${i} | ${text} |` : `| r${i} | v |`);
+			return rows.join("\n");
+		};
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${table(10, "old")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${table(10, "new")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+
+		const notes = await waitFor("the table fold notes", () => {
+			const found = app.diffPane.renderedFoldNoteElements();
+			return found.length > 0 ? found : null;
+		});
+		expect(notes.length).toBeGreaterThan(0);
+		for (const note of notes) {
+			const cell = note.querySelector("td");
+			expect(cell?.colSpan).toBe(2);
+		}
+	});
+
 	// A reflow moves the source lines without changing one rendered word, so
 	// the block has nothing to tint. Without a note it draws as an untinted
 	// paragraph the reader cannot tell from an unchanged one.
@@ -430,7 +480,7 @@ describe("the rendered markdown diff", () => {
 
 		await expect(
 			waitFor("the reflow note", () => {
-				const notes = app.diffPane.renderedFoldNotes();
+				const notes = app.diffPane.renderedBlockNotes();
 				return notes.length > 0 ? notes : null;
 			}),
 		).resolves.toEqual(["Reflowed — renders identically"]);

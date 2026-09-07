@@ -70,6 +70,13 @@ const MD_TINT_CLASSES: &[&str] = &["md-added", "md-removed"];
 /// `<del>`/`<ins>`) so an author's `~~strikethrough~~` is never tinted (invariant §5).
 const MD_WORD_CLASSES: &[&str] = &["md-word-delete", "md-word-add"];
 
+/// The class `drop_leaves` puts on the marker element it splices in for each
+/// gap a fold left, on a `<li>` or a `<tr>` depending on the container. Its
+/// text is not real content — `visible()` must not count it, or a fold that
+/// dropped every leaf and left only its own note would slip past the
+/// fold-emptied-a-block gate.
+const FOLD_NOTE_CLASS: &str = "rendered-fold-note";
+
 /// One row of a rendered-markdown block diff, in document reading order.
 ///
 /// Mirrors the frontend `DiffRow` union (serde `kind` tag). `Changed` always carries
@@ -148,17 +155,9 @@ pub enum DiffRow {
         hunk_before_html: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hunk_after_html: Option<String>,
-        /// How many leaves `hunk_merged_html` dropped, for the frontend's
-        /// "N items hidden" note. Zero whenever `hunk_merged_html` is `None`.
-        #[serde(skip_serializing_if = "is_zero")]
-        hunk_hidden_leaves: u32,
         after_start: u32,
         after_end: u32,
     },
-}
-
-const fn is_zero(n: &u32) -> bool {
-    *n == 0
 }
 
 const fn is_false(b: &bool) -> bool {
@@ -621,7 +620,6 @@ fn flush_runs(
                 hunk_merged_html: cf.hunk_merged_html,
                 hunk_before_html: cf.hunk_before_html,
                 hunk_after_html: cf.hunk_after_html,
-                hunk_hidden_leaves: cf.hunk_hidden_leaves,
                 has_tints: cf.has_tints,
                 renders_identically: cf.renders_identically,
                 after_start: a.start_line,
@@ -1386,12 +1384,12 @@ struct ChangedFragments {
     after_html: String,
     merged_html: Option<String>,
     /// The folded copies for hunk mode — the merged copy for inline, the two
-    /// tinted column fragments for split — and the leaf count the merged fold
-    /// hid. `None`/0 for single-leaf blocks and containers with nothing to fold.
+    /// tinted column fragments for split, each with a `rendered-fold-note`
+    /// marker element spliced in at every gap a fold left. `None` for
+    /// single-leaf blocks and containers with nothing to fold.
     hunk_merged_html: Option<String>,
     hunk_before_html: Option<String>,
     hunk_after_html: Option<String>,
-    hunk_hidden_leaves: u32,
     has_tints: bool,
     renders_identically: bool,
 }
@@ -1468,7 +1466,6 @@ fn changed_fragments(
         hunk_merged_html: folded_merged.as_ref().map(|(f, _)| sanitize_html(f)),
         hunk_before_html: folded_before.as_ref().map(|(f, _)| sanitize_html(f)),
         hunk_after_html: folded_after.as_ref().map(|(f, _)| sanitize_html(f)),
-        hunk_hidden_leaves: folded_merged.map_or(0, |(_, n)| n),
         renders_identically: renders_same(&before.html, &after.html),
     }
 }
@@ -1534,7 +1531,6 @@ fn single_leaf_fragments(before: &Block, after: &Block) -> ChangedFragments {
         hunk_merged_html: None,
         hunk_before_html: None,
         hunk_after_html: None,
-        hunk_hidden_leaves: 0,
         renders_identically,
     }
 }
@@ -1906,6 +1902,7 @@ fn marks(html: &str) -> usize {
 /// reader's view of a fragment, and every check about what the reader can see
 /// is expressed over it.
 fn visible(html: &str) -> Vec<String> {
+    let html = strip_fold_notes(html);
     let mut text = String::new();
     let mut in_tag = false;
     for c in html.chars() {
@@ -1917,6 +1914,36 @@ fn visible(html: &str) -> Vec<String> {
         }
     }
     text.split_whitespace().map(str::to_string).collect()
+}
+
+/// Remove every `drop_leaves` gap-note element (a `<li>` or a `<tr>` tagged
+/// `FOLD_NOTE_CLASS`) whole, so its own text never counts as content a reader
+/// can read — `visible()`'s only caller that sees such a note is a check over
+/// `hunk_*_html`, and every one of them means "does this fragment show real
+/// content", never "is this fragment nonempty".
+fn strip_fold_notes(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    loop {
+        let Some((tag, start)) = ["li", "tr"]
+            .iter()
+            .filter_map(|tag| {
+                rest.find(&format!("<{tag} class=\"{FOLD_NOTE_CLASS}\""))
+                    .map(|i| (*tag, i))
+            })
+            .min_by_key(|&(_, i)| i)
+        else {
+            out.push_str(rest);
+            return out;
+        };
+        out.push_str(&rest[..start]);
+        let close = format!("</{tag}>");
+        let Some(end) = rest[start..].find(&close) else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        rest = &rest[start + end + close.len()..];
+    }
 }
 
 fn renders_same(before_html: &str, after_html: &str) -> bool {
@@ -2183,22 +2210,77 @@ fn leaves_to_keep(
     (kept > 0 && kept < n).then_some(keep)
 }
 
+/// Table-row cells its note's `<td>` must `colspan` to span the row, read off
+/// the row's own raw render rather than the table's header — a row can carry
+/// its own count fine since every row of one table has the same column count.
+fn leaf_colspan(leaf: &Leaf) -> usize {
+    leaf.raw_html
+        .matches("<td")
+        .count()
+        .max(leaf.raw_html.matches("<th").count())
+        .max(1)
+}
+
+/// The marker element a run of `count` dropped leaves leaves behind, shaped to
+/// sit legally inside the leaf's own container: a `<li>` for a list (no bullet,
+/// styled by `.rendered-fold-note`), a `<tr><td colspan>` for a table so it
+/// spans the row rather than leaving empty cells.
+fn fold_note_element(tag: &str, count: u32, colspan: usize) -> String {
+    let label = format!("{count} item{} hidden", if count == 1 { "" } else { "s" });
+    match tag {
+        "tr" => {
+            format!("<tr class=\"{FOLD_NOTE_CLASS}\"><td colspan=\"{colspan}\">{label}</td></tr>")
+        }
+        _ => format!("<li class=\"{FOLD_NOTE_CLASS}\">{label}</li>"),
+    }
+}
+
 /// Drop every not-kept leaf's element from a sourcepos-annotated fragment,
-/// returning the folded copy and how many it removed. A leaf whose element
-/// cannot be located — the merge rewrote it and stripped its sourcepos — is
-/// left in place: degrading to a longer copy beats corrupting the fragment.
+/// leaving one marker element per contiguous run of drops rather than one
+/// summary count — so a container with hidden leaves both above and below a
+/// change shows a note at each gap (TRUNK-144.4). A leaf whose element cannot
+/// be located — the merge rewrote it and stripped its sourcepos — is left in
+/// place: degrading to a longer copy beats corrupting the fragment.
 fn drop_leaves(frag: &str, leaves: &[Leaf], keep: &[bool]) -> Option<(String, u32)> {
     let mut out = frag.to_string();
     let mut hidden = 0u32;
-    for (i, leaf) in leaves.iter().enumerate() {
+    let mut i = 0;
+    while i < leaves.len() {
         if keep[i] {
+            i += 1;
             continue;
         }
-        let Some((start, end)) = element_span(&out, &leaf.tag, &leaf.sourcepos) else {
-            continue;
-        };
-        out.replace_range(start..end, "");
-        hidden += 1;
+        let run_start = i;
+        while i < leaves.len() && !keep[i] {
+            i += 1;
+        }
+        let run = &leaves[run_start..i];
+
+        // Every OTHER leaf in the run is dropped outright first, each by its
+        // own span, while the first leaf's element still anchors the splice
+        // below. Never a range spanning first..last, which would also delete
+        // whatever the container puts between leaf elements (a table's
+        // `</thead>`/`<tbody>` boundary sits between two `<tr>`s and is not
+        // part of either leaf's own span).
+        let mut run_hidden = 0u32;
+        for leaf in &run[1..] {
+            let Some((s, e)) = element_span(&out, &leaf.tag, &leaf.sourcepos) else {
+                continue;
+            };
+            out.replace_range(s..e, "");
+            run_hidden += 1;
+        }
+
+        // Splice the note in place of the run's first leaf, once every other
+        // one is gone — a leaf whose element cannot be located (the merge
+        // rewrote it and stripped its sourcepos) is left in place instead,
+        // degrading to a longer copy rather than corrupting the fragment.
+        if let Some((first_start, first_end)) = element_span(&out, &run[0].tag, &run[0].sourcepos) {
+            run_hidden += 1;
+            let note = fold_note_element(&run[0].tag, run_hidden, leaf_colspan(&run[0]));
+            out.replace_range(first_start..first_end, &note);
+        }
+        hidden += run_hidden;
     }
     (hidden > 0).then_some((out, hidden))
 }
@@ -3022,12 +3104,15 @@ fn sanitize_html(html: &str) -> String {
     builder
         .add_tags(["span", "input"])
         .add_tag_attributes("input", ["type", "checked", "disabled"])
+        .add_tag_attributes("td", ["colspan"])
         .add_url_schemes(["trunk-asset"])
         .add_allowed_classes("span", SYN_CLASSES.iter().copied())
         .add_allowed_classes("tr", MD_TINT_CLASSES.iter().copied())
         .add_allowed_classes("li", MD_TINT_CLASSES.iter().copied())
         .add_allowed_classes("del", MD_WORD_CLASSES.iter().copied())
-        .add_allowed_classes("ins", MD_WORD_CLASSES.iter().copied());
+        .add_allowed_classes("ins", MD_WORD_CLASSES.iter().copied())
+        .add_allowed_classes("li", [FOLD_NOTE_CLASS])
+        .add_allowed_classes("tr", [FOLD_NOTE_CLASS]);
     builder.clean(html).to_string()
 }
 
@@ -3074,6 +3159,12 @@ mod tests {
             ignore_whitespace,
             context_lines,
         )
+    }
+
+    /// How many gap-note elements a folded fragment carries — one per
+    /// contiguous run of dropped leaves, in place of the old single count.
+    fn fold_note_count(html: &str) -> usize {
+        html.matches("rendered-fold-note").count()
     }
 
     /// The single merged copy of the one `Changed` row a test produced — what
@@ -3377,9 +3468,7 @@ mod tests {
         };
         let rows = diff_rows(&doc("nine"), &doc("NINE"));
         let DiffRow::Changed {
-            hunk_merged_html,
-            hunk_hidden_leaves,
-            ..
+            hunk_merged_html, ..
         } = &rows[0]
         else {
             panic!("one changed task list: {rows:?}");
@@ -3388,7 +3477,7 @@ mod tests {
         let folded = hunk_merged_html
             .as_deref()
             .expect("a twenty-item list folds");
-        assert!(*hunk_hidden_leaves > 0, "items are hidden: {folded}");
+        assert!(fold_note_count(folded) > 0, "items are hidden: {folded}");
         assert!(marks(folded) > 0, "the fold keeps the mark: {folded}");
     }
 
@@ -3461,7 +3550,6 @@ mod tests {
         let DiffRow::Changed {
             has_tints,
             hunk_merged_html,
-            hunk_hidden_leaves,
             ..
         } = &rows[0]
         else {
@@ -3472,7 +3560,7 @@ mod tests {
         let folded = hunk_merged_html
             .as_deref()
             .expect("a twenty-item quoted list folds");
-        assert!(*hunk_hidden_leaves > 0, "items are hidden: {folded}");
+        assert!(fold_note_count(folded) > 0, "items are hidden: {folded}");
         assert!(
             folded.contains("item 9"),
             "the changed item survives the fold: {folded}"
@@ -3496,7 +3584,6 @@ mod tests {
         let DiffRow::Changed {
             merged_html,
             hunk_merged_html,
-            hunk_hidden_leaves,
             ..
         } = &rows[0]
         else {
@@ -3511,14 +3598,19 @@ mod tests {
 
         let folded = hunk_merged_html.as_ref().expect("folded copy");
         // Items 7-13 survive: one-line items, so a 3-line context window
-        // reaches 3 whole neighbours each side of the change at item 10.
-        assert_eq!(folded.matches("<li").count(), 7, "{folded}");
+        // reaches 3 whole neighbours each side of the change at item 10. Two
+        // gaps (above and below) each leave one note element behind.
+        assert_eq!(
+            folded.matches("<li").count() - fold_note_count(folded),
+            7,
+            "{folded}"
+        );
         for i in 7..=13 {
             assert!(folded.contains(&format!("item {i}")), "{folded}");
         }
         assert!(!folded.contains("item 6<"), "{folded}");
         assert!(!folded.contains("item 14<"), "{folded}");
-        assert_eq!(*hunk_hidden_leaves, 13, "{folded}");
+        assert_eq!(fold_note_count(folded), 2, "{folded}");
     }
 
     /// The fold removes whole elements, so its output must nest as cleanly as
@@ -3562,8 +3654,8 @@ mod tests {
         let fa = hunk_after_html.as_ref().expect("folded after");
         // One-line items: a 3-line context window reaches 3 whole neighbours
         // each side of the change at item 10 (items 7-13, 7 total).
-        assert_eq!(fb.matches("<li").count(), 7, "{fb}");
-        assert_eq!(fa.matches("<li").count(), 7, "{fa}");
+        assert_eq!(fb.matches("<li").count() - fold_note_count(fb), 7, "{fb}");
+        assert_eq!(fa.matches("<li").count() - fold_note_count(fa), 7, "{fa}");
         // The changed leaf survives the fold. Its text is word-marked, so the
         // raw source string is split across tags — assert on the changed word,
         // which is what the reader is there to see.
@@ -3661,7 +3753,6 @@ mod tests {
         let DiffRow::Changed {
             merged_html,
             hunk_merged_html,
-            hunk_hidden_leaves,
             ..
         } = rows
             .iter()
@@ -3677,9 +3768,8 @@ mod tests {
         );
         assert_eq!(full.matches("<li").count(), 3, "every item: {full}");
 
+        // Nothing outside the window: the full copy renders in both modes.
         let Some(folded) = hunk_merged_html else {
-            // Nothing outside the window: the full copy renders in both modes.
-            assert_eq!(*hunk_hidden_leaves, 0);
             return;
         };
         assert!(
@@ -3698,15 +3788,12 @@ mod tests {
     fn short_container_with_nothing_outside_the_window_carries_no_folded_copy() {
         let rows = diff_rows(&list_doc(3, 1, "old"), &list_doc(3, 1, "new"));
         let DiffRow::Changed {
-            hunk_merged_html,
-            hunk_hidden_leaves,
-            ..
+            hunk_merged_html, ..
         } = &rows[0]
         else {
             panic!("expected Changed: {rows:?}");
         };
         assert!(hunk_merged_html.is_none(), "{rows:?}");
-        assert_eq!(*hunk_hidden_leaves, 0, "{rows:?}");
     }
 
     /// A changed PARAGRAPH is one unit of prose with no inner structure: it
@@ -3715,15 +3802,12 @@ mod tests {
     fn changed_single_leaf_block_carries_no_folded_copy() {
         let rows = diff_rows("the quick fox", "the slow fox");
         let DiffRow::Changed {
-            hunk_merged_html,
-            hunk_hidden_leaves,
-            ..
+            hunk_merged_html, ..
         } = &rows[0]
         else {
             panic!("expected Changed: {rows:?}");
         };
         assert!(hunk_merged_html.is_none(), "{rows:?}");
-        assert_eq!(*hunk_hidden_leaves, 0, "{rows:?}");
     }
 
     /// A changed table folds by row, and its `<thead>`/`<tbody>` skeleton must
@@ -3780,7 +3864,6 @@ mod tests {
         let DiffRow::Changed {
             merged_html,
             hunk_merged_html,
-            hunk_hidden_leaves,
             ..
         } = list
         else {
@@ -3801,11 +3884,16 @@ mod tests {
         // nearest line is one past the changed item's shorter, unedited
         // siblings), but not item 0 (distance 4) — asymmetric because the
         // edited item's appended clause pushes every later item's lines down.
-        assert_eq!(folded.matches("<li").count(), 4, "{folded}");
+        // Item 0 alone is one gap above; items 5-16 are the gap below.
+        assert_eq!(
+            folded.matches("<li").count() - fold_note_count(folded),
+            4,
+            "{folded}"
+        );
         // The merge splits the changed word out into its own <ins>, so the
         // source phrase never appears whole — assert on the word itself.
         assert!(folded.contains(">new</ins>"), "{folded}");
-        assert_eq!(*hunk_hidden_leaves, 13, "{folded}");
+        assert_eq!(fold_note_count(folded), 2, "{folded}");
     }
 
     /// The gate's own subject: a row the reader cannot tell from unchanged
@@ -3821,7 +3909,6 @@ mod tests {
             hunk_merged_html: None,
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 0,
             has_tints: false,
             renders_identically: false,
             after_start: 1,
@@ -3845,7 +3932,6 @@ mod tests {
                 hunk_merged_html: None,
                 hunk_before_html: None,
                 hunk_after_html: None,
-                hunk_hidden_leaves: 0,
                 has_tints: tints,
                 renders_identically: ident,
                 after_start: 1,
@@ -3925,7 +4011,6 @@ mod tests {
             hunk_merged_html: None,
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 0,
             has_tints: false,
             renders_identically: false,
             after_start: 1,
@@ -4014,7 +4099,6 @@ mod tests {
             hunk_merged_html: None,
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 0,
             has_tints: false,
             renders_identically: false,
             after_start: 1,
@@ -4039,7 +4123,6 @@ mod tests {
             hunk_merged_html: None,
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 0,
             has_tints: false,
             renders_identically: false,
             after_start: 1,
@@ -4064,7 +4147,6 @@ mod tests {
             hunk_merged_html: Some("<ul><li>b</li></ul>".into()),
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 1,
             has_tints: true,
             renders_identically: false,
             after_start: 1,
@@ -4085,7 +4167,31 @@ mod tests {
             hunk_merged_html: Some("<ol>\n\n</ol>".into()),
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 2,
+            has_tints: true,
+            renders_identically: false,
+            after_start: 1,
+            after_end: 2,
+        }];
+        let found = illegible_rows(&rows);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].1.contains("fold"), "{found:?}");
+    }
+
+    /// A fold that dropped every real leaf still leaves its own gap-note
+    /// element behind (TRUNK-144.4), and that note's text must not count as
+    /// content: the gate exists to catch an empty container, and a note
+    /// reading "N items hidden" is exactly what an emptied block looks like.
+    #[test]
+    fn illegible_rows_reports_a_fold_that_emptied_its_block_leaving_only_a_note() {
+        let rows = vec![DiffRow::Changed {
+            before_html: "<ol><li>a</li></ol>".into(),
+            after_html: "<ol><li>a</li></ol>".into(),
+            merged_html: Some("<ol><li>a</li><li>b</li></ol>".into()),
+            hunk_merged_html: Some(
+                "<ol><li class=\"rendered-fold-note\">2 items hidden</li></ol>".into(),
+            ),
+            hunk_before_html: None,
+            hunk_after_html: None,
             has_tints: true,
             renders_identically: false,
             after_start: 1,
@@ -5662,7 +5768,6 @@ mod tests {
             hunk_merged_html: None,
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 0,
             has_tints: false,
             renders_identically: false,
             after_start: 1,
@@ -6032,7 +6137,6 @@ mod tests {
             hunk_merged_html: None,
             hunk_before_html: None,
             hunk_after_html: None,
-            hunk_hidden_leaves: 0,
             has_tints: false,
             renders_identically: true,
             after_start: 1,

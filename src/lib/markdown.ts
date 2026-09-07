@@ -112,13 +112,11 @@ export type DiffRow =
 			// from an unchanged one. The view says so instead.
 			rendersIdentically?: boolean;
 			hunkMergedHtml?: string;
-			// The same fold applied to the two split-column fragments. Absent
-			// under the same conditions as `hunkMergedHtml`.
+			// The same fold applied to the two split-column fragments, each with
+			// a `rendered-fold-note` marker element spliced in at every gap a
+			// fold left. Absent under the same conditions as `hunkMergedHtml`.
 			hunkBeforeHtml?: string;
 			hunkAfterHtml?: string;
-			// How many leaves `hunkMergedHtml` dropped, for the "N items hidden"
-			// note. Absent (0) whenever `hunkMergedHtml` is.
-			hunkHiddenLeaves?: number;
 			afterStart: number;
 			afterEnd: number;
 	  };

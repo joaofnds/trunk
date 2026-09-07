@@ -49,4 +49,44 @@ describe("the rendered markdown diff, side by side", () => {
 			"the prose reads on the pane background, not through a wash",
 		).toHaveLength(0);
 	});
+
+	// TRUNK-144.4 AC #5: the hunk fold's per-gap note appeared only in the
+	// inline view (`hunkMergedHtml`); the split columns (`hunkBeforeHtml` /
+	// `hunkAfterHtml`) had no note at all. The backend embeds the note in every
+	// folded fragment it produces, so this should fall out for both columns.
+	it("shows a fold note in both columns, one per gap", async () => {
+		const list = (third: string) =>
+			Array.from({ length: 20 }, (_, i) =>
+				i === 10 ? `- item ${i} ${third}` : `- item ${i}`,
+			).join("\n");
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${list("old")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${list("new")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+		await app.diffPane.showSideBySide();
+
+		const notes = await waitFor("the split fold notes", () => {
+			const found = app.diffPane.renderedFoldNotes();
+			return found.length > 0 ? found : null;
+		});
+		// One gap above the window, one below, on EACH column: four notes total.
+		expect(notes).toEqual([
+			"7 items hidden",
+			"6 items hidden",
+			"7 items hidden",
+			"6 items hidden",
+		]);
+	});
 });

@@ -123,13 +123,34 @@ export class DiffPaneDriver {
 		return textsOf(`${cell} del.md-word-delete, ${cell} ins.md-word-add`);
 	}
 
-	/** The text of every list item the rendered view shows, topmost first. */
+	/** The text of every list item the rendered view shows, topmost first. A
+	 *  fold's own gap-note element (`renderedFoldNotes`) is not an item and is
+	 *  excluded, even though it renders as an `<li>` too. */
 	renderedListItems(): string[] {
-		return textsOf(".rendered-diff li");
+		return textsOf(".rendered-diff li:not(.rendered-fold-note)");
 	}
 
-	/** The container fold's "N items hidden" notes, topmost first. */
+	/** The container fold's "N items hidden" notes, one per gap the fold left,
+	 *  topmost first. Each is a real element the backend spliced into the
+	 *  folded fragment, not a document-level note. */
 	renderedFoldNotes(): string[] {
+		return textsOf(".rendered-diff .rendered-fold-note");
+	}
+
+	/** The fold-note elements themselves, topmost first, for checks on how
+	 *  they render rather than what they say: a list note must draw no bullet,
+	 *  a table note's cell must span the row. */
+	renderedFoldNoteElements(): HTMLElement[] {
+		return [
+			...document.querySelectorAll<HTMLElement>(
+				".rendered-diff .rendered-fold-note",
+			),
+		];
+	}
+
+	/** The reflow/reasoning note the frontend draws under a block whose two
+	 *  sides render the same visible text ("Reflowed — renders identically"). */
+	renderedBlockNotes(): string[] {
 		return textsOf(".rendered-diff .rendered-fold");
 	}
 

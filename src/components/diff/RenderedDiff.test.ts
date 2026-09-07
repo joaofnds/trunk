@@ -419,15 +419,17 @@ describe("RenderedDiff", () => {
 	}
 
 	// TRUNK-93: a container block (list/table) whose leaves are mostly unchanged
-	// must not render whole in hunk mode. The backend ships the folded copy; the
-	// frontend picks it only in hunk mode, and notes what it hid.
+	// must not render whole in hunk mode. The backend ships the folded copy,
+	// with a `rendered-fold-note` marker element spliced in at the gap
+	// (TRUNK-144.4); the frontend picks the folded copy only in hunk mode and
+	// renders that note as part of the fragment, unchanged.
 	const foldedRow: DiffRow = {
 		kind: "changed",
 		beforeHtml: "<ul><li>a</li><li>old</li><li>c</li></ul>",
 		afterHtml: "<ul><li>a</li><li>new</li><li>c</li></ul>",
 		mergedHtml: "<ul><li>a</li><li>new</li><li>c</li><li>tail</li></ul>",
-		hunkMergedHtml: "<ul><li>a</li><li>new</li><li>c</li></ul>",
-		hunkHiddenLeaves: 1,
+		hunkMergedHtml:
+			'<ul><li>a</li><li>new</li><li>c</li><li class="rendered-fold-note">1 item hidden</li></ul>',
 		afterStart: 1,
 		afterEnd: 4,
 	};
@@ -448,9 +450,10 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("new");
 
-		expect(container.querySelectorAll("li")).toHaveLength(3);
+		// Three real items plus the fold's own note element.
+		expect(container.querySelectorAll("li")).toHaveLength(4);
 		expect(container.textContent).not.toContain("tail");
-		expect(container.querySelector(".rendered-fold")?.textContent).toBe(
+		expect(container.querySelector(".rendered-fold-note")?.textContent).toBe(
 			"1 item hidden",
 		);
 
@@ -461,7 +464,7 @@ describe("RenderedDiff", () => {
 		});
 		expect(container.querySelectorAll("li")).toHaveLength(4);
 		expect(container.textContent).toContain("tail");
-		expect(container.querySelector(".rendered-fold")).toBeNull();
+		expect(container.querySelector(".rendered-fold-note")).toBeNull();
 	});
 
 	it("renders a container's folded copy in hunk mode in split, on both columns", async () => {
