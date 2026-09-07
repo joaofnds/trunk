@@ -274,8 +274,8 @@ fn list(
 ) -> Result<(), TrunkError> {
     let listed = store.read(|conn| reviews::list(conn, &canonical))?;
 
-    write!(out, "{}", crate::cli::render::render_list(&listed)).ok();
-    Ok(())
+    write!(out, "{}", crate::cli::render::render_list(&listed))
+        .map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 /// One published review rendered as its full markdown document.
@@ -295,8 +295,7 @@ fn show(
         paths.workdir.as_deref(),
         &paths.repo_dir,
     )?;
-    write!(out, "{doc}").ok();
-    Ok(())
+    write!(out, "{doc}").map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 /// Append an agent reply to a published thread.
@@ -329,8 +328,8 @@ fn reply(
         )
     })?;
 
-    writeln!(out, "replied to {} as agent ({reply_id})", thread.id).ok();
-    Ok(())
+    writeln!(out, "replied to {} as agent ({reply_id})", thread.id)
+        .map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 fn read_stdin() -> Result<String, TrunkError> {
@@ -368,8 +367,8 @@ fn address(
         )
     })?;
 
-    writeln!(out, "{} claimed as addressed", thread.id).ok();
-    Ok(())
+    writeln!(out, "{} claimed as addressed", thread.id)
+        .map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 /// A published review's threads, optionally narrowed to one state.
@@ -393,8 +392,7 @@ fn threads(
     } else {
         crate::cli::render::render_threads(&matching)
     };
-    write!(out, "{rendered}").ok();
-    Ok(())
+    write!(out, "{rendered}").map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 /// One published thread with its replies.
@@ -420,8 +418,7 @@ fn thread(
     } else {
         crate::cli::render::render_thread(store, &canonical, &thread, replies)?
     };
-    write!(out, "{rendered}").ok();
-    Ok(())
+    write!(out, "{rendered}").map_err(|e| TrunkError::new("io", e.to_string()))
 }
 
 #[cfg(test)]

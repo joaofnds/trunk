@@ -3,7 +3,7 @@ created: 2026-08-31T00:00:00.000Z
 title: A file path containing the index line's separator defeats field-splitting on that line
 area: cli
 files:
-  - src-tauri/src/cli/review.rs
+  - src-tauri/src/cli/render.rs
   - docs/review-cli.md
 ---
 
