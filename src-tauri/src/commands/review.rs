@@ -1425,32 +1425,6 @@ fn as_comments(threads: Vec<threads::Thread>) -> Vec<crate::git::types::Comment>
         .collect()
 }
 
-/// The renderer's input shape: each thread with its state and its replies,
-/// each carrying its channel attribution.
-fn as_doc_threads(
-    threads_with_replies: Vec<(threads::Thread, Vec<replies::Reply>)>,
-) -> Vec<crate::git::review::DocThread> {
-    threads_with_replies
-        .into_iter()
-        .map(|(t, replies)| crate::git::review::DocThread {
-            id: t.id,
-            text: t.text,
-            state: t.state,
-            anchor: t.anchor,
-            commit_oid: t.commit_oid,
-            excerpt: t.cached_excerpt,
-            channel: t.channel,
-            replies: replies
-                .into_iter()
-                .map(|r| crate::git::review::DocReply {
-                    text: r.text,
-                    channel: r.channel,
-                })
-                .collect(),
-        })
-        .collect()
-}
-
 /// Eagerly resolve every thread's anchor against the live repo: one
 /// `CommentResolution` per thread so the panel shows orphan badges at load
 /// without a click. Read-only.
@@ -1515,69 +1489,7 @@ pub fn generate_review_doc_inner(
     // same doc with the repo closed (D13).
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
 
-    render_review_doc(store, canonical, review_id, repo.workdir(), repo.path())
-}
-
-/// Render `review_id`'s doc from stored rows.
-///
-/// `workdir` and `repo_dir` are the caller's two path facts: the app takes them from
-/// its open repo, the CLI from discovery — neither reads repository content for the doc
-/// (D13).
-///
-/// # Errors
-///
-/// Returns `not_found` when `review_id` names no review, and whatever the
-/// store returns when the read fails.
-pub fn render_review_doc(
-    store: &Store,
-    canonical: &Path,
-    review_id: &str,
-    workdir: Option<&Path>,
-    repo_dir: &Path,
-) -> Result<String, TrunkError> {
-    use crate::git::review::{DocCommit, RenderInput};
-
-    let input = store.read(|conn| {
-        let review = reviews::get(conn, review_id)?.ok_or_else(|| {
-            TrunkError::new("not_found", format!("no review with id {review_id}"))
-        })?;
-        let threads_with_replies = threads::list_with_replies(conn, review_id)?;
-        let snapshots = snapshots::get(conn, canonical)?;
-
-        Ok(RenderInput {
-            review_id: review.id.clone(),
-            title: review.title,
-            // The CLI serves published reviews only, so only their docs
-            // teach it (criterion 11). `current_exe` at generation time is
-            // §5.5's ruling: the doc names the binary that will answer.
-            cli_binary: if review.published {
-                std::env::current_exe().ok()
-            } else {
-                None
-            },
-            workdir: workdir.map(std::path::Path::to_path_buf),
-            repo_dir: repo_dir.to_path_buf(),
-            commits: commits::list(conn, &review.id)?
-                .into_iter()
-                .map(|c| DocCommit {
-                    oid: c.oid,
-                    subject: c.subject,
-                })
-                .collect(),
-            threads: as_doc_threads(threads_with_replies),
-            working_tree_snapshot: snapshots.working_tree_snapshot,
-            index_snapshot: snapshots.index_snapshot,
-        })
-    })?;
-
-    if input.threads.is_empty() {
-        return Err(TrunkError::new(
-            "no_threads",
-            "Generate requires at least one thread in the review",
-        ));
-    }
-
-    Ok(crate::git::review::render(&input))
+    crate::git::review::render_review_doc(store, canonical, review_id, repo.workdir(), repo.path())
 }
 
 /// # Errors

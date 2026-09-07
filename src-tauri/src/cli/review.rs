@@ -270,7 +270,7 @@ fn show(store: &reviewdb::Store, canonical: PathBuf, id: &str) -> Result<String,
     let review = published_review(store, &canonical, id)?;
     let paths = RepoPaths::of(&canonical);
 
-    crate::commands::review::render_review_doc(
+    crate::git::review::render_review_doc(
         store,
         &canonical,
         &review.id,

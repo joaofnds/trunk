@@ -13,9 +13,11 @@
 //! routed INTO the returned markdown (per L-04 + L-09); the renderer NEVER
 //! returns an error.
 
+use crate::error::TrunkError;
 use crate::git::types::{Anchor, Side, Source};
 use crate::review_types::{Channel, ThreadState};
-use std::path::PathBuf;
+use crate::reviewdb::{Store, reviews, snapshots, threads};
+use std::path::{Path, PathBuf};
 
 /// What the renderer needs from one review.
 ///
@@ -628,6 +630,92 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
 
     emit_reviewer_text(out, &thread.text, thread.channel);
     emit_replies(out, &thread.replies);
+}
+
+/// Render `review_id`'s doc from stored rows.
+///
+/// `workdir` and `repo_dir` are the caller's two path facts: the app takes them from
+/// its open repo, the CLI from discovery — neither reads repository content for the doc
+/// (D13).
+///
+/// # Errors
+///
+/// Returns `not_found` when `review_id` names no review, and whatever the
+/// store returns when the read fails.
+pub fn render_review_doc(
+    store: &Store,
+    canonical: &Path,
+    review_id: &str,
+    workdir: Option<&Path>,
+    repo_dir: &Path,
+) -> Result<String, TrunkError> {
+    let input = store.read(|conn| {
+        let review = reviews::get(conn, review_id)?.ok_or_else(|| {
+            TrunkError::new("not_found", format!("no review with id {review_id}"))
+        })?;
+        let threads_with_replies = threads::list_with_replies(conn, review_id)?;
+        let snapshots = snapshots::get(conn, canonical)?;
+
+        Ok(RenderInput {
+            review_id: review.id.clone(),
+            title: review.title,
+            // The CLI serves published reviews only, so only their docs
+            // teach it (criterion 11). `current_exe` at generation time is
+            // §5.5's ruling: the doc names the binary that will answer.
+            cli_binary: if review.published {
+                std::env::current_exe().ok()
+            } else {
+                None
+            },
+            workdir: workdir.map(std::path::Path::to_path_buf),
+            repo_dir: repo_dir.to_path_buf(),
+            commits: crate::reviewdb::commits::list(conn, &review.id)?
+                .into_iter()
+                .map(|c| DocCommit {
+                    oid: c.oid,
+                    subject: c.subject,
+                })
+                .collect(),
+            threads: as_doc_threads(threads_with_replies),
+            working_tree_snapshot: snapshots.working_tree_snapshot,
+            index_snapshot: snapshots.index_snapshot,
+        })
+    })?;
+
+    if input.threads.is_empty() {
+        return Err(TrunkError::new(
+            "no_threads",
+            "Generate requires at least one thread in the review",
+        ));
+    }
+
+    Ok(render(&input))
+}
+
+/// The renderer's input shape: each thread with its state and its replies,
+/// each carrying its channel attribution.
+fn as_doc_threads(
+    threads_with_replies: Vec<(threads::Thread, Vec<crate::reviewdb::replies::Reply>)>,
+) -> Vec<DocThread> {
+    threads_with_replies
+        .into_iter()
+        .map(|(t, replies)| DocThread {
+            id: t.id,
+            text: t.text,
+            state: t.state,
+            anchor: t.anchor,
+            commit_oid: t.commit_oid,
+            excerpt: t.cached_excerpt,
+            channel: t.channel,
+            replies: replies
+                .into_iter()
+                .map(|r| DocReply {
+                    text: r.text,
+                    channel: r.channel,
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 /// Top-level pure renderer (L-01, L-04, L-09, L-10).
