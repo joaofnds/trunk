@@ -15,12 +15,14 @@ pub enum Launch<'a> {
 }
 
 impl<'a> Launch<'a> {
+    /// argv's second word routes to the CLI when it is one of these, and to
+    /// the GUI otherwise.
+    const CLI_WORDS: [&'static str; 6] = ["review", "help", "--help", "-h", "--version", "-V"];
+
     #[must_use]
     pub fn of(args: &'a [String]) -> Self {
-        const CLI_WORDS: [&str; 6] = ["review", "help", "--help", "-h", "--version", "-V"];
-
         match args.get(1) {
-            Some(word) if CLI_WORDS.contains(&word.as_str()) => Self::Cli(args),
+            Some(word) if Self::CLI_WORDS.contains(&word.as_str()) => Self::Cli(args),
             _ => Self::Gui,
         }
     }
@@ -46,7 +48,7 @@ mod tests {
 
     #[test]
     fn every_cli_word_is_a_cli_launch() {
-        for word in ["review", "help", "--help", "-h", "--version", "-V"] {
+        for word in Launch::CLI_WORDS {
             let args = argv(&["trunk", word]);
             assert_eq!(
                 Launch::of(&args),

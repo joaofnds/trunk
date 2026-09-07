@@ -99,6 +99,32 @@ pub enum ReplyText {
     Stdin,
 }
 
+impl ReplyText {
+    /// Build from clap's `Reply` fields: `text` and `stdin` are declared
+    /// `required_unless_present`/`conflicts_with` each other, so
+    /// `Cli::try_parse_from` can only ever produce `(Some(_), false)` or
+    /// `(None, true)`. Naming both remaining cases as an error, rather than
+    /// picking `text` and discarding `stdin`, keeps a second, non-clap
+    /// construction site (a test, a future caller) from silently reaching
+    /// `run` with the combination clap's grammar was built to forbid.
+    ///
+    /// # Errors
+    ///
+    /// Returns a usage error when `text` and `stdin` don't disagree.
+    fn from_parts(text: Option<String>, stdin: bool) -> Result<Self, TrunkError> {
+        match (text, stdin) {
+            (Some(text), false) => Ok(Self::Inline(text)),
+            (None, true) => Ok(Self::Stdin),
+            (text, stdin) => Err(TrunkError::new(
+                "bad_request",
+                format!(
+                    "reply needs exactly one of text or --stdin, got text={text:?} stdin={stdin}"
+                ),
+            )),
+        }
+    }
+}
+
 /// Run a parsed command against the store the compiled-in identifier names,
 /// writing its output through `out`.
 ///
@@ -120,10 +146,10 @@ pub fn run(cmd: ReviewCmd, identifier: &str, out: &mut dyn Write) -> Result<(), 
         ReviewCmd::Reply {
             id,
             text,
-            stdin: _,
+            stdin,
             repo,
         } => {
-            let text = text.map_or(ReplyText::Stdin, ReplyText::Inline);
+            let text = ReplyText::from_parts(text, stdin)?;
             reply(&store, discover_repo(repo)?, &id, text, out)
         }
         ReviewCmd::Address { id, repo } => address(&store, discover_repo(repo)?, &id, out),
@@ -383,9 +409,12 @@ mod tests {
             vec!["show", "--repo", "/tmp/r"],
             vec!["address", "--repo", "/tmp/r"],
         ] {
-            assert!(
-                try_parse(&args).is_err(),
-                "{args:?} must read as a missing positional",
+            let err = try_parse(&args).unwrap_err();
+
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "{args:?} must read as a missing positional, got {err}",
             );
         }
     }
@@ -445,5 +474,24 @@ mod tests {
             try_parse(&["reply", "ab12", "hello", "--stdin"]).is_err(),
             "text and --stdin are mutually exclusive",
         );
+    }
+
+    #[test]
+    fn reply_text_from_parts_accepts_exactly_the_two_shapes_clap_can_produce() {
+        assert_eq!(
+            ReplyText::from_parts(Some("hello".to_string()), false),
+            Ok(ReplyText::Inline("hello".to_string())),
+        );
+        assert_eq!(ReplyText::from_parts(None, true), Ok(ReplyText::Stdin));
+    }
+
+    #[test]
+    fn reply_text_from_parts_refuses_the_combinations_clap_already_forbids() {
+        // clap's own grammar never produces these two, but ReviewCmd::Reply's
+        // fields carry no invariant of their own: a second, non-clap
+        // construction site (a test, a future in-process caller) could still
+        // reach here, and it must not have `text` silently win.
+        assert!(ReplyText::from_parts(Some("hello".to_string()), true).is_err());
+        assert!(ReplyText::from_parts(None, false).is_err());
     }
 }

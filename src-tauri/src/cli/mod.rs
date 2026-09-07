@@ -11,7 +11,7 @@ pub mod render;
 pub mod review;
 pub mod watch;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -25,7 +25,7 @@ struct Cli {
     command: Command,
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Subcommand)]
 enum Command {
     /// Read and answer code reviews from the terminal
     Review {
