@@ -119,7 +119,12 @@ $effect(() => {
 
 type LoadState =
 	| { kind: "loading" }
-	| { kind: "rows"; rows: DiffRow[]; whitespaceOnly: boolean }
+	| {
+			kind: "rows";
+			rows: DiffRow[];
+			whitespaceOnly: boolean;
+			changedLines: number[];
+	  }
 	| { kind: "error"; message: string };
 
 let state = $state<LoadState>({ kind: "loading" });
@@ -207,6 +212,7 @@ $effect(() => {
 					kind: "rows",
 					rows: diff.rows,
 					whitespaceOnly: diff.whitespaceOnly,
+					changedLines: diff.changedLines,
 				};
 			}
 		})
@@ -220,6 +226,7 @@ $effect(() => {
 });
 
 const rows = $derived(state.kind === "rows" ? state.rows : []);
+const changedLines = $derived(state.kind === "rows" ? state.changedLines : []);
 const hasChanges = $derived(rows.some((r) => r.kind !== "unchanged"));
 
 // Hunk mode over an unchanged document renders the full doc (projected keeps all
@@ -275,40 +282,71 @@ function rowSpan(r: DiffRow): Span {
 	return { start: r.afterStart, end: r.afterEnd };
 }
 
-// Edge-to-edge source-line distance between two spans: adjacent lines are 1
-// apart, overlapping spans 0 — so "within N lines" means exactly Source's N
-// context lines (a row starting N+1 lines away is outside the window).
-function lineDistance(a: Span, b: Span): number {
-	if (b.start > a.end) return b.start - a.end;
-	if (a.start > b.end) return a.start - b.end;
+// Edge-to-edge source-line distance from a span to a single line: 1 for the
+// line right after/before the span, 0 when the line falls inside it — so
+// "within N lines" means exactly Source's N context lines (a line N+1 away is
+// outside the window).
+function distanceToLine(span: Span, line: number): number {
+	if (line > span.end) return line - span.end;
+	if (line < span.start) return span.start - line;
 	return 0;
 }
 
+// A row's distance to the nearest changed source line, or Infinity when no
+// line changed at all (an all-unchanged document never reaches this: the
+// caller only runs this over `hasChanges` documents).
+function distanceToNearestChange(span: Span, changedLines: number[]): number {
+	let min = Number.POSITIVE_INFINITY;
+	for (const line of changedLines) {
+		const d = distanceToLine(span, line);
+		if (d < min) min = d;
+	}
+	return min;
+}
+
 // Keep unchanged blocks as context around each change so hunk context matches
-// Source's `diff_context_lines`: an unchanged row stays iff its after-axis span
-// is within `contextLines` source lines of a change (a removed row participates
-// via its anchor), and the immediately-adjacent unchanged row on each side of a
-// change is always kept — a change is never left bare, matching Source always
-// showing context. A collapsed run at the document edge is dropped entirely (no
-// separator, like source hunks); interior runs collapse to a separator counting
-// the hidden source lines, gaps between blocks included.
+// Source's `diff_context_lines`: a row stays iff it has a source line within
+// `contextLines` of a line the backend's line diff marked changed — never a
+// changed ROW'S whole span, which would pull in every block near any part of
+// a long changed block. There is no unconditional neighbour: a row right next
+// to a change is kept only because line distance already puts it inside the
+// window for any `contextLines >= 0` (TRUNK-144.2). A heading is the one
+// exception — it stays whenever a kept row follows it before the next heading,
+// so a long edited list under a heading keeps the heading as an orientation
+// marker even when the heading itself sits outside the window (João,
+// 2026-09-07). A collapsed run at the document edge is dropped entirely (no
+// separator, like source hunks); interior runs collapse to a separator
+// counting the hidden source lines, gaps between blocks included.
 function collapseUnchanged(
 	diffRows: DiffRow[],
 	contextLines: number,
+	changedLines: number[],
 ): ProjectedRow[] {
-	const changeSpans = diffRows
-		.filter((r) => r.kind !== "unchanged")
-		.map(rowSpan);
+	// A pure deletion (nothing inserted in its place) marks no after-axis
+	// line dirty — `dirty_lines` only marks the before-axis lines it removed
+	// — yet it is still a real edit at the point it sits on the after axis.
+	// Its anchor joins the changed-line set so it gives context on both
+	// sides, the same as Source centers a deletion hunk on that point.
+	const anchors = diffRows
+		.filter((r) => r.kind === "removed")
+		.map((r) => r.afterAnchor);
+	const changedPoints = [...changedLines, ...anchors];
 	const keep = diffRows.map(
 		(r) =>
 			r.kind !== "unchanged" ||
-			changeSpans.some((c) => lineDistance(rowSpan(r), c) <= contextLines),
+			distanceToNearestChange(rowSpan(r), changedPoints) <= contextLines,
 	);
-	diffRows.forEach((r, i) => {
-		if (r.kind === "unchanged") return;
-		if (i > 0) keep[i - 1] = true;
-		if (i < keep.length - 1) keep[i + 1] = true;
-	});
+
+	let followedByKept = false;
+	for (let i = diffRows.length - 1; i >= 0; i--) {
+		const r = diffRows[i];
+		if (r.kind === "unchanged" && r.blockKind === "heading") {
+			if (followedByKept) keep[i] = true;
+			followedByKept = false;
+		} else if (keep[i]) {
+			followedByKept = true;
+		}
+	}
 
 	const out: ProjectedRow[] = [];
 	let i = 0;
@@ -339,7 +377,7 @@ const projected = $derived.by((): ProjectedRow[] => {
 			? rows.map(
 					(row): ProjectedRow => ({ type: "row", row, changeIndex: null }),
 				)
-			: collapseUnchanged(rows, contextLines);
+			: collapseUnchanged(rows, contextLines, changedLines);
 	let change = 0;
 	return base.map(
 		(p): ProjectedRow =>

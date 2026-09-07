@@ -436,6 +436,7 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			rows: [foldedRow],
 			whitespaceOnly: false,
+			changedLines: [2],
 		});
 
 		const { container, rerender } = render(RenderedDiff, {
@@ -475,6 +476,7 @@ describe("RenderedDiff", () => {
 				},
 			],
 			whitespaceOnly: false,
+			changedLines: [2],
 		});
 
 		const { container } = render(RenderedDiff, {
@@ -521,6 +523,7 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			rows: changeSandwich(),
 			whitespaceOnly: false,
+			changedLines: [1, 12],
 		});
 
 		const { container, rerender } = render(RenderedDiff, {
@@ -556,7 +559,13 @@ describe("RenderedDiff", () => {
 		);
 	});
 
-	it("always keeps the immediately adjacent unchanged row even outside the line window, never bare (hunk)", async () => {
+	it("hides a row adjacent to a change when it is not within contextLines of a CHANGED LINE, no unconditional neighbour (hunk)", async () => {
+		// TRUNK-144.2: the old rule kept any row immediately adjacent to a
+		// changed ROW unconditionally. A 200-line changed block made every
+		// row touching any of those 200 lines count as adjacent. The new rule
+		// measures to the changed LINE only: "far" sits right after the first
+		// change's row but 9 lines from its one changed line (line 1), so a
+		// window of 3 must hide it.
 		const rows: DiffRow[] = [
 			{
 				kind: "changed",
@@ -565,7 +574,6 @@ describe("RenderedDiff", () => {
 				afterStart: 1,
 				afterEnd: 1,
 			},
-			// 8 lines from both changes: outside any contextLines=3 window.
 			{
 				kind: "unchanged",
 				blockKind: "paragraph",
@@ -581,7 +589,11 @@ describe("RenderedDiff", () => {
 				afterEnd: 20,
 			},
 		];
-		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: [1, 20],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -593,9 +605,196 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("nb");
 
-		expect(container.querySelectorAll(".rendered-block")).toHaveLength(5);
-		expect(screen.getByText("far")).toBeInTheDocument();
-		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(0);
+		expect(container.querySelectorAll(".rendered-block")).toHaveLength(4);
+		expect(screen.queryByText("far")).toBeNull();
+		// Hidden: "far" plus the gap around it, lines 2-19: 20 − 1 − 1 = 18.
+		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
+			"18 lines hidden",
+		);
+	});
+
+	it("measures context distance to the changed LINE inside a long block, not to the block's whole span (hunk)", async () => {
+		// doc-60 finding F3: the OLD rule measured distance to a changed
+		// row's WHOLE span, so a 200-line changed block whose only actually
+		// dirty line is line 1 made every row near the span's END (line 200)
+		// count as context too. "far" sits 3 lines past the span's end
+		// (distance 3 to the span, within a window of 3) but 202 lines from
+		// the one line that actually changed, and it is not the array-
+		// adjacent row (a buffer row sits between them), so no neighbour
+		// rule of either era explains keeping it: only the span-vs-line
+		// distinction does.
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: "<p>ob</p>",
+				afterHtml: "<p>nb</p>",
+				afterStart: 1,
+				afterEnd: 200,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>buffer</p>",
+				afterStart: 201,
+				afterEnd: 201,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>far</p>",
+				afterStart: 203,
+				afterEnd: 203,
+			},
+		];
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			// Only line 1 of the 200-line span actually changed.
+			changedLines: [1],
+		});
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+				contextLines: 3,
+			},
+		});
+		await screen.findByText("nb");
+
+		// Line distance to the CHANGED line (1) is all that matters: "buffer"
+		// (distance 200) and "far" (distance 202) are both far outside the
+		// window. Only the change itself survives.
+		expect(screen.queryByText("buffer")).toBeNull();
+		expect(screen.queryByText("far")).toBeNull();
+		expect(container.querySelectorAll(".rendered-block")).toHaveLength(2);
+	});
+
+	it("keeps an unchanged heading as context even when it is outside the line window, so a long edited list stays oriented (hunk)", async () => {
+		// João, 2026-09-07: editing a huge list under a heading should still
+		// show the heading, so the reader knows where the list sits, even
+		// though it is far from the change on a pure line-distance basis. A
+		// long unchanged paragraph between the heading and the change gets
+		// no such exception and must still fold away (parent TRUNK-144 AC #4).
+		const rows: DiffRow[] = [
+			{
+				kind: "unchanged",
+				blockKind: "heading",
+				html: "<h1>Section</h1>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>long unchanged paragraph</p>",
+				afterStart: 3,
+				afterEnd: 3,
+			},
+			{
+				kind: "changed",
+				beforeHtml: "<ul><li>old</li></ul>",
+				afterHtml: "<ul><li>new</li></ul>",
+				afterStart: 20,
+				afterEnd: 20,
+			},
+		];
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: [20],
+		});
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+				contextLines: 3,
+			},
+		});
+		await screen.findByText("new");
+
+		expect(screen.getByText("Section")).toBeInTheDocument();
+		expect(screen.queryByText("long unchanged paragraph")).toBeNull();
+		// One separator: the heading survives, so only the paragraph's line
+		// (3) through the line right before the change (19) folds: 20 − 1 − 1
+		// = 18.
+		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(1);
+		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
+			"18 lines hidden",
+		);
+	});
+
+	it("drops an unchanged heading when nothing kept follows it before the next heading (hunk)", async () => {
+		// The heading exception only fires when a kept row follows before the
+		// next heading. A heading with an unrelated section entirely folded
+		// beneath it — every row under it far from the one real change, and
+		// another heading before the change — must fold away too, or every
+		// heading in the document would survive unconditionally.
+		const rows: DiffRow[] = [
+			{
+				kind: "changed",
+				beforeHtml: "<p>oa</p>",
+				afterHtml: "<p>na</p>",
+				afterStart: 1,
+				afterEnd: 1,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "heading",
+				html: "<h1>Unrelated section</h1>",
+				afterStart: 10,
+				afterEnd: 10,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "paragraph",
+				html: "<p>far from any change</p>",
+				afterStart: 12,
+				afterEnd: 12,
+			},
+			{
+				kind: "unchanged",
+				blockKind: "heading",
+				html: "<h1>Changed section</h1>",
+				afterStart: 20,
+				afterEnd: 20,
+			},
+			{
+				kind: "changed",
+				beforeHtml: "<p>old</p>",
+				afterHtml: "<p>new</p>",
+				afterStart: 22,
+				afterEnd: 22,
+			},
+		];
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: [1, 22],
+		});
+
+		const { container } = render(RenderedDiff, {
+			props: {
+				...baseProps,
+				layoutMode: "inline",
+				contentMode: "hunk",
+				contextLines: 3,
+			},
+		});
+		await screen.findByText("new");
+
+		expect(screen.queryByText("Unrelated section")).toBeNull();
+		expect(screen.queryByText("far from any change")).toBeNull();
+		// "Changed section" (line 20) is itself within contextLines=3 of the
+		// second change (line 22), so it stays for the ordinary line-distance
+		// reason — this fixture isolates that "Unrelated section" gets no
+		// exception, not that headings never fold. The dropped run sits
+		// between the two changes, so it collapses to one separator.
+		expect(screen.getByText("Changed section")).toBeInTheDocument();
+		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(1);
 	});
 
 	it("drops leading and trailing unchanged runs without a separator (hunk)", async () => {
@@ -623,7 +822,11 @@ describe("RenderedDiff", () => {
 				afterStart: 13 + 2 * i,
 				afterEnd: 13 + 2 * i,
 			});
-		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: [11],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -635,7 +838,11 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("nb");
 
-		expect(container.querySelectorAll(".rendered-block")).toHaveLength(4);
+		// lead4 (line 9) and tail0 (line 13) are distance 2 from the one
+		// changed line, outside a window of 1 — no unconditional neighbour
+		// keeps them anymore, so only the change itself survives. It has no
+		// merged copy, so it renders as 2 inline blocks (before + after).
+		expect(container.querySelectorAll(".rendered-block")).toHaveLength(2);
 		expect(container.querySelectorAll(".rendered-sep")).toHaveLength(0);
 	});
 
@@ -676,7 +883,9 @@ describe("RenderedDiff", () => {
 				afterStart: 9,
 				afterEnd: 9,
 			},
-			// The deleted paragraph sat right after line 9 on the after axis.
+			// The deleted paragraph sat right after line 9 on the after axis. A
+			// pure deletion marks no after-axis line dirty, so its anchor (9)
+			// is the only changed point near u5.
 			{
 				kind: "removed",
 				html: "<p>gone</p>",
@@ -688,11 +897,15 @@ describe("RenderedDiff", () => {
 				kind: "unchanged",
 				blockKind: "paragraph",
 				html: "<p>u5</p>",
-				afterStart: 11,
-				afterEnd: 11,
+				afterStart: 10,
+				afterEnd: 10,
 			},
 		];
-		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: [1],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: {
@@ -704,15 +917,19 @@ describe("RenderedDiff", () => {
 		});
 		await screen.findByText("gone");
 
-		// u1 (adjacent to the change) and u4 (distance 0 to the anchor at line 9)
-		// stay; the deletion keeps context on BOTH sides (u4 above, u5 below).
-		// Hidden u2, u3 (lines 5, 7): 9 − 3 − 1 = 5 lines.
+		// u4 (line 9, distance 0 to the anchor) and u5 (line 10, distance 1)
+		// stay; the deletion's anchor gives it context on BOTH sides even
+		// though a pure delete marks no after-axis line dirty. u1 (line 3) is
+		// distance 2 from the change at line 1, outside the window — no
+		// unconditional neighbour keeps it anymore. Hidden u1, u2, u3
+		// (lines 3, 5, 7): 9 − 1 − 1 = 7.
 		expect(screen.getByText("u4")).toBeInTheDocument();
 		expect(screen.getByText("u5")).toBeInTheDocument();
+		expect(screen.queryByText("u1")).toBeNull();
 		expect(screen.queryByText("u2")).toBeNull();
 		expect(screen.queryByText("u3")).toBeNull();
 		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
-			"5 lines hidden",
+			"7 lines hidden",
 		);
 	});
 
@@ -754,20 +971,25 @@ describe("RenderedDiff", () => {
 				afterEnd: 5,
 			},
 		];
-		safeInvoke.mockResolvedValue({ rows, whitespaceOnly: false });
+		safeInvoke.mockResolvedValue({
+			rows,
+			whitespaceOnly: false,
+			changedLines: [1, 5],
+		});
 
 		const { container } = render(RenderedDiff, {
 			props: {
 				...baseProps,
 				layoutMode: "inline",
 				contentMode: "hunk",
-				contextLines: 0,
+				contextLines: 1,
 			},
 		});
 		await screen.findByText("nb");
 
-		// contextLines=0 hides u2 (u1/u3 survive as the always-kept adjacent
-		// rows): 4 − 2 − 1 = 1 line.
+		// u1 (line 2, distance 1 from line 1) and u3 (line 4, distance 1 from
+		// line 5) are within contextLines=1; u2 (line 3) is distance 2 from
+		// both changed lines and hidden: 4 − 2 − 1 = 1 line.
 		expect(container.querySelector(".rendered-sep")?.textContent).toBe(
 			"1 line hidden",
 		);
@@ -777,6 +999,7 @@ describe("RenderedDiff", () => {
 		safeInvoke.mockResolvedValue({
 			rows: changeSandwich(),
 			whitespaceOnly: false,
+			changedLines: [1, 12],
 		});
 
 		const { container } = render(RenderedDiff, {
@@ -895,6 +1118,7 @@ describe("RenderedDiff", () => {
 	it("re-projects the same array across layout/content toggles without varying the fetch", async () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
+			changedLines: [1],
 			rows: [
 				{
 					kind: "changed",
@@ -1463,6 +1687,7 @@ describe("RenderedDiff", () => {
 				},
 			],
 			whitespaceOnly: false,
+			changedLines: [],
 		});
 		expect(await screen.findByText("SECOND")).toBeInTheDocument();
 
@@ -1477,6 +1702,7 @@ describe("RenderedDiff", () => {
 				},
 			],
 			whitespaceOnly: false,
+			changedLines: [],
 		});
 		await tick();
 		await Promise.resolve();

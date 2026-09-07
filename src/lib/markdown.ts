@@ -129,6 +129,10 @@ export type DiffRow =
 export type MarkdownDiff = {
 	rows: DiffRow[];
 	whitespaceOnly: boolean;
+	// The after-axis source lines the backend's line diff marked changed,
+	// sorted. The hunk-mode row fold measures context distance to these lines
+	// directly, rather than to a changed row's whole span.
+	changedLines: number[];
 };
 
 // The file a rendered diff is of: its current path and, for a rename, the old
