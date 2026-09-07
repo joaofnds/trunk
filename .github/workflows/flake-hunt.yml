@@ -60,11 +60,11 @@ jobs:
           # Read-only: a scheduled job that never gates a merge should not be the
           # one deciding what the shared cache holds.
           save-if: "false"
-      # The reviewdb repeat drives the suite through nextest, as the Rust Tests
-      # job does.
+      # The reviewdb repeat runs the workspace under llvm-cov exactly as the Rust
+      # Tests job does, since the failure it hunts appears only under coverage.
       - uses: taiki-e/install-action@0758d235715de2f3551eacc980d9ae8fce9342c3 # v2.87.3
         with:
-          tool: cargo-nextest
+          tool: cargo-llvm-cov,cargo-nextest
       - run: bun install --frozen-lockfile
       # Builds a Rust example and runs vitest over it, and repeats a Rust test
       # suite, so this job needs both toolchains, as the Application Harness job

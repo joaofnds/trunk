@@ -201,12 +201,15 @@ flake-hunt runs="10":
             cat /tmp/flake-vitest-$i.log
             echo "::endgroup::"
         fi
-        # test_reviewdb has produced three single-occurrence CI failures in
-        # different tests (TRUNK-180), each green locally. Repeat the whole
-        # suite rather than the three names, since the shared cause is unknown
-        # and naming them would hide a fourth.
-        if ! cargo nextest run --manifest-path {{manifest}} --test test_reviewdb \
-            --no-fail-fast >/tmp/flake-reviewdb-$i.log 2>&1; then
+        # test_reviewdb fails intermittently on CI and never locally (TRUNK-180).
+        # Run it the way CI does, under llvm-cov and across the workspace: ten
+        # plain `nextest run --test test_reviewdb` passes proved nothing, because
+        # neither the instrumentation nor the workspace-wide concurrency was
+        # present. Repeat the whole workspace rather than the failing names, since
+        # the cause is unknown and naming them would hide a fourth.
+        if ! {{scrubbed_env}} cargo llvm-cov nextest --workspace \
+            --manifest-path {{manifest}} --no-fail-fast \
+            >/tmp/flake-reviewdb-$i.log 2>&1; then
             failures=$((failures + 1))
             echo "::group::test_reviewdb run $i failed"
             cat /tmp/flake-reviewdb-$i.log
