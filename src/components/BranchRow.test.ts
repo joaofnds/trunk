@@ -134,8 +134,8 @@ describe("BranchRow visibility toggle target size", () => {
 		});
 
 		expect(screen.getByLabelText("Hide topic")).toHaveStyle({
-			minWidth: "24px",
-			minHeight: "24px",
+			minWidth: "var(--target-min)",
+			minHeight: "var(--target-min)",
 		});
 	});
 });
@@ -273,13 +273,28 @@ describe("BranchRow keyboard reachability", () => {
 	});
 });
 
-// TRUNK-187: see RemoteGroup.test.ts. A branch row has no create button either.
+// TRUNK-187: see RemoteGroup.test.ts. A branch row has no create button either, so it
+// stands one in to keep the eye in the shared column. The slot follows the eye in and
+// out of the flow: reserving it on an idle row would restore the gutter the eye gave up
+// above, and truncate the name against a slot holding nothing.
 describe("BranchRow trailing controls", () => {
-	it("reserves the create button's slot so the eye keeps the column", () => {
+	it("reserves the create button's slot while the action is shown", () => {
+		render(BranchRow, {
+			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+		});
+
+		expect(screen.getByTestId("branch-row-create-slot")).toHaveStyle({
+			display: "block",
+		});
+	});
+
+	it("takes no width while the row is idle", () => {
 		render(BranchRow, {
 			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
 		});
 
-		expect(screen.getByTestId("branch-row-create-slot")).toBeInTheDocument();
+		expect(screen.getByTestId("branch-row-create-slot")).toHaveStyle({
+			display: "none",
+		});
 	});
 });

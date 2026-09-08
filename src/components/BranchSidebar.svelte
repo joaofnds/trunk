@@ -988,7 +988,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
   /*
    * Idle rows drop the eye out of the flow rather than reserving its box, so the stash
    * message gets the full width. `visibility: hidden` keeps the layout box, which is what
-   * made every message truncate early against an icon that was not there.
+   * made every message truncate early against an icon that was not there. The alignment
+   * slot below follows it in and out for the same reason.
    */
   .stash-visibility-btn {
     flex-shrink: 0;
@@ -998,8 +999,8 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     border: none;
     cursor: pointer;
     padding: 0;
-    min-width: 24px;
-    min-height: 24px;
+    min-width: var(--target-min);
+    min-height: var(--target-min);
     align-items: center;
     justify-content: center;
     display: none;
@@ -1013,9 +1014,24 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     display: inline-flex;
   }
 
+  /* Stands in for the create button the section header carries, so this row's eye
+     keeps the shared column. Two corrections come with it. The row is a gapped flex
+     container, unlike the other three, so without the negative margin the slot would
+     add the row's gap on top of its own width and push the eye 8px out of the column.
+     And it follows the eye out of the flow when the row is idle: reserving it there
+     would truncate the message against a gutter holding nothing, which is the bug
+     the eye's own `display: none` above was written to fix. */
   .stash-create-slot {
     flex-shrink: 0;
-    min-width: 24px;
+    min-width: var(--target-min);
+    margin-left: calc(-1 * var(--space-2));
+    display: none;
+  }
+
+  .stash-row:hover .stash-create-slot,
+  .stash-row:focus-within .stash-create-slot,
+  .stash-visibility-btn[data-hidden="true"] + .stash-create-slot {
+    display: block;
   }
 
   .stash-row {

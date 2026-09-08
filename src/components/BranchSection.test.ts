@@ -168,8 +168,8 @@ describe("BranchSection visibility toggle target size", () => {
 			},
 		});
 		expect(screen.getByLabelText("Hide all Branches refs")).toHaveStyle({
-			minWidth: "24px",
-			minHeight: "24px",
+			minWidth: "var(--target-min)",
+			minHeight: "var(--target-min)",
 		});
 	});
 });
@@ -204,9 +204,9 @@ describe("BranchSection trailing controls", () => {
 	it("reserves the create button's slot when the section has none", () => {
 		render(BranchSection, { props });
 
-		expect(
-			screen.getByTestId("branch-section-create-slot"),
-		).toBeInTheDocument();
+		expect(screen.getByTestId("branch-section-create-slot")).toHaveStyle({
+			minWidth: "var(--target-min)",
+		});
 	});
 
 	it("fills that slot with the create button when the section has one", () => {

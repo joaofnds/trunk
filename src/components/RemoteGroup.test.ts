@@ -144,8 +144,8 @@ describe("RemoteGroup visibility toggle target size", () => {
 			},
 		});
 		expect(screen.getByLabelText("Hide all origin branches")).toHaveStyle({
-			minWidth: "24px",
-			minHeight: "24px",
+			minWidth: "var(--target-min)",
+			minHeight: "var(--target-min)",
 		});
 	});
 });
@@ -170,6 +170,8 @@ describe("RemoteGroup trailing controls", () => {
 			},
 		});
 
-		expect(screen.getByTestId("remote-group-create-slot")).toBeInTheDocument();
+		expect(screen.getByTestId("remote-group-create-slot")).toHaveStyle({
+			minWidth: "var(--target-min)",
+		});
 	});
 });

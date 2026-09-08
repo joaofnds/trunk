@@ -24,6 +24,11 @@
 	   back with these. */
 	--banded-lg-h: calc(8 * var(--u) + 1px);
 
+	/* The minimum hit target for a small icon control, WCAG 2.2 Target Size
+	   (Minimum). It is also the width every sidebar row reserves for its trailing
+	   slot, so the eyes share one column whether or not a create button fills it. */
+	--target-min: calc(6 * var(--u));
+
 	/* ── Control heights ── */
 	--control-sm-h: calc(5 * var(--u));
 	--control-h: calc(7 * var(--u));

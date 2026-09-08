@@ -196,6 +196,13 @@ describe("app.css lengths", () => {
 		expect(multiple("--row-h") * UNIT).toBe(ROW_HEIGHT);
 	});
 
+	/* WCAG 2.2 SC 2.5.8 asks for 24 CSS px. The sidebar's toggles and the slots that
+	   hold their column both read this token, so the number lives here rather than
+	   restated as a literal at each site. */
+	it("gives the minimum hit target the 24px WCAG 2.2 asks for", () => {
+		expect(multiple("--target-min") * UNIT).toBe(24);
+	});
+
 	it("gives the diff pane's fixed header rows that same bar height", () => {
 		expect(FIXED_ROW_HEIGHTS.fileHeader).toBe(BAR_HEIGHT);
 		expect(FIXED_ROW_HEIGHTS.hunkHeader).toBe(BAR_HEIGHT);
