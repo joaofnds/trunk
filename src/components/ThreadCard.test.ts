@@ -9,6 +9,19 @@ import ThreadCard from "./ThreadCard.svelte";
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
 import "../__tests__/helpers/tauri-mock";
 
+vi.mock("../lib/review-comment-actions.js", () => ({
+	addReply: vi.fn(),
+	setThreadState: vi.fn(),
+	editReply: vi.fn(),
+	deleteReply: vi.fn(),
+}));
+import {
+	addReply,
+	deleteReply,
+	editReply,
+	setThreadState,
+} from "../lib/review-comment-actions.js";
+
 // The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
 // a plain `fireEvent.click` doesn't wait for that microtask to settle.
 async function flush() {
@@ -42,12 +55,9 @@ describe("ThreadCard", () => {
 		return render(ThreadCard, {
 			props: {
 				thread: comment,
+				repoPath: "/repo",
 				onedit: () => {},
 				ondelete: () => {},
-				onreplyadd: () => {},
-				onstatechange: () => {},
-				onreplyedit: () => {},
-				onreplydelete: () => {},
 				...overrides,
 			},
 		});
@@ -240,36 +250,33 @@ describe("ThreadCard", () => {
 		expect(stateActionLabels(container)).toEqual(["Reopen"]);
 	});
 
-	it("calls onstatechange with the target state when Mark done is clicked", async () => {
-		const onstatechange = vi.fn();
-		renderCard({ onstatechange });
+	it("calls setThreadState with the repo path and target state when Mark done is clicked", async () => {
+		renderCard();
 
 		await fireEvent.click(screen.getByText("Mark done"));
 
-		expect(onstatechange).toHaveBeenCalledWith("c1", "done");
+		expect(setThreadState).toHaveBeenCalledWith("/repo", "c1", "done");
 	});
 
-	it("calls onstatechange with the target state when Dismiss is clicked", async () => {
-		const onstatechange = vi.fn();
-		renderCard({ onstatechange });
+	it("calls setThreadState with the repo path and target state when Dismiss is clicked", async () => {
+		renderCard();
 
 		await fireEvent.click(screen.getByText("Dismiss"));
 
-		expect(onstatechange).toHaveBeenCalledWith("c1", "dismissed");
+		expect(setThreadState).toHaveBeenCalledWith("/repo", "c1", "dismissed");
 	});
 
-	it("calls onstatechange with the target state when Reopen is clicked", async () => {
+	it("calls setThreadState with the repo path and target state when Reopen is clicked", async () => {
 		const done: Thread = {
 			...comment,
 			state: "done",
 			allowed_transitions: ["open"],
 		};
-		const onstatechange = vi.fn();
-		renderCard({ thread: done, onstatechange });
+		renderCard({ thread: done });
 
 		await fireEvent.click(screen.getByText("Reopen"));
 
-		expect(onstatechange).toHaveBeenCalledWith("c1", "open");
+		expect(setThreadState).toHaveBeenCalledWith("/repo", "c1", "open");
 	});
 
 	it("seeds the reply editor with the reply's text", async () => {
@@ -287,13 +294,12 @@ describe("ThreadCard", () => {
 		expect(textarea.value).toBe("original");
 	});
 
-	it("calls onreplyedit with the reply's id and new text", async () => {
+	it("calls editReply with the repo path, reply id, and new text", async () => {
 		const humanReply: Thread = {
 			...comment,
 			replies: [aReply({ id: "r1", text: "original", channel: "human" })],
 		};
-		const onreplyedit = vi.fn();
-		renderCard({ thread: humanReply, onreplyedit });
+		renderCard({ thread: humanReply });
 
 		await fireEvent.click(screen.getByText("Edit reply"));
 		const textarea = screen.getByRole("textbox", {
@@ -302,18 +308,17 @@ describe("ThreadCard", () => {
 		await fireEvent.input(textarea, { target: { value: "corrected" } });
 		await fireEvent.click(screen.getByText("Save"));
 
-		expect(onreplyedit).toHaveBeenCalledWith("r1", "corrected");
+		expect(editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
 	});
 
-	it("submits the typed reply via onreplyadd and clears the composer", async () => {
-		const onreplyadd = vi.fn();
-		renderCard({ onreplyadd });
+	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {
+		renderCard();
 
 		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 		await fireEvent.input(textarea, { target: { value: "sounds good" } });
 		await fireEvent.click(screen.getByText("Reply"));
 
-		expect(onreplyadd).toHaveBeenCalledWith("c1", "sounds good");
+		expect(addReply).toHaveBeenCalledWith("/repo", "c1", "sounds good");
 		expect(textarea.value).toBe("");
 	});
 
@@ -328,38 +333,36 @@ describe("ThreadCard", () => {
 		expect(screen.queryByText("Edit reply")).not.toBeInTheDocument();
 	});
 
-	it("offers Delete for every reply and calls onreplydelete with its id once confirmed", async () => {
+	it("offers Delete for every reply and calls deleteReply with the repo path and id once confirmed", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		vi.mocked(ask).mockResolvedValue(true);
 		const withReply: Thread = {
 			...comment,
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
-		const onreplydelete = vi.fn();
-		renderCard({ thread: withReply, onreplydelete });
+		renderCard({ thread: withReply });
 
 		await fireEvent.click(screen.getByText("Delete reply"));
 		await flush();
 
 		expect(ask).toHaveBeenCalledTimes(1);
-		expect(onreplydelete).toHaveBeenCalledWith("r1");
+		expect(deleteReply).toHaveBeenCalledWith("/repo", "r1");
 	});
 
-	it("does not call onreplydelete when the reply-delete confirmation is cancelled", async () => {
+	it("does not call deleteReply when the reply-delete confirmation is cancelled", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
 		vi.mocked(ask).mockResolvedValue(false);
 		const withReply: Thread = {
 			...comment,
 			replies: [aReply({ id: "r1", text: "fixed", channel: "agent" })],
 		};
-		const onreplydelete = vi.fn();
-		renderCard({ thread: withReply, onreplydelete });
+		renderCard({ thread: withReply });
 
 		await fireEvent.click(screen.getByText("Delete reply"));
 		await flush();
 
 		expect(ask).toHaveBeenCalledTimes(1);
-		expect(onreplydelete).not.toHaveBeenCalled();
+		expect(deleteReply).not.toHaveBeenCalled();
 	});
 
 	// Once the owning review is published, the store refuses to delete a
@@ -372,12 +375,9 @@ describe("ThreadCard", () => {
 
 		await rerender({
 			thread: { ...comment, published: true },
+			repoPath: "/repo",
 			onedit: () => {},
 			ondelete: () => {},
-			onreplyadd: () => {},
-			onstatechange: () => {},
-			onreplyedit: () => {},
-			onreplydelete: () => {},
 		});
 
 		expect(screen.queryByText("Delete")).not.toBeInTheDocument();

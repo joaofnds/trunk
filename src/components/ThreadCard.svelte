@@ -5,20 +5,20 @@
 
 import { createDraft } from "../lib/draft.svelte.js";
 import { externalLinks } from "../lib/external-links.js";
+import {
+	addReply,
+	deleteReply,
+	editReply,
+	setThreadState,
+} from "../lib/review-comment-actions.js";
 import type { Thread, ThreadState } from "../lib/types.js";
 import ThreadReplies from "./ThreadReplies.svelte";
 
 interface Props {
 	thread: Thread;
+	repoPath: string;
 	onedit: (id: string, text: string) => void;
 	ondelete: (id: string) => void;
-	// Awaited before the composer/editor clears its draft, so a caller that
-	// reports its own refusal (review-comment-actions.ts) keeps the typed
-	// text on screen until the write settles.
-	onreplyadd: (id: string, text: string) => void | Promise<void>;
-	onstatechange: (id: string, next: ThreadState) => void;
-	onreplyedit: (id: string, text: string) => void | Promise<void>;
-	onreplydelete: (id: string) => void;
 	// When true (default) confirm before deleting (mirrors the panel); when false
 	// delete immediately (inline hosts).
 	confirmDelete?: boolean;
@@ -34,12 +34,9 @@ interface Props {
 
 let {
 	thread,
+	repoPath,
 	onedit,
 	ondelete,
-	onreplyadd,
-	onstatechange,
-	onreplyedit,
-	onreplydelete,
 	confirmDelete = true,
 	variant = "panel",
 	onjump,
@@ -101,7 +98,7 @@ function saveEdit() {
 async function submitReply() {
 	if (!replyDraft.valid) return;
 	const text = replyDraft.text;
-	await onreplyadd(thread.id, text);
+	await addReply(repoPath, thread.id, text);
 	replyDraft.close();
 }
 
@@ -148,7 +145,7 @@ async function requestDeleteReply(replyId: string) {
 		"Delete reply",
 	);
 	if (!confirmed) return;
-	onreplydelete(replyId);
+	deleteReply(repoPath, replyId);
 }
 </script>
 
@@ -180,7 +177,7 @@ async function requestDeleteReply(replyId: string) {
       <button
         type="button"
         class="card-action"
-        onclick={() => onstatechange(thread.id, action.next)}
+        onclick={() => setThreadState(repoPath, thread.id, action.next)}
       >{action.label}</button>
     {/each}
     {#if !draft.editing}
@@ -246,7 +243,7 @@ async function requestDeleteReply(replyId: string) {
   <ThreadReplies
     replies={thread.replies}
     published={thread.published}
-    {onreplyedit}
+    onreplyedit={(id, text) => editReply(repoPath, id, text)}
     onreplydelete={requestDeleteReply}
   />
 
