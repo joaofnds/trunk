@@ -273,41 +273,29 @@ describe("BranchRow keyboard reachability", () => {
 	});
 });
 
-// TRUNK-187: see RemoteGroup.test.ts. A branch row has no create button either, so it
-// stands one in to keep the eye in the shared column. The slot follows the eye in and
-// out of the flow: reserving it on an idle row would restore the gutter the eye gave up
-// above, and truncate the name against a slot holding nothing.
+// The eye anchors to the right edge of the row container. No phantom slot is needed.
 describe("BranchRow trailing controls", () => {
-	it("reserves the create button's width while the action is shown", () => {
+	it("renders the visibility toggle as the rightmost trailing control", () => {
 		render(BranchRow, {
 			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
 		});
 
-		expect(screen.getByTestId("branch-row-create-slot")).toHaveStyle({
-			display: "block",
-			minWidth: "var(--target-min)",
-		});
+		const btn = screen.getByTestId("branch-row-visibility-btn");
+		expect(btn).toBeInTheDocument();
+		expect(
+			screen.queryByTestId("branch-row-create-slot"),
+		).not.toBeInTheDocument();
 	});
 
-	it("leaves the flow with the eye while the row is idle", () => {
-		render(BranchRow, {
-			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
-		});
-
-		expect(screen.getByTestId("branch-row-create-slot")).toHaveStyle({
-			display: "none",
-		});
-	});
-
-	// HEAD's row is passed no ontogglevisibility, so it renders no eye. A slot gated on
-	// hover rather than on the eye reserved 24px there on hover, aligning nothing and
-	// truncating the name: the gutter 66e55e6f removed, on the one row that never had
-	// an eye to give it up.
-	it("renders no slot on a row that has no eye", async () => {
+	// HEAD's row is passed no ontogglevisibility, so it renders no eye.
+	it("renders no trailing control on a row that has no eye", async () => {
 		render(BranchRow, { props: { name: "main", isHead: true } });
 
 		await fireEvent.mouseEnter(screen.getByRole("button", { name: "main" }));
 
+		expect(
+			screen.queryByTestId("branch-row-visibility-btn"),
+		).not.toBeInTheDocument();
 		expect(
 			screen.queryByTestId("branch-row-create-slot"),
 		).not.toBeInTheDocument();

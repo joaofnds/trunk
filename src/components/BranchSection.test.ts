@@ -201,12 +201,19 @@ describe("BranchSection trailing controls", () => {
 		).toContain("padding: 0 var(--space-4) 0 var(--space-3)");
 	});
 
-	it("reserves the create button's slot when the section has none", () => {
-		render(BranchSection, { props });
-
-		expect(screen.getByTestId("branch-section-create-slot")).toHaveStyle({
-			minWidth: "var(--target-min)",
+	// The eye is anchored to the right edge. When a section provides a create button,
+	// the create button sits immediately to the left of the visibility toggle.
+	it("places the create button before the visibility toggle so the eye is rightmost", () => {
+		render(BranchSection, {
+			props: { ...props, showCreateButton: true, oncreate: vi.fn() },
 		});
+
+		const createBtn = screen.getByTestId("branch-section-create-btn");
+		const visibilityBtn = screen.getByTestId("branch-section-visibility-btn");
+
+		expect(createBtn.compareDocumentPosition(visibilityBtn)).toBe(
+			Node.DOCUMENT_POSITION_FOLLOWING,
+		);
 	});
 
 	// The Stashes section reuses this component, so a hardcoded label had its create
@@ -225,13 +232,11 @@ describe("BranchSection trailing controls", () => {
 		expect(screen.getByLabelText("Create new stash")).toBeInTheDocument();
 	});
 
-	it("fills that slot with the create button when the section has one", () => {
-		render(BranchSection, {
-			props: { ...props, showCreateButton: true, oncreate: vi.fn() },
-		});
+	it("renders no create button when the section has none", () => {
+		render(BranchSection, { props });
 
-		expect(screen.getByTestId("branch-section-create-slot")).toContainElement(
-			screen.getByTestId("branch-section-create-btn"),
-		);
+		expect(
+			screen.queryByTestId("branch-section-create-btn"),
+		).not.toBeInTheDocument();
 	});
 });

@@ -936,7 +936,6 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
           >
             <VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
           </button>
-          <span class="stash-create-slot"></span>
         </div>
         {#if stashEntryErrors[stash.oid]}
           <p class="stash-error stash-entry-error">{stashEntryErrors[stash.oid]}</p>
@@ -1015,25 +1014,6 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     display: inline-flex;
   }
 
-  /* Stands in for the create button the section header carries, so this row's eye
-     keeps the shared column. Two corrections come with it. The row is a gapped flex
-     container, unlike the other three, so without the negative margin the slot would
-     add the row's gap on top of its own width and push the eye 8px out of the column.
-     And it follows the eye out of the flow when the row is idle: reserving it there
-     would truncate the message against a gutter holding nothing, which is the bug
-     the eye's own `display: none` above was written to fix. */
-  .stash-create-slot {
-    flex-shrink: 0;
-    min-width: var(--target-min);
-    margin-left: calc(-1 * var(--space-2));
-    display: none;
-  }
-
-  .stash-row:hover .stash-create-slot,
-  .stash-row:focus-within .stash-create-slot,
-  .stash-visibility-btn[data-hidden="true"] + .stash-create-slot {
-    display: block;
-  }
 
   .stash-row {
     display: flex;

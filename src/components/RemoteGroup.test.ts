@@ -150,11 +150,9 @@ describe("RemoteGroup visibility toggle target size", () => {
 	});
 });
 
-// TRUNK-187: the eyes did not line up. A section header's eye is followed by the slot
-// its create button occupies, so a row without one reserves the same width or its eye
-// drifts right of the column.
+// The eye anchors to the right edge with --space-4 padding. No slot is needed.
 describe("RemoteGroup trailing controls", () => {
-	it("reserves the create button's slot so the eye keeps the column", () => {
+	it("renders the visibility toggle at the right edge without a slot", () => {
 		render(RemoteGroup, {
 			props: {
 				remoteName: "origin",
@@ -170,9 +168,12 @@ describe("RemoteGroup trailing controls", () => {
 			},
 		});
 
-		expect(screen.getByTestId("remote-group-create-slot")).toHaveStyle({
-			minWidth: "var(--target-min)",
-		});
+		expect(
+			screen.getByTestId("remote-group-visibility-btn"),
+		).toBeInTheDocument();
+		expect(
+			screen.queryByTestId("remote-group-create-slot"),
+		).not.toBeInTheDocument();
 	});
 
 	// This row was the only one in the sidebar with no pinned height: 21px of content

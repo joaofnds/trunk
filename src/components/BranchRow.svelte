@@ -48,8 +48,6 @@ let focused = $state(false);
  * Idle rows drop it out of the flow entirely, so the name gets the full width instead of
  * truncating against a reserved gutter for an icon that is not there. Following VS Code's
  * SCM view, which is the same problem in the same shape: a git ref list in a narrow pane.
- * The alignment slot below is gated on this for the same reason: it stands in for a
- * create button, and reserving it on an idle row would rebuild the gutter the eye gave up.
  *
  * Focus counts alongside hover, or the control would be unreachable by keyboard. A hidden
  * ref keeps it permanently: the eye is the only thing saying the ref is hidden, so it
@@ -121,15 +119,6 @@ let actionShown = $derived(hovered || focused || hidden);
       >
         <VisibilityIcon {hidden} />
       </button>
-      <!-- The eye shares one column with the section headers', which sit left of a
-           create button this row never has. The slot stands in for that button so the
-           column holds. It follows the eye in and out of the flow: idle, and on HEAD's
-           row where no eye renders at all, it would otherwise reserve the gutter the
-           eye gave up and truncate the name for nothing. -->
-      <span
-        data-testid="branch-row-create-slot"
-        style="flex-shrink: 0; min-width: var(--target-min); display: {actionShown ? 'block' : 'none'};"
-      ></span>
     {/if}
   </div>
 

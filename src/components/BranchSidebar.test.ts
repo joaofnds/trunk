@@ -825,10 +825,8 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
-	// TRUNK-187: the eyes did not line up. A section header's eye is followed by the slot
-	// its create button occupies, so a stash row reserves the same width or its eye drifts
-	// right of the column.
-	it("reserves the create button's slot on the stash row", async () => {
+	// The eye anchors to the right edge with var(--space-4) padding. No slot is needed.
+	it("renders the visibility toggle with target minimum and no slot", async () => {
 		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 			if (cmd === "list_refs") {
 				return Promise.resolve(
@@ -865,16 +863,15 @@ describe("BranchSidebar ref visibility", () => {
 		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
-		await screen.findByLabelText("Hide stash@{0}");
+		const btn = await screen.findByLabelText("Hide stash@{0}");
 
-		const slot = container.querySelector(".stash-create-slot") as HTMLElement;
-		expect(getComputedStyle(slot).minWidth).toBe("var(--target-min)");
+		expect(getComputedStyle(btn).minWidth).toBe("var(--target-min)");
+		expect(container.querySelector(".stash-create-slot")).toBeNull();
 	});
 
-	// The slot follows the eye out of the flow while the row is idle. Reserving it there
-	// would restore the gutter `.stash-visibility-btn`'s own `display: none` gave up, and
-	// truncate the message against a slot holding nothing.
-	it("gives the stash row's slot no width while the row is idle", async () => {
+	// Idle stash row drops the eye out of the flow rather than reserving a gutter,
+	// so the stash message gets the full width.
+	it("drops the stash visibility toggle when the row is idle", async () => {
 		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 			if (cmd === "list_refs") {
 				return Promise.resolve(
@@ -906,61 +903,14 @@ describe("BranchSidebar ref visibility", () => {
 			return Promise.resolve(undefined);
 		});
 
-		const { container } = render(BranchSidebar, {
+		render(BranchSidebar, {
 			props: { repoPath: "/test/repo" },
 		});
 
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
-		await screen.findByLabelText("Hide stash@{0}");
+		const btn = await screen.findByLabelText("Hide stash@{0}");
 
-		const slot = container.querySelector(".stash-create-slot") as HTMLElement;
-		expect(getComputedStyle(slot).display).toBe("none");
-	});
-
-	// The stash row is the only one of the four that is a gapped flex container, so the
-	// slot would take the row's gap on top of its own width and carry the eye 8px right
-	// of the column the other rows share. The negative margin cancels exactly one gap.
-	it("cancels the stash row's flex gap so the slot adds only its own width", async () => {
-		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
-			if (cmd === "list_refs") {
-				return Promise.resolve(
-					mockListRefs({
-						stashes: [
-							{
-								index: 0,
-								name: "WIP on main",
-								short_name: "stash@{0}",
-								oid: "abc123",
-								parent_oid: null,
-							},
-						],
-					}),
-				);
-			}
-			if (cmd === "prefs_get") {
-				return Promise.resolve(
-					prefsStore.get((args as { key: string })?.key) ?? null,
-				);
-			}
-			if (cmd === "prefs_set") {
-				prefsStore.set(
-					(args as { key: string }).key,
-					(args as { value: unknown }).value,
-				);
-				return Promise.resolve(undefined);
-			}
-			return Promise.resolve(undefined);
-		});
-
-		const { container } = render(BranchSidebar, {
-			props: { repoPath: "/test/repo" },
-		});
-
-		await fireEvent.click(await screen.findByText("Stashes (1)"));
-		await screen.findByLabelText("Hide stash@{0}");
-
-		const slot = container.querySelector(".stash-create-slot") as HTMLElement;
-		expect(getComputedStyle(slot).marginLeft).toBe("calc(-1 * var(--space-2))");
+		expect(getComputedStyle(btn).display).toBe("none");
 	});
 
 	// The stash row is the same height as every other row in the sidebar, which is what

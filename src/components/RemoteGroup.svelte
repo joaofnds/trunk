@@ -65,10 +65,7 @@ let allHidden = $derived(groupState === "all");
         <VisibilityIcon hidden={allHidden} />
       </button>
     {/if}
-    <span
-      data-testid="remote-group-create-slot"
-      style="flex-shrink: 0; min-width: var(--target-min);"
-    ></span>
+
   </div>
 
   <!-- Branch rows for this remote -->

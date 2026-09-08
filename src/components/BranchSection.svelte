@@ -12,14 +12,13 @@ interface Props {
 	expanded: boolean;
 	ontoggle: () => void;
 	showCreateButton?: boolean;
-	createLabel?: string;
 	oncreate?: () => void;
+	createLabel?: string;
 	/**
-	 * How much of this section is hidden from the graph, derived from the rows beneath it
-	 * so the icon can never contradict them.
+	 * How much of this section is hidden, derived from its rows so the icon can never
+	 * contradict them. Pass nothing when the section does not offer a toggle.
 	 */
 	groupState?: GroupState;
-	/** Omitted by a section that offers no visibility toggle. */
 	ontogglevisibility?: () => void;
 	children: Snippet;
 }
@@ -30,15 +29,13 @@ let {
 	expanded,
 	ontoggle,
 	showCreateButton = false,
-	createLabel = "Create new branch",
 	oncreate,
+	createLabel = "Create new branch",
 	groupState = "none",
 	ontogglevisibility,
 	children,
 }: Props = $props();
 
-// "some" reads as partly hidden and clicking hides the rest, so it shows the open eye like
-// "none": the icon says what one more click will do.
 let allHidden = $derived(groupState === "all");
 </script>
 
@@ -65,6 +62,16 @@ let allHidden = $derived(groupState === "all");
     <span style="color: var(--fg-2); font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; flex: 1;">
       {label} ({count})
     </span>
+    {#if showCreateButton}
+      <button
+        data-testid="branch-section-create-btn"
+        onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
+        style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
+        aria-label={createLabel}
+      >
+        <Plus size={12} />
+      </button>
+    {/if}
     {#if ontogglevisibility}
       <button
         data-testid="branch-section-visibility-btn"
@@ -76,21 +83,6 @@ let allHidden = $derived(groupState === "all");
         <VisibilityIcon hidden={allHidden} />
       </button>
     {/if}
-    <span
-      data-testid="branch-section-create-slot"
-      style="flex-shrink: 0; min-width: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
-    >
-      {#if showCreateButton}
-        <button
-          data-testid="branch-section-create-btn"
-          onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-          style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
-          aria-label={createLabel}
-        >
-          <Plus size={12} />
-        </button>
-      {/if}
-    </span>
   </div>
 
   <!-- Section content -->
