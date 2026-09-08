@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::error::TrunkError;
+use crate::git::graph_input::{GraphSnapshot, RefVisibility};
 
 /// The repositories the app currently has open, keyed by the path the frontend
 /// addresses them with.
@@ -356,10 +357,190 @@ impl RefVisibilityState {
     }
 }
 
+/// The owner of the read-visibility / walk-repository / write-cache triple every graph
+/// rebuild performs.
+///
+/// `CommitCache` and `RefVisibilityState` stay independently managed and independently
+/// reachable — `close_repo` forgets each on its own, and `set_ref_visibility` re-lays out
+/// an existing capture rather than rebuilding — this struct only bundles the handles a
+/// rebuild site needs so the triple has one call instead of three statements.
+///
+/// `rebuild`'s closure takes `&RefVisibility` by construction, so a call site cannot reach
+/// the cache without a visibility value in hand: the compiler, not a convention, is what
+/// stops a new site from silently dropping it.
+pub struct GraphRebuild<'a> {
+    cache: &'a CommitCache,
+    ref_visibility: &'a RefVisibilityState,
+}
+
+impl<'a> GraphRebuild<'a> {
+    #[must_use]
+    pub const fn new(cache: &'a CommitCache, ref_visibility: &'a RefVisibilityState) -> Self {
+        Self {
+            cache,
+            ref_visibility,
+        }
+    }
+
+    /// Look up the visibility set for `path`, run `walk` under it off the calling task, and
+    /// write the resulting snapshot into the cache under `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `walk` returns, and `spawn_error` when the blocking task cannot be
+    /// joined. The cache is left untouched on either error.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache's lock is poisoned.
+    pub async fn rebuild<F>(&self, path: String, walk: F) -> Result<GraphSnapshot, TrunkError>
+    where
+        F: FnOnce(&RefVisibility) -> Result<GraphSnapshot, TrunkError> + Send + 'static,
+    {
+        let visibility = self.ref_visibility.get(&path);
+
+        let snapshot = tauri::async_runtime::spawn_blocking(move || walk(&visibility))
+            .await
+            .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+
+        self.cache.0.lock().unwrap().insert(path, snapshot.clone());
+
+        Ok(snapshot)
+    }
+
+    /// Look up the visibility set for `path`, run `walk` under it off the calling task
+    /// against a fresh `GraphCache`, and merge only the entries it produced into the shared
+    /// cache. Merging rather than writing the whole map back is what keeps another repo's
+    /// concurrently-refreshed entry from being rolled back by this operation's own snapshot
+    /// of the cache, taken before it started.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `walk` returns, and `spawn_error` when the blocking task cannot be
+    /// joined. The cache is left untouched on either error.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache's lock is poisoned.
+    pub async fn rebuild_merging<F>(&self, path: String, walk: F) -> Result<(), TrunkError>
+    where
+        F: FnOnce(&RefVisibility, &mut GraphCache) -> Result<(), TrunkError> + Send + 'static,
+    {
+        let visibility = self.ref_visibility.get(&path);
+
+        let rebuilt = tauri::async_runtime::spawn_blocking(move || {
+            let mut rebuilt = GraphCache::default();
+            walk(&visibility, &mut rebuilt).map(|()| rebuilt)
+        })
+        .await
+        .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+
+        self.cache.0.lock().unwrap().absorb(rebuilt);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::OpenRepos;
+    use super::{CommitCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState};
+    use crate::error::TrunkError;
+    use crate::git::graph_input::{GraphSource, GraphSnapshot, RefVisibility};
     use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn a_rebuild_lays_out_under_the_visibility_set_for_the_path() {
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let ref_visibility = RefVisibilityState::default();
+        let mut hidden = RefVisibility::default();
+        hidden.hidden_refs.insert("refs/heads/topic".to_owned());
+        ref_visibility.set("/repo".to_owned(), hidden.clone());
+        let rebuild = GraphRebuild::new(&cache, &ref_visibility);
+
+        tauri::async_runtime::block_on(
+            rebuild.rebuild("/repo".to_owned(), move |visibility| {
+                Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))
+            }),
+        )
+        .unwrap();
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(cached.get("/repo").unwrap().visibility(), &hidden);
+    }
+
+    fn graph(tag: usize) -> GraphSnapshot {
+        let mut visibility = RefVisibility::default();
+        visibility.hidden_refs.insert(format!("refs/tags/{tag}"));
+
+        GraphSnapshot::new(GraphSource::default(), visibility)
+    }
+
+    #[test]
+    fn another_repos_graph_refreshed_mid_rebuild_is_not_rolled_back() {
+        let cache = Arc::new(CommitCache(Mutex::new(GraphCache::default())));
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo/b".to_owned(), graph(1));
+        let ref_visibility = RefVisibilityState::default();
+        let rebuild = GraphRebuild::new(&cache, &ref_visibility);
+        let concurrent_cache = Arc::clone(&cache);
+
+        tauri::async_runtime::block_on(rebuild.rebuild_merging(
+            "/repo/a".to_owned(),
+            move |_visibility, rebuilt| {
+                concurrent_cache
+                    .0
+                    .lock()
+                    .unwrap()
+                    .insert("/repo/b".to_owned(), graph(9));
+                rebuilt.insert("/repo/a".to_owned(), graph(1));
+                Ok(())
+            },
+        ))
+        .unwrap();
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(
+            cached.get("/repo/a").unwrap().visibility(),
+            graph(1).visibility()
+        );
+        assert_eq!(
+            cached.get("/repo/b").unwrap().visibility(),
+            graph(9).visibility(),
+            "/repo/b was reverted to the pre-rebuild snapshot"
+        );
+    }
+
+    #[test]
+    fn a_failed_rebuild_merge_leaves_the_cache_untouched() {
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo/b".to_owned(), graph(7));
+        let ref_visibility = RefVisibilityState::default();
+        let rebuild = GraphRebuild::new(&cache, &ref_visibility);
+
+        let err = tauri::async_runtime::block_on(rebuild.rebuild_merging(
+            "/repo/a".to_owned(),
+            |_visibility, rebuilt| {
+                rebuilt.insert("/repo/a".to_owned(), graph(1));
+                Err(TrunkError::new("boom", "no"))
+            },
+        ))
+        .unwrap_err();
+
+        assert_eq!(err.code, "boom");
+        let cached = cache.0.lock().unwrap();
+        assert!(!cached.holds("/repo/a"));
+        assert_eq!(
+            cached.get("/repo/b").unwrap().visibility(),
+            graph(7).visibility()
+        );
+    }
 
     #[test]
     fn an_unregistered_path_is_not_open() {
