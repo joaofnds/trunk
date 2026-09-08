@@ -57,7 +57,9 @@ trunk review watch [--repo <path>]
   state. This plain line is for human reading only: its ` — ` separator is not
   reserved, so a file path or comment whose first line contains it prints more
   fields than the format implies, and splitting on the separator can misread
-  the location. A newline in a path cannot forge a second index line, since
+  the location. The path is a tree entry name from the commits under review,
+  so its content is whoever wrote the commit's, the same provenance as the
+  excerpt below. A newline in a path cannot forge a second index line, since
   both the location and the summary pass through a sanitizer; only
   within-line field-splitting is affected. `--json` is the sole parseable
   form: it carries the anchor as a structured object (`file_path`,
