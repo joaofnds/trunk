@@ -3,6 +3,12 @@ import type { ComponentProps } from "svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
+import {
+	addReply,
+	deleteReply,
+	editReply,
+	setThreadState,
+} from "../lib/review-comment-actions.js";
 import type { Thread } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
@@ -15,12 +21,6 @@ vi.mock("../lib/review-comment-actions.js", () => ({
 	editReply: vi.fn(),
 	deleteReply: vi.fn(),
 }));
-import {
-	addReply,
-	deleteReply,
-	editReply,
-	setThreadState,
-} from "../lib/review-comment-actions.js";
 
 // The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
 // a plain `fireEvent.click` doesn't wait for that microtask to settle.
