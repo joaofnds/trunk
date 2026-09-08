@@ -57,7 +57,7 @@ fn add_thread_fires_reviews_changed() {
         app.state::<ReviewStoreState>(),
         app.handle().clone(),
     ))
-    .unwrap();
+    .expect("add_thread should write the thread");
 
     assert!(*fired.lock().unwrap(), "reviews-changed did not fire");
 }
