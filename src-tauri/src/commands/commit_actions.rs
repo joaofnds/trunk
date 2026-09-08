@@ -356,17 +356,16 @@ pub async fn reset_to_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        reset_to_commit_inner(&path_clone, &oid, &mode, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            reset_to_commit_inner(&path_clone, &oid, &mode, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -388,17 +387,16 @@ pub async fn checkout_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        checkout_commit_inner(&path_clone, &oid, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            checkout_commit_inner(&path_clone, &oid, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -424,24 +422,23 @@ pub async fn create_tag<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        create_tag_inner(
-            &path_clone,
-            &oid,
-            &tag_name,
-            &message,
-            &state_map,
-            &visibility,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            create_tag_inner(
+                &path_clone,
+                &oid,
+                &tag_name,
+                &message,
+                &state_map,
+                visibility,
+            )
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -463,17 +460,16 @@ pub async fn delete_tag<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        delete_tag_inner(&path_clone, &tag_name, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            delete_tag_inner(&path_clone, &tag_name, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -495,17 +491,16 @@ pub async fn cherry_pick<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        cherry_pick_inner(&path_clone, &oid, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            cherry_pick_inner(&path_clone, &oid, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -527,26 +522,23 @@ pub async fn revert_commit_begin<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<RevertBeginResult, String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        revert_commit_begin_inner(&path_clone, &oid, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
 
-    // begin mutated the repo (REVERT_HEAD set + staged) before the editor opens,
-    // so cache the rebuilt graph and emit repo-changed — a later cancel must
-    // still surface the in-progress banner (RESEARCH Pitfall 2/4).
-    cache
-        .0
-        .lock()
-        .unwrap()
-        .insert(path.clone(), result.graph.clone());
+    // begin mutated the repo (REVERT_HEAD set + staged) before the editor opens, so the
+    // rebuilt graph is cached and repo-changed emitted below — a later cancel must still
+    // surface the in-progress banner (RESEARCH Pitfall 2/4).
+    let (graph, message) = rebuild
+        .rebuild_carrying(path.clone(), move |visibility| {
+            let result = revert_commit_begin_inner(&path_clone, &oid, &state_map, visibility)?;
+            Ok((result.graph, result.message))
+        })
+        .await
+        .map_err(|e| e.to_json())?;
+
     let _ = app.emit("repo-changed", path);
-    Ok(result)
+    Ok(RevertBeginResult { graph, message })
 }
 
 /// # Errors
@@ -566,17 +558,16 @@ pub async fn cherry_pick_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        cherry_pick_continue_inner(&path_clone, &message, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            cherry_pick_continue_inner(&path_clone, &message, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -597,17 +588,16 @@ pub async fn cherry_pick_abort<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        cherry_pick_abort_inner(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            cherry_pick_abort_inner(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -629,17 +619,16 @@ pub async fn revert_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        revert_continue_inner(&path_clone, &message, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            revert_continue_inner(&path_clone, &message, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -660,17 +649,16 @@ pub async fn revert_abort<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        revert_abort_inner(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            revert_abort_inner(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -820,23 +808,20 @@ pub async fn undo_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<UndoResult, String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let (undo_result, graph_result) = tauri::async_runtime::spawn_blocking(move || {
-        let undo = undo_commit_inner(&path_clone, &state_map)?;
-        let graph = {
+    let (_graph, undo_result) = rebuild
+        .rebuild_carrying(path.clone(), move |visibility| {
+            let undo = undo_commit_inner(&path_clone, &state_map)?;
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::snapshot(&mut repo, &visibility)?
-        };
-        Ok::<(UndoResult, GraphSnapshot), TrunkError>((undo, graph))
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+            let graph = graph::snapshot(&mut repo, visibility)?;
+            Ok((graph, undo))
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(undo_result)
 }
@@ -863,27 +848,26 @@ pub async fn redo_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        redo_commit_inner(
-            &path_clone,
-            &subject,
-            body.as_deref(),
-            &expected_head_oid,
-            &expected_repo_path,
-            &state_map,
-        )?;
-        let path_buf = state_map.path_for(&path_clone)?;
-        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::snapshot(&mut repo, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            redo_commit_inner(
+                &path_clone,
+                &subject,
+                body.as_deref(),
+                &expected_head_oid,
+                &expected_repo_path,
+                &state_map,
+            )?;
+            let path_buf = state_map.path_for(&path_clone)?;
+            let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+            graph::snapshot(&mut repo, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }

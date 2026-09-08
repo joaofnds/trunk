@@ -397,15 +397,41 @@ impl<'a> GraphRebuild<'a> {
     where
         F: FnOnce(&RefVisibility) -> Result<GraphSnapshot, TrunkError> + Send + 'static,
     {
+        self.rebuild_carrying(path, |visibility| walk(visibility).map(|snapshot| (snapshot, ())))
+            .await
+            .map(|(snapshot, ())| snapshot)
+    }
+
+    /// `rebuild`, for a `walk` that carries extra data alongside the snapshot back to the
+    /// caller (an editor's opening message, say). `walk` returns the snapshot and the extra
+    /// value as a pair; only the snapshot half is written into the cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `walk` returns, and `spawn_error` when the blocking task cannot be
+    /// joined. The cache is left untouched on either error.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the cache's lock is poisoned.
+    pub async fn rebuild_carrying<F, T>(
+        &self,
+        path: String,
+        walk: F,
+    ) -> Result<(GraphSnapshot, T), TrunkError>
+    where
+        F: FnOnce(&RefVisibility) -> Result<(GraphSnapshot, T), TrunkError> + Send + 'static,
+        T: Send + 'static,
+    {
         let visibility = self.ref_visibility.get(&path);
 
-        let snapshot = tauri::async_runtime::spawn_blocking(move || walk(&visibility))
+        let (snapshot, extra) = tauri::async_runtime::spawn_blocking(move || walk(&visibility))
             .await
             .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
 
         self.cache.0.lock().unwrap().insert(path, snapshot.clone());
 
-        Ok(snapshot)
+        Ok((snapshot, extra))
     }
 
     /// Look up the visibility set for `path`, run `walk` under it off the calling task
