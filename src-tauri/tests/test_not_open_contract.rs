@@ -52,29 +52,29 @@ macro_rules! not_open_contract {
 
 not_open_contract! {
     merge_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| merge_continue_inner(path, None, state, &RefVisibility::default());
+        |path, state| merge_continue_inner(path, None, state);
     merge_abort_reports_not_open_for_an_unregistered_repo =>
-        |path, state| merge_abort_inner(path, state, &RefVisibility::default());
+        merge_abort_inner;
     merge_branch_begin_reports_not_open_for_an_unregistered_repo =>
-        |path, state| merge_branch_begin_inner(path, "main", state, &RefVisibility::default());
+        |path, state| merge_branch_begin_inner(path, "main", state);
     rebase_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rebase_continue_inner(path, None, state, &RefVisibility::default());
+        |path, state| rebase_continue_inner(path, None, state);
     rebase_skip_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rebase_skip_inner(path, state, &RefVisibility::default());
+        rebase_skip_inner;
     rebase_abort_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rebase_abort_inner(path, state, &RefVisibility::default());
+        rebase_abort_inner;
     rebase_branch_reports_not_open_for_an_unregistered_repo =>
-        |path, state| rebase_branch_inner(path, "main", state, &RefVisibility::default());
+        |path, state| rebase_branch_inner(path, "main", state);
     cherry_pick_reports_not_open_for_an_unregistered_repo =>
-        |path, state| cherry_pick_inner(path, "HEAD", state, &RefVisibility::default());
+        |path, state| cherry_pick_inner(path, "HEAD", state);
     revert_commit_begin_reports_not_open_for_an_unregistered_repo =>
-        |path, state| revert_commit_begin_inner(path, "HEAD", state, &RefVisibility::default());
+        |path, state| revert_commit_begin_inner(path, "HEAD", state);
     revert_continue_reports_not_open_for_an_unregistered_repo =>
-        |path, state| revert_continue_inner(path, "a message", state, &RefVisibility::default());
+        |path, state| revert_continue_inner(path, "a message", state);
     revert_abort_reports_not_open_for_an_unregistered_repo =>
-        |path, state| revert_abort_inner(path, state, &RefVisibility::default());
+        revert_abort_inner;
     reset_to_commit_reports_not_open_for_an_unregistered_repo =>
-        |path, state| reset_to_commit_inner(path, "HEAD", "hard", state, &RefVisibility::default());
+        |path, state| reset_to_commit_inner(path, "HEAD", "hard", state);
     fast_forward_to_reports_not_open_for_an_unregistered_repo =>
         |path, state| fast_forward_to_inner(path, "HEAD", state, &mut GraphCache::default(), &RefVisibility::default());
     get_fork_point_reports_not_open_for_an_unregistered_repo =>
@@ -88,15 +88,15 @@ not_open_contract! {
     create_branch_reports_not_open_for_an_unregistered_repo =>
         |path, state| create_branch_inner(path, "feature", None, state, &mut GraphCache::default(), &RefVisibility::default());
     checkout_commit_reports_not_open_for_an_unregistered_repo =>
-        |path, state| checkout_commit_inner(path, "HEAD", state, &RefVisibility::default());
+        |path, state| checkout_commit_inner(path, "HEAD", state);
     create_tag_reports_not_open_for_an_unregistered_repo =>
-        |path, state| create_tag_inner(path, "HEAD", "v1", "a message", state, &RefVisibility::default());
+        |path, state| create_tag_inner(path, "HEAD", "v1", "a message", state);
     delete_tag_reports_not_open_for_an_unregistered_repo =>
-        |path, state| delete_tag_inner(path, "v1", state, &RefVisibility::default());
+        |path, state| delete_tag_inner(path, "v1", state);
     undo_commit_reports_not_open_for_an_unregistered_repo =>
         undo_commit_inner;
     start_interactive_rebase_reports_not_open_for_an_unregistered_repo =>
-        |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state, &RefVisibility::default());
+        |path, state| start_interactive_rebase_blocking(path, Some("HEAD"), &[], Path::new("/tmp"), state);
 }
 
 #[test]

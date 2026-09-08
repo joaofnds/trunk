@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::{GraphSnapshot, GraphSource};
 use crate::git::{
     graph,
     types::{OperationInfo, OperationType},
@@ -25,6 +25,29 @@ pub enum MergeBeginResult {
         graph: GraphSnapshot,
         message: String,
     },
+}
+
+/// `MergeBeginResult`, minus the `GraphSnapshot` each variant carries.
+///
+/// `merge_branch_begin_inner` returns this alongside a bare `GraphSource`, so it has no way
+/// to hand back a `GraphSnapshot` built under a visibility of its own choosing — same
+/// reasoning as `GraphRebuild::rebuild`'s closure shape (state.rs). `merge_branch_begin` pairs
+/// it back with the `GraphSnapshot` `rebuild_carrying` produced from the looked-up visibility.
+#[derive(Debug)]
+pub enum MergeBeginOutcome {
+    FastForwarded,
+    Conflicts,
+    Ready { message: String },
+}
+
+impl MergeBeginOutcome {
+    fn into_result(self, graph: GraphSnapshot) -> MergeBeginResult {
+        match self {
+            Self::FastForwarded => MergeBeginResult::FastForwarded { graph },
+            Self::Conflicts => MergeBeginResult::Conflicts { graph },
+            Self::Ready { message } => MergeBeginResult::Ready { graph, message },
+        }
+    }
 }
 
 fn extract_merge_source(merge_msg: Option<&str>) -> Option<String> {
@@ -170,8 +193,7 @@ pub fn merge_continue_inner(
     path: &str,
     message: Option<&str>,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // The editor flow always supplies a message (frontend aborts on null and
     // never invokes). --cleanup=strip drops git's `# Conflicts:` comment block
@@ -190,7 +212,7 @@ pub fn merge_continue_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Abandon an in-progress merge and restore the previous tree.
@@ -199,11 +221,7 @@ pub fn merge_continue_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `merge_error` carrying git's
 /// own message when `git` will not run or the abort fails.
-pub fn merge_abort_inner(
-    path: &str,
-    state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+pub fn merge_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let output = std::process::Command::new("git")
         .args(["merge", "--abort"])
@@ -216,7 +234,7 @@ pub fn merge_abort_inner(
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// `git rebase <step>` with the commit-message editor pinned to a no-op.
@@ -250,8 +268,7 @@ pub fn rebase_continue_inner(
     path: &str,
     message: Option<&str>,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // Write edited message to .git/rebase-merge/message before continuing
@@ -285,7 +302,7 @@ pub fn rebase_continue_inner(
         }
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Skip the commit a rebase is stuck on and carry on.
@@ -294,11 +311,7 @@ pub fn rebase_continue_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
 /// own message when `git` will not run or the skip fails.
-pub fn rebase_skip_inner(
-    path: &str,
-    state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+pub fn rebase_skip_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let editor = crate::git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--skip")
@@ -310,7 +323,7 @@ pub fn rebase_skip_inner(
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Abandon an in-progress rebase and restore the original branch.
@@ -319,11 +332,7 @@ pub fn rebase_skip_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `rebase_error` carrying git's
 /// own message when `git` will not run or the abort fails.
-pub fn rebase_abort_inner(
-    path: &str,
-    state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+pub fn rebase_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let output = rebase_command(path_buf, "--abort")
         .output()
@@ -333,7 +342,7 @@ pub fn rebase_abort_inner(
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 // --- Start merge/rebase ---
@@ -364,8 +373,7 @@ pub fn merge_branch_begin_inner(
     path: &str,
     branch: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<MergeBeginResult, TrunkError> {
+) -> Result<(GraphSource, MergeBeginOutcome), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // 1. Probe fast-forward (RESEARCH OQ-1). `--ff-only` succeeds silently on an
@@ -379,8 +387,8 @@ pub fn merge_branch_begin_inner(
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
     if probe.status.success() {
         let mut repo = git2::Repository::open(path_buf)?;
-        let graph = graph::snapshot(&mut repo, visibility)?;
-        return Ok(MergeBeginResult::FastForwarded { graph });
+        let source = graph::capture(&mut repo)?;
+        return Ok((source, MergeBeginOutcome::FastForwarded));
     }
 
     // 2. Non-ff: branches are now provably divergent (the ff probe left the tree
@@ -403,8 +411,8 @@ pub fn merge_branch_begin_inner(
             // Conflicts: rebuild graph so the merge-continue UI picks up the
             // state. NOT an error, NOT an editor — the message isn't ready yet.
             let mut repo = git2::Repository::open(path_buf)?;
-            let graph = graph::snapshot(&mut repo, visibility)?;
-            return Ok(MergeBeginResult::Conflicts { graph });
+            let source = graph::capture(&mut repo)?;
+            return Ok((source, MergeBeginOutcome::Conflicts));
         }
         return Err(TrunkError::new("merge_error", stderr.to_string()));
     }
@@ -413,8 +421,8 @@ pub fn merge_branch_begin_inner(
     let mut repo = git2::Repository::open(path_buf)?;
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG"))
         .map_err(|e| TrunkError::new("merge_error", e.to_string()))?;
-    let graph = graph::snapshot(&mut repo, visibility)?;
-    Ok(MergeBeginResult::Ready { graph, message })
+    let source = graph::capture(&mut repo)?;
+    Ok((source, MergeBeginOutcome::Ready { message }))
 }
 
 /// Rebase the current branch onto another.
@@ -427,8 +435,7 @@ pub fn rebase_branch_inner(
     path: &str,
     onto_branch: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let output = std::process::Command::new("git")
         .args(["rebase", "--", onto_branch])
@@ -440,12 +447,12 @@ pub fn rebase_branch_inner(
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.to_lowercase().contains("conflict") {
             let mut repo = git2::Repository::open(path_buf)?;
-            return graph::snapshot(&mut repo, visibility);
+            return graph::capture(&mut repo);
         }
         return Err(TrunkError::new("rebase_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 // --- Tauri command wrappers ---
@@ -520,8 +527,8 @@ pub async fn merge_continue<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            merge_continue_inner(&path_clone, message.as_deref(), &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            merge_continue_inner(&path_clone, message.as_deref(), &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -549,8 +556,8 @@ pub async fn merge_abort<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            merge_abort_inner(&path_clone, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            merge_abort_inner(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -579,8 +586,8 @@ pub async fn rebase_continue<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            rebase_continue_inner(&path_clone, message.as_deref(), &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            rebase_continue_inner(&path_clone, message.as_deref(), &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -608,8 +615,8 @@ pub async fn rebase_skip<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            rebase_skip_inner(&path_clone, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            rebase_skip_inner(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -637,8 +644,8 @@ pub async fn rebase_abort<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            rebase_abort_inner(&path_clone, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            rebase_abort_inner(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -690,20 +697,14 @@ pub async fn merge_branch_begin<R: Runtime>(
     // merge, or conflict markers), so cache the rebuilt graph and emit
     // repo-changed on EVERY outcome — a later cancel must still surface the
     // in-progress UI (RESEARCH finding 7 / Pitfall 4).
-    let (_graph, result) = rebuild
-        .rebuild_carrying(path.clone(), move |visibility| {
-            let result = merge_branch_begin_inner(&path_clone, &branch, &state_map, visibility)?;
-            let graph = match &result {
-                MergeBeginResult::FastForwarded { graph }
-                | MergeBeginResult::Conflicts { graph }
-                | MergeBeginResult::Ready { graph, .. } => graph.clone(),
-            };
-            Ok((graph, result))
+    let (graph, outcome) = rebuild
+        .rebuild_carrying(path.clone(), move || {
+            merge_branch_begin_inner(&path_clone, &branch, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
-    Ok(result)
+    Ok(outcome.into_result(graph))
 }
 
 /// # Errors
@@ -727,8 +728,8 @@ pub async fn rebase_branch<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            rebase_branch_inner(&path_clone, &onto_branch, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            rebase_branch_inner(&path_clone, &onto_branch, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -739,7 +740,6 @@ pub async fn rebase_branch<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::graph_input::RefVisibility;
     use git2::{Repository, Signature};
     use std::path::PathBuf;
     use std::process::Command;
@@ -878,21 +878,21 @@ mod tests {
         (dir, repo)
     }
 
-    fn kind_of(result: &MergeBeginResult) -> String {
-        serde_json::to_value(result).unwrap()["kind"]
-            .as_str()
-            .unwrap()
-            .to_string()
+    fn kind_of(outcome: &MergeBeginOutcome) -> &'static str {
+        match outcome {
+            MergeBeginOutcome::FastForwarded => "fast_forwarded",
+            MergeBeginOutcome::Conflicts => "conflicts",
+            MergeBeginOutcome::Ready { .. } => "ready",
+        }
     }
 
     #[test]
     fn merge_branch_begin_fast_forwards_without_editor() {
         let (dir, _repo) = ff_repo();
         let map = state_map_for(&dir);
-        let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
-                .unwrap();
-        assert_eq!(kind_of(&result), "fast_forwarded");
+        let (_source, outcome) =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        assert_eq!(kind_of(&outcome), "fast_forwarded");
         assert!(
             !merge_head_path(&dir).exists(),
             "fast-forward must not leave MERGE_HEAD"
@@ -903,12 +903,11 @@ mod tests {
     fn merge_branch_begin_non_ff_clean_returns_ready_with_verbatim_message() {
         let (dir, _repo) = clean_divergent_repo();
         let map = state_map_for(&dir);
-        let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
-                .unwrap();
-        assert_eq!(kind_of(&result), "ready");
-        let message = match result {
-            MergeBeginResult::Ready { message, .. } => message,
+        let (_source, outcome) =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        assert_eq!(kind_of(&outcome), "ready");
+        let message = match outcome {
+            MergeBeginOutcome::Ready { message } => message,
             other => panic!("expected Ready, got {:?}", kind_of(&other)),
         };
         assert_eq!(
@@ -934,11 +933,10 @@ mod tests {
         set_branch(&repo, "devel", head_oid);
         repo.set_head("refs/heads/devel").unwrap();
         let map = state_map_for(&dir);
-        let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
-                .unwrap();
-        let message = match result {
-            MergeBeginResult::Ready { message, .. } => message,
+        let (_source, outcome) =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        let message = match outcome {
+            MergeBeginOutcome::Ready { message } => message,
             other => panic!("expected Ready, got {:?}", kind_of(&other)),
         };
         assert!(
@@ -951,10 +949,9 @@ mod tests {
     fn merge_branch_begin_conflict_returns_conflicts_not_err() {
         let (dir, _repo) = conflict_divergent_repo();
         let map = state_map_for(&dir);
-        let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
-                .unwrap();
-        assert_eq!(kind_of(&result), "conflicts");
+        let (_source, outcome) =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        assert_eq!(kind_of(&outcome), "conflicts");
         assert!(
             merge_head_path(&dir).exists(),
             "conflicted merge leaves MERGE_HEAD for the continue UI"
@@ -990,10 +987,9 @@ mod tests {
         let (dir, repo) = conflict_divergent_repo();
         let map = state_map_for(&dir);
         // Begin the conflicted merge so MERGE_HEAD + `# Conflicts:` MERGE_MSG exist.
-        let result =
-            merge_branch_begin_inner(&path_str(&dir), "feature", &map, &RefVisibility::default())
-                .unwrap();
-        assert_eq!(kind_of(&result), "conflicts");
+        let (_source, outcome) =
+            merge_branch_begin_inner(&path_str(&dir), "feature", &map).unwrap();
+        assert_eq!(kind_of(&outcome), "conflicts");
         // Resolve the conflict by staging a fixed version of the file.
         let blob = repo.blob(b"resolved\n").unwrap();
         let mut index = repo.index().unwrap();
@@ -1021,13 +1017,7 @@ mod tests {
             raw_msg.contains("# Conflicts:"),
             "precondition: {raw_msg:?}"
         );
-        merge_continue_inner(
-            &path_str(&dir),
-            Some(&raw_msg),
-            &map,
-            &RefVisibility::default(),
-        )
-        .unwrap();
+        merge_continue_inner(&path_str(&dir), Some(&raw_msg), &map).unwrap();
 
         // HEAD body must NOT contain any `#`-leading line (--cleanup=strip).
         let head_msg = repo

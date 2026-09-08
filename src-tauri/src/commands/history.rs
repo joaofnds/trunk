@@ -89,10 +89,10 @@ pub async fn refresh_commit_graph(
     let path_clone = path.clone();
 
     let graph_result = rebuild
-        .rebuild(path, move |visibility| {
+        .rebuild(path, move || {
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::snapshot(&mut repo, visibility)
+            graph::capture(&mut repo)
         })
         .await
         .map_err(|e| e.to_json())?;

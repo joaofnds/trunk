@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::error::TrunkError;
-use crate::git::graph_input::{GraphSnapshot, RefVisibility};
+use crate::git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
 
 /// The repositories the app currently has open, keyed by the path the frontend
 /// addresses them with.
@@ -454,9 +454,13 @@ impl RefVisibilityState {
 /// an existing capture rather than rebuilding — this struct only bundles the handles a
 /// rebuild site needs so the triple has one call instead of three statements.
 ///
-/// `rebuild`'s closure takes `&RefVisibility` by construction, so a call site cannot reach
-/// the cache without a visibility value in hand: the compiler, not a convention, is what
-/// stops a new site from silently dropping it.
+/// `rebuild`'s closure returns a `GraphSource` — the capture, not a laid-out snapshot — so
+/// it has no way to hand back a `GraphSnapshot` built under a visibility of its own choosing.
+/// `rebuild` itself is the only place that turns a capture into a `GraphSnapshot`, always
+/// under the value it looked up: the compiler, not a convention, is what stops a new site
+/// from silently dropping or substituting the visibility (TRUNK-125, tightened after a
+/// review-code probe found the prior `FnOnce(&RefVisibility) -> GraphSnapshot` shape let a
+/// closure receive the visibility and build the snapshot from a different one anyway).
 pub struct GraphRebuild<'a> {
     cache: &'a CommitCache,
     ref_visibility: &'a RefVisibilityState,
@@ -471,8 +475,14 @@ impl<'a> GraphRebuild<'a> {
         }
     }
 
-    /// Look up the visibility set for `path`, run `walk` under it off the calling task, and
-    /// write the resulting snapshot into the cache under `path`.
+    /// Look up the visibility set for `path`, run `walk` off the calling task to capture the
+    /// repository, lay the capture out under the visibility just looked up, and write the
+    /// resulting snapshot into the cache under `path`.
+    ///
+    /// `walk` returns a `GraphSource`, not a `GraphSnapshot`: it has no way to choose which
+    /// visibility the cached snapshot is laid out under, because it never holds anything that
+    /// can build one. Use `graph::capture` to produce it, the same repository read
+    /// `graph::snapshot` does internally.
     ///
     /// # Errors
     ///
@@ -484,18 +494,17 @@ impl<'a> GraphRebuild<'a> {
     /// Panics when the cache's lock is poisoned.
     pub async fn rebuild<F>(&self, path: String, walk: F) -> Result<GraphSnapshot, TrunkError>
     where
-        F: FnOnce(&RefVisibility) -> Result<GraphSnapshot, TrunkError> + Send + 'static,
+        F: FnOnce() -> Result<GraphSource, TrunkError> + Send + 'static,
     {
-        self.rebuild_carrying(path, |visibility| {
-            walk(visibility).map(|snapshot| (snapshot, ()))
-        })
-        .await
-        .map(|(snapshot, ())| snapshot)
+        self.rebuild_carrying(path, || walk().map(|source| (source, ())))
+            .await
+            .map(|(snapshot, ())| snapshot)
     }
 
     /// `rebuild`, for a `walk` that carries extra data alongside the snapshot back to the
-    /// caller (an editor's opening message, say). `walk` returns the snapshot and the extra
-    /// value as a pair; only the snapshot half is written into the cache.
+    /// caller (an editor's opening message, say). `walk` returns the capture and the extra
+    /// value as a pair; the capture is laid out under the looked-up visibility and only that
+    /// snapshot half is written into the cache.
     ///
     /// # Errors
     ///
@@ -511,14 +520,15 @@ impl<'a> GraphRebuild<'a> {
         walk: F,
     ) -> Result<(GraphSnapshot, T), TrunkError>
     where
-        F: FnOnce(&RefVisibility) -> Result<(GraphSnapshot, T), TrunkError> + Send + 'static,
+        F: FnOnce() -> Result<(GraphSource, T), TrunkError> + Send + 'static,
         T: Send + 'static,
     {
         let visibility = self.ref_visibility.get(&path);
 
-        let (snapshot, extra) = tauri::async_runtime::spawn_blocking(move || walk(&visibility))
+        let (source, extra) = tauri::async_runtime::spawn_blocking(walk)
             .await
             .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+        let snapshot = GraphSnapshot::new(source, visibility);
 
         self.cache.0.lock().unwrap().insert(path, snapshot.clone());
 
@@ -561,9 +571,71 @@ impl<'a> GraphRebuild<'a> {
 mod tests {
     use super::{CommitCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState};
     use crate::error::TrunkError;
-    use crate::git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
+    use crate::git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
+    use crate::git::placement::PlacementInput;
+    use crate::git::types::{RefLabel, RefType};
+    use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
+
+    fn oid(n: u8) -> git2::Oid {
+        git2::Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")
+    }
+
+    fn facts(summary: &str) -> CommitFacts {
+        CommitFacts {
+            summary: summary.to_owned(),
+            body: None,
+            author_name: "T".to_owned(),
+            author_email: "t@t.com".to_owned(),
+            author_timestamp: 1000,
+        }
+    }
+
+    /// Two unrelated roots: `main`'s tip, always visible, and a second commit only
+    /// `refs/heads/topic` reaches. Hiding `topic` leaves that second commit unreachable
+    /// while `main`'s stays, so a rebuild that actually applies visibility (not just
+    /// stores the value) drops exactly the one commit.
+    fn two_root_source_with_topic_tip() -> GraphSource {
+        let (main_tip, topic_tip) = (oid(1), oid(2));
+        GraphSource {
+            placement: PlacementInput {
+                oids: vec![main_tip, topic_tip],
+                parents: HashMap::from([(main_tip, vec![]), (topic_tip, vec![])]),
+                stashes: HashSet::new(),
+                head_tip: Some(main_tip),
+                tracked_upstream: None,
+                worktree_dirty: false,
+            },
+            commits: HashMap::from([
+                (main_tip, facts("Main tip")),
+                (topic_tip, facts("Topic tip")),
+            ]),
+            refs: HashMap::from([
+                (
+                    main_tip,
+                    vec![RefLabel {
+                        name: "refs/heads/main".to_owned(),
+                        short_name: "main".to_owned(),
+                        ref_type: RefType::LocalBranch,
+                        is_head: true,
+                        color_index: 0,
+                    }],
+                ),
+                (
+                    topic_tip,
+                    vec![RefLabel {
+                        name: "refs/heads/topic".to_owned(),
+                        short_name: "topic".to_owned(),
+                        ref_type: RefType::LocalBranch,
+                        is_head: false,
+                        color_index: 1,
+                    }],
+                ),
+            ]),
+            stash_order: vec![],
+        }
+    }
 
     #[test]
     fn a_rebuild_lays_out_under_the_visibility_set_for_the_path() {
@@ -574,16 +646,22 @@ mod tests {
         ref_visibility.set("/repo".to_owned(), hidden.clone());
         let rebuild = GraphRebuild::new(&cache, &ref_visibility);
 
-        tauri::async_runtime::block_on(rebuild.rebuild("/repo".to_owned(), move |visibility| {
-            Ok(GraphSnapshot::new(
-                GraphSource::default(),
-                visibility.clone(),
-            ))
-        }))
+        tauri::async_runtime::block_on(
+            rebuild.rebuild("/repo".to_owned(), || Ok(two_root_source_with_topic_tip())),
+        )
         .unwrap();
 
-        let cached = cache.0.lock().unwrap();
-        assert_eq!(cached.get("/repo").unwrap().visibility(), &hidden);
+        let snapshot = cache.0.lock().unwrap().get("/repo").unwrap().clone();
+        assert_eq!(snapshot.visibility(), &hidden);
+        // Not just the stored value: the hidden ref's tip must actually be excluded from
+        // the laid-out graph, or a broken `apply_visibility` would pass this test too
+        // (review-code finding, TRUNK-125).
+        assert_eq!(
+            snapshot.layout.commits.len(),
+            1,
+            "hiding topic's only ref must drop its unreachable commit from the layout"
+        );
+        assert_eq!(snapshot.layout.commits[0].oid, oid(1).to_string());
     }
 
     /// An empty graph tagged by the ref it hides, so a test can tell two snapshots apart

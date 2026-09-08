@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::{GraphSnapshot, GraphSource};
 use crate::git::{graph, types::UndoResult};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
@@ -28,8 +28,7 @@ pub fn checkout_commit_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
@@ -47,7 +46,7 @@ pub fn checkout_commit_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo2, visibility)
+    graph::capture(&mut repo2)
 }
 
 /// Create an annotated tag on a commit.
@@ -62,8 +61,7 @@ pub fn create_tag_inner(
     tag_name: &str,
     message: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let obj = repo.revparse_single(oid)?;
@@ -78,7 +76,7 @@ pub fn create_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo2, visibility)
+    graph::capture(&mut repo2)
 }
 
 /// Delete a tag.
@@ -91,8 +89,7 @@ pub fn delete_tag_inner(
     path: &str,
     tag_name: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
     let tag_ref_name = format!("refs/tags/{tag_name}");
@@ -102,7 +99,7 @@ pub fn delete_tag_inner(
     drop(repo);
 
     let mut repo2 = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo2, visibility)
+    graph::capture(&mut repo2)
 }
 
 /// Cherry-pick a commit onto HEAD.
@@ -116,8 +113,7 @@ pub fn cherry_pick_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     let output = std::process::Command::new("git")
@@ -138,7 +134,7 @@ pub fn cherry_pick_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Conclude a conflicted cherry-pick by committing the resolved tree.
@@ -151,8 +147,7 @@ pub fn cherry_pick_continue_inner(
     path: &str,
     message: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // Mirrors revert_continue: --cleanup=strip drops git's `# Conflicts:` block,
     // and `git commit -m` concludes the pick, clearing CHERRY_PICK_HEAD.
@@ -167,7 +162,7 @@ pub fn cherry_pick_continue_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Abandon an in-progress cherry-pick and restore the previous tree.
@@ -179,8 +174,7 @@ pub fn cherry_pick_continue_inner(
 pub fn cherry_pick_abort_inner(
     path: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // merge_abort cannot stand in here: `git merge --abort` needs MERGE_HEAD,
     // which a cherry-pick never sets.
@@ -195,7 +189,7 @@ pub fn cherry_pick_abort_inner(
         return Err(TrunkError::new("cherry_pick_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Stage a revert without committing, so the message can be edited first.
@@ -209,8 +203,7 @@ pub fn revert_commit_begin_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<RevertBeginResult, TrunkError> {
+) -> Result<(GraphSource, Option<String>), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // Stage the revert without committing so the editor can edit the message.
@@ -237,8 +230,8 @@ pub fn revert_commit_begin_inner(
     // Verbatim default — `# Conflicts:` lines (conflicted revert) are stripped at
     // commit time via --cleanup=strip, never here.
     let message = std::fs::read_to_string(repo.path().join("MERGE_MSG")).ok();
-    let graph = graph::snapshot(&mut repo, visibility)?;
-    Ok(RevertBeginResult { graph, message })
+    let source = graph::capture(&mut repo)?;
+    Ok((source, message))
 }
 
 /// Conclude a staged revert by committing it.
@@ -251,8 +244,7 @@ pub fn revert_continue_inner(
     path: &str,
     message: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // --cleanup=strip drops git's `# Conflicts:` comment block so conflicted
     // revert bodies stay clean (MSG-03 fidelity). git commit -m clears REVERT_HEAD.
@@ -267,7 +259,7 @@ pub fn revert_continue_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Abandon an in-progress revert and restore a clean tree.
@@ -276,11 +268,7 @@ pub fn revert_continue_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, and `revert_error` carrying git's
 /// own message when `git` will not run or the abort fails.
-pub fn revert_abort_inner(
-    path: &str,
-    state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+pub fn revert_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     // The MSG-06 recovery path for revert: clears REVERT_HEAD + restores a clean
     // tree. Without it a cancelled revert traps the user (RESEARCH finding 4).
@@ -295,7 +283,7 @@ pub fn revert_abort_inner(
         return Err(TrunkError::new("revert_error", stderr.to_string()));
     }
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Reset HEAD to a commit in soft, mixed or hard mode.
@@ -310,8 +298,7 @@ pub fn reset_to_commit_inner(
     oid: &str,
     mode: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     let valid_modes = ["soft", "mixed", "hard"];
@@ -335,7 +322,7 @@ pub fn reset_to_commit_inner(
     }
 
     let mut repo = git2::Repository::open(path_buf)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// # Errors
@@ -360,8 +347,8 @@ pub async fn reset_to_commit<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            reset_to_commit_inner(&path_clone, &oid, &mode, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            reset_to_commit_inner(&path_clone, &oid, &mode, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -391,8 +378,8 @@ pub async fn checkout_commit<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            checkout_commit_inner(&path_clone, &oid, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            checkout_commit_inner(&path_clone, &oid, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -426,15 +413,8 @@ pub async fn create_tag<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            create_tag_inner(
-                &path_clone,
-                &oid,
-                &tag_name,
-                &message,
-                &state_map,
-                visibility,
-            )
+        .rebuild(path.clone(), move || {
+            create_tag_inner(&path_clone, &oid, &tag_name, &message, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -464,8 +444,8 @@ pub async fn delete_tag<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            delete_tag_inner(&path_clone, &tag_name, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            delete_tag_inner(&path_clone, &tag_name, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -495,8 +475,8 @@ pub async fn cherry_pick<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            cherry_pick_inner(&path_clone, &oid, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            cherry_pick_inner(&path_clone, &oid, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -530,9 +510,8 @@ pub async fn revert_commit_begin<R: Runtime>(
     // rebuilt graph is cached and repo-changed emitted below — a later cancel must still
     // surface the in-progress banner (RESEARCH Pitfall 2/4).
     let (graph, message) = rebuild
-        .rebuild_carrying(path.clone(), move |visibility| {
-            let result = revert_commit_begin_inner(&path_clone, &oid, &state_map, visibility)?;
-            Ok((result.graph, result.message))
+        .rebuild_carrying(path.clone(), move || {
+            revert_commit_begin_inner(&path_clone, &oid, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -562,8 +541,8 @@ pub async fn cherry_pick_continue<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            cherry_pick_continue_inner(&path_clone, &message, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            cherry_pick_continue_inner(&path_clone, &message, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -592,8 +571,8 @@ pub async fn cherry_pick_abort<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            cherry_pick_abort_inner(&path_clone, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            cherry_pick_abort_inner(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -623,8 +602,8 @@ pub async fn revert_continue<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            revert_continue_inner(&path_clone, &message, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            revert_continue_inner(&path_clone, &message, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -653,8 +632,8 @@ pub async fn revert_abort<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            revert_abort_inner(&path_clone, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            revert_abort_inner(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -812,12 +791,12 @@ pub async fn undo_commit<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let (_graph, undo_result) = rebuild
-        .rebuild_carrying(path.clone(), move |visibility| {
+        .rebuild_carrying(path.clone(), move || {
             let undo = undo_commit_inner(&path_clone, &state_map)?;
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            let graph = graph::snapshot(&mut repo, visibility)?;
-            Ok((graph, undo))
+            let source = graph::capture(&mut repo)?;
+            Ok((source, undo))
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -852,7 +831,7 @@ pub async fn redo_commit<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
+        .rebuild(path.clone(), move || {
             redo_commit_inner(
                 &path_clone,
                 &subject,
@@ -863,7 +842,7 @@ pub async fn redo_commit<R: Runtime>(
             )?;
             let path_buf = state_map.path_for(&path_clone)?;
             let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-            graph::snapshot(&mut repo, visibility)
+            graph::capture(&mut repo)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -937,10 +916,6 @@ mod tests {
 
     fn path_str(dir: &TempDir) -> String {
         dir.path().to_str().unwrap().to_string()
-    }
-
-    fn default_visibility() -> crate::git::graph_input::RefVisibility {
-        crate::git::graph_input::RefVisibility::default()
     }
 
     fn state_map_for(dir: &TempDir) -> OpenRepos {
@@ -1019,10 +994,9 @@ mod tests {
         let (dir, _repo, oid) = two_commit_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        let result =
-            revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility())
-                .unwrap();
-        let message = result.message.expect("clean revert must carry a message");
+        let (_source, message) =
+            revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
+        let message = message.expect("clean revert must carry a message");
         assert!(
             message.starts_with("Revert \"change to v2\""),
             "got: {message:?}"
@@ -1047,10 +1021,10 @@ mod tests {
         let (dir, repo, oid) = two_commit_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility()).unwrap();
+        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
 
         let edited = "Revert \"change to v2\"\n\nedited body";
-        revert_continue_inner(&path_str(&dir), edited, &map, &default_visibility()).unwrap();
+        revert_continue_inner(&path_str(&dir), edited, &map).unwrap();
 
         assert!(
             !revert_head_path(&dir).exists(),
@@ -1074,7 +1048,7 @@ mod tests {
         let (dir, _repo, oid) = conflicting_revert_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        let err = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility())
+        let err = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map)
             .expect_err("conflicted revert must return Err, never open the editor");
         assert_eq!(err.code, "conflict_state");
     }
@@ -1084,13 +1058,13 @@ mod tests {
         let (dir, repo, oid) = two_commit_repo();
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
-        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility()).unwrap();
+        revert_commit_begin_inner(&path_str(&dir), &oid_str, &map).unwrap();
         assert!(
             revert_head_path(&dir).exists(),
             "precondition: begin set REVERT_HEAD"
         );
 
-        revert_abort_inner(&path_str(&dir), &map, &default_visibility()).unwrap();
+        revert_abort_inner(&path_str(&dir), &map).unwrap();
 
         assert!(
             !revert_head_path(&dir).exists(),
@@ -1108,7 +1082,7 @@ mod tests {
         let oid_str = oid.to_string();
         let map = state_map_for(&dir);
         // Conflicted begin leaves REVERT_HEAD set; resolve by staging a fix.
-        let _ = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map, &default_visibility());
+        let _ = revert_commit_begin_inner(&path_str(&dir), &oid_str, &map);
         let blob = repo.blob(b"resolved\n").unwrap();
         let mut index = repo.index().unwrap();
         index
@@ -1131,7 +1105,7 @@ mod tests {
 
         // Finish with a message that carries a trailing `# Conflicts:` block.
         let msg = "Revert \"mid change to v2\"\n\n# Conflicts:\n#\tf.txt";
-        revert_continue_inner(&path_str(&dir), msg, &map, &default_visibility()).unwrap();
+        revert_continue_inner(&path_str(&dir), msg, &map).unwrap();
 
         let body = head_body(&repo);
         assert!(

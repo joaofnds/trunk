@@ -7,7 +7,7 @@ use tokio::process::Command;
 
 use crate::error::TrunkError;
 use crate::git::graph;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::GraphSource;
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp, kill_process};
 
@@ -157,10 +157,10 @@ async fn refresh_graph<R: Runtime>(
     rebuild
         .rebuild(
             path_owned.clone(),
-            move |visibility| -> Result<GraphSnapshot, TrunkError> {
+            move || -> Result<GraphSource, TrunkError> {
                 let mut repo = git2::Repository::open(&path_buf)
                     .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-                graph::snapshot(&mut repo, visibility)
+                graph::capture(&mut repo)
             },
         )
         .await?;

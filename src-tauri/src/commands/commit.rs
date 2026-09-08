@@ -1,17 +1,13 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::GraphSource;
 use crate::git::{graph, types::HeadCommitMessage};
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
-fn refresh_commit_cache(
-    path: &str,
-    state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+fn refresh_commit_cache(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 fn build_message(subject: &str, body: Option<&str>) -> String {
@@ -128,9 +124,9 @@ pub async fn create_commit<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
+        .rebuild(path.clone(), move || {
             create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-            refresh_commit_cache(&path_clone, &state_map, visibility)
+            refresh_commit_cache(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -161,9 +157,9 @@ pub async fn amend_commit<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
+        .rebuild(path.clone(), move || {
             amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-            refresh_commit_cache(&path_clone, &state_map, visibility)
+            refresh_commit_cache(&path_clone, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;

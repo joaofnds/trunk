@@ -4,9 +4,9 @@ use common::context::TestContext;
 use std::ffi::OsStr;
 use std::path::Path;
 use trunk_lib::commands::operation_state::{
-    MergeBeginResult, merge_branch_begin_inner, rebase_branch_inner, rebase_command,
+    MergeBeginOutcome, MergeBeginResult, merge_branch_begin_inner, rebase_branch_inner,
+    rebase_command,
 };
-use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::git::types::OperationType;
 
 /// `GIT_EDITOR` outranks every git config key, so no repo-local or global
@@ -380,15 +380,10 @@ fn merge_resolves_an_option_shaped_branch_name_as_a_ref() {
         .build();
     plant_ref(&ctx, "refs/heads/--no-ff", "HEAD");
 
-    let result = merge_branch_begin_inner(
-        ctx.path(),
-        "--no-ff",
-        ctx.state_map(),
-        &RefVisibility::default(),
-    );
+    let result = merge_branch_begin_inner(ctx.path(), "--no-ff", ctx.state_map());
 
     assert!(
-        matches!(result, Ok(MergeBeginResult::FastForwarded { .. })),
+        matches!(result, Ok((_, MergeBeginOutcome::FastForwarded))),
         "the branch named --no-ff should merge as a ref, not be parsed as an option: {:?}",
         result.err()
     );
@@ -405,12 +400,7 @@ fn rebase_resolves_an_option_shaped_branch_name_as_a_ref() {
         .build();
     plant_ref(&ctx, "refs/heads/--exec=/bin/false", "feature");
 
-    let result = rebase_branch_inner(
-        ctx.path(),
-        "--exec=/bin/false",
-        ctx.state_map(),
-        &RefVisibility::default(),
-    );
+    let result = rebase_branch_inner(ctx.path(), "--exec=/bin/false", ctx.state_map());
 
     assert!(
         result.is_ok(),

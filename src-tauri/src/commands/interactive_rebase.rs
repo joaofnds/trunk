@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::GraphSource;
 use crate::git::{graph, types::RebaseTodoItem};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
@@ -149,8 +149,7 @@ pub fn start_interactive_rebase_blocking(
     todo_items: &[RebaseTodoAction],
     session_dir: &std::path::Path,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<(GraphSnapshot, RebaseStartResult), TrunkError> {
+) -> Result<(GraphSource, RebaseStartResult), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
     // 1. Write todo file (drop = omit from list, not the 'drop' keyword)
@@ -238,7 +237,7 @@ pub fn start_interactive_rebase_blocking(
         let _ = std::fs::remove_dir_all(&msg_dir);
     }
 
-    let graph = graph::snapshot(&mut repo, visibility)?;
+    let source = graph::capture(&mut repo)?;
 
     let outcome = if stopped_at_a_commit {
         RebaseStartResult::Stopped
@@ -246,7 +245,7 @@ pub fn start_interactive_rebase_blocking(
         RebaseStartResult::Completed
     };
 
-    Ok((graph, outcome))
+    Ok((source, outcome))
 }
 
 /// Which commit gets which pre-edited message.
@@ -379,14 +378,13 @@ pub async fn start_interactive_rebase<R: Runtime>(
     let session_dir = session.path().to_path_buf();
 
     let (_graph, outcome) = rebuild
-        .rebuild_carrying(path.clone(), move |visibility| {
+        .rebuild_carrying(path.clone(), move || {
             start_interactive_rebase_blocking(
                 &path_clone,
                 base_oid.as_deref(),
                 &todo_items,
                 &session_dir,
                 &state_map,
-                visibility,
             )
         })
         .await

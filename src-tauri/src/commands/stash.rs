@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::GraphSource;
 use crate::git::{graph, types::StashEntry};
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use tauri::{AppHandle, Emitter, Runtime, State};
@@ -80,8 +80,7 @@ pub fn stash_save_inner(
     path: &str,
     message: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let mut repo = state_map.open(path)?;
     let sig = repo.signature().map_err(TrunkError::from)?;
     let msg = if message.trim().is_empty() {
@@ -104,7 +103,7 @@ pub fn stash_save_inner(
             TrunkError::from(e)
         }
     })?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Apply a stash and drop it, keeping it when the apply conflicts.
@@ -118,8 +117,7 @@ pub fn stash_pop_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     // Apply and drop separately rather than `stash_pop`: git2's pop drops the entry even
@@ -136,7 +134,7 @@ pub fn stash_pop_inner(
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Apply a stash, leaving it in the reflog.
@@ -150,8 +148,7 @@ pub fn stash_apply_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_apply(index, None).map_err(|e| {
@@ -164,7 +161,7 @@ pub fn stash_apply_inner(
     if crate::git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// Drop a stash without applying it.
@@ -177,12 +174,11 @@ pub fn stash_drop_inner(
     path: &str,
     oid: &str,
     state_map: &OpenRepos,
-    visibility: &crate::git::graph_input::RefVisibility,
-) -> Result<GraphSnapshot, TrunkError> {
+) -> Result<GraphSource, TrunkError> {
     let mut repo = state_map.open(path)?;
     let index = stash_index_of(&mut repo, oid)?;
     repo.stash_drop(index).map_err(TrunkError::from)?;
-    graph::snapshot(&mut repo, visibility)
+    graph::capture(&mut repo)
 }
 
 /// # Errors
@@ -226,8 +222,8 @@ pub async fn stash_save<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            stash_save_inner(&path_clone, &message, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            stash_save_inner(&path_clone, &message, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -257,8 +253,8 @@ pub async fn stash_pop<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            stash_pop_inner(&path_clone, &oid, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            stash_pop_inner(&path_clone, &oid, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -288,8 +284,8 @@ pub async fn stash_apply<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            stash_apply_inner(&path_clone, &oid, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            stash_apply_inner(&path_clone, &oid, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;
@@ -319,8 +315,8 @@ pub async fn stash_drop<R: Runtime>(
     let state_map = state.snapshot();
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
-            stash_drop_inner(&path_clone, &oid, &state_map, visibility)
+        .rebuild(path.clone(), move || {
+            stash_drop_inner(&path_clone, &oid, &state_map)
         })
         .await
         .map_err(|e| e.to_json())?;

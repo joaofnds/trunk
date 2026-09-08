@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
+use crate::git::graph_input::GraphSource;
 use crate::git::{graph, repository};
 use crate::state::{CommitCache, CommitStatsCache, RepoState, RunningOp, kill_process};
 use crate::watcher::{self, WatcherState};
@@ -29,15 +29,12 @@ pub async fn open_repo<R: Runtime>(
     let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let path_clone = path.clone();
     rebuild
-        .rebuild(
-            path.clone(),
-            move |visibility| -> Result<GraphSnapshot, TrunkError> {
-                let path_buf = std::path::PathBuf::from(&path_clone);
-                repository::validate_and_open(&path_buf)?;
-                let mut repo = git2::Repository::open(&path_buf)?;
-                graph::snapshot(&mut repo, visibility)
-            },
-        )
+        .rebuild(path.clone(), move || -> Result<GraphSource, TrunkError> {
+            let path_buf = std::path::PathBuf::from(&path_clone);
+            repository::validate_and_open(&path_buf)?;
+            let mut repo = git2::Repository::open(&path_buf)?;
+            graph::capture(&mut repo)
+        })
         .await
         .map_err(|e| e.to_json())?;
 

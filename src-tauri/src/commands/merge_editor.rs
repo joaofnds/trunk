@@ -170,10 +170,10 @@ pub async fn save_merge_result<R: Runtime>(
     // Repopulate cache and emit repo-changed (same pattern as merge_continue)
     let path_for_cache = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| {
+        .rebuild(path.clone(), move || {
             let path_buf = state_map.path_for(&path_for_cache)?;
             let mut repo = git2::Repository::open(path_buf)?;
-            graph::snapshot(&mut repo, visibility)
+            graph::capture(&mut repo)
         })
         .await
         .map_err(|e| e.to_json())?;
