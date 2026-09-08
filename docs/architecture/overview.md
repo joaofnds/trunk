@@ -83,7 +83,7 @@
 | `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/src/git/graph_input.rs` |
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/src/git/repository.rs` |
 | `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/src/git/types.rs` |
-| `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path | `src-tauri/src/state.rs` |
+| `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path; `GraphRebuild` bundles `CommitCache` and `RefVisibilityState` behind the one method every rebuild site calls instead of repeating the read-visibility/walk/write-cache triple | `src-tauri/src/state.rs` |
 | `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
@@ -209,8 +209,9 @@
 **`CommitCache`:**
 - Purpose: One `GraphSnapshot` per repository: the capture the walk read, the ref visibility it was laid out under, and the full layout, served in 200-row pages
 - Location: `src-tauri/src/state.rs`
-- Populated: On `open_repo`, refreshed on `refresh_commit_graph` and after each write op; `set_ref_visibility` re-lays out the cached capture under the new visibility without opening the repository
-- Consumed: `get_commit_graph` slices one 200-row page from the cached layout; the rebuild commands slice from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
+- Populated: every command that reads the repository and rebuilds the graph goes through `GraphRebuild`, which looks up the repo's current `RefVisibility`, runs the caller's closure under it, and writes the resulting `GraphSnapshot` into the cache — one call instead of the three steps spelled out at each site. `set_ref_visibility` is the one exception: it re-lays out the cached capture under the new visibility without opening the repository, through `CommitCache::write_relaid_out`
+- Consumed: `get_commit_graph` slices one 200-row page from the cached layout via `CommitCache::read`; the rebuild commands slice from the top to the depth the caller reports, so a rebuild returns the pages the caller already had
+- `CommitCache`'s field is private to `state.rs`: a caller outside it reaches the cache only through `GraphRebuild`, `write_relaid_out`, or a named read accessor (`snapshot`, `read`, `all`, `forget`), never a raw `Mutex` lock. This is what makes a new rebuild site fail to compile if it skips the visibility lookup, rather than merely a convention a new command could still bypass
 
 **`RepoState` (path registry):**
 - Purpose: Maps repo path strings to `PathBuf` — proof that a repo is "open"
@@ -256,7 +257,7 @@
 - **Threading:** Tauri uses tokio async runtime. All git2 calls run in `spawn_blocking` because git2 is synchronous. Remote ops use `tokio::process::Command` for async subprocess with stderr streaming.
 - **git2 not Sync:** `git2::Repository` cannot be stored in shared state. Each command opens its own fresh `Repository` handle. Constraint is documented in `src-tauri/src/state.rs:5`.
 - **No git shelling out for local ops:** All local git operations (stage, commit, checkout, etc.) use git2 API. Only remote ops (fetch/pull/push/delete-remote-branch, rebase/merge message editing) shell out — documented in `CLAUDE.md`.
-- **Global state:** `RepoState`, `CommitCache`, `RunningOp`, `WatcherState` are module-level singletons managed by Tauri, each holding a `Mutex<HashMap<String, T>>` keyed by repo path string. `WatcherState` is the one with a second field, `enabled`, and it is passed into `configure` rather than constructed there, because `Builder::manage` panics on a duplicate type.
+- **Global state:** `RepoState`, `CommitCache`, `RunningOp`, `WatcherState` are module-level singletons managed by Tauri, each holding a `Mutex<HashMap<String, T>>` keyed by repo path string (`CommitCache`'s map is one layer down, inside the `GraphCache` its own `Mutex` wraps). `WatcherState` is the one with a second field, `enabled`, and it is passed into `configure` rather than constructed there, because `Builder::manage` panics on a duplicate type.
 - **Circular imports:** None detected. Frontend has a clear dependency direction: `components/` → `lib/` → `@tauri-apps/`.
 - **macOS PATH:** `src-tauri/src/shell_env.rs` uses `/usr/libexec/path_helper` to resolve full system PATH for git subprocess calls — required because GUI apps inherit a minimal launchd PATH.
 - **Multi-tab:** All backend state is keyed by repo path string. Multiple tabs can have the same or different repos open simultaneously. Per-tab frontend state (`RemoteState`, `UndoRedoManager`) is created in `App.svelte` via factory functions and passed as props.
