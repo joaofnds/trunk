@@ -16,12 +16,6 @@ import { createDraft } from "../lib/draft.svelte.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
-import {
-	addReply,
-	deleteReply,
-	editReply,
-	setThreadState,
-} from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -751,12 +745,9 @@ $effect(() => {
                 <li>
                   <ThreadCard
                     thread={comment}
+                    {repoPath}
                     onedit={(id, text) => saveEdit(id, text)}
                     ondelete={(id) => deleteComment(id)}
-                    onreplyadd={(id, text) => addReply(repoPath, id, text)}
-                    onstatechange={(id, next) => setThreadState(repoPath, id, next)}
-                    onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                    onreplydelete={(id) => deleteReply(repoPath, id)}
                     confirmDelete={true}
                     variant="panel"
                     onjump={onJump}

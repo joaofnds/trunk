@@ -6,6 +6,11 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import {
+	addReply,
+	deleteReply,
+	editReply,
+} from "../lib/review-comment-actions.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -36,6 +41,20 @@ vi.mock("../lib/invoke.js", async () => {
 
 vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
+}));
+
+// addReply/editReply/deleteReply have no coverage through ReviewPanel today
+// (they route straight to safeInvoke, already exercised at the other four
+// sites); mocking the module here, rather than asserting on safeInvoke like
+// the pre-existing state-change/delete describes do, matches the pattern the
+// other four migrated hosts use.
+vi.mock("../lib/review-comment-actions.js", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("../lib/review-comment-actions.js")
+	>()),
+	addReply: vi.fn(),
+	editReply: vi.fn(),
+	deleteReply: vi.fn(),
 }));
 
 // Copy handler writes to the clipboard via the plugin's writeText.
@@ -532,6 +551,104 @@ describe("ReviewPanel", () => {
 				id: "c1",
 				next: "done",
 			});
+		});
+	});
+
+	describe("thread reply actions", () => {
+		it("submits a reply via addReply with the repo path", async () => {
+			installReads({
+				commits,
+				comments: [lineAnchoredComment("c1", COMMIT_A, "original")],
+				resolutions: [resolvable("c1")],
+			});
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+
+			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+			await fireEvent.input(textarea, { target: { value: "reply text" } });
+			await fireEvent.click(screen.getByText("Reply"));
+
+			expect(addReply).toHaveBeenCalledWith("/repo", "c1", "reply text");
+		});
+
+		it("edits a reply via editReply with the repo path", async () => {
+			const withReply = lineAnchoredComment("c1", COMMIT_A, "original");
+			withReply.replies = [
+				{
+					id: "r1",
+					text: "original reply",
+					text_html: "",
+					channel: "human",
+					created_at: 1_000,
+				},
+			];
+			installReads({
+				commits,
+				comments: [withReply],
+				resolutions: [resolvable("c1")],
+			});
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+
+			await fireEvent.click(screen.getByText("Edit reply"));
+			const textarea = screen.getByRole("textbox", {
+				name: "Edit reply",
+			}) as HTMLTextAreaElement;
+			await fireEvent.input(textarea, { target: { value: "corrected" } });
+			await fireEvent.click(screen.getByText("Save"));
+
+			expect(editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
+		});
+
+		it("deletes a reply via deleteReply with the repo path once confirmed", async () => {
+			const { ask } = await import("@tauri-apps/plugin-dialog");
+			vi.mocked(ask).mockResolvedValue(true);
+			const withReply = lineAnchoredComment("c1", COMMIT_A, "original");
+			withReply.replies = [
+				{
+					id: "r1",
+					text: "doomed reply",
+					text_html: "",
+					channel: "agent",
+					created_at: 1_000,
+				},
+			];
+			installReads({
+				commits,
+				comments: [withReply],
+				resolutions: [resolvable("c1")],
+			});
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+
+			await fireEvent.click(screen.getByText("Delete reply"));
+			await flush();
+
+			expect(deleteReply).toHaveBeenCalledWith("/repo", "r1");
 		});
 	});
 
