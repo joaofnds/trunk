@@ -222,17 +222,16 @@ pub async fn stash_save<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_save_inner(&path_clone, &message, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            stash_save_inner(&path_clone, &message, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -254,17 +253,16 @@ pub async fn stash_pop<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_pop_inner(&path_clone, &oid, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            stash_pop_inner(&path_clone, &oid, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -286,17 +284,16 @@ pub async fn stash_apply<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_apply_inner(&path_clone, &oid, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            stash_apply_inner(&path_clone, &oid, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -318,17 +315,16 @@ pub async fn stash_drop<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        stash_drop_inner(&path_clone, &oid, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            stash_drop_inner(&path_clone, &oid, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }

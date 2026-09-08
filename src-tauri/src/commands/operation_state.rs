@@ -516,16 +516,15 @@ pub async fn merge_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        merge_continue_inner(&path_clone, message.as_deref(), &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            merge_continue_inner(&path_clone, message.as_deref(), &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -546,16 +545,15 @@ pub async fn merge_abort<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        merge_abort_inner(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            merge_abort_inner(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -577,16 +575,15 @@ pub async fn rebase_continue<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        rebase_continue_inner(&path_clone, message.as_deref(), &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            rebase_continue_inner(&path_clone, message.as_deref(), &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -607,16 +604,15 @@ pub async fn rebase_skip<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        rebase_skip_inner(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            rebase_skip_inner(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -637,16 +633,15 @@ pub async fn rebase_abort<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        rebase_abort_inner(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            rebase_abort_inner(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -688,25 +683,25 @@ pub async fn merge_branch_begin<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<MergeBeginResult, String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        merge_branch_begin_inner(&path_clone, &branch, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
     // The begin mutated the repo before the editor opens (ff commit, staged
     // merge, or conflict markers), so cache the rebuilt graph and emit
     // repo-changed on EVERY outcome — a later cancel must still surface the
     // in-progress UI (RESEARCH finding 7 / Pitfall 4).
-    let graph = match &result {
-        MergeBeginResult::FastForwarded { graph }
-        | MergeBeginResult::Conflicts { graph }
-        | MergeBeginResult::Ready { graph, .. } => graph.clone(),
-    };
-    cache.0.lock().unwrap().insert(path.clone(), graph);
+    let (_graph, result) = rebuild
+        .rebuild_carrying(path.clone(), move |visibility| {
+            let result = merge_branch_begin_inner(&path_clone, &branch, &state_map, visibility)?;
+            let graph = match &result {
+                MergeBeginResult::FastForwarded { graph }
+                | MergeBeginResult::Conflicts { graph }
+                | MergeBeginResult::Ready { graph, .. } => graph.clone(),
+            };
+            Ok((graph, result))
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(result)
 }
@@ -728,16 +723,15 @@ pub async fn rebase_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        rebase_branch_inner(&path_clone, &onto_branch, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            rebase_branch_inner(&path_clone, &onto_branch, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
