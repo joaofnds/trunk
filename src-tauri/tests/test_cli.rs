@@ -661,6 +661,57 @@ fn a_newline_in_a_file_path_cannot_forge_an_index_line() {
     );
 }
 
+/// The index line's ` — ` separator is not reserved (TRUNK-58): a file path
+/// containing it prints more fields than the format promises. This is a
+/// deliberate, documented tradeoff (`docs/review-cli.md`), not a bug: `--json`
+/// is the parseable route, and the plain line is for human reading. This test
+/// pins that the separator stays unescaped, so a future change to reserve it
+/// cannot land silently without updating the doc.
+#[test]
+fn a_separator_in_a_file_path_prints_unescaped_in_the_plain_index_line() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let thread_id = store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &published,
+                threads::NewThread {
+                    text: "real text".to_string(),
+                    anchor: Some(trunk_lib::git::types::Anchor {
+                        commit_oid: "abc123def4567".to_string(),
+                        file_path: "a.txt — sneaky".to_string(),
+                        source: trunk_lib::git::types::Source::Diff,
+                        side: trunk_lib::git::types::Side::New,
+                        start_line: 1,
+                        end_line: 1,
+                    }),
+                    commit_oid: None,
+                    cached_excerpt: None,
+                },
+                900,
+            )
+        })
+        .unwrap();
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let line = stdout
+        .lines()
+        .find(|l| l.contains(&thread_id))
+        .expect("the thread is indexed");
+    assert_eq!(
+        line,
+        &format!("- {thread_id} open a.txt — sneaky:1-1 — real text"),
+        "the path's separator is reproduced verbatim, not escaped, got {line:?}",
+    );
+}
+
 /// A lone `\r` survives `str::lines`, and a terminal renders it by returning
 /// to the start of the line and overwriting it — so comment text could repaint
 /// an index line it does not own.

@@ -54,7 +54,15 @@ trunk review watch [--repo <path>]
 - **threads** — the review's threads as an index, one line each: id, state,
   location (`file:start-end`, a commit-level thread's short oid, or `no
   target`), and the comment's first line. `--state` keeps only threads in that
-  state.
+  state. This plain line is for human reading only: its ` — ` separator is not
+  reserved, so a file path or comment whose first line contains it prints more
+  fields than the format implies, and splitting on the separator can misread
+  the location. A newline in a path cannot forge a second index line, since
+  both the location and the summary pass through a sanitizer; only
+  within-line field-splitting is affected. `--json` is the sole parseable
+  form: it carries the anchor as a structured object (`file_path`,
+  `start_line`, `end_line`), so a separator inside a path is unambiguous
+  there.
 - **thread** — one thread in full: the document's own section for it (anchor
   coordinates, stored excerpt, root comment, replies with their channel),
   then a `--- end of comment ---` rule, then its review id, its state, and
