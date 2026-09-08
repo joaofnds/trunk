@@ -1130,6 +1130,38 @@ fn poll_announces_a_foreign_commit_on_the_next_cycle() {
         .expect("a foreign revision-bumping commit must be announced");
 }
 
+/// Pins the defect c625d134 fixed: the baseline must be read on the calling
+/// thread, not the spawned one, or a foreign write landing before the spawned
+/// thread is first scheduled is silently never announced. Asserts thread
+/// identity rather than timing, so it cannot pass by winning a race.
+#[cfg(feature = "test-util")]
+#[test]
+fn the_poll_baseline_is_read_on_the_calling_thread() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    reviewdb::open(ctx.data_dir()).unwrap();
+    let calling_thread = std::thread::current().id();
+    let (baseline_thread_tx, baseline_thread_rx) = std::sync::mpsc::channel();
+    let (ticker, _driver) = reviewdb::poll::ManualTicker::new();
+
+    let _poll = reviewdb::poll::spawn_ticked_observing_baseline_thread(
+        ctx.data_dir(),
+        ticker,
+        || {},
+        move |thread| {
+            let _ = baseline_thread_tx.send(thread);
+        },
+    );
+
+    let baseline_read_thread = baseline_thread_rx.recv().expect("the hook must fire");
+    assert_eq!(
+        baseline_read_thread, calling_thread,
+        "the baseline must be read on the calling thread, not the spawned one",
+    );
+}
+
 #[test]
 fn a_draft_write_triggers_no_emit() {
     let ctx = TestContext::builder()

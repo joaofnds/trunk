@@ -185,7 +185,15 @@ pub fn spawn(data_dir: &Path, on_change: impl Fn() + Send + 'static) -> PollHand
     let ticker = ClockTicker {
         stop: Arc::clone(&stop),
     };
-    spawn_with(data_dir, ticker, stop, true, on_change)
+    spawn_with(
+        data_dir,
+        ticker,
+        stop,
+        true,
+        on_change,
+        #[cfg(feature = "test-util")]
+        |_| {},
+    )
 }
 
 /// [`spawn`] on a caller-supplied ticker: the seam a poll test drives.
@@ -200,6 +208,30 @@ pub fn spawn_ticked(
         Arc::new(AtomicBool::new(false)),
         false,
         on_change,
+        #[cfg(feature = "test-util")]
+        |_| {},
+    )
+}
+
+/// [`spawn_ticked`], additionally reporting which thread ran [`Baseline::read`].
+///
+/// Pins the poll baseline-thread regression: a test asserts the reported
+/// thread's identity against its own, which the fix guarantees and the
+/// defect cannot, without racing a timing window.
+#[cfg(feature = "test-util")]
+pub fn spawn_ticked_observing_baseline_thread(
+    data_dir: &Path,
+    ticker: impl Ticker,
+    on_change: impl Fn() + Send + 'static,
+    on_baseline_read: impl Fn(std::thread::ThreadId) + Send + 'static,
+) -> PollHandle {
+    spawn_with(
+        data_dir,
+        ticker,
+        Arc::new(AtomicBool::new(false)),
+        false,
+        on_change,
+        on_baseline_read,
     )
 }
 
@@ -209,6 +241,7 @@ fn spawn_with(
     stop: Arc<AtomicBool>,
     joins_on_stop: bool,
     on_change: impl Fn() + Send + 'static,
+    #[cfg(feature = "test-util")] on_baseline_read: impl Fn(std::thread::ThreadId) + Send + 'static,
 ) -> PollHandle {
     let db_path = data_dir.join(DB_FILE);
     let Ok(conn) = Connection::open(&db_path) else {
@@ -219,6 +252,12 @@ fn spawn_with(
             joins_on_stop,
         };
     };
+    // Must stay in the same statement/block as `Baseline::read`: moving the
+    // read without this call (or vice versa) would let a test pass even with
+    // the baseline-thread defect present, since the hook would then report a
+    // thread ID that no longer names which thread actually read it.
+    #[cfg(feature = "test-util")]
+    on_baseline_read(std::thread::current().id());
     let baseline = Baseline::read(&conn);
 
     let thread = std::thread::spawn(move || run(&conn, &baseline, &ticker, on_change));
