@@ -410,13 +410,12 @@ pub async fn add_thread<R: Runtime>(
     };
     let target = canonical.clone();
     let now = crate::reviewdb::now_secs();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).ok();
         submit_thread_into(&store, &target, repo.as_ref(), req, now)
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -448,13 +447,12 @@ pub async fn add_commit_thread<R: Runtime>(
     };
     let target = canonical.clone();
     let now = crate::reviewdb::now_secs();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).ok();
         submit_thread_into(&store, &target, repo.as_ref(), req, now)
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -506,9 +504,11 @@ pub async fn delete_thread<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || store.write(|tx| threads::delete(tx, &target, &id))).await?;
+    write_and_notify(&app, &canonical, move || {
+        store.write(|tx| threads::delete(tx, &target, &id))
+    })
+    .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -559,13 +559,12 @@ pub async fn add_reply<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         add_reply_inner(&store, &target, &thread_id, &text, now)
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -597,13 +596,12 @@ pub async fn edit_reply<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         store.write(|tx| replies::edit(tx, &target, &id, &text, now))
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -629,9 +627,11 @@ pub async fn delete_reply<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || store.write(|tx| replies::delete(tx, &target, &id))).await?;
+    write_and_notify(&app, &canonical, move || {
+        store.write(|tx| replies::delete(tx, &target, &id))
+    })
+    .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -682,13 +682,12 @@ pub async fn set_thread_state<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         set_thread_state_inner(&store, &target, &id, next, now)
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -760,7 +759,7 @@ pub async fn create_review<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    let id = blocking_store(move || {
+    let id = write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         store.write(|tx| {
             let id = reviews::create(tx, &target, title.as_deref(), now)?;
@@ -770,7 +769,6 @@ pub async fn create_review<R: Runtime>(
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(id)
 }
 
@@ -813,9 +811,11 @@ pub async fn set_active_review<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || store.write(|tx| reviews::set_active(tx, &target, &review_id))).await?;
+    write_and_notify(&app, &canonical, move || {
+        store.write(|tx| reviews::set_active(tx, &target, &review_id))
+    })
+    .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -839,13 +839,12 @@ pub async fn rename_review<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         store.write(|tx| reviews::rename(tx, &target, &review_id, &title, now))
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -874,13 +873,12 @@ pub async fn publish_review<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         store.write(|tx| reviews::publish(tx, &target, &review_id, now))
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -904,7 +902,7 @@ pub async fn delete_review<R: Runtime>(
 
     let target = canonical.clone();
     let repo_path = path.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         store.write(|tx| reviews::delete(tx, &target, &review_id))?;
         // Deleting a review is when a batch of pins becomes garbage: the
         // threads that anchored them go with it. The deletion has already
@@ -920,7 +918,6 @@ pub async fn delete_review<R: Runtime>(
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -1095,7 +1092,7 @@ pub async fn add_review_commit<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
         let now = crate::reviewdb::now_secs();
         store.write(|tx| {
@@ -1106,7 +1103,6 @@ pub async fn add_review_commit<R: Runtime>(
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -1154,7 +1150,7 @@ pub async fn remove_review_commit<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         store.write(|tx| {
             let Some(review_id) = reviews::active(tx, &target)? else {
                 return Ok(());
@@ -1164,7 +1160,6 @@ pub async fn remove_review_commit<R: Runtime>(
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
