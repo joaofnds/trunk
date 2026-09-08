@@ -122,6 +122,24 @@ describe("BranchRow visibility toggle", () => {
 	});
 });
 
+// WCAG 2.2 SC 2.5.8 asks for a 24x24 CSS px target (or 24px of clear spacing around a
+// smaller one). The icon stays 12px; only the button's hit area grows to meet it.
+// jsdom lays nothing out -- getBoundingClientRect and offsetWidth are both 0 here -- so
+// this pins the declared minimum, which is what makes the box 24x24 once a real engine
+// lays it out. The rendered box was measured in Chrome at 24x24 (was 20x12).
+describe("BranchRow visibility toggle target size", () => {
+	it("declares a 24x24 minimum on the toggle", () => {
+		render(BranchRow, {
+			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
+		});
+
+		expect(screen.getByLabelText("Hide topic")).toHaveStyle({
+			minWidth: "24px",
+			minHeight: "24px",
+		});
+	});
+});
+
 // The eye used to sit in the row permanently as `visibility: hidden`, which keeps its
 // layout box, so every name truncated ~40px early for an icon that was usually not there.
 // It now leaves the flow when idle and the name takes the full width, following VS Code's

@@ -66,7 +66,7 @@ let allHidden = $derived(groupState === "all");
       <button
         data-testid="branch-section-visibility-btn"
         onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
-        style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
+        style="color: var(--fg-2); background: none; border: none; cursor: pointer; padding: 0; min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center;"
         aria-label="{visibilityVerb(allHidden)} all {label} refs"
         data-group-state={groupState}
       >

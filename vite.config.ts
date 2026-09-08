@@ -43,6 +43,10 @@ export default defineConfig({
 		include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
 		environment: "jsdom",
 		setupFiles: ["./vitest-setup.ts"],
+		// jsdom lays nothing out, but it does cascade declared values, so a component's
+		// own stylesheet has to be injected for getComputedStyle to see rules that
+		// live in a `<style>` block rather than an inline `style` attribute.
+		css: { include: [/\.svelte/] },
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "lcov", "html"],

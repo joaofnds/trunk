@@ -780,6 +780,51 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
+	// WCAG 2.2 SC 2.5.8 asks for a 24x24 CSS px target. The icon stays 12px; only the
+	// button's hit area grows to meet it. jsdom lays nothing out, so this pins the
+	// declared minimum rather than a measured box.
+	it("declares a 24x24 minimum on the stash row toggle", async () => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "list_refs") {
+				return Promise.resolve(
+					mockListRefs({
+						stashes: [
+							{
+								index: 0,
+								name: "WIP on main",
+								short_name: "stash@{0}",
+								oid: "abc123",
+								parent_oid: null,
+							},
+						],
+					}),
+				);
+			}
+			if (cmd === "prefs_get") {
+				return Promise.resolve(
+					prefsStore.get((args as { key: string })?.key) ?? null,
+				);
+			}
+			if (cmd === "prefs_set") {
+				prefsStore.set(
+					(args as { key: string }).key,
+					(args as { value: unknown }).value,
+				);
+				return Promise.resolve(undefined);
+			}
+			return Promise.resolve(undefined);
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+
+		expect(await screen.findByLabelText("Hide stash@{0}")).toHaveStyle({
+			minWidth: "24px",
+			minHeight: "24px",
+		});
+	});
+
 	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-
 	// visibility read that fails must still release it -- a stuck gate would leave the
 	// graph with no first page at all, worse than the flash this card fixes.

@@ -150,3 +150,26 @@ describe("BranchSection visibility toggle", () => {
 		expect(ontoggle).not.toHaveBeenCalled();
 	});
 });
+
+// WCAG 2.2 SC 2.5.8 asks for a 24x24 CSS px target. The icon stays 12px; only the
+// button's hit area grows to meet it. jsdom lays nothing out, so this pins the declared
+// minimum rather than a measured box; see BranchRow.test.ts for the note in full.
+describe("BranchSection visibility toggle target size", () => {
+	it("declares a 24x24 minimum on the toggle", () => {
+		render(BranchSection, {
+			props: {
+				label: "Branches",
+				count: 3,
+				expanded: false,
+				ontoggle: vi.fn(),
+				groupState: "none" as const,
+				ontogglevisibility: vi.fn(),
+				children: emptySnippet,
+			},
+		});
+		expect(screen.getByLabelText("Hide all Branches refs")).toHaveStyle({
+			minWidth: "24px",
+			minHeight: "24px",
+		});
+	});
+});
