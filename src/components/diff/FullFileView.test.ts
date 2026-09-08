@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +7,7 @@ import {
 	stubLayout,
 } from "../../__tests__/helpers/layout-stub";
 import { aThread } from "../../__tests__/helpers/thread-fixture";
+import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
 import {
 	disablePerf,
 	enablePerf,
@@ -679,117 +680,11 @@ describe("FullFileView", () => {
 	});
 
 	describe("threaded comment actions", () => {
-		function commentedProps() {
-			const commented = aThread({
-				id: "t1",
-				anchor: {
-					commit_oid: "abc123",
-					file_path: "src/main.ts",
-					source: "FullFile",
-					side: "New",
-					start_line: 11,
-					end_line: 11,
-				},
-			});
-			return defaultProps({ viewComments: [commented] });
-		}
-
-		// Every ThreadCard also renders inside the hidden measurement probe
-		// (`.comment-probe`), so any text/label query on the visible card must be
-		// scoped to `.comment-row` — an unscoped query finds both copies.
-		function visibleCard(container: HTMLElement): HTMLElement {
-			const card = container.querySelector(".comment-row .comment-card");
-			if (!card) throw new Error("no visible comment card");
-			return card as HTMLElement;
-		}
-
-		it("submits a reply via addReply with the repo path", async () => {
-			const { container } = render(FullFileView, { props: commentedProps() });
-			const card = visibleCard(container);
-
-			const textarea = within(card).getByLabelText(
-				"Reply",
-			) as HTMLTextAreaElement;
-			await fireEvent.input(textarea, { target: { value: "reply text" } });
-			await fireEvent.click(within(card).getByText("Reply"));
-
-			expect(addReply).toHaveBeenCalledWith("/repo", "t1", "reply text");
-		});
-
-		it("changes the thread's state via setThreadState with the repo path", async () => {
-			const { container } = render(FullFileView, { props: commentedProps() });
-			const card = visibleCard(container);
-
-			await fireEvent.click(within(card).getByText("Mark done"));
-
-			expect(setThreadState).toHaveBeenCalledWith("/repo", "t1", "done");
-		});
-
-		it("edits a reply via editReply with the repo path", async () => {
-			const commented = aThread({
-				id: "t1",
-				anchor: {
-					commit_oid: "abc123",
-					file_path: "src/main.ts",
-					source: "FullFile",
-					side: "New",
-					start_line: 11,
-					end_line: 11,
-				},
-				replies: [
-					{
-						id: "r1",
-						text: "original",
-						text_html: "",
-						channel: "human",
-						created_at: 1_000,
-					},
-				],
-			});
-			const { container } = render(FullFileView, {
-				props: defaultProps({ viewComments: [commented] }),
-			});
-			const card = visibleCard(container);
-
-			await fireEvent.click(within(card).getByText("Edit reply"));
-			const textarea = within(card).getByRole("textbox", {
-				name: "Edit reply",
-			}) as HTMLTextAreaElement;
-			await fireEvent.input(textarea, { target: { value: "corrected" } });
-			await fireEvent.click(within(card).getByText("Save"));
-
-			expect(editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
-		});
-
-		it("deletes a reply via deleteReply with the repo path (no confirmation, inline confirmDelete=false)", async () => {
-			const commented = aThread({
-				id: "t1",
-				anchor: {
-					commit_oid: "abc123",
-					file_path: "src/main.ts",
-					source: "FullFile",
-					side: "New",
-					start_line: 11,
-					end_line: 11,
-				},
-				replies: [
-					{
-						id: "r1",
-						text: "original",
-						text_html: "",
-						channel: "human",
-						created_at: 1_000,
-					},
-				],
-			});
-			const { container } = render(FullFileView, {
-				props: defaultProps({ viewComments: [commented] }),
-			});
-			const card = visibleCard(container);
-
-			await fireEvent.click(within(card).getByText("Delete reply"));
-
-			expect(deleteReply).toHaveBeenCalledWith("/repo", "r1");
+		describeThreadedCommentActions(FullFileView, defaultProps, ".comment-row", {
+			addReply,
+			setThreadState,
+			editReply,
+			deleteReply,
 		});
 	});
 });
