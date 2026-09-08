@@ -10,11 +10,24 @@ use trunk_lib::commands::review::add_thread;
 use trunk_lib::git::types::{Anchor, Side, Source};
 use trunk_lib::state::{RepoState, ReviewStoreState, StoreSlot};
 
+/// Clears `TRUNK_DATA_DIR` on drop, so a panic mid-test (an `unwrap()` on an
+/// unexpected error, say) still leaves the env var unset for the next test in
+/// this binary.
+struct DataDirGuard;
+
+impl Drop for DataDirGuard {
+    fn drop(&mut self) {
+        // SAFETY: single-threaded test process; no other thread reads this env var.
+        unsafe { std::env::remove_var("TRUNK_DATA_DIR") };
+    }
+}
+
 #[test]
 fn add_thread_fires_reviews_changed() {
     let ctx = TestContext::new_empty();
     // SAFETY: single-threaded test process; no other thread reads this env var.
     unsafe { std::env::set_var("TRUNK_DATA_DIR", ctx.data_dir()) };
+    let _guard = DataDirGuard;
 
     let app = tauri::test::mock_app();
     app.manage(RepoState(Mutex::new(ctx.state_map().clone())));
@@ -46,6 +59,5 @@ fn add_thread_fires_reviews_changed() {
     ))
     .unwrap();
 
-    unsafe { std::env::remove_var("TRUNK_DATA_DIR") };
     assert!(*fired.lock().unwrap(), "reviews-changed did not fire");
 }
