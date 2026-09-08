@@ -1,7 +1,15 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { BODY_CLAMP_LINES } from "../lib/commit-body-clamp.js";
+import {
+	addReply,
+	deleteReply,
+	editReply,
+	setThreadState,
+} from "../lib/review-comment-actions.js";
+import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type { CommitDetail, DiffStat, FileDiff } from "../lib/types.js";
 import CommitDetailComponent from "./CommitDetail.svelte";
 
@@ -12,6 +20,37 @@ vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../lib/review-comment-actions.js", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("../lib/review-comment-actions.js")
+	>()),
+	addReply: vi.fn(),
+	setThreadState: vi.fn(),
+	editReply: vi.fn(),
+	deleteReply: vi.fn(),
+}));
+
+function aReviewCommentsManager(
+	overrides: Partial<ReviewCommentsManager> = {},
+): ReviewCommentsManager {
+	return {
+		threads: [],
+		reviews: [],
+		activeReviewId: null,
+		snapshots: { working_tree_snapshot: null, index_snapshot: null },
+		hasThreads: false,
+		commits: [],
+		oids: new Set(),
+		revision: 0,
+		lastError: null,
+		totalCount: 0,
+		countByCommit: new Map(),
+		countByFile: new Map(),
+		refresh: vi.fn(),
+		destroy: vi.fn(),
+		...overrides,
+	};
+}
 
 const detail: CommitDetail = {
 	oid: "abc123def456",
@@ -583,6 +622,111 @@ describe("CommitDetail", () => {
 				"data-clamped",
 				"true",
 			);
+		});
+	});
+
+	describe("commit note thread actions", () => {
+		const note = aThread({
+			id: "note-1",
+			text: "left on the whole commit",
+			commit_oid: detail.oid,
+		});
+
+		function renderWithNote() {
+			return render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					repoPath: "/repo",
+					reviewComments: aReviewCommentsManager({ threads: [note] }),
+				},
+			});
+		}
+
+		it("submits a note reply via addReply with the repo path", async () => {
+			renderWithNote();
+
+			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+			await fireEvent.input(textarea, { target: { value: "reply text" } });
+			await fireEvent.click(screen.getByText("Reply"));
+
+			expect(addReply).toHaveBeenCalledWith("/repo", "note-1", "reply text");
+		});
+
+		it("changes a note's state via setThreadState with the repo path", async () => {
+			renderWithNote();
+
+			await fireEvent.click(screen.getByText("Mark done"));
+
+			expect(setThreadState).toHaveBeenCalledWith("/repo", "note-1", "done");
+		});
+
+		it("edits a note reply via editReply with the repo path", async () => {
+			const withReply = aThread({
+				...note,
+				replies: [
+					{
+						id: "reply-1",
+						text: "original",
+						text_html: "",
+						channel: "human",
+						created_at: 1_000,
+					},
+				],
+			});
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					repoPath: "/repo",
+					reviewComments: aReviewCommentsManager({ threads: [withReply] }),
+				},
+			});
+
+			await fireEvent.click(screen.getByText("Edit reply"));
+			const textarea = screen.getByRole("textbox", {
+				name: "Edit reply",
+			}) as HTMLTextAreaElement;
+			await fireEvent.input(textarea, { target: { value: "corrected" } });
+			await fireEvent.click(screen.getByText("Save"));
+
+			expect(editReply).toHaveBeenCalledWith("/repo", "reply-1", "corrected");
+		});
+
+		it("deletes a note reply via deleteReply with the repo path (no confirmation, commit notes are confirmDelete=false)", async () => {
+			const withReply = aThread({
+				...note,
+				replies: [
+					{
+						id: "reply-1",
+						text: "original",
+						text_html: "",
+						channel: "human",
+						created_at: 1_000,
+					},
+				],
+			});
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					repoPath: "/repo",
+					reviewComments: aReviewCommentsManager({ threads: [withReply] }),
+				},
+			});
+
+			await fireEvent.click(screen.getByText("Delete reply"));
+
+			expect(deleteReply).toHaveBeenCalledWith("/repo", "reply-1");
 		});
 	});
 });

@@ -18,12 +18,8 @@ import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import {
 	addCommitThread,
-	addReply,
-	deleteReply,
 	deleteThread,
-	editReply,
 	editThread,
-	setThreadState,
 } from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type {
@@ -406,13 +402,10 @@ async function saveNote() {
             <li>
               <ThreadCard
                 thread={comment}
+                {repoPath}
                 variant="inline"
                 confirmDelete={false}
                 onedit={(id, text) => editThread(repoPath, id, text)}
-                onreplyadd={(id, text) => addReply(repoPath, id, text)}
-                onstatechange={(id, next) => setThreadState(repoPath, id, next)}
-                onreplyedit={(id, text) => editReply(repoPath, id, text)}
-                onreplydelete={(id) => deleteReply(repoPath, id)}
                 ondelete={(id) => deleteThread(repoPath, id)}
               />
             </li>
