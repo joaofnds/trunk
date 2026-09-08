@@ -371,28 +371,27 @@ pub async fn start_interactive_rebase<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<RebaseStartResult, String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
 
     let session = new_session_dir().map_err(|e| e.to_json())?;
     let session_dir = session.path().to_path_buf();
 
-    let (graph_result, outcome) = tauri::async_runtime::spawn_blocking(move || {
-        start_interactive_rebase_blocking(
-            &path_clone,
-            base_oid.as_deref(),
-            &todo_items,
-            &session_dir,
-            &state_map,
-            &visibility,
-        )
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e: TrunkError| e.to_json())?;
+    let (_graph, outcome) = rebuild
+        .rebuild_carrying(path.clone(), move |visibility| {
+            start_interactive_rebase_blocking(
+                &path_clone,
+                base_oid.as_deref(),
+                &todo_items,
+                &session_dir,
+                &state_map,
+                visibility,
+            )
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(outcome)
 }

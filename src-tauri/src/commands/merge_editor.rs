@@ -156,7 +156,7 @@ pub async fn save_merge_result<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let state_map_clone = state_map.clone();
@@ -169,16 +169,15 @@ pub async fn save_merge_result<R: Runtime>(
 
     // Repopulate cache and emit repo-changed (same pattern as merge_continue)
     let path_for_cache = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = state_map.path_for(&path_for_cache)?;
-        let mut repo = git2::Repository::open(path_buf)?;
-        graph::snapshot(&mut repo, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            let path_buf = state_map.path_for(&path_for_cache)?;
+            let mut repo = git2::Repository::open(path_buf)?;
+            graph::snapshot(&mut repo, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }

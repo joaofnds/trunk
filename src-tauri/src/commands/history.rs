@@ -88,24 +88,20 @@ pub async fn refresh_commit_graph(
     cache: State<'_, CommitCache>,
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<GraphResponse, String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
 
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        let path_buf = state_map.path_for(&path_clone)?;
-        let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
-        graph::snapshot(&mut repo, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    let graph_result = rebuild
+        .rebuild(path, move |visibility| {
+            let path_buf = state_map.path_for(&path_clone)?;
+            let mut repo = git2::Repository::open(path_buf).map_err(TrunkError::from)?;
+            graph::snapshot(&mut repo, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    let response = GraphResponse::head(&graph_result.layout, loaded);
-
-    cache.0.lock().unwrap().insert(path, graph_result);
-
-    Ok(response)
+    Ok(GraphResponse::head(&graph_result.layout, loaded))
 }
 
 /// Record which refs the user has hidden for a repository and rebuild its graph.

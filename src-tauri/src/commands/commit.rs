@@ -124,18 +124,17 @@ pub async fn create_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-        refresh_commit_cache(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            create_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+            refresh_commit_cache(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
@@ -158,18 +157,17 @@ pub async fn amend_commit<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let state_map = state.snapshot();
     let path_clone = path.clone();
-    let graph_result = tauri::async_runtime::spawn_blocking(move || {
-        amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
-        refresh_commit_cache(&path_clone, &state_map, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild(path.clone(), move |visibility| {
+            amend_commit_inner(&path_clone, &subject, body.as_deref(), &state_map)?;
+            refresh_commit_cache(&path_clone, &state_map, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
-    cache.0.lock().unwrap().insert(path.clone(), graph_result);
     let _ = app.emit("repo-changed", path);
     Ok(())
 }
