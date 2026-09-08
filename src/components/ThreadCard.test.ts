@@ -3,24 +3,36 @@ import type { ComponentProps } from "svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
-import {
-	addReply,
-	deleteReply,
-	editReply,
-	setThreadState,
-} from "../lib/review-comment-actions.js";
+import { safeInvoke } from "../lib/invoke.js";
 import type { Thread } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
 import "../__tests__/helpers/tauri-mock";
 
-vi.mock("../lib/review-comment-actions.js", () => ({
-	addReply: vi.fn(),
-	setThreadState: vi.fn(),
-	editReply: vi.fn(),
-	deleteReply: vi.fn(),
-}));
+// review-comment-actions.ts is owned code (a thin wrapper over safeInvoke), so
+// this asserts on safeInvoke, the real IPC boundary, matching the pattern used
+// for the same wiring in ReviewPanel.test.ts, CommitDetail.test.ts, and the
+// three diff-host test files.
+vi.mock("../lib/invoke.js", async () => {
+	const actual =
+		await vi.importActual<typeof import("../lib/invoke.js")>(
+			"../lib/invoke.js",
+		);
+	return {
+		...actual,
+		safeInvoke: vi.fn(),
+	};
+});
+
+function calledCommands(): string[] {
+	return vi.mocked(safeInvoke).mock.calls.map((c) => c[0] as string);
+}
+
+function callArgs(cmd: string): Record<string, unknown> | undefined {
+	const call = vi.mocked(safeInvoke).mock.calls.find((c) => c[0] === cmd);
+	return call?.[1] as Record<string, unknown> | undefined;
+}
 
 // The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
 // a plain `fireEvent.click` doesn't wait for that microtask to settle.
@@ -32,6 +44,7 @@ async function flush() {
 describe("ThreadCard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(safeInvoke).mockResolvedValue(undefined);
 	});
 
 	const comment: Thread = aThread({
@@ -255,7 +268,12 @@ describe("ThreadCard", () => {
 
 		await fireEvent.click(screen.getByText("Mark done"));
 
-		expect(setThreadState).toHaveBeenCalledWith("/repo", "c1", "done");
+		expect(calledCommands()).toContain("set_thread_state");
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "c1",
+			next: "done",
+		});
 	});
 
 	it("calls setThreadState with the repo path and target state when Dismiss is clicked", async () => {
@@ -263,7 +281,12 @@ describe("ThreadCard", () => {
 
 		await fireEvent.click(screen.getByText("Dismiss"));
 
-		expect(setThreadState).toHaveBeenCalledWith("/repo", "c1", "dismissed");
+		expect(calledCommands()).toContain("set_thread_state");
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "c1",
+			next: "dismissed",
+		});
 	});
 
 	it("calls setThreadState with the repo path and target state when Reopen is clicked", async () => {
@@ -276,7 +299,12 @@ describe("ThreadCard", () => {
 
 		await fireEvent.click(screen.getByText("Reopen"));
 
-		expect(setThreadState).toHaveBeenCalledWith("/repo", "c1", "open");
+		expect(calledCommands()).toContain("set_thread_state");
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "c1",
+			next: "open",
+		});
 	});
 
 	it("seeds the reply editor with the reply's text", async () => {
@@ -308,7 +336,12 @@ describe("ThreadCard", () => {
 		await fireEvent.input(textarea, { target: { value: "corrected" } });
 		await fireEvent.click(screen.getByText("Save"));
 
-		expect(editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
+		expect(calledCommands()).toContain("edit_reply");
+		expect(callArgs("edit_reply")).toEqual({
+			path: "/repo",
+			id: "r1",
+			text: "corrected",
+		});
 	});
 
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {
@@ -318,7 +351,12 @@ describe("ThreadCard", () => {
 		await fireEvent.input(textarea, { target: { value: "sounds good" } });
 		await fireEvent.click(screen.getByText("Reply"));
 
-		expect(addReply).toHaveBeenCalledWith("/repo", "c1", "sounds good");
+		expect(calledCommands()).toContain("add_reply");
+		expect(callArgs("add_reply")).toEqual({
+			path: "/repo",
+			threadId: "c1",
+			text: "sounds good",
+		});
 		expect(textarea.value).toBe("");
 	});
 
@@ -346,7 +384,8 @@ describe("ThreadCard", () => {
 		await flush();
 
 		expect(ask).toHaveBeenCalledTimes(1);
-		expect(deleteReply).toHaveBeenCalledWith("/repo", "r1");
+		expect(calledCommands()).toContain("delete_reply");
+		expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });
 	});
 
 	it("does not call deleteReply when the reply-delete confirmation is cancelled", async () => {
@@ -362,7 +401,7 @@ describe("ThreadCard", () => {
 		await flush();
 
 		expect(ask).toHaveBeenCalledTimes(1);
-		expect(deleteReply).not.toHaveBeenCalled();
+		expect(calledCommands()).not.toContain("delete_reply");
 	});
 
 	// Once the owning review is published, the store refuses to delete a
