@@ -257,25 +257,6 @@ pub async fn resolve_ref(
         .map_err(|e| e.to_json())
 }
 
-/// Run a graph-rebuilding branch operation off the UI thread and merge only the
-/// entries it produced into the shared cache. The map is keyed by repository, so
-/// writing a whole snapshot back would revert every graph another repository
-/// refreshed while this operation was running.
-async fn rebuild_graph_cache<F>(cache: &CommitCache, op: F) -> Result<(), TrunkError>
-where
-    F: FnOnce(&mut GraphCache) -> Result<(), TrunkError> + Send + 'static,
-{
-    let rebuilt = tauri::async_runtime::spawn_blocking(move || {
-        let mut rebuilt = GraphCache::default();
-        op(&mut rebuilt).map(|()| rebuilt)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
-
-    cache.0.lock().unwrap().absorb(rebuilt);
-    Ok(())
-}
-
 /// A safe checkout refuses with `Conflict` only when uncommitted work would be
 /// overwritten, which is the `dirty_workdir` outcome the branch commands already
 /// raise by hand when they pre-check the working tree.
@@ -344,15 +325,16 @@ pub async fn checkout_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
     let state_map = state.snapshot();
     let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
 
-    rebuild_graph_cache(&cache, move |rebuilt| {
-        checkout_branch_inner(&path_clone, &branch_name, &state_map, rebuilt, &visibility)
-    })
-    .await
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            checkout_branch_inner(&path_clone, &branch_name, &state_map, rebuilt, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", path);
 
@@ -413,15 +395,16 @@ pub async fn fast_forward_to<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
     let state_map = state.snapshot();
     let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
 
-    rebuild_graph_cache(&cache, move |rebuilt| {
-        fast_forward_to_inner(&path_clone, &target_oid, &state_map, rebuilt, &visibility)
-    })
-    .await
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            fast_forward_to_inner(&path_clone, &target_oid, &state_map, rebuilt, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", path);
 
@@ -515,22 +498,23 @@ pub async fn create_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
     let state_map = state.snapshot();
     let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
 
-    rebuild_graph_cache(&cache, move |rebuilt| {
-        create_branch_inner(
-            &path_clone,
-            &name,
-            from_oid.as_deref(),
-            &state_map,
-            rebuilt,
-            &visibility,
-        )
-    })
-    .await
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            create_branch_inner(
+                &path_clone,
+                &name,
+                from_oid.as_deref(),
+                &state_map,
+                rebuilt,
+                visibility,
+            )
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", path);
 
@@ -554,15 +538,16 @@ pub async fn delete_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
     let state_map = state.snapshot();
     let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
 
-    rebuild_graph_cache(&cache, move |rebuilt| {
-        delete_branch_inner(&path_clone, &branch_name, &state_map, rebuilt, &visibility)
-    })
-    .await
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            delete_branch_inner(&path_clone, &branch_name, &state_map, rebuilt, visibility)
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", path);
     Ok(())
@@ -586,96 +571,24 @@ pub async fn rename_branch<R: Runtime>(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
-    let visibility = ref_visibility.get(&path);
     let state_map = state.snapshot();
     let path_clone = path.clone();
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
 
-    rebuild_graph_cache(&cache, move |rebuilt| {
-        rename_branch_inner(
-            &path_clone,
-            &old_name,
-            &new_name,
-            &state_map,
-            rebuilt,
-            &visibility,
-        )
-    })
-    .await
-    .map_err(|e| e.to_json())?;
+    rebuild
+        .rebuild_merging(path.clone(), move |visibility, rebuilt| {
+            rename_branch_inner(
+                &path_clone,
+                &old_name,
+                &new_name,
+                &state_map,
+                rebuilt,
+                visibility,
+            )
+        })
+        .await
+        .map_err(|e| e.to_json())?;
 
     let _ = app.emit("repo-changed", path);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::git::graph_input::GraphSnapshot;
-    use std::sync::{Arc, Mutex};
-
-    /// An empty graph tagged by the ref it hides, so the assertions can tell which
-    /// snapshot each entry holds.
-    fn graph(tag: usize) -> GraphSnapshot {
-        let mut visibility = crate::git::graph_input::RefVisibility::default();
-        visibility.hidden_refs.insert(format!("refs/tags/{tag}"));
-
-        GraphSnapshot::new(crate::git::graph_input::GraphSource::default(), visibility)
-    }
-
-    #[test]
-    fn another_repos_graph_refreshed_mid_operation_is_not_rolled_back() {
-        let cache = Arc::new(CommitCache(Mutex::new(GraphCache::default())));
-        cache
-            .0
-            .lock()
-            .unwrap()
-            .insert("/repo/b".to_owned(), graph(1));
-        let concurrent = Arc::clone(&cache);
-
-        tauri::async_runtime::block_on(rebuild_graph_cache(&cache, move |rebuilt| {
-            concurrent
-                .0
-                .lock()
-                .unwrap()
-                .insert("/repo/b".to_owned(), graph(9));
-            rebuilt.insert("/repo/a".to_owned(), graph(1));
-            Ok(())
-        }))
-        .unwrap();
-
-        let cached = cache.0.lock().unwrap();
-        assert_eq!(
-            cached.get("/repo/a").unwrap().visibility(),
-            graph(1).visibility()
-        );
-        assert_eq!(
-            cached.get("/repo/b").unwrap().visibility(),
-            graph(9).visibility(),
-            "/repo/b was reverted to the pre-operation snapshot"
-        );
-    }
-
-    #[test]
-    fn a_failed_operation_leaves_the_cache_untouched() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
-        cache
-            .0
-            .lock()
-            .unwrap()
-            .insert("/repo/b".to_owned(), graph(7));
-
-        let err = tauri::async_runtime::block_on(rebuild_graph_cache(&cache, |rebuilt| {
-            rebuilt.insert("/repo/a".to_owned(), graph(1));
-            Err(TrunkError::new("boom", "no"))
-        }))
-        .unwrap_err();
-
-        assert_eq!(err.code, "boom");
-        let cached = cache.0.lock().unwrap();
-        assert!(!cached.holds("/repo/a"));
-        assert_eq!(
-            cached.get("/repo/b").unwrap().visibility(),
-            graph(7).visibility()
-        );
-    }
 }
