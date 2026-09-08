@@ -56,27 +56,13 @@ fn watcher_emits_event_on_file_write() {
     // Trigger a file change
     std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
 
-    // Wait with generous timeout (2s) per D-05
-    let event_received = wait_for_flag(&received, Duration::from_secs(2));
-
-    if !event_received {
-        // Fallback: MockRuntime may not deliver emit() events to listen() handlers.
-        // Verify watcher is still functional by checking state registration.
-        // This is a weaker test but reliably validates the watcher lifecycle.
-        eprintln!(
-            "NOTE: MockRuntime did not deliver repo-changed event to listener. \
-             This is a known limitation of tauri::test::mock_app(). \
-             Falling back to WatcherState registration check."
-        );
-        assert!(
-            watcher_state
-                .watchers
-                .lock()
-                .unwrap()
-                .contains_key(&path_str),
-            "watcher should still be registered after file change (fallback assertion)"
-        );
-    }
+    // The wait absorbs the OS watcher's own latency, not the emit's: delivery to
+    // a listener on a mock app is a synchronous callback on the shared
+    // AppManager, so a timeout here means no event was ever produced.
+    assert!(
+        wait_for_flag(&received, Duration::from_secs(2)),
+        "repo-changed should fire after a file write"
+    );
 }
 
 // -- Test 2: Watcher stop removes watcher --
@@ -201,10 +187,11 @@ fn watcher_debounces_rapid_changes() {
     }
 
     // Wait for debounce window + generous margin (2s total)
-    let event_received = wait_for_flag(&received, Duration::from_secs(2));
+    assert!(
+        wait_for_flag(&received, Duration::from_secs(2)),
+        "repo-changed should fire once the debounce window closes"
+    );
 
-    // Whether or not MockRuntime delivers events, the watcher should still be
-    // registered and functional (debouncer didn't crash from rapid changes)
     assert!(
         watcher_state
             .watchers
@@ -213,15 +200,6 @@ fn watcher_debounces_rapid_changes() {
             .contains_key(&path_str),
         "watcher should still be registered after rapid changes (debouncer should not crash)"
     );
-
-    if event_received {
-        // Great -- MockRuntime delivered events
-    } else {
-        eprintln!(
-            "NOTE: MockRuntime did not deliver repo-changed event for rapid changes. \
-             Debouncer is confirmed functional via WatcherState registration check."
-        );
-    }
 }
 
 // -- Test 5: A disabled watcher state registers nothing --
