@@ -59,6 +59,10 @@ const fileDiffs: FileDiff[] = [
 	},
 ];
 
+beforeEach(() => {
+	vi.clearAllMocks();
+});
+
 describe("CommitDetail", () => {
 	it("renders commit summary", () => {
 		render(CommitDetailComponent, {

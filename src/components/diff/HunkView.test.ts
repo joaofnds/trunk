@@ -3,30 +3,26 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
+import { safeInvoke } from "../../lib/invoke.js";
 import {
 	disablePerf,
 	enablePerf,
 	flushPerf,
 	type PerfSink,
 } from "../../lib/perf.js";
-import {
-	addReply,
-	deleteReply,
-	editReply,
-	setThreadState,
-} from "../../lib/review-comment-actions.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import HunkView from "./HunkView.svelte";
 
-vi.mock("../../lib/review-comment-actions.js", async (importOriginal) => ({
-	...(await importOriginal<
-		typeof import("../../lib/review-comment-actions.js")
-	>()),
-	addReply: vi.fn(),
-	setThreadState: vi.fn(),
-	editReply: vi.fn(),
-	deleteReply: vi.fn(),
-}));
+// Command-aware safeInvoke dispatcher, matching ReviewPanel.test.ts's pattern:
+// the threaded comment actions route through safeInvoke via
+// review-comment-actions.ts, so asserting on it exercises the real wiring
+// instead of a mock on a module this project owns.
+vi.mock("../../lib/invoke.js", async () => {
+	const actual = await vi.importActual<typeof import("../../lib/invoke.js")>(
+		"../../lib/invoke.js",
+	);
+	return { ...actual, safeInvoke: vi.fn() };
+});
 
 // jsdom reports a zero-height viewport, which renders no rows at all through a
 // virtual list. Every case here needs a pane with a real box.
@@ -186,12 +182,7 @@ describe("HunkView", () => {
 			HunkView,
 			defaultProps,
 			".inline-comment-row",
-			{
-				addReply,
-				setThreadState,
-				editReply,
-				deleteReply,
-			},
+			safeInvoke,
 		);
 	});
 });

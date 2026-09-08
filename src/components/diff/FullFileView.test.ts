@@ -8,30 +8,26 @@ import {
 } from "../../__tests__/helpers/layout-stub";
 import { aThread } from "../../__tests__/helpers/thread-fixture";
 import { describeThreadedCommentActions } from "../../__tests__/helpers/threaded-comment-actions.js";
+import { safeInvoke } from "../../lib/invoke.js";
 import {
 	disablePerf,
 	enablePerf,
 	flushPerf,
 	type PerfSink,
 } from "../../lib/perf.js";
-import {
-	addReply,
-	deleteReply,
-	editReply,
-	setThreadState,
-} from "../../lib/review-comment-actions.js";
 import type { FileDiff } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
 
-vi.mock("../../lib/review-comment-actions.js", async (importOriginal) => ({
-	...(await importOriginal<
-		typeof import("../../lib/review-comment-actions.js")
-	>()),
-	addReply: vi.fn(),
-	setThreadState: vi.fn(),
-	editReply: vi.fn(),
-	deleteReply: vi.fn(),
-}));
+// Command-aware safeInvoke dispatcher, matching ReviewPanel.test.ts's pattern:
+// the threaded comment actions route through safeInvoke via
+// review-comment-actions.ts, so asserting on it exercises the real wiring
+// instead of a mock on a module this project owns.
+vi.mock("../../lib/invoke.js", async () => {
+	const actual = await vi.importActual<typeof import("../../lib/invoke.js")>(
+		"../../lib/invoke.js",
+	);
+	return { ...actual, safeInvoke: vi.fn() };
+});
 
 // jsdom reports a zero-height viewport, which renders no rows at all through a
 // virtual list. Every case here needs a pane with a real box.
@@ -39,8 +35,9 @@ beforeEach(() => stubLayout({ width: 900, height: 400 }));
 afterEach(restoreLayout);
 
 // FullFileView renders the flat full-file line list and owns net-new contiguous
-// click + shift-click selection state. It never calls IPC — it only bubbles the
-// selected flat indices up via oncommentfullfile. No safeInvoke mock needed.
+// click + shift-click selection state. It bubbles selected flat indices up via
+// oncommentfullfile, and (via a rendered ThreadCard) reaches IPC for the
+// threaded comment actions exercised below.
 
 // A Modified file at a commit: context + add lines on the new side, plus one
 // Delete line (new_lineno=null) that must NOT be a valid selection endpoint.
@@ -680,11 +677,11 @@ describe("FullFileView", () => {
 	});
 
 	describe("threaded comment actions", () => {
-		describeThreadedCommentActions(FullFileView, defaultProps, ".comment-row", {
-			addReply,
-			setThreadState,
-			editReply,
-			deleteReply,
-		});
+		describeThreadedCommentActions(
+			FullFileView,
+			defaultProps,
+			".comment-row",
+			safeInvoke,
+		);
 	});
 });

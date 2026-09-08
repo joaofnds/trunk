@@ -1,19 +1,17 @@
 import { fireEvent, render, within } from "@testing-library/svelte";
-import { expect, it } from "vitest";
-import type {
-	addReply as AddReply,
-	deleteReply as DeleteReply,
-	editReply as EditReply,
-	setThreadState as SetThreadState,
-} from "../../lib/review-comment-actions.js";
+import { beforeEach, expect, it, vi } from "vitest";
+import type { safeInvoke as SafeInvoke } from "../../lib/invoke.js";
 import { aThread } from "./thread-fixture.js";
 
 // Shared behavior for the three diff hosts (FullFileView, HunkView, SplitView):
 // each renders a threaded comment via a `viewComments` prop and delegates the
 // four reply/state-change actions to ThreadCard, which calls
-// review-comment-actions.ts directly. Every host also renders the same
-// ThreadCard a second time inside a hidden measurement probe, so `cardScope`
-// is the CSS class each host's visible comment row carries, to disambiguate.
+// review-comment-actions.ts, which calls safeInvoke. Asserting on safeInvoke
+// (the real IPC boundary) instead of on review-comment-actions.ts's exports
+// matches the pattern already used for this same wiring in ReviewPanel.test.ts
+// and CommitDetail.test.ts. Every host also renders the same ThreadCard a
+// second time inside a hidden measurement probe, so `cardScope` is the CSS
+// class each host's visible comment row carries, to disambiguate.
 // `Component` borrows `render`'s own first-parameter type rather than
 // re-declaring one: the three hosts' concrete `.svelte` imports already have
 // the exact type `render` wants, and re-typing it generically (rather than
@@ -24,17 +22,25 @@ export function describeThreadedCommentActions(
 		overrides?: Record<string, unknown>,
 	) => Record<string, unknown>,
 	cardScope: string,
-	actions: {
-		addReply: typeof AddReply;
-		setThreadState: typeof SetThreadState;
-		editReply: typeof EditReply;
-		deleteReply: typeof DeleteReply;
-	},
+	safeInvoke: typeof SafeInvoke,
 ) {
+	beforeEach(() => {
+		vi.mocked(safeInvoke).mockClear();
+	});
+
 	function visibleCard(container: HTMLElement): HTMLElement {
 		const card = container.querySelector(`${cardScope} .comment-card`);
 		if (!card) throw new Error("no visible comment card");
 		return card as HTMLElement;
+	}
+
+	function calledCommands(): string[] {
+		return vi.mocked(safeInvoke).mock.calls.map((c) => c[0] as string);
+	}
+
+	function callArgs(cmd: string): Record<string, unknown> | undefined {
+		const call = vi.mocked(safeInvoke).mock.calls.find((c) => c[0] === cmd);
+		return call?.[1] as Record<string, unknown> | undefined;
 	}
 
 	function commentedProps() {
@@ -76,7 +82,7 @@ export function describeThreadedCommentActions(
 		return defaultProps({ viewComments: [commented] });
 	}
 
-	it("submits a reply via addReply with the repo path", async () => {
+	it("submits a reply via add_reply with the repo path", async () => {
 		const { container } = render(Component, { props: commentedProps() });
 		const card = visibleCard(container);
 
@@ -86,19 +92,29 @@ export function describeThreadedCommentActions(
 		await fireEvent.input(textarea, { target: { value: "reply text" } });
 		await fireEvent.click(within(card).getByText("Reply"));
 
-		expect(actions.addReply).toHaveBeenCalledWith("/repo", "t1", "reply text");
+		expect(calledCommands()).toContain("add_reply");
+		expect(callArgs("add_reply")).toEqual({
+			path: "/repo",
+			threadId: "t1",
+			text: "reply text",
+		});
 	});
 
-	it("changes the thread's state via setThreadState with the repo path", async () => {
+	it("changes the thread's state via set_thread_state with the repo path", async () => {
 		const { container } = render(Component, { props: commentedProps() });
 		const card = visibleCard(container);
 
 		await fireEvent.click(within(card).getByText("Mark done"));
 
-		expect(actions.setThreadState).toHaveBeenCalledWith("/repo", "t1", "done");
+		expect(calledCommands()).toContain("set_thread_state");
+		expect(callArgs("set_thread_state")).toEqual({
+			path: "/repo",
+			id: "t1",
+			next: "done",
+		});
 	});
 
-	it("edits a reply via editReply with the repo path", async () => {
+	it("edits a reply via edit_reply with the repo path", async () => {
 		const { container } = render(Component, {
 			props: commentedWithReplyProps(),
 		});
@@ -111,10 +127,15 @@ export function describeThreadedCommentActions(
 		await fireEvent.input(textarea, { target: { value: "corrected" } });
 		await fireEvent.click(within(card).getByText("Save"));
 
-		expect(actions.editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
+		expect(calledCommands()).toContain("edit_reply");
+		expect(callArgs("edit_reply")).toEqual({
+			path: "/repo",
+			id: "r1",
+			text: "corrected",
+		});
 	});
 
-	it("deletes a reply via deleteReply with the repo path (no confirmation, inline confirmDelete=false)", async () => {
+	it("deletes a reply via delete_reply with the repo path (no confirmation, inline confirmDelete=false)", async () => {
 		const { container } = render(Component, {
 			props: commentedWithReplyProps(),
 		});
@@ -122,6 +143,7 @@ export function describeThreadedCommentActions(
 
 		await fireEvent.click(within(card).getByText("Delete reply"));
 
-		expect(actions.deleteReply).toHaveBeenCalledWith("/repo", "r1");
+		expect(calledCommands()).toContain("delete_reply");
+		expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });
 	});
 }
