@@ -174,4 +174,29 @@ describe("RemoteGroup trailing controls", () => {
 			minWidth: "var(--target-min)",
 		});
 	});
+
+	// This row was the only one in the sidebar with no pinned height: 21px of content
+	// plus padding, which a 24px target does not fit. It grows to --bar-h so the target
+	// fits. Only the height is asserted: jsdom resolves a declared height written as a
+	// var() but returns "0" for any padding that contains one, shorthand or longhand.
+	it("pins the sub-header to the bar height so a 24px target fits", () => {
+		render(RemoteGroup, {
+			props: {
+				remoteName: "origin",
+				branches: ["main"],
+				checkingOut: null,
+				errorBranch: null,
+				errorText: "",
+				oncheckout: vi.fn(),
+				groupState: "some" as const,
+				hiddenBranches: { "origin/main": true },
+				ontogglevisibility: vi.fn(),
+				ontogglebranchvisibility: vi.fn(),
+			},
+		});
+
+		expect(screen.getByTestId("remote-group-subheader")).toHaveStyle({
+			height: "var(--bar-h)",
+		});
+	});
 });

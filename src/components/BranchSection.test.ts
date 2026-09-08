@@ -190,15 +190,15 @@ describe("BranchSection trailing controls", () => {
 		children: emptySnippet,
 	};
 
+	// The right edge is what puts every row's eye in one column. It is read off the
+	// style attribute rather than getComputedStyle because jsdom returns "0" for any
+	// padding written as a var(), shorthand or longhand, so toHaveStyle cannot see it.
 	it("ends the header at the shared --space-4 edge", () => {
 		render(BranchSection, { props });
 
-		const header = screen.getByTestId(
-			"branch-section-branches",
-		).firstElementChild;
-		expect(header?.getAttribute("style")).toContain(
-			"padding: 0 var(--space-4) 0 var(--space-3)",
-		);
+		expect(
+			screen.getByTestId("branch-section-header").getAttribute("style"),
+		).toContain("padding: 0 var(--space-4) 0 var(--space-3)");
 	});
 
 	it("reserves the create button's slot when the section has none", () => {
@@ -207,6 +207,22 @@ describe("BranchSection trailing controls", () => {
 		expect(screen.getByTestId("branch-section-create-slot")).toHaveStyle({
 			minWidth: "var(--target-min)",
 		});
+	});
+
+	// The Stashes section reuses this component, so a hardcoded label had its create
+	// button announcing "Create new branch" to a screen reader.
+	it("names the create button after what the section creates", () => {
+		render(BranchSection, {
+			props: {
+				...props,
+				label: "Stashes",
+				showCreateButton: true,
+				createLabel: "Create new stash",
+				oncreate: vi.fn(),
+			},
+		});
+
+		expect(screen.getByLabelText("Create new stash")).toBeInTheDocument();
 	});
 
 	it("fills that slot with the create button when the section has one", () => {

@@ -890,6 +890,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
         ),
       )}
       showCreateButton={true}
+      createLabel="Create new stash"
       oncreate={() => { showStashForm = !showStashForm; stashCreateError = null; stashName = ''; stashesExpanded = true; }}
     >
       <!-- Inline create form -->

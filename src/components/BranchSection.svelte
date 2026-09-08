@@ -12,6 +12,7 @@ interface Props {
 	expanded: boolean;
 	ontoggle: () => void;
 	showCreateButton?: boolean;
+	createLabel?: string;
 	oncreate?: () => void;
 	/**
 	 * How much of this section is hidden from the graph, derived from the rows beneath it
@@ -29,6 +30,7 @@ let {
 	expanded,
 	ontoggle,
 	showCreateButton = false,
+	createLabel = "Create new branch",
 	oncreate,
 	groupState = "none",
 	ontogglevisibility,
@@ -43,6 +45,7 @@ let allHidden = $derived(groupState === "all");
 <div data-testid="branch-section-{label.toLowerCase()}">
   <!-- Section header -->
   <div
+    data-testid="branch-section-header"
     role="button"
     tabindex="0"
     onclick={ontoggle}
@@ -82,7 +85,7 @@ let allHidden = $derived(groupState === "all");
           data-testid="branch-section-create-btn"
           onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
           style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); display: inline-flex; align-items: center; justify-content: center;"
-          aria-label="Create new branch"
+          aria-label={createLabel}
         >
           <Plus size={12} />
         </button>

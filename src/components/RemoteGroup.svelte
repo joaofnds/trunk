@@ -43,7 +43,7 @@ let allHidden = $derived(groupState === "all");
 
 <div>
   <!-- Remote name sub-header -->
-  <div style="
+  <div data-testid="remote-group-subheader" style="
     height: var(--bar-h);
     padding: 0 var(--space-4);
     font-size: 11px;

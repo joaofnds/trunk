@@ -867,7 +867,8 @@ describe("BranchSidebar ref visibility", () => {
 		await fireEvent.click(await screen.findByText("Stashes (1)"));
 		await screen.findByLabelText("Hide stash@{0}");
 
-		expect(container.querySelector(".stash-create-slot")).not.toBeNull();
+		const slot = container.querySelector(".stash-create-slot") as HTMLElement;
+		expect(getComputedStyle(slot).minWidth).toBe("var(--target-min)");
 	});
 
 	// The slot follows the eye out of the flow while the row is idle. Reserving it there
@@ -960,6 +961,52 @@ describe("BranchSidebar ref visibility", () => {
 
 		const slot = container.querySelector(".stash-create-slot") as HTMLElement;
 		expect(getComputedStyle(slot).marginLeft).toBe("calc(-1 * var(--space-2))");
+	});
+
+	// The stash row is the same height as every other row in the sidebar, which is what
+	// leaves room for a 24px target. Only the height is asserted: jsdom returns "0" for
+	// a padding written as a var().
+	it("pins the stash row to the row height", async () => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "list_refs") {
+				return Promise.resolve(
+					mockListRefs({
+						stashes: [
+							{
+								index: 0,
+								name: "WIP on main",
+								short_name: "stash@{0}",
+								oid: "abc123",
+								parent_oid: null,
+							},
+						],
+					}),
+				);
+			}
+			if (cmd === "prefs_get") {
+				return Promise.resolve(
+					prefsStore.get((args as { key: string })?.key) ?? null,
+				);
+			}
+			if (cmd === "prefs_set") {
+				prefsStore.set(
+					(args as { key: string }).key,
+					(args as { value: unknown }).value,
+				);
+				return Promise.resolve(undefined);
+			}
+			return Promise.resolve(undefined);
+		});
+
+		const { container } = render(BranchSidebar, {
+			props: { repoPath: "/test/repo" },
+		});
+
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+		await screen.findByLabelText("Hide stash@{0}");
+
+		const row = container.querySelector(".stash-row") as HTMLElement;
+		expect(getComputedStyle(row).height).toBe("var(--row-h)");
 	});
 
 	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-

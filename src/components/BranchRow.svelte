@@ -121,15 +121,16 @@ let actionShown = $derived(hovered || focused || hidden);
       >
         <VisibilityIcon {hidden} />
       </button>
+      <!-- The eye shares one column with the section headers', which sit left of a
+           create button this row never has. The slot stands in for that button so the
+           column holds. It follows the eye in and out of the flow: idle, and on HEAD's
+           row where no eye renders at all, it would otherwise reserve the gutter the
+           eye gave up and truncate the name for nothing. -->
+      <span
+        data-testid="branch-row-create-slot"
+        style="flex-shrink: 0; min-width: var(--target-min); display: {actionShown ? 'block' : 'none'};"
+      ></span>
     {/if}
-    <!-- The eye shares one column with the section headers', which sit left of a
-         create button this row never has. The slot stands in for that button so the
-         column holds. It follows the eye out of the flow when the row is idle, or it
-         would reserve the gutter the eye gave up and truncate the name for nothing. -->
-    <span
-      data-testid="branch-row-create-slot"
-      style="flex-shrink: 0; min-width: var(--target-min); display: {actionShown ? 'block' : 'none'};"
-    ></span>
   </div>
 
   {#if isError}

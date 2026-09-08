@@ -278,17 +278,18 @@ describe("BranchRow keyboard reachability", () => {
 // out of the flow: reserving it on an idle row would restore the gutter the eye gave up
 // above, and truncate the name against a slot holding nothing.
 describe("BranchRow trailing controls", () => {
-	it("reserves the create button's slot while the action is shown", () => {
+	it("reserves the create button's width while the action is shown", () => {
 		render(BranchRow, {
 			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
 		});
 
 		expect(screen.getByTestId("branch-row-create-slot")).toHaveStyle({
 			display: "block",
+			minWidth: "var(--target-min)",
 		});
 	});
 
-	it("takes no width while the row is idle", () => {
+	it("leaves the flow with the eye while the row is idle", () => {
 		render(BranchRow, {
 			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
 		});
@@ -296,5 +297,19 @@ describe("BranchRow trailing controls", () => {
 		expect(screen.getByTestId("branch-row-create-slot")).toHaveStyle({
 			display: "none",
 		});
+	});
+
+	// HEAD's row is passed no ontogglevisibility, so it renders no eye. A slot gated on
+	// hover rather than on the eye reserved 24px there on hover, aligning nothing and
+	// truncating the name: the gutter 66e55e6f removed, on the one row that never had
+	// an eye to give it up.
+	it("renders no slot on a row that has no eye", async () => {
+		render(BranchRow, { props: { name: "main", isHead: true } });
+
+		await fireEvent.mouseEnter(screen.getByRole("button", { name: "main" }));
+
+		expect(
+			screen.queryByTestId("branch-row-create-slot"),
+		).not.toBeInTheDocument();
 	});
 });

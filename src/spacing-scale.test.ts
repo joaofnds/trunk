@@ -87,6 +87,25 @@ describe("spacing scale", () => {
 		expect(raw).toEqual([]);
 	});
 
+	/* --target-min is the 24px WCAG 2.2 SC 2.5.8 asks of a hit target, and the width
+	   every sidebar row reserves for the slot that holds its eye's column. It was a
+	   bare literal at ten sites across four files before the token existed, outside
+	   both this file's scale guard, which reads gap, padding and margin, and
+	   app.css.test.ts, which reads :root. So a copy could drift and the eye's box
+	   could silently disagree with the slot reserving its column.
+
+	   Only the token's own value is guarded. A min-width or min-height is a real
+	   length elsewhere in the app, a dialog's 340px or a column's 2ch, and those
+	   owe the scale nothing. */
+	it("spells the hit target as its token, never as the literal", () => {
+		const raw = offences(
+			/\b(?:min-width|min-height): ([^;"\n]+)/g,
+			(value) => mask(value).trim() !== "24px",
+		);
+
+		expect(raw).toEqual([]);
+	});
+
 	it("spends no layout on a bar's own rule", () => {
 		/* A bar declares its height either from the token or, where the height is
 		   also needed by virtualization math, from the constant that mirrors it.
