@@ -1,10 +1,26 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, within } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../../__tests__/helpers/layout-stub";
 import { aThread } from "../../__tests__/helpers/thread-fixture.js";
+import {
+	addReply,
+	deleteReply,
+	editReply,
+	setThreadState,
+} from "../../lib/review-comment-actions.js";
 import type { DiffLine, FileDiff } from "../../lib/types.js";
 import SplitView from "./SplitView.svelte";
+
+vi.mock("../../lib/review-comment-actions.js", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("../../lib/review-comment-actions.js")
+	>()),
+	addReply: vi.fn(),
+	setThreadState: vi.fn(),
+	editReply: vi.fn(),
+	deleteReply: vi.fn(),
+}));
 
 // jsdom reports a zero-height viewport, which renders no rows at all through a
 // virtual list. Every case here needs a pane with a real box.
@@ -374,5 +390,120 @@ describe("SplitView row shapes", () => {
 		expect(binary?.textContent).toContain("Binary file");
 		expect(binary?.getAttribute("style")).toContain("width: 100cqi");
 		expect(container.querySelectorAll(".split-row").length).toBe(0);
+	});
+
+	describe("threaded comment actions", () => {
+		// ThreadCard also renders inside SplitView's hidden measurement probe
+		// (`.comment-probe`), so a query on the visible card must be scoped to
+		// `.split-comment-row` — an unscoped query finds both copies.
+		function visibleCard(container: HTMLElement): HTMLElement {
+			const card = container.querySelector(".split-comment-row .comment-card");
+			if (!card) throw new Error("no visible comment card");
+			return card as HTMLElement;
+		}
+
+		function commentedProps() {
+			const commented = aThread({
+				id: "t1",
+				anchor: {
+					commit_oid: "oid",
+					file_path: "src/main.ts",
+					source: "FullFile",
+					side: "New",
+					start_line: 11,
+					end_line: 11,
+				},
+			});
+			return defaultProps({ viewComments: [commented] });
+		}
+
+		it("submits a reply via addReply with the repo path", async () => {
+			const { container } = render(SplitView, { props: commentedProps() });
+			const card = visibleCard(container);
+
+			const textarea = within(card).getByLabelText(
+				"Reply",
+			) as HTMLTextAreaElement;
+			await fireEvent.input(textarea, { target: { value: "reply text" } });
+			await fireEvent.click(within(card).getByText("Reply"));
+
+			expect(addReply).toHaveBeenCalledWith("/repo", "t1", "reply text");
+		});
+
+		it("changes the thread's state via setThreadState with the repo path", async () => {
+			const { container } = render(SplitView, { props: commentedProps() });
+			const card = visibleCard(container);
+
+			await fireEvent.click(within(card).getByText("Mark done"));
+
+			expect(setThreadState).toHaveBeenCalledWith("/repo", "t1", "done");
+		});
+
+		it("edits a reply via editReply with the repo path", async () => {
+			const commented = aThread({
+				id: "t1",
+				anchor: {
+					commit_oid: "oid",
+					file_path: "src/main.ts",
+					source: "FullFile",
+					side: "New",
+					start_line: 11,
+					end_line: 11,
+				},
+				replies: [
+					{
+						id: "r1",
+						text: "original",
+						text_html: "",
+						channel: "human",
+						created_at: 1_000,
+					},
+				],
+			});
+			const { container } = render(SplitView, {
+				props: defaultProps({ viewComments: [commented] }),
+			});
+			const card = visibleCard(container);
+
+			await fireEvent.click(within(card).getByText("Edit reply"));
+			const textarea = within(card).getByRole("textbox", {
+				name: "Edit reply",
+			}) as HTMLTextAreaElement;
+			await fireEvent.input(textarea, { target: { value: "corrected" } });
+			await fireEvent.click(within(card).getByText("Save"));
+
+			expect(editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
+		});
+
+		it("deletes a reply via deleteReply with the repo path (no confirmation, inline confirmDelete=false)", async () => {
+			const commented = aThread({
+				id: "t1",
+				anchor: {
+					commit_oid: "oid",
+					file_path: "src/main.ts",
+					source: "FullFile",
+					side: "New",
+					start_line: 11,
+					end_line: 11,
+				},
+				replies: [
+					{
+						id: "r1",
+						text: "original",
+						text_html: "",
+						channel: "human",
+						created_at: 1_000,
+					},
+				],
+			});
+			const { container } = render(SplitView, {
+				props: defaultProps({ viewComments: [commented] }),
+			});
+			const card = visibleCard(container);
+
+			await fireEvent.click(within(card).getByText("Delete reply"));
+
+			expect(deleteReply).toHaveBeenCalledWith("/repo", "r1");
+		});
 	});
 });

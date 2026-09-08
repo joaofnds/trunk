@@ -12,14 +12,7 @@ import {
 	trailingWhitespaceStart,
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
-import {
-	addReply,
-	deleteReply,
-	deleteThread,
-	editReply,
-	editThread,
-	setThreadState,
-} from "../../lib/review-comment-actions.js";
+import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
@@ -263,11 +256,8 @@ function originClass(origin: string): string {
     variant="inline"
     confirmDelete={false}
     thread={c}
+    {repoPath}
     onedit={(id, text) => editThread(repoPath, id, text)}
-    onreplyadd={(id, text) => addReply(repoPath, id, text)}
-    onstatechange={(id, next) => setThreadState(repoPath, id, next)}
-    onreplyedit={(id, text) => editReply(repoPath, id, text)}
-    onreplydelete={(id) => deleteReply(repoPath, id)}
     ondelete={(id) => deleteThread(repoPath, id)}
   />
 {/snippet}
