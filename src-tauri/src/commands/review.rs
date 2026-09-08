@@ -1042,7 +1042,7 @@ pub async fn seed_review_range<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let repo = git2::Repository::open(&path).map_err(TrunkError::from)?;
         let base = git2::Oid::from_str(&base_oid).map_err(TrunkError::from)?;
         let tip = git2::Oid::from_str(&tip_oid).map_err(TrunkError::from)?;
@@ -1069,7 +1069,6 @@ pub async fn seed_review_range<R: Runtime>(
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
@@ -1385,13 +1384,12 @@ pub async fn ensure_review_snapshot<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    let oid = blocking_store(move || {
+    let oid = write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         ensure_review_snapshot_inner(&store, &target, &path, snapshot_kind, now)
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(oid)
 }
 
