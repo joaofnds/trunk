@@ -153,20 +153,15 @@ async fn refresh_graph<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<(), TrunkError> {
     let path_owned = path.to_owned();
-    let visibility = ref_visibility.get(path);
-    let graph_result: GraphSnapshot = tauri::async_runtime::spawn_blocking(move || {
-        let mut repo = git2::Repository::open(&path_buf)
-            .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-        graph::snapshot(&mut repo, &visibility)
-    })
-    .await
-    .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
+    let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
+    rebuild
+        .rebuild(path_owned.clone(), move |visibility| -> Result<GraphSnapshot, TrunkError> {
+            let mut repo = git2::Repository::open(&path_buf)
+                .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
+            graph::snapshot(&mut repo, visibility)
+        })
+        .await?;
 
-    cache
-        .0
-        .lock()
-        .unwrap()
-        .insert(path_owned.clone(), graph_result);
     let _ = app.emit("repo-changed", path_owned);
     Ok(())
 }

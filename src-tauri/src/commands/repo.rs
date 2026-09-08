@@ -26,23 +26,20 @@ pub async fn open_repo<R: Runtime>(
 ) -> Result<(), String> {
     // Nothing has pushed a visibility for a repo being opened, so this first graph shows
     // every ref. The frontend loads the stored set from prefs, pushes it, and refreshes.
-    let visibility = ref_visibility.get(&path);
+    let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let path_clone = path.clone();
-
-    let result =
-        tauri::async_runtime::spawn_blocking(move || -> Result<GraphSnapshot, TrunkError> {
+    rebuild
+        .rebuild(path.clone(), move |visibility| -> Result<GraphSnapshot, TrunkError> {
             let path_buf = std::path::PathBuf::from(&path_clone);
             repository::validate_and_open(&path_buf)?;
             let mut repo = git2::Repository::open(&path_buf)?;
-            graph::snapshot(&mut repo, &visibility)
+            graph::snapshot(&mut repo, visibility)
         })
         .await
-        .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())?;
 
     let path_buf = std::path::PathBuf::from(&path);
     state.register(path.clone(), path_buf.clone());
-    cache.0.lock().unwrap().insert(path.clone(), result);
     watcher::start_watcher(&path_buf, app, &watcher_state);
 
     Ok(())
