@@ -740,6 +740,7 @@ pub async fn rebase_branch<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::graph_input::RefVisibility;
     use git2::{Repository, Signature};
     use std::path::PathBuf;
     use std::process::Command;
@@ -876,6 +877,44 @@ mod tests {
         repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
             .unwrap();
         (dir, repo)
+    }
+
+    /// The frontend discriminates on the serialized `kind` tag, so the tag is a wire
+    /// contract, not an implementation detail. `kind_of` matches on `MergeBeginOutcome`,
+    /// which carries no serde derive, so nothing else here would catch a renamed variant
+    /// or a dropped `rename_all`.
+    #[test]
+    fn merge_begin_result_serializes_the_kind_tags_the_frontend_reads() {
+        let empty = GraphSnapshot::new(GraphSource::default(), RefVisibility::default());
+        let cases = [
+            (
+                MergeBeginResult::FastForwarded {
+                    graph: empty.clone(),
+                },
+                "fast_forwarded",
+            ),
+            (
+                MergeBeginResult::Conflicts {
+                    graph: empty.clone(),
+                },
+                "conflicts",
+            ),
+            (
+                MergeBeginResult::Ready {
+                    graph: empty,
+                    message: String::new(),
+                },
+                "ready",
+            ),
+        ];
+        for (result, expected) in cases {
+            let json = serde_json::to_value(&result).unwrap();
+            assert_eq!(
+                json["kind"].as_str(),
+                Some(expected),
+                "serialized kind tag for {result:?}"
+            );
+        }
     }
 
     fn kind_of(outcome: &MergeBeginOutcome) -> &'static str {
