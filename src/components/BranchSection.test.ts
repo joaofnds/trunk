@@ -173,3 +173,49 @@ describe("BranchSection visibility toggle target size", () => {
 		});
 	});
 });
+
+// TRUNK-187: the trailing eyes did not line up in a column. Section headers sat 12px
+// from the sidebar edge, branch rows 16px, the remote sub-header 8px, and a header
+// carrying a create button pushed its eye a further ~20px left. jsdom lays nothing
+// out, so these pin the declared geometry that produces one column: the shared 16px
+// edge, and a slot that reserves the create button's width when there is none.
+describe("BranchSection trailing controls", () => {
+	const props = {
+		label: "Branches",
+		count: 3,
+		expanded: false,
+		ontoggle: vi.fn(),
+		groupState: "none" as const,
+		ontogglevisibility: vi.fn(),
+		children: emptySnippet,
+	};
+
+	it("ends the header at the shared --space-4 edge", () => {
+		render(BranchSection, { props });
+
+		const header = screen.getByTestId(
+			"branch-section-branches",
+		).firstElementChild;
+		expect(header?.getAttribute("style")).toContain(
+			"padding: 0 var(--space-4) 0 var(--space-3)",
+		);
+	});
+
+	it("reserves the create button's slot when the section has none", () => {
+		render(BranchSection, { props });
+
+		expect(
+			screen.getByTestId("branch-section-create-slot"),
+		).toBeInTheDocument();
+	});
+
+	it("fills that slot with the create button when the section has one", () => {
+		render(BranchSection, {
+			props: { ...props, showCreateButton: true, oncreate: vi.fn() },
+		});
+
+		expect(screen.getByTestId("branch-section-create-slot")).toContainElement(
+			screen.getByTestId("branch-section-create-btn"),
+		);
+	});
+});

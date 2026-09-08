@@ -825,6 +825,51 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
+	// TRUNK-187: the eyes did not line up. A section header's eye is followed by the slot
+	// its create button occupies, so a stash row reserves the same width or its eye drifts
+	// right of the column.
+	it("reserves the create button's slot on the stash row", async () => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "list_refs") {
+				return Promise.resolve(
+					mockListRefs({
+						stashes: [
+							{
+								index: 0,
+								name: "WIP on main",
+								short_name: "stash@{0}",
+								oid: "abc123",
+								parent_oid: null,
+							},
+						],
+					}),
+				);
+			}
+			if (cmd === "prefs_get") {
+				return Promise.resolve(
+					prefsStore.get((args as { key: string })?.key) ?? null,
+				);
+			}
+			if (cmd === "prefs_set") {
+				prefsStore.set(
+					(args as { key: string }).key,
+					(args as { value: unknown }).value,
+				);
+				return Promise.resolve(undefined);
+			}
+			return Promise.resolve(undefined);
+		});
+
+		const { container } = render(BranchSidebar, {
+			props: { repoPath: "/test/repo" },
+		});
+
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+		await screen.findByLabelText("Hide stash@{0}");
+
+		expect(container.querySelector(".stash-create-slot")).not.toBeNull();
+	});
+
 	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-
 	// visibility read that fails must still release it -- a stuck gate would leave the
 	// graph with no first page at all, worse than the flash this card fixes.

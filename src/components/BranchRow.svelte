@@ -120,6 +120,10 @@ let actionShown = $derived(hovered || focused || hidden);
         <VisibilityIcon {hidden} />
       </button>
     {/if}
+    <span
+      data-testid="branch-row-create-slot"
+      style="flex-shrink: 0; min-width: 24px;"
+    ></span>
   </div>
 
   {#if isError}

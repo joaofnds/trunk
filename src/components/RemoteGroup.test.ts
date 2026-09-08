@@ -149,3 +149,27 @@ describe("RemoteGroup visibility toggle target size", () => {
 		});
 	});
 });
+
+// TRUNK-187: the eyes did not line up. A section header's eye is followed by the slot
+// its create button occupies, so a row without one reserves the same width or its eye
+// drifts right of the column.
+describe("RemoteGroup trailing controls", () => {
+	it("reserves the create button's slot so the eye keeps the column", () => {
+		render(RemoteGroup, {
+			props: {
+				remoteName: "origin",
+				branches: ["main"],
+				checkingOut: null,
+				errorBranch: null,
+				errorText: "",
+				oncheckout: vi.fn(),
+				groupState: "some" as const,
+				hiddenBranches: { "origin/main": true },
+				ontogglevisibility: vi.fn(),
+				ontogglebranchvisibility: vi.fn(),
+			},
+		});
+
+		expect(screen.getByTestId("remote-group-create-slot")).toBeInTheDocument();
+	});
+});

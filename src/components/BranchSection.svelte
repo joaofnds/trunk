@@ -49,7 +49,7 @@ let allHidden = $derived(groupState === "all");
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
     style="
       height: var(--bar-h);
-      padding: 0 var(--space-3);
+      padding: 0 var(--space-4) 0 var(--space-3);
       display: flex;
       flex-direction: row;
       align-items: center;
@@ -73,16 +73,21 @@ let allHidden = $derived(groupState === "all");
         <VisibilityIcon hidden={allHidden} />
       </button>
     {/if}
-    {#if showCreateButton}
-      <button
-        data-testid="branch-section-create-btn"
-        onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
-        style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0 var(--space-1); display: inline-flex; align-items: center;"
-        aria-label="Create new branch"
-      >
-        <Plus size={12} />
-      </button>
-    {/if}
+    <span
+      data-testid="branch-section-create-slot"
+      style="flex-shrink: 0; min-width: 24px; display: inline-flex; align-items: center; justify-content: center;"
+    >
+      {#if showCreateButton}
+        <button
+          data-testid="branch-section-create-btn"
+          onclick={(e) => { e.stopPropagation(); oncreate?.(); }}
+          style="color: var(--fg-1); background: none; border: none; cursor: pointer; padding: 0; min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center;"
+          aria-label="Create new branch"
+        >
+          <Plus size={12} />
+        </button>
+      {/if}
+    </span>
   </div>
 
   <!-- Section content -->

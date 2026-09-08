@@ -45,7 +45,7 @@ let allHidden = $derived(groupState === "all");
   <!-- Remote name sub-header -->
   <div style="
     height: var(--bar-h);
-    padding: 0 var(--space-2) 0 var(--space-4);
+    padding: 0 var(--space-4);
     font-size: 11px;
     color: var(--fg-3);
     font-weight: 500;
@@ -65,6 +65,10 @@ let allHidden = $derived(groupState === "all");
         <VisibilityIcon hidden={allHidden} />
       </button>
     {/if}
+    <span
+      data-testid="remote-group-create-slot"
+      style="flex-shrink: 0; min-width: 24px;"
+    ></span>
   </div>
 
   <!-- Branch rows for this remote -->

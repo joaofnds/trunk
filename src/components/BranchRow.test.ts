@@ -272,3 +272,14 @@ describe("BranchRow keyboard reachability", () => {
 		);
 	});
 });
+
+// TRUNK-187: see RemoteGroup.test.ts. A branch row has no create button either.
+describe("BranchRow trailing controls", () => {
+	it("reserves the create button's slot so the eye keeps the column", () => {
+		render(BranchRow, {
+			props: { name: "topic", hidden: false, ontogglevisibility: vi.fn() },
+		});
+
+		expect(screen.getByTestId("branch-row-create-slot")).toBeInTheDocument();
+	});
+});

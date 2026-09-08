@@ -935,6 +935,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
           >
             <VisibilityIcon hidden={isStashHidden(visibility, stash.oid)} />
           </button>
+          <span class="stash-create-slot"></span>
         </div>
         {#if stashEntryErrors[stash.oid]}
           <p class="stash-error stash-entry-error">{stashEntryErrors[stash.oid]}</p>
@@ -1012,12 +1013,17 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     display: inline-flex;
   }
 
+  .stash-create-slot {
+    flex-shrink: 0;
+    min-width: 24px;
+  }
+
   .stash-row {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     height: var(--row-h);
-    padding: 0 var(--space-3);
+    padding: 0 var(--space-4) 0 var(--space-3);
     font-size: 12px;
     cursor: default;
   }
