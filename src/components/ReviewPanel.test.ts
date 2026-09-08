@@ -6,11 +6,6 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
-import {
-	addReply,
-	deleteReply,
-	editReply,
-} from "../lib/review-comment-actions.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -41,20 +36,6 @@ vi.mock("../lib/invoke.js", async () => {
 
 vi.mock("../lib/toast.svelte.js", () => ({
 	showToast: vi.fn(),
-}));
-
-// addReply/editReply/deleteReply have no coverage through ReviewPanel today
-// (they route straight to safeInvoke, already exercised at the other four
-// sites); mocking the module here, rather than asserting on safeInvoke like
-// the pre-existing state-change/delete describes do, matches the pattern the
-// other four migrated hosts use.
-vi.mock("../lib/review-comment-actions.js", async (importOriginal) => ({
-	...(await importOriginal<
-		typeof import("../lib/review-comment-actions.js")
-	>()),
-	addReply: vi.fn(),
-	editReply: vi.fn(),
-	deleteReply: vi.fn(),
 }));
 
 // Copy handler writes to the clipboard via the plugin's writeText.
@@ -575,8 +556,14 @@ describe("ReviewPanel", () => {
 			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 			await fireEvent.input(textarea, { target: { value: "reply text" } });
 			await fireEvent.click(screen.getByText("Reply"));
+			await flush();
 
-			expect(addReply).toHaveBeenCalledWith("/repo", "c1", "reply text");
+			expect(calledCommands()).toContain("add_reply");
+			expect(callArgs("add_reply")).toEqual({
+				path: "/repo",
+				threadId: "c1",
+				text: "reply text",
+			});
 		});
 
 		it("edits a reply via editReply with the repo path", async () => {
@@ -612,8 +599,14 @@ describe("ReviewPanel", () => {
 			}) as HTMLTextAreaElement;
 			await fireEvent.input(textarea, { target: { value: "corrected" } });
 			await fireEvent.click(screen.getByText("Save"));
+			await flush();
 
-			expect(editReply).toHaveBeenCalledWith("/repo", "r1", "corrected");
+			expect(calledCommands()).toContain("edit_reply");
+			expect(callArgs("edit_reply")).toEqual({
+				path: "/repo",
+				id: "r1",
+				text: "corrected",
+			});
 		});
 
 		it("deletes a reply via deleteReply with the repo path once confirmed", async () => {
@@ -648,7 +641,8 @@ describe("ReviewPanel", () => {
 			await fireEvent.click(screen.getByText("Delete reply"));
 			await flush();
 
-			expect(deleteReply).toHaveBeenCalledWith("/repo", "r1");
+			expect(calledCommands()).toContain("delete_reply");
+			expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });
 		});
 	});
 

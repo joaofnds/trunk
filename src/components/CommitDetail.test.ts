@@ -1,16 +1,11 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { BODY_CLAMP_LINES } from "../lib/commit-body-clamp.js";
-import {
-	addReply,
-	deleteReply,
-	editReply,
-	setThreadState,
-} from "../lib/review-comment-actions.js";
-import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
-import type { CommitDetail, DiffStat, FileDiff } from "../lib/types.js";
+import { safeInvoke } from "../lib/invoke.js";
+import type { CommitDetail, DiffStat, FileDiff, Thread } from "../lib/types.js";
 import CommitDetailComponent from "./CommitDetail.svelte";
 
 // Shared Tauri mock
@@ -20,37 +15,18 @@ vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../lib/review-comment-actions.js", async (importOriginal) => ({
-	...(await importOriginal<
-		typeof import("../lib/review-comment-actions.js")
-	>()),
-	addReply: vi.fn(),
-	setThreadState: vi.fn(),
-	editReply: vi.fn(),
-	deleteReply: vi.fn(),
-}));
 
-function aReviewCommentsManager(
-	overrides: Partial<ReviewCommentsManager> = {},
-): ReviewCommentsManager {
-	return {
-		threads: [],
-		reviews: [],
-		activeReviewId: null,
-		snapshots: { working_tree_snapshot: null, index_snapshot: null },
-		hasThreads: false,
-		commits: [],
-		oids: new Set(),
-		revision: 0,
-		lastError: null,
-		totalCount: 0,
-		countByCommit: new Map(),
-		countByFile: new Map(),
-		refresh: vi.fn(),
-		destroy: vi.fn(),
-		...overrides,
-	};
-}
+// Command-aware safeInvoke dispatcher, matching ReviewPanel.test.ts's pattern:
+// the four migrated thread actions route through safeInvoke, so asserting on
+// it exercises the real review-comment-actions.ts wiring instead of a mock on
+// a module this project owns.
+vi.mock("../lib/invoke.js", async () => {
+	const actual =
+		await vi.importActual<typeof import("../lib/invoke.js")>(
+			"../lib/invoke.js",
+		);
+	return { ...actual, safeInvoke: vi.fn() };
+});
 
 const detail: CommitDetail = {
 	oid: "abc123def456",
@@ -632,7 +608,19 @@ describe("CommitDetail", () => {
 			commit_oid: detail.oid,
 		});
 
-		function renderWithNote() {
+		function calledCommands(): string[] {
+			return vi.mocked(safeInvoke).mock.calls.map((c) => c[0] as string);
+		}
+
+		function callArgs(cmd: string): Record<string, unknown> | undefined {
+			const call = vi.mocked(safeInvoke).mock.calls.find((c) => c[0] === cmd);
+			return call?.[1] as Record<string, unknown> | undefined;
+		}
+
+		function renderWithThreads(threads: Thread[]) {
+			const reviewComments = createFakeReviewComments();
+			reviewComments.seed({ threads });
+			reviewComments.refresh();
 			return render(CommitDetailComponent, {
 				props: {
 					commitDetail: detail,
@@ -641,30 +629,40 @@ describe("CommitDetail", () => {
 					onfileselect: vi.fn(),
 					onclose: vi.fn(),
 					repoPath: "/repo",
-					reviewComments: aReviewCommentsManager({ threads: [note] }),
+					reviewComments,
 				},
 			});
 		}
 
-		it("submits a note reply via addReply with the repo path", async () => {
-			renderWithNote();
+		it("submits a note reply via add_reply with the repo path", async () => {
+			renderWithThreads([note]);
 
 			const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
 			await fireEvent.input(textarea, { target: { value: "reply text" } });
 			await fireEvent.click(screen.getByText("Reply"));
 
-			expect(addReply).toHaveBeenCalledWith("/repo", "note-1", "reply text");
+			expect(calledCommands()).toContain("add_reply");
+			expect(callArgs("add_reply")).toEqual({
+				path: "/repo",
+				threadId: "note-1",
+				text: "reply text",
+			});
 		});
 
-		it("changes a note's state via setThreadState with the repo path", async () => {
-			renderWithNote();
+		it("changes a note's state via set_thread_state with the repo path", async () => {
+			renderWithThreads([note]);
 
 			await fireEvent.click(screen.getByText("Mark done"));
 
-			expect(setThreadState).toHaveBeenCalledWith("/repo", "note-1", "done");
+			expect(calledCommands()).toContain("set_thread_state");
+			expect(callArgs("set_thread_state")).toEqual({
+				path: "/repo",
+				id: "note-1",
+				next: "done",
+			});
 		});
 
-		it("edits a note reply via editReply with the repo path", async () => {
+		it("edits a note reply via edit_reply with the repo path", async () => {
 			const withReply = aThread({
 				...note,
 				replies: [
@@ -677,17 +675,7 @@ describe("CommitDetail", () => {
 					},
 				],
 			});
-			render(CommitDetailComponent, {
-				props: {
-					commitDetail: detail,
-					fileDiffs,
-					selectedFile: null,
-					onfileselect: vi.fn(),
-					onclose: vi.fn(),
-					repoPath: "/repo",
-					reviewComments: aReviewCommentsManager({ threads: [withReply] }),
-				},
-			});
+			renderWithThreads([withReply]);
 
 			await fireEvent.click(screen.getByText("Edit reply"));
 			const textarea = screen.getByRole("textbox", {
@@ -696,10 +684,15 @@ describe("CommitDetail", () => {
 			await fireEvent.input(textarea, { target: { value: "corrected" } });
 			await fireEvent.click(screen.getByText("Save"));
 
-			expect(editReply).toHaveBeenCalledWith("/repo", "reply-1", "corrected");
+			expect(calledCommands()).toContain("edit_reply");
+			expect(callArgs("edit_reply")).toEqual({
+				path: "/repo",
+				id: "reply-1",
+				text: "corrected",
+			});
 		});
 
-		it("deletes a note reply via deleteReply with the repo path (no confirmation, commit notes are confirmDelete=false)", async () => {
+		it("deletes a note reply via delete_reply with the repo path (no confirmation, commit notes are confirmDelete=false)", async () => {
 			const withReply = aThread({
 				...note,
 				replies: [
@@ -712,21 +705,15 @@ describe("CommitDetail", () => {
 					},
 				],
 			});
-			render(CommitDetailComponent, {
-				props: {
-					commitDetail: detail,
-					fileDiffs,
-					selectedFile: null,
-					onfileselect: vi.fn(),
-					onclose: vi.fn(),
-					repoPath: "/repo",
-					reviewComments: aReviewCommentsManager({ threads: [withReply] }),
-				},
-			});
+			renderWithThreads([withReply]);
 
 			await fireEvent.click(screen.getByText("Delete reply"));
 
-			expect(deleteReply).toHaveBeenCalledWith("/repo", "reply-1");
+			expect(calledCommands()).toContain("delete_reply");
+			expect(callArgs("delete_reply")).toEqual({
+				path: "/repo",
+				id: "reply-1",
+			});
 		});
 	});
 });
