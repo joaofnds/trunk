@@ -4,23 +4,25 @@
 
 mod common;
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::mpsc::{self, Receiver};
+use std::time::Duration;
 use tauri::Listener;
 use trunk_lib::watcher::{WatcherState, start_watcher, stop_watcher};
 
-/// Poll an `AtomicBool` flag until it becomes true or timeout is reached.
-/// Returns the final value of the flag.
-fn wait_for_flag(flag: &AtomicBool, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if flag.load(Ordering::SeqCst) {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    flag.load(Ordering::SeqCst)
+/// How long a test waits for an event before calling it absent. Generous per
+/// D-05: it bounds a failure, never a pass.
+const EVENT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Listen for `repo-changed` on `handle`, returning the receiving half of a
+/// channel the listener sends to. The test blocks on that channel, so the
+/// event itself decides the outcome; the timeout only bounds a failure.
+fn repo_changed_events<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> Receiver<()> {
+    let (tx, rx) = mpsc::channel();
+    handle.listen("repo-changed", move |_event| {
+        let _ = tx.send(());
+    });
+
+    rx
 }
 
 // -- Test 1: Watcher emits repo-changed on file write --
@@ -30,11 +32,7 @@ fn watcher_emits_event_on_file_write() {
     let app = tauri::test::mock_app();
     let handle = app.handle().clone();
 
-    let received = Arc::new(AtomicBool::new(false));
-    let received_clone = received.clone();
-    handle.listen("repo-changed", move |_event| {
-        received_clone.store(true, Ordering::SeqCst);
-    });
+    let events = repo_changed_events(&handle);
 
     let dir = tempfile::tempdir().unwrap();
     git2::Repository::init(dir.path()).unwrap();
@@ -56,13 +54,9 @@ fn watcher_emits_event_on_file_write() {
     // Trigger a file change
     std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
 
-    // The wait absorbs the OS watcher's own latency, not the emit's: delivery to
-    // a listener on a mock app is a synchronous callback on the shared
-    // AppManager, so a timeout here means no event was ever produced.
-    assert!(
-        wait_for_flag(&received, Duration::from_secs(2)),
-        "repo-changed should fire after a file write"
-    );
+    events
+        .recv_timeout(EVENT_TIMEOUT)
+        .expect("repo-changed should fire after a file write");
 }
 
 // -- Test 2: Watcher stop removes watcher --
@@ -164,11 +158,7 @@ fn watcher_debounces_rapid_changes() {
     let app = tauri::test::mock_app();
     let handle = app.handle().clone();
 
-    let received = Arc::new(AtomicBool::new(false));
-    let received_clone = received.clone();
-    handle.listen("repo-changed", move |_event| {
-        received_clone.store(true, Ordering::SeqCst);
-    });
+    let events = repo_changed_events(&handle);
 
     let dir = tempfile::tempdir().unwrap();
     git2::Repository::init(dir.path()).unwrap();
@@ -186,11 +176,9 @@ fn watcher_debounces_rapid_changes() {
         .unwrap();
     }
 
-    // Wait for debounce window + generous margin (2s total)
-    assert!(
-        wait_for_flag(&received, Duration::from_secs(2)),
-        "repo-changed should fire once the debounce window closes"
-    );
+    events
+        .recv_timeout(EVENT_TIMEOUT)
+        .expect("repo-changed should fire once the debounce window closes");
 
     assert!(
         watcher_state
