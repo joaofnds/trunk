@@ -98,6 +98,10 @@ function saveEdit() {
 async function submitReply() {
 	if (!replyDraft.valid) return;
 	const text = replyDraft.text;
+	// addReply reports its own refusal (review-comment-actions.ts) rather than
+	// rethrowing, but this still awaits it before clearing the draft so a
+	// published-review refusal keeps the typed text on screen until the write
+	// settles.
 	await addReply(repoPath, thread.id, text);
 	replyDraft.close();
 }
