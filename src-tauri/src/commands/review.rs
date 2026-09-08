@@ -71,6 +71,19 @@ async fn blocking_store<T: Send + 'static>(
         .map_err(|e| e.to_json())
 }
 
+/// Run `f` on the blocking pool, then emit `reviews-changed` for `canonical`.
+/// Every review command that mutates the store ends this way, so a command
+/// cannot mutate and forget the emit.
+async fn write_and_notify<R: Runtime, T: Send + 'static>(
+    app: &AppHandle<R>,
+    canonical: &Path,
+    f: impl FnOnce() -> Result<T, TrunkError> + Send + 'static,
+) -> Result<T, String> {
+    let v = blocking_store(f).await?;
+    emit_reviews_changed(app, canonical);
+    Ok(v)
+}
+
 /// Resolve `path` and open the store. Every command below starts this way.
 async fn prepare<R: Runtime>(
     path: &str,
@@ -465,13 +478,12 @@ pub async fn edit_thread<R: Runtime>(
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
     let target = canonical.clone();
-    blocking_store(move || {
+    write_and_notify(&app, &canonical, move || {
         let now = crate::reviewdb::now_secs();
         store.write(|tx| threads::edit(tx, &target, &id, &text, now))
     })
     .await?;
 
-    emit_reviews_changed(&app, &canonical);
     Ok(())
 }
 
