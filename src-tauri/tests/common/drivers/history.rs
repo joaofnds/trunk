@@ -9,7 +9,7 @@ impl TestContext {
     /// Search commits by query string (matches SHA, message, ref, author).
     /// Requires `cache_map` to be populated first via `populate_cache()`.
     pub fn search_commits(&self, query: &str) -> Result<Vec<SearchResult>, TrunkError> {
-        history::search_commits_inner(self.path(), query, &self.cache_map)
+        history::search_commits_inner(self.path(), query, self.cache_map.get(self.path()))
     }
 
     /// Diff-stat for a single commit (insertions/deletions/files vs first parent,

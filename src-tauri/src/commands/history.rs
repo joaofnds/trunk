@@ -4,7 +4,7 @@ use crate::git::{
     graph,
     types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
 };
-use crate::state::{CommitCache, CommitStatsCache, GraphCache, OpenRepos, RepoState};
+use crate::state::{CommitCache, CommitStatsCache, OpenRepos, RepoState};
 use serde::Serialize;
 use std::collections::HashMap;
 use tauri::State;
@@ -63,11 +63,7 @@ pub async fn get_commit_graph(
     offset: usize,
     cache: State<'_, CommitCache>,
 ) -> Result<GraphResponse, String> {
-    let cached = cache.0.lock().unwrap();
-    let page = cached
-        .get(&path)
-        .map(|graph| GraphResponse::page(&graph.layout, offset));
-    drop(cached);
+    let page = cache.read(&path, |graph| GraphResponse::page(&graph.layout, offset));
 
     page.ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())
 }
@@ -129,7 +125,7 @@ pub async fn set_ref_visibility(
 ) -> Result<GraphResponse, String> {
     ref_visibility.set(path.clone(), visibility.clone());
 
-    let cached = cache.0.lock().unwrap().get(&path).cloned();
+    let cached = cache.snapshot(&path);
     let state_map = state.snapshot();
     let path_clone = path.clone();
     let read = cached.clone();
@@ -143,29 +139,9 @@ pub async fn set_ref_visibility(
 
     let response = GraphResponse::head(&graph_result.layout, loaded);
 
-    write_relaid_out_graph(&cache, path, read.as_ref(), graph_result);
+    cache.write_relaid_out(path, read.as_ref(), graph_result);
 
     Ok(response)
-}
-
-/// Store a toggle's re-laid-out graph, unless a fresher rebuild already replaced the entry
-/// this toggle read. That rebuild's capture is newer than the one this graph was re-laid out
-/// from, so writing over it would show a graph from before whatever it just did (TRUNK-129).
-fn write_relaid_out_graph(
-    cache: &CommitCache,
-    path: String,
-    read: Option<&GraphSnapshot>,
-    relaid_out: GraphSnapshot,
-) {
-    let mut cache = cache.0.lock().unwrap();
-    let still_current = match (cache.get(&path), read) {
-        (Some(current), Some(read)) => current.same_capture_as(read),
-        (None, None) => true,
-        _ => false,
-    };
-    if still_current {
-        cache.insert(path, relaid_out);
-    }
 }
 
 /// The graph under a new visibility.
@@ -321,17 +297,14 @@ pub async fn get_commit_stats(
     commit_stats: State<'_, CommitStatsCache>,
 ) -> Result<HashMap<String, DiffStat>, String> {
     // Resolve the page's oids from the topology cache (lock dropped immediately).
-    let page_oids: Vec<String> = {
-        let cached = cache.0.lock().unwrap();
-        let oids = cached.get(&path).map(|graph| {
+    let page_oids: Vec<String> = cache
+        .read(&path, |graph| {
             slice(&graph.layout, offset, offset + PAGE)
                 .iter()
                 .map(|c| c.oid.clone())
                 .collect()
-        });
-        drop(cached);
-        oids.ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?
-    };
+        })
+        .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
     // Partition into already-cached (return verbatim) and uncached (compute).
     let (uncached, mut result): (Vec<String>, HashMap<String, DiffStat>) = {
@@ -447,7 +420,7 @@ pub async fn commit_stat(
 pub fn search_commits_inner(
     path: &str,
     query: &str,
-    cache_map: &GraphCache,
+    graph: Option<&GraphSnapshot>,
 ) -> Result<Vec<SearchResult>, TrunkError> {
     let query = query.trim();
     if query.is_empty() {
@@ -455,9 +428,8 @@ pub fn search_commits_inner(
     }
     let q = query.to_lowercase();
 
-    let graph_result = cache_map
-        .get(path)
-        .ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {path}")))?;
+    let graph_result =
+        graph.ok_or_else(|| TrunkError::new("not_open", format!("Repository not open: {path}")))?;
 
     let mut results = Vec::new();
     for commit in &graph_result.layout.commits {
@@ -515,71 +487,6 @@ pub async fn search_commits(
     query: String,
     cache: State<'_, CommitCache>,
 ) -> Result<Vec<SearchResult>, String> {
-    let cache_map = cache.0.lock().unwrap().clone();
-    search_commits_inner(&path, &query, &cache_map).map_err(|e| e.to_json())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::git::graph_input::{GraphSource, RefVisibility};
-    use std::sync::Mutex;
-
-    /// An empty graph tagged by the ref it hides, so a test can tell two snapshots apart
-    /// by their visibility while both carry an empty capture.
-    fn graph(tag: &str) -> GraphSnapshot {
-        let mut visibility = RefVisibility::default();
-        visibility.hidden_refs.insert(format!("refs/tags/{tag}"));
-        GraphSnapshot::new(GraphSource::default(), visibility)
-    }
-
-    #[test]
-    fn a_toggle_does_not_overwrite_a_rebuild_that_landed_while_it_relaid_out() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
-        let read = graph("pre-commit");
-        cache
-            .0
-            .lock()
-            .unwrap()
-            .insert("/repo".to_owned(), read.clone());
-
-        // A commit's rebuild replaces the entry with a fresh capture while the toggle's
-        // relayout of the stale one is still in flight off-thread.
-        let fresher = graph("post-commit");
-        cache
-            .0
-            .lock()
-            .unwrap()
-            .insert("/repo".to_owned(), fresher.clone());
-
-        let relaid_out = read.with_visibility(graph("toggled").visibility().clone());
-        write_relaid_out_graph(&cache, "/repo".to_owned(), Some(&read), relaid_out);
-
-        let cached = cache.0.lock().unwrap();
-        assert_eq!(
-            cached.get("/repo").unwrap().visibility(),
-            fresher.visibility(),
-            "the toggle overwrote a rebuild that landed after it read the cache"
-        );
-    }
-
-    #[test]
-    fn a_toggle_writes_its_graph_when_nothing_landed_ahead_of_it() {
-        let cache = CommitCache(Mutex::new(GraphCache::default()));
-        let read = graph("pre-toggle");
-        cache
-            .0
-            .lock()
-            .unwrap()
-            .insert("/repo".to_owned(), read.clone());
-
-        let relaid_out = read.with_visibility(graph("toggled").visibility().clone());
-        write_relaid_out_graph(&cache, "/repo".to_owned(), Some(&read), relaid_out.clone());
-
-        let cached = cache.0.lock().unwrap();
-        assert_eq!(
-            cached.get("/repo").unwrap().visibility(),
-            relaid_out.visibility()
-        );
-    }
+    let graph = cache.snapshot(&path);
+    search_commits_inner(&path, &query, graph.as_ref()).map_err(|e| e.to_json())
 }

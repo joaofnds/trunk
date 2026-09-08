@@ -203,7 +203,96 @@ impl GraphCache {
 
 // Caches the full commit graph per open repo path.
 // Populated on open_repo, cleared on close_repo, sliced by get_commit_graph.
-pub struct CommitCache(pub Mutex<GraphCache>);
+pub struct CommitCache(Mutex<GraphCache>);
+
+impl CommitCache {
+    #[must_use]
+    pub const fn new(cache: GraphCache) -> Self {
+        Self(Mutex::new(cache))
+    }
+
+    /// The cached graph for `path`, or `None` when nothing has been built yet.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
+    #[must_use]
+    pub fn snapshot(&self, path: &str) -> Option<GraphSnapshot> {
+        self.0.lock().unwrap().get(path).cloned()
+    }
+
+    /// The page of `path`'s cached graph `render` names, or `None` when nothing has been
+    /// built for `path` yet. Takes a closure rather than returning the snapshot so a caller
+    /// that only needs one page never clones the whole layout.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
+    pub fn read<T>(&self, path: &str, render: impl FnOnce(&GraphSnapshot) -> T) -> Option<T> {
+        self.0.lock().unwrap().get(path).map(render)
+    }
+
+    /// Whether a graph has been cached for `path`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
+    #[must_use]
+    pub fn holds(&self, path: &str) -> bool {
+        self.0.lock().unwrap().holds(path)
+    }
+
+    /// A snapshot of every cached graph, for a reader that scans across repositories rather
+    /// than looking one up by path.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
+    #[must_use]
+    pub fn all(&self) -> GraphCache {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// Drop the cached graph for `path`.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
+    pub fn forget(&self, path: &str) {
+        self.0.lock().unwrap().forget(path);
+    }
+
+    /// Store a visibility toggle's re-laid-out graph, unless a fresher rebuild already
+    /// replaced the entry this toggle read. That rebuild's capture is newer than the one
+    /// this graph was re-laid out from, so writing over it would show a graph from before
+    /// whatever it just did (TRUNK-129).
+    ///
+    /// This is the one legitimate cache write outside `GraphRebuild`: `set_ref_visibility`
+    /// re-lays out an existing capture rather than walking the repository, so it has no
+    /// visibility to look up here — it already carries the one it just set. Keep this the
+    /// only door: a second general-purpose insert would let a future caller skip both this
+    /// staleness guard and `GraphRebuild`'s visibility lookup.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the lock is poisoned.
+    pub fn write_relaid_out(
+        &self,
+        path: String,
+        read: Option<&GraphSnapshot>,
+        relaid_out: GraphSnapshot,
+    ) {
+        let mut cache = self.0.lock().unwrap();
+        let still_current = match (cache.get(&path), read) {
+            (Some(current), Some(read)) => current.same_capture_as(read),
+            (None, None) => true,
+            _ => false,
+        };
+        if still_current {
+            cache.insert(path, relaid_out);
+        }
+    }
+}
 
 /// The diff stat computed for each commit, per repository.
 ///
@@ -397,9 +486,11 @@ impl<'a> GraphRebuild<'a> {
     where
         F: FnOnce(&RefVisibility) -> Result<GraphSnapshot, TrunkError> + Send + 'static,
     {
-        self.rebuild_carrying(path, |visibility| walk(visibility).map(|snapshot| (snapshot, ())))
-            .await
-            .map(|(snapshot, ())| snapshot)
+        self.rebuild_carrying(path, |visibility| {
+            walk(visibility).map(|snapshot| (snapshot, ()))
+        })
+        .await
+        .map(|(snapshot, ())| snapshot)
     }
 
     /// `rebuild`, for a `walk` that carries extra data alongside the snapshot back to the
@@ -470,7 +561,7 @@ impl<'a> GraphRebuild<'a> {
 mod tests {
     use super::{CommitCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState};
     use crate::error::TrunkError;
-    use crate::git::graph_input::{GraphSource, GraphSnapshot, RefVisibility};
+    use crate::git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
 
@@ -483,15 +574,74 @@ mod tests {
         ref_visibility.set("/repo".to_owned(), hidden.clone());
         let rebuild = GraphRebuild::new(&cache, &ref_visibility);
 
-        tauri::async_runtime::block_on(
-            rebuild.rebuild("/repo".to_owned(), move |visibility| {
-                Ok(GraphSnapshot::new(GraphSource::default(), visibility.clone()))
-            }),
-        )
+        tauri::async_runtime::block_on(rebuild.rebuild("/repo".to_owned(), move |visibility| {
+            Ok(GraphSnapshot::new(
+                GraphSource::default(),
+                visibility.clone(),
+            ))
+        }))
         .unwrap();
 
         let cached = cache.0.lock().unwrap();
         assert_eq!(cached.get("/repo").unwrap().visibility(), &hidden);
+    }
+
+    /// An empty graph tagged by the ref it hides, so a test can tell two snapshots apart
+    /// by their visibility while both carry an empty capture.
+    fn tagged_graph(tag: &str) -> GraphSnapshot {
+        let mut visibility = RefVisibility::default();
+        visibility.hidden_refs.insert(format!("refs/tags/{tag}"));
+        GraphSnapshot::new(GraphSource::default(), visibility)
+    }
+
+    #[test]
+    fn a_toggle_does_not_overwrite_a_rebuild_that_landed_while_it_relaid_out() {
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let read = tagged_graph("pre-commit");
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), read.clone());
+
+        // A commit's rebuild replaces the entry with a fresh capture while the toggle's
+        // relayout of the stale one is still in flight off-thread.
+        let fresher = tagged_graph("post-commit");
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), fresher.clone());
+
+        let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
+        cache.write_relaid_out("/repo".to_owned(), Some(&read), relaid_out);
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(
+            cached.get("/repo").unwrap().visibility(),
+            fresher.visibility(),
+            "the toggle overwrote a rebuild that landed after it read the cache"
+        );
+    }
+
+    #[test]
+    fn a_toggle_writes_its_graph_when_nothing_landed_ahead_of_it() {
+        let cache = CommitCache(Mutex::new(GraphCache::default()));
+        let read = tagged_graph("pre-toggle");
+        cache
+            .0
+            .lock()
+            .unwrap()
+            .insert("/repo".to_owned(), read.clone());
+
+        let relaid_out = read.with_visibility(tagged_graph("toggled").visibility().clone());
+        cache.write_relaid_out("/repo".to_owned(), Some(&read), relaid_out.clone());
+
+        let cached = cache.0.lock().unwrap();
+        assert_eq!(
+            cached.get("/repo").unwrap().visibility(),
+            relaid_out.visibility()
+        );
     }
 
     fn graph(tag: usize) -> GraphSnapshot {

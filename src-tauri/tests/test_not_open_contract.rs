@@ -102,7 +102,7 @@ not_open_contract! {
 #[test]
 fn git_pull_reports_not_open_for_an_unregistered_repo() {
     let app = tauri::test::mock_app();
-    let cache = CommitCache(Mutex::new(GraphCache::default()));
+    let cache = CommitCache::new(GraphCache::default());
     let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_pull_inner(
@@ -122,7 +122,7 @@ fn git_pull_reports_not_open_for_an_unregistered_repo() {
 #[test]
 fn git_push_reports_not_open_for_an_unregistered_repo() {
     let app = tauri::test::mock_app();
-    let cache = CommitCache(Mutex::new(GraphCache::default()));
+    let cache = CommitCache::new(GraphCache::default());
     let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_push_inner(
@@ -141,7 +141,7 @@ fn git_push_reports_not_open_for_an_unregistered_repo() {
 #[test]
 fn git_push_force_reports_not_open_for_an_unregistered_repo() {
     let app = tauri::test::mock_app();
-    let cache = CommitCache(Mutex::new(GraphCache::default()));
+    let cache = CommitCache::new(GraphCache::default());
     let running = Mutex::new(RemoteOps::default());
 
     let err = tauri::async_runtime::block_on(git_push_force_inner(
@@ -167,7 +167,7 @@ fn git_push_force_reports_not_open_for_an_unregistered_repo() {
 fn a_command_wrapper_carries_not_open_through_its_json() {
     let app = tauri::test::mock_app();
     app.manage(RepoState(Mutex::new(OpenRepos::default())));
-    app.manage(CommitCache(Mutex::new(GraphCache::default())));
+    app.manage(CommitCache::new(GraphCache::default()));
     app.manage(RefVisibilityState::default());
 
     let json = tauri::async_runtime::block_on(refresh_commit_graph(

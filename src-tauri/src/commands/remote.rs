@@ -155,11 +155,14 @@ async fn refresh_graph<R: Runtime>(
     let path_owned = path.to_owned();
     let rebuild = crate::state::GraphRebuild::new(cache, ref_visibility);
     rebuild
-        .rebuild(path_owned.clone(), move |visibility| -> Result<GraphSnapshot, TrunkError> {
-            let mut repo = git2::Repository::open(&path_buf)
-                .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
-            graph::snapshot(&mut repo, visibility)
-        })
+        .rebuild(
+            path_owned.clone(),
+            move |visibility| -> Result<GraphSnapshot, TrunkError> {
+                let mut repo = git2::Repository::open(&path_buf)
+                    .map_err(|e| TrunkError::new("git_error", e.to_string()))?;
+                graph::snapshot(&mut repo, visibility)
+            },
+        )
         .await?;
 
     let _ = app.emit("repo-changed", path_owned);

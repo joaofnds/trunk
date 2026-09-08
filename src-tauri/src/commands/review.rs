@@ -1185,12 +1185,9 @@ pub async fn list_session_commits<R: Runtime>(
 ) -> Result<Vec<SessionCommit>, String> {
     let (canonical, store) = prepare(&path, &state, &store, &app).await?;
 
-    let graph = {
-        let map = cache.0.lock().unwrap();
-        map.get(&path)
-            .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?
-            .clone()
-    };
+    let graph = cache
+        .snapshot(&path)
+        .ok_or_else(|| TrunkError::new("not_open", "Repository not open").to_json())?;
 
     blocking_store(move || {
         let (commits, snapshot_oids) = store.read(|conn| {

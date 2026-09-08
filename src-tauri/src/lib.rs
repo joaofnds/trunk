@@ -15,7 +15,8 @@ pub mod watcher;
 use std::sync::Mutex;
 
 use state::{
-    CommitCache, CommitStatsCache, RepoState, ReviewStoreState, RunningOp, StoreSlot, TrafficLights,
+    CommitCache, CommitStatsCache, GraphCache, RepoState, ReviewStoreState, RunningOp, StoreSlot,
+    TrafficLights,
 };
 use tauri::Emitter;
 use tauri::Manager;
@@ -444,7 +445,7 @@ fn register_state<R: tauri::Runtime>(
 ) -> tauri::Builder<R> {
     builder
         .manage(RepoState(Mutex::default()))
-        .manage(CommitCache(Mutex::default()))
+        .manage(CommitCache::new(GraphCache::default()))
         .manage(CommitStatsCache(Mutex::default()))
         .manage(RunningOp(Mutex::default()))
         .manage(watcher)

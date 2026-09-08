@@ -465,11 +465,11 @@ pub async fn get_operation_state(
     cache: State<'_, CommitCache>,
 ) -> Result<OperationInfo, String> {
     let state_map = state.snapshot();
-    let graph_cache = cache.0.lock().unwrap().clone();
+    let graph = cache.snapshot(&path);
     tauri::async_runtime::spawn_blocking(move || {
         let mut info = get_operation_state_inner(&path, &state_map)?;
         // Look up branch color indexes from the cached graph
-        if let Some(graph) = graph_cache.get(&path) {
+        if let Some(graph) = graph {
             if let Some(ref src) = info.source_branch {
                 info.source_color_index = find_branch_color(&graph.layout.commits, src);
             }

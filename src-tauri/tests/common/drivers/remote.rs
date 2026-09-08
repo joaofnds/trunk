@@ -21,7 +21,7 @@ impl TestContext {
         RemoteDriver {
             ctx: self,
             app: tauri::test::mock_app(),
-            cache: CommitCache(Mutex::new(GraphCache::default())),
+            cache: CommitCache::new(GraphCache::default()),
             running: RunningOp(Mutex::new(RemoteOps::default())),
         }
     }
@@ -71,6 +71,6 @@ impl RemoteDriver<'_> {
 
     /// The graph the last successful command cached, as the UI would receive it.
     pub fn cached_graph(&self) -> Option<GraphSnapshot> {
-        self.cache.0.lock().unwrap().get(self.ctx.path()).cloned()
+        self.cache.snapshot(self.ctx.path())
     }
 }

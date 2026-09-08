@@ -29,12 +29,15 @@ pub async fn open_repo<R: Runtime>(
     let rebuild = crate::state::GraphRebuild::new(&cache, &ref_visibility);
     let path_clone = path.clone();
     rebuild
-        .rebuild(path.clone(), move |visibility| -> Result<GraphSnapshot, TrunkError> {
-            let path_buf = std::path::PathBuf::from(&path_clone);
-            repository::validate_and_open(&path_buf)?;
-            let mut repo = git2::Repository::open(&path_buf)?;
-            graph::snapshot(&mut repo, visibility)
-        })
+        .rebuild(
+            path.clone(),
+            move |visibility| -> Result<GraphSnapshot, TrunkError> {
+                let path_buf = std::path::PathBuf::from(&path_clone);
+                repository::validate_and_open(&path_buf)?;
+                let mut repo = git2::Repository::open(&path_buf)?;
+                graph::snapshot(&mut repo, visibility)
+            },
+        )
         .await
         .map_err(|e| e.to_json())?;
 
@@ -64,7 +67,7 @@ pub async fn close_repo(
     ref_visibility: State<'_, crate::state::RefVisibilityState>,
 ) -> Result<(), String> {
     state.forget(&path);
-    cache.0.lock().unwrap().forget(&path);
+    cache.forget(&path);
     commit_stats.0.lock().unwrap().forget(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
@@ -99,7 +102,7 @@ pub async fn force_close_repo(
     }
     // Then clean up all other state (same as close_repo)
     state.forget(&path);
-    cache.0.lock().unwrap().forget(&path);
+    cache.forget(&path);
     commit_stats.0.lock().unwrap().forget(&path);
     ref_visibility.forget(&path);
     watcher::stop_watcher(&path, &watcher_state);
