@@ -133,6 +133,15 @@ every thread a second time inside a hidden `.comment-probe` to measure its heigh
 naming `.comment-card` alone answers with the probe's copy whether or not the panel ever
 opened.
 
+The current-file comment workflow, in `tests/app/current-file-comment.test.ts`: reaching a
+file no pending change touches through the finder, selecting a line in it, commenting, and
+reading the thread back off the panel; then rewriting that file on disk, firing the watcher's
+event, and watching the "code gone" badge arrive. A current-file view forces full-file content
+mode, so the line-selection gestures `driver.review.selectLine` and
+`driver.review.commentOnSelection` reach the affordance without a mode switch. Opening a file
+through the finder swaps the centre pane away from the review panel, so a test that wants to
+read a thread card afterwards reopens the panel first.
+
 `backlog/docs/doc-26` ranks what still has no end-to-end test and is the queue new scenarios
 come off; its §2 table carries the driven-command count and how to re-derive it.
 
