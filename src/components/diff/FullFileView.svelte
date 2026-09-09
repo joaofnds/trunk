@@ -25,7 +25,6 @@ interface Props {
 	fileDiffs: FileDiff[];
 	showInvisibles: boolean;
 	wordWrap: boolean;
-	commitOid: string;
 	repoPath: string;
 	diffKind: PanelDiffKind;
 	isMerge: boolean;

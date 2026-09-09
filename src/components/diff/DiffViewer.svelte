@@ -220,7 +220,6 @@ const selectedFileDiff = $derived(
       {fileDiffs}
       {showInvisibles}
       {wordWrap}
-      {commitOid}
       {repoPath}
       {diffKind}
       {isMerge}

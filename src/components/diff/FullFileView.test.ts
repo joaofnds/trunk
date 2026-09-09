@@ -107,7 +107,6 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
 		fileDiffs: [modifiedFile],
 		showInvisibles: false,
 		wordWrap: false,
-		commitOid: "abc123",
 		repoPath: "/repo",
 		diffKind: "commit" as const,
 		isMerge: false,
