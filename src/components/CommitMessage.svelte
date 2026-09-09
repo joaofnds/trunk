@@ -29,17 +29,8 @@ let bodyExpandable = $derived(bodyOverflows(body));
 let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 </script>
 
-<div style="
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-">
-  <div class="select-text" style="
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--color-text);
-    line-height: 1.4;
-    margin-bottom: {body ? 'var(--space-2)' : '0'};
-  ">
+<div class="commit-message">
+  <div class="select-text summary" class:has-body={body}>
     {summary}
   </div>
   {#if body}
@@ -71,6 +62,20 @@ let bodyClamped = $derived(bodyExpandable && !bodyExpanded);
 </div>
 
 <style>
+  .commit-message {
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+  }
+  .summary {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    line-height: 1.4;
+  }
+  .summary.has-body {
+    margin-bottom: var(--space-2);
+  }
+
   /* Commit body. Clamped to a line count rather than given its own scrollbar:
      an inline scroll area inside the panel's own scroller is content readers
      skip past, and it would leave the file list just as far down. */

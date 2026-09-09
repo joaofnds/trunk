@@ -43,19 +43,14 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 }
 </script>
 
-<div style="
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  font-size: 11px;
-  color: var(--color-text-muted);
-">
-  <div style="display: flex; align-items: center; gap: var(--space-3);">
+<div class="commit-author">
+  <div class="identity">
     <Avatar name={authorName} size={22} />
-    <div style="display: flex; flex-direction: column; min-width: 0;">
-      <span style="color: var(--fg-0); font-weight: 600;">{authorName}</span>
-      <span style="color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{authorEmail}</span>
+    <div class="names">
+      <span class="name">{authorName}</span>
+      <span class="email">{authorEmail}</span>
     </div>
-    <span style="margin-left: auto; flex-shrink: 0; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px;">{authorDate}</span>
+    <span class="date">{authorDate}</span>
   </div>
   {#if parentOids.length > 0 || childOids.length > 0}
     <div class="topo">
@@ -93,6 +88,42 @@ async function showShaContextMenu(e: MouseEvent, oid: string) {
 </div>
 
 <style>
+  .commit-author {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+  .identity {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .names {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .name {
+    color: var(--fg-0);
+    font-weight: 600;
+  }
+  .email {
+    color: var(--fg-3);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .date {
+    margin-left: auto;
+    flex-shrink: 0;
+    color: var(--fg-3);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
   /* Topology chips — clickable parent/child lineage links. */
   .topo {
     margin-top: var(--space-2);
