@@ -39,7 +39,7 @@ function renderNotes(notes = [] as ReturnType<typeof aThread>[]) {
 }
 
 beforeEach(() => {
-	vi.clearAllMocks();
+	vi.resetAllMocks();
 });
 
 describe("CommitNotes", () => {
@@ -78,7 +78,6 @@ describe("CommitNotes", () => {
 	});
 
 	it("closes the composer once the note is saved", async () => {
-		vi.mocked(safeInvoke).mockResolvedValue(undefined);
 		renderNotes();
 
 		await fireEvent.click(screen.getByText("Add note"));
