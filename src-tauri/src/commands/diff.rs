@@ -1315,16 +1315,17 @@ pub fn is_readable_tracked_file(repo: &git2::Repository, file_path: &str) -> boo
     let Ok(index) = repo.index() else {
         return false;
     };
-    // get_path errors rather than returning None on a path leaving the repo, and
-    // git2 surfaces that as a panic through its own unwrap, so refuse such a path
-    // before asking.
-    if std::path::Path::new(file_path)
+    // An index path is a plain relative path, and git2 unwraps its own error on
+    // anything else, so an absolute, `.`-prefixed, `..`-bearing or empty path
+    // panics rather than returning None. Refuse it before asking.
+    let path = std::path::Path::new(file_path);
+    let is_plain_relative = path
         .components()
-        .any(|c| matches!(c, std::path::Component::ParentDir))
-    {
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !is_plain_relative || file_path.is_empty() {
         return false;
     }
-    let Some(entry) = index.get_path(std::path::Path::new(file_path), 0) else {
+    let Some(entry) = index.get_path(path, 0) else {
         return false;
     };
 
@@ -1464,6 +1465,19 @@ mod current_file_tests {
 
         assert!(fd.is_binary);
         assert!(fd.hunks.is_empty());
+    }
+
+    #[test]
+    fn a_path_git2_will_not_accept_is_refused_rather_than_panicking() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+
+        for path in ["/etc/passwd", "//etc/passwd", "/", "./a.txt", ""] {
+            assert!(
+                !is_readable_tracked_file(&repo, path),
+                "{path} should be refused"
+            );
+        }
     }
 
     #[test]
