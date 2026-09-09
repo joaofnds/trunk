@@ -4784,6 +4784,150 @@ fn a_commit_diff_thread_survives_a_staleness_pass() {
     );
 }
 
+/// A repo holding `file` at `path`, with a current-file thread pinned to
+/// `block` at occurrence `ordinal`. Returns the context and the store.
+fn a_repo_with_a_pinned_block(
+    path: &str,
+    contents: &str,
+    block: &str,
+    ordinal: u32,
+) -> (common::context::TestContext, reviewdb::Store) {
+    let ctx = TestContext::builder()
+        .with_file(path, contents)
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_thread_inner(
+        &store,
+        &canonical,
+        SubmitThreadRequest {
+            text: "look at this".into(),
+            anchor: None,
+            commit_oid: None,
+            content_pin: Some(trunk_lib::git::types::ContentPin {
+                file_path: path.into(),
+                block: block.into(),
+                ordinal,
+                start_line: 1,
+                end_line: 1,
+            }),
+            cached_excerpt: Some(block.into()),
+            clears_draft: true,
+        },
+        1_000,
+    )
+    .unwrap();
+
+    (ctx, store)
+}
+
+#[test]
+fn a_current_file_thread_whose_block_left_the_file_is_stale() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "one\nthree\n").unwrap();
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1, "the thread's value must change");
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a pinned block that occurs nowhere in the file is stale",
+    );
+}
+
+#[test]
+fn a_current_file_thread_whose_block_is_still_there_is_not_stale() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "zero\none\ntwo\nthree\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    let thread = only_thread(&store, &canonical);
+    assert!(
+        !thread.stale,
+        "inserting lines above the anchor is an edit elsewhere, not staleness",
+    );
+    assert_eq!(
+        thread.resolved_start_line,
+        Some(3),
+        "the backend resolves the line the block moved to, so the frontend never searches",
+    );
+}
+
+/// The ratified bend of criterion 9. The anchored occurrence is deleted, a
+/// byte-identical twin survives, and no marker is raised.
+#[test]
+fn deleting_the_anchored_occurrence_with_a_twin_alive_raises_no_marker() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "dup\nother\ndup\n", "dup", 1);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "dup\nother\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "a byte-identical surviving twin raises no marker — user-ratified 2026-08-12",
+    );
+}
+
+#[test]
+fn deleting_an_earlier_twin_raises_no_marker() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "dup\nother\ndup\n", "dup", 1);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "other\ndup\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "deleting a twin above the anchor is an edit elsewhere, not staleness",
+    );
+}
+
+#[test]
+fn a_current_file_thread_whose_file_was_deleted_is_stale() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::remove_file(ctx.repo_path().join("a.txt")).unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    let thread = only_thread(&store, &canonical);
+    assert!(
+        thread.stale,
+        "no file means no content, and no content is stale"
+    );
+    assert_eq!(
+        thread.cached_excerpt.as_deref(),
+        Some("two"),
+        "a stale thread still renders from its excerpt in the panel",
+    );
+}
+
+/// The marker clears the moment the content comes back — the spec's own
+/// branch-switch example, which is what separates content staleness from
+/// snapshot supersession.
+#[test]
+fn the_marker_clears_when_the_block_returns() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "one\nthree\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "one\ntwo\nthree\n").unwrap();
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1);
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "undoing the edit brings the block back and the marker clears",
+    );
+}
+
 fn only_thread(store: &reviewdb::Store, canonical: &std::path::Path) -> reviewdb::threads::Thread {
     store
         .read(|conn| {

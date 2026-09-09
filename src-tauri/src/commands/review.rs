@@ -1360,8 +1360,28 @@ pub fn recompute_staleness(
         }
     };
 
+    // Every read goes through `blob_reader`, whose working-tree branch carries
+    // the path-escape guard. A thread's pinned path is stored text and a
+    // renamed or deleted file simply reads as absent, which is stale.
+    let read_working_tree_file = |file_path: &str| {
+        crate::git::blob_reader::read_file_at_inner(
+            &repo,
+            file_path,
+            &crate::git::blob_reader::RevSpec::WorkingTree,
+        )
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+    };
+
     store.write_if(
-        |tx| crate::reviewdb::stale::recompute(tx, canonical, &is_current_snapshot),
+        |tx| {
+            crate::reviewdb::stale::recompute(
+                tx,
+                canonical,
+                &is_current_snapshot,
+                &read_working_tree_file,
+            )
+        },
         |changed| *changed > 0,
     )
 }

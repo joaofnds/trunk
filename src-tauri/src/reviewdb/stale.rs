@@ -1,7 +1,10 @@
 //! Whether a thread still describes the code it was written against.
 //!
-//! Only snapshot-anchored threads can go stale today: a working-tree or index
-//! comment is written against a snapshot commit, and the repo moves on.
+//! Two rules, one per shape. A snapshot-anchored thread is stale once the repo
+//! has moved past the snapshot it names. A current-file thread is stale once
+//! its pinned block occurs nowhere in the file, and fresh again the moment the
+//! content returns — the spec's branch-switch example, which supersession can
+//! never undo.
 //!
 //! Two things this module deliberately does not decide. Whether an oid is a
 //! snapshot at all, because no store table can answer it: `pins::mark_anchored`
@@ -46,19 +49,28 @@ pub fn recompute(
     conn: &Connection,
     repo_path: &Path,
     standing: &impl Fn(&str) -> SnapshotStanding,
+    read_file: &impl Fn(&str) -> Option<String>,
 ) -> Result<usize, TrunkError> {
     let mut changed = 0;
-    for (id, commit_oid, was_stale) in rows(conn, repo_path)? {
-        let is_stale = commit_oid
-            .as_deref()
-            .is_some_and(|oid| standing(oid) == SnapshotStanding::Superseded);
-        if is_stale == was_stale {
+    for row in rows(conn, repo_path)? {
+        let resolved = row.pin.as_ref().map(|pin| {
+            read_file(&pin.file_path).and_then(|text| find_block(&text, &pin.block, pin.ordinal))
+        });
+        let is_stale = match resolved {
+            Some(found) => found.is_none(),
+            None => row
+                .commit_oid
+                .as_deref()
+                .is_some_and(|oid| standing(oid) == SnapshotStanding::Superseded),
+        };
+        let resolved_line = resolved.flatten();
+        if is_stale == row.was_stale && resolved_line == row.resolved_start_line {
             continue;
         }
 
         conn.execute(
-            "UPDATE threads SET stale = ?2 WHERE id = ?1",
-            rusqlite::params![id, i64::from(is_stale)],
+            "UPDATE threads SET stale = ?2, resolved_start_line = ?3 WHERE id = ?1",
+            rusqlite::params![row.id, i64::from(is_stale), resolved_line.map(i64::from)],
         )
         .map_err(sqlite_error)?;
         changed += 1;
@@ -67,23 +79,92 @@ pub fn recompute(
     Ok(changed)
 }
 
-fn rows(
-    conn: &Connection,
-    repo_path: &Path,
-) -> Result<Vec<(String, Option<String>, bool)>, TrunkError> {
+/// A thread's staleness inputs: the content pin when it has one, and the anchor
+/// oid otherwise.
+struct StaleRow {
+    id: String,
+    commit_oid: Option<String>,
+    pin: Option<PinRef>,
+    was_stale: bool,
+    resolved_start_line: Option<u32>,
+}
+
+/// What the block search needs from a row. Not the full `ContentPin`: the
+/// display range plays no part in deciding staleness.
+struct PinRef {
+    file_path: String,
+    block: String,
+    ordinal: u32,
+}
+
+/// The 1-based line the `ordinal`-th occurrence of `block` starts on, or `None`
+/// when the block occurs nowhere in the file.
+///
+/// `None` is the whole staleness rule for a current-file thread: block presence
+/// alone. An occurrence surviving anywhere keeps the thread fresh, so deleting
+/// the very lines the user anchored to raises no marker while a byte-identical
+/// twin remains. That is a disclosed bend of the spec and it is deliberate:
+/// the comment still displays against text it truthfully describes.
+///
+/// Fewer occurrences than the ordinal renders at the last one. The ordinal is a
+/// display hint and never an input to the presence decision, because deleting an
+/// EARLIER twin would otherwise mark a thread stale, and an edit elsewhere in
+/// the file is not staleness.
+///
+/// Both sides are line-ending normalised. `comrak` counts a lone CR as a line
+/// ending while `str::lines` is LF-only, so without this a CRLF file never
+/// matches a block pinned from its own content.
+fn find_block(text: &str, block: &str, ordinal: u32) -> Option<u32> {
+    let text = normalize_endings(text);
+    let block = normalize_endings(block);
+    let lines: Vec<&str> = text.lines().collect();
+    let wanted: Vec<&str> = block.lines().collect();
+    if wanted.is_empty() || lines.len() < wanted.len() {
+        return None;
+    }
+
+    let starts: Vec<usize> = (0..=lines.len() - wanted.len())
+        .filter(|&i| lines[i..i + wanted.len()] == wanted[..])
+        .collect();
+
+    let index = (ordinal as usize).min(starts.len().checked_sub(1)?);
+
+    u32::try_from(starts[index] + 1).ok()
+}
+
+/// CRLF and lone CR both become LF, so a block pinned from one file's bytes
+/// matches the same content read back whatever its line endings are.
+fn normalize_endings(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+fn rows(conn: &Connection, repo_path: &Path) -> Result<Vec<StaleRow>, TrunkError> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, commit_oid, stale FROM threads
+            "SELECT id, commit_oid, stale, file_path, pin_block, pin_ordinal,
+                    resolved_start_line
+             FROM threads
              WHERE review_id IN (SELECT id FROM reviews WHERE repo_path = ?1)",
         )
         .map_err(sqlite_error)?;
     let rows = stmt
         .query_map([repo_key(repo_path)], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, i64>(2)? != 0,
-            ))
+            let file_path: Option<String> = row.get(3)?;
+            let block: Option<String> = row.get(4)?;
+            let ordinal: Option<i64> = row.get(5)?;
+            let resolved: Option<i64> = row.get(6)?;
+
+            Ok(StaleRow {
+                id: row.get(0)?,
+                commit_oid: row.get(1)?,
+                pin: block.zip(file_path).map(|(block, file_path)| PinRef {
+                    file_path,
+                    block,
+                    ordinal: ordinal.and_then(|o| u32::try_from(o).ok()).unwrap_or(0),
+                }),
+                was_stale: row.get::<_, i64>(2)? != 0,
+                resolved_start_line: resolved.and_then(|r| u32::try_from(r).ok()),
+            })
         })
         .map_err(sqlite_error)?;
 
@@ -138,6 +219,12 @@ mod tests {
             .unwrap()
     }
 
+    /// No thread in these tests carries a content pin, so the block search is
+    /// never reached and every file reads as absent.
+    fn no_file(_: &str) -> Option<String> {
+        None
+    }
+
     fn staleness_of(store: &Store, id: &str) -> bool {
         store
             .read(|conn| {
@@ -174,7 +261,14 @@ mod tests {
         let id = thread_anchored_to(&store, "OLDSNAP");
 
         let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &["OLDSNAP"])))
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &repo_path(),
+                    &standing_where("NEWSNAP", &["OLDSNAP"]),
+                    &no_file,
+                )
+            })
             .unwrap();
 
         assert_eq!(changed, 1, "the superseded thread's value must change");
@@ -190,7 +284,7 @@ mod tests {
         let id = thread_anchored_to(&store, "NEWSNAP");
 
         store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &[])))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &[]), &no_file))
             .unwrap();
 
         assert!(
@@ -205,7 +299,14 @@ mod tests {
         let id = thread_anchored_to(&store, "REALCOMMIT");
 
         store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &["OLDSNAP"])))
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &repo_path(),
+                    &standing_where("NEWSNAP", &["OLDSNAP"]),
+                    &no_file,
+                )
+            })
             .unwrap();
 
         assert!(
@@ -221,11 +322,11 @@ mod tests {
         thread_anchored_to(&store, "OLDSNAP");
         let standing = standing_where("NEWSNAP", &["OLDSNAP"]);
         store
-            .write(|tx| recompute(tx, &repo_path(), &standing))
+            .write(|tx| recompute(tx, &repo_path(), &standing, &no_file))
             .unwrap();
 
         let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &standing))
+            .write(|tx| recompute(tx, &repo_path(), &standing, &no_file))
             .unwrap();
 
         assert_eq!(
@@ -241,7 +342,14 @@ mod tests {
         let other = PathBuf::from("/other-repo");
 
         let changed = store
-            .write(|tx| recompute(tx, &other, &standing_where("NEWSNAP", &["OLDSNAP"])))
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &other,
+                    &standing_where("NEWSNAP", &["OLDSNAP"]),
+                    &no_file,
+                )
+            })
             .unwrap();
 
         assert_eq!(changed, 0, "one database holds every repo");
@@ -256,11 +364,25 @@ mod tests {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "SNAPA");
         store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("SNAPB", &["SNAPA"])))
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &repo_path(),
+                    &standing_where("SNAPB", &["SNAPA"]),
+                    &no_file,
+                )
+            })
             .unwrap();
 
         let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("SNAPA", &["SNAPB"])))
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &repo_path(),
+                    &standing_where("SNAPA", &["SNAPB"]),
+                    &no_file,
+                )
+            })
             .unwrap();
 
         assert_eq!(changed, 1);
@@ -268,5 +390,90 @@ mod tests {
             !staleness_of(&store, &id),
             "reverting the working tree captures the same tree again, and the marker clears",
         );
+    }
+}
+
+#[cfg(test)]
+mod block_tests {
+    use super::*;
+
+    fn file(lines: &[&str]) -> String {
+        lines.join("\n")
+    }
+
+    #[test]
+    fn a_block_still_in_the_file_resolves_to_its_line() {
+        let text = file(&["one", "two", "three"]);
+
+        assert_eq!(find_block(&text, "two", 0), Some(2));
+    }
+
+    #[test]
+    fn a_block_no_longer_in_the_file_resolves_to_nothing() {
+        let text = file(&["one", "three"]);
+
+        assert_eq!(find_block(&text, "two", 0), None);
+    }
+
+    #[test]
+    fn a_multi_line_block_matches_as_one_run_of_lines() {
+        let text = file(&["a", "b", "c", "d"]);
+
+        assert_eq!(find_block(&text, "b\nc", 0), Some(2));
+    }
+
+    #[test]
+    fn the_ordinal_picks_which_occurrence_to_render_against() {
+        let text = file(&["dup", "other", "dup"]);
+
+        assert_eq!(find_block(&text, "dup", 1), Some(3));
+    }
+
+    /// Deleting an earlier twin leaves one occurrence, and the thread renders
+    /// against it rather than going stale: an edit elsewhere is not staleness.
+    #[test]
+    fn deleting_an_earlier_twin_is_not_stale() {
+        let text = file(&["other", "dup"]);
+
+        assert_eq!(find_block(&text, "dup", 1), Some(2));
+    }
+
+    /// The ratified bend of criterion 9: the occurrence the user anchored to is
+    /// gone, a byte-identical one survives, and no marker is raised. Staleness
+    /// is block presence alone.
+    #[test]
+    fn deleting_the_anchored_occurrence_with_a_twin_alive_is_not_stale() {
+        let text = file(&["dup", "other"]);
+
+        assert_eq!(find_block(&text, "dup", 1), Some(1));
+    }
+
+    #[test]
+    fn inserting_above_the_anchor_moves_the_resolved_line_and_is_not_stale() {
+        let text = file(&["new", "one", "two"]);
+
+        assert_eq!(find_block(&text, "two", 0), Some(3));
+    }
+
+    /// comrak counts a lone CR as a line ending while `str::lines` is LF-only,
+    /// so a CRLF file would never match a block pinned from its own content
+    /// without normalising both sides.
+    #[test]
+    fn a_crlf_file_matches_its_own_pinned_block() {
+        let text = "one\r\ntwo\r\nthree";
+
+        assert_eq!(find_block(text, "two", 0), Some(2));
+    }
+
+    #[test]
+    fn a_lone_cr_file_matches_its_own_pinned_block() {
+        let text = "one\rtwo\rthree";
+
+        assert_eq!(find_block(text, "two", 0), Some(2));
+    }
+
+    #[test]
+    fn an_empty_file_holds_no_block() {
+        assert_eq!(find_block("", "two", 0), None);
     }
 }
