@@ -1,7 +1,9 @@
 // Diff commands — Phase 6 implementation
 
 use crate::error::TrunkError;
+use crate::git::blob_reader;
 use crate::git::syntax;
+use crate::git::tracked_files::{TrackedFile, tracked_files};
 use crate::git::types::{
     CommitDetail, DiffHunk, DiffLine, DiffOrigin, DiffRequestOptions, DiffStatus, FileDiff,
     LinePairing, SyntaxToken,
@@ -1158,6 +1160,278 @@ pub async fn get_commit_detail(
         .await
         .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
         .map_err(|e| e.to_json())
+}
+
+/// List this repository's tracked files, marking the ones a pending change touches.
+///
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn list_tracked_files(
+    path: String,
+    state: State<'_, RepoState>,
+) -> Result<Vec<TrackedFile>, String> {
+    let state_map = state.snapshot();
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo = state_map.open(&path)?;
+        tracked_files(&repo)
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())
+}
+
+/// One tracked file's current working-tree content, for the full-file view.
+///
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn open_current_file(
+    path: String,
+    file_path: String,
+    state: State<'_, RepoState>,
+) -> Result<Vec<FileDiff>, String> {
+    let state_map = state.snapshot();
+    tauri::async_runtime::spawn_blocking(move || {
+        let repo = state_map.open(&path)?;
+        current_file_diff(&repo, &file_path).map(|fd| vec![fd])
+    })
+    .await
+    .map_err(|e| TrunkError::new("spawn_error", e.to_string()).to_json())?
+    .map_err(|e| e.to_json())
+}
+
+/// The whole of a tracked file's current working-tree content, shaped as a
+/// `FileDiff` the full-file view can render.
+///
+/// A file no pending change touches produces no deltas, so git's own diff
+/// yields nothing for it however wide the context. The finder still has to open
+/// it, so this builds the payload directly: one hunk of context lines covering
+/// the file, which is what an unchanged file's full-file diff would look like if
+/// git emitted one.
+///
+/// The read goes through `blob_reader`, whose working-tree branch carries the
+/// canonicalize-and-`starts_with` escape guard, so a path that resolves outside
+/// the repository cannot be read here.
+///
+/// # Errors
+///
+/// Returns `not_found` when the file does not exist in the working tree, and the
+/// escape guard's error when the path resolves outside the repository.
+pub fn current_file_diff(
+    repo: &git2::Repository,
+    file_path: &str,
+) -> Result<FileDiff, TrunkError> {
+    let bytes = blob_reader::read_file_at_inner(repo, file_path, &blob_reader::RevSpec::WorkingTree)?;
+
+    if is_binary(&bytes) {
+        return Ok(FileDiff {
+            path: file_path.to_string(),
+            old_path: None,
+            status: DiffStatus::Unknown,
+            is_binary: true,
+            hunks: vec![],
+        });
+    }
+
+    let text = String::from_utf8_lossy(&bytes);
+    let lines: Vec<DiffLine> = text
+        .split_inclusive('\n')
+        .enumerate()
+        .map(|(i, content)| DiffLine {
+            origin: DiffOrigin::Context,
+            content: content.to_string(),
+            old_lineno: Some(line_number(i)),
+            new_lineno: Some(line_number(i)),
+            spans: vec![],
+            pairing: LinePairing::Unknown,
+        })
+        .collect();
+
+    let count = u32::try_from(lines.len()).unwrap_or(u32::MAX);
+    let hunks = if lines.is_empty() {
+        vec![]
+    } else {
+        vec![DiffHunk {
+            header: format!("@@ -1,{count} +1,{count} @@"),
+            old_start: 1,
+            old_lines: count,
+            new_start: 1,
+            new_lines: count,
+            lines,
+        }]
+    };
+
+    let mut file_diffs = vec![FileDiff {
+        path: file_path.to_string(),
+        old_path: None,
+        status: DiffStatus::Unknown,
+        is_binary: false,
+        hunks,
+    }];
+    let sides = vec![SideContent {
+        old: None,
+        new: Some(bytes),
+    }];
+
+    enrich_file_diffs(&mut file_diffs, &sides);
+
+    Ok(file_diffs.remove(0))
+}
+
+/// The 1-based line number for a 0-based index, saturating rather than wrapping
+/// on a file longer than `u32` can count.
+fn line_number(index: usize) -> u32 {
+    u32::try_from(index + 1).unwrap_or(u32::MAX)
+}
+
+/// git's own heuristic: a NUL byte in the first 8000 bytes means binary.
+fn is_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(8000).any(|b| *b == 0)
+}
+
+#[cfg(test)]
+mod current_file_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn repo_with_file(path: &str, content: &str) -> (TempDir, git2::Repository) {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join(path), content).unwrap();
+        (dir, repo)
+    }
+
+    fn contents(fd: &FileDiff) -> Vec<&str> {
+        fd.hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .map(|l| l.content.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn renders_every_line_of_an_unchanged_file_as_context() {
+        let (_dir, repo) = repo_with_file("notes.txt", "one\ntwo\nthree\n");
+
+        let fd = current_file_diff(&repo, "notes.txt").unwrap();
+
+        assert_eq!(contents(&fd), vec!["one\n", "two\n", "three\n"]);
+        assert!(
+            fd.hunks[0].lines.iter().all(|l| l.origin == DiffOrigin::Context),
+            "a file with no pending change has no added or deleted lines"
+        );
+    }
+
+    #[test]
+    fn numbers_lines_from_one_on_both_sides() {
+        let (_dir, repo) = repo_with_file("notes.txt", "one\ntwo\n");
+
+        let fd = current_file_diff(&repo, "notes.txt").unwrap();
+
+        let numbers: Vec<(Option<u32>, Option<u32>)> = fd.hunks[0]
+            .lines
+            .iter()
+            .map(|l| (l.old_lineno, l.new_lineno))
+            .collect();
+        assert_eq!(numbers, vec![(Some(1), Some(1)), (Some(2), Some(2))]);
+    }
+
+    #[test]
+    fn carries_a_hunk_spanning_the_whole_file() {
+        let (_dir, repo) = repo_with_file("notes.txt", "one\ntwo\nthree\n");
+
+        let fd = current_file_diff(&repo, "notes.txt").unwrap();
+
+        let hunk = &fd.hunks[0];
+        assert_eq!(
+            (hunk.new_start, hunk.new_lines, hunk.old_start, hunk.old_lines),
+            (1, 3, 1, 3)
+        );
+    }
+
+    #[test]
+    fn syntax_highlights_the_content() {
+        let (_dir, repo) = repo_with_file("main.rs", "let total = 1;\n");
+
+        let fd = current_file_diff(&repo, "main.rs").unwrap();
+
+        assert!(
+            !fd.hunks[0].lines[0].spans.is_empty(),
+            "a current-file view renders with the same highlighting as a diff"
+        );
+    }
+
+    #[test]
+    fn keeps_a_final_line_without_a_trailing_newline() {
+        let (_dir, repo) = repo_with_file("notes.txt", "one\ntwo");
+
+        let fd = current_file_diff(&repo, "notes.txt").unwrap();
+
+        assert_eq!(contents(&fd), vec!["one\n", "two"]);
+    }
+
+    #[test]
+    fn an_empty_file_has_no_hunks() {
+        let (_dir, repo) = repo_with_file("empty.txt", "");
+
+        let fd = current_file_diff(&repo, "empty.txt").unwrap();
+
+        assert!(fd.hunks.is_empty());
+    }
+
+    #[test]
+    fn a_binary_file_is_flagged_and_carries_no_lines() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join("blob.bin"), [0x00, 0x01, 0x02]).unwrap();
+
+        let fd = current_file_diff(&repo, "blob.bin").unwrap();
+
+        assert!(fd.is_binary);
+        assert!(fd.hunks.is_empty());
+    }
+
+    #[test]
+    fn a_path_escaping_the_repository_is_refused() {
+        let outside = TempDir::new().unwrap();
+        fs::write(outside.path().join("secret.txt"), "leaked\n").unwrap();
+        let inside = TempDir::new().unwrap();
+        let repo = git2::Repository::init(inside.path().join("repo")).unwrap();
+        let escape = format!(
+            "../../{}/secret.txt",
+            outside.path().file_name().unwrap().to_str().unwrap()
+        );
+
+        let result = current_file_diff(&repo, &escape);
+
+        assert!(
+            result.is_err(),
+            "the escape guard refuses a path resolving outside the repository"
+        );
+    }
+
+    #[test]
+    fn a_missing_file_is_not_found() {
+        let (_dir, repo) = repo_with_file("present.txt", "one\n");
+
+        let err = current_file_diff(&repo, "absent.txt").unwrap_err();
+
+        assert_eq!(err.code, "not_found");
+    }
 }
 
 #[cfg(test)]

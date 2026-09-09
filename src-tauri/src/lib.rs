@@ -242,6 +242,8 @@ pub fn configure<R: tauri::Runtime>(
         commands::diff::compare_stat,
         commands::diff::diff_commit_file,
         commands::diff::get_commit_detail,
+        commands::diff::list_tracked_files,
+        commands::diff::open_current_file,
         commands::stash::list_stashes,
         commands::stash::stash_save,
         commands::stash::stash_pop,
