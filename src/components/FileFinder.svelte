@@ -56,9 +56,14 @@ function rowLabel(file: TrackedFile): string {
 </script>
 
 <div
-  class="fixed inset-0 flex justify-center"
-  style="z-index: 9999; background: var(--color-backdrop); padding-top: 12vh;"
+  class="fixed inset-0 flex flex-col items-center"
+  style="z-index: 9999; background: var(--color-backdrop);"
 >
+  <!-- The palette sits a little above centre, where the eye already is. The
+       spacer takes that share of the free height so the box needs no offset of
+       its own, which is what keeps this a flex layout rather than a padding
+       hack. -->
+  <div style="flex: 1 1 0;" aria-hidden="true"></div>
   <button
     type="button"
     class="fixed inset-0"
@@ -80,6 +85,7 @@ function rowLabel(file: TrackedFile): string {
       max-height: 60vh;
       overflow: hidden;
       position: relative;
+      flex: 0 1 auto;
     "
   >
     <input
@@ -158,4 +164,5 @@ function rowLabel(file: TrackedFile): string {
       {/if}
     </ul>
   </div>
+  <div style="flex: 3 1 0;" aria-hidden="true"></div>
 </div>
