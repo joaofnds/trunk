@@ -311,18 +311,25 @@ mod tests {
             != 0
     }
 
-    /// The caller's verdict, as two lists the test can read: the snapshot the
-    /// repo would capture now, and the ones it has moved past. Production works
-    /// this out from the repository.
-    fn standing_where(current: &str, superseded: &[&str]) -> impl Fn(&str) -> SnapshotStanding {
+    /// The caller's verdict, as three lists the test can read: the snapshot the
+    /// repo would capture now, the ones it has moved past, and the oids the
+    /// repo no longer holds. Production works this out from the repository.
+    fn standing_where(
+        current: &str,
+        superseded: &[&str],
+        collected: &[&str],
+    ) -> impl Fn(&str) -> SnapshotStanding {
         let current = current.to_string();
         let superseded: HashSet<String> = superseded.iter().map(|o| (*o).to_string()).collect();
+        let collected: HashSet<String> = collected.iter().map(|o| (*o).to_string()).collect();
 
         move |oid: &str| {
             if oid == current {
                 SnapshotStanding::Current
             } else if superseded.contains(oid) {
                 SnapshotStanding::Superseded
+            } else if collected.contains(oid) {
+                SnapshotStanding::Collected
             } else {
                 SnapshotStanding::NotASnapshot
             }
@@ -339,7 +346,7 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("NEWSNAP", &["OLDSNAP"]),
+                    &standing_where("NEWSNAP", &["OLDSNAP"], &[]),
                     &no_file,
                 )
             })
@@ -358,12 +365,40 @@ mod tests {
         let id = thread_anchored_to(&store, "NEWSNAP");
 
         store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &[]), &no_file))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &[], &[]), &no_file))
             .unwrap();
 
         assert!(
             !staleness_of(&store, &id),
             "a thread anchored to what the repo would capture now is not stale",
+        );
+    }
+
+    /// This proves only that `recompute` has the extra match arm. The defect
+    /// lived in the caller's classifier, which the fake standing never reaches;
+    /// `a_thread_whose_anchor_object_is_collected_is_stale` in
+    /// `tests/test_reviewdb.rs` is the guard for that.
+    #[test]
+    fn a_collected_anchor_thread_is_stale() {
+        let (_dir, store) = store();
+        let id = thread_anchored_to(&store, "GONE");
+
+        let changed = store
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &repo_path(),
+                    &standing_where("NEWSNAP", &[], &["GONE"]),
+                    &no_file,
+                )
+            })
+            .unwrap();
+
+        assert_eq!(changed, 1, "the collected thread's value must change");
+        assert!(
+            staleness_of(&store, &id),
+            "a thread whose anchor the repo no longer holds describes unrecoverable code, \
+             which is the most stale a thread can be",
         );
     }
 
@@ -377,7 +412,7 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("NEWSNAP", &["OLDSNAP"]),
+                    &standing_where("NEWSNAP", &["OLDSNAP"], &[]),
                     &no_file,
                 )
             })
@@ -394,7 +429,7 @@ mod tests {
     fn a_pass_that_changes_nothing_reports_zero() {
         let (_dir, store) = store();
         thread_anchored_to(&store, "OLDSNAP");
-        let standing = standing_where("NEWSNAP", &["OLDSNAP"]);
+        let standing = standing_where("NEWSNAP", &["OLDSNAP"], &[]);
         store
             .write(|tx| recompute(tx, &repo_path(), &standing, &no_file))
             .unwrap();
@@ -420,7 +455,7 @@ mod tests {
                 recompute(
                     tx,
                     &other,
-                    &standing_where("NEWSNAP", &["OLDSNAP"]),
+                    &standing_where("NEWSNAP", &["OLDSNAP"], &[]),
                     &no_file,
                 )
             })
@@ -442,7 +477,7 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("SNAPB", &["SNAPA"]),
+                    &standing_where("SNAPB", &["SNAPA"], &[]),
                     &no_file,
                 )
             })
@@ -453,7 +488,7 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("SNAPA", &["SNAPB"]),
+                    &standing_where("SNAPA", &["SNAPB"], &[]),
                     &no_file,
                 )
             })
