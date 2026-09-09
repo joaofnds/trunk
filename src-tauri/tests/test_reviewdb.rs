@@ -4674,11 +4674,12 @@ fn the_decision_sees_the_reconciled_record() {
     );
 }
 
-/// The production sequence exactly: the app advances `repo_snapshots` only when
-/// a comment is submitted, so the recompute must decide against the repository
-/// as it stands rather than against that pointer.
-#[test]
-fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
+/// A repo with an edited `a.txt`, a workdir snapshot of that edit, and a thread
+/// anchored to the snapshot. Returns the context, the store and the snapshot
+/// oid, which is what the staleness tests then move the repo away from.
+fn a_thread_on_a_workdir_snapshot(
+    text: &str,
+) -> (common::context::TestContext, reviewdb::Store, String) {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
         .with_commit("c1")
@@ -4689,10 +4690,11 @@ fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
     let snapshot =
         ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
             .unwrap();
+
     let repo = git2::Repository::open(ctx.path()).unwrap();
-    let mut request = submission("this line is wrong");
+    let mut request = submission(text);
     request.anchor = Some(Anchor {
-        commit_oid: snapshot,
+        commit_oid: snapshot.clone(),
         file_path: "a.txt".to_string(),
         source: Source::Diff,
         side: Side::New,
@@ -4700,6 +4702,17 @@ fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
         end_line: 1,
     });
     submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+
+    (ctx, store, snapshot)
+}
+
+/// The production sequence exactly: the app advances `repo_snapshots` only when
+/// a comment is submitted, so the recompute must decide against the repository
+/// as it stands rather than against that pointer.
+#[test]
+fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
+    let (ctx, store, _) = a_thread_on_a_workdir_snapshot("this line is wrong");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
     let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
@@ -4714,27 +4727,8 @@ fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
 
 #[test]
 fn a_thread_on_the_current_snapshot_stays_fresh() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("c1")
-        .build();
-    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let (ctx, store, _) = a_thread_on_a_workdir_snapshot("still true");
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let snapshot =
-        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
-            .unwrap();
-    let repo = git2::Repository::open(ctx.path()).unwrap();
-    let mut request = submission("still true");
-    request.anchor = Some(Anchor {
-        commit_oid: snapshot,
-        file_path: "a.txt".to_string(),
-        source: Source::Diff,
-        side: Side::New,
-        start_line: 1,
-        end_line: 1,
-    });
-    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
 
     let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
@@ -4789,56 +4783,16 @@ fn a_commit_diff_thread_survives_a_staleness_pass() {
 /// the thread is fresh is told the dangerous falsehood.
 #[test]
 fn a_thread_whose_anchor_object_is_collected_is_stale() {
-    let ctx = TestContext::builder()
-        .with_file("a.txt", "one")
-        .with_commit("c1")
-        .build();
-    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let (ctx, store, snapshot) = a_thread_on_a_workdir_snapshot("this line is wrong");
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    let store = reviewdb::open(ctx.data_dir()).unwrap();
-    let snapshot =
-        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
-            .unwrap();
-    let repo = git2::Repository::open(ctx.path()).unwrap();
-    let mut request = submission("this line is wrong");
-    request.anchor = Some(Anchor {
-        commit_oid: snapshot.clone(),
-        file_path: "a.txt".to_string(),
-        source: Source::Diff,
-        side: Side::New,
-        start_line: 1,
-        end_line: 1,
-    });
-    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
 
-    collect_the_object(&ctx, &snapshot);
-    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    common::snapshots::collect_the_object(&ctx, &snapshot);
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
+    assert_eq!(changed, 1, "the collected thread must change value");
     assert!(
         only_thread(&store, &canonical).stale,
         "a thread whose anchor snapshot is unrecoverable is maximally stale",
-    );
-}
-
-/// An outside actor's `git gc`: drop the keepalive ref Trunk holds the snapshot
-/// with, then prune, and assert the object really is unreachable — a gc that
-/// kept it would make the test vacuous.
-fn collect_the_object(ctx: &TestContext, oid: &str) {
-    let repo = git2::Repository::open(ctx.path()).unwrap();
-    let parsed = git2::Oid::from_str(oid).unwrap();
-    trunk_lib::git::workdir_snapshot::prune_snapshot_ref(&repo, parsed).unwrap();
-
-    let gc = std::process::Command::new("git")
-        .args(["gc", "--prune=now"])
-        .current_dir(ctx.path())
-        .output()
-        .unwrap();
-    assert!(gc.status.success(), "git gc failed: {gc:?}");
-
-    let fresh = git2::Repository::open(ctx.path()).unwrap();
-    assert!(
-        fresh.find_commit(parsed).is_err(),
-        "the test needs the object gone, and gc kept {oid}",
     );
 }
 

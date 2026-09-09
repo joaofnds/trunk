@@ -1572,6 +1572,46 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
     );
 }
 
+/// A published review holding one thread anchored to a fresh workdir snapshot
+/// of an edited `a.txt`. Returns the review id and the snapshot oid.
+fn a_published_thread_on_uncommitted_work(ctx: &TestContext) -> (String, String) {
+    use trunk_lib::commands::review::ensure_review_snapshot_inner;
+    use trunk_lib::git::workdir_snapshot::SnapshotKind;
+
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(ctx);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 500)
+            .unwrap();
+
+    store
+        .write(|tx| {
+            threads::insert(
+                tx,
+                &published,
+                threads::NewThread {
+                    text: "this uncommitted line is wrong".to_string(),
+                    anchor: Some(trunk_lib::git::types::Anchor {
+                        commit_oid: snapshot.clone(),
+                        file_path: "a.txt".to_string(),
+                        source: trunk_lib::git::types::Source::Diff,
+                        side: trunk_lib::git::types::Side::New,
+                        start_line: 1,
+                        end_line: 1,
+                    }),
+                    commit_oid: None,
+                    content_pin: None,
+                    cached_excerpt: Some("edited".to_string()),
+                },
+                600,
+            )
+        })
+        .unwrap();
+
+    (published, snapshot)
+}
+
 /// The `thread_stale_changed` event was unreachable until something computed
 /// the flag: nothing wrote `stale`, so no poll could ever see it differ.
 #[test]
@@ -1585,42 +1625,7 @@ fn watch_json_reports_a_thread_going_stale() {
         .build();
     std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    let (_, published) = seed_reviews(&ctx);
-    let snapshot = {
-        let store = reviewdb::open(ctx.data_dir()).unwrap();
-        let snapshot = ensure_review_snapshot_inner(
-            &store,
-            &canonical,
-            ctx.path(),
-            SnapshotKind::Workdir,
-            500,
-        )
-        .unwrap();
-        store
-            .write(|tx| {
-                threads::insert(
-                    tx,
-                    &published,
-                    threads::NewThread {
-                        text: "this uncommitted line is wrong".to_string(),
-                        anchor: Some(trunk_lib::git::types::Anchor {
-                            commit_oid: snapshot.clone(),
-                            file_path: "a.txt".to_string(),
-                            source: trunk_lib::git::types::Source::Diff,
-                            side: trunk_lib::git::types::Side::New,
-                            start_line: 1,
-                            end_line: 1,
-                        }),
-                        commit_oid: None,
-                        content_pin: None,
-                        cached_excerpt: Some("edited".to_string()),
-                    },
-                    600,
-                )
-            })
-            .unwrap();
-        snapshot
-    };
+    let (published, snapshot) = a_published_thread_on_uncommitted_work(&ctx);
     let watch = WatchChild::spawn_json(&ctx);
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
@@ -1645,8 +1650,7 @@ fn watch_json_reports_a_thread_going_stale() {
 /// duration, which would decide pass or fail on a wait.
 #[test]
 fn watch_json_reports_a_collected_anchor_stale_and_keeps_it_stale() {
-    use trunk_lib::commands::review::{ensure_review_snapshot_inner, recompute_staleness};
-    use trunk_lib::git::workdir_snapshot::SnapshotKind;
+    use trunk_lib::commands::review::recompute_staleness;
 
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
@@ -1654,45 +1658,10 @@ fn watch_json_reports_a_collected_anchor_stale_and_keeps_it_stale() {
         .build();
     std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
     let canonical = ctx.repo_path().canonicalize().unwrap();
-    let (_, published) = seed_reviews(&ctx);
-    let snapshot = {
-        let store = reviewdb::open(ctx.data_dir()).unwrap();
-        let snapshot = ensure_review_snapshot_inner(
-            &store,
-            &canonical,
-            ctx.path(),
-            SnapshotKind::Workdir,
-            500,
-        )
-        .unwrap();
-        store
-            .write(|tx| {
-                threads::insert(
-                    tx,
-                    &published,
-                    threads::NewThread {
-                        text: "this uncommitted line is wrong".to_string(),
-                        anchor: Some(trunk_lib::git::types::Anchor {
-                            commit_oid: snapshot.clone(),
-                            file_path: "a.txt".to_string(),
-                            source: trunk_lib::git::types::Source::Diff,
-                            side: trunk_lib::git::types::Side::New,
-                            start_line: 1,
-                            end_line: 1,
-                        }),
-                        commit_oid: None,
-                        content_pin: None,
-                        cached_excerpt: Some("edited".to_string()),
-                    },
-                    600,
-                )
-            })
-            .unwrap();
-        snapshot
-    };
+    let (published, snapshot) = a_published_thread_on_uncommitted_work(&ctx);
     let watch = WatchChild::spawn_json(&ctx);
 
-    collect_the_snapshot(&ctx, &snapshot);
+    common::snapshots::collect_the_object(&ctx, &snapshot);
     let store = reviewdb::open(ctx.data_dir()).unwrap();
     let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
@@ -1707,28 +1676,6 @@ fn watch_json_reports_a_collected_anchor_stale_and_keeps_it_stale() {
         0,
         "while the anchor stays collected the verdict cannot change, so no later \
          event can carry stale:false",
-    );
-}
-
-/// An outside actor's `git gc`: drop the keepalive ref Trunk holds the snapshot
-/// with, then prune, and assert the object really is unreachable — a gc that
-/// kept it would make the test vacuous.
-fn collect_the_snapshot(ctx: &TestContext, oid: &str) {
-    let repo = git2::Repository::open(ctx.path()).unwrap();
-    let parsed = git2::Oid::from_str(oid).unwrap();
-    trunk_lib::git::workdir_snapshot::prune_snapshot_ref(&repo, parsed).unwrap();
-
-    let gc = std::process::Command::new("git")
-        .args(["gc", "--prune=now"])
-        .current_dir(ctx.path())
-        .output()
-        .unwrap();
-    assert!(gc.status.success(), "git gc failed: {gc:?}");
-
-    let fresh = git2::Repository::open(ctx.path()).unwrap();
-    assert!(
-        fresh.find_commit(parsed).is_err(),
-        "the test needs the object gone, and gc kept {oid}",
     );
 }
 
