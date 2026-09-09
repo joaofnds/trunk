@@ -65,6 +65,16 @@ describe("rev derivation", () => {
 			oid: "compareBase",
 		});
 	});
+
+	it("reads a current-file view's after side from the working tree", () => {
+		expect(afterRev("current_file", "abc")).toEqual({ type: "workingTree" });
+	});
+
+	it("gives a current-file view the same working tree on both sides", () => {
+		expect(beforeRev("current_file", "parent1")).toEqual({
+			type: "workingTree",
+		});
+	});
 });
 
 describe("renderMarkdownDiff", () => {

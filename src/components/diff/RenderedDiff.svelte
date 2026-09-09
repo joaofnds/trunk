@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
+import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { isTrunkError } from "../../lib/invoke.js";
 import {
@@ -32,7 +33,7 @@ interface Props {
 	// Where a renamed file came from, so the before side is read by that name.
 	// Null for every other status.
 	oldPath: string | null;
-	diffKind: "unstaged" | "staged" | "commit";
+	diffKind: PanelDiffKind;
 	commitOid: string;
 	repoPath: string;
 	commitDetail: CommitDetail | null;

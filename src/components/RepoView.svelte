@@ -54,6 +54,7 @@ import type {
 	RefsResponse,
 	Side,
 	Thread,
+	TrackedFile,
 	WipStats,
 	WorkingTreeStatus,
 } from "../lib/types.js";
@@ -63,6 +64,7 @@ import CommitDetail from "./CommitDetail.svelte";
 import CommitGraph from "./CommitGraph.svelte";
 import ComparePanel from "./ComparePanel.svelte";
 import DiffPanel from "./DiffPanel.svelte";
+import FileFinder from "./FileFinder.svelte";
 import MergeEditor from "./MergeEditor.svelte";
 import MessageEditor from "./MessageEditor.svelte";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
@@ -271,6 +273,48 @@ let diffRefreshToken = $state(0);
 let cachedStatus = $state<WorkingTreeStatus | null>(null);
 let stagingPanelRef = $state<StagingPanel | null>(null);
 
+// File finder (TRUNK-154.2): reaching a tracked file no pending change touches.
+// The picked file opens in the full-file view under its own diff kind, which
+// carries no view oid, so no comment renders against it and the Comment
+// affordance stays gated until the content pin lands (TRUNK-154.3).
+let finderOpen = $state(false);
+let finderFiles = $state.raw<TrackedFile[]>([]);
+let selectedCurrentFile = $state<string | null>(null);
+let currentFileDiffs = $state.raw<FileDiff[]>([]);
+
+async function openFileFinder() {
+	try {
+		finderFiles = await safeInvoke<TrackedFile[]>("list_tracked_files", {
+			path: repoPath,
+		});
+		finderOpen = true;
+	} catch (e) {
+		reportErrorToast(e, "Could not list this repository's files");
+	}
+}
+
+async function openCurrentFile(filePath: string) {
+	finderOpen = false;
+	try {
+		currentFileDiffs = await safeInvoke<FileDiff[]>("open_current_file", {
+			path: repoPath,
+			filePath,
+		});
+		selectedCurrentFile = filePath;
+		selectedFile = null;
+		selectedCommitFile = null;
+		selectedCompareFile = null;
+		if (reviewSession.state.reviewActive) reviewSession.showDiff();
+	} catch (e) {
+		reportErrorToast(e, `Could not open ${filePath}`);
+	}
+}
+
+function closeCurrentFile() {
+	selectedCurrentFile = null;
+	currentFileDiffs = [];
+}
+
 // Commit selection (from CommitGraph)
 let selectedCommitOid = $state<string | null>(null);
 let commitDetail = $state<CommitDetailType | null>(null);
@@ -364,17 +408,20 @@ let showDiff = $derived(
 	selectedFile !== null ||
 		selectedCommitFile !== null ||
 		diffInViewPath !== null ||
-		selectedCompareFile !== null,
+		selectedCompareFile !== null ||
+		selectedCurrentFile !== null,
 );
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 
 // The diffs to display: filtered commit file diff, or staging diff
 let currentDiffFiles = $derived(
-	selectedCompareFile
-		? compareFileDiffs.filter((f) => f.path === selectedCompareFile)
-		: selectedCommitFile
-			? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
-			: stagingDiffFiles,
+	selectedCurrentFile
+		? currentFileDiffs
+		: selectedCompareFile
+			? compareFileDiffs.filter((f) => f.path === selectedCompareFile)
+			: selectedCommitFile
+				? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
+				: stagingDiffFiles,
 );
 
 // The diffKind the active DiffPanel renders under — mirrors the template prop
@@ -384,18 +431,20 @@ let currentDiffFiles = $derived(
 // is folded out, so this never widens to DiffKind's "conflicted" variant —
 // keeping it assignable to DiffPanel's narrower prop union.
 let diffKind = $derived<Exclude<DiffKind, "conflicted">>(
-	selectedCommitFile
-		? "commit"
-		: selectedFile?.kind === "conflicted"
+	selectedCurrentFile
+		? "current_file"
+		: selectedCommitFile
 			? "commit"
-			: (selectedFile?.kind ?? "commit"),
+			: selectedFile?.kind === "conflicted"
+				? "commit"
+				: (selectedFile?.kind ?? "commit"),
 );
 
 // The new-side path of the file shown in DiffPanel. FileDiff carries only a
 // single (current) path — no old/new pair — so Old-side rename comments match
 // by this new path and otherwise fall to panel-only (plan §6, acceptable v1).
 let selectedDiffPath = $derived(
-	selectedCommitFile ?? selectedFile?.path ?? null,
+	selectedCurrentFile ?? selectedCommitFile ?? selectedFile?.path ?? null,
 );
 
 // ViewDescriptor for the current diff. resolveViewOid handles per-kind OID
@@ -549,7 +598,8 @@ function handleWipClick() {
 }
 
 function handleDiffClose() {
-	if (selectedCompareFile) selectedCompareFile = null;
+	if (selectedCurrentFile) closeCurrentFile();
+	else if (selectedCompareFile) selectedCompareFile = null;
 	else if (selectedFile) clearStagingDiff();
 	else clearCommitFileDiff();
 }
@@ -1357,7 +1407,7 @@ function startRightResize(e: MouseEvent) {
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
         <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} />
+          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
         </div>
       {:else if showMergeEditor && selectedFile}
         <MergeEditor
@@ -1489,6 +1539,14 @@ function startRightResize(e: MouseEvent) {
     {/if}
   </main>
 </div>
+
+{#if finderOpen}
+  <FileFinder
+    files={finderFiles}
+    onselect={openCurrentFile}
+    onclose={() => (finderOpen = false)}
+  />
+{/if}
 
 <!-- Single MessageEditor host (D-04). Renders nothing until open() is called;
      the threaded onopenmessageeditor callback drives merge/revert message edits. -->

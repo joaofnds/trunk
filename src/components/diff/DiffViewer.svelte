@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import type {
@@ -28,7 +29,7 @@ interface Props {
 	// (TRUNK-163).
 	compareBaseOid?: string | null;
 	selectedPath: string | null;
-	diffKind: "unstaged" | "staged" | "commit";
+	diffKind: PanelDiffKind;
 	emptyCommit?: boolean;
 	loading: boolean;
 	hunkOperationInFlight: boolean;

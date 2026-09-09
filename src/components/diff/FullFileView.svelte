@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildInlineRows,
 	countLines,
@@ -26,7 +27,7 @@ interface Props {
 	wordWrap: boolean;
 	commitOid: string;
 	repoPath: string;
-	diffKind: "unstaged" | "staged" | "commit";
+	diffKind: PanelDiffKind;
 	isMerge: boolean;
 	// Bubbles the chosen file path + the flat selected indices (into the file's
 	// hunks.flatMap(h => h.lines)) up to the DiffPanel host when the user clicks

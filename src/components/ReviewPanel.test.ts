@@ -1915,3 +1915,52 @@ describe("multi-tab coordination", () => {
 		expect(screen.queryByRole("button", { name: /End review/ })).toBeNull();
 	});
 });
+
+describe("comment on a file", () => {
+	beforeEach(() => {
+		installReads({});
+	});
+
+	function renderPanel(oncommentonfile = vi.fn()) {
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+				oncommentonfile,
+			},
+		});
+		return oncommentonfile;
+	}
+
+	it("offers the entry point in the panel header", async () => {
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("button", { name: /Comment on a file/ }),
+		).toBeInTheDocument();
+	});
+
+	it("asks the host to open the finder", async () => {
+		const oncommentonfile = renderPanel();
+		await flush();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: /Comment on a file/ }),
+		);
+
+		expect(oncommentonfile).toHaveBeenCalled();
+	});
+
+	it("offers the entry point with no comment yet, unlike Copy", async () => {
+		renderPanel();
+		await flush();
+
+		expect(
+			screen.getByRole("button", { name: /Comment on a file/ }),
+		).not.toBeDisabled();
+	});
+});

@@ -9,6 +9,7 @@ import Space from "@lucide/svelte/icons/space";
 import TextWrap from "@lucide/svelte/icons/text-wrap";
 import UnfoldVertical from "@lucide/svelte/icons/unfold-vertical";
 import { onMount } from "svelte";
+import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { fileStatusOf } from "../../lib/file-status.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
 import { renamePartsOf } from "../../lib/rename-display.js";
@@ -34,7 +35,7 @@ interface Props {
 	selectedPath: string | null;
 	selectedStatus?: DiffStatus | null;
 	selectedOldPath?: string | null;
-	diffKind: "unstaged" | "staged" | "commit";
+	diffKind: PanelDiffKind;
 	hunkOperationInFlight: boolean;
 	ignoreWhitespace: boolean;
 	showInvisibles: boolean;

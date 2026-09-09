@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import {
 	buildInlineRows,
 	countLines,
@@ -30,7 +31,7 @@ import ExactVirtualList from "./ExactVirtualList.svelte";
 interface Props {
 	fileDiffs: FileDiff[];
 	selectedPath: string | null;
-	diffKind: "unstaged" | "staged" | "commit";
+	diffKind: PanelDiffKind;
 	hunkOperationInFlight: boolean;
 	showInvisibles: boolean;
 	wordWrap: boolean;

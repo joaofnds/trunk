@@ -146,6 +146,17 @@ describe("FullFileView", () => {
 		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
 	});
 
+	it("offers no Comment affordance in a current-file view, whose anchor kind the store cannot yet accept", async () => {
+		render(FullFileView, {
+			props: defaultProps({ diffKind: "current_file" as const }),
+		});
+
+		await fireEvent.click(gutterGrip("added one"));
+		await tick();
+
+		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
+	});
+
 	it("V6: a click sets a single-line selection and the affordance reports count 1", async () => {
 		render(FullFileView, { props: defaultProps() });
 

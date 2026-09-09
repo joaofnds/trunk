@@ -12,7 +12,18 @@
 
 import type { ReviewSnapshots, Side, Thread } from "./types.js";
 
-export type DiffKind = "commit" | "unstaged" | "staged" | "conflicted";
+export type DiffKind =
+	| "commit"
+	| "unstaged"
+	| "staged"
+	| "conflicted"
+	| "current_file";
+
+/**
+ * The kinds a DiffPanel actually renders. A conflicted file goes to MergeEditor
+ * instead, so it never reaches the panel or anything below it.
+ */
+export type PanelDiffKind = Exclude<DiffKind, "conflicted">;
 
 export interface ViewDescriptor {
 	kind: DiffKind;

@@ -13,6 +13,8 @@ export function isMarkdownPath(path: string): boolean {
 
 // Mirrors the Rust `RevSpec` enum (serde tag "type", camelCase variants). Which
 // version of a file to render.
+import type { PanelDiffKind } from "./comment-matching.js";
+
 export type RevSpec =
 	| { type: "workingTree" }
 	| { type: "index" }
@@ -21,12 +23,10 @@ export type RevSpec =
 	| { type: "commit"; oid: string };
 
 // The "after" side rev for an inline diff of the given kind.
-export function afterRev(
-	diffKind: "unstaged" | "staged" | "commit",
-	commitOid: string,
-): RevSpec {
+export function afterRev(diffKind: PanelDiffKind, commitOid: string): RevSpec {
 	switch (diffKind) {
 		case "unstaged":
+		case "current_file":
 			return { type: "workingTree" };
 		case "staged":
 			return { type: "index" };
@@ -46,11 +46,15 @@ export function afterRev(
 // target's first parent — otherwise a rename earlier in the range reads the
 // old path at a rev where it's already gone (TRUNK-163).
 export function beforeRev(
-	diffKind: "unstaged" | "staged" | "commit",
+	diffKind: PanelDiffKind,
 	parentOid: string | null,
 	compareBaseOid?: string | null,
 ): RevSpec {
 	switch (diffKind) {
+		// A current-file view is not a diff: both sides are the working tree, so
+		// the renderer sees no change and prints the file as it stands.
+		case "current_file":
+			return { type: "workingTree" };
 		case "unstaged":
 			return { type: "index" };
 		case "staged":

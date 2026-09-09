@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { PanelDiffKind } from "../lib/comment-matching.js";
 import {
 	buildDiffAnchor,
 	type DiffAnchorResult,
@@ -57,7 +58,7 @@ interface Props {
 	compareBaseOid?: string | null;
 	selectedPath?: string | null;
 	onclose: () => void;
-	diffKind?: "unstaged" | "staged" | "commit";
+	diffKind?: PanelDiffKind;
 	repoPath?: string;
 	onhunkaction?: (filePath: string) => Promise<void>;
 	onfileemptied?: (

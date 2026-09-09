@@ -36,10 +36,19 @@ interface Props {
 	// Commit-header jump: select the commit and scroll the graph to it. Same
 	// gesture as clicking a line ref, but without a file/line — the panel stays.
 	onJumpToCommit: (commitOid: string) => void;
+	// Open the file finder. One suppressible affordance rather than several, so
+	// milestone 5's hide-all has a single thing to hide.
+	oncommentonfile?: () => void;
 }
 
-let { repoPath, session, reviewComments, onJump, onJumpToCommit }: Props =
-	$props();
+let {
+	repoPath,
+	session,
+	reviewComments,
+	onJump,
+	onJumpToCommit,
+	oncommentonfile,
+}: Props = $props();
 
 const commits = $derived(reviewComments.commits);
 const comments = $derived(reviewComments.threads);
@@ -422,6 +431,17 @@ $effect(() => {
       font-size: 12px;
     "
   >
+    {#if oncommentonfile}
+      <button
+        type="button"
+        class="comment-on-file-button flex items-center"
+        onclick={oncommentonfile}
+        title="Comment on any tracked file, including one no change touches"
+      >
+        <MessageSquarePlus size={14} />
+        <span>Comment on a file…</span>
+      </button>
+    {/if}
     <span class="preview-spacer" style="flex: 1;"></span>
     {#if activeReview && !activeReview.published}
       <button
@@ -775,6 +795,7 @@ $effect(() => {
 
   /* Phase 72 Copy button — lives in the panel header. Carry-forward from the
      deleted Phase 71 preview component. */
+  .comment-on-file-button,
   .copy-button {
     display: inline-flex;
     align-items: center;
@@ -789,6 +810,8 @@ $effect(() => {
     font-size: 12px;
     font-family: inherit;
   }
+  .comment-on-file-button:hover,
+  .comment-on-file-button:focus-visible,
   .copy-button:hover:not([disabled]),
   .copy-button:focus-visible:not([disabled]) {
     color: var(--color-text);
