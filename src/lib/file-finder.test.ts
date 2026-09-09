@@ -80,6 +80,15 @@ describe("rankFiles", () => {
 		]);
 	});
 
+	it("ranks a filename match above a directory match that shares the query", () => {
+		const files = [tracked("panel/other.ts"), tracked("panel/src/panel.ts")];
+
+		expect(paths(rankFiles(files, "panel"))).toEqual([
+			"panel/src/panel.ts",
+			"panel/other.ts",
+		]);
+	});
+
 	it("ranks a changed file first even when an unchanged one matches better", () => {
 		const files = [tracked("panel.ts"), tracked("a/b/c/p/n/l.ts", true)];
 
