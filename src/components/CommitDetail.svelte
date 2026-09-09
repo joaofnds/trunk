@@ -5,22 +5,14 @@ import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
-import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
 import { BODY_CLAMP_LINES, bodyOverflows } from "../lib/commit-body-clamp.js";
-import { createDraft } from "../lib/draft.svelte.js";
-import { reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
-import {
-	addCommitThread,
-	deleteThread,
-	editThread,
-} from "../lib/review-comment-actions.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type {
 	CommitDetail,
@@ -30,7 +22,7 @@ import type {
 	FileStatus,
 } from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
-import ThreadCard from "./ThreadCard.svelte";
+import CommitNotes from "./CommitNotes.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
 interface Props {
@@ -162,30 +154,6 @@ let commitNotes = $derived(
 		(t) => t.anchor === null && t.commit_oid === commitDetail.oid,
 	),
 );
-
-const draft = createDraft();
-let noteSaving = $state(false);
-
-function openAddNote() {
-	draft.open();
-}
-
-function cancelAddNote() {
-	draft.close();
-}
-
-async function saveNote() {
-	if (!draft.valid || noteSaving) return;
-	noteSaving = true;
-	try {
-		await addCommitThread(repoPath, commitDetail.oid, draft.text.trim());
-		draft.close();
-	} catch (e) {
-		reportErrorToast(e, "Failed to add note");
-	} finally {
-		noteSaving = false;
-	}
-}
 </script>
 
 <svelte:window onkeydown={handlePaneKeydown} />
@@ -357,62 +325,7 @@ async function saveNote() {
     </div>
 
     <!-- Commit-level notes (whole-commit, anchor === null) -->
-    <div class="commit-notes">
-      <div class="commit-notes-head">
-        <span class="commit-notes-title">
-          Notes{#if commitNotes.length > 0} ({commitNotes.length}){/if}
-        </span>
-        {#if !draft.editing}
-          <button
-            type="button"
-            class="add-note-btn"
-            onclick={openAddNote}
-          >
-            <MessageSquarePlus size={14} />
-            <span>Add note</span>
-          </button>
-        {/if}
-      </div>
-
-      {#if draft.editing}
-        <div class="add-note-composer">
-          <textarea
-            bind:value={draft.text}
-            rows="3"
-            placeholder="Leave a note on this commit…"
-            class="add-note-textarea"
-          ></textarea>
-          <div class="add-note-actions">
-            <button
-              type="button"
-              onclick={saveNote}
-              disabled={!draft.valid || noteSaving}
-            >Save</button>
-            <button
-              type="button"
-              onclick={cancelAddNote}
-            >Cancel</button>
-          </div>
-        </div>
-      {/if}
-
-      {#if commitNotes.length > 0}
-        <ul class="commit-notes-list">
-          {#each commitNotes as comment (comment.id)}
-            <li>
-              <ThreadCard
-                thread={comment}
-                {repoPath}
-                variant="inline"
-                confirmDelete={false}
-                onedit={(id, text) => editThread(repoPath, id, text)}
-                ondelete={(id) => deleteThread(repoPath, id)}
-              />
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
+    <CommitNotes notes={commitNotes} {repoPath} commitOid={commitDetail.oid} />
 
     <!-- File list -->
     <div>
@@ -624,92 +537,4 @@ async function saveNote() {
     background: color-mix(in oklch, var(--fg-3) 18%, transparent);
   }
 
-  /* Commit-level notes block — whole-commit review comments. */
-  .commit-notes {
-    display: flex;
-    flex-direction: column;
-  }
-  .commit-notes-head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    height: var(--bar-h);
-    /* .commit-notes is a flex column, which would otherwise shrink this bar
-       below the height it declares. */
-    flex-shrink: 0;
-    box-shadow: inset 0 -1px 0 var(--color-border);
-    padding: 0 var(--space-3);
-  }
-  .commit-notes-title {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    flex: 1;
-  }
-  .add-note-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    background: transparent;
-    color: var(--color-text-muted);
-    border: none;
-    border-radius: var(--radius);
-    cursor: pointer;
-    padding: var(--space-1) var(--space-2);
-    font-size: 12px;
-    flex-shrink: 0;
-  }
-  .add-note-btn:hover,
-  .add-note-btn:focus-visible {
-    color: var(--color-text);
-    background: var(--color-hover);
-  }
-  .add-note-composer {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding: 0 var(--space-3) var(--space-2);
-  }
-  .add-note-textarea {
-    width: 100%;
-    resize: vertical;
-    background: var(--color-bg);
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: var(--space-1) var(--space-2);
-    font-size: 12px;
-    font-family: inherit;
-  }
-  .add-note-actions {
-    display: flex;
-    gap: var(--space-1);
-  }
-  .add-note-actions button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    color: var(--color-text);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2);
-    font-size: 12px;
-  }
-  .add-note-actions button[disabled] {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-  .commit-notes-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    list-style: none;
-    margin: 0;
-    padding: 0 var(--space-3) var(--space-2);
-  }
 </style>
