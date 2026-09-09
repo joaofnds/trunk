@@ -365,7 +365,14 @@ mod tests {
         let id = thread_anchored_to(&store, "NEWSNAP");
 
         store
-            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &[], &[]), &no_file))
+            .write(|tx| {
+                recompute(
+                    tx,
+                    &repo_path(),
+                    &standing_where("NEWSNAP", &[], &[]),
+                    &no_file,
+                )
+            })
             .unwrap();
 
         assert!(
