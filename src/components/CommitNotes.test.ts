@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { showToast } from "../lib/toast.svelte.js";
 import CommitNotes from "./CommitNotes.svelte";
 
 // Shared Tauri mock
@@ -21,6 +22,10 @@ vi.mock("../lib/invoke.js", async () => {
 });
 
 const commitOid = "abc123def456";
+
+function callCount(cmd: string): number {
+	return vi.mocked(safeInvoke).mock.calls.filter((c) => c[0] === cmd).length;
+}
 
 function callArgs(cmd: string): Record<string, unknown> | undefined {
 	const call = vi.mocked(safeInvoke).mock.calls.find((c) => c[0] === cmd);
@@ -100,6 +105,47 @@ describe("CommitNotes", () => {
 
 		expect(callArgs("add_commit_thread")).toBeUndefined();
 		expect(textarea).toBeInTheDocument();
+	});
+
+	it("saves once when Save is clicked again while the first save is in flight", async () => {
+		let settleSave = () => {};
+		vi.mocked(safeInvoke).mockReturnValue(
+			new Promise<void>((resolve) => {
+				settleSave = resolve;
+			}),
+		);
+		renderNotes();
+
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "a new note" } },
+		);
+		await fireEvent.click(screen.getByText("Save"));
+		await fireEvent.click(screen.getByText("Save"));
+		settleSave();
+
+		expect(callCount("add_commit_thread")).toBe(1);
+	});
+
+	it("reports a refused save and leaves the composed text on screen", async () => {
+		vi.mocked(safeInvoke).mockRejectedValue(new Error("review is published"));
+		renderNotes();
+
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "a new note" } },
+		);
+		await fireEvent.click(screen.getByText("Save"));
+
+		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+			"review is published",
+			"error",
+		);
+		expect(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+		).toHaveValue("a new note");
 	});
 
 	it("discards the composed text when the composer is cancelled", async () => {
