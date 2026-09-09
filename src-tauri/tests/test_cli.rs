@@ -1639,6 +1639,99 @@ fn watch_json_reports_a_thread_going_stale() {
     assert_eq!(event["stale"], true);
 }
 
+/// A collected anchor is the one staleness case that can never clear: the code
+/// is unrecoverable, so the marker must not flicker back off. Non-reversal is
+/// asserted as the recompute's own count rather than as a silence over some
+/// duration, which would decide pass or fail on a wait.
+#[test]
+fn watch_json_reports_a_collected_anchor_stale_and_keeps_it_stale() {
+    use trunk_lib::commands::review::{ensure_review_snapshot_inner, recompute_staleness};
+    use trunk_lib::git::workdir_snapshot::SnapshotKind;
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let snapshot = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        let snapshot = ensure_review_snapshot_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            SnapshotKind::Workdir,
+            500,
+        )
+        .unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this uncommitted line is wrong".to_string(),
+                        anchor: Some(trunk_lib::git::types::Anchor {
+                            commit_oid: snapshot.clone(),
+                            file_path: "a.txt".to_string(),
+                            source: trunk_lib::git::types::Source::Diff,
+                            side: trunk_lib::git::types::Side::New,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        commit_oid: None,
+                        content_pin: None,
+                        cached_excerpt: Some("edited".to_string()),
+                    },
+                    600,
+                )
+            })
+            .unwrap();
+        snapshot
+    };
+    let watch = WatchChild::spawn_json(&ctx);
+
+    collect_the_snapshot(&ctx, &snapshot);
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1, "the thread on {snapshot} must have gone stale");
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["event"], "thread_stale_changed");
+    assert_eq!(event["review"], published.as_str());
+    assert_eq!(event["stale"], true);
+    assert_eq!(
+        recompute_staleness(&store, &canonical, ctx.path()).unwrap(),
+        0,
+        "while the anchor stays collected the verdict cannot change, so no later \
+         event can carry stale:false",
+    );
+}
+
+/// An outside actor's `git gc`: drop the keepalive ref Trunk holds the snapshot
+/// with, then prune, and assert the object really is unreachable — a gc that
+/// kept it would make the test vacuous.
+fn collect_the_snapshot(ctx: &TestContext, oid: &str) {
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let parsed = git2::Oid::from_str(oid).unwrap();
+    trunk_lib::git::workdir_snapshot::prune_snapshot_ref(&repo, parsed).unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now"])
+        .current_dir(ctx.path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    assert!(
+        fresh.find_commit(parsed).is_err(),
+        "the test needs the object gone, and gc kept {oid}",
+    );
+}
+
 /// `--json` exists so a harness never refetches and rediffs: each line is one
 /// self-contained event carrying the change's full data.
 #[test]
