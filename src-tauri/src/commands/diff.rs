@@ -1231,6 +1231,13 @@ pub async fn open_current_file(
 /// Returns `not_found` when the file does not exist in the working tree, and the
 /// escape guard's error when the path resolves outside the repository.
 pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
+    if !is_readable_tracked_file(repo, file_path) {
+        return Err(TrunkError::new(
+            "not_found",
+            format!("not a tracked file: {file_path}"),
+        ));
+    }
+
     let bytes =
         blob_reader::read_file_at_inner(repo, file_path, &blob_reader::RevSpec::WorkingTree)?;
 
@@ -1289,6 +1296,36 @@ pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<Fil
     Ok(file_diffs.remove(0))
 }
 
+/// Whether the index holds a regular-file entry for this exact path.
+///
+/// Two things have to hold, and the escape guard in `blob_reader` supplies
+/// neither. It checks containment, and every gitignored file and every `.git`
+/// internal is inside the repository root, so containment alone lets both
+/// through. Trackedness alone is not enough either: a repository can track a
+/// symlink whose target is one of them, and reading it follows the link. So a
+/// path the index does not hold is refused, and so is one it holds as a link.
+fn is_readable_tracked_file(repo: &git2::Repository, file_path: &str) -> bool {
+    let Ok(index) = repo.index() else {
+        return false;
+    };
+    // get_path errors rather than returning None on a path leaving the repo, and
+    // git2 surfaces that as a panic through its own unwrap, so refuse such a path
+    // before asking.
+    if std::path::Path::new(file_path)
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return false;
+    }
+    let Some(entry) = index.get_path(std::path::Path::new(file_path), 0) else {
+        return false;
+    };
+
+    // The index stores a symlink with mode 0o120_000 and a regular file with
+    // 0o100_644 or 0o100_755, so the file-type bits tell them apart.
+    entry.mode & 0o170_000 == 0o100_000
+}
+
 /// The 1-based line number for a 0-based index, saturating rather than wrapping
 /// on a file longer than `u32` can count.
 fn line_number(index: usize) -> u32 {
@@ -1306,10 +1343,17 @@ mod current_file_tests {
     use std::fs;
     use tempfile::TempDir;
 
+    /// A repo tracking one file, since a current-file view refuses anything the
+    /// index does not hold.
     fn repo_with_file(path: &str, content: &str) -> (TempDir, git2::Repository) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
         fs::write(dir.path().join(path), content).unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new(path)).unwrap();
+            index.write().unwrap();
+        }
         (dir, repo)
     }
 
@@ -1404,6 +1448,10 @@ mod current_file_tests {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
         fs::write(dir.path().join("blob.bin"), [0x00, 0x01, 0x02]).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("blob.bin")).unwrap();
+        index.write().unwrap();
+        drop(index);
 
         let fd = current_file_diff(&repo, "blob.bin").unwrap();
 
@@ -1422,12 +1470,46 @@ mod current_file_tests {
             outside.path().file_name().unwrap().to_str().unwrap()
         );
 
-        let result = current_file_diff(&repo, &escape);
+        let err = current_file_diff(&repo, &escape).unwrap_err();
 
-        assert!(
-            result.is_err(),
-            "the escape guard refuses a path resolving outside the repository"
+        assert_eq!(
+            err.code, "not_found",
+            "a path resolving outside the repository is refused"
         );
+    }
+
+    #[test]
+    fn a_tracked_symlink_into_the_repository_cannot_read_an_ignored_file() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        fs::write(dir.path().join(".gitignore"), "secret.env\n").unwrap();
+        fs::write(dir.path().join("secret.env"), "TOKEN=abc123\n").unwrap();
+        std::os::unix::fs::symlink("secret.env", dir.path().join("leak.txt")).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("leak.txt")).unwrap();
+        index.write().unwrap();
+        drop(index);
+
+        let err = current_file_diff(&repo, "leak.txt").unwrap_err();
+
+        assert_eq!(
+            err.code, "not_found",
+            "a symlink git tracks must not hand back the ignored file it points at"
+        );
+    }
+
+    #[test]
+    fn an_untracked_file_inside_the_repository_is_refused() {
+        let (dir, repo) = repo_with_file("tracked.txt", "one\n");
+        fs::write(dir.path().join("untracked.txt"), "two\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("tracked.txt")).unwrap();
+        index.write().unwrap();
+        drop(index);
+
+        let err = current_file_diff(&repo, "untracked.txt").unwrap_err();
+
+        assert_eq!(err.code, "not_found");
     }
 
     #[test]

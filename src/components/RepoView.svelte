@@ -4,7 +4,7 @@ import { onDestroy, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
 import {
 	commentsForView,
-	type DiffKind,
+	type PanelDiffKind,
 	type ViewDescriptor,
 } from "../lib/comment-matching.js";
 import { computeCommitNav } from "../lib/commitNav.js";
@@ -413,38 +413,49 @@ let showDiff = $derived(
 );
 let showMergeEditor = $derived(selectedFile?.kind === "conflicted");
 
-// The diffs to display: filtered commit file diff, or staging diff
+// The diffs to display: filtered commit file diff, staging diff, or the whole
+// of a tracked file opened through the finder. A current-file view is last
+// because any other selection supersedes it — selecting a staging file while
+// one is open must show that file, not the one the finder opened.
 let currentDiffFiles = $derived(
-	selectedCurrentFile
-		? currentFileDiffs
-		: selectedCompareFile
-			? compareFileDiffs.filter((f) => f.path === selectedCompareFile)
-			: selectedCommitFile
-				? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
-				: stagingDiffFiles,
+	selectedCompareFile
+		? compareFileDiffs.filter((f) => f.path === selectedCompareFile)
+		: selectedCommitFile
+			? commitFileDiffs.filter((f) => f.path === selectedCommitFile)
+			: selectedFile
+				? stagingDiffFiles
+				: selectedCurrentFile
+					? currentFileDiffs
+					: stagingDiffFiles,
 );
 
 // The diffKind the active DiffPanel renders under — mirrors the template prop
 // (a conflicted file shows via MergeEditor, never DiffPanel, so it folds to the
 // commit kind there too). Lifted to a derived so the matcher's ViewDescriptor
 // and the rendered DiffPanel agree on one source of truth. The conflicted case
-// is folded out, so this never widens to DiffKind's "conflicted" variant —
-// keeping it assignable to DiffPanel's narrower prop union.
-let diffKind = $derived<Exclude<DiffKind, "conflicted">>(
-	selectedCurrentFile
-		? "current_file"
-		: selectedCommitFile
+// is folded out, so this never widens to DiffKind's "conflicted" variant.
+//
+// Its branch order is currentDiffFiles' order, and the two must stay that way
+// or the panel renders one selection's content under another's kind. A
+// current-file view sits last because every other selection supersedes it: the
+// finder does not clear them, exactly as they do not clear each other.
+let diffKind = $derived<PanelDiffKind>(
+	selectedCommitFile
+		? "commit"
+		: selectedFile?.kind === "conflicted"
 			? "commit"
-			: selectedFile?.kind === "conflicted"
-				? "commit"
-				: (selectedFile?.kind ?? "commit"),
+			: selectedFile
+				? selectedFile.kind
+				: selectedCurrentFile
+					? "current_file"
+					: "commit",
 );
 
 // The new-side path of the file shown in DiffPanel. FileDiff carries only a
 // single (current) path — no old/new pair — so Old-side rename comments match
 // by this new path and otherwise fall to panel-only (plan §6, acceptable v1).
 let selectedDiffPath = $derived(
-	selectedCurrentFile ?? selectedCommitFile ?? selectedFile?.path ?? null,
+	selectedCommitFile ?? selectedFile?.path ?? selectedCurrentFile ?? null,
 );
 
 // ViewDescriptor for the current diff. resolveViewOid handles per-kind OID
