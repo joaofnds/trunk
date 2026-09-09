@@ -17,6 +17,11 @@ interface Props {
 	// a pre-built `captured` result (from buildFullFileAnchor) and omits the three
 	// diff-path props. Exactly one of the two contracts is satisfied by the caller.
 	captured?: { anchor: Anchor; cachedExcerpt: string };
+	// The current-file contract, exclusive with the other two. A current-file
+	// thread pins the file's own content, so it carries no anchor and no commit
+	// oid: the backend reads the range out of the file at submit and stores the
+	// block it found. Sending a block from here would let the two disagree.
+	currentFile?: { filePath: string; startLine: number; endLine: number };
 	file?: FileDiff;
 	hunkIdx?: number;
 	selectedLineIndices?: Set<number>;
@@ -33,6 +38,7 @@ interface Props {
 
 let {
 	captured,
+	currentFile,
 	file,
 	hunkIdx,
 	selectedLineIndices,
@@ -141,18 +147,28 @@ async function handleSubmit() {
 		// Resolve the anchor's commit_oid now (deferred from open): for the working
 		// tree this starts the session + creates/reuses the snapshot. Null = failure
 		// (a toast already fired); keep the composer + draft open so nothing is lost.
-		let anchor = capturedResult.anchor;
-		if (resolveCommitOid) {
-			const oid = await resolveCommitOid();
-			if (oid === null) return;
-			anchor = { ...anchor, commit_oid: oid };
+		if (currentFile) {
+			await safeInvoke("add_current_file_thread", {
+				path: repoPath,
+				filePath: currentFile.filePath,
+				startLine: currentFile.startLine,
+				endLine: currentFile.endLine,
+				text,
+			});
+		} else {
+			let anchor = capturedResult.anchor;
+			if (resolveCommitOid) {
+				const oid = await resolveCommitOid();
+				if (oid === null) return;
+				anchor = { ...anchor, commit_oid: oid };
+			}
+			await safeInvoke("add_thread", {
+				path: repoPath,
+				text,
+				anchor,
+				cachedExcerpt: capturedResult.cachedExcerpt,
+			});
 		}
-		await safeInvoke("add_thread", {
-			path: repoPath,
-			text,
-			anchor,
-			cachedExcerpt: capturedResult.cachedExcerpt,
-		});
 	} catch (e) {
 		reportErrorToast(e, "Add comment failed");
 		return;

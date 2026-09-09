@@ -145,9 +145,20 @@ describe("FullFileView", () => {
 		expect(screen.queryByRole("button", { name: /comment/i })).toBeNull();
 	});
 
-	it("offers no Comment affordance in a current-file view, whose anchor kind the store cannot yet accept", async () => {
+	it("offers the Comment affordance in a current-file view, which the store now anchors by content", async () => {
 		render(FullFileView, {
 			props: defaultProps({ diffKind: "current_file" as const }),
+		});
+
+		await fireEvent.click(gutterGrip("added one"));
+		await tick();
+
+		expect(screen.getByRole("button", { name: /comment \(1\)/i })).toBeTruthy();
+	});
+
+	it("offers no Comment affordance in a staged view, which is not on the allowlist", async () => {
+		render(FullFileView, {
+			props: defaultProps({ diffKind: "staged" as const }),
 		});
 
 		await fireEvent.click(gutterGrip("added one"));

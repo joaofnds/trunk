@@ -76,6 +76,47 @@ describe("ThreadCard", () => {
 		});
 	}
 
+	const currentFileComment: Thread = aThread({
+		id: "c2",
+		text: "this constant needs a name",
+		anchor: null,
+		cached_excerpt: "const answer = 42;",
+		content_pin: {
+			file_path: "src/untouched.ts",
+			block: "const answer = 42;",
+			ordinal: 0,
+			start_line: 1,
+			end_line: 1,
+		},
+	});
+
+	it("locates a current-file comment by its pin, which carries no anchor", () => {
+		renderCard({ thread: currentFileComment });
+
+		expect(screen.getByText("src/untouched.ts:L1-L1")).toBeTruthy();
+	});
+
+	it("locates it at the line the backend last resolved the block to", () => {
+		renderCard({
+			thread: { ...currentFileComment, resolved_start_line: 7 },
+		});
+
+		expect(screen.getByText("src/untouched.ts:L7-L7")).toBeTruthy();
+	});
+
+	/// A stale current-file thread points at code that is gone, so the excerpt is
+	/// the only place its subject survives.
+	it("still shows the excerpt of a stale current-file comment", () => {
+		renderCard({
+			thread: { ...currentFileComment, stale: true },
+			orphaned: true,
+			orphanLabel: "code gone",
+		});
+
+		expect(screen.getByText("const answer = 42;")).toBeTruthy();
+		expect(screen.getByText("code gone")).toBeTruthy();
+	});
+
 	it("keeps the comment body and excerpt code selectable while the gutter stays unselectable", () => {
 		const { container } = renderCard();
 

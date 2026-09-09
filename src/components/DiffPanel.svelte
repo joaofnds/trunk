@@ -187,6 +187,28 @@ const fullFileCaptured = $derived(
 		: null,
 );
 
+// A current-file view is the whole file by definition: there is no diff to show
+// hunks of, so the user's hunk/full preference has nothing to choose between and
+// the selection gestures full-file mode carries are the only ones that apply.
+// The stored preference is left alone, so leaving this view restores it.
+const effectiveContentMode = $derived(
+	diffKind === "current_file" ? "full" : contentMode,
+);
+
+// The current-file composer's target. The backend reads the block out of the
+// file at submit, so all it needs is the path and the range the selection
+// covers; the anchor above supplies the range and its empty commit oid is never
+// sent anywhere.
+const currentFileTarget = $derived(
+	diffKind === "current_file" && fullFileComposerPath && fullFileCaptured
+		? {
+				filePath: fullFileComposerPath,
+				startLine: fullFileCaptured.anchor.start_line,
+				endLine: fullFileCaptured.anchor.end_line,
+			}
+		: undefined,
+);
+
 function closeComposer() {
 	composerOpen = false;
 	diffCaptured = null;
@@ -901,7 +923,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 	/>
 	{#if prefsLoaded}
 	<DiffViewer
-		{contentMode}
+		contentMode={effectiveContentMode}
 		{contextLines}
 		{layoutMode}
 		{renderMode}
@@ -957,8 +979,11 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		<CommentComposer
 			bind:this={composer}
 			captured={fullFileCaptured}
+			currentFile={currentFileTarget}
 			{commitOid}
-			resolveCommitOid={resolveCommentCommitOid}
+			resolveCommitOid={currentFileTarget
+				? undefined
+				: resolveCommentCommitOid}
 			{repoPath}
 			onclose={closeComposer}
 		/>

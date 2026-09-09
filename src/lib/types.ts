@@ -373,6 +373,18 @@ export interface Anchor {
 	end_line: number;
 }
 
+// Where a current-file comment is pinned: the block of the working-tree file the
+// user selected, and which occurrence of it they picked. Mirrors the Rust
+// ContentPin. The ordinal decides which occurrence to render against and never
+// whether the thread is stale.
+export interface ContentPin {
+	file_path: string;
+	block: string;
+	ordinal: number;
+	start_line: number;
+	end_line: number;
+}
+
 // One anchored root comment plus its flat replies. Mirrors the Rust
 // RenderedThread: the stored row plus its markdown body rendered to sanitized
 // HTML at list time.
@@ -383,6 +395,12 @@ export interface Thread {
 	anchor: Anchor | null;
 	cached_excerpt: string | null;
 	commit_oid?: string | null;
+	// A current-file thread's target: the file's own content rather than a
+	// commit. Exclusive with `anchor`, and the only shape carrying no oid.
+	content_pin?: ContentPin | null;
+	// Where the backend last found the pinned block, so the card renders at the
+	// line the block moved to. The frontend never searches the file itself.
+	resolved_start_line?: number | null;
 	state: ThreadState;
 	stale: boolean;
 	channel: Channel;

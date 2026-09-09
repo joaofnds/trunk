@@ -431,6 +431,89 @@ pub async fn add_thread<R: Runtime>(
     Ok(())
 }
 
+/// Submit a thread pinned to a line range of a tracked file's current content.
+///
+/// The block is read from the file here rather than taken from the caller: the
+/// pin and the file must agree about what was selected, and only one of them
+/// holds the bytes. The ordinal is which occurrence of that block the selected
+/// range is, so the thread renders against the lines the user picked rather
+/// than against the file's first identical twin.
+///
+/// Nothing is written into the repository. That is the whole reason a
+/// current-file comment pins content instead of minting a snapshot commit.
+///
+/// # Errors
+///
+/// Returns `not_found` when the file will not read at the working tree,
+/// `invalid_range` when the range names lines the file does not have, and
+/// whatever the store returns when the write fails.
+pub fn submit_current_file_thread_inner(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+    file_path: &str,
+    start_line: u32,
+    end_line: u32,
+    text: &str,
+    now: i64,
+) -> Result<String, TrunkError> {
+    let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
+    let bytes = crate::git::blob_reader::read_file_at_inner(
+        &repo,
+        file_path,
+        &crate::git::blob_reader::RevSpec::WorkingTree,
+    )?;
+    let text_of_file = String::from_utf8(bytes)
+        .map_err(|_| TrunkError::new("not_found", format!("{file_path} is not text")))?;
+
+    let pin = crate::reviewdb::stale::pin_range(&text_of_file, file_path, start_line, end_line)?;
+
+    let req = SubmitThreadRequest {
+        text: text.to_string(),
+        anchor: None,
+        commit_oid: None,
+        cached_excerpt: Some(pin.block.clone()),
+        content_pin: Some(pin),
+        clears_draft: true,
+    };
+
+    submit_thread_inner(store, canonical, req, now)
+}
+
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn add_current_file_thread<R: Runtime>(
+    path: String,
+    file_path: String,
+    start_line: u32,
+    end_line: u32,
+    text: String,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<(), String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+
+    let target = canonical.clone();
+    let now = crate::reviewdb::now_secs();
+    write_and_notify(&app, &canonical, move || {
+        submit_current_file_thread_inner(
+            &store, &target, &path, &file_path, start_line, end_line, &text, now,
+        )
+        .map(|_| ())
+    })
+    .await?;
+
+    Ok(())
+}
+
 /// # Errors
 ///
 /// Returns the inner error as JSON, which is what the frontend parses, or

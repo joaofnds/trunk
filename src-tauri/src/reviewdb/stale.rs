@@ -21,6 +21,7 @@
 
 use super::{repo_key, sqlite_error};
 use crate::error::TrunkError;
+use crate::git::types::ContentPin;
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -118,18 +119,64 @@ fn find_block(text: &str, block: &str, ordinal: u32) -> Option<u32> {
     let text = normalize_endings(text);
     let block = normalize_endings(block);
     let lines: Vec<&str> = text.lines().collect();
-    let wanted: Vec<&str> = block.lines().collect();
-    if wanted.is_empty() || lines.len() < wanted.len() {
-        return None;
-    }
-
-    let starts: Vec<usize> = (0..=lines.len() - wanted.len())
-        .filter(|&i| lines[i..i + wanted.len()] == wanted[..])
-        .collect();
-
+    let starts = occurrences(&lines, &block);
     let index = (ordinal as usize).min(starts.len().checked_sub(1)?);
 
     u32::try_from(starts[index] + 1).ok()
+}
+
+/// The 0-based line indices every occurrence of `block` starts at.
+fn occurrences(lines: &[&str], block: &str) -> Vec<usize> {
+    let wanted: Vec<&str> = block.lines().collect();
+    if wanted.is_empty() || lines.len() < wanted.len() {
+        return Vec::new();
+    }
+
+    (0..=lines.len() - wanted.len())
+        .filter(|&i| lines[i..i + wanted.len()] == wanted[..])
+        .collect()
+}
+
+/// The content pin for a line range of `text`, 1-based and inclusive.
+///
+/// The block is the file's own lines, so it matches itself, and the ordinal is
+/// which occurrence of that block this range is. Without the ordinal a thread
+/// on the second of two identical blocks would render against the first.
+///
+/// # Errors
+///
+/// Returns `invalid_range` when the range is empty or names lines the file does
+/// not have.
+pub fn pin_range(
+    text: &str,
+    file_path: &str,
+    start_line: u32,
+    end_line: u32,
+) -> Result<ContentPin, TrunkError> {
+    let normalized = normalize_endings(text);
+    let lines: Vec<&str> = normalized.lines().collect();
+    let (first, last) = (start_line as usize, end_line as usize);
+    if first == 0 || first > last || last > lines.len() {
+        return Err(TrunkError::new(
+            "invalid_range",
+            format!("{file_path} has no lines {start_line}..{end_line}"),
+        ));
+    }
+
+    let block = lines[first - 1..last].join("\n");
+    let ordinal = occurrences(&lines, &block)
+        .iter()
+        .position(|&start| start == first - 1)
+        .and_then(|i| u32::try_from(i).ok())
+        .unwrap_or(0);
+
+    Ok(ContentPin {
+        file_path: file_path.to_string(),
+        block,
+        ordinal,
+        start_line,
+        end_line,
+    })
 }
 
 /// Whether the block occurs anywhere in the file.

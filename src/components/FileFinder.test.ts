@@ -9,7 +9,12 @@ const FILES: TrackedFile[] = [
 	{ path: "src/gamma.ts", changed: false },
 ];
 
-function open(props: Partial<{ files: TrackedFile[] }> = {}) {
+function open(
+	props: Partial<{
+		files: TrackedFile[];
+		commentCounts: Map<string, number>;
+	}> = {},
+) {
 	const onselect = vi.fn();
 	const onclose = vi.fn();
 	const result = render(FileFinder, {
@@ -25,6 +30,27 @@ function rowPaths(): string[] {
 }
 
 describe("FileFinder", () => {
+	it("shows how many comments an unchanged file already carries", () => {
+		open({ commentCounts: new Map([["src/alpha.ts", 2]]) });
+
+		const alpha = screen
+			.getAllByRole("option")
+			.find((el) => el.textContent?.includes("src/alpha.ts"));
+
+		expect(alpha?.textContent).toContain("2");
+		expect(alpha?.getAttribute("aria-label")).toContain("2 comments");
+	});
+
+	it("shows no count on a file nothing is pinned to", () => {
+		open({ commentCounts: new Map([["src/alpha.ts", 2]]) });
+
+		const beta = screen
+			.getAllByRole("option")
+			.find((el) => el.textContent?.includes("src/beta.ts"));
+
+		expect(beta?.querySelector(".finder-comment-count")).toBeNull();
+	});
+
 	it("lists changed files before unchanged ones", () => {
 		open();
 

@@ -48,6 +48,34 @@ let {
 const draft = createDraft();
 const replyDraft = createDraft();
 
+// Where the comment points, whichever shape it holds. A current-file thread
+// carries no anchor, so without this it rendered a card with no location at all
+// and the user could not tell what it was about. The line shown is the one the
+// backend last resolved the block to, falling back to the range at pin time
+// before any recompute has run.
+const location = $derived.by(() => {
+	if (thread.anchor !== null) {
+		return {
+			path: thread.anchor.file_path,
+			start: thread.anchor.start_line,
+			end: thread.anchor.end_line,
+		};
+	}
+	const pin = thread.content_pin;
+	if (!pin) return null;
+
+	const start = thread.resolved_start_line ?? pin.start_line;
+	return {
+		path: pin.file_path,
+		start,
+		end: start + (pin.end_line - pin.start_line),
+	};
+});
+
+// A current-file excerpt is plain code, like the full-file source: it is the
+// file's own lines, with no diff prefixes to strip.
+const excerptSource = $derived(thread.anchor?.source ?? "FullFile");
+
 // Parse the comment's cached_excerpt into rendered lines. Diff-source excerpts
 // carry +/-/space prefixes per `prefixLine` in diff-anchor.ts; full-file ones
 // are plain code with no prefix. Splitting the gutter out (vs. inlining the
@@ -156,19 +184,19 @@ async function requestDeleteReply(replyId: string) {
 <div class="comment-card comment-card-{variant}">
   <!-- Header: file ref (jump affordance) + orphan badge + actions -->
   <header class="comment-card-header">
-    {#if thread.anchor !== null}
+    {#if location !== null}
       {#if jumpable && onjump}
         <button
           type="button"
           aria-label="Jump to code"
           onclick={() => onjump?.(thread)}
           class="jump-ref font-mono comment-card-fileref"
-        >{thread.anchor.file_path}:L{thread.anchor.start_line}-L{thread.anchor.end_line}</button>
+        >{location.path}:L{location.start}-L{location.end}</button>
       {:else}
         <span
           class="font-mono comment-card-fileref"
           class:comment-card-fileref-dim={orphaned}
-        >{thread.anchor.file_path}:L{thread.anchor.start_line}-L{thread.anchor.end_line}</span>
+        >{location.path}:L{location.start}-L{location.end}</span>
       {/if}
     {/if}
     <span class="comment-card-spacer"></span>
@@ -204,9 +232,9 @@ async function requestDeleteReply(replyId: string) {
        canonical body; render with red/green per-line bg for Diff-source +/-
        lines, plain for full-file content. No syntax highlighting (the project's
        syntect-based path isn't wired into the panel — deferred). -->
-  {#if thread.anchor !== null && thread.cached_excerpt}
+  {#if location !== null && thread.cached_excerpt}
     <div class="comment-card-diff">
-      {#each parseExcerpt(thread.cached_excerpt, thread.anchor.source) as line, i (i)}
+      {#each parseExcerpt(thread.cached_excerpt, excerptSource) as line, i (i)}
         <div class="diff-line diff-line-{line.kind}">
           <span class="diff-gutter select-none">{line.gutter}</span>
           <span class="diff-content select-text">{line.content}</span>

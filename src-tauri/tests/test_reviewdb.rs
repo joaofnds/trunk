@@ -537,8 +537,8 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
 use trunk_lib::commands::review::{
-    ensure_review_snapshot_inner, read_snapshots_inner, recompute_staleness, submit_thread_into,
-    sweep_once, sweep_unanchored_pins,
+    ensure_review_snapshot_inner, read_snapshots_inner, recompute_staleness,
+    submit_current_file_thread_inner, submit_thread_into, sweep_once, sweep_unanchored_pins,
 };
 use trunk_lib::git::workdir_snapshot::SnapshotKind;
 
@@ -4823,6 +4823,72 @@ fn a_repo_with_a_pinned_block(
     (ctx, store)
 }
 
+/// The pin's block is taken from the file itself at submit time, not from
+/// whatever the frontend sends: the two must agree, and only one of them has
+/// the bytes.
+#[test]
+fn pinning_a_line_range_captures_that_range_from_the_file() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\nfour\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        2,
+        3,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+
+    let thread = only_thread(&store, &canonical);
+    let pin = thread.content_pin.expect("a content pin");
+    assert_eq!(pin.block, "two\nthree");
+    assert_eq!(
+        (pin.start_line, pin.end_line, pin.ordinal),
+        (2, 3, 0),
+        "the range the user picked, and the first occurrence of that block",
+    );
+}
+
+/// The ordinal must name the occurrence the user actually selected, not the
+/// first one in the file, or the thread renders against the wrong twin.
+#[test]
+fn pinning_a_later_twin_records_its_own_ordinal() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "dup\nother\ndup\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        3,
+        3,
+        "this one",
+        1_000,
+    )
+    .unwrap();
+
+    let pin = only_thread(&store, &canonical)
+        .content_pin
+        .expect("a content pin");
+    assert_eq!(
+        pin.ordinal, 1,
+        "the third line is the second occurrence of 'dup'",
+    );
+}
+
 #[test]
 fn a_current_file_thread_whose_block_left_the_file_is_stale() {
     let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
@@ -4905,6 +4971,22 @@ fn a_current_file_thread_whose_file_was_deleted_is_stale() {
         thread.cached_excerpt.as_deref(),
         Some("two"),
         "a stale thread still renders from its excerpt in the panel",
+    );
+}
+
+/// A rename leaves nothing at the pinned path, so it collapses to the same rule
+/// as a deletion: no content, no match, stale. No rename detection is needed.
+#[test]
+fn a_current_file_thread_whose_file_was_renamed_is_stale() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "one\ntwo\nthree\n", "two", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    std::fs::rename(ctx.repo_path().join("a.txt"), ctx.repo_path().join("b.txt")).unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a rename leaves the pinned path empty, which is the same as a deletion",
     );
 }
 
@@ -5004,5 +5086,48 @@ fn a_staleness_pass_that_moves_a_thread_announces_it() {
     assert!(
         store.read(reviewdb::revision).unwrap() > before,
         "a thread that went stale must reach the panel and the CLI watcher",
+    );
+}
+
+/// The plan asks for the cost of one recompute pass over a repo carrying 50
+/// threads, because the pass runs on every repo-changed event and the watcher
+/// fires on `.git` writes too. Reported, not asserted: a threshold here would be
+/// a flaky test on a loaded machine, and the number is what the reader needs.
+#[test]
+fn a_fifty_thread_recompute_pass_is_reported() {
+    use std::fmt::Write as _;
+    let mut content = String::new();
+    for i in 0..500 {
+        writeln!(content, "line {i}").unwrap();
+    }
+    let ctx = TestContext::builder()
+        .with_file("a.txt", &content)
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    for i in 0..50u32 {
+        submit_current_file_thread_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            "a.txt",
+            i + 1,
+            i + 1,
+            "look",
+            1_000,
+        )
+        .unwrap();
+    }
+
+    let started = std::time::Instant::now();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    let elapsed = started.elapsed();
+
+    println!("recompute over 50 current-file threads: {elapsed:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "a pass this slow would stall the watcher outright: {elapsed:?}",
     );
 }

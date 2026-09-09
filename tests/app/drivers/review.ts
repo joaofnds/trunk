@@ -11,6 +11,7 @@ const PROBE = ".comment-probe";
 const FILE_REF = ".comment-card-fileref";
 const STATE_CHIP = ".thread-state-chip";
 const CARD_ACTION = ".card-action";
+const ORPHAN_BADGE = ".orphan-badge";
 const PUBLISH = ".publish-button";
 const CONFIRM_PUBLISH = "Click again to confirm";
 const COPY = ".copy-button";
@@ -18,6 +19,8 @@ const MARK_DONE = "Mark done";
 const COMMENT_ON_FILE = ".comment-on-file-button";
 const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
 const FINDER_ROW = '[role="option"]';
+const SELECTABLE_LINE = ".gutter-selectable";
+const FULL_FILE_COMMENT = ".full-file-comment-button";
 
 /**
  * A review, from the comment that creates it to the doc it renders. Every
@@ -42,6 +45,29 @@ export class ReviewDriver {
 	async commentOnHunk(ordinal: number): Promise<void> {
 		const button = await waitFor(`${COMMENT} on hunk ${ordinal}`, () =>
 			enabledIn(toolbars()[ordinal], COMMENT),
+		);
+
+		button.click();
+	}
+
+	/** Clicks the gutter of the 1-based `lineno`-th selectable line in the pane,
+	 *  which is the gesture that arms the full-file Comment affordance. */
+	async selectLine(lineno: number): Promise<void> {
+		const gutter = await waitFor(`line ${lineno} in the pane`, () => {
+			const lines = [
+				...document.querySelectorAll<HTMLElement>(SELECTABLE_LINE),
+			];
+			return lines[lineno - 1] ?? null;
+		});
+
+		gutter.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		gutter.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+	}
+
+	/** Presses the Comment affordance the line selection arms. */
+	async commentOnSelection(): Promise<void> {
+		const button = await waitFor("the full-file Comment affordance", () =>
+			enabled(FULL_FILE_COMMENT),
 		);
 
 		button.click();
@@ -113,6 +139,13 @@ export class ReviewDriver {
 	/** The file each thread card is anchored to, topmost first. */
 	threads(): string[] {
 		return cards().map((card) => textIn(card, FILE_REF));
+	}
+
+	/** The orphan badge each thread card carries, topmost first, empty where a
+	 *  card carries none. This is what a user sees when a comment no longer
+	 *  resolves against the repository. */
+	orphanBadges(): string[] {
+		return cards().map((card) => textIn(card, ORPHAN_BADGE));
 	}
 
 	/** The state chip each thread card carries, topmost first. */

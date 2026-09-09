@@ -3,6 +3,7 @@ import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	buildCommentCounts,
 	commitOidForComment,
+	currentFileCommentCounts,
 	fileCountKey,
 	fileCountsForOid,
 } from "./comment-counts.js";
@@ -31,6 +32,42 @@ function lineComment(id: string, a: Anchor): Thread {
 function commitNote(id: string, commitOid: string): Thread {
 	return aThread({ id, text: `note ${id}`, commit_oid: commitOid });
 }
+
+function currentFileComment(id: string, filePath: string): Thread {
+	return aThread({
+		id,
+		text: `pin ${id}`,
+		content_pin: {
+			file_path: filePath,
+			block: "code",
+			ordinal: 0,
+			start_line: 1,
+			end_line: 1,
+		},
+	});
+}
+
+describe("currentFileCommentCounts", () => {
+	it("counts a thread against the file its pin names", () => {
+		const counts = currentFileCommentCounts([
+			currentFileComment("a", "src/a.ts"),
+			currentFileComment("b", "src/a.ts"),
+			currentFileComment("c", "src/b.ts"),
+		]);
+
+		expect(counts.get("src/a.ts")).toBe(2);
+		expect(counts.get("src/b.ts")).toBe(1);
+	});
+
+	it("leaves a commit-anchored comment out, since no file finder row is its own", () => {
+		const counts = currentFileCommentCounts([
+			lineComment("x", anchor("abc", "src/a.ts")),
+			commitNote("y", "abc"),
+		]);
+
+		expect(counts.size).toBe(0);
+	});
+});
 
 describe("commitOidForComment", () => {
 	it("returns the anchor's commit oid for a line comment", () => {

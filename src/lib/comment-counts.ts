@@ -31,6 +31,26 @@ export function commitOidForComment(c: Thread): string {
 	return c.commit_oid ?? "";
 }
 
+/**
+ * How many current-file threads each file carries, keyed by path alone.
+ *
+ * Separate from `buildCommentCounts` because that map is keyed by commit and
+ * file together, and a current-file thread names no commit. The finder lists
+ * files rather than commits, so the path is the only key it has.
+ */
+export function currentFileCommentCounts(
+	comments: Thread[],
+): Map<string, number> {
+	const byPath = new Map<string, number>();
+	for (const c of comments) {
+		const path = c.content_pin?.file_path;
+		if (path === undefined) continue;
+		byPath.set(path, (byPath.get(path) ?? 0) + 1);
+	}
+
+	return byPath;
+}
+
 /** byFile key: a file path can't contain NUL, so it's an unambiguous separator. */
 export function fileCountKey(commitOid: string, filePath: string): string {
 	return `${commitOid}\0${filePath}`;

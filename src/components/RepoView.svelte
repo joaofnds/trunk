@@ -2,6 +2,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { onDestroy, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
+import { currentFileCommentCounts } from "../lib/comment-counts.js";
 import {
 	commentsForView,
 	type PanelDiffKind,
@@ -1554,6 +1555,7 @@ function startRightResize(e: MouseEvent) {
 {#if finderOpen}
   <FileFinder
     files={finderFiles}
+    commentCounts={currentFileCommentCounts(reviewComments.threads)}
     onselect={openCurrentFile}
     onclose={() => (finderOpen = false)}
   />

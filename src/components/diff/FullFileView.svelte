@@ -93,8 +93,12 @@ const vd = createVirtualizedDiff({
 	list: () => list,
 });
 
+// An allowlist, not a denylist: a diff kind the store cannot anchor a thread
+// against must not gain the affordance by being forgotten here.
 const affordanceVisible = $derived(
-	(diffKind === "commit" || diffKind === "unstaged") &&
+	(diffKind === "commit" ||
+		diffKind === "unstaged" ||
+		diffKind === "current_file") &&
 		selectedPath !== null &&
 		selectedIndices.size > 0,
 );
@@ -247,11 +251,12 @@ function lineColor(): string {
 <div class="full-file" style="{FIXED_ROW_HEIGHT_VARS}">
   {#if affordanceVisible}
     <!-- Full-file Comment affordance (L-05: no isMerge disable). Appears for
-         commit diffs and unstaged working-tree diffs (260531-k4j) once a
-         selection exists. Lives outside the list because it follows the live
-         selection, which the row model must not take as an input. -->
+         commit diffs, unstaged working-tree diffs (260531-k4j) and current-file
+         views once a selection exists. Lives outside the list because it follows
+         the live selection, which the row model must not take as an input. -->
     <div style="display: flex; justify-content: flex-end; padding: var(--space-1) var(--space-2); flex: 0 0 auto;">
       <button
+        class="full-file-comment-button"
         style="
           display: inline-flex;
           align-items: center;

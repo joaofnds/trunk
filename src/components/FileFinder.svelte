@@ -11,11 +11,19 @@ import type { TrackedFile } from "../lib/types.js";
 
 interface Props {
 	files: TrackedFile[];
+	// How many current-file comments each path already carries, so a user sees
+	// where the discussion already is before opening anything.
+	commentCounts?: Map<string, number>;
 	onselect: (path: string) => void;
 	onclose: () => void;
 }
 
-let { files, onselect, onclose }: Props = $props();
+let {
+	files,
+	commentCounts = new Map<string, number>(),
+	onselect,
+	onclose,
+}: Props = $props();
 
 let query = $state("");
 let selectedIndex = $state(0);
@@ -51,7 +59,13 @@ function autofocus(node: HTMLElement) {
 }
 
 function rowLabel(file: TrackedFile): string {
-	return file.changed ? `${file.path}, changed` : file.path;
+	const parts = [file.path];
+	if (file.changed) parts.push("changed");
+
+	const count = commentCounts.get(file.path) ?? 0;
+	if (count > 0) parts.push(`${count} comment${count === 1 ? "" : "s"}`);
+
+	return parts.join(", ");
 }
 </script>
 
@@ -153,6 +167,21 @@ function rowLabel(file: TrackedFile): string {
             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
               {file.path}
             </span>
+            {#if (commentCounts.get(file.path) ?? 0) > 0}
+              <span
+                class="finder-comment-count"
+                aria-hidden="true"
+                style="
+                  margin-left: auto;
+                  flex-shrink: 0;
+                  padding: 0 var(--space-1);
+                  border-radius: var(--radius);
+                  background: var(--color-surface);
+                  color: var(--color-text-muted);
+                  font-size: 11px;
+                "
+              >{commentCounts.get(file.path)}</span>
+            {/if}
           </button>
         </li>
       {/each}

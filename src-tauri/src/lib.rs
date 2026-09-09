@@ -254,6 +254,7 @@ pub fn configure<R: tauri::Runtime>(
         commands::review::remove_review_commit,
         commands::review::list_session_commits,
         commands::review::add_thread,
+        commands::review::add_current_file_thread,
         commands::review::add_commit_thread,
         commands::review::edit_thread,
         commands::review::delete_thread,
