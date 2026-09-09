@@ -6,13 +6,12 @@
 //! repo's current pair in `repo_snapshots`.
 //!
 //! Telling a snapshot thread from a commit-diff one is the whole difficulty.
-//! Both persist as `anchor_kind = 'diff'` carrying a `commit_oid`, and the
-//! `snapshot_pins` table cannot separate them: `pins::mark_anchored` inserts a
-//! row for whatever oid a thread names, real commits included. What does
-//! separate them is the repository, where a snapshot is an oid this repo pinned
-//! under `refs/trunk/review-snapshots/`. A superseded snapshot that still
-//! carries a thread keeps that ref, because `sweep_unanchored_pins` skips every
-//! anchored oid.
+//! Both persist as `anchor_kind = 'diff'` carrying a `commit_oid`, and no store
+//! table separates them: `pins::mark_anchored` writes a `snapshot_pins` row for
+//! whatever oid a thread names, real commits included, and the submit path's pin
+//! repair then gives that same oid a keepalive ref. Only the commit itself
+//! answers it, which is why the caller passes the test in rather than a set of
+//! oids.
 
 use super::{repo_key, sqlite_error};
 use crate::error::TrunkError;
@@ -33,9 +32,8 @@ use std::path::Path;
 pub fn recompute(
     conn: &Connection,
     repo_path: &Path,
-    snapshot_oids: &[String],
+    is_snapshot: &impl Fn(&str) -> bool,
 ) -> Result<usize, TrunkError> {
-    let pinned: HashSet<&str> = snapshot_oids.iter().map(String::as_str).collect();
     let current = super::snapshots::get(conn, repo_path)?;
     let live: HashSet<String> = current.oids().into_iter().collect();
 
@@ -43,7 +41,7 @@ pub fn recompute(
     for (id, commit_oid, was_stale) in rows(conn, repo_path)? {
         let is_stale = commit_oid
             .as_deref()
-            .is_some_and(|oid| pinned.contains(oid) && !live.contains(oid));
+            .is_some_and(|oid| is_snapshot(oid) && !live.contains(oid));
         if is_stale == was_stale {
             continue;
         }
@@ -141,8 +139,11 @@ mod tests {
             != 0
     }
 
-    fn snapshots_of(oids: &[&str]) -> Vec<String> {
-        oids.iter().map(|o| (*o).to_string()).collect()
+    /// The caller's "is this oid a snapshot this repo minted" test, as a list
+    /// the test can read. Production reads the commit itself.
+    fn snapshots_of(oids: &[&str]) -> impl Fn(&str) -> bool {
+        let known: HashSet<String> = oids.iter().map(|o| (*o).to_string()).collect();
+        move |oid: &str| known.contains(oid)
     }
 
     #[test]

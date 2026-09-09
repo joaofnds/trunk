@@ -224,6 +224,51 @@ fn cli_show_prints_threads_states_and_excerpts() {
 }
 
 #[test]
+fn cli_show_prints_stale_markers() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                let id = threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this code has moved on".to_string(),
+                        anchor: Some(trunk_lib::git::types::Anchor {
+                            commit_oid: "abc123def456".to_string(),
+                            file_path: "a.txt".to_string(),
+                            source: trunk_lib::git::types::Source::Diff,
+                            side: trunk_lib::git::types::Side::New,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        commit_oid: None,
+                        cached_excerpt: Some("one".to_string()),
+                    },
+                    500,
+                )?;
+                tx.execute("UPDATE threads SET stale = 1 WHERE id = ?1", [&id])
+                    .unwrap();
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    let out = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("(stale)"),
+        "the full review print must mark a stale thread; got {stdout:?}",
+    );
+}
+
+#[test]
 fn a_thread_added_after_publish_shows_in_cli_show() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")
@@ -1410,6 +1455,72 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
 
 /// `--json` exists so a harness never refetches and rediffs: each line is one
 /// self-contained event carrying the change's full data.
+/// The `thread_stale_changed` event was unreachable until something computed
+/// the flag: nothing wrote `stale`, so no poll could ever see it differ.
+#[test]
+fn watch_json_reports_a_thread_going_stale() {
+    use trunk_lib::commands::review::{ensure_review_snapshot_inner, recompute_staleness};
+    use trunk_lib::git::workdir_snapshot::SnapshotKind;
+
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let (_, published) = seed_reviews(&ctx);
+    let snapshot = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        let snapshot = ensure_review_snapshot_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            SnapshotKind::Workdir,
+            500,
+        )
+        .unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this uncommitted line is wrong".to_string(),
+                        anchor: Some(trunk_lib::git::types::Anchor {
+                            commit_oid: snapshot.clone(),
+                            file_path: "a.txt".to_string(),
+                            source: trunk_lib::git::types::Source::Diff,
+                            side: trunk_lib::git::types::Side::New,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        commit_oid: None,
+                        cached_excerpt: Some("edited".to_string()),
+                    },
+                    600,
+                )
+            })
+            .unwrap();
+        snapshot
+    };
+    let watch = WatchChild::spawn_json(&ctx);
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 700)
+            .unwrap();
+        let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+        assert_eq!(changed, 1, "the thread on {snapshot} must have gone stale");
+    }
+
+    let event: serde_json::Value =
+        serde_json::from_str(&watch.next_line(Duration::from_secs(10)).unwrap()).unwrap();
+    assert_eq!(event["event"], "thread_stale_changed");
+    assert_eq!(event["review"], published.as_str());
+    assert_eq!(event["stale"], true);
+}
+
 #[test]
 fn watch_json_streams_the_events_full_data() {
     let ctx = TestContext::builder()

@@ -193,7 +193,7 @@ impl Store {
         &self,
         f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
     ) -> Result<T, TrunkError> {
-        self.write_bumping(f, true)
+        self.write_bumping(f, |_| true)
     }
 
     /// A write the poll must not announce: today only the per-keystroke draft
@@ -208,13 +208,33 @@ impl Store {
         &self,
         f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
     ) -> Result<T, TrunkError> {
-        self.write_bumping(f, false)
+        self.write_bumping(f, |_| false)
+    }
+
+    /// A write whose own result decides whether the poll hears about it.
+    ///
+    /// The staleness recompute runs on every filesystem event and usually
+    /// changes nothing; announcing those passes would refetch every thread in
+    /// the panel on any unrelated `.git` write. `announce` reads the value `f`
+    /// produced — the count of rows it changed — inside the same transaction,
+    /// so the decision can never disagree with what was written.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `f` returns, `store_newer` when the store's schema is
+    /// newer than this build, and the `SQLite` error when the transaction fails.
+    pub fn write_if<T>(
+        &self,
+        f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
+        announce: impl FnOnce(&T) -> bool,
+    ) -> Result<T, TrunkError> {
+        self.write_bumping(f, announce)
     }
 
     fn write_bumping<T>(
         &self,
         f: impl FnOnce(&Transaction) -> Result<T, TrunkError>,
-        bump: bool,
+        announce: impl FnOnce(&T) -> bool,
     ) -> Result<T, TrunkError> {
         let mut conn = self.conn.lock().unwrap();
 
@@ -226,6 +246,7 @@ impl Store {
         // the guard exists to prevent (D4).
         schema::version_guard(&tx)?;
         let value = f(&tx)?;
+        let bump = announce(&value);
         if bump {
             tx.execute("UPDATE store_meta SET revision = revision + 1", [])
                 .map_err(sqlite_error)?;

@@ -428,8 +428,8 @@ fn a_reply_aimed_at_another_repos_thread_is_refused() {
 // ── Task 4: per-repo snapshot rows ───────────────────────────────────────────
 
 use trunk_lib::commands::review::{
-    ensure_review_snapshot_inner, read_snapshots_inner, submit_thread_into, sweep_once,
-    sweep_unanchored_pins,
+    ensure_review_snapshot_inner, read_snapshots_inner, recompute_staleness, submit_thread_into,
+    sweep_once, sweep_unanchored_pins,
 };
 use trunk_lib::git::workdir_snapshot::SnapshotKind;
 
@@ -4502,4 +4502,122 @@ fn the_decision_sees_the_reconciled_record() {
             .unwrap(),
         "the vanished row must be gone",
     );
+}
+
+#[test]
+fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut request = submission("this line is wrong");
+    request.anchor = Some(Anchor {
+        commit_oid: snapshot,
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 2_000)
+        .unwrap();
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1, "the superseded thread must change value");
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a comment on working-tree code the user has since edited is stale",
+    );
+}
+
+#[test]
+fn a_thread_on_the_current_snapshot_stays_fresh() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut request = submission("still true");
+    request.anchor = Some(Anchor {
+        commit_oid: snapshot,
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(
+        changed, 0,
+        "an unchanged repo gives the poll nothing to hear"
+    );
+    assert!(!only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn a_commit_diff_thread_survives_a_staleness_pass() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let head = repo
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .id()
+        .to_string();
+    let mut request = submission("about the commit");
+    request.anchor = Some(Anchor {
+        commit_oid: head,
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 2_000)
+        .unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        !only_thread(&store, &canonical).stale,
+        "an oid this repo never pinned as a snapshot is a real commit, and a commit-diff \
+         thread never goes stale however far the working tree moves",
+    );
+}
+
+fn only_thread(store: &reviewdb::Store, canonical: &std::path::Path) -> reviewdb::threads::Thread {
+    store
+        .read(|conn| {
+            let review_id = reviewdb::reviews::active(conn, canonical)?.unwrap();
+            let mut listed = reviewdb::threads::list_for_review(conn, &review_id)?;
+            Ok(listed.remove(0))
+        })
+        .unwrap()
 }

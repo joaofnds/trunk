@@ -148,7 +148,7 @@ pub fn snapshot(repo: &git2::Repository, kind: SnapshotKind) -> Result<git2::Oid
     //    out the same oid again, so the oid must be a function of tree, parent,
     //    and kind alone. A wall-clock signature broke that at every second
     //    boundary.
-    let sig = git2::Signature::new("Trunk", "review@trunk.local", &git2::Time::new(0, 0))?;
+    let sig = snapshot_signature()?;
     let msg = kind.label();
 
     // 6. `None` target ref => the commit is created dangling. The session command
@@ -156,6 +156,46 @@ pub fn snapshot(repo: &git2::Repository, kind: SnapshotKind) -> Result<git2::Oid
     //    prune a snapshot that still has comments anchored to it (260531-l02 C3).
     let oid = repo.commit(None, &sig, &sig, msg, &tree, &parents)?;
     Ok(oid)
+}
+
+/// The author every snapshot commit carries. Fixed, never the clock, for the
+/// reason `snapshot` gives: the oid must be a function of tree, parent and kind
+/// alone.
+fn snapshot_signature() -> Result<git2::Signature<'static>, TrunkError> {
+    Ok(git2::Signature::new(
+        SNAPSHOT_AUTHOR_NAME,
+        SNAPSHOT_AUTHOR_EMAIL,
+        &git2::Time::new(0, 0),
+    )?)
+}
+
+/// The author name and address `snapshot` stamps on every snapshot commit.
+/// Nothing but this function writes them, which is what lets `is_snapshot_commit`
+/// read them back as proof of origin.
+const SNAPSHOT_AUTHOR_NAME: &str = "Trunk";
+const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
+
+/// Whether `oid` names a commit this app minted as a review snapshot.
+///
+/// Read from the commit itself, because neither store table can answer it: the
+/// `snapshot_pins` row for an oid is written for whatever a thread anchors to,
+/// real commits included, and the keepalive refs inherit that same over-reach
+/// through the submit path's pin repair. The author is proof of origin —
+/// `snapshot_signature` is the only writer of it, and a user's own commit
+/// carries their identity and the clock.
+///
+/// A missing commit is not a snapshot: gc has collected it, and nothing about
+/// it can be recovered.
+#[must_use]
+pub fn is_snapshot_commit(repo: &git2::Repository, oid: git2::Oid) -> bool {
+    let Ok(commit) = repo.find_commit(oid) else {
+        return false;
+    };
+    let author = commit.author();
+
+    author.email() == Ok(SNAPSHOT_AUTHOR_EMAIL)
+        && author.name() == Ok(SNAPSHOT_AUTHOR_NAME)
+        && author.when().seconds() == 0
 }
 
 /// Workdir convenience wrapper (the original entry point; kept for existing
@@ -541,5 +581,33 @@ mod tests {
         let (oid, created) = decide_snapshot(&repo, SnapshotKind::Index, Some(prior)).unwrap();
         assert_eq!(oid, prior, "unchanged index must reuse the prior snapshot");
         assert!(!created, "reuse must not create a new commit");
+    }
+
+    #[test]
+    fn a_snapshot_commit_is_recognized_as_one() {
+        let (_dir, repo) = repo_with_initial_commit();
+        let oid = snapshot_working_tree(&repo).unwrap();
+
+        assert!(is_snapshot_commit(&repo, oid));
+    }
+
+    #[test]
+    fn a_users_own_commit_is_not_a_snapshot() {
+        let (_dir, repo) = repo_with_initial_commit();
+        let head = repo.head().unwrap().peel_to_commit().unwrap().id();
+
+        assert!(
+            !is_snapshot_commit(&repo, head),
+            "a real commit must never be read as a snapshot, or every comment on one \
+             would go stale the moment the working tree moved",
+        );
+    }
+
+    #[test]
+    fn a_collected_commit_is_not_a_snapshot() {
+        let (_dir, repo) = repo_with_initial_commit();
+        let absent = git2::Oid::from_str("0123456789012345678901234567890123456789").unwrap();
+
+        assert!(!is_snapshot_commit(&repo, absent));
     }
 }

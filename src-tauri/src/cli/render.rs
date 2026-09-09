@@ -225,6 +225,7 @@ pub(crate) fn render_thread(
         id: thread.id.clone(),
         text: thread.text.clone(),
         state: thread.state,
+        stale: thread.stale,
         anchor: thread.anchor.clone(),
         commit_oid: thread.commit_oid.clone(),
         excerpt: thread.cached_excerpt.clone(),

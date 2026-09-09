@@ -50,7 +50,11 @@ trunk review watch [--repo <path>]
 - **list** — the repository's published reviews: id, state
   (`ready`/`settled`), title, thread count.
 - **show** — one review in full, as the same markdown document the app's
-  Copy-as-markdown produces: threads, states, excerpts, replies.
+  Copy-as-markdown produces: threads, states, excerpts, replies. A thread whose
+  heading ends `(stale)` was written against code the repository has moved past:
+  a comment on uncommitted work the user has since edited. Its excerpt is what
+  the code looked like when the comment was written, so the comment is still
+  answerable; what changed is that the file no longer reads that way.
 - **threads** — the review's threads as an index, one line each: id, state,
   location (`file:start-end`, a commit-level thread's short oid, or `no
   target`), and the comment's first line. `--state` keeps only threads in that

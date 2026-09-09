@@ -71,6 +71,7 @@ pub struct DocThread {
     pub id: String,
     pub text: String,
     pub state: ThreadState,
+    pub stale: bool,
     pub anchor: Option<Anchor>,
     pub commit_oid: Option<String>,
     pub excerpt: Option<String>,
@@ -564,6 +565,13 @@ pub(crate) fn render_thread_section(session: &RenderInput, thread: &DocThread) -
     out
 }
 
+/// The suffix a thread's heading carries when the code it was written against
+/// is gone. Empty for a fresh thread, so no reader has to learn a second
+/// heading shape for the ordinary case.
+const fn stale_marker(stale: bool) -> &'static str {
+    if stale { " (stale)" } else { "" }
+}
+
 /// The per-thread body all three document sections and the CLI's `thread`
 /// verb emit. Heading depth is the section's, not a parameter: an anchored
 /// thread sits under its `### file (sha)` group heading, the other two shapes
@@ -586,13 +594,14 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             let short = short_sha(&anchor.commit_oid);
             let _ = writeln!(
                 out,
-                "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side}) — {state}",
+                "#### [{id}] {file_path}:L{start}-L{end} ({short}, {side}) — {state}{stale}",
                 id = thread.id,
                 file_path = sanitize_heading_text(&anchor.file_path),
                 start = anchor.start_line,
                 end = anchor.end_line,
                 side = side_label(&anchor.side),
                 state = thread.state.as_str(),
+                stale = stale_marker(thread.stale),
             );
             let _ = writeln!(out);
             if anchor.side == Side::Old {
@@ -616,18 +625,20 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
             let subject = sanitize_heading_text(&commit_subject(session, commit_oid));
             let _ = writeln!(
                 out,
-                "### [{id}] {short} -- {subject} — {state}",
+                "### [{id}] {short} -- {subject} — {state}{stale}",
                 id = thread.id,
                 state = thread.state.as_str(),
+                stale = stale_marker(thread.stale),
             );
             let _ = writeln!(out);
         }
         ThreadTarget::NoTarget { thread } => {
             let _ = writeln!(
                 out,
-                "### [{id}] Comment with no anchor — {state}",
+                "### [{id}] Comment with no anchor — {state}{stale}",
                 id = thread.id,
                 state = thread.state.as_str(),
+                stale = stale_marker(thread.stale),
             );
             let _ = writeln!(out);
         }
@@ -718,6 +729,7 @@ fn as_doc_threads(
             id: t.id,
             text: t.text,
             state: t.state,
+            stale: t.stale,
             anchor: t.anchor,
             commit_oid: t.commit_oid,
             excerpt: t.cached_excerpt,
@@ -981,6 +993,7 @@ mod tests {
             id: id.to_string(),
             text: text.to_string(),
             state: ThreadState::Open,
+            stale: false,
             anchor: Some(anchor(
                 commit_oid, file_path, source, side, start_line, end_line,
             )),
@@ -1007,6 +1020,7 @@ mod tests {
             id: id.to_string(),
             text: text.to_string(),
             state: ThreadState::Open,
+            stale: false,
             anchor: Some(Anchor {
                 commit_oid: bogus_oid.to_string(),
                 file_path: file_path.to_string(),
@@ -1027,6 +1041,7 @@ mod tests {
             id: id.to_string(),
             text: text.to_string(),
             state: ThreadState::Open,
+            stale: false,
             anchor: None,
             commit_oid: Some(commit_oid.to_string()),
             excerpt: None,
@@ -1126,6 +1141,7 @@ mod tests {
                     id: "nt".to_string(),
                     text: "no target comment".to_string(),
                     state: ThreadState::Open,
+                    stale: false,
                     anchor: None,
                     commit_oid: None,
                     excerpt: None,
@@ -2371,6 +2387,59 @@ mod tests {
     }
 
     #[test]
+    fn renders_the_stale_marker_on_a_stale_thread() {
+        let (_dir, repo) = make_repo();
+        let base = empty_commit(&repo, "base", &[]);
+        let oid = commit_with_file(&repo, "add main", &[base], "main.rs", b"fn main() {}\n");
+        let mut thread = line_comment(
+            "st",
+            "this moved",
+            oid,
+            "main.rs",
+            Source::Diff,
+            Side::New,
+            1,
+            1,
+            Some("fn main() {}"),
+        );
+        thread.stale = true;
+        let session = make_session(&repo, vec![oid.to_string()], vec![thread]);
+
+        let md = render(&session);
+
+        assert!(
+            md.contains("— open (stale)"),
+            "a stale thread's heading must say so: {md}"
+        );
+    }
+
+    #[test]
+    fn a_fresh_thread_carries_no_stale_marker() {
+        let (_dir, repo) = make_repo();
+        let base = empty_commit(&repo, "base", &[]);
+        let oid = commit_with_file(&repo, "add main", &[base], "main.rs", b"fn main() {}\n");
+        let session = make_session(
+            &repo,
+            vec![oid.to_string()],
+            vec![line_comment(
+                "fr",
+                "still true",
+                oid,
+                "main.rs",
+                Source::Diff,
+                Side::New,
+                1,
+                1,
+                Some("fn main() {}"),
+            )],
+        );
+
+        let md = render(&session);
+
+        assert!(!md.contains("(stale)"), "got: {md}");
+    }
+
+    #[test]
     fn no_target_section_explains_its_own_policy() {
         let (_dir, repo) = make_repo();
         let session = make_session(
@@ -2380,6 +2449,7 @@ mod tests {
                 id: "nt".to_string(),
                 text: "note".to_string(),
                 state: ThreadState::Open,
+                stale: false,
                 anchor: None,
                 commit_oid: None,
                 excerpt: None,
@@ -2516,6 +2586,7 @@ mod tests {
                 id: "no-target".to_string(),
                 text: "orphaned by hand".to_string(),
                 state: ThreadState::Open,
+                stale: false,
                 anchor: None,
                 commit_oid: None,
                 excerpt: None,
@@ -2573,6 +2644,7 @@ mod tests {
                     id: "first".to_string(),
                     text: "a".to_string(),
                     state: ThreadState::Open,
+                    stale: false,
                     anchor: None,
                     commit_oid: None,
                     excerpt: None,
@@ -2583,6 +2655,7 @@ mod tests {
                     id: "second".to_string(),
                     text: "b".to_string(),
                     state: ThreadState::Open,
+                    stale: false,
                     anchor: None,
                     commit_oid: None,
                     excerpt: None,
@@ -2775,6 +2848,7 @@ mod tests {
                 id: "nt".to_string(),
                 text: "no target comment".to_string(),
                 state: ThreadState::Open,
+                stale: false,
                 anchor: None,
                 commit_oid: None,
                 excerpt: None,

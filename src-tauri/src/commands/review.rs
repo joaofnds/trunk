@@ -1267,6 +1267,39 @@ pub fn ensure_review_snapshot_inner(
     Ok(oid)
 }
 
+/// Recompute every thread's `stale` flag against the repo's current snapshots,
+/// returning how many rows changed.
+///
+/// The repository supplies the discriminator the store cannot: a snapshot
+/// commit carries the author `is_snapshot_commit` reads, and a thread naming any
+/// other oid is anchored to a real commit and never goes stale.
+///
+/// A pass that changes nothing stays silent. This runs on every filesystem
+/// event, and the watcher fires on `.git` writes too, so announcing an
+/// unchanged pass would refetch every thread in the panel whenever anything at
+/// all touched the repository.
+///
+/// # Errors
+///
+/// Returns the git error when the repository will not open, and whatever the
+/// store returns when the write fails.
+pub fn recompute_staleness(
+    store: &Store,
+    canonical: &Path,
+    repo_path: &str,
+) -> Result<usize, TrunkError> {
+    use crate::git::workdir_snapshot::is_snapshot_commit;
+
+    let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
+    let is_snapshot =
+        |oid: &str| git2::Oid::from_str(oid).is_ok_and(|parsed| is_snapshot_commit(&repo, parsed));
+
+    store.write_if(
+        |tx| crate::reviewdb::stale::recompute(tx, canonical, &is_snapshot),
+        |changed| *changed > 0,
+    )
+}
+
 /// Delete the keepalive refs of snapshots that are finished with.
 ///
 /// A pin is reclaimable only when a thread once anchored to it and no thread
