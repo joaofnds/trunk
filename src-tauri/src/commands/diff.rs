@@ -1230,11 +1230,9 @@ pub async fn open_current_file(
 ///
 /// Returns `not_found` when the file does not exist in the working tree, and the
 /// escape guard's error when the path resolves outside the repository.
-pub fn current_file_diff(
-    repo: &git2::Repository,
-    file_path: &str,
-) -> Result<FileDiff, TrunkError> {
-    let bytes = blob_reader::read_file_at_inner(repo, file_path, &blob_reader::RevSpec::WorkingTree)?;
+pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
+    let bytes =
+        blob_reader::read_file_at_inner(repo, file_path, &blob_reader::RevSpec::WorkingTree)?;
 
     if is_binary(&bytes) {
         return Ok(FileDiff {
@@ -1331,7 +1329,10 @@ mod current_file_tests {
 
         assert_eq!(contents(&fd), vec!["one\n", "two\n", "three\n"]);
         assert!(
-            fd.hunks[0].lines.iter().all(|l| l.origin == DiffOrigin::Context),
+            fd.hunks[0]
+                .lines
+                .iter()
+                .all(|l| l.origin == DiffOrigin::Context),
             "a file with no pending change has no added or deleted lines"
         );
     }
@@ -1358,7 +1359,12 @@ mod current_file_tests {
 
         let hunk = &fd.hunks[0];
         assert_eq!(
-            (hunk.new_start, hunk.new_lines, hunk.old_start, hunk.old_lines),
+            (
+                hunk.new_start,
+                hunk.new_lines,
+                hunk.old_start,
+                hunk.old_lines
+            ),
             (1, 3, 1, 3)
         );
     }

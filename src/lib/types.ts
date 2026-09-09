@@ -123,6 +123,13 @@ export interface FileStatus {
 	is_binary: boolean;
 }
 
+/** One row of the file finder's source list, from `list_tracked_files`. */
+export interface TrackedFile {
+	path: string;
+	/** Whether a staged or unstaged change touches this file. */
+	changed: boolean;
+}
+
 export interface WorkingTreeStatus {
 	unstaged: FileStatus[];
 	staged: FileStatus[];
