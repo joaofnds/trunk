@@ -161,22 +161,65 @@ const V7: &str = r"
 DROP TABLE IF EXISTS pin_seq;
 ";
 
-/// The content pin a current-file thread anchors by.
+/// The content pin a current-file thread anchors by, and the anchor kind that
+/// names it.
 ///
 /// `pin_block` is the selected lines verbatim, newline-joined and line-ending
 /// normalised; `pin_ordinal` is which occurrence of that block the user picked,
 /// 0-based, and is a display hint only — staleness is block presence alone, so
 /// keying it on the ordinal would mark a thread stale when an EARLIER twin is
-/// deleted. `pin_start_line` and `pin_end_line` are the range at pin time, kept
-/// for display. `resolved_start_line` is where the block sits now, written by
-/// the stale pass and read by the frontend, so the occurrence search happens
-/// once and in Rust.
+/// deleted. `resolved_start_line` is where the block sits now, written by the
+/// stale pass and read by the frontend, so the occurrence search happens once
+/// and in Rust.
+///
+/// The pinned file and its range at pin time reuse `file_path`, `start_line`
+/// and `end_line`, the columns every other anchor kind already fills, so the
+/// doc renderer and the CLI reach a current-file thread's location through the
+/// path they already have.
+///
+/// The table is rebuilt rather than extended by `ALTER TABLE`, because
+/// `anchor_kind`'s CHECK is baked into the v1 DDL and `SQLite` has no way to
+/// widen a constraint in place. The twelve-step rebuild is its documented
+/// route, and the indexes go back on afterwards because dropping the table
+/// takes them with it.
 const V8: &str = r"
-ALTER TABLE threads ADD COLUMN pin_block TEXT;
-ALTER TABLE threads ADD COLUMN pin_ordinal INTEGER;
-ALTER TABLE threads ADD COLUMN pin_start_line INTEGER;
-ALTER TABLE threads ADD COLUMN pin_end_line INTEGER;
-ALTER TABLE threads ADD COLUMN resolved_start_line INTEGER;
+CREATE TABLE threads_v8 (
+    id          TEXT PRIMARY KEY,
+    review_id   TEXT    NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    body        TEXT    NOT NULL,
+    channel     TEXT    NOT NULL CHECK (channel IN ('human', 'agent')),
+    state       TEXT    NOT NULL DEFAULT 'open'
+                CHECK (state IN ('open', 'addressed', 'done', 'dismissed')),
+    stale       INTEGER NOT NULL DEFAULT 0,
+    anchor_kind TEXT    NOT NULL
+                CHECK (anchor_kind IN ('diff', 'commit', 'none', 'current_file')),
+    commit_oid  TEXT,
+    file_path   TEXT,
+    source      TEXT CHECK (source IS NULL OR source IN ('Diff', 'FullFile')),
+    side        TEXT CHECK (side IS NULL OR side IN ('Old', 'New')),
+    start_line  INTEGER,
+    end_line    INTEGER,
+    excerpt     TEXT,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    pin_block           TEXT,
+    pin_ordinal         INTEGER,
+    resolved_start_line INTEGER
+);
+
+INSERT INTO threads_v8 (id, review_id, body, channel, state, stale, anchor_kind,
+                        commit_oid, file_path, source, side, start_line, end_line,
+                        excerpt, created_at, updated_at)
+SELECT id, review_id, body, channel, state, stale, anchor_kind,
+       commit_oid, file_path, source, side, start_line, end_line,
+       excerpt, created_at, updated_at
+FROM threads;
+
+DROP TABLE threads;
+ALTER TABLE threads_v8 RENAME TO threads;
+
+CREATE INDEX threads_by_review ON threads(review_id);
+CREATE INDEX threads_by_anchor ON threads(commit_oid, file_path);
 ";
 
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
@@ -263,6 +306,26 @@ pub fn version_guard(conn: &Connection) -> Result<(), TrunkError> {
 pub fn migrate(conn: &Connection) -> Result<(), TrunkError> {
     version_guard(conn)?;
 
+    // v8 rebuilds `threads`, and `replies` cascades from it. With foreign keys
+    // left on, dropping the old table deletes every reply in the store on the
+    // way to a migration that only meant to add columns. SQLite ignores this
+    // pragma inside a transaction, so it goes before BEGIN and is restored
+    // after COMMIT, which is the rebuild procedure SQLite documents.
+    let foreign_keys: bool = conn
+        .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+        .map_err(sqlite_error)?;
+    conn.pragma_update(None, "foreign_keys", "OFF")
+        .map_err(sqlite_error)?;
+
+    let result = migrate_in_transaction(conn);
+
+    conn.pragma_update(None, "foreign_keys", foreign_keys)
+        .map_err(sqlite_error)?;
+
+    result
+}
+
+fn migrate_in_transaction(conn: &Connection) -> Result<(), TrunkError> {
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(sqlite_error)?;
 

@@ -388,6 +388,26 @@ pub struct Anchor {
     pub end_line: u32,
 }
 
+/// Where a current-file thread is anchored: the block of the working-tree file
+/// the user selected, and which occurrence of it they picked.
+///
+/// There is no commit oid. That is the point of the content pin: a current-file
+/// comment writes nothing into the repository, so it cannot name a commit and
+/// must find its lines by searching the file.
+///
+/// `ordinal` is a display hint only, deciding which occurrence to render
+/// against. Staleness is block presence alone, so keying it on the ordinal
+/// would mark a thread stale when an EARLIER twin is deleted, which the
+/// ratified rule forbids.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct ContentPin {
+    pub file_path: String,
+    pub block: String,
+    pub ordinal: u32,
+    pub start_line: u32,
+    pub end_line: u32,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Comment {
     // Stable id generated on write (D-03); edit/delete target by id, never by

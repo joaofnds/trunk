@@ -129,6 +129,7 @@ mod tests {
                             end_line: 2,
                         }),
                         commit_oid: None,
+                        content_pin: None,
                         cached_excerpt: Some("fn main() {}".into()),
                     },
                     0,

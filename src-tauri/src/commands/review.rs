@@ -152,6 +152,9 @@ pub struct SubmitThreadRequest {
     pub text: String,
     pub anchor: Option<crate::git::types::Anchor>,
     pub commit_oid: Option<String>,
+    /// A current-file thread's target. Carries no commit oid, so a thread that
+    /// has one is never a current-file thread and vice versa.
+    pub content_pin: Option<crate::git::types::ContentPin>,
     pub cached_excerpt: Option<String>,
     /// True for the diff composer's submit, which owns the draft row. A
     /// commit-level note is independent of the composer and must leave a
@@ -256,6 +259,7 @@ fn submit_thread_write(
                 text: req.text,
                 anchor: req.anchor,
                 commit_oid: req.commit_oid,
+                content_pin: req.content_pin,
                 cached_excerpt: req.cached_excerpt,
             },
             now,
@@ -315,6 +319,11 @@ pub struct RenderedThread {
     pub anchor: Option<crate::git::types::Anchor>,
     pub cached_excerpt: Option<String>,
     pub commit_oid: Option<String>,
+    pub content_pin: Option<crate::git::types::ContentPin>,
+    /// Where the backend most recently found the pinned block. The frontend
+    /// renders at this line and performs no occurrence search of its own, so
+    /// the two sides cannot disagree about what an occurrence is.
+    pub resolved_start_line: Option<u32>,
     pub state: crate::review_types::ThreadState,
     pub stale: bool,
     pub channel: crate::review_types::Channel,
@@ -341,6 +350,8 @@ impl RenderedThread {
             anchor: t.anchor,
             cached_excerpt: t.cached_excerpt,
             commit_oid: t.commit_oid,
+            content_pin: t.content_pin,
+            resolved_start_line: t.resolved_start_line,
             state: t.state,
             stale: t.stale,
             channel: t.channel,
@@ -405,6 +416,7 @@ pub async fn add_thread<R: Runtime>(
         text,
         anchor: Some(anchor),
         commit_oid: None,
+        content_pin: None,
         cached_excerpt: Some(cached_excerpt),
         clears_draft: true,
     };
@@ -442,6 +454,7 @@ pub async fn add_commit_thread<R: Runtime>(
         text,
         anchor: None,
         commit_oid: Some(commit_oid),
+        content_pin: None,
         cached_excerpt: None,
         clears_draft: false,
     };

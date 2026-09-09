@@ -1,18 +1,19 @@
 //! Mapping between an in-memory `Anchor` and the anchor columns `threads` and
 //! `drafts` share.
 //!
-//! Two shapes exist today and both persist as one column set: a diff-anchored
-//! thread carries the full `Anchor`, a commit-level note carries only a
-//! `commit_oid`. `anchor_kind` is what tells them apart, and milestone 4 adds
-//! `'current_file'` to it.
+//! Three shapes persist as one column set: a diff-anchored thread carries the
+//! full `Anchor`, a commit-level note carries only a `commit_oid`, and a
+//! current-file thread carries neither, naming its file through the content pin
+//! columns `threads` alone holds. `anchor_kind` is what tells them apart.
 
 use crate::error::TrunkError;
-use crate::git::types::{Anchor, Side, Source};
+use crate::git::types::{Anchor, ContentPin, Side, Source};
 use rusqlite::Row;
 
 pub const DIFF: &str = "diff";
 pub const COMMIT: &str = "commit";
 pub const NONE: &str = "none";
+pub const CURRENT_FILE: &str = "current_file";
 
 /// The anchor columns, ready to bind.
 pub struct Columns {
@@ -25,10 +26,20 @@ pub struct Columns {
     pub end_line: Option<i64>,
 }
 
+/// What a thread is anchored to. A row carries exactly one of these, and
+/// `anchor_kind` is what says which.
+#[derive(Debug, Clone)]
+pub enum Target<'a> {
+    Diff(&'a Anchor),
+    Commit(&'a str),
+    CurrentFile(&'a ContentPin),
+    None,
+}
+
 #[must_use]
-pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns {
-    match (anchor, commit_oid) {
-        (Some(a), _) => Columns {
+pub fn to_columns(target: &Target) -> Columns {
+    match *target {
+        Target::Diff(a) => Columns {
             kind: DIFF,
             commit_oid: Some(a.commit_oid.clone()),
             file_path: Some(a.file_path.clone()),
@@ -37,7 +48,7 @@ pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns 
             start_line: Some(i64::from(a.start_line)),
             end_line: Some(i64::from(a.end_line)),
         },
-        (None, Some(oid)) => Columns {
+        Target::Commit(oid) => Columns {
             kind: COMMIT,
             commit_oid: Some(oid.to_string()),
             file_path: None,
@@ -46,7 +57,19 @@ pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns 
             start_line: None,
             end_line: None,
         },
-        (None, None) => Columns {
+        // The pin's own range goes in the shared line columns so the doc and the
+        // CLI render a current-file thread through the same path as any other.
+        // `source` and `side` stay null: a working-tree file has one side.
+        Target::CurrentFile(pin) => Columns {
+            kind: CURRENT_FILE,
+            commit_oid: None,
+            file_path: Some(pin.file_path.clone()),
+            source: None,
+            side: None,
+            start_line: Some(i64::from(pin.start_line)),
+            end_line: Some(i64::from(pin.end_line)),
+        },
+        Target::None => Columns {
             kind: NONE,
             commit_oid: None,
             file_path: None,
@@ -55,6 +78,17 @@ pub fn to_columns(anchor: Option<&Anchor>, commit_oid: Option<&str>) -> Columns 
             start_line: None,
             end_line: None,
         },
+    }
+}
+
+/// The target a caller's optional anchor and commit oid describe, for the two
+/// paths that never carry a content pin.
+#[must_use]
+pub const fn target_of<'a>(anchor: Option<&'a Anchor>, commit_oid: Option<&'a str>) -> Target<'a> {
+    match (anchor, commit_oid) {
+        (Some(a), _) => Target::Diff(a),
+        (None, Some(oid)) => Target::Commit(oid),
+        (None, None) => Target::None,
     }
 }
 
@@ -156,7 +190,7 @@ mod tests {
 
     #[test]
     fn a_diff_anchor_maps_every_field_onto_a_column() {
-        let cols = to_columns(Some(&an_anchor()), None);
+        let cols = to_columns(&Target::Diff(&an_anchor()));
 
         assert_eq!(cols.kind, DIFF);
         assert_eq!(cols.commit_oid.as_deref(), Some("abc"));
@@ -169,7 +203,7 @@ mod tests {
 
     #[test]
     fn a_commit_note_keeps_its_oid_and_no_line_range() {
-        let cols = to_columns(None, Some("deadbeef"));
+        let cols = to_columns(&Target::Commit("deadbeef"));
 
         assert_eq!(cols.kind, COMMIT);
         assert_eq!(cols.commit_oid.as_deref(), Some("deadbeef"));
@@ -182,7 +216,7 @@ mod tests {
 
     #[test]
     fn an_unanchored_body_maps_to_the_none_kind() {
-        assert_eq!(to_columns(None, None).kind, NONE);
+        assert_eq!(to_columns(&Target::None).kind, NONE);
     }
 
     /// Reads one anchor row back through `from_row`, with `start_line` set to

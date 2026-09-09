@@ -30,7 +30,7 @@ pub fn save(
     target: Option<&Anchor>,
     now: i64,
 ) -> Result<(), TrunkError> {
-    let cols = anchor::to_columns(target, None);
+    let cols = anchor::to_columns(&anchor::target_of(target, None));
 
     conn.execute(
         &format!(

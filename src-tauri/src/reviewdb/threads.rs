@@ -9,7 +9,7 @@ use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
 use super::{anchor, repo_key, sqlite_error};
 use crate::error::TrunkError;
-use crate::git::types::Anchor;
+use crate::git::types::{Anchor, ContentPin};
 use crate::review_types::{Channel, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
@@ -28,21 +28,28 @@ pub struct Thread {
     pub state: ThreadState,
     pub stale: bool,
     pub channel: Channel,
+    pub content_pin: Option<ContentPin>,
+    /// Where the pinned block currently sits, written by the stale pass. `None`
+    /// until a pass has run, and for every thread that carries no pin.
+    pub resolved_start_line: Option<u32>,
 }
 
 pub struct NewThread {
     pub text: String,
     pub anchor: Option<Anchor>,
     pub commit_oid: Option<String>,
+    pub content_pin: Option<ContentPin>,
     pub cached_excerpt: Option<String>,
 }
 
 const SELECT: &str = "
     SELECT id, review_id, body, excerpt, state, stale, channel,
-           anchor_kind, commit_oid, file_path, source, side, start_line, end_line
+           anchor_kind, commit_oid, file_path, source, side, start_line, end_line,
+           pin_block, pin_ordinal, resolved_start_line
     FROM threads";
 
 const ANCHOR_FIRST_COLUMN: usize = 7;
+const PIN_FIRST_COLUMN: usize = 14;
 
 /// Add a thread to a review and return its id.
 ///
@@ -56,13 +63,18 @@ pub fn insert(
     now: i64,
 ) -> Result<String, TrunkError> {
     let id = ids::mint_unique(conn, IdKind::Thread)?;
-    let cols = anchor::to_columns(new.anchor.as_ref(), new.commit_oid.as_deref());
+    let target = match new.content_pin.as_ref() {
+        Some(pin) => anchor::Target::CurrentFile(pin),
+        None => anchor::target_of(new.anchor.as_ref(), new.commit_oid.as_deref()),
+    };
+    let cols = anchor::to_columns(&target);
 
     conn.execute(
         &format!(
             "INSERT INTO threads (id, review_id, body, channel, state, stale, excerpt,
-                                  {}, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, 'open', 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+                                  {}, pin_block, pin_ordinal, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, 'open', 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                     ?13, ?14, ?15, ?15)",
             anchor::COLUMNS
         ),
         rusqlite::params![
@@ -78,6 +90,8 @@ pub fn insert(
             cols.side,
             cols.start_line,
             cols.end_line,
+            new.content_pin.as_ref().map(|p| p.block.clone()),
+            new.content_pin.as_ref().map(|p| i64::from(p.ordinal)),
             now,
         ],
     )
@@ -133,6 +147,7 @@ pub fn list_with_replies(
 
 fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
     let (anchor, commit_oid) = anchor::from_row(row, ANCHOR_FIRST_COLUMN)?;
+    let content_pin = read_pin(row)?;
     let state: String = row.get(4).map_err(sqlite_error)?;
     let channel: String = row.get(6).map_err(sqlite_error)?;
 
@@ -146,6 +161,45 @@ fn read_thread(row: &rusqlite::Row) -> Result<Thread, TrunkError> {
         channel: Channel::from_str(&channel)?,
         anchor,
         commit_oid,
+        content_pin,
+        resolved_start_line: optional_line(row, PIN_FIRST_COLUMN + 2)?,
+    })
+}
+
+/// The content pin, present exactly when the row carries a pinned block. The
+/// file path and display range live in the shared anchor columns, so a
+/// current-file row reads its path from there.
+fn read_pin(row: &rusqlite::Row) -> Result<Option<ContentPin>, TrunkError> {
+    let Some(block): Option<String> = row.get(PIN_FIRST_COLUMN).map_err(sqlite_error)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(ContentPin {
+        file_path: row
+            .get::<_, Option<String>>(ANCHOR_FIRST_COLUMN + 2)
+            .map_err(sqlite_error)?
+            .ok_or_else(|| {
+                TrunkError::new("store", "corrupt anchor row: a pin with no file path")
+            })?,
+        block,
+        ordinal: optional_line(row, PIN_FIRST_COLUMN + 1)?.unwrap_or(0),
+        start_line: optional_line(row, ANCHOR_FIRST_COLUMN + 5)?.unwrap_or(0),
+        end_line: optional_line(row, ANCHOR_FIRST_COLUMN + 6)?.unwrap_or(0),
+    }))
+}
+
+/// A nullable line-ish column, refusing a value no line number can hold rather
+/// than wrapping it into one.
+fn optional_line(row: &rusqlite::Row, column: usize) -> Result<Option<u32>, TrunkError> {
+    let Some(stored): Option<i64> = row.get(column).map_err(sqlite_error)? else {
+        return Ok(None);
+    };
+
+    u32::try_from(stored).map(Some).map_err(|_| {
+        TrunkError::new(
+            "store",
+            format!("corrupt anchor row: line out of range: {stored}"),
+        )
     })
 }
 

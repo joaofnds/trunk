@@ -39,9 +39,118 @@ fn submission(text: &str) -> SubmitThreadRequest {
         text: text.to_string(),
         anchor: Some(diff_anchor()),
         commit_oid: None,
+        content_pin: None,
         cached_excerpt: Some("let x = 1;".to_string()),
         clears_draft: true,
     }
+}
+
+/// The v1 `threads` CHECK lists the anchor kinds v1 knew, and a migrated store
+/// still carries that constraint, so widening it needs the table rebuilt.
+#[test]
+fn a_migrated_store_accepts_the_current_file_anchor_kind() {
+    let ctx = TestContext::new_empty();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let kinds: String = store
+        .read(|conn| {
+            conn.query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'threads'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| trunk_lib::error::TrunkError::new("store", e.to_string()))
+        })
+        .unwrap();
+
+    assert!(
+        kinds.contains("current_file"),
+        "the anchor_kind CHECK must admit a current-file thread, or every insert is refused",
+    );
+}
+
+/// Rebuilding `threads` means dropping it, and `replies` cascades from it. With
+/// foreign keys left on for the rebuild every reply in the store is deleted on
+/// the way to a schema change that was supposed to add columns.
+#[test]
+fn the_v8_rebuild_keeps_the_replies_hanging_off_a_thread() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    let thread_id = {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        let id = submit_thread_inner(&store, &canonical, submission("root"), 1_000).unwrap();
+        trunk_lib::commands::review::add_reply_inner(&store, &canonical, &id, "a reply", 1_001)
+            .unwrap();
+        id
+    };
+
+    // Wind the store back to v7's shape and let the ladder run v8 over real data.
+    {
+        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE threads DROP COLUMN pin_block;
+             ALTER TABLE threads DROP COLUMN pin_ordinal;
+             ALTER TABLE threads DROP COLUMN resolved_start_line;
+             PRAGMA user_version = 7;",
+        )
+        .unwrap();
+    }
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let thread = threads
+        .iter()
+        .find(|t| t.id == thread_id)
+        .expect("the thread");
+    assert_eq!(
+        thread.replies.len(),
+        1,
+        "a schema rebuild must not cascade every reply out of the store",
+    );
+}
+
+/// A current-file thread anchors to the file's content, so what it stores is
+/// the block the user selected and which occurrence of it they picked. There is
+/// no commit: the file is read from the working tree.
+#[test]
+fn a_current_file_thread_stores_its_pinned_block_and_ordinal() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let id = submit_thread_inner(
+        &store,
+        &canonical,
+        SubmitThreadRequest {
+            text: "pin this".into(),
+            anchor: None,
+            commit_oid: None,
+            content_pin: Some(trunk_lib::git::types::ContentPin {
+                file_path: "src/main.rs".into(),
+                block: "fn main() {}".into(),
+                ordinal: 1,
+                start_line: 7,
+                end_line: 7,
+            }),
+            cached_excerpt: Some("fn main() {}".into()),
+            clears_draft: true,
+        },
+        1_000,
+    )
+    .unwrap();
+
+    let threads = list_threads_inner(&store, &canonical).unwrap();
+    let thread = threads.iter().find(|t| t.id == id).expect("the thread");
+    assert_eq!(
+        thread
+            .content_pin
+            .as_ref()
+            .map(|p| (p.block.as_str(), p.ordinal)),
+        Some(("fn main() {}", 1)),
+        "the pinned block and the occurrence the user picked must both survive the round trip",
+    );
 }
 
 #[test]
@@ -1972,6 +2081,7 @@ fn renders_a_stored_review() {
                 text: text.to_string(),
                 anchor: Some(anchor),
                 commit_oid: None,
+                content_pin: None,
                 cached_excerpt: Some(excerpt.to_string()),
                 clears_draft: true,
             },
@@ -2314,6 +2424,7 @@ fn a_new_thread_in_a_settled_review_makes_it_ready() {
                     text: "one more thing".to_string(),
                     anchor: None,
                     commit_oid: None,
+                    content_pin: None,
                     cached_excerpt: None,
                 },
                 1_003,
@@ -2682,6 +2793,7 @@ fn a_thread_anchor_round_trips_every_field() {
             text: "whole-file note".to_string(),
             anchor: Some(anchor.clone()),
             commit_oid: None,
+            content_pin: None,
             cached_excerpt: Some("x".to_string()),
             clears_draft: true,
         },
@@ -2974,6 +3086,7 @@ fn a_commit_note_leaves_the_diff_composers_draft_alone() {
             text: "a note about the commit".to_string(),
             anchor: None,
             commit_oid: Some("deadbeef".to_string()),
+            content_pin: None,
             cached_excerpt: None,
             clears_draft: false,
         },
@@ -3590,8 +3703,6 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
                  PRIMARY KEY (repo_path, oid));
              ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
-             ALTER TABLE threads DROP COLUMN pin_start_line;
-             ALTER TABLE threads DROP COLUMN pin_end_line;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
              PRAGMA user_version = 5;",
         )
@@ -4444,8 +4555,6 @@ fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
         conn.execute_batch(
             "ALTER TABLE threads DROP COLUMN pin_block;
              ALTER TABLE threads DROP COLUMN pin_ordinal;
-             ALTER TABLE threads DROP COLUMN pin_start_line;
-             ALTER TABLE threads DROP COLUMN pin_end_line;
              ALTER TABLE threads DROP COLUMN resolved_start_line;
              PRAGMA user_version = 8;",
         )
