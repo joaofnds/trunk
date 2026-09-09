@@ -52,7 +52,7 @@ describe("reaching a file no pending change touches", () => {
 		expect(shown).toEqual(["const answer = 42;", "export { answer };"]);
 	});
 
-	it("offers no gesture that would comment on that content yet", async () => {
+	it("offers no comment gesture until a line is selected", async () => {
 		const app = await setup({ repo: ONE_EDIT });
 		await app.repo.open();
 		await app.review.showInlineComments();
