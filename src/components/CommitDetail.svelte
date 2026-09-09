@@ -8,7 +8,6 @@ import { copySha } from "../lib/clipboard.js";
 import { fileCountsForOid } from "../lib/comment-counts.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
-import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import type {
@@ -37,7 +36,7 @@ interface Props {
 	nav?: CommitNav | null;
 	onnavigate?: (oid: string) => void;
 	// The shared comments store, threaded from RepoView so the commit-notes block
-	// (later task) reads one source of truth. Optional until that render lands.
+	// and the per-file badges read one source of truth.
 	reviewComments?: ReviewCommentsManager;
 	// Center-pane inline-comments toggle; gates the per-file count badges.
 	showInlineComments?: boolean;
