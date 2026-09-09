@@ -55,7 +55,6 @@ describe("reaching a file no pending change touches", () => {
 	it("offers no comment gesture until a line is selected", async () => {
 		const app = await setup({ repo: ONE_EDIT });
 		await app.repo.open();
-		await app.review.showInlineComments();
 		await app.review.openPanel();
 		await app.review.openFileFinder();
 		await app.review.findFile("untouched");
