@@ -226,6 +226,106 @@ fn cli_show_prints_threads_states_and_excerpts() {
 }
 
 #[test]
+fn cli_threads_locates_a_current_file_thread_by_its_file() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this constant needs a name".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        content_pin: Some(trunk_lib::git::types::ContentPin {
+                            file_path: "a.txt".to_string(),
+                            block: "one".to_string(),
+                            ordinal: 0,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        cached_excerpt: Some("one".to_string()),
+                    },
+                    500,
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("a.txt:1-1"),
+        "the index must locate a current-file thread, not print 'no target':\n{stdout}",
+    );
+
+    let json = trunk_review_in(
+        ctx.repo_path(),
+        &["threads", &published, "--json"],
+        ctx.data_dir(),
+    );
+    let json_out = String::from_utf8_lossy(&json.stdout);
+    assert!(
+        json_out.contains("content_pin") && json_out.contains("a.txt"),
+        "and --json must carry the pin, since a reader tells a thread's shape by its fields:\n{json_out}",
+    );
+}
+
+#[test]
+fn cli_show_names_the_file_of_a_current_file_thread() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this constant needs a name".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        content_pin: Some(trunk_lib::git::types::ContentPin {
+                            file_path: "a.txt".to_string(),
+                            block: "one".to_string(),
+                            ordinal: 0,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        cached_excerpt: Some("one".to_string()),
+                    },
+                    500,
+                )?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    let out = trunk_review_in(ctx.repo_path(), &["show", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("a.txt:L1-L1"),
+        "an agent reading the review must be told which file the comment is about:\n{stdout}",
+    );
+    assert!(
+        stdout.contains("one"),
+        "and must see the code it was written against:\n{stdout}",
+    );
+}
+
+#[test]
 fn cli_show_prints_stale_markers() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")

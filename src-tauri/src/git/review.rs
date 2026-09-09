@@ -19,7 +19,7 @@
 //! second implementation that has to agree.
 
 use crate::error::TrunkError;
-use crate::git::types::{Anchor, Side, Source};
+use crate::git::types::{Anchor, ContentPin, Side, Source};
 use crate::review_types::{Channel, ThreadState};
 use crate::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
 use std::path::{Path, PathBuf};
@@ -74,6 +74,7 @@ pub struct DocThread {
     pub stale: bool,
     pub anchor: Option<Anchor>,
     pub commit_oid: Option<String>,
+    pub content_pin: Option<ContentPin>,
     pub excerpt: Option<String>,
     pub channel: Channel,
     pub replies: Vec<DocReply>,
@@ -525,6 +526,13 @@ enum ThreadTarget<'c> {
         thread: &'c DocThread,
         commit_oid: String,
     },
+    /// anchor=None, a content pin present: a comment on a tracked file's own
+    /// content, which names a file and a line range but no commit.
+    CurrentFile {
+        thread: &'c DocThread,
+        pin: &'c ContentPin,
+        info: &'static str,
+    },
     /// anchor=None, `commit_oid=None`: the thread names no target at all.
     NoTarget { thread: &'c DocThread },
 }
@@ -534,6 +542,14 @@ enum ThreadTarget<'c> {
 /// so one thread cannot render in one section from the doc and another from
 /// the `thread` verb.
 fn classify(thread: &DocThread) -> ThreadTarget<'_> {
+    if let Some(pin) = &thread.content_pin {
+        return ThreadTarget::CurrentFile {
+            thread,
+            pin,
+            info: fence_language(&pin.file_path),
+        };
+    }
+
     match (&thread.anchor, &thread.commit_oid) {
         (Some(anchor), _) => {
             let info: &'static str = match anchor.source {
@@ -565,6 +581,21 @@ pub(crate) fn render_thread_section(session: &RenderInput, thread: &DocThread) -
     out
 }
 
+/// D-06: excerpt FIRST, comment text after — straight from the stored row,
+/// never re-resolved from the repository. A thread whose excerpt is missing
+/// says so rather than rendering an empty fence a reader would take for empty
+/// code.
+fn emit_excerpt(out: &mut String, excerpt: Option<&str>, info: &str) {
+    use std::fmt::Write;
+
+    if let Some(excerpt) = excerpt {
+        emit_fence(out, excerpt, info);
+    } else {
+        let _ = writeln!(out, "No excerpt was captured for this thread.");
+        let _ = writeln!(out);
+    }
+}
+
 /// The suffix a thread's heading carries when the code it was written against
 /// is gone. Empty for a fresh thread, so no reader has to learn a second
 /// heading shape for the ordinary case.
@@ -582,6 +613,7 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
     let thread = match target {
         ThreadTarget::Anchored { thread, .. }
         | ThreadTarget::CommitLevel { thread, .. }
+        | ThreadTarget::CurrentFile { thread, .. }
         | ThreadTarget::NoTarget { thread } => thread,
     };
 
@@ -611,14 +643,7 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
                 );
                 let _ = writeln!(out);
             }
-            // D-06: excerpt FIRST, comment text after — straight from the
-            // stored row, never re-resolved from the repository.
-            if let Some(excerpt) = &thread.excerpt {
-                emit_fence(out, excerpt, info);
-            } else {
-                let _ = writeln!(out, "No excerpt was captured for this thread.");
-                let _ = writeln!(out);
-            }
+            emit_excerpt(out, thread.excerpt.as_deref(), info);
         }
         ThreadTarget::CommitLevel { thread, commit_oid } => {
             let short = short_sha(commit_oid);
@@ -631,6 +656,22 @@ fn emit_thread_section(out: &mut String, session: &RenderInput, target: &ThreadT
                 stale = stale_marker(thread.stale),
             );
             let _ = writeln!(out);
+        }
+        ThreadTarget::CurrentFile { thread, pin, info } => {
+            // No sha: the pin names the file's content as it stands, not a
+            // commit's tree, so there is nothing to shorten into the heading.
+            let _ = writeln!(
+                out,
+                "#### [{id}] {file_path}:L{start}-L{end} (current file) — {state}{stale}",
+                id = thread.id,
+                file_path = sanitize_heading_text(&pin.file_path),
+                start = pin.start_line,
+                end = pin.end_line,
+                state = thread.state.as_str(),
+                stale = stale_marker(thread.stale),
+            );
+            let _ = writeln!(out);
+            emit_excerpt(out, thread.excerpt.as_deref(), info);
         }
         ThreadTarget::NoTarget { thread } => {
             let _ = writeln!(
@@ -732,6 +773,7 @@ fn as_doc_threads(
             stale: t.stale,
             anchor: t.anchor,
             commit_oid: t.commit_oid,
+            content_pin: t.content_pin,
             excerpt: t.cached_excerpt,
             channel: t.channel,
             replies: replies
@@ -813,6 +855,27 @@ pub fn render(session: &RenderInput) -> String {
             for r in sorted {
                 emit_thread_section(&mut out, session, r);
             }
+        }
+    }
+
+    // ── 3b. Current-file section ───────────────────────────────────────
+    // Its own section rather than a group under a commit heading: these
+    // comments name no commit, and the file they name is the working tree's,
+    // which the agent reads as it stands rather than at any revision.
+    let current_files: Vec<&ThreadTarget> = resolved
+        .iter()
+        .filter(|r| matches!(r, ThreadTarget::CurrentFile { .. }))
+        .collect();
+    if !current_files.is_empty() {
+        let _ = writeln!(out, "## Comments On Current File Content");
+        let _ = writeln!(out);
+        let _ = writeln!(
+            out,
+            "Each comment below is about a file's content as it stands in the working tree, not at any commit. The line numbers are where the code sat when the comment was written; a comment marked stale points at code no longer in the file, and its excerpt is the only record of it."
+        );
+        let _ = writeln!(out);
+        for r in &current_files {
+            emit_thread_section(&mut out, session, r);
         }
     }
 
@@ -998,6 +1061,7 @@ mod tests {
                 commit_oid, file_path, source, side, start_line, end_line,
             )),
             commit_oid: None,
+            content_pin: None,
             excerpt: cached_excerpt.map(std::string::ToString::to_string),
             channel: Channel::Human,
             replies: vec![],
@@ -1030,6 +1094,7 @@ mod tests {
                 end_line,
             }),
             commit_oid: None,
+            content_pin: None,
             excerpt: cached_excerpt.map(std::string::ToString::to_string),
             channel: Channel::Human,
             replies: vec![],
@@ -1044,6 +1109,7 @@ mod tests {
             stale: false,
             anchor: None,
             commit_oid: Some(commit_oid.to_string()),
+            content_pin: None,
             excerpt: None,
             channel: Channel::Human,
             replies: vec![],
@@ -1144,6 +1210,7 @@ mod tests {
                     stale: false,
                     anchor: None,
                     commit_oid: None,
+                    content_pin: None,
                     excerpt: None,
                     channel: Channel::Human,
                     replies: vec![],
@@ -1566,6 +1633,74 @@ mod tests {
     }
 
     // ── Milestone 2, Task 8: doc renders thread state + replies ───────────
+
+    #[test]
+    fn a_current_file_thread_names_its_file_and_shows_its_code() {
+        let thread = DocThread {
+            id: "cf".to_string(),
+            text: "this constant needs a name".to_string(),
+            state: ThreadState::Open,
+            stale: false,
+            anchor: None,
+            commit_oid: None,
+            content_pin: Some(ContentPin {
+                file_path: "src/untouched.ts".to_string(),
+                block: "const answer = 42;".to_string(),
+                ordinal: 0,
+                start_line: 4,
+                end_line: 4,
+            }),
+            excerpt: Some("const answer = 42;".to_string()),
+            channel: Channel::Human,
+            replies: vec![],
+        };
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let session = make_session(&repo, vec![], vec![thread]);
+
+        let section = render_thread_section(&session, &session.threads[0]);
+
+        assert!(
+            section.contains("src/untouched.ts:L4-L4"),
+            "a current-file comment must name the file and lines it is about:\n{section}",
+        );
+        assert!(
+            section.contains("const answer = 42;"),
+            "and must carry the code it was written against:\n{section}",
+        );
+    }
+
+    #[test]
+    fn a_stale_current_file_thread_marks_its_heading() {
+        let thread = DocThread {
+            id: "cf".to_string(),
+            text: "gone now".to_string(),
+            state: ThreadState::Open,
+            stale: true,
+            anchor: None,
+            commit_oid: None,
+            content_pin: Some(ContentPin {
+                file_path: "src/untouched.ts".to_string(),
+                block: "const answer = 42;".to_string(),
+                ordinal: 0,
+                start_line: 4,
+                end_line: 4,
+            }),
+            excerpt: Some("const answer = 42;".to_string()),
+            channel: Channel::Human,
+            replies: vec![],
+        };
+        let dir = TempDir::new().unwrap();
+        let repo = Repository::init(dir.path()).unwrap();
+        let session = make_session(&repo, vec![], vec![thread]);
+
+        let section = render_thread_section(&session, &session.threads[0]);
+
+        assert!(
+            section.contains("(stale)"),
+            "the marker must reach a current-file thread's heading too:\n{section}",
+        );
+    }
 
     #[test]
     fn a_thread_heading_carries_its_state() {
@@ -2452,6 +2587,7 @@ mod tests {
                 stale: false,
                 anchor: None,
                 commit_oid: None,
+                content_pin: None,
                 excerpt: None,
                 channel: Channel::Human,
                 replies: vec![],
@@ -2589,6 +2725,7 @@ mod tests {
                 stale: false,
                 anchor: None,
                 commit_oid: None,
+                content_pin: None,
                 excerpt: None,
                 channel: Channel::Human,
                 replies: vec![],
@@ -2647,6 +2784,7 @@ mod tests {
                     stale: false,
                     anchor: None,
                     commit_oid: None,
+                    content_pin: None,
                     excerpt: None,
                     channel: Channel::Human,
                     replies: vec![],
@@ -2658,6 +2796,7 @@ mod tests {
                     stale: false,
                     anchor: None,
                     commit_oid: None,
+                    content_pin: None,
                     excerpt: None,
                     channel: Channel::Human,
                     replies: vec![],
@@ -2851,6 +2990,7 @@ mod tests {
                 stale: false,
                 anchor: None,
                 commit_oid: None,
+                content_pin: None,
                 excerpt: None,
                 channel: Channel::Human,
                 replies: vec![],

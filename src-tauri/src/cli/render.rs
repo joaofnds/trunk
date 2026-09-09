@@ -66,6 +66,10 @@ pub(crate) fn render_threads(threads: &[crate::reviewdb::threads::Thread]) -> St
 
 /// Where a thread points, in the index's one-line spelling.
 fn thread_location(thread: &crate::reviewdb::threads::Thread) -> String {
+    if let Some(pin) = &thread.content_pin {
+        return format!("{}:{}-{}", pin.file_path, pin.start_line, pin.end_line);
+    }
+
     match (&thread.anchor, &thread.commit_oid) {
         (Some(anchor), _) => format!(
             "{}:{}-{}",
@@ -87,8 +91,8 @@ fn first_line(text: &str) -> String {
 
 /// One `threads --json` line. Optional fields are skipped rather than sent as
 /// null, exactly as `watch`'s `ThreadAdded` does: a reader tells a thread's
-/// shape by which of `anchor` and `commit_oid` is present, and a null would
-/// read as an anchor.
+/// shape by which of `anchor`, `commit_oid` and `content_pin` is present, and a
+/// null would read as an anchor.
 #[derive(serde::Serialize)]
 struct ThreadLine<'a> {
     review: &'a str,
@@ -100,6 +104,8 @@ struct ThreadLine<'a> {
     anchor: Option<&'a crate::git::types::Anchor>,
     #[serde(skip_serializing_if = "Option::is_none")]
     commit_oid: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content_pin: Option<&'a crate::git::types::ContentPin>,
 }
 
 /// One `thread --json` object: the index line's fields plus everything the
@@ -132,6 +138,7 @@ impl<'a> ThreadLine<'a> {
             text: &thread.text,
             anchor: thread.anchor.as_ref(),
             commit_oid: thread.commit_oid.as_deref(),
+            content_pin: thread.content_pin.as_ref(),
         }
     }
 }
@@ -228,6 +235,7 @@ pub(crate) fn render_thread(
         stale: thread.stale,
         anchor: thread.anchor.clone(),
         commit_oid: thread.commit_oid.clone(),
+        content_pin: thread.content_pin.clone(),
         excerpt: thread.cached_excerpt.clone(),
         channel: thread.channel,
         replies: replies
