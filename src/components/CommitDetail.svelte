@@ -1,6 +1,4 @@
 <script lang="ts">
-import ArrowDown from "@lucide/svelte/icons/arrow-down";
-import ArrowUp from "@lucide/svelte/icons/arrow-up";
 import ChevronDown from "@lucide/svelte/icons/chevron-down";
 import ChevronUp from "@lucide/svelte/icons/chevron-up";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
@@ -21,7 +19,7 @@ import type {
 	FileDiff,
 	FileStatus,
 } from "../lib/types.js";
-import Avatar from "./Avatar.svelte";
+import CommitAuthor from "./CommitAuthor.svelte";
 import CommitNotes from "./CommitNotes.svelte";
 import TreeFileList from "./TreeFileList.svelte";
 
@@ -91,10 +89,6 @@ async function showFileContextMenu(e: MouseEvent, file: FileStatus) {
 	await menu.popup();
 }
 
-let authorDate = $derived(
-	new Date(commitDetail.author_timestamp * 1000).toLocaleString(),
-);
-
 // A long body used to push the file list past the bottom of the panel, since
 // the body, the notes and the file list share one scroller. The body is clamped
 // to a fixed number of lines and the reader opens it when they want it.
@@ -125,22 +119,6 @@ function handlePaneKeydown(e: KeyboardEvent) {
 
 	e.preventDefault();
 	onnavigate?.(target);
-}
-
-async function showShaContextMenu(e: MouseEvent, oid: string) {
-	e.preventDefault();
-	const { Menu, MenuItem } = await import("@tauri-apps/api/menu");
-	const menu = await Menu.new({
-		items: [
-			await MenuItem.new({
-				text: "Copy SHA",
-				action: () => {
-					void copySha(oid);
-				},
-			}),
-		],
-	});
-	await menu.popup();
 }
 
 let totalAdds = $derived(stat?.insertions ?? 0);
@@ -275,54 +253,14 @@ let commitNotes = $derived(
     </div>
 
     <!-- Author + parent -->
-    <div style="
-      padding: var(--space-2) var(--space-3);
-      border-bottom: 1px solid var(--color-border);
-      font-size: 11px;
-      color: var(--color-text-muted);
-    ">
-      <div style="display: flex; align-items: center; gap: var(--space-3);">
-        <Avatar name={commitDetail.author_name} size={22} />
-        <div style="display: flex; flex-direction: column; min-width: 0;">
-          <span style="color: var(--fg-0); font-weight: 600;">{commitDetail.author_name}</span>
-          <span style="color: var(--fg-3); font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{commitDetail.author_email}</span>
-        </div>
-        <span style="margin-left: auto; flex-shrink: 0; color: var(--fg-3); font-family: var(--font-mono); font-size: 11px;">{authorDate}</span>
-      </div>
-      {#if commitDetail.parent_oids.length > 0 || (nav && nav.childOids.length > 0)}
-        <div class="topo">
-          {#if nav && nav.childOids.length > 0}
-            <div class="topo-row">
-              <span class="topo-lbl">{nav.childOids.length > 1 ? 'Children' : 'Child'}</span>
-              {#each nav.childOids as childOid (childOid)}
-                <button
-                  type="button"
-                  class="chip"
-                  title="Go to child {childOid.slice(0, 7)} (right-click to copy SHA)"
-                  onclick={() => onnavigate?.(childOid)}
-                  oncontextmenu={(e) => showShaContextMenu(e, childOid)}
-                ><ArrowUp size={11} />{childOid.slice(0, 7)}</button>
-              {/each}
-            </div>
-          {/if}
-          {#if commitDetail.parent_oids.length > 0}
-            <div class="topo-row">
-              <span class="topo-lbl">{commitDetail.parent_oids.length > 1 ? 'Parents' : 'Parent'}</span>
-              {#each commitDetail.parent_oids as parentOid, i (parentOid)}
-                <button
-                  type="button"
-                  class="chip"
-                  class:merge={i > 0}
-                  title="Go to parent {parentOid.slice(0, 7)} (right-click to copy SHA)"
-                  onclick={() => onnavigate?.(parentOid)}
-                  oncontextmenu={(e) => showShaContextMenu(e, parentOid)}
-                ><ArrowDown size={11} />{parentOid.slice(0, 7)}</button>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/if}
-    </div>
+    <CommitAuthor
+      authorName={commitDetail.author_name}
+      authorEmail={commitDetail.author_email}
+      authorTimestamp={commitDetail.author_timestamp}
+      parentOids={commitDetail.parent_oids}
+      childOids={nav?.childOids ?? []}
+      {onnavigate}
+    />
 
     <!-- Commit-level notes (whole-commit, anchor === null) -->
     <CommitNotes notes={commitNotes} {repoPath} commitOid={commitDetail.oid} />
@@ -488,53 +426,6 @@ let commitNotes = $derived(
     color: var(--fg-3);
     font-family: var(--font-mono);
     padding: 0 var(--space-1);
-  }
-
-  /* Topology chips — clickable parent/child lineage links. */
-  .topo {
-    margin-top: var(--space-2);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-  .topo-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-  .topo-lbl {
-    font-size: 10px;
-    color: var(--fg-3);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    width: 62px;
-    flex-shrink: 0;
-  }
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    height: var(--control-sm-h);
-    padding: 0 var(--space-2) 0 var(--space-1);
-    border-radius: var(--radius-pill);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    cursor: pointer;
-    background: color-mix(in oklch, var(--accent) 12%, transparent);
-    color: var(--accent-hi);
-    border: 1px solid color-mix(in oklch, var(--accent) 25%, transparent);
-  }
-  .chip:hover {
-    background: color-mix(in oklch, var(--accent) 20%, transparent);
-  }
-  .chip.merge {
-    background: color-mix(in oklch, var(--fg-3) 10%, transparent);
-    color: var(--fg-1);
-    border-color: var(--color-border);
-  }
-  .chip.merge:hover {
-    background: color-mix(in oklch, var(--fg-3) 18%, transparent);
   }
 
 </style>
