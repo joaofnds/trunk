@@ -61,10 +61,12 @@ trunk review watch [--repo <path>]
   still describes text the file holds. In every case the excerpt is what the code
   looked like when the comment was written, so the comment is still answerable;
   what changed is that the file no longer reads that way.
-- **threads** — the review's threads as an index, one line each: id, state,
-  location (`file:start-end`, a commit-level thread's short oid, or `no
-  target`), and the comment's first line. `--state` keeps only threads in that
-  state. This plain line is for human reading only: its ` — ` separator is not
+- **threads** — the review's threads as an index, one line each: id, state, the
+  `(stale)` marker where the thread carries one, location (`file:start-end`, a
+  commit-level thread's short oid, or `no target`), and the comment's first
+  line. The marker means what it means under **show**, and it is on this line
+  because the location beside it is where the code no longer is. `--state` keeps
+  only threads in that state. This plain line is for human reading only: its ` — ` separator is not
   reserved, so a file path or comment whose first line contains it prints more
   fields than the format implies, and splitting on the separator can misread
   the location. The path is a tree entry name from the commits under review,

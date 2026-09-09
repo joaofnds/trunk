@@ -1315,16 +1315,21 @@ pub fn is_readable_tracked_file(repo: &git2::Repository, file_path: &str) -> boo
     let Ok(index) = repo.index() else {
         return false;
     };
-    // An index path is a plain relative path, and git2 unwraps its own error on
-    // anything else, so an absolute, `.`-prefixed, `..`-bearing or empty path
-    // panics rather than returning None. Refuse it before asking.
+
     let path = std::path::Path::new(file_path);
-    let is_plain_relative = path
-        .components()
-        .all(|c| matches!(c, std::path::Component::Normal(_)));
-    if !is_plain_relative || file_path.is_empty() {
+    // `get_path` unwraps its own error, so anything libgit2 will not take as an
+    // index path panics here rather than missing the index. The empty path has
+    // no components at all and so satisfies `all` vacuously; a NUL byte is not
+    // a separator and so hides inside a `Normal` component.
+    let is_index_path = !file_path.is_empty()
+        && !file_path.contains('\0')
+        && path
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !is_index_path {
         return false;
     }
+
     let Some(entry) = index.get_path(path, 0) else {
         return false;
     };
@@ -1467,17 +1472,35 @@ mod current_file_tests {
         assert!(fd.hunks.is_empty());
     }
 
-    #[test]
-    fn a_path_git2_will_not_accept_is_refused_rather_than_panicking() {
+    fn assert_refused(file_path: &str) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
 
-        for path in ["/etc/passwd", "//etc/passwd", "/", "./a.txt", ""] {
-            assert!(
-                !is_readable_tracked_file(&repo, path),
-                "{path} should be refused"
-            );
-        }
+        assert!(
+            !is_readable_tracked_file(&repo, file_path),
+            "{file_path} should be refused"
+        );
+    }
+
+    macro_rules! refuses_path {
+        ($($name:ident => $file_path:expr;)*) => {
+            $(
+                #[test]
+                fn $name() {
+                    assert_refused($file_path);
+                }
+            )*
+        };
+    }
+
+    refuses_path! {
+        an_absolute_path_is_refused => "/etc/passwd";
+        a_doubled_root_path_is_refused => "//etc/passwd";
+        the_root_itself_is_refused => "/";
+        a_dot_prefixed_path_is_refused => "./a.txt";
+        the_empty_path_is_refused => "";
+        a_path_holding_a_nul_byte_is_refused => "a\0b";
+        the_current_directory_is_refused => ".";
     }
 
     #[test]
