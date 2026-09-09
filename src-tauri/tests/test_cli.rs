@@ -279,6 +279,52 @@ fn cli_threads_locates_a_current_file_thread_by_its_file() {
 }
 
 #[test]
+fn cli_threads_marks_a_stale_thread_in_the_index() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let (_, published) = seed_reviews(&ctx);
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        store
+            .write(|tx| {
+                let id = threads::insert(
+                    tx,
+                    &published,
+                    threads::NewThread {
+                        text: "this constant needs a name".to_string(),
+                        anchor: None,
+                        commit_oid: None,
+                        content_pin: Some(trunk_lib::git::types::ContentPin {
+                            file_path: "a.txt".to_string(),
+                            block: "one".to_string(),
+                            ordinal: 0,
+                            start_line: 1,
+                            end_line: 1,
+                        }),
+                        cached_excerpt: Some("one".to_string()),
+                    },
+                    500,
+                )?;
+                tx.execute("UPDATE threads SET stale = 1 WHERE id = ?1", [&id])
+                    .unwrap();
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    let out = trunk_review_in(ctx.repo_path(), &["threads", &published], ctx.data_dir());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("(stale)"),
+        "the index an agent scans must mark a stale thread, or it sends them to \
+         lines the comment no longer describes; got {stdout:?}",
+    );
+}
+
+#[test]
 fn cli_show_names_the_file_of_a_current_file_thread() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one")

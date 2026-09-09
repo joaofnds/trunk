@@ -599,7 +599,7 @@ fn emit_excerpt(out: &mut String, excerpt: Option<&str>, info: &str) {
 /// The suffix a thread's heading carries when the code it was written against
 /// is gone. Empty for a fresh thread, so no reader has to learn a second
 /// heading shape for the ordinary case.
-const fn stale_marker(stale: bool) -> &'static str {
+pub(crate) const fn stale_marker(stale: bool) -> &'static str {
     if stale { " (stale)" } else { "" }
 }
 

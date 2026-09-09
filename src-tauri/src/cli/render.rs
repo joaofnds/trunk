@@ -43,8 +43,10 @@ const fn state_word(state: reviews::ReviewState) -> &'static str {
     }
 }
 
-/// One line per thread: id, state, where it points, and the first line of its
-/// text — the index an agent scans before asking for a thread in full. The
+/// One line per thread: id, state, whether it is stale, where it points, and
+/// the first line of its text — the index an agent scans before asking for a
+/// thread in full. A stale thread carries the marker here as well as in the
+/// document, because the location it prints is where the code no longer is. The
 /// location is the anchor's `file:start-end`, a commit-level thread's short
 /// oid, or `no target`, mirroring the document's three thread shapes. A file
 /// path may legally contain a newline, so the location passes through the
@@ -54,9 +56,10 @@ pub(crate) fn render_threads(threads: &[crate::reviewdb::threads::Thread]) -> St
     threads.iter().fold(String::new(), |mut out, t| {
         let _ = writeln!(
             out,
-            "- {id} {state} {location} — {summary}",
+            "- {id} {state}{stale} {location} — {summary}",
             id = t.id,
             state = t.state.as_str(),
+            stale = crate::git::review::stale_marker(t.stale),
             location = crate::git::review::sanitize_heading_text(&thread_location(t)),
             summary = first_line(&t.text),
         );
