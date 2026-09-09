@@ -825,7 +825,7 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
-	// The eye anchors to the right edge with var(--space-4) padding. No slot is needed.
+	// The eye anchors to the right edge with var(--space-2) padding. No slot is needed.
 	it("renders the visibility toggle with target minimum and no slot", async () => {
 		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
 			if (cmd === "list_refs") {

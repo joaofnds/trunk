@@ -49,7 +49,7 @@ let allHidden = $derived(groupState === "all");
     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') ontoggle(); }}
     style="
       height: var(--bar-h);
-      padding: 0 var(--space-4) 0 var(--space-3);
+      padding: 0 var(--space-2) 0 var(--space-3);
       display: flex;
       flex-direction: row;
       align-items: center;

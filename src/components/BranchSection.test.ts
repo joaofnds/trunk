@@ -193,12 +193,12 @@ describe("BranchSection trailing controls", () => {
 	// The right edge is what puts every row's eye in one column. It is read off the
 	// style attribute rather than getComputedStyle because jsdom returns "0" for any
 	// padding written as a var(), shorthand or longhand, so toHaveStyle cannot see it.
-	it("ends the header at the shared --space-4 edge", () => {
+	it("ends the header at the shared --space-2 edge", () => {
 		render(BranchSection, { props });
 
 		expect(
 			screen.getByTestId("branch-section-header").getAttribute("style"),
-		).toContain("padding: 0 var(--space-4) 0 var(--space-3)");
+		).toContain("padding: 0 var(--space-2) 0 var(--space-3)");
 	});
 
 	// The eye is anchored to the right edge. When a section provides a create button,

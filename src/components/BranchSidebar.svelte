@@ -1020,7 +1020,7 @@ async function showRemoteContextMenu(_e: MouseEvent, fullRefName: string) {
     align-items: center;
     gap: var(--space-2);
     height: var(--row-h);
-    padding: 0 var(--space-4) 0 var(--space-3);
+    padding: 0 var(--space-2) 0 var(--space-3);
     font-size: 12px;
     cursor: default;
   }

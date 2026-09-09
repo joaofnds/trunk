@@ -150,7 +150,7 @@ describe("RemoteGroup visibility toggle target size", () => {
 	});
 });
 
-// The eye anchors to the right edge with --space-4 padding. No slot is needed.
+// The eye anchors to the right edge with --space-2 padding. No slot is needed.
 describe("RemoteGroup trailing controls", () => {
 	it("renders the visibility toggle at the right edge without a slot", () => {
 		render(RemoteGroup, {

@@ -114,7 +114,7 @@ let actionShown = $derived(hovered || focused || hidden);
         data-testid="branch-row-visibility-btn"
         onclick={(e) => { e.stopPropagation(); ontogglevisibility?.(); }}
         ondblclick={(e) => e.stopPropagation()}
-        style="flex-shrink: 0; margin-left: var(--space-1); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); align-items: center; justify-content: center; display: {actionShown ? 'inline-flex' : 'none'};"
+        style="flex-shrink: 0; margin-left: var(--space-1); margin-right: calc(-1 * var(--space-2)); color: var(--fg-3); background: none; border: none; cursor: pointer; padding: 0; min-width: var(--target-min); min-height: var(--target-min); align-items: center; justify-content: center; display: {actionShown ? 'inline-flex' : 'none'};"
         aria-label="{visibilityVerb(hidden)} {name}"
       >
         <VisibilityIcon {hidden} />
