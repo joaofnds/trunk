@@ -3578,7 +3578,8 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
     let canonical = ctx.repo_path().canonicalize().unwrap();
 
     // Reproduce that store: a current one, wound back to exactly what the
-    // earlier v5 produced — its table gone, the dead one present, stamped 5.
+    // earlier v5 produced — its table gone, the dead one present, no column a
+    // later rung adds, stamped 5.
     reviewdb::open(ctx.data_dir()).unwrap();
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
@@ -3587,6 +3588,11 @@ fn a_store_from_the_earlier_v5_is_reconciled() {
              CREATE TABLE unanchored_pins (
                  repo_path TEXT NOT NULL, oid TEXT NOT NULL, seen_at INTEGER NOT NULL,
                  PRIMARY KEY (repo_path, oid));
+             ALTER TABLE threads DROP COLUMN pin_block;
+             ALTER TABLE threads DROP COLUMN pin_ordinal;
+             ALTER TABLE threads DROP COLUMN pin_start_line;
+             ALTER TABLE threads DROP COLUMN pin_end_line;
+             ALTER TABLE threads DROP COLUMN resolved_start_line;
              PRAGMA user_version = 5;",
         )
         .unwrap();
@@ -4390,13 +4396,17 @@ fn a_store_from_the_unreleased_v8_is_accepted() {
 /// The renumber is for that one known shape only. A store stamped 8 by anything
 /// else — a future build — is still refused, untouched.
 #[test]
-fn a_store_newer_than_the_unreleased_v8_is_still_refused() {
+fn a_store_newer_than_the_current_version_is_still_refused() {
     let ctx = TestContext::new_empty();
 
     reviewdb::open(ctx.data_dir()).unwrap();
     {
         let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
-        conn.execute_batch("PRAGMA user_version = 8;").unwrap();
+        conn.execute_batch(&format!(
+            "PRAGMA user_version = {};",
+            reviewdb::schema::CURRENT_VERSION + 1
+        ))
+        .unwrap();
     }
 
     let err = reviewdb::open(ctx.data_dir()).unwrap_err();
@@ -4409,7 +4419,58 @@ fn a_store_newer_than_the_unreleased_v8_is_still_refused() {
     let version: i64 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 8, "a refused store must be left untouched");
+    assert_eq!(
+        version,
+        reviewdb::schema::CURRENT_VERSION + 1,
+        "a refused store must be left untouched"
+    );
+}
+
+/// A store the unreleased build stamped 8 carries v7's schema, not v8's. Once
+/// this build's own v8 exists, the version alone can no longer tell the two
+/// apart, so the ladder asks the schema instead: a store stamped 8 with none of
+/// v8's columns is demoted to 7 and migrated properly.
+///
+/// Without this the store is read as fully migrated and every current-file
+/// write fails against a column that is not there.
+#[test]
+fn a_store_stamped_eight_without_the_pin_columns_is_migrated() {
+    let ctx = TestContext::new_empty();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+
+    reviewdb::open(ctx.data_dir()).unwrap();
+    {
+        let conn = rusqlite::Connection::open(ctx.data_dir().join("reviews.db")).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE threads DROP COLUMN pin_block;
+             ALTER TABLE threads DROP COLUMN pin_ordinal;
+             ALTER TABLE threads DROP COLUMN pin_start_line;
+             ALTER TABLE threads DROP COLUMN pin_end_line;
+             ALTER TABLE threads DROP COLUMN resolved_start_line;
+             PRAGMA user_version = 8;",
+        )
+        .unwrap();
+    }
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_thread_inner(&store, &canonical, submission("still works"), 1_000).unwrap();
+
+    let has_pin_block: bool = store
+        .read(|conn| {
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('threads')
+                 WHERE name = 'pin_block')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| trunk_lib::error::TrunkError::new("store", e.to_string()))
+        })
+        .unwrap();
+    assert!(
+        has_pin_block,
+        "a store stamped 8 by the unreleased build must be brought up to a real v8, \
+         or every current-file write fails against a column that is not there",
+    );
 }
 
 /// Adoption stamps the current time, which is what makes an unknown pin age out

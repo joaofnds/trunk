@@ -8,7 +8,7 @@ use super::sqlite_error;
 use crate::error::TrunkError;
 use rusqlite::Connection;
 
-pub const CURRENT_VERSION: i64 = 7;
+pub const CURRENT_VERSION: i64 = 8;
 
 const V1: &str = r"
 CREATE TABLE reviews (
@@ -161,34 +161,47 @@ const V7: &str = r"
 DROP TABLE IF EXISTS pin_seq;
 ";
 
+/// The content pin a current-file thread anchors by.
+///
+/// `pin_block` is the selected lines verbatim, newline-joined and line-ending
+/// normalised; `pin_ordinal` is which occurrence of that block the user picked,
+/// 0-based, and is a display hint only — staleness is block presence alone, so
+/// keying it on the ordinal would mark a thread stale when an EARLIER twin is
+/// deleted. `pin_start_line` and `pin_end_line` are the range at pin time, kept
+/// for display. `resolved_start_line` is where the block sits now, written by
+/// the stale pass and read by the frontend, so the occurrence search happens
+/// once and in Rust.
+const V8: &str = r"
+ALTER TABLE threads ADD COLUMN pin_block TEXT;
+ALTER TABLE threads ADD COLUMN pin_ordinal INTEGER;
+ALTER TABLE threads ADD COLUMN pin_start_line INTEGER;
+ALTER TABLE threads ADD COLUMN pin_end_line INTEGER;
+ALTER TABLE threads ADD COLUMN resolved_start_line INTEGER;
+";
+
 /// A dev store may carry `user_version = 8` from an unreleased commit that numbered
-/// this same cleanup differently.
+/// an earlier cleanup 8, before this build's own v8 existed.
 ///
 /// Its schema is what v7 produces, so the version is the only thing wrong: renumber it
-/// rather than refuse the store. `version_guard` would otherwise tell the user to
+/// to 7 so the ladder brings it up to a real 8. Refusing it would tell the user to
 /// restart, which never helps, and leave the app unusable against that store forever.
+///
+/// The version is no longer enough to tell that store from a properly migrated
+/// one, so this asks the schema: a store stamped 8 that lacks v8's own columns
+/// did not run v8, whatever stamped it. Probing `pin_seq` instead would miss the
+/// store that unreleased build produced and then dropped its own `pin_seq` from,
+/// and would accept a stamped-8 store carrying neither.
 ///
 /// # Errors
 ///
 /// Returns the `SQLite` error when reading the version, probing for the
-/// table, or restamping the version fails.
+/// column, or restamping the version fails.
 pub fn accept_unreleased_v8(conn: &Connection) -> Result<(), TrunkError> {
     if user_version(conn)? != 8 {
         return Ok(());
     }
 
-    // Only the store that unreleased commit actually produced: it created
-    // `pin_seq`. A store stamped 8 without it was written by something else,
-    // and something else is exactly what `version_guard` must keep refusing.
-    let has_pin_seq: bool = conn
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master
-             WHERE type = 'table' AND name = 'pin_seq')",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(sqlite_error)?;
-    if !has_pin_seq {
+    if has_column(conn, "threads", "pin_block")? {
         return Ok(());
     }
 
@@ -196,6 +209,15 @@ pub fn accept_unreleased_v8(conn: &Connection) -> Result<(), TrunkError> {
         .map_err(sqlite_error)?;
 
     Ok(())
+}
+
+fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, TrunkError> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+        rusqlite::params![table, column],
+        |row| row.get(0),
+    )
+    .map_err(sqlite_error)
 }
 
 /// The schema version stamped on the store.
@@ -283,6 +305,10 @@ fn apply_pending(conn: &Connection) -> Result<(), TrunkError> {
     }
     if user_version(conn)? < 7 {
         conn.execute_batch(&format!("{V7} PRAGMA user_version = 7;"))
+            .map_err(sqlite_error)?;
+    }
+    if user_version(conn)? < 8 {
+        conn.execute_batch(&format!("{V8} PRAGMA user_version = 8;"))
             .map_err(sqlite_error)?;
     }
 
