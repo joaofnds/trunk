@@ -255,10 +255,13 @@ lives on the thread. The CLI may only move `open → addressed`; the UI may move
 nothing reaches `addressed` from the UI — it is the agent's claim by definition.
 Text edits never change state. Attribution is by channel: UI = human, CLI = agent.
 
-**Stale marker** — an orthogonal, derived flag on a thread whose *anchored lines* no
-longer match the current content of the surface the thread targets (current-file →
-working tree; snapshot → superseded; commit-diff threads never go stale — the orphan
-classifier covers them). Recomputed by the app on repo-changed events, persisted
+**Stale marker** — an orthogonal, derived flag on a thread whose pinned content no
+longer occurs on the surface the thread targets (current-file → the pinned block is
+absent from the working-tree file; snapshot → superseded; commit-diff threads never
+go stale — the orphan classifier covers them). Presence alone decides it for a
+current-file thread: an edit elsewhere raises no marker, and neither does deleting
+the anchored occurrence while a byte-identical twin survives. Recomputed by the app
+on repo-changed events, persisted
 only as a last-computed value for the CLI to print, and it can clear again after,
 e.g., a branch switch. Not a state; a thread can be `open` and
 stale at once.
@@ -280,8 +283,8 @@ kept until a grace window passes. See
 
 **Current-file comment** — a comment anchored to the present content of a tracked
 file, independent of any pending change. Pins to the content at comment time; the
-stale marker arrives when the *anchored lines* change, not on any edit elsewhere in
-the file. Never re-anchored forward.
+stale marker arrives when that pinned block no longer occurs anywhere in the file,
+not on any edit elsewhere in it. Never re-anchored forward.
 
 **Review CLI** — the Trunk-shipped, fully local command-line tool agents use to list
 `ready`/`settled` reviews, read one in full, reply to threads, and claim `addressed`.
