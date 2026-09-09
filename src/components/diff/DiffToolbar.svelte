@@ -205,12 +205,14 @@ const renderedActive = $derived(
   <span class="font-probe" bind:this={fontProbe} style="{DIFF_ROW_FONT};"></span>
 
   <!-- One-click whole-file Comment (260531-l02e/l02f): comments every change in the
-       file in one click. Available for every diff kind — commit diffs as well as the
-       dirty tree (selectedPath is always set when this toolbar renders). Gated on
-       review mode (showInlineComments) like the hunk toolbar's Comment buttons, so a
-       clean read-only diff shows no comment affordances; never gated on
-       whitespace-ignore since it never stages. -->
-  {#if showInlineComments}
+       file in one click. Available for every diff kind the store can anchor a thread
+       against — commit diffs as well as the dirty tree (selectedPath is always set
+       when this toolbar renders). A current-file view is excluded because its anchor
+       kind does not exist yet (TRUNK-154.3); clicking here would write a thread
+       nothing can resolve. Gated on review mode (showInlineComments) like the hunk
+       toolbar's Comment buttons, so a clean read-only diff shows no comment
+       affordances; never gated on whitespace-ignore since it never stages. -->
+  {#if showInlineComments && diffKind !== "current_file"}
   <button
     class="action-btn comment-btn"
     onclick={oncommentfile}

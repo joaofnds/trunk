@@ -15,6 +15,9 @@ const PUBLISH = ".publish-button";
 const CONFIRM_PUBLISH = "Click again to confirm";
 const COPY = ".copy-button";
 const MARK_DONE = "Mark done";
+const COMMENT_ON_FILE = ".comment-on-file-button";
+const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
+const FINDER_ROW = '[role="option"]';
 
 /**
  * A review, from the comment that creates it to the doc it renders. Every
@@ -69,6 +72,42 @@ export class ReviewDriver {
 		const button = await waitFor("the review button", () => enabled(REVIEW));
 
 		button.click();
+	}
+
+	/** Opens the file finder from the review panel header. */
+	async openFileFinder(): Promise<void> {
+		const button = await waitFor("the comment-on-a-file button", () =>
+			enabled(COMMENT_ON_FILE),
+		);
+
+		button.click();
+	}
+
+	/** Types into the open finder, which narrows its list. */
+	async findFile(query: string): Promise<void> {
+		const field = await waitFor("the open file finder", () =>
+			document.querySelector<HTMLInputElement>(FINDER_INPUT),
+		);
+
+		field.value = query;
+		field.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	/** The paths the finder currently lists, best match first. */
+	finderRows(): string[] {
+		return [...document.querySelectorAll<HTMLElement>(FINDER_ROW)].map(
+			collapse,
+		);
+	}
+
+	/** Opens the finder's topmost row, which is the one enter would take. */
+	async openTopFinderRow(): Promise<void> {
+		const row = await waitFor("a finder row", () => {
+			const first = document.querySelector<HTMLButtonElement>(FINDER_ROW);
+			return first && !first.disabled ? first : null;
+		});
+
+		row.click();
 	}
 
 	/** The file each thread card is anchored to, topmost first. */

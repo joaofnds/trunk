@@ -5,12 +5,19 @@ const SHOW_FULL_FILE = 'button[title="Show full file"]';
 const SHOW_SIDE_BY_SIDE = 'button[title="Side-by-side view"]';
 const SHOW_INLINE = 'button[title="Inline view"]';
 const IGNORE_WHITESPACE = 'button[title="Ignore whitespace changes"]';
+const CONTEXT_LINE = ".diff-line-context .diff-line-content";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 
 /** The center diff pane's markdown affordance: the source/rendered toggle and
  *  the tinted blocks the rendered view shows. */
 export class DiffPaneDriver {
+	/** The content of every unchanged row in the pane, topmost first. A
+	 *  current-file view is all context, so this is how a test reads it. */
+	contextLines(): string[] {
+		return textsOf(CONTEXT_LINE);
+	}
+
 	/** Switches the pane from source to rendered markdown. */
 	async showRendered(): Promise<void> {
 		const button = await waitFor("the rendered-markdown toggle", () =>
