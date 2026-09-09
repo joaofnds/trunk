@@ -10,6 +10,7 @@ pub mod review_range;
 pub mod review_resolution;
 pub mod status;
 pub mod syntax;
+pub mod tracked_files;
 pub mod types;
 pub mod word_spans;
 pub mod workdir_snapshot;
