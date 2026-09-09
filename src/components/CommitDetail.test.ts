@@ -638,6 +638,23 @@ describe("CommitDetail", () => {
 			});
 		}
 
+		it("files a note composed here against the full commit oid, not the abbreviation", async () => {
+			renderWithThreads([]);
+
+			await fireEvent.click(screen.getByText("Add note"));
+			await fireEvent.input(
+				screen.getByPlaceholderText("Leave a note on this commit…"),
+				{ target: { value: "on the whole commit" } },
+			);
+			await fireEvent.click(screen.getByText("Save"));
+
+			expect(callArgs("add_commit_thread")).toEqual({
+				path: "/repo",
+				commitOid: detail.oid,
+				text: "on the whole commit",
+			});
+		});
+
 		it("submits a note reply via add_reply with the repo path", async () => {
 			renderWithThreads([note]);
 
