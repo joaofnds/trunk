@@ -257,8 +257,11 @@ Text edits never change state. Attribution is by channel: UI = human, CLI = agen
 
 **Stale marker** — an orthogonal, derived flag on a thread whose pinned content no
 longer occurs on the surface the thread targets (current-file → the pinned block is
-absent from the working-tree file; snapshot → superseded; commit-diff threads never
-go stale — the orphan classifier covers them). Presence alone decides it for a
+absent from the working-tree file; snapshot → superseded; any anchor → the object is
+no longer in the repository). A commit-diff thread never goes stale while its commit
+exists, and the orphan classifier covers it; once the commit is collected the excerpt
+is the only surviving copy of the code, and the thread reads stale like any other
+collected anchor. Presence alone decides it for a
 current-file thread: an edit elsewhere raises no marker, and neither does deleting
 the anchored occurrence while a byte-identical twin survives. Recomputed by the app
 on repo-changed events, persisted
@@ -272,8 +275,8 @@ to. One per kind per repo, reused while the tree is unchanged, and **superseded*
 when the tree changes and the next comment gesture mints a new one.
 
 **Snapshot pin** — the keepalive ref under `refs/trunk/review-snapshots/` that holds
-a snapshot against `git gc`. Without it the snapshot is collected and the comment
-anchored to it drops out of the panel as `CommitGone`.
+a snapshot against `git gc`. Without it the snapshot is collected, the comment
+anchored to it drops out of the panel as `CommitGone`, and it reads stale on the CLI.
 
 **Pin sweep** — what reclaims snapshot pins. It may only delete a pin for a
 snapshot a thread has *ever* anchored to and none anchors to now. A snapshot that

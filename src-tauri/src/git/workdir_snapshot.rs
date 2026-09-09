@@ -186,8 +186,11 @@ const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 /// `(stale)` marker on a thread about that commit, and nothing else, because
 /// the flag drives no write and no authority. TRUNK-193 carries the narrowing.
 ///
-/// A missing commit is not a snapshot: gc has collected it, and nothing about
-/// it can be recovered.
+/// A missing commit answers false, which reads as "a real commit" to a caller
+/// that treats every non-snapshot alike. The staleness classifier no longer
+/// relies on that: it checks the object exists before asking this, because a
+/// collected oid and a live commit need opposite staleness answers. A caller
+/// that must tell them apart makes the same check first.
 #[must_use]
 pub fn is_snapshot_commit(repo: &git2::Repository, oid: git2::Oid) -> bool {
     let Ok(commit) = repo.find_commit(oid) else {

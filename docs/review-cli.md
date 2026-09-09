@@ -52,15 +52,18 @@ trunk review watch [--repo <path>]
 - **show** — one review in full, as the same markdown document the app's
   Copy-as-markdown produces: threads, states, excerpts, replies. A thread whose
   heading ends `(stale)` was written against code the repository has moved past.
-  Two shapes reach that state. A comment on uncommitted work is stale once the
+  Three shapes reach that state. A comment on uncommitted work is stale once the
   user has edited that work again. A comment on a tracked file's current content
   is stale once the lines it pinned occur nowhere in that file, which a rename or
   a deletion reaches the same way an edit does; it clears again the moment the
   content returns, after a branch switch for instance. Deleting one of two
   byte-identical copies of the pinned lines raises no marker, because the comment
-  still describes text the file holds. In every case the excerpt is what the code
-  looked like when the comment was written, so the comment is still answerable;
-  what changed is that the file no longer reads that way.
+  still describes text the file holds. And a comment whose anchor commit is no
+  longer in the repository, collected by a `git gc` that reached it, is stale
+  whatever kind of commit it was: the excerpt is the only surviving copy of that
+  code, so nothing can be compared against it. In every case the excerpt is what
+  the code looked like when the comment was written, so the comment is still
+  answerable; what changed is that the file no longer reads that way.
 - **threads** — the review's threads as an index, one line each: id, state, the
   `(stale)` marker where the thread carries one, location (`file:start-end`, a
   commit-level thread's short oid, or `no target`), and the comment's first
