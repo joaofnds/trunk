@@ -4974,6 +4974,42 @@ fn a_current_file_thread_whose_file_was_deleted_is_stale() {
     );
 }
 
+/// The pin is a store row, so a fresh process reads it back on the same lines.
+/// Closing and reopening the store is what a restart is, from the thread's side.
+#[test]
+fn a_current_file_thread_survives_a_restart_on_the_same_lines() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    {
+        let store = reviewdb::open(ctx.data_dir()).unwrap();
+        submit_current_file_thread_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            "a.txt",
+            2,
+            2,
+            "look",
+            1_000,
+        )
+        .unwrap();
+    }
+
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let pin = only_thread(&store, &canonical)
+        .content_pin
+        .expect("the pin survives the reopen");
+    assert_eq!(
+        (pin.block.as_str(), pin.start_line, pin.end_line),
+        ("two", 2, 2),
+        "a restart must find the thread on the lines it was written against",
+    );
+}
+
 /// A rename leaves nothing at the pinned path, so it collapses to the same rule
 /// as a deletion: no content, no match, stale. No rename detection is needed.
 #[test]
