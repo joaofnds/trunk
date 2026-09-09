@@ -164,6 +164,17 @@ pub fn pin_range(
     }
 
     let block = lines[first - 1..last].join("\n");
+    // A selection of nothing but blank lines has no content to find, so the
+    // thread would read stale from the moment it was written, on a file nobody
+    // touched, and no edit could ever clear it. Refusing at the pin is the only
+    // place that can say so; by the time it is a row it is indistinguishable
+    // from a block the file has lost.
+    if block.trim().is_empty() {
+        return Err(TrunkError::new(
+            "invalid_range",
+            format!("{file_path} lines {start_line}..{end_line} hold nothing to pin"),
+        ));
+    }
     let ordinal = occurrences(&lines, &block)
         .iter()
         .position(|&start| start == first - 1)
@@ -527,6 +538,32 @@ mod block_tests {
         let text = "one\rtwo\rthree";
 
         assert_eq!(find_block(text, "two", 0), Some(2));
+    }
+
+    /// A one-line selection on a blank line yields an empty block. Without a
+    /// refusal the thread is stale the instant it is written, on a file nobody
+    /// touched, and nothing can ever clear it: an empty block occurs nowhere.
+    #[test]
+    fn pinning_a_blank_line_is_refused() {
+        let err = pin_range("one\n\nthree\n", "a.txt", 2, 2).expect_err("a blank pin");
+
+        assert_eq!(err.code, "invalid_range");
+    }
+
+    /// `["", ""].join("\n")` is `"\n"`, whose `.lines()` is one empty line, not
+    /// two. A two-blank-line pin would otherwise match any single blank line.
+    #[test]
+    fn pinning_two_blank_lines_is_refused() {
+        let err = pin_range("one\n\n\nfour\n", "a.txt", 2, 3).expect_err("a blank pin");
+
+        assert_eq!(err.code, "invalid_range");
+    }
+
+    #[test]
+    fn pinning_a_block_that_is_blank_only_at_its_edges_is_allowed() {
+        let pin = pin_range("one\n\ntwo\n", "a.txt", 1, 3).expect("real content is pinnable");
+
+        assert_eq!(pin.block, "one\n\ntwo");
     }
 
     #[test]
