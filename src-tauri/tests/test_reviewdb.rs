@@ -4974,6 +4974,77 @@ fn a_current_file_thread_whose_file_was_deleted_is_stale() {
     );
 }
 
+/// The pin copies the file's bytes into the store, as `pin_block` and as the
+/// excerpt the panel and the published document both render. A path the index
+/// does not hold as a regular file must never reach that read: a gitignored
+/// `.env` and `.git/config` both sit inside the repository root, so the escape
+/// guard alone does not refuse them.
+#[test]
+fn pinning_refuses_a_path_the_index_does_not_hold() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("secret.env"), "TOKEN=abc123").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    for path in ["secret.env", ".git/config"] {
+        let err = submit_current_file_thread_inner(
+            &store,
+            &canonical,
+            ctx.path(),
+            path,
+            1,
+            1,
+            "look",
+            1_000,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err.code, "not_found",
+            "{path} is not a tracked file and its bytes must not reach the store",
+        );
+    }
+}
+
+/// A symlink the index tracks points wherever it likes, and the read follows it.
+/// The index mode is what tells a regular file from one.
+#[test]
+fn pinning_refuses_a_tracked_symlink() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("secret.env"), "TOKEN=abc123").unwrap();
+    std::os::unix::fs::symlink("secret.env", ctx.repo_path().join("link")).unwrap();
+    let repo = git2::Repository::open(ctx.repo_path()).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("link")).unwrap();
+    index.write().unwrap();
+
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let err = submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "link",
+        1,
+        1,
+        "look",
+        1_000,
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        err.code, "not_found",
+        "a tracked symlink reads whatever it points at, so trackedness alone is not enough",
+    );
+}
+
 /// The pin is a store row, so a fresh process reads it back on the same lines.
 /// Closing and reopening the store is what a restart is, from the thread's side.
 #[test]
@@ -5125,10 +5196,12 @@ fn a_staleness_pass_that_moves_a_thread_announces_it() {
     );
 }
 
-/// The plan asks for the cost of one recompute pass over a repo carrying 50
-/// threads, because the pass runs on every repo-changed event and the watcher
-/// fires on `.git` writes too. Reported, not asserted: a threshold here would be
-/// a flaky test on a loaded machine, and the number is what the reader needs.
+/// The cost of one recompute pass over a repo carrying 50 threads, because the
+/// pass runs on every repo-changed event and the watcher fires on `.git` writes
+/// too. The duration is printed rather than asserted: any threshold loose enough
+/// not to flake on a loaded machine is too loose to catch a regression, so it
+/// would read as a guard without being one. What is asserted is that the pass
+/// really ran over the threads, so the number describes the work it claims to.
 #[test]
 fn a_fifty_thread_recompute_pass_is_reported() {
     use std::fmt::Write as _;
@@ -5163,7 +5236,7 @@ fn a_fifty_thread_recompute_pass_is_reported() {
 
     println!("recompute over 50 current-file threads: {elapsed:?}");
     assert!(
-        elapsed < std::time::Duration::from_secs(5),
-        "a pass this slow would stall the watcher outright: {elapsed:?}",
+        !only_thread(&store, &canonical).stale,
+        "the pass must have actually run over threads whose blocks are all present",
     );
 }

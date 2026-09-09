@@ -90,6 +90,22 @@ function commitLevelComment(
 	return aThread({ id, text, commit_oid: commitOid });
 }
 
+function currentFileComment(id: string, text: string): Thread {
+	return aThread({
+		id,
+		text,
+		anchor: null,
+		content_pin: {
+			file_path: "src/untouched.ts",
+			block: "const answer = 42;",
+			ordinal: 0,
+			start_line: 4,
+			end_line: 4,
+		},
+		cached_excerpt: "const answer = 42;",
+	});
+}
+
 function resolvable(id: string): CommentResolution {
 	return { id, resolvable: true, reason: null };
 }
@@ -205,6 +221,34 @@ describe("ReviewPanel", () => {
 
 		expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
 		expect(screen.getByText("bbbbbbb")).toBeInTheDocument();
+	});
+
+	it("gives a current-file comment its own section, not a blank commit group", async () => {
+		installReads({
+			commits,
+			comments: [
+				lineAnchoredComment("c1", COMMIT_A, "note on A"),
+				currentFileComment("cf", "this constant needs a name"),
+			],
+			resolutions: [resolvable("c1"), resolvable("cf")],
+		});
+		render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.getByText("src/untouched.ts:L4-L4")).toBeInTheDocument();
+		const shaLabels = screen
+			.queryAllByRole("button")
+			.map((b) => b.getAttribute("aria-label"))
+			.filter((l) => l?.startsWith("Copy SHA"));
+		expect(shaLabels).toEqual(["Copy SHA aaaaaaa", "Copy SHA bbbbbbb"]);
 	});
 
 	it("groups comments under their commit headers", async () => {

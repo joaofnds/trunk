@@ -109,6 +109,12 @@ function sortGroupComments(list: Thread[]): Thread[] {
 const groups = $derived.by<CommitGroup[]>(() => {
 	const byOid = new Map<string, Thread[]>();
 	for (const c of comments) {
+		// A current-file comment names no commit, so grouping it by oid puts it
+		// in a headerless group keyed by the empty string, whose "Add note"
+		// button then writes a commit thread with an empty oid. It gets its own
+		// section instead.
+		if (c.content_pin) continue;
+
 		const oid = commitOidForComment(c);
 		const list = byOid.get(oid) ?? [];
 		list.push(c);
@@ -149,6 +155,23 @@ const groups = $derived.by<CommitGroup[]>(() => {
 		(group) => !(group.isSnapshot && group.comments.length === 0),
 	);
 });
+
+// Comments on a file's own content, which belong to no commit. They render in
+// their own section rather than a commit group, and are sorted by file so a
+// reader scans one file's comments together.
+const currentFileComments = $derived(
+	comments
+		.filter((c) => c.content_pin)
+		.sort((a, b) => {
+			const byPath = (a.content_pin?.file_path ?? "").localeCompare(
+				b.content_pin?.file_path ?? "",
+			);
+			if (byPath !== 0) return byPath;
+			return (
+				(a.content_pin?.start_line ?? 0) - (b.content_pin?.start_line ?? 0)
+			);
+		}),
+);
 
 const hasAnyComment = $derived(comments.length > 0);
 
@@ -783,6 +806,32 @@ $effect(() => {
         </li>
       {/each}
     </ul>
+  {/if}
+
+  {#if currentFileComments.length > 0}
+    <div class="flex flex-col" style="gap: var(--space-1);">
+      <div class="text-xs" style="color: var(--color-text-muted); padding: 0 var(--space-1);">
+        On current file content
+      </div>
+      <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
+        {#each currentFileComments as comment (comment.id)}
+          <li>
+            <ThreadCard
+              thread={comment}
+              {repoPath}
+              onedit={(id, text) => saveEdit(id, text)}
+              ondelete={(id) => deleteComment(id)}
+              confirmDelete={true}
+              variant="panel"
+              onjump={onJump}
+              jumpable={false}
+              orphaned={isOrphan(comment)}
+              orphanLabel={orphanLabel(comment)}
+            />
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/if}
   </div>
 </div>
