@@ -18,6 +18,7 @@ pub mod replies;
 pub mod reviews;
 pub mod schema;
 pub mod snapshots;
+pub mod stale;
 pub mod threads;
 
 use crate::error::TrunkError;
