@@ -40,6 +40,26 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@tauri-apps/plugin-window-state", () => ({}));
 
+// Reads a rule's declarations straight out of the stylesheet Svelte injected.
+// getComputedStyle cannot stand in for this: jsdom resolves a padding written as a
+// var() to "0", so a rule asserted through it passes whatever the value really is.
+function cssRuleText(selector: string): string {
+	const scoped = new RegExp(`^\\${selector}(\\.svelte-[a-z0-9]+)?$`);
+
+	for (const sheet of Array.from(document.styleSheets)) {
+		for (const rule of Array.from(sheet.cssRules)) {
+			if (
+				rule instanceof CSSStyleRule &&
+				rule.selectorText.split(",").some((s) => scoped.test(s.trim()))
+			) {
+				return rule.cssText;
+			}
+		}
+	}
+
+	throw new Error(`no rule found for "${selector}"`);
+}
+
 // Capture context-menu { text -> action } callbacks so this suite can invoke the
 // exact callback a user triggers picking a menu entry — the only way the merge
 // handler (wired through a branch context menu) is reachable in jsdom.
@@ -957,6 +977,54 @@ describe("BranchSidebar ref visibility", () => {
 
 		const row = container.querySelector(".stash-row") as HTMLElement;
 		expect(getComputedStyle(row).height).toBe("var(--row-h)");
+	});
+
+	// The stash eye shares the sidebar's right column with the branch rows' and the
+	// section headers'. It holds that column by being flush with the row's own
+	// padding, taking no margin of its own, so a margin added here would push it out
+	// of line with every other eye. The rule text is read off the stylesheet because
+	// getComputedStyle collapses a var() padding to "0" in jsdom, as above.
+	it("keeps the stash eye flush with the row's --space-2 edge", async () => {
+		mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+			if (cmd === "list_refs") {
+				return Promise.resolve(
+					mockListRefs({
+						stashes: [
+							{
+								index: 0,
+								name: "WIP on main",
+								short_name: "stash@{0}",
+								oid: "abc123",
+								parent_oid: null,
+							},
+						],
+					}),
+				);
+			}
+			if (cmd === "prefs_get") {
+				return Promise.resolve(
+					prefsStore.get((args as { key: string })?.key) ?? null,
+				);
+			}
+			if (cmd === "prefs_set") {
+				prefsStore.set(
+					(args as { key: string }).key,
+					(args as { value: unknown }).value,
+				);
+				return Promise.resolve(undefined);
+			}
+			return Promise.resolve(undefined);
+		});
+
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await fireEvent.click(await screen.findByText("Stashes (1)"));
+		await screen.findByLabelText("Hide stash@{0}");
+
+		expect(cssRuleText(".stash-row")).toContain(
+			"padding: 0 var(--space-2) 0 var(--space-3)",
+		);
+		expect(cssRuleText(".stash-visibility-btn")).not.toContain("margin-right");
 	});
 
 	// TRUNK-128: onvisibilityresolved gates CommitGraph's first page load, so a stored-

@@ -273,6 +273,36 @@ describe("BranchRow keyboard reachability", () => {
 	});
 });
 
+// The eye lands on the shared --space-2 column only because three values cancel:
+// the row's own margin and padding push content in, and the eye's negative margin
+// pulls it back out by the same amount. Nothing here reads as an edge position, so
+// a change to any one of the three moves the eye and no other test notices. Both
+// are read off the style attribute because jsdom resolves a var() padding to "0".
+describe("BranchRow eye alignment", () => {
+	it("insets the row by --space-2 on the right", () => {
+		render(BranchRow, {
+			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+		});
+
+		const style = screen
+			.getByRole("button", { name: "topic" })
+			.getAttribute("style");
+
+		expect(style).toContain("margin: 0 var(--space-2)");
+		expect(style).toContain("padding: 0 var(--space-2)");
+	});
+
+	it("pulls the eye back out of that inset so it sits on the shared edge", () => {
+		render(BranchRow, {
+			props: { name: "topic", hidden: true, ontogglevisibility: vi.fn() },
+		});
+
+		expect(
+			screen.getByTestId("branch-row-visibility-btn").getAttribute("style"),
+		).toContain("margin-right: calc(-1 * var(--space-2))");
+	});
+});
+
 // The eye anchors to the right edge of the row container. No phantom slot is needed.
 describe("BranchRow trailing controls", () => {
 	it("renders the visibility toggle as the rightmost trailing control", () => {
