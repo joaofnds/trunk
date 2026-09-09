@@ -440,7 +440,11 @@ export interface Review {
 // Why a comment cannot be jumped to / no longer resolves against the repo.
 // Mirrors the Rust OrphanReason enum (PascalCase variant strings, no rename_all,
 // following the Source/Side convention above).
-export type OrphanReason = "CommitGone" | "FileGone" | "LineOutOfRange";
+export type OrphanReason =
+	| "CommitGone"
+	| "FileGone"
+	| "LineOutOfRange"
+	| "ContentGone";
 
 // Per-comment resolvability classification (mirrors the Rust CommentResolution
 // struct, snake_case-irrelevant single-word fields; reason is null when resolvable).

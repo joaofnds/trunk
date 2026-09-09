@@ -422,4 +422,7 @@ pub struct Comment {
     // Commit-level comment target (D-01, written in Plan 02). A missing field
     // maps to None automatically for Option, so no #[serde(default)] is needed.
     pub commit_oid: Option<String>,
+    // A current-file comment's target: the file's content rather than a commit.
+    #[serde(default)]
+    pub content_pin: Option<ContentPin>,
 }

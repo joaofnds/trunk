@@ -132,6 +132,16 @@ fn find_block(text: &str, block: &str, ordinal: u32) -> Option<u32> {
     u32::try_from(starts[index] + 1).ok()
 }
 
+/// Whether the block occurs anywhere in the file.
+///
+/// That is the whole staleness rule, and what the orphan classifier asks too.
+/// The ordinal plays no part: keying presence on it would mark a thread stale
+/// when an earlier twin is deleted.
+#[must_use]
+pub fn block_occurs(text: &str, block: &str) -> bool {
+    find_block(text, block, 0).is_some()
+}
+
 /// CRLF and lone CR both become LF, so a block pinned from one file's bytes
 /// matches the same content read back whatever its line endings are.
 fn normalize_endings(text: &str) -> String {

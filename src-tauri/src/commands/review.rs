@@ -1542,6 +1542,7 @@ fn as_comments(threads: Vec<threads::Thread>) -> Vec<crate::git::types::Comment>
             anchor: t.anchor,
             cached_excerpt: t.cached_excerpt,
             commit_oid: t.commit_oid,
+            content_pin: t.content_pin,
         })
         .collect()
 }

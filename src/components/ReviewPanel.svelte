@@ -74,6 +74,7 @@ const ORPHAN_LABEL: Record<OrphanReason, string> = {
 	CommitGone: "commit gone",
 	FileGone: "file gone",
 	LineOutOfRange: "line out of range",
+	ContentGone: "code gone",
 };
 
 // Resolution lookup by id (D-08): a comment is an orphan when its resolution

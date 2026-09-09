@@ -24,6 +24,9 @@ pub enum OrphanReason {
     FileGone,
     /// The anchor's line range falls outside the blob's line count.
     LineOutOfRange,
+    /// A current-file comment's pinned block occurs nowhere in the file. The
+    /// file itself is present: a missing one is `FileGone`.
+    ContentGone,
 }
 
 /// Per-comment resolvability (D-08).
@@ -91,16 +94,48 @@ pub(crate) fn classify_anchor(
     }
 }
 
+/// Classify a content pin against the working tree. The file must be readable
+/// and its pinned block must still occur in it; where it does not, the comment
+/// is an orphan even though nothing about the repository's history changed.
+fn classify_pin(
+    pin: &crate::git::types::ContentPin,
+    repo: &git2::Repository,
+) -> Result<(), OrphanReason> {
+    let bytes = crate::git::blob_reader::read_file_at_inner(
+        repo,
+        &pin.file_path,
+        &crate::git::blob_reader::RevSpec::WorkingTree,
+    )
+    .map_err(|_| OrphanReason::FileGone)?;
+    let text = String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?;
+
+    if crate::reviewdb::stale::block_occurs(&text, &pin.block) {
+        Ok(())
+    } else {
+        Err(OrphanReason::ContentGone)
+    }
+}
+
 /// Resolve every comment against the repo, returning exactly one `CommentResolution`
 /// per input (count in == count out) — never dropping or panicking (D-06/D-08).
 ///
-/// Commit-level comments (`anchor: None`) only need the commit to exist; line-anchored
-/// comments run the full side-aware bound check.
+/// A current-file comment is classified against the working-tree file its pin
+/// names. Commit-level comments (`anchor: None`) only need the commit to exist;
+/// line-anchored comments run the full side-aware bound check.
 #[must_use]
 pub fn resolve_all(comments: &[Comment], repo: &git2::Repository) -> Vec<CommentResolution> {
     comments
         .iter()
         .map(|c| {
+            if let Some(pin) = &c.content_pin {
+                let reason = classify_pin(pin, repo).err();
+                return CommentResolution {
+                    id: c.id.clone(),
+                    resolvable: reason.is_none(),
+                    reason,
+                };
+            }
+
             let reason = match (&c.anchor, &c.commit_oid) {
                 // Line-anchored: classify against the anchor's own commit/side/range.
                 (Some(anchor), _) => classify_anchor(anchor, repo).err(),
@@ -234,6 +269,7 @@ mod tests {
             }),
             cached_excerpt: Some("excerpt".to_string()),
             commit_oid: None,
+            content_pin: None,
         }
     }
 
@@ -245,6 +281,7 @@ mod tests {
             anchor: None,
             cached_excerpt: None,
             commit_oid: Some(commit_oid.to_string()),
+            content_pin: None,
         }
     }
 
@@ -436,5 +473,68 @@ mod tests {
             Some(OrphanReason::CommitGone),
             "a commit-level comment on a missing commit is CommitGone"
         );
+    }
+}
+
+#[cfg(test)]
+mod current_file_tests {
+    use super::*;
+    use crate::git::types::ContentPin;
+    use tempfile::TempDir;
+
+    fn a_repo_holding(path: &str, contents: &str) -> (TempDir, git2::Repository) {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        std::fs::write(dir.path().join(path), contents).unwrap();
+        (dir, repo)
+    }
+
+    fn a_thread_pinned_to(file_path: &str, block: &str) -> Comment {
+        Comment {
+            id: "t1".to_string(),
+            text: "look at this".to_string(),
+            anchor: None,
+            cached_excerpt: Some(block.to_string()),
+            commit_oid: None,
+            content_pin: Some(ContentPin {
+                file_path: file_path.to_string(),
+                block: block.to_string(),
+                ordinal: 0,
+                start_line: 1,
+                end_line: 1,
+            }),
+        }
+    }
+
+    #[test]
+    fn a_pinned_block_still_in_the_file_resolves() {
+        let (_dir, repo) = a_repo_holding("a.txt", "one\ntwo\nthree\n");
+
+        let resolved = resolve_all(&[a_thread_pinned_to("a.txt", "two")], &repo);
+
+        assert!(
+            resolved[0].resolvable,
+            "a current-file thread whose block is still there is not an orphan",
+        );
+    }
+
+    /// Without a working-tree arm this fell to the neither-anchor-nor-commit
+    /// case and every current-file thread wore a "commit gone" badge.
+    #[test]
+    fn a_pinned_block_gone_from_the_file_reports_content_gone() {
+        let (_dir, repo) = a_repo_holding("a.txt", "one\nthree\n");
+
+        let resolved = resolve_all(&[a_thread_pinned_to("a.txt", "two")], &repo);
+
+        assert_eq!(resolved[0].reason, Some(OrphanReason::ContentGone));
+    }
+
+    #[test]
+    fn a_pin_naming_a_file_that_is_gone_reports_file_gone() {
+        let (_dir, repo) = a_repo_holding("a.txt", "one\n");
+
+        let resolved = resolve_all(&[a_thread_pinned_to("absent.txt", "two")], &repo);
+
+        assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
     }
 }
