@@ -1304,7 +1304,14 @@ pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<Fil
 /// through. Trackedness alone is not enough either: a repository can track a
 /// symlink whose target is one of them, and reading it follows the link. So a
 /// path the index does not hold is refused, and so is one it holds as a link.
-fn is_readable_tracked_file(repo: &git2::Repository, file_path: &str) -> bool {
+/// Whether the index holds `file_path` as a regular file.
+///
+/// Containment inside the repository root is not enough on its own: every
+/// gitignored file and every `.git` internal is inside it. Trackedness is not
+/// enough either, because a repository can track a symlink pointing at one of
+/// those, and the read follows the link.
+#[must_use]
+pub fn is_readable_tracked_file(repo: &git2::Repository, file_path: &str) -> bool {
     let Ok(index) = repo.index() else {
         return false;
     };

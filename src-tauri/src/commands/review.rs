@@ -458,6 +458,18 @@ pub fn submit_current_file_thread_inner(
     now: i64,
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
+    // The pin copies the file's bytes into the store, as the block and as the
+    // excerpt the panel and the published document render, so the same guard
+    // `open_current_file` uses gates the write too. Containment inside the
+    // repository root would admit every gitignored file and every `.git`
+    // internal.
+    if !crate::commands::diff::is_readable_tracked_file(&repo, file_path) {
+        return Err(TrunkError::new(
+            "not_found",
+            format!("not a tracked file: {file_path}"),
+        ));
+    }
+
     let bytes = crate::git::blob_reader::read_file_at_inner(
         &repo,
         file_path,
