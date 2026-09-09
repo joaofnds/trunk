@@ -260,6 +260,7 @@ pub fn configure<R: tauri::Runtime>(
         commands::review::delete_reply,
         commands::review::set_thread_state,
         commands::review::list_threads,
+        commands::review::refresh_thread_staleness,
         commands::review::list_reviews,
         commands::review::create_review,
         commands::review::get_active_review,

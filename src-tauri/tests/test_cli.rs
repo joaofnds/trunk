@@ -1453,8 +1453,6 @@ fn watch_stays_silent_for_composing_changes_and_drafts() {
     );
 }
 
-/// `--json` exists so a harness never refetches and rediffs: each line is one
-/// self-contained event carrying the change's full data.
 /// The `thread_stale_changed` event was unreachable until something computed
 /// the flag: nothing wrote `stale`, so no poll could ever see it differ.
 #[test]
@@ -1521,6 +1519,8 @@ fn watch_json_reports_a_thread_going_stale() {
     assert_eq!(event["stale"], true);
 }
 
+/// `--json` exists so a harness never refetches and rediffs: each line is one
+/// self-contained event carrying the change's full data.
 #[test]
 fn watch_json_streams_the_events_full_data() {
     let ctx = TestContext::builder()

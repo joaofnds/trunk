@@ -4504,6 +4504,9 @@ fn the_decision_sees_the_reconciled_record() {
     );
 }
 
+/// The production sequence exactly: the app advances `repo_snapshots` only when
+/// a comment is submitted, so the recompute must decide against the repository
+/// as it stands rather than against that pointer.
 #[test]
 fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
     let ctx = TestContext::builder()
@@ -4529,14 +4532,13 @@ fn a_thread_on_a_superseded_snapshot_goes_stale_when_the_file_changes() {
     submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
 
     std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
-    ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 2_000)
-        .unwrap();
     let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
     assert_eq!(changed, 1, "the superseded thread must change value");
     assert!(
         only_thread(&store, &canonical).stale,
-        "a comment on working-tree code the user has since edited is stale",
+        "a comment on working-tree code the user has since edited is stale, and no \
+         gesture advanced the stored snapshot pointer in between",
     );
 }
 
@@ -4620,4 +4622,73 @@ fn only_thread(store: &reviewdb::Store, canonical: &std::path::Path) -> reviewdb
             Ok(listed.remove(0))
         })
         .unwrap()
+}
+
+#[test]
+fn a_staleness_pass_that_changes_nothing_leaves_the_revision_alone() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut request = submission("still true");
+    request.anchor = Some(Anchor {
+        commit_oid: snapshot,
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+    let before = store.read(reviewdb::revision).unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(
+        before,
+        store.read(reviewdb::revision).unwrap(),
+        "the watcher fires on .git writes too, so a pass that moved no thread must not \
+         make every window refetch every thread",
+    );
+}
+
+#[test]
+fn a_staleness_pass_that_moves_a_thread_announces_it() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut request = submission("this line is wrong");
+    request.anchor = Some(Anchor {
+        commit_oid: snapshot,
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited again").unwrap();
+    let before = store.read(reviewdb::revision).unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        store.read(reviewdb::revision).unwrap() > before,
+        "a thread that went stale must reach the panel and the CLI watcher",
+    );
 }

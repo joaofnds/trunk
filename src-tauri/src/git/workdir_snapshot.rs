@@ -169,9 +169,8 @@ fn snapshot_signature() -> Result<git2::Signature<'static>, TrunkError> {
     )?)
 }
 
-/// The author name and address `snapshot` stamps on every snapshot commit.
-/// Nothing but this function writes them, which is what lets `is_snapshot_commit`
-/// read them back as proof of origin.
+/// The author name and address `snapshot` stamps on every snapshot commit, and
+/// what `is_snapshot_commit` reads back.
 const SNAPSHOT_AUTHOR_NAME: &str = "Trunk";
 const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 
@@ -180,9 +179,12 @@ const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 /// Read from the commit itself, because neither store table can answer it: the
 /// `snapshot_pins` row for an oid is written for whatever a thread anchors to,
 /// real commits included, and the keepalive refs inherit that same over-reach
-/// through the submit path's pin repair. The author is proof of origin —
-/// `snapshot_signature` is the only writer of it, and a user's own commit
-/// carries their identity and the clock.
+/// through the submit path's pin repair.
+///
+/// This is a heuristic, not proof. Git lets a commit claim any author, so a
+/// commit in a fetched repository can carry this one; the cost is a wrong
+/// `(stale)` marker on a thread about that commit, and nothing else, because
+/// the flag drives no write and no authority. TRUNK-193 carries the narrowing.
 ///
 /// A missing commit is not a snapshot: gc has collected it, and nothing about
 /// it can be recovered.

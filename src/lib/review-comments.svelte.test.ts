@@ -9,24 +9,26 @@ import type { Review, SessionCommit, Thread } from "./types";
 // TrunkError-parsing path stays live.
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-// Capture the rune's reviews-changed callback so tests can simulate a cross-tab
-// emit; the real IPC core is undefined under jsdom.
-let reviewsChangedHandler:
-	| ((event: { payload: string | null }) => void)
-	| null = null;
+// Capture the rune's event callbacks by name so tests can simulate a cross-tab
+// emit or a filesystem change; the real IPC core is undefined under jsdom.
+const handlers = new Map<string, (event: { payload: string | null }) => void>();
 vi.mock("@tauri-apps/api/event", () => ({
 	listen: vi.fn(
-		(_event: string, cb: (event: { payload: string | null }) => void) => {
-			reviewsChangedHandler = cb;
+		(name: string, cb: (event: { payload: string | null }) => void) => {
+			handlers.set(name, cb);
 			return Promise.resolve(() => {
-				reviewsChangedHandler = null;
+				handlers.delete(name);
 			});
 		},
 	),
 }));
 
 function fireReviewsChanged(payload: string | null): void {
-	reviewsChangedHandler?.({ payload });
+	handlers.get("reviews-changed")?.({ payload });
+}
+
+function fireRepoChanged(payload: string): void {
+	handlers.get("repo-changed")?.({ payload });
 }
 
 async function flush() {
@@ -90,7 +92,7 @@ function aPopulatedStore(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	reviewsChangedHandler = null;
+	handlers.clear();
 });
 
 describe("createReviewComments — refresh", () => {
@@ -277,6 +279,39 @@ describe("createReviewComments — reviews-changed listener", () => {
 		await flush();
 
 		expect(manager.revision).toBe(before);
+		manager.destroy();
+	});
+});
+
+describe("createReviewComments — repo-changed listener", () => {
+	it("recomputes staleness when this repo's files change", async () => {
+		aPopulatedStore({ refresh_thread_staleness: 0 });
+		const manager = createReviewComments("/repo");
+		await flush();
+		mockInvoke.mockClear();
+
+		fireRepoChanged("/repo");
+		await flush();
+
+		expect(mockInvoke).toHaveBeenCalledWith("refresh_thread_staleness", {
+			path: "/repo",
+		});
+		manager.destroy();
+	});
+
+	it("ignores a change in another repo", async () => {
+		aPopulatedStore({ refresh_thread_staleness: 0 });
+		const manager = createReviewComments("/repo");
+		await flush();
+		mockInvoke.mockClear();
+
+		fireRepoChanged("/somewhere-else");
+		await flush();
+
+		expect(mockInvoke).not.toHaveBeenCalledWith(
+			"refresh_thread_staleness",
+			expect.anything(),
+		);
 		manager.destroy();
 	});
 });

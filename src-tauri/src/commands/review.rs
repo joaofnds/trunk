@@ -718,6 +718,41 @@ pub async fn list_threads<R: Runtime>(
     .await
 }
 
+/// Recompute this repo's thread staleness, announcing the result only when a
+/// thread's value actually moved.
+///
+/// The frontend calls this from its own `repo-changed` handler. Nothing on the
+/// Rust side consumes that event, and the two existing seams are both wrong for
+/// it: `list_threads` is never reached by a filesystem change, and `sweep_once`
+/// runs at most once per process, so a recompute built to its shape would
+/// freeze the flag at whatever it was when the app started.
+///
+/// # Errors
+///
+/// Returns the inner error as JSON, which is what the frontend parses, or
+/// `spawn_error` when the blocking task cannot be joined.
+///
+/// # Panics
+///
+/// Panics when one of the shared state locks it takes is poisoned.
+#[tauri::command]
+pub async fn refresh_thread_staleness<R: Runtime>(
+    path: String,
+    state: State<'_, RepoState>,
+    store: State<'_, ReviewStoreState>,
+    app: AppHandle<R>,
+) -> Result<usize, String> {
+    let (canonical, store) = prepare(&path, &state, &store, &app).await?;
+
+    let target = canonical.clone();
+    let changed = blocking_store(move || recompute_staleness(&store, &target, &path)).await?;
+    if changed > 0 {
+        emit_reviews_changed(&app, &canonical);
+    }
+
+    Ok(changed)
+}
+
 // ── Reviews ──────────────────────────────────────────────────────────────────
 
 /// # Errors
@@ -1267,35 +1302,53 @@ pub fn ensure_review_snapshot_inner(
     Ok(oid)
 }
 
-/// Recompute every thread's `stale` flag against the repo's current snapshots,
+/// Recompute every thread's `stale` flag against the repo as it stands now,
 /// returning how many rows changed.
 ///
-/// The repository supplies the discriminator the store cannot: a snapshot
-/// commit carries the author `is_snapshot_commit` reads, and a thread naming any
-/// other oid is anchored to a real commit and never goes stale.
+/// Staleness is decided against the working tree and index as they are at this
+/// instant, not against `repo_snapshots`. That pointer moves only when a comment
+/// is submitted (`ensure_review_snapshot_inner` is its only writer, and
+/// `DiffPanel` calls it on submit alone), so a recompute reading it would
+/// compare a thread's snapshot against itself and never find one superseded —
+/// which is the whole event this runs on.
 ///
-/// A pass that changes nothing stays silent. This runs on every filesystem
-/// event, and the watcher fires on `.git` writes too, so announcing an
-/// unchanged pass would refetch every thread in the panel whenever anything at
-/// all touched the repository.
+/// A snapshot commit's tree is the tree it captured, so a thread is current
+/// exactly when its commit's tree still equals one of the two trees the repo
+/// would capture now. Both are computed without writing: `workdir_tree_oid`
+/// builds a throwaway index and `index_tree_oid` writes a tree object, and
+/// neither persists `.git/index`. Nothing on this path may write the
+/// repository.
 ///
 /// # Errors
 ///
-/// Returns the git error when the repository will not open, and whatever the
-/// store returns when the write fails.
+/// Returns the git error when the repository will not open or its trees will
+/// not build, and whatever the store returns when the write fails.
 pub fn recompute_staleness(
     store: &Store,
     canonical: &Path,
     repo_path: &str,
 ) -> Result<usize, TrunkError> {
-    use crate::git::workdir_snapshot::is_snapshot_commit;
+    use crate::git::workdir_snapshot::{index_tree_oid, is_snapshot_commit, workdir_tree_oid};
+    use crate::reviewdb::stale::SnapshotStanding;
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let is_snapshot =
-        |oid: &str| git2::Oid::from_str(oid).is_ok_and(|parsed| is_snapshot_commit(&repo, parsed));
+    let current = [workdir_tree_oid(&repo)?, index_tree_oid(&repo)?];
+
+    let is_current_snapshot = |oid: &str| {
+        let Ok(parsed) = git2::Oid::from_str(oid) else {
+            return SnapshotStanding::NotASnapshot;
+        };
+        if !is_snapshot_commit(&repo, parsed) {
+            return SnapshotStanding::NotASnapshot;
+        }
+        match repo.find_commit(parsed) {
+            Ok(commit) if current.contains(&commit.tree_id()) => SnapshotStanding::Current,
+            _ => SnapshotStanding::Superseded,
+        }
+    };
 
     store.write_if(
-        |tx| crate::reviewdb::stale::recompute(tx, canonical, &is_snapshot),
+        |tx| crate::reviewdb::stale::recompute(tx, canonical, &is_current_snapshot),
         |changed| *changed > 0,
     )
 }

@@ -1,23 +1,36 @@
 //! Whether a thread still describes the code it was written against.
 //!
 //! Only snapshot-anchored threads can go stale today: a working-tree or index
-//! comment is written against a snapshot commit, and the repo moves on. The
-//! rule is a comparison, not a search — the thread's `commit_oid` against the
-//! repo's current pair in `repo_snapshots`.
+//! comment is written against a snapshot commit, and the repo moves on.
 //!
-//! Telling a snapshot thread from a commit-diff one is the whole difficulty.
-//! Both persist as `anchor_kind = 'diff'` carrying a `commit_oid`, and no store
-//! table separates them: `pins::mark_anchored` writes a `snapshot_pins` row for
-//! whatever oid a thread names, real commits included, and the submit path's pin
-//! repair then gives that same oid a keepalive ref. Only the commit itself
-//! answers it, which is why the caller passes the test in rather than a set of
-//! oids.
+//! Two things this module deliberately does not decide. Whether an oid is a
+//! snapshot at all, because no store table can answer it: `pins::mark_anchored`
+//! writes a `snapshot_pins` row for whatever oid a thread names, real commits
+//! included, and the submit path's pin repair then gives that same oid a
+//! keepalive ref. And whether a snapshot is still current, because that is a
+//! question about the repository as it stands now, not about anything the store
+//! recorded. The caller answers both, and passes in the verdict.
+//!
+//! `repo_snapshots` is the wrong yardstick for the second question and reading
+//! it here was a defect: it moves only when a comment is submitted, so it names
+//! the very snapshot the thread anchors to, and no thread would ever read as
+//! superseded.
 
 use super::{repo_key, sqlite_error};
 use crate::error::TrunkError;
 use rusqlite::Connection;
-use std::collections::HashSet;
 use std::path::Path;
+
+/// Where a thread's anchor oid stands against the repository right now.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum SnapshotStanding {
+    /// A snapshot capturing what the repo would capture now.
+    Current,
+    /// A snapshot of a state the repo has moved past.
+    Superseded,
+    /// A real commit, which never goes stale, or an oid gc has collected.
+    NotASnapshot,
+}
 
 /// Recompute `stale` for every thread of `repo_path`, returning how many rows
 /// changed value.
@@ -32,16 +45,13 @@ use std::path::Path;
 pub fn recompute(
     conn: &Connection,
     repo_path: &Path,
-    is_snapshot: &impl Fn(&str) -> bool,
+    standing: &impl Fn(&str) -> SnapshotStanding,
 ) -> Result<usize, TrunkError> {
-    let current = super::snapshots::get(conn, repo_path)?;
-    let live: HashSet<String> = current.oids().into_iter().collect();
-
     let mut changed = 0;
     for (id, commit_oid, was_stale) in rows(conn, repo_path)? {
         let is_stale = commit_oid
             .as_deref()
-            .is_some_and(|oid| is_snapshot(oid) && !live.contains(oid));
+            .is_some_and(|oid| standing(oid) == SnapshotStanding::Superseded);
         if is_stale == was_stale {
             continue;
         }
@@ -84,8 +94,8 @@ fn rows(
 mod tests {
     use super::*;
     use crate::git::types::{Anchor, Side, Source};
-    use crate::git::workdir_snapshot::SnapshotKind;
-    use crate::reviewdb::{Store, open, reviews, snapshots, threads};
+    use crate::reviewdb::{Store, open, reviews, threads};
+    use std::collections::HashSet;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -139,29 +149,37 @@ mod tests {
             != 0
     }
 
-    /// The caller's "is this oid a snapshot this repo minted" test, as a list
-    /// the test can read. Production reads the commit itself.
-    fn snapshots_of(oids: &[&str]) -> impl Fn(&str) -> bool {
-        let known: HashSet<String> = oids.iter().map(|o| (*o).to_string()).collect();
-        move |oid: &str| known.contains(oid)
+    /// The caller's verdict, as two lists the test can read: the snapshot the
+    /// repo would capture now, and the ones it has moved past. Production works
+    /// this out from the repository.
+    fn standing_where(current: &str, superseded: &[&str]) -> impl Fn(&str) -> SnapshotStanding {
+        let current = current.to_string();
+        let superseded: HashSet<String> = superseded.iter().map(|o| (*o).to_string()).collect();
+
+        move |oid: &str| {
+            if oid == current {
+                SnapshotStanding::Current
+            } else if superseded.contains(oid) {
+                SnapshotStanding::Superseded
+            } else {
+                SnapshotStanding::NotASnapshot
+            }
+        }
     }
 
     #[test]
     fn a_superseded_snapshot_thread_is_stale() {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "OLDSNAP");
-        store
-            .write(|tx| snapshots::set(tx, &repo_path(), SnapshotKind::Workdir, "NEWSNAP", 0))
-            .unwrap();
 
         let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &snapshots_of(&["OLDSNAP", "NEWSNAP"])))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &["OLDSNAP"])))
             .unwrap();
 
         assert_eq!(changed, 1, "the superseded thread's value must change");
         assert!(
             staleness_of(&store, &id),
-            "a thread anchored to a superseded snapshot is stale",
+            "a thread anchored to a snapshot the repo has moved past is stale",
         );
     }
 
@@ -169,17 +187,14 @@ mod tests {
     fn a_current_snapshot_thread_is_not_stale() {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "NEWSNAP");
-        store
-            .write(|tx| snapshots::set(tx, &repo_path(), SnapshotKind::Workdir, "NEWSNAP", 0))
-            .unwrap();
 
         store
-            .write(|tx| recompute(tx, &repo_path(), &snapshots_of(&["NEWSNAP"])))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &[])))
             .unwrap();
 
         assert!(
             !staleness_of(&store, &id),
-            "a thread anchored to the repo's current snapshot is not stale",
+            "a thread anchored to what the repo would capture now is not stale",
         );
     }
 
@@ -187,17 +202,15 @@ mod tests {
     fn a_commit_diff_thread_is_never_stale() {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "REALCOMMIT");
-        store
-            .write(|tx| snapshots::set(tx, &repo_path(), SnapshotKind::Workdir, "NEWSNAP", 0))
-            .unwrap();
 
         store
-            .write(|tx| recompute(tx, &repo_path(), &snapshots_of(&["NEWSNAP"])))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("NEWSNAP", &["OLDSNAP"])))
             .unwrap();
 
         assert!(
             !staleness_of(&store, &id),
-            "an oid this repo never handed out as a snapshot is a real commit, and a commit-diff thread never goes stale",
+            "an oid that is no snapshot of this repo is a real commit, and a commit-diff \
+             thread never goes stale",
         );
     }
 
@@ -205,16 +218,13 @@ mod tests {
     fn a_pass_that_changes_nothing_reports_zero() {
         let (_dir, store) = store();
         thread_anchored_to(&store, "OLDSNAP");
+        let standing = standing_where("NEWSNAP", &["OLDSNAP"]);
         store
-            .write(|tx| snapshots::set(tx, &repo_path(), SnapshotKind::Workdir, "NEWSNAP", 0))
-            .unwrap();
-        let pins = snapshots_of(&["OLDSNAP", "NEWSNAP"]);
-        store
-            .write(|tx| recompute(tx, &repo_path(), &pins))
+            .write(|tx| recompute(tx, &repo_path(), &standing))
             .unwrap();
 
         let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &pins))
+            .write(|tx| recompute(tx, &repo_path(), &standing))
             .unwrap();
 
         assert_eq!(
@@ -228,18 +238,15 @@ mod tests {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "OLDSNAP");
         let other = PathBuf::from("/other-repo");
-        store
-            .write(|tx| snapshots::set(tx, &other, SnapshotKind::Workdir, "NEWSNAP", 0))
-            .unwrap();
 
         let changed = store
-            .write(|tx| recompute(tx, &other, &snapshots_of(&["OLDSNAP", "NEWSNAP"])))
+            .write(|tx| recompute(tx, &other, &standing_where("NEWSNAP", &["OLDSNAP"])))
             .unwrap();
 
         assert_eq!(changed, 0, "one database holds every repo");
         assert!(
             !staleness_of(&store, &id),
-            "another repo's pass must not touch this repo's threads"
+            "another repo's pass must not touch this repo's threads",
         );
     }
 
@@ -247,25 +254,18 @@ mod tests {
     fn a_stale_thread_clears_when_its_snapshot_is_current_again() {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "SNAPA");
-        let pins = snapshots_of(&["SNAPA", "SNAPB"]);
         store
-            .write(|tx| snapshots::set(tx, &repo_path(), SnapshotKind::Workdir, "SNAPB", 0))
-            .unwrap();
-        store
-            .write(|tx| recompute(tx, &repo_path(), &pins))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("SNAPB", &["SNAPA"])))
             .unwrap();
 
-        store
-            .write(|tx| snapshots::set(tx, &repo_path(), SnapshotKind::Workdir, "SNAPA", 0))
-            .unwrap();
         let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &pins))
+            .write(|tx| recompute(tx, &repo_path(), &standing_where("SNAPA", &["SNAPB"])))
             .unwrap();
 
         assert_eq!(changed, 1);
         assert!(
             !staleness_of(&store, &id),
-            "reverting the working tree hands the same snapshot oid out again, and the marker clears",
+            "reverting the working tree captures the same tree again, and the marker clears",
         );
     }
 }

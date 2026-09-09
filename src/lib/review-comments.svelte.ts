@@ -149,18 +149,37 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	// has reported it, fail closed so cross-repo events during the cold-start
 	// window don't trigger a refresh. The `cancelled` flag disposes a listener
 	// the promise delivers after destroy().
-	let unlisten: (() => void) | undefined;
+	const unlisteners: (() => void)[] = [];
 	let cancelled = false;
+	function subscribe(promise: Promise<() => void>): void {
+		promise.then((fn) => {
+			if (cancelled) fn();
+			else unlisteners.push(fn);
+		});
+	}
+
 	// A string payload is a per-repo emit; a payload-free event is the store
 	// poll announcing a foreign commit it can't attribute — refresh ours.
-	listen<string | null>("reviews-changed", (event) => {
-		if (!canonicalPath) return;
-		if (event.payload != null && event.payload !== canonicalPath) return;
-		refresh().catch(() => {});
-	}).then((fn) => {
-		if (cancelled) fn();
-		else unlisten = fn;
-	});
+	subscribe(
+		listen<string | null>("reviews-changed", (event) => {
+			if (!canonicalPath) return;
+			if (event.payload != null && event.payload !== canonicalPath) return;
+			refresh().catch(() => {});
+		}),
+	);
+
+	// A file changed, so a comment written against a superseded snapshot may
+	// have gone stale. The backend decides and stays silent unless a thread
+	// actually moved; when one did, its own reviews-changed brings the new
+	// rows back through the listener above.
+	subscribe(
+		listen<string>("repo-changed", (event) => {
+			if (event.payload !== repoPath) return;
+			safeInvoke("refresh_thread_staleness", { path: repoPath }).catch(
+				() => {},
+			);
+		}),
+	);
 
 	// Retried on every refresh, not resolved once: a single rejection would
 	// otherwise leave the filter failing closed for the rest of the tab's life,
@@ -218,7 +237,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		refresh,
 		destroy() {
 			cancelled = true;
-			unlisten?.();
+			for (const unlisten of unlisteners) unlisten();
 		},
 	};
 }
