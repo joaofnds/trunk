@@ -4784,6 +4784,64 @@ fn a_commit_diff_thread_survives_a_staleness_pass() {
     );
 }
 
+/// The excerpt is the only surviving copy of the code once the anchor object is
+/// collected, so the comment cannot be checked against anything. A reader told
+/// the thread is fresh is told the dangerous falsehood.
+#[test]
+fn a_thread_whose_anchor_object_is_collected_is_stale() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Workdir, 1_000)
+            .unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut request = submission("this line is wrong");
+    request.anchor = Some(Anchor {
+        commit_oid: snapshot.clone(),
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
+
+    collect_the_object(&ctx, &snapshot);
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(
+        only_thread(&store, &canonical).stale,
+        "a thread whose anchor snapshot is unrecoverable is maximally stale",
+    );
+}
+
+/// An outside actor's `git gc`: drop the keepalive ref Trunk holds the snapshot
+/// with, then prune, and assert the object really is unreachable — a gc that
+/// kept it would make the test vacuous.
+fn collect_the_object(ctx: &TestContext, oid: &str) {
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let parsed = git2::Oid::from_str(oid).unwrap();
+    trunk_lib::git::workdir_snapshot::prune_snapshot_ref(&repo, parsed).unwrap();
+
+    let gc = std::process::Command::new("git")
+        .args(["gc", "--prune=now"])
+        .current_dir(ctx.path())
+        .output()
+        .unwrap();
+    assert!(gc.status.success(), "git gc failed: {gc:?}");
+
+    let fresh = git2::Repository::open(ctx.path()).unwrap();
+    assert!(
+        fresh.find_commit(parsed).is_err(),
+        "the test needs the object gone, and gc kept {oid}",
+    );
+}
+
 /// A repo holding `file` at `path`, with a current-file thread pinned to
 /// `block` at occurrence `ordinal`. Returns the context and the store.
 fn a_repo_with_a_pinned_block(

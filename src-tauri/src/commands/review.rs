@@ -1446,12 +1446,23 @@ pub fn recompute_staleness(
         let Ok(parsed) = git2::Oid::from_str(oid) else {
             return SnapshotStanding::NotASnapshot;
         };
+
+        // Existence comes first, and the order is what separates the two
+        // meanings `NotASnapshot` used to carry. An oid this repo cannot
+        // resolve to a commit cannot be asked what its author was, so
+        // `is_snapshot_commit` would answer false for it and a collected
+        // snapshot would read as a real commit, which never goes stale.
+        let Ok(commit) = repo.find_commit(parsed) else {
+            return SnapshotStanding::Collected;
+        };
         if !is_snapshot_commit(&repo, parsed) {
             return SnapshotStanding::NotASnapshot;
         }
-        match repo.find_commit(parsed) {
-            Ok(commit) if current.contains(&commit.tree_id()) => SnapshotStanding::Current,
-            _ => SnapshotStanding::Superseded,
+
+        if current.contains(&commit.tree_id()) {
+            SnapshotStanding::Current
+        } else {
+            SnapshotStanding::Superseded
         }
     };
 

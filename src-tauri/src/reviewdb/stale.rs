@@ -32,7 +32,11 @@ pub enum SnapshotStanding {
     Current,
     /// A snapshot of a state the repo has moved past.
     Superseded,
-    /// A real commit, which never goes stale, or an oid gc has collected.
+    /// An oid this repository can no longer resolve to a commit, because gc has
+    /// collected it. The code the thread was written against is unrecoverable,
+    /// so this is the most stale a thread can be.
+    Collected,
+    /// A real commit, which never goes stale.
     NotASnapshot,
 }
 
@@ -59,10 +63,12 @@ pub fn recompute(
         });
         let is_stale = match resolved {
             Some(found) => found.is_none(),
-            None => row
-                .commit_oid
-                .as_deref()
-                .is_some_and(|oid| standing(oid) == SnapshotStanding::Superseded),
+            None => row.commit_oid.as_deref().is_some_and(|oid| {
+                matches!(
+                    standing(oid),
+                    SnapshotStanding::Superseded | SnapshotStanding::Collected
+                )
+            }),
         };
         let resolved_line = resolved.flatten();
         if is_stale == row.was_stale && resolved_line == row.resolved_start_line {
