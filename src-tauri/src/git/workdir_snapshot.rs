@@ -186,16 +186,14 @@ const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 /// `(stale)` marker on a thread about that commit, and nothing else, because
 /// the flag drives no write and no authority. TRUNK-193 carries the narrowing.
 ///
-/// A missing commit answers false, which reads as "a real commit" to a caller
-/// that treats every non-snapshot alike. The staleness classifier no longer
-/// relies on that: it checks the object exists before asking this, because a
-/// collected oid and a live commit need opposite staleness answers. A caller
-/// that must tell them apart makes the same check first.
+/// Takes the resolved commit rather than an oid, so an oid this repository does
+/// not hold cannot be asked this question at all. It used to take an oid and
+/// answer false for a missing one, which a caller treating every non-snapshot
+/// alike read as "a real commit, which never goes stale" — the collected-anchor
+/// defect. The caller must resolve the oid first, and there is no longer a way
+/// to forget.
 #[must_use]
-pub fn is_snapshot_commit(repo: &git2::Repository, oid: git2::Oid) -> bool {
-    let Ok(commit) = repo.find_commit(oid) else {
-        return false;
-    };
+pub fn is_snapshot_commit(commit: &git2::Commit<'_>) -> bool {
     let author = commit.author();
 
     author.email() == Ok(SNAPSHOT_AUTHOR_EMAIL)
@@ -593,26 +591,18 @@ mod tests {
         let (_dir, repo) = repo_with_initial_commit();
         let oid = snapshot_working_tree(&repo).unwrap();
 
-        assert!(is_snapshot_commit(&repo, oid));
+        assert!(is_snapshot_commit(&repo.find_commit(oid).unwrap()));
     }
 
     #[test]
     fn a_users_own_commit_is_not_a_snapshot() {
         let (_dir, repo) = repo_with_initial_commit();
-        let head = repo.head().unwrap().peel_to_commit().unwrap().id();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
 
         assert!(
-            !is_snapshot_commit(&repo, head),
+            !is_snapshot_commit(&head),
             "a real commit must never be read as a snapshot, or every comment on one \
              would go stale the moment the working tree moved",
         );
-    }
-
-    #[test]
-    fn a_collected_commit_is_not_a_snapshot() {
-        let (_dir, repo) = repo_with_initial_commit();
-        let absent = git2::Oid::from_str("0123456789012345678901234567890123456789").unwrap();
-
-        assert!(!is_snapshot_commit(&repo, absent));
     }
 }

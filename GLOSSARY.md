@@ -257,8 +257,8 @@ Text edits never change state. Attribution is by channel: UI = human, CLI = agen
 
 **Stale marker** — an orthogonal, derived flag on a thread whose pinned content no
 longer occurs on the surface the thread targets (current-file → the pinned block is
-absent from the working-tree file; snapshot → superseded; any anchor → the object is
-no longer in the repository). A commit-diff thread never goes stale while its commit
+absent from the working-tree file; snapshot → superseded; any anchor oid → the
+object is no longer in the repository). A commit-diff thread never goes stale while its commit
 exists, and the orphan classifier covers it; once the commit is collected the excerpt
 is the only surviving copy of the code, and the thread reads stale like any other
 collected anchor. Presence alone decides it for a

@@ -63,7 +63,10 @@ trunk review watch [--repo <path>]
   whatever kind of commit it was: the excerpt is the only surviving copy of that
   code, so nothing can be compared against it. In every case the excerpt is what
   the code looked like when the comment was written, so the comment is still
-  answerable; what changed is that the file no longer reads that way.
+  answerable; what changed is that the repository no longer holds that code
+  where the comment pointed. For the first two shapes that means the file reads
+  differently; for a collected anchor the file may be untouched and the commit
+  simply gone.
 - **threads** — the review's threads as an index, one line each: id, state, the
   `(stale)` marker where the thread carries one, location (`file:start-end`, a
   commit-level thread's short oid, or `no target`), and the comment's first

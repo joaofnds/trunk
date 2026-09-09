@@ -1427,6 +1427,10 @@ pub fn ensure_review_snapshot_inner(
 /// neither persists `.git/index`. Nothing on this path may write the
 /// repository.
 ///
+/// An anchor oid the repository cannot resolve to a commit is stale whatever
+/// kind of commit it was, because the code it describes is unreachable and the
+/// thread's excerpt is the only surviving copy.
+///
 /// # Errors
 ///
 /// Returns the git error when the repository will not open or its trees will
@@ -1442,20 +1446,16 @@ pub fn recompute_staleness(
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let current = [workdir_tree_oid(&repo)?, index_tree_oid(&repo)?];
 
-    let is_current_snapshot = |oid: &str| {
+    let standing_of = |oid: &str| {
         let Ok(parsed) = git2::Oid::from_str(oid) else {
             return SnapshotStanding::NotASnapshot;
         };
 
-        // Existence comes first, and the order is what separates the two
-        // meanings `NotASnapshot` used to carry. An oid this repo cannot
-        // resolve to a commit cannot be asked what its author was, so
-        // `is_snapshot_commit` would answer false for it and a collected
-        // snapshot would read as a real commit, which never goes stale.
         let Ok(commit) = repo.find_commit(parsed) else {
             return SnapshotStanding::Collected;
         };
-        if !is_snapshot_commit(&repo, parsed) {
+
+        if !is_snapshot_commit(&commit) {
             return SnapshotStanding::NotASnapshot;
         }
 
@@ -1481,12 +1481,7 @@ pub fn recompute_staleness(
 
     store.write_if(
         |tx| {
-            crate::reviewdb::stale::recompute(
-                tx,
-                canonical,
-                &is_current_snapshot,
-                &read_working_tree_file,
-            )
+            crate::reviewdb::stale::recompute(tx, canonical, &standing_of, &read_working_tree_file)
         },
         |changed| *changed > 0,
     )

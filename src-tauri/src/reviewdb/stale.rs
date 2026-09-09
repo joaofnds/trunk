@@ -1,10 +1,12 @@
 //! Whether a thread still describes the code it was written against.
 //!
-//! Two rules, one per shape. A snapshot-anchored thread is stale once the repo
-//! has moved past the snapshot it names. A current-file thread is stale once
-//! its pinned block occurs nowhere in the file, and fresh again the moment the
-//! content returns — the spec's branch-switch example, which supersession can
-//! never undo.
+//! Three rules. A snapshot-anchored thread is stale once the repo has moved
+//! past the snapshot it names. A thread anchored to an oid the repository no
+//! longer holds is stale whatever that oid was, because the code it describes
+//! is unrecoverable and the excerpt is the only surviving copy. A current-file
+//! thread is stale once its pinned block occurs nowhere in the file, and fresh
+//! again the moment the content returns — the spec's branch-switch example,
+//! which supersession can never undo.
 //!
 //! Two things this module deliberately does not decide. Whether an oid is a
 //! snapshot at all, because no store table can answer it: `pins::mark_anchored`
@@ -32,11 +34,16 @@ pub enum SnapshotStanding {
     Current,
     /// A snapshot of a state the repo has moved past.
     Superseded,
-    /// An oid this repository can no longer resolve to a commit, because gc has
-    /// collected it. The code the thread was written against is unrecoverable,
-    /// so this is the most stale a thread can be.
+    /// An oid this repository can no longer resolve to a commit. Collection is
+    /// the cause in practice, but the check cannot tell that from an oid naming
+    /// a tree, a blob, or an object this repo never held. Either way the code
+    /// the thread was written against is unreachable, so this is the most stale
+    /// a thread can be.
     Collected,
-    /// A real commit, which never goes stale.
+    /// A real commit, which never goes stale. Also where an oid that will not
+    /// parse lands: a corrupt row is not a collected object, and reporting
+    /// unrecoverable code for a malformed record would point the same dangerous
+    /// way `Collected` exists to fix.
     NotASnapshot,
 }
 
@@ -250,7 +257,7 @@ mod tests {
     use super::*;
     use crate::git::types::{Anchor, Side, Source};
     use crate::reviewdb::{Store, open, reviews, threads};
-    use std::collections::HashSet;
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -311,28 +318,24 @@ mod tests {
             != 0
     }
 
-    /// The caller's verdict, as three lists the test can read: the snapshot the
-    /// repo would capture now, the ones it has moved past, and the oids the
-    /// repo no longer holds. Production works this out from the repository.
-    fn standing_where(
-        current: &str,
-        superseded: &[&str],
-        collected: &[&str],
-    ) -> impl Fn(&str) -> SnapshotStanding {
-        let current = current.to_string();
-        let superseded: HashSet<String> = superseded.iter().map(|o| (*o).to_string()).collect();
-        let collected: HashSet<String> = collected.iter().map(|o| (*o).to_string()).collect();
+    /// The caller's verdict, as a table pairing each oid with where it stands.
+    /// Production works this out from the repository.
+    ///
+    /// Each oid carries its own standing rather than sitting in a positional
+    /// list, because two adjacent lists of oids are transposable: swapping the
+    /// superseded and collected ones left every test here green, since both
+    /// standings mean stale.
+    fn standing_where(table: &[(&str, SnapshotStanding)]) -> impl Fn(&str) -> SnapshotStanding {
+        let table: HashMap<String, SnapshotStanding> = table
+            .iter()
+            .map(|(oid, standing)| ((*oid).to_string(), *standing))
+            .collect();
 
         move |oid: &str| {
-            if oid == current {
-                SnapshotStanding::Current
-            } else if superseded.contains(oid) {
-                SnapshotStanding::Superseded
-            } else if collected.contains(oid) {
-                SnapshotStanding::Collected
-            } else {
-                SnapshotStanding::NotASnapshot
-            }
+            table
+                .get(oid)
+                .copied()
+                .unwrap_or(SnapshotStanding::NotASnapshot)
         }
     }
 
@@ -346,7 +349,10 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("NEWSNAP", &["OLDSNAP"], &[]),
+                    &standing_where(&[
+                        ("NEWSNAP", SnapshotStanding::Current),
+                        ("OLDSNAP", SnapshotStanding::Superseded),
+                    ]),
                     &no_file,
                 )
             })
@@ -369,7 +375,7 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("NEWSNAP", &[], &[]),
+                    &standing_where(&[("NEWSNAP", SnapshotStanding::Current)]),
                     &no_file,
                 )
             })
@@ -395,7 +401,10 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("NEWSNAP", &[], &["GONE"]),
+                    &standing_where(&[
+                        ("NEWSNAP", SnapshotStanding::Current),
+                        ("GONE", SnapshotStanding::Collected),
+                    ]),
                     &no_file,
                 )
             })
@@ -419,7 +428,10 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("NEWSNAP", &["OLDSNAP"], &[]),
+                    &standing_where(&[
+                        ("NEWSNAP", SnapshotStanding::Current),
+                        ("OLDSNAP", SnapshotStanding::Superseded),
+                    ]),
                     &no_file,
                 )
             })
@@ -436,7 +448,10 @@ mod tests {
     fn a_pass_that_changes_nothing_reports_zero() {
         let (_dir, store) = store();
         thread_anchored_to(&store, "OLDSNAP");
-        let standing = standing_where("NEWSNAP", &["OLDSNAP"], &[]);
+        let standing = standing_where(&[
+            ("NEWSNAP", SnapshotStanding::Current),
+            ("OLDSNAP", SnapshotStanding::Superseded),
+        ]);
         store
             .write(|tx| recompute(tx, &repo_path(), &standing, &no_file))
             .unwrap();
@@ -462,7 +477,10 @@ mod tests {
                 recompute(
                     tx,
                     &other,
-                    &standing_where("NEWSNAP", &["OLDSNAP"], &[]),
+                    &standing_where(&[
+                        ("NEWSNAP", SnapshotStanding::Current),
+                        ("OLDSNAP", SnapshotStanding::Superseded),
+                    ]),
                     &no_file,
                 )
             })
@@ -484,7 +502,10 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("SNAPB", &["SNAPA"], &[]),
+                    &standing_where(&[
+                        ("SNAPB", SnapshotStanding::Current),
+                        ("SNAPA", SnapshotStanding::Superseded),
+                    ]),
                     &no_file,
                 )
             })
@@ -495,7 +516,10 @@ mod tests {
                 recompute(
                     tx,
                     &repo_path(),
-                    &standing_where("SNAPA", &["SNAPB"], &[]),
+                    &standing_where(&[
+                        ("SNAPA", SnapshotStanding::Current),
+                        ("SNAPB", SnapshotStanding::Superseded),
+                    ]),
                     &no_file,
                 )
             })
