@@ -10,7 +10,6 @@ export const REVIEW_FILTER_OPTIONS: readonly {
 	{ value: "done", label: "Done" },
 	{ value: "dismissed", label: "Dismissed" },
 	{ value: "stale", label: "Stale" },
-	{ value: "none", label: "Hide all" },
 ];
 
 export function threadMatchesFilter(
@@ -82,6 +81,7 @@ export function combineReviewTone(
 export function isValidReviewFilter(value: unknown): value is ReviewFilter {
 	return (
 		typeof value === "string" &&
-		REVIEW_FILTER_OPTIONS.some((option) => option.value === value)
+		(value === "none" ||
+			REVIEW_FILTER_OPTIONS.some((option) => option.value === value))
 	);
 }

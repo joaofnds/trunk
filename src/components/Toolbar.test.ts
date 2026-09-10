@@ -437,10 +437,10 @@ describe("Toolbar", () => {
 				viewCommentCount: 0,
 			},
 		});
-		const select = screen.getByRole("combobox", {
-			name: "Review filter selection",
+		const threadsButton = screen.getByRole("button", {
+			name: "Hide review threads",
 		});
-		expect(select.parentElement?.querySelector(".toolbar-badge")).toBeNull();
+		expect(threadsButton.querySelector(".toolbar-badge")).toBeNull();
 	});
 
 	it("shows the review-comment count on the Review button badge", () => {
@@ -482,13 +482,13 @@ describe("Toolbar", () => {
 				reviewCommentCount: 4,
 			},
 		});
-		const filter = screen.getByRole("combobox", {
-			name: "Review filter selection",
+		const threadsButton = screen.getByRole("button", {
+			name: "Hide review threads",
 		});
 		const reviewBtn = screen.getByRole("button", { name: /Review/ });
-		expect(
-			filter.parentElement?.querySelector(".toolbar-badge")?.textContent,
-		).toBe("2");
+		expect(threadsButton.querySelector(".toolbar-badge")?.textContent).toBe(
+			"2",
+		);
 		expect(reviewBtn.querySelector(".toolbar-badge")?.textContent).toBe("4");
 	});
 
@@ -547,7 +547,7 @@ describe("Toolbar", () => {
 		).toHaveValue("addressed");
 	});
 
-	it("offers Hide all as the selector's empty presentation state", () => {
+	it("hides the filter selector when review threads are hidden", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
@@ -558,8 +558,88 @@ describe("Toolbar", () => {
 			},
 		});
 		expect(
-			screen.getByRole("combobox", { name: "Review filter selection" }),
-		).toHaveValue("none");
+			screen.queryByRole("combobox", { name: "Review filter selection" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("button", { name: "Show review threads" }),
+		).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it.each(["all", "open", "addressed", "done", "dismissed", "stale"] as const)(
+		"hides review threads from the %s filter",
+		async (reviewFilter) => {
+			const onreviewfilterchange = vi.fn();
+			render(Toolbar, {
+				props: {
+					repoPath: "/test/repo",
+					remoteState: makeRemoteState(),
+					undoRedo: makeUndoRedo(),
+					reviewActive: false,
+					reviewFilter,
+					onreviewfilterchange,
+				},
+			});
+
+			await fireEvent.click(
+				screen.getByRole("button", { name: "Hide review threads" }),
+			);
+
+			expect(onreviewfilterchange).toHaveBeenLastCalledWith("none");
+		},
+	);
+
+	it("restores the selected filter when review threads are shown", async () => {
+		const onreviewfilterchange = vi.fn();
+		const view = render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+				reviewFilter: "addressed",
+				onreviewfilterchange,
+			},
+		});
+
+		await view.rerender({
+			repoPath: "/test/repo",
+			remoteState: makeRemoteState(),
+			undoRedo: makeUndoRedo(),
+			reviewActive: false,
+			reviewFilter: "none",
+			onreviewfilterchange,
+		});
+		await fireEvent.click(
+			screen.getByRole("button", { name: "Show review threads" }),
+		);
+
+		expect(onreviewfilterchange).toHaveBeenLastCalledWith("addressed");
+	});
+
+	it("offers every visible thread filter and no hidden state", () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+				reviewFilter: "all",
+			},
+		});
+
+		expect(
+			screen.getAllByRole("option").map((option) => ({
+				label: option.textContent,
+				value: (option as HTMLOptionElement).value,
+			})),
+		).toEqual([
+			{ label: "All threads", value: "all" },
+			{ label: "Open", value: "open" },
+			{ label: "Addressed", value: "addressed" },
+			{ label: "Done", value: "done" },
+			{ label: "Dismissed", value: "dismissed" },
+			{ label: "Stale", value: "stale" },
+		]);
 	});
 });
 

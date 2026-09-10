@@ -9,6 +9,7 @@ import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
+import { slide } from "svelte/transition";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
@@ -59,6 +60,11 @@ let {
 	onreviewfilterchange,
 }: Props = $props();
 const scheduler = getScheduler();
+let lastVisibleReviewFilter = $state<Exclude<ReviewFilter, "none">>("all");
+
+$effect(() => {
+	if (reviewFilter !== "none") lastVisibleReviewFilter = reviewFilter;
+});
 
 // The Review button reflects whether the review PANEL is showing, not merely that a
 // session is alive: active only when reviewActive AND the center pane shows the panel.
@@ -72,6 +78,19 @@ function handleReviewToggle() {
 		return;
 	}
 	void emit("review-toggle");
+}
+
+function handleReviewThreadsToggle() {
+	onreviewfilterchange?.(
+		reviewFilter === "none" ? lastVisibleReviewFilter : "none",
+	);
+}
+
+function reviewFilterSlide(node: Element) {
+	const reduceMotion =
+		typeof window !== "undefined" &&
+		window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+	return slide(node, { axis: "x", duration: reduceMotion ? 0 : 160 });
 }
 
 // Listen to remote-progress events from backend (relocated from StatusBar)
@@ -336,21 +355,18 @@ async function handleBranchCreate(values: Record<string, string>) {
   }
 
   .review-filter-control {
-    position: relative;
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
     height: var(--control-h);
-    padding: 0 var(--space-1);
-    color: var(--color-text-muted);
-    border-radius: var(--radius);
+    flex-shrink: 0;
   }
-  .review-filter-control:hover,
-  .review-filter-control:focus-within {
-    color: var(--color-text);
-    background: var(--bg-hover);
+  .review-filter-select {
+    display: inline-flex;
+    align-items: center;
+    overflow: hidden;
   }
-  .review-filter-control select {
+  .review-filter-select select {
     max-width: 92px;
     height: var(--control-sm-h);
     border: 1px solid var(--color-border);
@@ -425,34 +441,51 @@ async function handleBranchCreate(values: Record<string, string>) {
   <div class="toolbar-divider"></div>
 
   <div class="toolbar-group">
-    <label class="review-filter-control" title="Filter review threads">
-      <MessageSquare size={14} />
-      <span class="sr-only">Review filter</span>
-		<select
-			aria-label="Review filter selection"
-			aria-describedby="review-filter-help"
-			value={reviewFilter}
-			onchange={(event) => {
-				const value = (event.currentTarget as HTMLSelectElement).value;
-				if (isValidReviewFilter(value)) onreviewfilterchange?.(value);
-			}}
-		>
-        {#each REVIEW_FILTER_OPTIONS as option (option.value)}
-          <option value={option.value}>{option.label}</option>
-		{/each}
-		</select>
-		<span id="review-filter-help" class="sr-only">
-			All threads shows every card; its badges count only open and addressed threads.
-			Other filters show matching thread states, and Hide all removes review content
-			and creation controls.
-		</span>
-      {#if viewCommentCount > 0}
-        <span
-          class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
-          aria-label="{viewCommentCount} review comments in this view"
-        >{viewCommentCount}</span>
+    <div class="review-filter-control">
+      <button
+        class="toolbar-btn toolbar-btn-badged"
+        class:toolbar-btn-active={reviewFilter !== "none"}
+        aria-pressed={reviewFilter !== "none"}
+        aria-label={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+        use:tooltip={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+        onclick={handleReviewThreadsToggle}
+      >
+        <MessageSquare size={14} />
+        {#if viewCommentCount > 0}
+          <span
+            class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
+            aria-label="{viewCommentCount} review comments in this view"
+          >{viewCommentCount}</span>
+        {/if}
+      </button>
+      {#if reviewFilter !== "none"}
+        <label
+          class="review-filter-select"
+          title="Filter review threads"
+          transition:reviewFilterSlide
+        >
+          <span class="sr-only">Review filter</span>
+          <select
+            aria-label="Review filter selection"
+            aria-describedby="review-filter-help"
+            value={reviewFilter}
+            onchange={(event) => {
+              const value = (event.currentTarget as HTMLSelectElement).value;
+              if (isValidReviewFilter(value)) onreviewfilterchange?.(value);
+            }}
+          >
+            {#each REVIEW_FILTER_OPTIONS as option (option.value)}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+          </select>
+          <span id="review-filter-help" class="sr-only">
+            All threads shows every card; its badges count only open and addressed threads.
+            Other filters show matching thread states. Use the review threads button to hide
+            review content and creation controls.
+          </span>
+        </label>
       {/if}
-    </label>
+    </div>
     <button
       class="toolbar-btn toolbar-btn-badged"
       class:toolbar-btn-active={reviewButtonActive}
