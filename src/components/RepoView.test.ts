@@ -348,6 +348,77 @@ describe("RepoView", () => {
 		expect(timesCalled("list_session_commits")).toBe(refreshes);
 	});
 
+	it("honors the selected filter on normal commit notes", async () => {
+		const base = mockInvoke.getMockImplementation();
+		if (!base) throw new Error("base invoke implementation missing");
+		const commit = makeCommit({ oid: "oid-1", summary: "commit oid-1" });
+		const detail: CommitDetailType = {
+			oid: commit.oid,
+			short_oid: commit.short_oid,
+			summary: commit.summary,
+			body: null,
+			author_name: "Test",
+			author_email: "test@test.com",
+			author_timestamp: 0,
+			committer_name: "Test",
+			committer_email: "test@test.com",
+			committer_timestamp: 0,
+			parent_oids: [],
+		};
+		const doneNote = aThread({
+			id: "done-note",
+			review_id: "review-1",
+			text: "done note",
+			commit_oid: commit.oid,
+			state: "done",
+		});
+
+		mockInvoke.mockImplementation((cmd, args) => {
+			const a = args as Record<string, unknown> | undefined;
+			switch (cmd) {
+				case "get_commit_graph":
+					return Promise.resolve({ commits: [commit], max_columns: 1 });
+				case "list_commit_files":
+					return Promise.resolve([]);
+				case "get_commit_detail":
+					return a?.oid === commit.oid
+						? Promise.resolve(detail)
+						: Promise.reject("commit not found");
+				case "list_reviews":
+					return Promise.resolve([
+						{
+							id: "review-1",
+							title: "Review",
+							state: "ready",
+							published: false,
+							thread_count: 1,
+							created_at: 0,
+						},
+					]);
+				case "get_active_review":
+					return Promise.resolve("review-1");
+				case "list_threads":
+					return Promise.resolve([doneNote]);
+				default:
+					return base(cmd, args);
+			}
+		});
+
+		render(RepoView, {
+			props: {
+				...baseProps(createMockRemoteState()),
+				reviewFilter: "open",
+			},
+		});
+
+		await fireEvent.click(await screen.findByTestId("commit-row"));
+		await screen.findByText("commit oid-1");
+
+		expect(screen.getByText("done note").closest("li")).toHaveStyle({
+			display: "none",
+		});
+	});
+
 	describe("background fetch", () => {
 		// Long enough that the assertion reads "the interval fires", not "the
 		// interval is 60s" (DEFAULT_FETCH_INTERVAL_MS, src/lib/store.ts).

@@ -1591,6 +1591,7 @@ function startRightResize(e: MouseEvent) {
           {repoPath}
           {reviewComments}
           reviewCommentsVisible={reviewFilter !== "none"}
+          {reviewFilter}
           commentCounts={presentation.byFile}
           commentTones={presentation.toneByFile}
           activeReviewId={reviewComments.activeReviewId}
