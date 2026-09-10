@@ -12,12 +12,15 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
-import { createDraft, type Draft } from "../lib/draft.svelte.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
-import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
+import {
+	createReviewEditorStore,
+	type ReviewNoteEditorSession,
+	type ThreadEditorSession,
+} from "../lib/review-editors.svelte.js";
 import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -48,11 +51,10 @@ interface Props {
 	oncommentonfile?: () => void;
 	reviewFilter?: ReviewFilter;
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
-	editorDraftFor?: (
+	editorNoteSessionFor?: (
 		reviewId: string | null,
 		surface: string,
-		target: string,
-	) => Draft;
+	) => ReviewNoteEditorSession;
 }
 
 let {
@@ -64,7 +66,7 @@ let {
 	oncommentonfile,
 	reviewFilter = "all",
 	editorSessionForThread,
-	editorDraftFor,
+	editorNoteSessionFor,
 }: Props = $props();
 
 const commits = $derived(reviewComments.commits);
@@ -81,17 +83,17 @@ const activeReview = $derived(
 let resolutions = $state<CommentResolution[]>([]);
 
 // Inline add-note composer state. The per-comment edit flow now lives inside
-// ThreadCard; the panel only drives the per-commit "Add note" composer, keyed
-// by which commit it's open for (draft.svelte.ts owns the shared text/valid
-// machinery).
-let addNoteForCommit = $state<string | null>(null);
-const localDraft = createDraft();
-let draft = $state<Draft>(localDraft);
+// ThreadCard; the panel only drives the per-commit "Add note" composer. Its
+// target and draft live in the review-tab editor store so a panel remount does
+// not move text to a different commit or clear it.
+const localEditorStore = createReviewEditorStore();
+const localNoteSession = localEditorStore.note(null, "review-note");
+let noteSession = $state<ReviewNoteEditorSession>(localNoteSession);
+const noteDraft = $derived(noteSession.draft);
 
 $effect(() => {
-	const oid = addNoteForCommit;
-	if (oid === null) return;
-	draft = editorDraftFor?.(activeReviewId, "review-note", oid) ?? localDraft;
+	noteSession =
+		editorNoteSessionFor?.(activeReviewId, "review-note") ?? localNoteSession;
 });
 
 // LOCKED OrphanReason → badge label map (UI-SPEC § Copywriting Contract).
@@ -256,24 +258,24 @@ async function loadResolutions() {
 }
 
 function openAddNote(oid: string) {
-	addNoteForCommit = oid;
-	draft = editorDraftFor?.(activeReviewId, "review-note", oid) ?? localDraft;
-	draft.open();
+	noteSession.open(oid);
 }
 
 function cancelComposer() {
-	addNoteForCommit = null;
-	draft.close();
+	noteSession.close();
 }
 
 async function saveAddNote(oid: string) {
-	if (!draft.valid) return;
-	const text = draft.text;
-	cancelComposer();
+	const submittedSession = noteSession;
+	const submittedTarget = submittedSession.target;
+	const submittedDraft = submittedSession.draft;
+	if (submittedTarget !== oid || !submittedDraft.valid) return;
+	const text = submittedDraft.text;
+	submittedSession.close();
 	try {
 		await safeInvoke("add_commit_thread", {
 			path: repoPath,
-			commitOid: oid,
+			commitOid: submittedTarget,
 			text,
 		});
 	} catch (e) {
@@ -761,10 +763,10 @@ $effect(() => {
           </div>
 
           <!-- Inline add-note composer for this commit -->
-          {#if addNoteForCommit === group.oid}
+          {#if noteSession.target === group.oid}
             <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-1) 0; display: {reviewFilter === 'none' ? 'none' : 'flex'};">
               <textarea
-                bind:value={draft.text}
+                bind:value={noteDraft.text}
                 rows="3"
                 style="
                   width: 100%;
@@ -782,7 +784,7 @@ $effect(() => {
                 <button
                   type="button"
                   onclick={() => saveAddNote(group.oid)}
-                  disabled={!draft.valid}
+                  disabled={!noteDraft.valid}
                   style="
                     display: inline-flex;
                     align-items: center;

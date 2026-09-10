@@ -44,4 +44,18 @@ describe("review editor store", () => {
 		expect(store.draft("review-b", "commit-note", "commit-1")).not.toBe(first);
 		expect(store.draft("review-a", "review-note", "commit-1")).not.toBe(first);
 	});
+
+	it("keeps an add-note target and text across panel remounts", () => {
+		const store = createReviewEditorStore();
+		const first = store.note("review-a", "review-note");
+
+		first.open("commit-1");
+		first.draft.text = "unfinished note";
+
+		const remounted = store.note("review-a", "review-note");
+		expect(remounted).toBe(first);
+		expect(remounted.target).toBe("commit-1");
+		expect(remounted.draft.text).toBe("unfinished note");
+		expect(remounted.draft.editing).toBe(true);
+	});
 });

@@ -6,6 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -454,6 +455,41 @@ describe("ReviewPanel", () => {
 			await fireEvent.input(textarea, { target: { value: "real" } });
 			await tick();
 			expect(saveBtn).not.toBeDisabled();
+		});
+
+		it("keeps the note target and draft through a panel remount", async () => {
+			installReads({ commits, comments: [], resolutions: [] });
+			const editors = createReviewEditorStore();
+			const panelProps = {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+				editorNoteSessionFor: () => editors.note(ACTIVE_REVIEW, "review-note"),
+			};
+
+			const first = render(ReviewPanel, { props: panelProps });
+			await flush();
+			await fireEvent.click(screen.getAllByText("Add note")[0]);
+			await tick();
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "unfinished note" },
+			});
+			await tick();
+
+			first.unmount();
+			render(ReviewPanel, { props: panelProps });
+			await tick();
+
+			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+			expect(textarea.value).toBe("unfinished note");
+			await fireEvent.click(screen.getByText("Save"));
+			await flush();
+
+			const args = callArgs("add_commit_thread");
+			expect(args?.commitOid).toBe(COMMIT_A);
+			expect(args?.text).toBe("unfinished note");
 		});
 	});
 

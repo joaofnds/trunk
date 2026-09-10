@@ -184,6 +184,8 @@ const editorDraftFor = (
 	surface: string,
 	target: string,
 ) => reviewEditors.draft(reviewId, surface, target);
+const editorNoteSessionFor = (reviewId: string | null, surface: string) =>
+	reviewEditors.note(reviewId, surface);
 
 $effect(() => {
 	reviewSession.setReviewActive(reviewActive);
@@ -1496,7 +1498,7 @@ function startRightResize(e: MouseEvent) {
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
         <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} {reviewFilter} editorSessionForThread={editorSessionForPanelThread} {editorDraftFor} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
+          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} {reviewFilter} editorSessionForThread={editorSessionForPanelThread} editorNoteSessionFor={editorNoteSessionFor} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
         </div>
       {:else if showMergeEditor && selectedFile}
         <MergeEditor
