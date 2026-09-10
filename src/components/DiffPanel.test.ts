@@ -459,6 +459,74 @@ describe("DiffPanel", () => {
 		expect(screen.queryByText(/Infinity/)).not.toBeInTheDocument();
 	});
 
+	it("keeps the full-file comment anchor when the diff reloads mid-compose", async () => {
+		const reloadedFile: FileDiff = {
+			...testDiff,
+			hunks: testDiff.hunks.map((hunk) => ({
+				...hunk,
+				old_start: 40,
+				new_start: 40,
+				lines: hunk.lines.map((line) => ({
+					...line,
+					old_lineno: line.old_lineno === null ? null : line.old_lineno + 39,
+					new_lineno: line.new_lineno === null ? null : line.new_lineno + 39,
+				})),
+			})),
+		};
+		const baseProps = {
+			commitDetail: null,
+			onclose: vi.fn(),
+			diffKind: "unstaged" as const,
+			repoPath: "/test/repo",
+			selectedPath: "src/main.ts",
+		};
+		const view = render(DiffPanel, {
+			props: { ...baseProps, fileDiffs: [testDiff] },
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+
+		await view.rerender({ ...baseProps, fileDiffs: [reloadedFile] });
+		await flushPrefs();
+
+		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+		expect(
+			screen.queryByText("Comments on lines 40-43"),
+		).not.toBeInTheDocument();
+	});
+
+	it("blocks a retained composer after the active review changes", async () => {
+		const baseProps = {
+			fileDiffs: [testDiff],
+			commitDetail: nonMergeCommit,
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+			activeReviewId: "review-a",
+		};
+		const view = render(DiffPanel, { props: baseProps });
+		await flushPrefs();
+		await fireEvent.mouseDown(gutterOf("const x = 2;"));
+		await tick();
+		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
+		await flushPrefs();
+
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "comment from review A" },
+		});
+		await view.rerender({ ...baseProps, activeReviewId: "review-b" });
+
+		const submit = screen.getByRole("button", { name: /submit/i });
+		expect(submit).toBeDisabled();
+		await fireEvent.click(submit);
+		expect(
+			vi.mocked(safeInvoke).mock.calls.map((call) => call[0]),
+		).not.toContain("add_thread");
+	});
+
 	it("shows Unstage Hunk button for staged diffs", async () => {
 		render(DiffPanel, {
 			props: {

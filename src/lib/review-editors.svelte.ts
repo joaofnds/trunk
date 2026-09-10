@@ -1,4 +1,5 @@
 import { createDraft, type Draft } from "./draft.svelte.js";
+import type { Thread } from "./types.js";
 
 /** The transient editors a thread owns while it is mounted on any surface. */
 export interface ThreadEditorSession {
@@ -33,6 +34,8 @@ export interface ReviewEditorStore {
 	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 	note(reviewId: string | null, surface: string): ReviewNoteEditorSession;
+	/** Drops sessions absent from the complete raw thread list and stale replies. */
+	reconcile(threads: readonly Thread[]): void;
 }
 
 export function createThreadEditorSession(): ThreadEditorSession {
@@ -78,7 +81,13 @@ export function createReviewNoteEditorSession(
 }
 
 export function createReviewEditorStore(): ReviewEditorStore {
-	const threadSessions = new Map<string, ThreadEditorSession>();
+	interface ThreadSessionEntry {
+		reviewId: string | null;
+		threadId: string;
+		session: ThreadEditorSession;
+	}
+
+	const threadSessions = new Map<string, ThreadSessionEntry>();
 	const drafts = new Map<string, Draft>();
 	const noteSessions = new Map<string, ReviewNoteEditorSession>();
 	const getDraft = (
@@ -94,16 +103,29 @@ export function createReviewEditorStore(): ReviewEditorStore {
 		}
 		return draft;
 	};
+	const threadIdentity = (reviewId: string | null, threadId: string) =>
+		JSON.stringify([reviewId, threadId]);
+
+	function closeThreadSession(session: ThreadEditorSession): void {
+		session.rootEdit.close();
+		session.reply.close();
+		session.replyEdit.close();
+		session.setEditingReply(null);
+	}
 
 	return {
 		thread(reviewId, host, threadId) {
 			const key = JSON.stringify([reviewId, host, threadId]);
-			let session = threadSessions.get(key);
-			if (!session) {
-				session = createThreadEditorSession();
-				threadSessions.set(key, session);
+			let entry = threadSessions.get(key);
+			if (!entry) {
+				entry = {
+					reviewId,
+					threadId,
+					session: createThreadEditorSession(),
+				};
+				threadSessions.set(key, entry);
 			}
-			return session;
+			return entry.session;
 		},
 		draft: getDraft,
 		note(reviewId, surface) {
@@ -116,6 +138,34 @@ export function createReviewEditorStore(): ReviewEditorStore {
 				noteSessions.set(key, session);
 			}
 			return session;
+		},
+		reconcile(threads) {
+			const liveThreads = new Map(
+				threads.map((thread) => [
+					threadIdentity(thread.review_id, thread.id),
+					thread,
+				]),
+			);
+
+			for (const [key, entry] of threadSessions) {
+				const thread = liveThreads.get(
+					threadIdentity(entry.reviewId, entry.threadId),
+				);
+				if (!thread) {
+					closeThreadSession(entry.session);
+					threadSessions.delete(key);
+					continue;
+				}
+
+				const editingReplyId = entry.session.editingReplyId;
+				if (
+					editingReplyId !== null &&
+					!thread.replies.some((reply) => reply.id === editingReplyId)
+				) {
+					entry.session.replyEdit.close();
+					entry.session.setEditingReply(null);
+				}
+			}
 		},
 	};
 }

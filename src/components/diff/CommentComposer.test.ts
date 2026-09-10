@@ -219,6 +219,45 @@ describe("CommentComposer", () => {
 		expect(onclose).not.toHaveBeenCalled();
 	});
 
+	it("cannot submit after the active review changes", async () => {
+		const onclose = vi.fn();
+		const view = render(CommentComposer, {
+			props: {
+				file: modifiedFile,
+				hunkIdx: 0,
+				selectedLineIndices: new Set([1]),
+				commitOid: "abc123",
+				repoPath: "/repo",
+				onclose,
+				activeReviewId: "review-a",
+				originatingReviewId: "review-a",
+			},
+		});
+
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "comment from review A" },
+		});
+		await view.rerender({
+			file: modifiedFile,
+			hunkIdx: 0,
+			selectedLineIndices: new Set([1]),
+			commitOid: "abc123",
+			repoPath: "/repo",
+			onclose,
+			activeReviewId: "review-b",
+			originatingReviewId: "review-a",
+		});
+
+		const submit = screen.getByRole("button", { name: /submit/i });
+		expect(submit).toBeDisabled();
+		await fireEvent.click(submit);
+
+		expect(mockedInvoke.mock.calls.map((call) => call[0])).not.toContain(
+			"add_thread",
+		);
+		expect(onclose).not.toHaveBeenCalled();
+	});
+
 	it("persists a draft via save_draft after the debounce idle window", async () => {
 		vi.useFakeTimers();
 		render(CommentComposer, {

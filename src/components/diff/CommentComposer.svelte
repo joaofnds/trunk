@@ -36,6 +36,10 @@ interface Props {
 	onclose: () => void;
 	/** Hide-all keeps the editor mounted but must make submission impossible. */
 	canSubmit?: boolean;
+	/** The review active when this composer was opened. */
+	originatingReviewId?: string | null;
+	/** The review currently active in the host. */
+	activeReviewId?: string | null;
 }
 
 let {
@@ -49,6 +53,8 @@ let {
 	repoPath,
 	onclose,
 	canSubmit = true,
+	originatingReviewId = null,
+	activeReviewId = null,
 }: Props = $props();
 
 let text = $state("");
@@ -106,7 +112,10 @@ function deriveDiffCapture(): { anchor: Anchor; cachedExcerpt: string } {
 }
 const capturedResult = $derived(captured ?? deriveDiffCapture());
 
-const submitDisabled = $derived(!canSubmit || text.trim() === "" || submitting);
+const reviewMatches = $derived(originatingReviewId === activeReviewId);
+const submitDisabled = $derived(
+	!canSubmit || !reviewMatches || text.trim() === "" || submitting,
+);
 
 function scheduleDraftSave() {
 	draftSave.arm(() => void persistDraft(), DRAFT_DEBOUNCE_MS);
@@ -142,34 +151,40 @@ async function discardDraft() {
 }
 
 async function handleSubmit() {
+	const submittedText = text;
+	const submittedCaptured = capturedResult;
+	const submittedCurrentFile = currentFile;
+	const submittedResolveCommitOid = resolveCommitOid;
 	if (submitDisabled) return;
 
 	submitting = true;
 	await settleDraftSave();
 	try {
+		if (originatingReviewId !== activeReviewId) return;
 		// Resolve the anchor's commit_oid now (deferred from open): for the working
 		// tree this starts the session + creates/reuses the snapshot. Null = failure
 		// (a toast already fired); keep the composer + draft open so nothing is lost.
-		if (currentFile) {
+		if (submittedCurrentFile) {
 			await safeInvoke("add_current_file_thread", {
 				path: repoPath,
-				filePath: currentFile.filePath,
-				startLine: currentFile.startLine,
-				endLine: currentFile.endLine,
-				text,
+				filePath: submittedCurrentFile.filePath,
+				startLine: submittedCurrentFile.startLine,
+				endLine: submittedCurrentFile.endLine,
+				text: submittedText,
 			});
 		} else {
-			let anchor = capturedResult.anchor;
-			if (resolveCommitOid) {
-				const oid = await resolveCommitOid();
+			let anchor = submittedCaptured.anchor;
+			if (submittedResolveCommitOid) {
+				const oid = await submittedResolveCommitOid();
 				if (oid === null) return;
+				if (originatingReviewId !== activeReviewId) return;
 				anchor = { ...anchor, commit_oid: oid };
 			}
 			await safeInvoke("add_thread", {
 				path: repoPath,
-				text,
+				text: submittedText,
 				anchor,
-				cachedExcerpt: capturedResult.cachedExcerpt,
+				cachedExcerpt: submittedCaptured.cachedExcerpt,
 			});
 		}
 	} catch (e) {

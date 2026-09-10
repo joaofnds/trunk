@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { createReviewEditorStore } from "./review-editors.svelte.js";
 
 describe("review editor store", () => {
@@ -57,5 +58,42 @@ describe("review editor store", () => {
 		expect(remounted.target).toBe("commit-1");
 		expect(remounted.draft.text).toBe("unfinished note");
 		expect(remounted.draft.editing).toBe(true);
+	});
+
+	it("drops sessions for threads removed from the raw review data", () => {
+		const store = createReviewEditorStore();
+		const session = store.thread("review-a", "review-panel", "thread-1");
+		session.rootEdit.open("unfinished root edit");
+		session.reply.open("unfinished reply");
+		session.replyEdit.open("unfinished reply edit");
+		session.setEditingReply("reply-1");
+
+		store.reconcile([]);
+
+		const remounted = store.thread("review-a", "review-panel", "thread-1");
+		expect(remounted).not.toBe(session);
+		expect(remounted.rootEdit.editing).toBe(false);
+		expect(remounted.reply.editing).toBe(false);
+		expect(remounted.replyEdit.editing).toBe(false);
+		expect(remounted.editingReplyId).toBeNull();
+	});
+
+	it("clears a reply editor when the raw thread no longer has that reply", () => {
+		const store = createReviewEditorStore();
+		const session = store.thread("review-a", "diff", "thread-1");
+		session.replyEdit.open("unfinished reply edit");
+		session.setEditingReply("reply-1");
+		const thread = aThread({
+			id: "thread-1",
+			review_id: "review-a",
+			replies: [aReply({ id: "reply-1" })],
+		});
+
+		store.reconcile([thread]);
+		expect(session.editingReplyId).toBe("reply-1");
+
+		store.reconcile([{ ...thread, replies: [] }]);
+		expect(session.editingReplyId).toBeNull();
+		expect(session.replyEdit.editing).toBe(false);
 	});
 });

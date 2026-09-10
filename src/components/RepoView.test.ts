@@ -1214,6 +1214,95 @@ describe("RepoView", () => {
 				],
 			});
 		});
+
+		it("matches review comments in the focused rebase diff", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const fileDiff: FileDiff = {
+				path: "src/rebase.ts",
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [
+					{
+						header: "@@ -1,1 +1,1 @@",
+						old_start: 1,
+						old_lines: 1,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content: "const rebase = true;",
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+			const detail: CommitDetailType = {
+				oid: CLICKED_OID,
+				short_oid: CLICKED_OID.slice(0, 7),
+				summary: "clicked commit",
+				body: null,
+				author_name: "Test",
+				author_email: "test@test.com",
+				author_timestamp: 0,
+				committer_name: "Test",
+				committer_email: "test@test.com",
+				committer_timestamp: 0,
+				parent_oids: [PARENT_OID],
+			};
+			const thread = aThread({
+				id: "rebase-thread",
+				review_id: "review-1",
+				text: "rebase comment",
+				anchor: {
+					commit_oid: CLICKED_OID,
+					file_path: fileDiff.path,
+					source: "Diff",
+					side: "New",
+					start_line: 1,
+					end_line: 1,
+				},
+			});
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && a?.oid === CLICKED_OID) {
+					return Promise.resolve(detail);
+				}
+				if (cmd === "list_commit_files" && a?.oid === CLICKED_OID) {
+					return Promise.resolve([fileDiff]);
+				}
+				if (cmd === "list_reviews") {
+					return Promise.resolve([
+						{
+							id: "review-1",
+							title: "Review",
+							state: "ready",
+							published: false,
+							thread_count: 1,
+							created_at: 0,
+						},
+					]);
+				}
+				if (cmd === "get_active_review") return Promise.resolve("review-1");
+				if (cmd === "list_threads") return Promise.resolve([thread]);
+				return base(cmd, args);
+			});
+
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await screen.findByText("src/rebase.ts");
+			await fireEvent.click(screen.getByText("src/rebase.ts"));
+
+			expect(
+				(await screen.findAllByText("rebase comment")).length,
+			).toBeGreaterThan(0);
+		});
 	});
 
 	describe("compare selection (TRUNK-1)", () => {

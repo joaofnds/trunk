@@ -191,6 +191,15 @@ $effect(() => {
 	reviewSession.setReviewActive(reviewActive);
 });
 
+// Reconcile repository-tab editor state against the complete raw review batch.
+// Filtered or hidden projections must never decide whether a thread or reply is
+// still alive, because doing so would erase an editor merely by changing views.
+$effect(() => {
+	const revision = reviewComments.revision;
+	const threads = reviewComments.threads;
+	if (revision >= 0) reviewEditors.reconcile(threads);
+});
+
 // Report whether this tab's center pane shows the review panel, but only while it's
 // the active review tab (reviewActive folds in tab.id === activeTabId at the App
 // level). Inactive tabs never clobber App's value; on tab switch the newly-active
@@ -510,6 +519,24 @@ let viewComments = $derived(
 		: [],
 );
 
+// Rebase owns a separate focused commit/file pair while its takeover is open.
+// Give that pair the same raw-thread matcher as the normal diff so review badges
+// and comment cards follow the commit the rebase editor is actually showing.
+let rebaseViewDescriptor = $derived<ViewDescriptor>({
+	kind: "commit",
+	commitOid: rebaseFocusedCommitDetail?.oid ?? null,
+	snapshots: reviewComments.snapshots,
+});
+let rebaseViewComments = $derived(
+	rebaseDiffFile
+		? commentsForView(
+				reviewComments.threads,
+				rebaseViewDescriptor,
+				rebaseDiffFile,
+			)
+		: [],
+);
+
 // One presentation projection feeds every count surface. The manager remains
 // raw so lifecycle actions, copy/end, and review inventory never lose settled
 // threads when a filter changes.
@@ -534,6 +561,16 @@ function toneForThreads(threads: Thread[]): ReviewTone | null {
 // badge. The same thread set feeds both its count and its tone.
 let currentViewComments = $derived.by<Thread[]>(() => {
 	if (compare) return [];
+	if (showRebaseEditor) {
+		if (rebaseDiffFile) return rebaseViewComments;
+		if (rebaseFocusedCommitDetail) {
+			return reviewComments.threads.filter(
+				(t) =>
+					t.anchor === null && t.commit_oid === rebaseFocusedCommitDetail?.oid,
+			);
+		}
+		return [];
+	}
 	if (showDiff && selectedDiffPath) return viewComments;
 	const selectedCommit = commitDetail;
 	if (selectedCommitOid && selectedCommit) {
@@ -1439,6 +1476,9 @@ function startRightResize(e: MouseEvent) {
             {repoPath}
             reviewCommentsVisible={reviewFilter !== "none"}
             {reviewFilter}
+            viewComments={rebaseViewComments}
+            activeReviewId={reviewComments.activeReviewId}
+            editorSessionForThread={editorSessionForDiffThread}
             onclose={() => { rebaseDiffFile = null; }}
           />
         {/if}
@@ -1523,6 +1563,7 @@ function startRightResize(e: MouseEvent) {
           reviewCommentsVisible={selectedCompareFile ? false : reviewFilter !== "none"}
           {reviewFilter}
           {viewComments}
+          activeReviewId={reviewComments.activeReviewId}
           editorSessionForThread={editorSessionForDiffThread}
           refreshToken={diffRefreshToken}
           loading={stagingDiffLoading}
