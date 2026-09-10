@@ -49,6 +49,9 @@ describe("a comment left on a commit's diff", () => {
 		});
 		expect(threads).toEqual([ANCHOR]);
 		expect(app.review.states()).toEqual(["open"]);
+		await waitFor("the unresolved review badge", () =>
+			app.review.reviewBadgeCount() === 1 ? true : null,
+		);
 
 		await app.review.publish();
 
@@ -71,6 +74,14 @@ describe("a comment left on a commit's diff", () => {
 			app.review.states()[0] === "done" ? true : null,
 		);
 		expect(app.review.states()).toEqual(["done"]);
+		await waitFor("the unresolved review badge to disappear", () =>
+			app.review.reviewBadgeCount() === null ? true : null,
+		);
+
+		await app.review.showReviewFilter("done");
+		await waitFor("the done review badge to reappear", () =>
+			app.review.reviewBadgeCount() === 1 ? true : null,
+		);
 
 		await app.review.copyDoc();
 

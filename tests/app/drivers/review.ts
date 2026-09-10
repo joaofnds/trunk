@@ -1,3 +1,4 @@
+import type { ReviewFilter } from "../../../src/lib/types.js";
 import { waitFor } from "../harness/wait.js";
 
 const REVIEW_FILTER = '[aria-label="Review filter selection"]';
@@ -30,16 +31,26 @@ const FULL_FILE_COMMENT = ".full-file-comment-button";
  * button, so a gesture issued early does nothing, quietly.
  */
 export class ReviewDriver {
-	/** Selects the default all-threads presentation. The review filter is global
-	 *  and defaults to all, so this is intentionally idempotent for existing flows. */
-	async showAllReviewThreads(): Promise<void> {
+	/** Selects a review-thread presentation and waits for the control to reflect it. */
+	async showReviewFilter(filterValue: ReviewFilter): Promise<void> {
 		const filter = await waitFor("the review filter", () =>
 			selectEnabled(REVIEW_FILTER),
 		);
 
-		if (filter.value === "all") return;
-		filter.value = "all";
-		filter.dispatchEvent(new Event("change", { bubbles: true }));
+		if (filter.value !== filterValue) {
+			filter.value = filterValue;
+			filter.dispatchEvent(new Event("change", { bubbles: true }));
+		}
+
+		await waitFor(`the review filter to become ${filterValue}`, () => {
+			const current = document.querySelector<HTMLSelectElement>(REVIEW_FILTER);
+			return current?.value === filterValue ? true : null;
+		});
+	}
+
+	/** Selects the default all-threads presentation. */
+	async showAllReviewThreads(): Promise<void> {
+		await this.showReviewFilter("all");
 	}
 
 	/** Comments the hunk at `ordinal`, topmost first. With no line selection this
@@ -153,6 +164,20 @@ export class ReviewDriver {
 	/** The state chip each thread card carries, topmost first. */
 	states(): string[] {
 		return cards().map((card) => textIn(card, STATE_CHIP));
+	}
+
+	/** Reads the badge on the Review button, or null when the count is hidden. */
+	reviewBadgeCount(): number | null {
+		const badge = document.querySelector<HTMLElement>(
+			`${REVIEW} .toolbar-badge`,
+		);
+		if (!badge) return null;
+
+		const value = collapse(badge);
+		if (!value) return null;
+
+		const count = Number(value);
+		return Number.isFinite(count) ? count : null;
 	}
 
 	/** What the topmost thread card offers the user. */
