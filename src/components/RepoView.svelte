@@ -565,7 +565,7 @@ const diffComposerTarget = $derived<ReviewComposerTarget>(
 			},
 );
 const diffComposerSession = $derived(
-	reviewEditors.composer("diff", diffComposerTarget),
+	reviewEditors.composer(diffComposerTarget),
 );
 
 // One presentation projection feeds every count surface. The manager remains

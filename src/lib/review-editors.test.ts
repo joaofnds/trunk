@@ -154,12 +154,12 @@ describe("review editor store", () => {
 			} satisfies Anchor,
 			cachedExcerpt: "+ kept line",
 		};
-		const first = store.composer("diff");
+		const first = store.composer();
 
 		first.openFullFile("src/main.ts", capture, "review-a", diffTarget);
 		first.draft.text = "unfinished diff comment";
 
-		const remounted = store.composer("diff");
+		const remounted = store.composer();
 		expect(remounted).toBe(first);
 		expect(remounted.mode).toBe("full-file");
 		expect(remounted.filePath).toBe("src/main.ts");
@@ -170,7 +170,7 @@ describe("review editor store", () => {
 
 	it("does not retarget a dirty diff composer", () => {
 		const store = createReviewEditorStore();
-		const session = store.composer("diff");
+		const session = store.composer();
 		const capture = {
 			anchor: {
 				commit_oid: "commit-1",
@@ -202,21 +202,21 @@ describe("review editor store", () => {
 
 	it("scopes diff composers by navigation target", () => {
 		const store = createReviewEditorStore();
-		const first = store.composer("diff", diffTarget);
-		const second = store.composer("diff", {
+		const first = store.composer(diffTarget);
+		const second = store.composer({
 			...diffTarget,
 			commitOid: "commit-2",
 		});
 
 		expect(second).not.toBe(first);
-		expect(store.composer("diff", diffTarget)).toBe(first);
+		expect(store.composer(diffTarget)).toBe(first);
 	});
 
 	it("evicts a closed target-scoped composer session", () => {
 		const store = createReviewEditorStore();
-		const first = store.composer("diff", diffTarget);
+		const first = store.composer(diffTarget);
 		first.close();
 
-		expect(store.composer("diff", diffTarget)).not.toBe(first);
+		expect(store.composer(diffTarget)).not.toBe(first);
 	});
 });

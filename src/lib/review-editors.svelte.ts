@@ -29,7 +29,6 @@ export interface ReviewNoteEditorSession {
 }
 
 export type ReviewComposerMode = "diff" | "full-file";
-export type ReviewComposerSurface = "diff";
 export type ReviewComposerContext = "normal" | "rebase";
 
 /** The navigation identity that owns one diff composer session. */
@@ -101,10 +100,7 @@ export interface ReviewEditorStore {
 	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 	note(reviewId: string | null, surface: string): ReviewNoteEditorSession;
-	composer(
-		surface: ReviewComposerSurface,
-		target?: ReviewComposerTarget,
-	): ReviewComposerSession;
+	composer(target?: ReviewComposerTarget): ReviewComposerSession;
 	/** Reconciles one authoritative review snapshot and stale replies. */
 	reconcile(snapshot: ReviewThreadSnapshot): void;
 }
@@ -315,8 +311,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			}
 			return session;
 		},
-		composer(surface, target) {
-			const key = JSON.stringify([surface, target ?? null]);
+		composer(target) {
+			const key = JSON.stringify([target ?? null]);
 			let session = composerSessions.get(key);
 			if (!session) {
 				let created: ReviewComposerSession | null = null;

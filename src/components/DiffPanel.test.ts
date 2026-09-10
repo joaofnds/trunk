@@ -502,7 +502,7 @@ describe("DiffPanel", () => {
 
 	it("blocks a retained composer after the active review changes", async () => {
 		const editorStore = createReviewEditorStore();
-		const composerSession = editorStore.composer("diff");
+		const composerSession = editorStore.composer();
 		const baseProps = {
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
@@ -547,7 +547,7 @@ describe("DiffPanel", () => {
 
 	it("hides a retained composer after the diff target changes", async () => {
 		const editorStore = createReviewEditorStore();
-		const composerSession = editorStore.composer("diff");
+		const composerSession = editorStore.composer();
 		const baseProps = {
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
