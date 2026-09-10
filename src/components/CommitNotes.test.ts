@@ -1,8 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import type { ComponentProps } from "svelte";
+import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
 import CommitNotes from "./CommitNotes.svelte";
 
@@ -129,6 +131,52 @@ describe("CommitNotes", () => {
 		settleSave();
 
 		expect(callCount("add_commit_thread")).toBe(1);
+	});
+
+	it("does not clear a replacement commit draft when the first save resolves", async () => {
+		let settleFirst!: () => void;
+		vi.mocked(safeInvoke).mockReturnValueOnce(
+			new Promise<void>((resolve) => {
+				settleFirst = resolve;
+			}),
+		);
+		const editors = createReviewEditorStore();
+		const editorDraftFor = (
+			reviewId: string | null,
+			surface: string,
+			target: string,
+		) => editors.draft(reviewId, surface, target);
+		const view = renderNotes([], {
+			activeReviewId: "review-a",
+			editorDraftFor,
+		});
+
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "note for first commit" } },
+		);
+		await fireEvent.click(screen.getByText("Save"));
+
+		await view.rerender({
+			notes: [],
+			repoPath: "/repo",
+			commitOid: "different-commit",
+			activeReviewId: "review-a",
+			editorDraftFor,
+		});
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "note for replacement commit" } },
+		);
+
+		settleFirst();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await tick();
+		expect(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+		).toHaveValue("note for replacement commit");
 	});
 
 	it("reports a refused save and leaves the composed text on screen", async () => {

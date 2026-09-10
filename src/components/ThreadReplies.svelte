@@ -46,12 +46,14 @@ function cancelReplyEdit() {
 }
 
 async function saveReplyEdit() {
-	if (!replyEditDraft.valid || editingReplyId === null) return;
-	const id = editingReplyId;
-	const text = replyEditDraft.text;
-	await onreplyedit(id, text);
-	editor.setEditingReply(null);
-	replyEditDraft.close();
+	const submittedEditor = editor;
+	const submittedDraft = replyEditDraft;
+	const submittedReplyId = editingReplyId;
+	if (!submittedDraft.valid || submittedReplyId === null) return;
+	const text = submittedDraft.text;
+	await onreplyedit(submittedReplyId, text);
+	submittedEditor.setEditingReply(null);
+	submittedDraft.close();
 }
 </script>
 

@@ -49,7 +49,7 @@ $effect(() => {
 let noteSaving = $state(false);
 
 function openAddNote() {
-	draft.open();
+	if (!draft.editing) draft.open();
 }
 
 function cancelAddNote() {
@@ -57,11 +57,14 @@ function cancelAddNote() {
 }
 
 async function saveNote() {
-	if (!draft.valid || noteSaving) return;
+	const submittedDraft = draft;
+	const submittedCommitOid = commitOid;
+	if (!submittedDraft.valid || noteSaving) return;
+	const text = submittedDraft.text.trim();
 	noteSaving = true;
 	try {
-		await addCommitThread(repoPath, commitOid, draft.text.trim());
-		draft.close();
+		await addCommitThread(repoPath, submittedCommitOid, text);
+		submittedDraft.close();
 	} catch (e) {
 		reportErrorToast(e, "Failed to add note");
 	} finally {

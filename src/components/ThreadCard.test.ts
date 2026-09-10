@@ -442,6 +442,40 @@ describe("ThreadCard", () => {
 		expect(textarea.value).toBe("");
 	});
 
+	it("does not clear a replacement reply draft when the first save resolves", async () => {
+		let settleFirst!: () => void;
+		vi.mocked(safeInvoke).mockReturnValueOnce(
+			new Promise<void>((resolve) => {
+				settleFirst = resolve;
+			}),
+		);
+		const firstSession = createThreadEditorSession();
+		const replacementSession = createThreadEditorSession();
+		const view = renderCard({ editorSession: firstSession });
+
+		await fireEvent.input(screen.getByLabelText("Reply"), {
+			target: { value: "reply for first card" },
+		});
+		await fireEvent.click(screen.getByText("Reply"));
+
+		await view.rerender({
+			thread: comment,
+			repoPath: "/repo",
+			onedit: () => {},
+			ondelete: () => {},
+			editorSession: replacementSession,
+		});
+		await fireEvent.input(screen.getByLabelText("Reply"), {
+			target: { value: "reply for replacement card" },
+		});
+
+		settleFirst();
+		await flush();
+		expect(screen.getByLabelText("Reply")).toHaveValue(
+			"reply for replacement card",
+		);
+	});
+
 	it("does not offer Edit for an agent reply", () => {
 		const agentReply: Thread = {
 			...comment,

@@ -135,14 +135,15 @@ function saveEdit() {
 }
 
 async function submitReply() {
-	if (!replyDraft.valid) return;
-	const text = replyDraft.text;
+	const submittedDraft = replyDraft;
+	if (!submittedDraft.valid) return;
+	const text = submittedDraft.text;
 	// addReply reports its own refusal (review-comment-actions.ts) rather than
 	// rethrowing, but this still awaits it before clearing the draft so a
 	// published-review refusal keeps the typed text on screen until the write
 	// settles.
 	await addReply(repoPath, thread.id, text);
-	replyDraft.close();
+	submittedDraft.close();
 }
 
 // The card owns only the wording per target state; which targets to offer, and
