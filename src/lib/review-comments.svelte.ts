@@ -29,6 +29,8 @@ export interface ReviewCommentsManager {
 	readonly oids: ReadonlySet<string>;
 	/** Advances once per refresh that lands its reads, so consumers can follow. */
 	readonly revision: number;
+	/** True when the active review thread read completed with a valid array. */
+	readonly threadsAuthoritative: boolean;
 	/**
 	 * A read failure worth showing, else null. The rune never toasts it — it is
 	 * alive for every open tab, and would announce failures for tabs nobody is
@@ -67,6 +69,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		} as ReviewSnapshots,
 		commits: [] as SessionCommit[],
 		revision: 0,
+		threadsAuthoritative: false,
 		lastError: null as string | null,
 	});
 
@@ -123,10 +126,10 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 				? snapshotsR.value
 				: { working_tree_snapshot: null, index_snapshot: null };
 
-		state.threads =
-			threadsR.status === "fulfilled" && Array.isArray(threadsR.value)
-				? threadsR.value
-				: [];
+		const threadsAuthoritative =
+			threadsR.status === "fulfilled" && Array.isArray(threadsR.value);
+		state.threadsAuthoritative = threadsAuthoritative;
+		state.threads = threadsAuthoritative ? threadsR.value : [];
 
 		state.commits =
 			commitsR.status === "fulfilled" && Array.isArray(commitsR.value)
@@ -221,6 +224,9 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		},
 		get revision() {
 			return state.revision;
+		},
+		get threadsAuthoritative() {
+			return state.threadsAuthoritative;
 		},
 		get lastError() {
 			return state.lastError;

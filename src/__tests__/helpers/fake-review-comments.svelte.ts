@@ -13,6 +13,7 @@ interface Store {
 	activeReviewId: string | null;
 	snapshots: ReviewSnapshots;
 	commits: SessionCommit[];
+	threadsAuthoritative: boolean;
 	lastError: string | null;
 }
 
@@ -35,6 +36,7 @@ function emptyStore(): Store {
 		activeReviewId: null,
 		snapshots: { working_tree_snapshot: null, index_snapshot: null },
 		commits: [],
+		threadsAuthoritative: true,
 		lastError: null,
 	};
 }
@@ -78,6 +80,9 @@ export function createFakeReviewComments(): FakeReviewComments {
 		get revision() {
 			return state.revision;
 		},
+		get threadsAuthoritative() {
+			return state.threadsAuthoritative;
+		},
 		get lastError() {
 			return state.lastError;
 		},
@@ -100,6 +105,7 @@ export function createFakeReviewComments(): FakeReviewComments {
 			state.activeReviewId = seeded.activeReviewId;
 			state.snapshots = seeded.snapshots;
 			state.commits = seeded.commits;
+			state.threadsAuthoritative = seeded.threadsAuthoritative;
 			state.lastError = seeded.lastError;
 			state.revision += 1;
 			return Promise.resolve();

@@ -191,13 +191,17 @@ $effect(() => {
 	reviewSession.setReviewActive(reviewActive);
 });
 
-// Reconcile repository-tab editor state against the complete raw review batch.
-// Filtered or hidden projections must never decide whether a thread or reply is
-// still alive, because doing so would erase an editor merely by changing views.
+// Reconcile repository-tab editor state against the authoritative active-review
+// snapshot. Filtered or hidden projections must never decide whether a thread or
+// reply is still alive, because doing so would erase an editor merely by changing
+// views. Inactive-review sessions remain available for the next review switch.
 $effect(() => {
-	const revision = reviewComments.revision;
-	const threads = reviewComments.threads;
-	if (revision >= 0) reviewEditors.reconcile(threads);
+	void reviewComments.revision;
+	reviewEditors.reconcile({
+		reviewId: reviewComments.activeReviewId,
+		threads: reviewComments.threads,
+		authoritative: reviewComments.threadsAuthoritative,
+	});
 });
 
 // Report whether this tab's center pane shows the review panel, but only while it's

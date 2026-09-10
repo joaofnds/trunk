@@ -21,6 +21,13 @@ export interface ReviewNoteEditorSession {
 	close(): void;
 }
 
+/** A successful or failed snapshot of one active review's thread read. */
+export interface ReviewThreadSnapshot {
+	readonly reviewId: string | null;
+	readonly threads: readonly Thread[];
+	readonly authoritative: boolean;
+}
+
 /**
  * Repository-tab lifetime for review editors. The key includes the active
  * review so a draft from one review cannot be submitted into another one after
@@ -34,8 +41,8 @@ export interface ReviewEditorStore {
 	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 	note(reviewId: string | null, surface: string): ReviewNoteEditorSession;
-	/** Drops sessions absent from the complete raw thread list and stale replies. */
-	reconcile(threads: readonly Thread[]): void;
+	/** Reconciles one authoritative review snapshot and stale replies. */
+	reconcile(snapshot: ReviewThreadSnapshot): void;
 }
 
 export function createThreadEditorSession(): ThreadEditorSession {
@@ -139,7 +146,9 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			}
 			return session;
 		},
-		reconcile(threads) {
+		reconcile({ reviewId, threads, authoritative }) {
+			if (!authoritative) return;
+
 			const liveThreads = new Map(
 				threads.map((thread) => [
 					threadIdentity(thread.review_id, thread.id),
@@ -148,6 +157,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			);
 
 			for (const [key, entry] of threadSessions) {
+				if (entry.reviewId !== reviewId) continue;
+
 				const thread = liveThreads.get(
 					threadIdentity(entry.reviewId, entry.threadId),
 				);

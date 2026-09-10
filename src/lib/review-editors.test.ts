@@ -68,7 +68,11 @@ describe("review editor store", () => {
 		session.replyEdit.open("unfinished reply edit");
 		session.setEditingReply("reply-1");
 
-		store.reconcile([]);
+		store.reconcile({
+			reviewId: "review-a",
+			threads: [],
+			authoritative: true,
+		});
 
 		const remounted = store.thread("review-a", "review-panel", "thread-1");
 		expect(remounted).not.toBe(session);
@@ -89,11 +93,39 @@ describe("review editor store", () => {
 			replies: [aReply({ id: "reply-1" })],
 		});
 
-		store.reconcile([thread]);
+		store.reconcile({
+			reviewId: "review-a",
+			threads: [thread],
+			authoritative: true,
+		});
 		expect(session.editingReplyId).toBe("reply-1");
 
-		store.reconcile([{ ...thread, replies: [] }]);
+		store.reconcile({
+			reviewId: "review-a",
+			threads: [{ ...thread, replies: [] }],
+			authoritative: true,
+		});
 		expect(session.editingReplyId).toBeNull();
 		expect(session.replyEdit.editing).toBe(false);
+	});
+
+	it("preserves sessions from inactive reviews and failed reads", () => {
+		const store = createReviewEditorStore();
+		const session = store.thread("review-a", "review-panel", "thread-1");
+		session.rootEdit.open("unfinished root edit");
+
+		store.reconcile({
+			reviewId: "review-b",
+			threads: [],
+			authoritative: true,
+		});
+		store.reconcile({
+			reviewId: "review-a",
+			threads: [],
+			authoritative: false,
+		});
+
+		expect(store.thread("review-a", "review-panel", "thread-1")).toBe(session);
+		expect(session.rootEdit.text).toBe("unfinished root edit");
 	});
 });
