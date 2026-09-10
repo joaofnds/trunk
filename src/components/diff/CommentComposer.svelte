@@ -256,12 +256,12 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	<div class="composer-preview">
 		Comments on lines {capturedResult.anchor.start_line}-{capturedResult.anchor.end_line}
 	</div>
-			<textarea
-			bind:this={textareaEl}
-			class="composer-textarea"
-			placeholder="Leave a comment on these lines…"
-			disabled={submitting}
-			bind:value={composerDraft.text}
+	<textarea
+		bind:this={textareaEl}
+		class="composer-textarea"
+		placeholder="Leave a comment on these lines…"
+		disabled={submitting}
+		bind:value={composerDraft.text}
 		oninput={scheduleDraftSave}
 	></textarea>
 	<div class="composer-actions">

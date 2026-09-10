@@ -211,4 +211,12 @@ describe("review editor store", () => {
 		expect(second).not.toBe(first);
 		expect(store.composer("diff", diffTarget)).toBe(first);
 	});
+
+	it("evicts a closed target-scoped composer session", () => {
+		const store = createReviewEditorStore();
+		const first = store.composer("diff", diffTarget);
+		first.close();
+
+		expect(store.composer("diff", diffTarget)).not.toBe(first);
+	});
 });

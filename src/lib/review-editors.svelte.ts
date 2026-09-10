@@ -22,8 +22,10 @@ export type ReviewEditorHost = "review-panel" | "commit-notes" | "diff";
 export interface ReviewNoteEditorSession {
 	readonly draft: Draft;
 	readonly target: string | null;
+	readonly saving: boolean;
 	open(target: string): void;
 	close(): void;
+	setSaving(saving: boolean): void;
 }
 
 export type ReviewComposerMode = "diff" | "full-file";
@@ -142,7 +144,7 @@ export function createThreadEditorSession(): ThreadEditorSession {
 export function createReviewNoteEditorSession(
 	getDraft: (target: string) => Draft,
 ): ReviewNoteEditorSession {
-	const state = $state({ target: null as string | null });
+	const state = $state({ target: null as string | null, saving: false });
 	const idleDraft = createDraft();
 
 	return {
@@ -152,6 +154,9 @@ export function createReviewNoteEditorSession(
 		get target() {
 			return state.target;
 		},
+		get saving() {
+			return state.saving;
+		},
 		open(target: string) {
 			const draft = getDraft(target);
 			state.target = target;
@@ -160,12 +165,18 @@ export function createReviewNoteEditorSession(
 		close() {
 			if (state.target !== null) getDraft(state.target).close();
 			state.target = null;
+			state.saving = false;
 			idleDraft.close();
+		},
+		setSaving(saving: boolean) {
+			state.saving = saving;
 		},
 	};
 }
 
-export function createReviewComposerSession(): ReviewComposerSession {
+export function createReviewComposerSession(
+	onClose?: () => void,
+): ReviewComposerSession {
 	const state = $state({
 		mode: null as ReviewComposerMode | null,
 		filePath: null as string | null,
@@ -237,6 +248,7 @@ export function createReviewComposerSession(): ReviewComposerSession {
 			state.captured = null;
 			state.originatingReviewId = null;
 			state.target = null;
+			onClose?.();
 		},
 	};
 }
@@ -307,8 +319,14 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			const key = JSON.stringify([surface, target ?? null]);
 			let session = composerSessions.get(key);
 			if (!session) {
-				session = createReviewComposerSession();
-				composerSessions.set(key, session);
+				let created: ReviewComposerSession | null = null;
+				created = createReviewComposerSession(() => {
+					if (composerSessions.get(key) === created) {
+						composerSessions.delete(key);
+					}
+				});
+				session = created;
+				composerSessions.set(key, created);
 			}
 			return session;
 		},

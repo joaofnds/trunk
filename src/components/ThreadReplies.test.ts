@@ -12,6 +12,31 @@ describe("ThreadReplies", () => {
 		vi.clearAllMocks();
 	});
 
+	it("keeps a reply edit open when the save is refused", async () => {
+		const onreplyedit = vi.fn().mockResolvedValue(false);
+		const editorSession = createThreadEditorSession();
+		render(ThreadReplies, {
+			props: {
+				replies: [reply],
+				published: false,
+				onreplyedit,
+				onreplydelete: vi.fn(),
+				editorSession,
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Edit reply"));
+		const textarea = screen.getByRole("textbox", { name: "Edit reply" });
+		await fireEvent.input(textarea, { target: { value: "refused edit" } });
+		await fireEvent.click(screen.getByText("Save"));
+		await tick();
+
+		expect(onreplyedit).toHaveBeenCalledWith("r1", "refused edit");
+		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
+			"refused edit",
+		);
+	});
+
 	it("does not clear a replacement edit draft when the first save resolves", async () => {
 		let settleFirst!: () => void;
 		const onreplyedit = vi.fn(

@@ -90,6 +90,7 @@ const localEditorStore = createReviewEditorStore();
 const localNoteSession = localEditorStore.note(null, "review-note");
 let noteSession = $state<ReviewNoteEditorSession>(localNoteSession);
 const noteDraft = $derived(noteSession.draft);
+const noteSaving = $derived(noteSession.saving);
 
 $effect(() => {
 	noteSession =
@@ -258,10 +259,12 @@ async function loadResolutions() {
 }
 
 function openAddNote(oid: string) {
+	if (noteSaving) return;
 	noteSession.open(oid);
 }
 
 function cancelComposer() {
+	if (noteSaving) return;
 	noteSession.close();
 }
 
@@ -269,10 +272,16 @@ async function saveAddNote(oid: string) {
 	const submittedSession = noteSession;
 	const submittedTarget = submittedSession.target;
 	const submittedDraft = submittedSession.draft;
-	if (submittedTarget !== oid || !submittedDraft.valid) return;
+	if (
+		submittedTarget !== oid ||
+		!submittedDraft.valid ||
+		submittedSession.saving
+	)
+		return;
 
 	const text = submittedDraft.text;
 	const submittedRevision = submittedDraft.revision;
+	submittedSession.setSaving(true);
 	try {
 		await safeInvoke("add_commit_thread", {
 			path: repoPath,
@@ -287,6 +296,8 @@ async function saveAddNote(oid: string) {
 		}
 	} catch (e) {
 		showToast(errorMessage(e, "Failed to add note"), "error");
+	} finally {
+		submittedSession.setSaving(false);
 	}
 }
 
@@ -749,6 +760,7 @@ $effect(() => {
               type="button"
               class="flex items-center"
               onclick={() => openAddNote(group.oid)}
+              disabled={noteSaving}
               style="
                 display: {reviewFilter === 'none' ? 'none' : 'inline-flex'};
                 gap: var(--space-1);
@@ -775,6 +787,7 @@ $effect(() => {
               <textarea
                 bind:value={noteDraft.text}
                 rows="3"
+                disabled={noteSaving}
                 style="
                   width: 100%;
                   resize: vertical;
@@ -791,7 +804,7 @@ $effect(() => {
                 <button
                   type="button"
                   onclick={() => saveAddNote(group.oid)}
-                  disabled={!noteDraft.valid}
+                  disabled={!noteDraft.valid || noteSaving}
                   style="
                     display: inline-flex;
                     align-items: center;
@@ -809,6 +822,7 @@ $effect(() => {
                 <button
                   type="button"
                   onclick={cancelComposer}
+                  disabled={noteSaving}
                   style="
                     display: inline-flex;
                     align-items: center;

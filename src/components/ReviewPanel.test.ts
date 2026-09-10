@@ -492,6 +492,45 @@ describe("ReviewPanel", () => {
 			expect(args?.commitOid).toBe(COMMIT_A);
 			expect(args?.text).toBe("unfinished note");
 		});
+
+		it("allows only one add-note write while Save is pending", async () => {
+			installReads({ commits, comments: [], resolutions: [] });
+			let settleSave!: () => void;
+			vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+				cmd === "add_commit_thread"
+					? new Promise<void>((resolve) => {
+							settleSave = resolve;
+						})
+					: Promise.resolve(undefined),
+			);
+			render(ReviewPanel, {
+				props: {
+					repoPath: "/repo",
+					session: createReviewSession(),
+					reviewComments,
+					onJump: vi.fn(),
+					onJumpToCommit: vi.fn(),
+				},
+			});
+			await flush();
+
+			await fireEvent.click(screen.getAllByText("Add note")[0]);
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "one note" },
+			});
+			const saveButton = screen.getByText("Save").closest("button");
+			await fireEvent.click(saveButton as HTMLButtonElement);
+			await tick();
+
+			expect(saveButton).toBeDisabled();
+			await fireEvent.click(saveButton as HTMLButtonElement);
+			expect(
+				calledCommands().filter((command) => command === "add_commit_thread"),
+			).toHaveLength(1);
+
+			settleSave();
+			await flush();
+		});
 	});
 
 	describe("inline edit", () => {

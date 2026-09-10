@@ -29,7 +29,7 @@ export interface ReviewCommentsManager {
 	readonly oids: ReadonlySet<string>;
 	/** Advances once per refresh that lands its reads, so consumers can follow. */
 	readonly revision: number;
-	/** True when the active review thread read completed with a valid array. */
+	/** True when the thread read completed with a non-ambiguous active-review batch. */
 	readonly threadsAuthoritative: boolean;
 	/**
 	 * A read failure worth showing, else null. The rune never toasts it — it is
@@ -129,11 +129,12 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		const threadBatchMatchesActiveReview =
 			activeReviewReadSucceeded &&
 			threadBatch !== null &&
-			(threadBatch.length === 0 ||
-				(state.activeReviewId !== null &&
+			(state.activeReviewId === null
+				? threadBatch.length === 0
+				: threadBatch.length > 0 &&
 					threadBatch.every(
 						(thread) => thread.review_id === state.activeReviewId,
-					)));
+					));
 
 		state.snapshots =
 			snapshotsR.status === "fulfilled" && snapshotsR.value

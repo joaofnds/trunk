@@ -475,6 +475,18 @@ describe("ThreadCard", () => {
 		expect(screen.getByLabelText("Reply")).toHaveValue(
 			"reply for replacement card",
 		);
+
+		await view.rerender({
+			thread: comment,
+			repoPath: "/repo",
+			onedit: () => {},
+			ondelete: () => {},
+			editorSession: firstSession,
+		});
+		await fireEvent.input(screen.getByLabelText("Reply"), {
+			target: { value: "reply after the first save" },
+		});
+		expect(screen.getByText("Reply")).toBeEnabled();
 	});
 
 	it("does not offer Edit for an agent reply", () => {

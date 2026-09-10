@@ -136,12 +136,13 @@ function saveEdit() {
 }
 
 async function submitReply() {
+	const submittedEditor = editor;
 	const submittedDraft = replyDraft;
 	if (!submittedDraft.valid || replySaving) return;
 
 	const text = submittedDraft.text;
 	const submittedRevision = submittedDraft.revision;
-	editor.setReplySaving(true);
+	submittedEditor.setReplySaving(true);
 	// addReply reports its own refusal (review-comment-actions.ts) rather than
 	// rethrowing, but this still awaits it before clearing the draft so a
 	// published-review refusal keeps the typed text on screen until the write
@@ -152,7 +153,7 @@ async function submitReply() {
 			submittedDraft.close();
 		}
 	} finally {
-		editor.setReplySaving(false);
+		submittedEditor.setReplySaving(false);
 	}
 }
 

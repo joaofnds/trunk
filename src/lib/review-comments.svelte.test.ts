@@ -127,6 +127,7 @@ describe("createReviewComments — refresh", () => {
 		await flush();
 
 		expect(manager.hasThreads).toBe(false);
+		expect(manager.threadsAuthoritative).toBe(false);
 		expect(manager.reviews).toHaveLength(1);
 		manager.destroy();
 	});
@@ -155,6 +156,7 @@ describe("createReviewComments — refresh", () => {
 		expect(manager.threads).toHaveLength(0);
 		expect(manager.activeReviewId).toBeNull();
 		expect(manager.hasThreads).toBe(false);
+		expect(manager.threadsAuthoritative).toBe(true);
 		expect(manager.oids.size).toBe(0);
 		manager.destroy();
 	});
