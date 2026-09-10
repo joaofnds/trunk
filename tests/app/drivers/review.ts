@@ -22,6 +22,8 @@ const FINDER_INPUT = '[aria-label="Find a tracked file to comment on"]';
 const FINDER_ROW = '[role="option"]';
 const SELECTABLE_LINE = ".gutter-selectable";
 const FULL_FILE_COMMENT = ".full-file-comment-button";
+const JUMP_TO_CODE = '[aria-label="Jump to code"]';
+const REPLY_TEXT = 'textarea[aria-label="Reply"]';
 
 /**
  * A review, from the comment that creates it to the doc it renders. Every
@@ -89,11 +91,47 @@ export class ReviewDriver {
 	/** Types into the open composer. */
 	async write(text: string): Promise<void> {
 		const field = await waitFor("the open composer", () =>
-			document.querySelector<HTMLTextAreaElement>(COMPOSER_TEXT),
+			visibleElement<HTMLTextAreaElement>(COMPOSER_TEXT),
 		);
 
 		field.value = text;
 		field.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	/** The visible composer's unsent text and captured line range. */
+	composerDraft(): { text: string; range: string } | null {
+		const field = visibleElement<HTMLTextAreaElement>(COMPOSER_TEXT);
+		const composer = field?.closest<HTMLElement>(".comment-composer");
+		return field && composer
+			? { text: field.value, range: textIn(composer, ".composer-preview") }
+			: null;
+	}
+
+	/** Types an unsent reply on the first visible thread. */
+	async writeReply(text: string): Promise<void> {
+		const field = await waitFor(
+			"the thread reply composer",
+			() => cards()[0]?.querySelector<HTMLTextAreaElement>(REPLY_TEXT) ?? null,
+		);
+		field.value = text;
+		field.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	replyDraft(): string | null {
+		return (
+			cards()[0]?.querySelector<HTMLTextAreaElement>(REPLY_TEXT)?.value ?? null
+		);
+	}
+
+	/** Leaves the panel for the first visible thread's diff. */
+	async jumpToThread(): Promise<void> {
+		const button = await waitFor("the thread's jump to code", () =>
+			enabled(JUMP_TO_CODE),
+		);
+		button.click();
+		await waitFor("the thread's diff", () =>
+			toolbars().length > 0 ? true : null,
+		);
 	}
 
 	/** Submits the composer, which is what sends the comment. */
@@ -229,12 +267,35 @@ function toolbars(): HTMLElement[] {
  * The thread cards the user can see. `HunkView` renders every thread a second
  * time inside a hidden probe to measure its height, so a query that names the
  * card alone answers with the probe's copy — and answers it whether or not the
- * panel ever opened.
+ * panel ever opened. The panel also keeps filtered cards mounted; their hidden
+ * ancestors remove them from the visible thread list.
  */
 function cards(): HTMLElement[] {
 	return [...document.querySelectorAll<HTMLElement>(CARD)].filter(
-		(card) => !card.closest(PROBE),
+		(card) => !card.closest(PROBE) && visible(card),
 	);
+}
+
+function visible(element: HTMLElement): boolean {
+	for (
+		let node: HTMLElement | null = element;
+		node;
+		node = node.parentElement
+	) {
+		const style = getComputedStyle(node);
+		if (
+			node.hidden ||
+			style.display === "none" ||
+			style.visibility === "hidden"
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function visibleElement<T extends HTMLElement>(selector: string): T | null {
+	return [...document.querySelectorAll<T>(selector)].find(visible) ?? null;
 }
 
 function textIn(card: HTMLElement, selector: string): string {
@@ -244,7 +305,7 @@ function textIn(card: HTMLElement, selector: string): string {
 }
 
 function enabled(selector: string): HTMLButtonElement | null {
-	const control = document.querySelector<HTMLButtonElement>(selector);
+	const control = visibleElement<HTMLButtonElement>(selector);
 
 	return control && !control.disabled ? control : null;
 }

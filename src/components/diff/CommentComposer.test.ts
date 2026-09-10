@@ -379,7 +379,6 @@ describe("CommentComposer", () => {
 			commitOid: "abc123",
 			repoPath: "/repo",
 			onclose: () => {},
-			editorDraft: session.draft,
 			composerSession: session,
 		};
 		let view = render(CommentComposer, { props });
@@ -494,6 +493,7 @@ describe("CommentComposer", () => {
 		}
 
 		async function typeAndFireTheAutosave(scheduler: FakeScheduler) {
+			await flush();
 			await fireEvent.input(screen.getByRole("textbox"), {
 				target: { value: "half a thought" },
 			});

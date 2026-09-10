@@ -1,8 +1,8 @@
 import type { ReviewFilter, ReviewTone, Thread } from "./types.js";
 
 export const REVIEW_FILTER_OPTIONS: readonly {
-	value: ReviewFilter;
-	label: string;
+	readonly value: ReviewFilter;
+	readonly label: string;
 }[] = [
 	{ value: "all", label: "All threads" },
 	{ value: "open", label: "Open" },

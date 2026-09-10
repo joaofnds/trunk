@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { makeFile } from "../__tests__/helpers/factories.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { buildTree, toneInSubtree } from "./build-tree.js";
 import {
 	buildCommentCounts,
 	commitOidForComment,
@@ -53,6 +55,34 @@ function currentFileComment(
 }
 
 describe("current-file projection", () => {
+	it.each([
+		["open", "addressed"],
+		["addressed", "open"],
+	] as const)("keeps finder tones local with %s before %s", (first, next) => {
+		const { byCurrentFile, toneByCurrentFile } = buildCommentCounts(
+			[
+				currentFileComment("first", "src/mixed.ts", first),
+				currentFileComment("next", "src/mixed.ts", next),
+				currentFileComment("addressed", "src/addressed.ts", "addressed"),
+				currentFileComment("done", "src/done.ts", "done"),
+			],
+			EMPTY_SNAPSHOTS,
+		);
+
+		expect(byCurrentFile).toEqual(
+			new Map([
+				["src/mixed.ts", 2],
+				["src/addressed.ts", 1],
+			]),
+		);
+		expect(toneByCurrentFile).toEqual(
+			new Map([
+				["src/mixed.ts", "open"],
+				["src/addressed.ts", "addressed"],
+			]),
+		);
+	});
+
 	it("counts a thread against the file its pin names", () => {
 		const { byCurrentFile } = buildCommentCounts(
 			[
@@ -95,6 +125,69 @@ describe("commitOidForComment", () => {
 });
 
 describe("buildCommentCounts", () => {
+	it.each([
+		["open", "addressed"],
+		["addressed", "open"],
+	] as const)(
+		"keeps commit and file tones local with %s before %s",
+		(first, next) => {
+			const counts = buildCommentCounts(
+				[
+					aThread({
+						id: "first",
+						state: first,
+						anchor: anchor("wt", "mixed.ts"),
+					}),
+					aThread({
+						id: "next",
+						state: next,
+						anchor: anchor("wt", "mixed.ts"),
+					}),
+					aThread({
+						id: "addressed-file",
+						state: "addressed",
+						anchor: anchor("wt", "addressed.ts"),
+					}),
+					aThread({
+						id: "addressed-commit",
+						state: "addressed",
+						anchor: anchor("idx", "mixed.ts"),
+					}),
+				],
+				{ working_tree_snapshot: "wt", index_snapshot: "idx" },
+			);
+
+			expect(counts.byCommit).toEqual(
+				new Map([
+					["wt", 3],
+					["idx", 1],
+					["__wip__", 4],
+				]),
+			);
+			expect(counts.toneByCommit).toEqual(
+				new Map([
+					["wt", "open"],
+					["idx", "addressed"],
+					["__wip__", "open"],
+				]),
+			);
+			expect(counts.byFile).toEqual(
+				new Map([
+					["wt\0mixed.ts", 2],
+					["wt\0addressed.ts", 1],
+					["idx\0mixed.ts", 1],
+				]),
+			);
+			expect(counts.toneByFile).toEqual(
+				new Map([
+					["wt\0mixed.ts", "open"],
+					["wt\0addressed.ts", "addressed"],
+					["idx\0mixed.ts", "addressed"],
+				]),
+			);
+		},
+	);
+
 	it("returns empty maps for empty input", () => {
 		const { byCommit, byFile } = buildCommentCounts([], EMPTY_SNAPSHOTS);
 		expect(byCommit.size).toBe(0);
@@ -209,6 +302,31 @@ describe("buildCommentCounts", () => {
 			snapshots,
 		);
 		expect(byCommit.has("__wip__")).toBe(false);
+	});
+});
+
+describe("directory badge projection", () => {
+	it("prioritizes open descendants without changing an addressed-only subtree", () => {
+		const mixedFiles = [
+			makeFile("src/open/a.ts"),
+			makeFile("src/addressed/b.ts"),
+		];
+		const addressedFiles = [makeFile("src/addressed/b.ts")];
+		const { toneByFile } = buildCommentCounts(
+			[
+				lineComment("open", anchor("abc", "src/open/a.ts")),
+				aThread({
+					id: "addressed",
+					state: "addressed",
+					anchor: anchor("abc", "src/addressed/b.ts"),
+				}),
+			],
+			EMPTY_SNAPSHOTS,
+		);
+		const tones = fileTonesForOid(toneByFile, "abc");
+
+		expect(toneInSubtree(buildTree(mixedFiles), tones)).toBe("open");
+		expect(toneInSubtree(buildTree(addressedFiles), tones)).toBe("addressed");
 	});
 });
 

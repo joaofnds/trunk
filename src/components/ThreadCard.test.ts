@@ -446,7 +446,9 @@ describe("ThreadCard", () => {
 		await fireEvent.click(screen.getByText("Save"));
 		await flush();
 
-		expect(textarea).toHaveValue("keep this edit");
+		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
+			"keep this edit",
+		);
 	});
 
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {

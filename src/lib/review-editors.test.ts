@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
+	createReviewComposerSession,
 	createReviewEditorStore,
 	type ReviewComposerTarget,
 } from "./review-editors.svelte.js";
@@ -227,13 +228,41 @@ describe("review editor store", () => {
 		expect(store.composer(diffTarget)).toBe(first);
 	});
 
-	it("evicts a closed target-scoped composer session", () => {
-		const store = createReviewEditorStore();
-		const first = store.composer(diffTarget);
-		first.close();
+	it.each([
+		{ action: "cancel", submitting: false },
+		{ action: "successful submission", submitting: true },
+	])(
+		"keeps a reopened draft after $action and navigation",
+		({ submitting }) => {
+			const store = createReviewEditorStore();
+			const first = store.composer(diffTarget);
+			const capture = {
+				anchor: {
+					commit_oid: "commit-1",
+					file_path: "src/main.ts",
+					source: "Diff",
+					side: "New",
+					start_line: 1,
+					end_line: 1,
+				} satisfies Anchor,
+				cachedExcerpt: "+ kept line",
+			};
+			first.openDiff(capture, "review-a", diffTarget);
+			first.draft.text = "original comment";
+			first.setSubmitting(submitting);
+			first.close();
+			first.setSubmitting(false);
 
-		expect(store.composer(diffTarget)).not.toBe(first);
-	});
+			first.openDiff(capture, "review-a", diffTarget);
+			first.draft.text = "reopened comment";
+			store.composer({ ...diffTarget, commitOid: "commit-2" });
+			const returned = store.composer(diffTarget);
+
+			expect(returned.draft.text).toBe("reopened comment");
+			expect(returned.mode).toBe("diff");
+			expect(returned.captured).toEqual(capture);
+		},
+	);
 
 	it("keeps a composer submission latch across remounts", () => {
 		const store = createReviewEditorStore();
@@ -246,6 +275,22 @@ describe("review editor store", () => {
 		expect(store.composer(diffTarget).submitting).toBe(false);
 	});
 
+	it("keeps independent drafts for reviews on the same target", () => {
+		const store = createReviewEditorStore();
+		const first = store.composer(diffTarget, "review-a");
+		first.draft.open("review A comment");
+
+		const second = store.composer(diffTarget, "review-b");
+		second.draft.open("review B comment");
+
+		expect(store.composer(diffTarget, "review-a").draft.text).toBe(
+			"review A comment",
+		);
+		expect(store.composer(diffTarget, "review-b").draft.text).toBe(
+			"review B comment",
+		);
+	});
+
 	it("evicts unopened composer targets while navigating", () => {
 		const store = createReviewEditorStore();
 		const first = store.composer(diffTarget);
@@ -253,5 +298,82 @@ describe("review editor store", () => {
 		store.composer({ ...diffTarget, commitOid: "commit-2" });
 
 		expect(store.composer(diffTarget)).not.toBe(first);
+	});
+});
+
+describe("review composer session", () => {
+	it("restores a saved draft into an untouched composer", async () => {
+		const session = createReviewComposerSession();
+
+		await session.restoreDraft(async () => "saved comment");
+
+		expect(session.draft.text).toBe("saved comment");
+	});
+
+	it("preserves an edit followed by clearing while restoration is pending", async () => {
+		const session = createReviewComposerSession();
+		const read = Promise.withResolvers<string | null>();
+		const restoration = session.restoreDraft(() => read.promise);
+
+		session.draft.text = "new comment";
+		session.draft.text = "";
+		read.resolve("saved comment");
+		await restoration;
+
+		expect(session.draft.text).toBe("");
+	});
+
+	it("preserves text that already exists when restoration starts", async () => {
+		const session = createReviewComposerSession();
+		session.draft.text = "current comment";
+
+		await session.restoreDraft(async () => "saved comment");
+
+		expect(session.draft.text).toBe("current comment");
+	});
+
+	it("does not restore again after the user clears restored text", async () => {
+		const session = createReviewComposerSession();
+		await session.restoreDraft(async () => "saved comment");
+
+		session.draft.text = "";
+		await session.restoreDraft(async () => "saved comment");
+
+		expect(session.draft.text).toBe("");
+	});
+
+	it("does not restore again after closing and reopening", async () => {
+		const session = createReviewComposerSession();
+		await session.restoreDraft(async () => "saved comment");
+
+		session.close();
+		session.draft.open();
+		await session.restoreDraft(async () => "saved comment");
+
+		expect(session.draft.text).toBe("");
+	});
+
+	it("shares a pending restoration across remounts", async () => {
+		const session = createReviewComposerSession();
+		const read = Promise.withResolvers<string | null>();
+		const restoration = session.restoreDraft(() => read.promise);
+
+		const remounted = session.restoreDraft(async () => "stale comment");
+		read.resolve("saved comment");
+		await Promise.all([restoration, remounted]);
+
+		expect(session.draft.text).toBe("saved comment");
+	});
+
+	it("retains a failed restoration instead of reseeding on remount", async () => {
+		const session = createReviewComposerSession();
+		const failure = new Error("draft unavailable");
+		const restoration = session.restoreDraft(() => Promise.reject(failure));
+		await expect(restoration).rejects.toBe(failure);
+
+		const remounted = session.restoreDraft(async () => "stale comment");
+
+		await expect(remounted).rejects.toBe(failure);
+		expect(session.draft.text).toBe("");
 	});
 });

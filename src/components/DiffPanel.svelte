@@ -185,31 +185,31 @@ const selectedFile = $derived(
 );
 const localComposerSession = createReviewComposerSession();
 const activeComposerSession = $derived(composerSession ?? localComposerSession);
-const defaultComposerTarget = $derived<ReviewComposerTarget>(
-	composerContext === "rebase"
-		? {
-				context: "rebase",
-				kind: "commit",
-				commitOid: commitDetail?.oid ?? null,
-				compareBaseOid: null,
-				filePath: selectedPath,
-			}
-		: diffKind === "commit"
-			? {
-					context: "normal",
-					kind: "commit",
-					commitOid: commitDetail?.oid ?? null,
-					compareBaseOid,
-					filePath: selectedPath,
-				}
-			: {
-					context: "normal",
-					kind: diffKind,
-					commitOid: null,
-					compareBaseOid: null,
-					filePath: selectedPath,
-				},
-);
+const defaultComposerTarget = $derived.by((): ReviewComposerTarget => {
+	if (composerContext === "rebase")
+		return {
+			context: "rebase",
+			kind: "commit",
+			commitOid: commitDetail?.oid ?? null,
+			compareBaseOid: null,
+			filePath: selectedPath,
+		};
+	if (diffKind === "commit")
+		return {
+			context: "normal",
+			kind: "commit",
+			commitOid: commitDetail?.oid ?? null,
+			compareBaseOid,
+			filePath: selectedPath,
+		};
+	return {
+		context: "normal",
+		kind: diffKind,
+		commitOid: null,
+		compareBaseOid: null,
+		filePath: selectedPath,
+	};
+});
 const activeComposerTarget = $derived(composerTarget ?? defaultComposerTarget);
 const composerTargetMatches = $derived(
 	activeComposerSession.target === null ||
@@ -272,7 +272,11 @@ const currentFileTarget = $derived(
 );
 
 async function confirmComposerReplacement(): Promise<boolean> {
-	if (activeComposerSession.mode === null) return true;
+	const session = activeComposerSession;
+	const target = activeComposerTarget;
+	const reviewId = activeReviewId;
+	if (session.submitting) return false;
+	if (session.mode === null) return true;
 
 	if (!composer) {
 		return !activeComposerSession.draft.valid;
@@ -281,7 +285,13 @@ async function confirmComposerReplacement(): Promise<boolean> {
 	const proceed = await composer.confirmDiscardIfDirty();
 	if (!proceed) return false;
 
-	activeComposerSession.close();
+	if (
+		session !== activeComposerSession ||
+		!reviewComposerTargetsEqual(target, activeComposerTarget) ||
+		reviewId !== activeReviewId
+	)
+		return false;
+	session.close();
 	return true;
 }
 
@@ -327,14 +337,23 @@ async function openDiffComposer(
 			return;
 		}
 	}
+	const session = activeComposerSession;
+	const target = activeComposerTarget;
+	const reviewId = activeReviewId;
 	if (!(await confirmComposerReplacement())) return;
+	if (
+		session !== activeComposerSession ||
+		!reviewComposerTargetsEqual(target, activeComposerTarget) ||
+		reviewId !== activeReviewId
+	)
+		return;
 
 	// commit_oid is filled at submit by resolveCommentCommitOid; the range + excerpt
 	// (all the composer renders) come from the hunk and are stable from this instant.
-	activeComposerSession.openDiff(
+	session.openDiff(
 		buildDiffAnchor("", fd, hunkIndex, indices),
-		activeReviewId,
-		activeComposerTarget,
+		reviewId,
+		target,
 	);
 }
 
@@ -348,21 +367,28 @@ async function openDiffComposer(
 // - staged   → "index"   (HEAD→index); the staged diff's New side is the index, and its
 //              Old side is HEAD = the index snapshot's parent, so both sides resolve.
 // - commit   → the viewed commit's oid (no snapshot).
-async function resolveCommentCommitOid(): Promise<string | null> {
-	if (diffKind === "commit") return commitDetail?.oid ?? "";
-	const kind = diffKind === "staged" ? "index" : "workdir";
-	try {
-		const oid = await safeInvoke<string>("ensure_review_snapshot", {
-			path: repoPath,
-			kind,
-		});
-		if (diffKind === "unstaged") workingTreeSnapshotOid = oid;
-		return oid;
-	} catch (e) {
-		reportErrorToast(e, "Failed to snapshot changes");
-		return null;
-	}
-}
+const resolveCommentCommitOid = $derived.by(() => {
+	const session = activeComposerSession;
+	const target = session.target ?? activeComposerTarget;
+	const path = repoPath;
+	return async (): Promise<string | null> => {
+		if (target.kind === "commit") return target.commitOid ?? "";
+		const kind = target.kind === "staged" ? "index" : "workdir";
+		try {
+			const oid = await safeInvoke<string>("ensure_review_snapshot", {
+				path,
+				kind,
+			});
+			if (target.kind === "unstaged" && session === activeComposerSession) {
+				workingTreeSnapshotOid = oid;
+			}
+			return oid;
+		} catch (error) {
+			reportErrorToast(error, "Failed to snapshot changes");
+			return null;
+		}
+	};
+});
 
 // Comment on the user's current line selection.
 async function handleCommentLines(filePath: string, hunkIndex: number) {
@@ -388,13 +414,22 @@ async function handleCommentHunk(filePath: string, hunkIndex: number) {
 async function handleCommentFullFile(filePath: string, indices: Set<number>) {
 	const fd = fileDiffs.find((file) => file.path === filePath);
 	if (!fd || indices.size === 0) return;
+	const session = activeComposerSession;
+	const target = activeComposerTarget;
+	const reviewId = activeReviewId;
 	if (!(await confirmComposerReplacement())) return;
+	if (
+		session !== activeComposerSession ||
+		!reviewComposerTargetsEqual(target, activeComposerTarget) ||
+		reviewId !== activeReviewId
+	)
+		return;
 
-	activeComposerSession.openFullFile(
+	session.openFullFile(
 		filePath,
 		buildFullFileAnchor(commitOid, fd, indices),
-		activeReviewId,
-		activeComposerTarget,
+		reviewId,
+		target,
 	);
 }
 
@@ -1065,7 +1100,6 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 				<CommentComposer
 					bind:this={composer}
 					captured={diffCaptured}
-					editorDraft={activeComposerSession.draft}
 					composerSession={activeComposerSession}
 					{commitOid}
 					resolveCommitOid={resolveCommentCommitOid}
@@ -1084,7 +1118,6 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 				<CommentComposer
 					bind:this={composer}
 					captured={fullFileCaptured}
-					editorDraft={activeComposerSession.draft}
 					composerSession={activeComposerSession}
 					currentFile={currentFileTarget}
 					{commitOid}

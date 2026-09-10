@@ -8,6 +8,28 @@ import ThreadReplies from "./ThreadReplies.svelte";
 const reply = aReply({ id: "r1", text: "original", channel: "human" });
 
 describe("ThreadReplies", () => {
+	it("closes a reply edit once its save succeeds", async () => {
+		render(ThreadReplies, {
+			props: {
+				replies: [reply],
+				published: false,
+				onreplyedit: () => true,
+				onreplydelete: () => {},
+			},
+		});
+
+		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
+			target: { value: "saved edit" },
+		});
+		await fireEvent.click(screen.getByText("Save"));
+		await tick();
+
+		expect(
+			screen.queryByRole("textbox", { name: "Edit reply" }),
+		).not.toBeInTheDocument();
+	});
+
 	it("keeps a reply edit open when the save is refused", async () => {
 		const edits: [string, string][] = [];
 		const onreplyedit = async (id: string, text: string) => {
@@ -38,9 +60,9 @@ describe("ThreadReplies", () => {
 	});
 
 	it("does not clear a replacement edit draft when the first save resolves", async () => {
-		let settleFirst!: () => void;
+		let settleFirst!: (saved: boolean) => void;
 		const onreplyedit = () =>
-			new Promise<void>((resolve) => {
+			new Promise<boolean>((resolve) => {
 				settleFirst = resolve;
 			});
 		const firstSession = createThreadEditorSession();
@@ -72,7 +94,7 @@ describe("ThreadReplies", () => {
 			target: { value: "edit for replacement card" },
 		});
 
-		settleFirst();
+		settleFirst(true);
 		await tick();
 		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
 			"edit for replacement card",
@@ -90,7 +112,7 @@ describe("ThreadReplies", () => {
 		const props = {
 			replies,
 			published: false,
-			onreplyedit: () => undefined,
+			onreplyedit: () => true,
 			onreplydelete: () => {},
 			editorSession,
 		};

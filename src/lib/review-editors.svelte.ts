@@ -83,11 +83,14 @@ export interface ReviewComposerCapture {
 export interface ReviewComposerSession {
 	readonly draft: Draft;
 	readonly submitting: boolean;
+	readonly restoreSettled: boolean;
 	readonly mode: ReviewComposerMode | null;
 	readonly filePath: string | null;
 	readonly captured: ReviewComposerCapture | null;
 	readonly originatingReviewId: string | null;
 	readonly target: ReviewComposerTarget | null;
+	/** Seeds an untouched draft once per session, sharing pending reads across mounts. */
+	restoreDraft(read: () => Promise<string | null>): Promise<void>;
 	openDiff(
 		captured: ReviewComposerCapture,
 		reviewId: string | null,
@@ -123,7 +126,10 @@ export interface ReviewEditorStore {
 	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 	note(reviewId: string | null, surface: string): ReviewNoteEditorSession;
-	composer(target?: ReviewComposerTarget): ReviewComposerSession;
+	composer(
+		target?: ReviewComposerTarget,
+		reviewId?: string | null,
+	): ReviewComposerSession;
 	/** Reconciles one authoritative review snapshot and stale replies. */
 	reconcile(snapshot: ReviewThreadSnapshot): void;
 }
@@ -193,9 +199,7 @@ export function createReviewNoteEditorSession(
 	};
 }
 
-export function createReviewComposerSession(
-	onClose?: () => void,
-): ReviewComposerSession {
+export function createReviewComposerSession(): ReviewComposerSession {
 	const state = $state({
 		mode: null as ReviewComposerMode | null,
 		filePath: null as string | null,
@@ -203,8 +207,10 @@ export function createReviewComposerSession(
 		originatingReviewId: null as string | null,
 		target: null as ReviewComposerTarget | null,
 		submitting: false,
+		restoreSettled: false,
 	});
 	const draft = createDraft();
+	let restoration: Promise<void> | null = null;
 
 	function open(
 		mode: ReviewComposerMode,
@@ -240,6 +246,9 @@ export function createReviewComposerSession(
 
 	return {
 		draft,
+		get restoreSettled() {
+			return state.restoreSettled;
+		},
 		get submitting() {
 			return state.submitting;
 		},
@@ -258,6 +267,25 @@ export function createReviewComposerSession(
 		get target() {
 			return state.target;
 		},
+		restoreDraft(read) {
+			if (restoration !== null) return restoration;
+			const revision = draft.revision;
+			restoration = (async () => {
+				try {
+					const seed = await read();
+					if (
+						seed !== null &&
+						draft.revision === revision &&
+						draft.text === ""
+					) {
+						draft.text = seed;
+					}
+				} finally {
+					state.restoreSettled = true;
+				}
+			})();
+			return restoration;
+		},
 		openDiff(captured, reviewId, target) {
 			return open("diff", null, captured, reviewId, target);
 		},
@@ -274,7 +302,6 @@ export function createReviewComposerSession(
 			state.captured = null;
 			state.originatingReviewId = null;
 			state.target = null;
-			onClose?.();
 		},
 	};
 }
@@ -343,8 +370,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			}
 			return session;
 		},
-		composer(target) {
-			const key = JSON.stringify([target ?? null]);
+		composer(target, reviewId = null) {
+			const key = JSON.stringify([reviewId, target ?? null]);
 			for (const [existingKey, existing] of composerSessions) {
 				if (existingKey !== key && composerIsIdle(existing)) {
 					composerSessions.delete(existingKey);
@@ -352,14 +379,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			}
 			let session = composerSessions.get(key);
 			if (!session) {
-				let created: ReviewComposerSession | null = null;
-				created = createReviewComposerSession(() => {
-					if (composerSessions.get(key) === created) {
-						composerSessions.delete(key);
-					}
-				});
-				session = created;
-				composerSessions.set(key, created);
+				session = createReviewComposerSession();
+				composerSessions.set(key, session);
 			}
 			return session;
 		},

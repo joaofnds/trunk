@@ -26,12 +26,12 @@ import type {
 export const WIP_OID = "__wip__";
 
 export interface CommentCounts {
-	byCommit: Map<string, number>;
-	byFile: Map<string, number>;
-	byCurrentFile: Map<string, number>;
-	toneByCommit: Map<string, ReviewTone>;
-	toneByFile: Map<string, ReviewTone>;
-	toneByCurrentFile: Map<string, ReviewTone>;
+	readonly byCommit: Map<string, number>;
+	readonly byFile: Map<string, number>;
+	readonly byCurrentFile: Map<string, number>;
+	readonly toneByCommit: Map<string, ReviewTone>;
+	readonly toneByFile: Map<string, ReviewTone>;
+	readonly toneByCurrentFile: Map<string, ReviewTone>;
 }
 
 /** The commit a comment is located through: a line comment's anchor, or a

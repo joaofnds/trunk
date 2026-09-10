@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	badgeToneForThread,
+	combineReviewTone,
 	countBadgeThreads,
 	filterThreads,
 	threadMatchesFilter,
@@ -13,6 +14,16 @@ describe("review filter projection", () => {
 	const done = aThread({ id: "done", state: "done" });
 	const dismissed = aThread({ id: "dismissed", state: "dismissed" });
 	const staleDone = aThread({ id: "stale", state: "done", stale: true });
+
+	it.each([
+		["open", "addressed"],
+		["addressed", "open"],
+	] as const)(
+		"prioritizes open work when combining %s then %s",
+		(first, next) => {
+			expect(combineReviewTone(first, next)).toBe("open");
+		},
+	);
 
 	it.each([
 		["all", ["open", "addressed", "done", "dismissed", "stale"]],

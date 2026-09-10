@@ -542,37 +542,35 @@ let rebaseViewComments = $derived(
 		: [],
 );
 
-const diffComposerTarget = $derived<ReviewComposerTarget>(
-	showRebaseEditor
-		? {
-				context: "rebase",
-				kind: "commit",
-				commitOid: rebaseFocusedCommitDetail?.oid ?? null,
-				compareBaseOid: null,
-				filePath: rebaseDiffFile,
-			}
-		: diffKind === "commit"
-			? {
-					context: "normal",
-					kind: "commit",
-					commitOid: selectedCompareFile
-						? (compare?.targetOid ?? null)
-						: (selectedCommitOid ?? null),
-					compareBaseOid: selectedCompareFile
-						? (compare?.baseOid ?? null)
-						: null,
-					filePath: selectedCompareFile ?? selectedDiffPath,
-				}
-			: {
-					context: "normal",
-					kind: diffKind,
-					commitOid: null,
-					compareBaseOid: null,
-					filePath: selectedDiffPath,
-				},
-);
+const diffComposerTarget = $derived.by((): ReviewComposerTarget => {
+	if (showRebaseEditor)
+		return {
+			context: "rebase",
+			kind: "commit",
+			commitOid: rebaseFocusedCommitDetail?.oid ?? null,
+			compareBaseOid: null,
+			filePath: rebaseDiffFile,
+		};
+	if (diffKind === "commit")
+		return {
+			context: "normal",
+			kind: "commit",
+			commitOid: selectedCompareFile
+				? (compare?.targetOid ?? null)
+				: (selectedCommitOid ?? null),
+			compareBaseOid: selectedCompareFile ? (compare?.baseOid ?? null) : null,
+			filePath: selectedCompareFile ?? selectedDiffPath,
+		};
+	return {
+		context: "normal",
+		kind: diffKind,
+		commitOid: null,
+		compareBaseOid: null,
+		filePath: selectedDiffPath,
+	};
+});
 const diffComposerSession = $derived(
-	reviewEditors.composer(diffComposerTarget),
+	reviewEditors.composer(diffComposerTarget, reviewComments.activeReviewId),
 );
 
 // One presentation projection feeds every count surface. The manager remains

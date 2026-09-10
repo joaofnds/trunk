@@ -1,7 +1,6 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import { buildDiffAnchor } from "../../lib/diff-anchor.js";
-import { createDraft, type Draft } from "../../lib/draft.svelte.js";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import { createOwnedTimer } from "../../lib/owned-timer.js";
@@ -10,7 +9,10 @@ import {
 	getDraft,
 	saveDraft,
 } from "../../lib/review-comment-actions.js";
-import type { ReviewComposerSession } from "../../lib/review-editors.svelte.js";
+import {
+	createReviewComposerSession,
+	type ReviewComposerSession,
+} from "../../lib/review-editors.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 
 interface Props {
@@ -42,8 +44,6 @@ interface Props {
 	originatingReviewId?: string | null;
 	/** The review currently active in the host. */
 	activeReviewId?: string | null;
-	/** Repository-tab-owned draft that survives conditional composer mounts. */
-	editorDraft?: Draft;
 	/** Repository-tab-owned submission latch that survives conditional mounts. */
 	composerSession?: ReviewComposerSession;
 }
@@ -61,16 +61,13 @@ let {
 	canSubmit = true,
 	originatingReviewId = null,
 	activeReviewId = null,
-	editorDraft,
 	composerSession,
 }: Props = $props();
 
-const localEditorDraft = createDraft();
-const composerDraft = $derived(editorDraft ?? localEditorDraft);
-let localSubmitting = $state(false);
-const submitting = $derived(
-	localSubmitting || (composerSession?.submitting ?? false),
-);
+const localSession = createReviewComposerSession();
+const activeSession = $derived(composerSession ?? localSession);
+const composerDraft = $derived(activeSession.draft);
+const submitting = $derived(activeSession.submitting);
 
 function anchorsEqual(left: Anchor | null, right: Anchor | null): boolean {
 	return (
@@ -83,29 +80,19 @@ function anchorsEqual(left: Anchor | null, right: Anchor | null): boolean {
 	);
 }
 
-// Restore the draft this repo autosaved. The row has no review foreign key, so
-// it survives a crash or a quit without stranding a review (D6) — but only if
-// something reads it back, which is what makes the restore real rather than
-// write-only. Runs once per mount, before the user can type: a later arrival
-// must not clobber what they have already written.
-let restored = $state(false);
 $effect(() => {
-	void repoPath;
+	const session = activeSession;
+	const path = repoPath;
 	untrack(async () => {
+		const anchor = capturedResult.anchor;
 		try {
-			const draft = await getDraft(repoPath);
-			if (
-				draft !== null &&
-				composerDraft.text === "" &&
-				anchorsEqual(draft.anchor, capturedResult.anchor)
-			) {
-				composerDraft.text = draft.text;
-			}
-		} catch {
-			// A missing draft is the normal case; a failed read costs the restore,
-			// never the composer.
-		} finally {
-			restored = true;
+			await session.restoreDraft(async () => {
+				const draft = await getDraft(path);
+				if (!draft || !anchorsEqual(draft.anchor, anchor)) return null;
+				return draft.text;
+			});
+		} catch (error) {
+			reportErrorToast(error, "Restore draft failed");
 		}
 	});
 });
@@ -160,7 +147,7 @@ let saveInFlight: Promise<void> = Promise.resolve();
 async function persistDraft() {
 	// Never write before the restore has landed: an empty autosave racing the
 	// read would erase the draft it is about to restore.
-	if (!restored) return;
+	if (!activeSession.restoreSettled) return;
 
 	saveInFlight = saveDraft(
 		repoPath,
@@ -175,10 +162,10 @@ async function settleDraftSave() {
 	await saveInFlight;
 }
 
-async function discardDraft() {
+async function discardDraft(path: string) {
 	await settleDraftSave();
 	try {
-		await deleteDraft(repoPath);
+		await deleteDraft(path);
 	} catch (e) {
 		reportErrorToast(e, "Discard draft failed");
 	}
@@ -191,24 +178,22 @@ async function handleSubmit() {
 	const submittedCaptured = capturedResult;
 	const submittedCurrentFile = currentFile;
 	const submittedResolveCommitOid = resolveCommitOid;
-	const submittedComposerSession = composerSession;
+	const submittedComposerSession = activeSession;
+	const submittedReviewId = originatingReviewId;
+	const submittedRepoPath = repoPath;
 	const submittedOnClose = onclose;
 	if (submitDisabled) return;
 
-	if (submittedComposerSession) {
-		submittedComposerSession.setSubmitting(true);
-	} else {
-		localSubmitting = true;
-	}
+	submittedComposerSession.setSubmitting(true);
 	await settleDraftSave();
 	try {
-		if (originatingReviewId !== activeReviewId) return;
+		if (submittedReviewId !== activeReviewId) return;
 		// Resolve the anchor's commit_oid now (deferred from open): for the working
 		// tree this starts the session + creates/reuses the snapshot. Null = failure
 		// (a toast already fired); keep the composer + draft open so nothing is lost.
 		if (submittedCurrentFile) {
 			await safeInvoke("add_current_file_thread", {
-				path: repoPath,
+				path: submittedRepoPath,
 				filePath: submittedCurrentFile.filePath,
 				startLine: submittedCurrentFile.startLine,
 				endLine: submittedCurrentFile.endLine,
@@ -219,11 +204,11 @@ async function handleSubmit() {
 			if (submittedResolveCommitOid) {
 				const oid = await submittedResolveCommitOid();
 				if (oid === null) return;
-				if (originatingReviewId !== activeReviewId) return;
+				if (submittedReviewId !== activeReviewId) return;
 				anchor = { ...anchor, commit_oid: oid };
 			}
 			await safeInvoke("add_thread", {
-				path: repoPath,
+				path: submittedRepoPath,
 				text: submittedText,
 				anchor,
 				cachedExcerpt: submittedCaptured.cachedExcerpt,
@@ -233,11 +218,7 @@ async function handleSubmit() {
 		reportErrorToast(e, "Add comment failed");
 		return;
 	} finally {
-		if (submittedComposerSession) {
-			submittedComposerSession.setSubmitting(false);
-		} else {
-			localSubmitting = false;
-		}
+		submittedComposerSession.setSubmitting(false);
 	}
 	if (submittedDraft.revision === submittedRevision) {
 		submittedDraft.close();
@@ -248,25 +229,46 @@ async function handleSubmit() {
 // Cancelling abandons the draft, so the row goes with it — otherwise the next
 // composer reopens with text the user already chose to discard.
 async function handleCancel() {
-	await discardDraft();
-	composerDraft.close();
-	onclose();
+	if (submitting) return;
+	const session = activeSession;
+	const draft = session.draft;
+	const revision = draft.revision;
+	const close = onclose;
+	const path = repoPath;
+	session.setSubmitting(true);
+	try {
+		await discardDraft(path);
+		if (draft.revision !== revision) return;
+		draft.close();
+		close();
+	} finally {
+		session.setSubmitting(false);
+	}
 }
 
 // Instance method the host (DiffPanel) calls before switching the selection to a
 // new range. Confirms only when the draft is dirty (non-empty); an empty draft
 // switches silently. Mirrors DiffPanel.handleDiscardLines' confirm pattern.
 export async function confirmDiscardIfDirty(): Promise<boolean> {
-	if (composerDraft.text.trim() === "") return true;
+	if (submitting) return false;
+	const session = activeSession;
+	const revision = session.draft.revision;
+	const path = repoPath;
+	if (!session.draft.valid) return true;
 
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const discard = await ask("Discard your unsaved comment?", {
 		title: "Discard Comment",
 		kind: "warning",
 	});
-	if (discard) await discardDraft();
-
-	return discard;
+	if (
+		!discard ||
+		session !== activeSession ||
+		session.draft.revision !== revision
+	)
+		return false;
+	await discardDraft(path);
+	return session === activeSession && session.draft.revision === revision;
 }
 </script>
 

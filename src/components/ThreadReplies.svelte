@@ -14,10 +14,7 @@ interface Props {
 	// Awaited before the editor clears its draft, so a caller that reports its
 	// own refusal (review-comment-actions.ts) keeps the typed text on screen
 	// until the write settles.
-	onreplyedit: (
-		id: string,
-		text: string,
-	) => boolean | undefined | Promise<boolean | undefined> | Promise<void>;
+	onreplyedit: (id: string, text: string) => boolean | Promise<boolean>;
 	onreplydelete: (id: string) => void;
 	editorSession?: ThreadEditorSession;
 }
@@ -66,7 +63,7 @@ async function saveReplyEdit() {
 	try {
 		const saved = await onreplyedit(submittedReplyId, text);
 		if (
-			saved !== false &&
+			saved === true &&
 			submittedEditor.editingReplyId === submittedReplyId &&
 			submittedDraft.revision === submittedRevision
 		) {
