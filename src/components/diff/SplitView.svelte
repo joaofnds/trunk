@@ -438,7 +438,7 @@ function originClass(origin: string): string {
   {:else if item.kind === "comment"}
     <div class="split-comment-row" style="position: sticky; left: 0; width: 100cqi;">
       {#each item.threads as c (c.id)}
-        <div style:display={item.visibleThreadIds.has(c.id) ? "block" : "none"}>
+        <div>
           {@render threadCard(c)}
         </div>
       {/each}

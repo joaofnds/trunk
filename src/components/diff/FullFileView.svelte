@@ -254,7 +254,7 @@ function lineColor(): string {
       ><span class="gutter-num" style="min-width: {vd.gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {vd.gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
   {:else if item.kind === "comment"}
     {#each item.threads as c (c.id)}
-      <div class="comment-row" style:display={item.visibleThreadIds.has(c.id) ? "block" : "none"}>{@render threadCard(c)}</div>
+      <div class="comment-row">{@render threadCard(c)}</div>
     {/each}
   {:else if item.kind === "binary"}
     <div class="binary-row">Binary file — no diff available</div>

@@ -52,7 +52,6 @@ export type DiffRow =
 			lineIdx: number;
 			flatIdx: number;
 			threads: Thread[];
-			visibleThreadIds: ReadonlySet<string>;
 	  };
 
 /** One hunk's place in the rendered document. The sequence is an ordinal one,
@@ -195,9 +194,6 @@ export function buildInlineRows(
 						lineIdx,
 						flatIdx,
 						threads: visibleThreads,
-						visibleThreadIds: new Set(
-							visibleThreads.map((thread) => thread.id),
-						),
 					});
 				}
 
@@ -317,9 +313,6 @@ export function buildSplitRows(
 							lineIdx: anchor.lineIdx,
 							flatIdx: flatBase + anchor.lineIdx,
 							threads: visibleThreads,
-							visibleThreadIds: new Set(
-								visibleThreads.map((thread) => thread.id),
-							),
 						});
 					}
 				}
@@ -434,11 +427,7 @@ function heightOf(
 
 	if (row.kind === "comment") {
 		return row.threads.reduce(
-			(total, thread) =>
-				total +
-				(row.visibleThreadIds.has(thread.id)
-					? probedHeight(probed, thread.id)
-					: 0),
+			(total, thread) => total + probedHeight(probed, thread.id),
 			0,
 		);
 	}

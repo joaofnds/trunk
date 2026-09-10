@@ -403,7 +403,7 @@ function lineColor(): string {
   {:else if item.kind === "comment"}
     <div class="inline-comment-row">
       {#each item.threads as c (c.id)}
-        <div style:display={item.visibleThreadIds.has(c.id) ? "block" : "none"}>
+        <div>
           {@render threadCard(c)}
         </div>
       {/each}
