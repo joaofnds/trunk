@@ -270,6 +270,7 @@ async function saveAddNote(oid: string) {
 	const submittedTarget = submittedSession.target;
 	const submittedDraft = submittedSession.draft;
 	if (submittedTarget !== oid || !submittedDraft.valid) return;
+
 	const text = submittedDraft.text;
 	submittedSession.close();
 	try {

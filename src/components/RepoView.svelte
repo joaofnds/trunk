@@ -172,6 +172,7 @@ const reviewSession = createReviewSession();
 // the rune owns its own listener teardown via destroy().
 const reviewComments = createReviewComments(untrack(() => repoPath));
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
+const diffComposerSession = reviewEditors.composer("diff");
 onDestroy(() => reviewComments.destroy());
 
 const editorSessionFor = (host: ReviewEditorHost) => (thread: Thread) =>
@@ -1483,6 +1484,7 @@ function startRightResize(e: MouseEvent) {
             viewComments={rebaseViewComments}
             activeReviewId={reviewComments.activeReviewId}
             editorSessionForThread={editorSessionForDiffThread}
+            composerSession={diffComposerSession}
             onclose={() => { rebaseDiffFile = null; }}
           />
         {/if}
@@ -1569,6 +1571,7 @@ function startRightResize(e: MouseEvent) {
           {viewComments}
           activeReviewId={reviewComments.activeReviewId}
           editorSessionForThread={editorSessionForDiffThread}
+          composerSession={diffComposerSession}
           refreshToken={diffRefreshToken}
           loading={stagingDiffLoading}
           onhunkaction={async (filePath) => {

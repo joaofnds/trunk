@@ -137,6 +137,7 @@ function saveEdit() {
 async function submitReply() {
 	const submittedDraft = replyDraft;
 	if (!submittedDraft.valid) return;
+
 	const text = submittedDraft.text;
 	// addReply reports its own refusal (review-comment-actions.ts) rather than
 	// rethrowing, but this still awaits it before clearing the draft so a

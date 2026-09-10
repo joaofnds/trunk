@@ -50,10 +50,41 @@ describe("ThreadReplies", () => {
 		});
 
 		settleFirst();
-		await new Promise((resolve) => setTimeout(resolve, 0));
 		await tick();
 		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
 			"edit for replacement card",
 		);
+	});
+
+	it("keeps an older edited reply visible after the list remounts", async () => {
+		const replies = [
+			aReply({ id: "r1", text: "oldest" }),
+			aReply({ id: "r2", text: "second" }),
+			aReply({ id: "r3", text: "third" }),
+			aReply({ id: "r4", text: "newest" }),
+		];
+		const editorSession = createThreadEditorSession();
+		const props = {
+			replies,
+			published: false,
+			onreplyedit: vi.fn(),
+			onreplydelete: vi.fn(),
+			editorSession,
+		};
+		let view = render(ThreadReplies, { props });
+
+		await fireEvent.click(screen.getByText("Show 1 more reply"));
+		await fireEvent.click(screen.getAllByText("Edit reply")[0]);
+		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
+			target: { value: "keep this older edit" },
+		});
+
+		view.unmount();
+		view = render(ThreadReplies, { props });
+
+		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
+			"keep this older edit",
+		);
+		view.unmount();
 	});
 });

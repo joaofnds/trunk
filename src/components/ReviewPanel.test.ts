@@ -1,5 +1,5 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
@@ -179,7 +179,8 @@ function installReads(opts: {
 }
 
 async function flush() {
-	await new Promise((r) => setTimeout(r, 0));
+	await Promise.resolve();
+	await Promise.resolve();
 	await tick();
 }
 
@@ -719,7 +720,7 @@ describe("ReviewPanel", () => {
 			await flush();
 
 			await fireEvent.click(screen.getByText("Delete reply"));
-			await flush();
+			await waitFor(() => expect(calledCommands()).toContain("delete_reply"));
 
 			expect(calledCommands()).toContain("delete_reply");
 			expect(callArgs("delete_reply")).toEqual({ path: "/repo", id: "r1" });
@@ -747,7 +748,7 @@ describe("ReviewPanel", () => {
 			await flush();
 
 			await fireEvent.click(screen.getByText("Delete"));
-			await flush();
+			await waitFor(() => expect(vi.mocked(ask)).toHaveBeenCalledTimes(1));
 
 			expect(vi.mocked(ask)).toHaveBeenCalledTimes(1);
 			expect(calledCommands()).not.toContain("delete_thread");
@@ -773,7 +774,7 @@ describe("ReviewPanel", () => {
 			await flush();
 
 			await fireEvent.click(screen.getByText("Delete"));
-			await flush();
+			await waitFor(() => expect(calledCommands()).toContain("delete_thread"));
 
 			expect(calledCommands()).toContain("delete_thread");
 			expect(callArgs("delete_thread")?.id).toBe("c1");

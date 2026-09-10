@@ -60,6 +60,7 @@ async function saveNote() {
 	const submittedDraft = draft;
 	const submittedCommitOid = commitOid;
 	if (!submittedDraft.valid || noteSaving) return;
+
 	const text = submittedDraft.text.trim();
 	noteSaving = true;
 	try {

@@ -32,7 +32,9 @@ const editingReplyId = $derived(editor.editingReplyId);
 // reveals the rest — expand state belongs to the list, never a parent map.
 const hiddenReplyCount = $derived(Math.max(replies.length - 3, 0));
 const visibleReplies = $derived(
-	repliesExpanded || hiddenReplyCount === 0 ? replies : replies.slice(-3),
+	repliesExpanded || hiddenReplyCount === 0 || editingReplyId !== null
+		? replies
+		: replies.slice(-3),
 );
 
 function openReplyEdit(replyId: string, text: string) {
@@ -50,6 +52,7 @@ async function saveReplyEdit() {
 	const submittedDraft = replyEditDraft;
 	const submittedReplyId = editingReplyId;
 	if (!submittedDraft.valid || submittedReplyId === null) return;
+
 	const text = submittedDraft.text;
 	await onreplyedit(submittedReplyId, text);
 	submittedEditor.setEditingReply(null);

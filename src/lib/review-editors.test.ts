@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { createReviewEditorStore } from "./review-editors.svelte.js";
+import type { Anchor } from "./types.js";
 
 describe("review editor store", () => {
 	it("keeps thread editor state stable across remounts and filters", () => {
@@ -127,5 +128,32 @@ describe("review editor store", () => {
 
 		expect(store.thread("review-a", "review-panel", "thread-1")).toBe(session);
 		expect(session.rootEdit.text).toBe("unfinished root edit");
+	});
+
+	it("keeps a diff composer capture and draft across panel remounts", () => {
+		const store = createReviewEditorStore();
+		const capture = {
+			anchor: {
+				commit_oid: "commit-1",
+				file_path: "src/main.ts",
+				source: "FullFile",
+				side: "New",
+				start_line: 1,
+				end_line: 1,
+			} satisfies Anchor,
+			cachedExcerpt: "+ kept line",
+		};
+		const first = store.composer("diff");
+
+		first.openFullFile("src/main.ts", capture, "review-a");
+		first.draft.text = "unfinished diff comment";
+
+		const remounted = store.composer("diff");
+		expect(remounted).toBe(first);
+		expect(remounted.mode).toBe("full-file");
+		expect(remounted.filePath).toBe("src/main.ts");
+		expect(remounted.captured).toEqual(capture);
+		expect(remounted.originatingReviewId).toBe("review-a");
+		expect(remounted.draft.text).toBe("unfinished diff comment");
 	});
 });

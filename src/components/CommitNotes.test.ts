@@ -172,7 +172,6 @@ describe("CommitNotes", () => {
 		);
 
 		settleFirst();
-		await new Promise((resolve) => setTimeout(resolve, 0));
 		await tick();
 		expect(
 			screen.getByPlaceholderText("Leave a note on this commit…"),

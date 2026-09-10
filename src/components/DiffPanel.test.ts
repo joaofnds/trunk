@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
@@ -8,6 +8,7 @@ import {
 	trailingWhitespaceStart,
 } from "../lib/diff-utils.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import type { CommitDetail, DiffLine, FileDiff } from "../lib/types.js";
 import DiffPanel from "./DiffPanel.svelte";
 
@@ -24,7 +25,8 @@ afterEach(restoreLayout);
 // Needed because DiffPanel loads preferences via $effect Promise.all which resolves
 // asynchronously. This ensures the component has processed the loaded values.
 async function flushPrefs() {
-	await new Promise((r) => setTimeout(r, 0));
+	await Promise.resolve();
+	await Promise.resolve();
 	await tick();
 }
 
@@ -499,6 +501,8 @@ describe("DiffPanel", () => {
 	});
 
 	it("blocks a retained composer after the active review changes", async () => {
+		const editorStore = createReviewEditorStore();
+		const composerSession = editorStore.composer("diff");
 		const baseProps = {
 			fileDiffs: [testDiff],
 			commitDetail: nonMergeCommit,
@@ -506,8 +510,9 @@ describe("DiffPanel", () => {
 			diffKind: "commit" as const,
 			repoPath: "/repo",
 			activeReviewId: "review-a",
+			composerSession,
 		};
-		const view = render(DiffPanel, { props: baseProps });
+		let view = render(DiffPanel, { props: baseProps });
 		await flushPrefs();
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
@@ -517,6 +522,11 @@ describe("DiffPanel", () => {
 		await fireEvent.input(screen.getByRole("textbox"), {
 			target: { value: "comment from review A" },
 		});
+		view.unmount();
+		view = render(DiffPanel, { props: baseProps });
+		await flushPrefs();
+		expect(screen.getByRole("textbox")).toHaveValue("comment from review A");
+
 		await view.rerender({ ...baseProps, activeReviewId: "review-b" });
 
 		const submit = screen.getByRole("button", { name: /submit/i });
@@ -525,6 +535,14 @@ describe("DiffPanel", () => {
 		expect(
 			vi.mocked(safeInvoke).mock.calls.map((call) => call[0]),
 		).not.toContain("add_thread");
+
+		await view.rerender({ ...baseProps, activeReviewId: "review-a" });
+		expect(screen.getByRole("button", { name: /submit/i })).toBeEnabled();
+		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await flushPrefs();
+		expect(vi.mocked(safeInvoke).mock.calls.map((call) => call[0])).toContain(
+			"add_thread",
+		);
 	});
 
 	it("shows Unstage Hunk button for staged diffs", async () => {
@@ -2056,8 +2074,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		// handleLineMouseDown is async (awaits a dynamic plugin-dialog import), so flush
 		// microtasks before asserting.
 		await fireEvent.mouseDown(gutterOf("const y = 3;"));
-		await new Promise((r) => setTimeout(r, 0));
-		await tick();
+		await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
 
 		expect(askMock).toHaveBeenCalledTimes(1);
 		// Composer stays open because the switch was cancelled.
@@ -2080,7 +2097,6 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await fireEvent.mouseDown(gutterOf("const x = 2;"));
 		await tick();
 		await fireEvent.click(screen.getByRole("button", { name: /^Comment \(/ }));
-		await new Promise((r) => setTimeout(r, 0));
 		await tick();
 	}
 
@@ -2090,8 +2106,7 @@ describe("DiffPanel comment affordance (commit diffs)", () => {
 		await fireEvent.input(textarea, { target: { value: note } });
 		await tick();
 		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
-		await new Promise((r) => setTimeout(r, 0));
-		await tick();
+		await flushPrefs();
 	}
 
 	function calledCommands(): string[] {
@@ -2215,7 +2230,12 @@ describe("Discard File button", () => {
 		await flushPrefs();
 
 		await fireEvent.click(screen.getByText("Discard File"));
-		await flushPrefs();
+		await waitFor(() =>
+			expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("discard_file", {
+				path: "/test/repo",
+				filePath: "src/main.ts",
+			}),
+		);
 
 		expect(vi.mocked(safeInvoke)).toHaveBeenCalledWith("discard_file", {
 			path: "/test/repo",
@@ -2226,6 +2246,7 @@ describe("Discard File button", () => {
 
 	it("keeps the file when the user cancels the confirmation", async () => {
 		const { ask } = await import("@tauri-apps/plugin-dialog");
+		vi.mocked(ask).mockClear();
 		vi.mocked(ask).mockResolvedValueOnce(false);
 		vi.mocked(safeInvoke).mockClear();
 		const onfileemptied = vi.fn();
@@ -2244,7 +2265,7 @@ describe("Discard File button", () => {
 		await flushPrefs();
 
 		await fireEvent.click(screen.getByText("Discard File"));
-		await flushPrefs();
+		await waitFor(() => expect(vi.mocked(ask)).toHaveBeenCalledTimes(1));
 
 		expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
 			"discard_file",
@@ -2291,7 +2312,12 @@ describe("Discard File button", () => {
 		await flushPrefs();
 
 		await fireEvent.click(screen.getByText("Discard File"));
-		await flushPrefs();
+		await waitFor(() =>
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringContaining("untracked and will be permanently removed"),
+				{ title: "Delete File", kind: "warning" },
+			),
+		);
 
 		expect(vi.mocked(ask)).toHaveBeenCalledWith(
 			expect.stringContaining("untracked and will be permanently removed"),
@@ -2316,7 +2342,12 @@ describe("Discard File button", () => {
 		await flushPrefs();
 
 		await fireEvent.click(screen.getByText("Discard File"));
-		await flushPrefs();
+		await waitFor(() =>
+			expect(vi.mocked(ask)).toHaveBeenCalledWith(
+				expect.stringContaining("Discard changes to src/main.ts"),
+				{ title: "Discard Changes", kind: "warning" },
+			),
+		);
 
 		expect(vi.mocked(ask)).toHaveBeenCalledWith(
 			expect.stringContaining("Discard changes to src/main.ts"),
@@ -2351,7 +2382,12 @@ describe("Discard File button", () => {
 		await flushPrefs();
 
 		await fireEvent.click(screen.getByText("Discard File"));
-		await flushPrefs();
+		await waitFor(() =>
+			expect(vi.mocked(showToast)).toHaveBeenCalledWith(
+				"discard exploded",
+				"error",
+			),
+		);
 
 		expect(vi.mocked(showToast)).toHaveBeenCalledWith(
 			"discard exploded",

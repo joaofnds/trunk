@@ -1,5 +1,5 @@
 import { createDraft, type Draft } from "./draft.svelte.js";
-import type { Thread } from "./types.js";
+import type { Anchor, Thread } from "./types.js";
 
 /** The transient editors a thread owns while it is mounted on any surface. */
 export interface ThreadEditorSession {
@@ -18,6 +18,30 @@ export interface ReviewNoteEditorSession {
 	readonly draft: Draft;
 	readonly target: string | null;
 	open(target: string): void;
+	close(): void;
+}
+
+export type ReviewComposerMode = "diff" | "full-file";
+export type ReviewComposerSurface = "diff";
+
+export interface ReviewComposerCapture {
+	readonly anchor: Anchor;
+	readonly cachedExcerpt: string;
+}
+
+/** A diff composer that survives conditional DiffPanel mounts. */
+export interface ReviewComposerSession {
+	readonly draft: Draft;
+	readonly mode: ReviewComposerMode | null;
+	readonly filePath: string | null;
+	readonly captured: ReviewComposerCapture | null;
+	readonly originatingReviewId: string | null;
+	openDiff(captured: ReviewComposerCapture, reviewId: string | null): void;
+	openFullFile(
+		filePath: string,
+		captured: ReviewComposerCapture,
+		reviewId: string | null,
+	): void;
 	close(): void;
 }
 
@@ -41,6 +65,7 @@ export interface ReviewEditorStore {
 	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 	note(reviewId: string | null, surface: string): ReviewNoteEditorSession;
+	composer(surface: ReviewComposerSurface): ReviewComposerSession;
 	/** Reconciles one authoritative review snapshot and stale replies. */
 	reconcile(snapshot: ReviewThreadSnapshot): void;
 }
@@ -87,6 +112,59 @@ export function createReviewNoteEditorSession(
 	};
 }
 
+export function createReviewComposerSession(): ReviewComposerSession {
+	const state = $state({
+		mode: null as ReviewComposerMode | null,
+		filePath: null as string | null,
+		captured: null as ReviewComposerCapture | null,
+		originatingReviewId: null as string | null,
+	});
+	const draft = createDraft();
+
+	function open(
+		mode: ReviewComposerMode,
+		filePath: string | null,
+		captured: ReviewComposerCapture,
+		reviewId: string | null,
+	): void {
+		state.mode = mode;
+		state.filePath = filePath;
+		state.captured = captured;
+		state.originatingReviewId = reviewId;
+
+		if (!draft.editing) draft.open();
+	}
+
+	return {
+		draft,
+		get mode() {
+			return state.mode;
+		},
+		get filePath() {
+			return state.filePath;
+		},
+		get captured() {
+			return state.captured;
+		},
+		get originatingReviewId() {
+			return state.originatingReviewId;
+		},
+		openDiff(captured, reviewId) {
+			open("diff", null, captured, reviewId);
+		},
+		openFullFile(filePath, captured, reviewId) {
+			open("full-file", filePath, captured, reviewId);
+		},
+		close() {
+			draft.close();
+			state.mode = null;
+			state.filePath = null;
+			state.captured = null;
+			state.originatingReviewId = null;
+		},
+	};
+}
+
 export function createReviewEditorStore(): ReviewEditorStore {
 	interface ThreadSessionEntry {
 		reviewId: string | null;
@@ -97,6 +175,10 @@ export function createReviewEditorStore(): ReviewEditorStore {
 	const threadSessions = new Map<string, ThreadSessionEntry>();
 	const drafts = new Map<string, Draft>();
 	const noteSessions = new Map<string, ReviewNoteEditorSession>();
+	const composerSessions = new Map<
+		ReviewComposerSurface,
+		ReviewComposerSession
+	>();
 	const getDraft = (
 		reviewId: string | null,
 		surface: string,
@@ -143,6 +225,14 @@ export function createReviewEditorStore(): ReviewEditorStore {
 					getDraft(reviewId, surface, target),
 				);
 				noteSessions.set(key, session);
+			}
+			return session;
+		},
+		composer(surface) {
+			let session = composerSessions.get(surface);
+			if (!session) {
+				session = createReviewComposerSession();
+				composerSessions.set(surface, session);
 			}
 			return session;
 		},

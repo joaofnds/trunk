@@ -103,6 +103,7 @@ describe("createReviewComments — refresh", () => {
 		await flush();
 
 		expect(manager.threads).toHaveLength(1);
+		expect(manager.threadsAuthoritative).toBe(true);
 		expect(manager.reviews).toHaveLength(1);
 		expect(manager.activeReviewId).toBe("REVIEW01");
 		expect(manager.snapshots.working_tree_snapshot).toBe("wt1");
@@ -178,6 +179,7 @@ describe("createReviewComments — refresh", () => {
 		await flush();
 
 		expect(manager.lastError).toContain("database is locked");
+		expect(manager.threadsAuthoritative).toBe(false);
 		manager.destroy();
 	});
 
@@ -191,6 +193,7 @@ describe("createReviewComments — refresh", () => {
 		await manager.refresh();
 
 		expect(manager.lastError).toBeNull();
+		expect(manager.threadsAuthoritative).toBe(true);
 		manager.destroy();
 	});
 });

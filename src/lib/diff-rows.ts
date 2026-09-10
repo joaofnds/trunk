@@ -183,6 +183,7 @@ export function buildInlineRows(
 				const threads = opts.reviewCommentsVisible
 					? threadsOn(line, opts.comments)
 					: [];
+
 				const visibleThreads = threads.filter((thread) =>
 					visibleComments.includes(thread),
 				);
@@ -299,6 +300,7 @@ export function buildSplitRows(
 				const threads = opts.reviewCommentsVisible
 					? pairThreads(pair, opts.comments)
 					: [];
+
 				const visibleThreads = threads.filter((thread) =>
 					visibleComments.includes(thread),
 				);

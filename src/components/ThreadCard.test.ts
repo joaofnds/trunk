@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import type { ComponentProps } from "svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,7 +38,8 @@ function callArgs(cmd: string): Record<string, unknown> | undefined {
 // The delete-confirmation flow awaits a dynamic `import()` before calling `ask`;
 // a plain `fireEvent.click` doesn't wait for that microtask to settle.
 async function flush() {
-	await new Promise((r) => setTimeout(r, 0));
+	await Promise.resolve();
+	await Promise.resolve();
 	await tick();
 }
 
@@ -497,7 +498,8 @@ describe("ThreadCard", () => {
 		renderCard({ thread: withReply });
 
 		await fireEvent.click(screen.getByText("Delete reply"));
-		await flush();
+		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(calledCommands()).toContain("delete_reply"));
 
 		expect(ask).toHaveBeenCalledTimes(1);
 		expect(calledCommands()).toContain("delete_reply");
@@ -514,7 +516,7 @@ describe("ThreadCard", () => {
 		renderCard({ thread: withReply });
 
 		await fireEvent.click(screen.getByText("Delete reply"));
-		await flush();
+		await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
 
 		expect(ask).toHaveBeenCalledTimes(1);
 		expect(calledCommands()).not.toContain("delete_reply");

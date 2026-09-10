@@ -1,6 +1,7 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import { buildDiffAnchor } from "../../lib/diff-anchor.js";
+import { createDraft, type Draft } from "../../lib/draft.svelte.js";
 import { reportErrorToast } from "../../lib/error-report.js";
 import { safeInvoke } from "../../lib/invoke.js";
 import { createOwnedTimer } from "../../lib/owned-timer.js";
@@ -40,6 +41,8 @@ interface Props {
 	originatingReviewId?: string | null;
 	/** The review currently active in the host. */
 	activeReviewId?: string | null;
+	/** Repository-tab-owned draft that survives conditional composer mounts. */
+	editorDraft?: Draft;
 }
 
 let {
@@ -55,9 +58,11 @@ let {
 	canSubmit = true,
 	originatingReviewId = null,
 	activeReviewId = null,
+	editorDraft,
 }: Props = $props();
 
-let text = $state("");
+const localEditorDraft = createDraft();
+const composerDraft = $derived(editorDraft ?? localEditorDraft);
 let submitting = $state(false);
 
 // Restore the draft this repo autosaved. The row has no review foreign key, so
@@ -71,7 +76,9 @@ $effect(() => {
 	untrack(async () => {
 		try {
 			const draft = await getDraft(repoPath);
-			if (draft !== null && text === "") text = draft.text;
+			if (draft !== null && composerDraft.text === "") {
+				composerDraft.text = draft.text;
+			}
 		} catch {
 			// A missing draft is the normal case; a failed read costs the restore,
 			// never the composer.
@@ -114,7 +121,10 @@ const capturedResult = $derived(captured ?? deriveDiffCapture());
 
 const reviewMatches = $derived(originatingReviewId === activeReviewId);
 const submitDisabled = $derived(
-	!canSubmit || !reviewMatches || text.trim() === "" || submitting,
+	!canSubmit ||
+		!reviewMatches ||
+		composerDraft.text.trim() === "" ||
+		submitting,
 );
 
 function scheduleDraftSave() {
@@ -130,9 +140,11 @@ async function persistDraft() {
 	// read would erase the draft it is about to restore.
 	if (!restored) return;
 
-	saveInFlight = saveDraft(repoPath, text, capturedResult.anchor).catch((e) =>
-		reportErrorToast(e, "Save draft failed"),
-	);
+	saveInFlight = saveDraft(
+		repoPath,
+		composerDraft.text,
+		capturedResult.anchor,
+	).catch((e) => reportErrorToast(e, "Save draft failed"));
 	await saveInFlight;
 }
 
@@ -151,7 +163,7 @@ async function discardDraft() {
 }
 
 async function handleSubmit() {
-	const submittedText = text;
+	const submittedText = composerDraft.text;
 	const submittedCaptured = capturedResult;
 	const submittedCurrentFile = currentFile;
 	const submittedResolveCommitOid = resolveCommitOid;
@@ -193,7 +205,7 @@ async function handleSubmit() {
 	} finally {
 		submitting = false;
 	}
-	text = "";
+	composerDraft.close();
 	onclose();
 }
 
@@ -201,7 +213,7 @@ async function handleSubmit() {
 // composer reopens with text the user already chose to discard.
 async function handleCancel() {
 	await discardDraft();
-	text = "";
+	composerDraft.close();
 	onclose();
 }
 
@@ -209,7 +221,7 @@ async function handleCancel() {
 // new range. Confirms only when the draft is dirty (non-empty); an empty draft
 // switches silently. Mirrors DiffPanel.handleDiscardLines' confirm pattern.
 export async function confirmDiscardIfDirty(): Promise<boolean> {
-	if (text.trim() === "") return true;
+	if (composerDraft.text.trim() === "") return true;
 
 	const { ask } = await import("@tauri-apps/plugin-dialog");
 	const discard = await ask("Discard your unsaved comment?", {
@@ -230,7 +242,7 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 		bind:this={textareaEl}
 		class="composer-textarea"
 		placeholder="Leave a comment on these lines…"
-		bind:value={text}
+		bind:value={composerDraft.text}
 		oninput={scheduleDraftSave}
 	></textarea>
 	<div class="composer-actions">

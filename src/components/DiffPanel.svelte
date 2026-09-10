@@ -14,7 +14,11 @@ import {
 } from "../lib/full-file-anchor.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
-import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
+import {
+	createReviewComposerSession,
+	type ReviewComposerSession,
+	type ThreadEditorSession,
+} from "../lib/review-editors.svelte.js";
 import {
 	getDiffContentMode,
 	getDiffContextLines,
@@ -74,6 +78,7 @@ interface Props {
 	activeReviewId?: string | null;
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	composerSession?: ReviewComposerSession;
 	refreshToken?: number;
 	emptyCommit?: boolean;
 }
@@ -95,6 +100,7 @@ let {
 	activeReviewId = null,
 	viewComments = [],
 	editorSessionForThread,
+	composerSession,
 	refreshToken = 0,
 	emptyCommit = false,
 }: Props = $props();
@@ -171,15 +177,19 @@ const selectedFile = $derived(
 		? undefined
 		: fileDiffs.find((fd) => fd.path === selectedPath),
 );
-let composerOpen = $state(false);
-let composerReviewId = $state<string | null>(null);
+const localComposerSession = createReviewComposerSession();
+const activeComposerSession = $derived(composerSession ?? localComposerSession);
+const composerOpen = $derived(activeComposerSession.mode === "diff");
+const composerReviewId = $derived(activeComposerSession.originatingReviewId);
 // The diff-path capture is built ONCE, synchronously, when the composer opens (range +
 // excerpt from the hunk) and injected as a stable `captured` result — NOT derived
 // reactively from selectedLineIndices. The commit_oid is left empty here and filled at
 // submit by resolveCommentCommitOid. Capturing up-front keeps the range immune to a
 // later selection clear (e.g. a repo-changed-driven diff refetch), which otherwise
 // recomputed it over an emptied selection → Math.min(...[]) = Infinity (260531-l02).
-let diffCaptured = $state<DiffAnchorResult | null>(null);
+const diffCaptured = $derived(
+	composerOpen ? activeComposerSession.captured : null,
+);
 let composer = $state<CommentComposer | null>(null);
 
 // Full-file capture host state (Phase 68). The selection lives in FullFileView;
@@ -188,9 +198,15 @@ let composer = $state<CommentComposer | null>(null);
 // then reuses CommentComposer with that injected result. Merge commits ARE valid
 // here (L-05) — no isMerge guard, unlike the diff path.
 let fullFileView = $state<FullFileView | null>(null);
-let fullFileComposerOpen = $state(false);
-let fullFileComposerPath = $state<string | null>(null);
-let fullFileCaptured = $state<DiffAnchorResult | null>(null);
+const fullFileComposerOpen = $derived(
+	activeComposerSession.mode === "full-file",
+);
+const fullFileComposerPath = $derived(
+	fullFileComposerOpen ? activeComposerSession.filePath : null,
+);
+const fullFileCaptured = $derived(
+	fullFileComposerOpen ? activeComposerSession.captured : null,
+);
 
 // A current-file view is the whole file by definition: there is no diff to show
 // hunks of, so the user's hunk/full preference has nothing to choose between and
@@ -215,12 +231,7 @@ const currentFileTarget = $derived(
 );
 
 function closeComposer() {
-	composerOpen = false;
-	diffCaptured = null;
-	fullFileComposerOpen = false;
-	fullFileComposerPath = null;
-	fullFileCaptured = null;
-	composerReviewId = null;
+	activeComposerSession.close();
 	workingTreeSnapshotOid = null;
 	clearSelection();
 }
@@ -257,9 +268,10 @@ async function openDiffComposer(
 
 	// commit_oid is filled at submit by resolveCommentCommitOid; the range + excerpt
 	// (all the composer renders) come from the hunk and are stable from this instant.
-	diffCaptured = buildDiffAnchor("", fd, hunkIndex, indices);
-	composerReviewId = activeReviewId;
-	composerOpen = true;
+	activeComposerSession.openDiff(
+		buildDiffAnchor("", fd, hunkIndex, indices),
+		activeReviewId,
+	);
 }
 
 // Deferred submit-time resolution (260531-l02 lag fix): start the review session and,
@@ -312,10 +324,12 @@ async function handleCommentHunk(filePath: string, hunkIndex: number) {
 function handleCommentFullFile(filePath: string, indices: Set<number>) {
 	const fd = fileDiffs.find((file) => file.path === filePath);
 	if (!fd || indices.size === 0) return;
-	fullFileComposerPath = filePath;
-	fullFileCaptured = buildFullFileAnchor(commitOid, fd, indices);
-	composerReviewId = activeReviewId;
-	fullFileComposerOpen = true;
+
+	activeComposerSession.openFullFile(
+		filePath,
+		buildFullFileAnchor(commitOid, fd, indices),
+		activeReviewId,
+	);
 }
 
 // One-click whole-file Comment (260531-l02e): comment every change in the file
@@ -702,9 +716,7 @@ async function handleLineClick(
 	if (composerOpen && composer) {
 		const proceed = await composer.confirmDiscardIfDirty();
 		if (!proceed) return;
-		composerOpen = false;
-		diffCaptured = null;
-		composerReviewId = null;
+		activeComposerSession.close();
 	}
 
 	const hunkKey = `${filePath}-${hunkIdx}`;
@@ -781,9 +793,7 @@ async function handleLineMouseDown(
 	if (composerOpen && composer) {
 		const proceed = await composer.confirmDiscardIfDirty();
 		if (!proceed) return;
-		composerOpen = false;
-		diffCaptured = null;
-		composerReviewId = null;
+		activeComposerSession.close();
 	}
 
 	const hunkKey = `${filePath}-${hunkIdx}`;
@@ -989,6 +999,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 				<CommentComposer
 					bind:this={composer}
 					captured={diffCaptured}
+					editorDraft={activeComposerSession.draft}
 					{commitOid}
 					resolveCommitOid={resolveCommentCommitOid}
 					{repoPath}
@@ -1006,6 +1017,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 				<CommentComposer
 					bind:this={composer}
 					captured={fullFileCaptured}
+					editorDraft={activeComposerSession.draft}
 					currentFile={currentFileTarget}
 					{commitOid}
 					resolveCommitOid={currentFileTarget
