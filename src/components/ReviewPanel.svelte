@@ -272,13 +272,19 @@ async function saveAddNote(oid: string) {
 	if (submittedTarget !== oid || !submittedDraft.valid) return;
 
 	const text = submittedDraft.text;
-	submittedSession.close();
+	const submittedRevision = submittedDraft.revision;
 	try {
 		await safeInvoke("add_commit_thread", {
 			path: repoPath,
 			commitOid: submittedTarget,
 			text,
 		});
+		if (
+			submittedSession.target === submittedTarget &&
+			submittedDraft.revision === submittedRevision
+		) {
+			submittedSession.close();
+		}
 	} catch (e) {
 		showToast(errorMessage(e, "Failed to add note"), "error");
 	}

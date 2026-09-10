@@ -1,3 +1,4 @@
+import type { PanelDiffKind } from "./comment-matching.js";
 import { createDraft, type Draft } from "./draft.svelte.js";
 import type { Anchor, Thread } from "./types.js";
 
@@ -7,7 +8,11 @@ export interface ThreadEditorSession {
 	reply: Draft;
 	replyEdit: Draft;
 	readonly editingReplyId: string | null;
+	readonly replySaving: boolean;
+	readonly replyEditSaving: boolean;
 	setEditingReply(id: string | null): void;
+	setReplySaving(saving: boolean): void;
+	setReplyEditSaving(saving: boolean): void;
 }
 
 /** A mounted review surface whose same thread needs an independent editor. */
@@ -23,6 +28,29 @@ export interface ReviewNoteEditorSession {
 
 export type ReviewComposerMode = "diff" | "full-file";
 export type ReviewComposerSurface = "diff";
+export type ReviewComposerContext = "normal" | "rebase";
+
+/** The navigation identity that owns one diff composer session. */
+export interface ReviewComposerTarget {
+	readonly context: ReviewComposerContext;
+	readonly kind: PanelDiffKind;
+	readonly commitOid: string | null;
+	readonly compareBaseOid: string | null;
+	readonly filePath: string | null;
+}
+
+export function reviewComposerTargetsEqual(
+	left: ReviewComposerTarget | null,
+	right: ReviewComposerTarget | null,
+): boolean {
+	return (
+		left?.context === right?.context &&
+		left?.kind === right?.kind &&
+		left?.commitOid === right?.commitOid &&
+		left?.compareBaseOid === right?.compareBaseOid &&
+		left?.filePath === right?.filePath
+	);
+}
 
 export interface ReviewComposerCapture {
 	readonly anchor: Anchor;
@@ -36,12 +64,18 @@ export interface ReviewComposerSession {
 	readonly filePath: string | null;
 	readonly captured: ReviewComposerCapture | null;
 	readonly originatingReviewId: string | null;
-	openDiff(captured: ReviewComposerCapture, reviewId: string | null): void;
+	readonly target: ReviewComposerTarget | null;
+	openDiff(
+		captured: ReviewComposerCapture,
+		reviewId: string | null,
+		target: ReviewComposerTarget,
+	): boolean;
 	openFullFile(
 		filePath: string,
 		captured: ReviewComposerCapture,
 		reviewId: string | null,
-	): void;
+		target: ReviewComposerTarget,
+	): boolean;
 	close(): void;
 }
 
@@ -65,13 +99,20 @@ export interface ReviewEditorStore {
 	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 	note(reviewId: string | null, surface: string): ReviewNoteEditorSession;
-	composer(surface: ReviewComposerSurface): ReviewComposerSession;
+	composer(
+		surface: ReviewComposerSurface,
+		target?: ReviewComposerTarget,
+	): ReviewComposerSession;
 	/** Reconciles one authoritative review snapshot and stale replies. */
 	reconcile(snapshot: ReviewThreadSnapshot): void;
 }
 
 export function createThreadEditorSession(): ThreadEditorSession {
-	const state = $state({ editingReplyId: null as string | null });
+	const state = $state({
+		editingReplyId: null as string | null,
+		replySaving: false,
+		replyEditSaving: false,
+	});
 
 	return {
 		rootEdit: createDraft(),
@@ -80,8 +121,20 @@ export function createThreadEditorSession(): ThreadEditorSession {
 		get editingReplyId() {
 			return state.editingReplyId;
 		},
+		get replySaving() {
+			return state.replySaving;
+		},
+		get replyEditSaving() {
+			return state.replyEditSaving;
+		},
 		setEditingReply(id: string | null) {
 			state.editingReplyId = id;
+		},
+		setReplySaving(saving: boolean) {
+			state.replySaving = saving;
+		},
+		setReplyEditSaving(saving: boolean) {
+			state.replyEditSaving = saving;
 		},
 	};
 }
@@ -118,6 +171,7 @@ export function createReviewComposerSession(): ReviewComposerSession {
 		filePath: null as string | null,
 		captured: null as ReviewComposerCapture | null,
 		originatingReviewId: null as string | null,
+		target: null as ReviewComposerTarget | null,
 	});
 	const draft = createDraft();
 
@@ -126,13 +180,31 @@ export function createReviewComposerSession(): ReviewComposerSession {
 		filePath: string | null,
 		captured: ReviewComposerCapture,
 		reviewId: string | null,
-	): void {
+		target: ReviewComposerTarget,
+	): boolean {
+		if (
+			state.target !== null &&
+			!reviewComposerTargetsEqual(state.target, target) &&
+			draft.editing
+		) {
+			return false;
+		}
+
+		if (
+			state.target !== null &&
+			!reviewComposerTargetsEqual(state.target, target)
+		) {
+			draft.close();
+		}
+
 		state.mode = mode;
 		state.filePath = filePath;
 		state.captured = captured;
 		state.originatingReviewId = reviewId;
+		state.target = target;
 
 		if (!draft.editing) draft.open();
+		return true;
 	}
 
 	return {
@@ -149,11 +221,14 @@ export function createReviewComposerSession(): ReviewComposerSession {
 		get originatingReviewId() {
 			return state.originatingReviewId;
 		},
-		openDiff(captured, reviewId) {
-			open("diff", null, captured, reviewId);
+		get target() {
+			return state.target;
 		},
-		openFullFile(filePath, captured, reviewId) {
-			open("full-file", filePath, captured, reviewId);
+		openDiff(captured, reviewId, target) {
+			return open("diff", null, captured, reviewId, target);
+		},
+		openFullFile(filePath, captured, reviewId, target) {
+			return open("full-file", filePath, captured, reviewId, target);
 		},
 		close() {
 			draft.close();
@@ -161,6 +236,7 @@ export function createReviewComposerSession(): ReviewComposerSession {
 			state.filePath = null;
 			state.captured = null;
 			state.originatingReviewId = null;
+			state.target = null;
 		},
 	};
 }
@@ -175,10 +251,7 @@ export function createReviewEditorStore(): ReviewEditorStore {
 	const threadSessions = new Map<string, ThreadSessionEntry>();
 	const drafts = new Map<string, Draft>();
 	const noteSessions = new Map<string, ReviewNoteEditorSession>();
-	const composerSessions = new Map<
-		ReviewComposerSurface,
-		ReviewComposerSession
-	>();
+	const composerSessions = new Map<string, ReviewComposerSession>();
 	const getDraft = (
 		reviewId: string | null,
 		surface: string,
@@ -200,6 +273,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 		session.reply.close();
 		session.replyEdit.close();
 		session.setEditingReply(null);
+		session.setReplySaving(false);
+		session.setReplyEditSaving(false);
 	}
 
 	return {
@@ -228,11 +303,12 @@ export function createReviewEditorStore(): ReviewEditorStore {
 			}
 			return session;
 		},
-		composer(surface) {
-			let session = composerSessions.get(surface);
+		composer(surface, target) {
+			const key = JSON.stringify([surface, target ?? null]);
+			let session = composerSessions.get(key);
 			if (!session) {
 				session = createReviewComposerSession();
-				composerSessions.set(surface, session);
+				composerSessions.set(key, session);
 			}
 			return session;
 		},

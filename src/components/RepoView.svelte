@@ -28,6 +28,7 @@ import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
+	type ReviewComposerTarget,
 	type ReviewEditorHost,
 	type ReviewEditorStore,
 } from "../lib/review-editors.svelte.js";
@@ -172,7 +173,6 @@ const reviewSession = createReviewSession();
 // the rune owns its own listener teardown via destroy().
 const reviewComments = createReviewComments(untrack(() => repoPath));
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
-const diffComposerSession = reviewEditors.composer("diff");
 onDestroy(() => reviewComments.destroy());
 
 const editorSessionFor = (host: ReviewEditorHost) => (thread: Thread) =>
@@ -540,6 +540,32 @@ let rebaseViewComments = $derived(
 				rebaseDiffFile,
 			)
 		: [],
+);
+
+const diffComposerTarget = $derived<ReviewComposerTarget>(
+	showRebaseEditor
+		? {
+				context: "rebase",
+				kind: "commit",
+				commitOid: rebaseFocusedCommitDetail?.oid ?? null,
+				compareBaseOid: null,
+				filePath: rebaseDiffFile,
+			}
+		: {
+				context: "normal",
+				kind: diffKind,
+				commitOid:
+					diffKind === "commit"
+						? selectedCompareFile
+							? (compare?.targetOid ?? null)
+							: (selectedCommitOid ?? null)
+						: null,
+				compareBaseOid: selectedCompareFile ? (compare?.baseOid ?? null) : null,
+				filePath: selectedCompareFile ?? selectedDiffPath,
+			},
+);
+const diffComposerSession = $derived(
+	reviewEditors.composer("diff", diffComposerTarget),
 );
 
 // One presentation projection feeds every count surface. The manager remains
@@ -1485,6 +1511,7 @@ function startRightResize(e: MouseEvent) {
             activeReviewId={reviewComments.activeReviewId}
             editorSessionForThread={editorSessionForDiffThread}
             composerSession={diffComposerSession}
+            composerTarget={diffComposerTarget}
             onclose={() => { rebaseDiffFile = null; }}
           />
         {/if}
@@ -1572,6 +1599,7 @@ function startRightResize(e: MouseEvent) {
           activeReviewId={reviewComments.activeReviewId}
           editorSessionForThread={editorSessionForDiffThread}
           composerSession={diffComposerSession}
+          composerTarget={diffComposerTarget}
           refreshToken={diffRefreshToken}
           loading={stagingDiffLoading}
           onhunkaction={async (filePath) => {

@@ -14,7 +14,10 @@ interface Props {
 	// Awaited before the editor clears its draft, so a caller that reports its
 	// own refusal (review-comment-actions.ts) keeps the typed text on screen
 	// until the write settles.
-	onreplyedit: (id: string, text: string) => void | Promise<void>;
+	onreplyedit: (
+		id: string,
+		text: string,
+	) => boolean | undefined | Promise<boolean | undefined> | Promise<void>;
 	onreplydelete: (id: string) => void;
 	editorSession?: ThreadEditorSession;
 }
@@ -27,6 +30,7 @@ const fallbackEditorSession = createThreadEditorSession();
 const editor = $derived(editorSession ?? fallbackEditorSession);
 const replyEditDraft = $derived(editor.replyEdit);
 const editingReplyId = $derived(editor.editingReplyId);
+const replyEditSaving = $derived(editor.replyEditSaving);
 
 // More than three replies collapse to the last three, with a control that
 // reveals the rest — expand state belongs to the list, never a parent map.
@@ -38,11 +42,13 @@ const visibleReplies = $derived(
 );
 
 function openReplyEdit(replyId: string, text: string) {
+	if (replyEditSaving) return;
 	editor.setEditingReply(replyId);
 	replyEditDraft.open(text);
 }
 
 function cancelReplyEdit() {
+	if (replyEditSaving) return;
 	editor.setEditingReply(null);
 	replyEditDraft.close();
 }
@@ -51,17 +57,30 @@ async function saveReplyEdit() {
 	const submittedEditor = editor;
 	const submittedDraft = replyEditDraft;
 	const submittedReplyId = editingReplyId;
-	if (!submittedDraft.valid || submittedReplyId === null) return;
+	if (!submittedDraft.valid || submittedReplyId === null || replyEditSaving)
+		return;
 
 	const text = submittedDraft.text;
-	await onreplyedit(submittedReplyId, text);
-	submittedEditor.setEditingReply(null);
-	submittedDraft.close();
+	const submittedRevision = submittedDraft.revision;
+	submittedEditor.setReplyEditSaving(true);
+	try {
+		const saved = await onreplyedit(submittedReplyId, text);
+		if (
+			saved !== false &&
+			submittedEditor.editingReplyId === submittedReplyId &&
+			submittedDraft.revision === submittedRevision
+		) {
+			submittedEditor.setEditingReply(null);
+			submittedDraft.close();
+		}
+	} finally {
+		submittedEditor.setReplyEditSaving(false);
+	}
 }
 </script>
 
 {#if replies.length > 0}
-  {#if hiddenReplyCount > 0 && !repliesExpanded}
+  {#if hiddenReplyCount > 0 && !repliesExpanded && editingReplyId === null}
     <button
       type="button"
       class="thread-replies-expand"
@@ -77,6 +96,7 @@ async function saveReplyEdit() {
             <button
               type="button"
               class="thread-reply-edit-toggle"
+              disabled={replyEditSaving}
               onclick={() => openReplyEdit(reply.id, reply.text)}
             >Edit reply</button>
           {/if}
@@ -85,6 +105,7 @@ async function saveReplyEdit() {
             <button
               type="button"
               class="thread-reply-delete"
+              disabled={replyEditSaving}
               onclick={() => onreplydelete(reply.id)}
             >Delete reply</button>
           {/if}
@@ -95,16 +116,18 @@ async function saveReplyEdit() {
             rows="2"
             aria-label="Edit reply"
             class="card-textarea"
+            disabled={replyEditSaving}
           ></textarea>
           <div class="card-editor-actions">
             <button
               type="button"
               onclick={saveReplyEdit}
-              disabled={!replyEditDraft.valid}
+              disabled={!replyEditDraft.valid || replyEditSaving}
             >Save</button>
             <button
               type="button"
               onclick={cancelReplyEdit}
+              disabled={replyEditSaving}
             >Cancel</button>
           </div>
         {:else}

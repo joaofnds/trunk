@@ -65,6 +65,17 @@ const localEditorDraft = createDraft();
 const composerDraft = $derived(editorDraft ?? localEditorDraft);
 let submitting = $state(false);
 
+function anchorsEqual(left: Anchor | null, right: Anchor | null): boolean {
+	return (
+		left?.commit_oid === right?.commit_oid &&
+		left?.file_path === right?.file_path &&
+		left?.source === right?.source &&
+		left?.side === right?.side &&
+		left?.start_line === right?.start_line &&
+		left?.end_line === right?.end_line
+	);
+}
+
 // Restore the draft this repo autosaved. The row has no review foreign key, so
 // it survives a crash or a quit without stranding a review (D6) — but only if
 // something reads it back, which is what makes the restore real rather than
@@ -76,7 +87,11 @@ $effect(() => {
 	untrack(async () => {
 		try {
 			const draft = await getDraft(repoPath);
-			if (draft !== null && composerDraft.text === "") {
+			if (
+				draft !== null &&
+				composerDraft.text === "" &&
+				anchorsEqual(draft.anchor, capturedResult.anchor)
+			) {
 				composerDraft.text = draft.text;
 			}
 		} catch {
@@ -164,6 +179,7 @@ async function discardDraft() {
 
 async function handleSubmit() {
 	const submittedText = composerDraft.text;
+	const submittedRevision = composerDraft.revision;
 	const submittedCaptured = capturedResult;
 	const submittedCurrentFile = currentFile;
 	const submittedResolveCommitOid = resolveCommitOid;
@@ -205,8 +221,10 @@ async function handleSubmit() {
 	} finally {
 		submitting = false;
 	}
-	composerDraft.close();
-	onclose();
+	if (composerDraft.revision === submittedRevision) {
+		composerDraft.close();
+		onclose();
+	}
 }
 
 // Cancelling abandons the draft, so the row goes with it — otherwise the next
@@ -238,15 +256,20 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	<div class="composer-preview">
 		Comments on lines {capturedResult.anchor.start_line}-{capturedResult.anchor.end_line}
 	</div>
-	<textarea
-		bind:this={textareaEl}
-		class="composer-textarea"
-		placeholder="Leave a comment on these lines…"
-		bind:value={composerDraft.text}
+			<textarea
+			bind:this={textareaEl}
+			class="composer-textarea"
+			placeholder="Leave a comment on these lines…"
+			disabled={submitting}
+			bind:value={composerDraft.text}
 		oninput={scheduleDraftSave}
 	></textarea>
 	<div class="composer-actions">
-		<button class="composer-btn cancel-btn" onclick={handleCancel}>Cancel</button>
+		<button
+			class="composer-btn cancel-btn"
+			disabled={submitting}
+			onclick={handleCancel}
+		>Cancel</button>
 		<button
 			class="composer-btn submit-btn"
 			disabled={submitDisabled}

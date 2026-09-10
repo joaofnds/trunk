@@ -1,9 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
-import { createReviewEditorStore } from "./review-editors.svelte.js";
+import {
+	createReviewEditorStore,
+	type ReviewComposerTarget,
+} from "./review-editors.svelte.js";
 import type { Anchor } from "./types.js";
 
 describe("review editor store", () => {
+	const diffTarget = {
+		context: "normal",
+		kind: "commit",
+		commitOid: "commit-1",
+		compareBaseOid: null,
+		filePath: "src/main.ts",
+	} satisfies ReviewComposerTarget;
+
 	it("keeps thread editor state stable across remounts and filters", () => {
 		const store = createReviewEditorStore();
 		const first = store.thread("review-a", "review-panel", "thread-1");
@@ -145,7 +156,7 @@ describe("review editor store", () => {
 		};
 		const first = store.composer("diff");
 
-		first.openFullFile("src/main.ts", capture, "review-a");
+		first.openFullFile("src/main.ts", capture, "review-a", diffTarget);
 		first.draft.text = "unfinished diff comment";
 
 		const remounted = store.composer("diff");
@@ -155,5 +166,49 @@ describe("review editor store", () => {
 		expect(remounted.captured).toEqual(capture);
 		expect(remounted.originatingReviewId).toBe("review-a");
 		expect(remounted.draft.text).toBe("unfinished diff comment");
+	});
+
+	it("does not retarget a dirty diff composer", () => {
+		const store = createReviewEditorStore();
+		const session = store.composer("diff");
+		const capture = {
+			anchor: {
+				commit_oid: "commit-1",
+				file_path: "src/main.ts",
+				source: "Diff",
+				side: "New",
+				start_line: 1,
+				end_line: 1,
+			} satisfies Anchor,
+			cachedExcerpt: "+ original line",
+		};
+
+		session.openDiff(capture, "review-a", diffTarget);
+		session.draft.text = "unfinished comment";
+
+		const opened = session.openDiff(
+			{
+				...capture,
+				anchor: { ...capture.anchor, commit_oid: "commit-2" },
+			},
+			"review-a",
+			{ ...diffTarget, commitOid: "commit-2" },
+		);
+
+		expect(opened).toBe(false);
+		expect(session.captured).toEqual(capture);
+		expect(session.draft.text).toBe("unfinished comment");
+	});
+
+	it("scopes diff composers by navigation target", () => {
+		const store = createReviewEditorStore();
+		const first = store.composer("diff", diffTarget);
+		const second = store.composer("diff", {
+			...diffTarget,
+			commitOid: "commit-2",
+		});
+
+		expect(second).not.toBe(first);
+		expect(store.composer("diff", diffTarget)).toBe(first);
 	});
 });

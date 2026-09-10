@@ -121,15 +121,28 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		state.activeReviewId =
 			activeR.status === "fulfilled" ? (activeR.value ?? null) : null;
 
+		const threadBatch =
+			threadsR.status === "fulfilled" && Array.isArray(threadsR.value)
+				? threadsR.value
+				: null;
+		const activeReviewReadSucceeded = activeR.status === "fulfilled";
+		const threadBatchMatchesActiveReview =
+			activeReviewReadSucceeded &&
+			threadBatch !== null &&
+			(threadBatch.length === 0 ||
+				(state.activeReviewId !== null &&
+					threadBatch.every(
+						(thread) => thread.review_id === state.activeReviewId,
+					)));
+
 		state.snapshots =
 			snapshotsR.status === "fulfilled" && snapshotsR.value
 				? snapshotsR.value
 				: { working_tree_snapshot: null, index_snapshot: null };
 
-		const threadsAuthoritative =
-			threadsR.status === "fulfilled" && Array.isArray(threadsR.value);
+		const threadsAuthoritative = threadBatchMatchesActiveReview;
 		state.threadsAuthoritative = threadsAuthoritative;
-		state.threads = threadsAuthoritative ? threadsR.value : [];
+		state.threads = threadsAuthoritative ? (threadBatch ?? []) : [];
 
 		state.commits =
 			commitsR.status === "fulfilled" && Array.isArray(commitsR.value)

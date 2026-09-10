@@ -48,11 +48,16 @@ export function addCommitThread(
 // or catch the promise. A published-review refusal, an agent-text edit, or an
 // illegal state transition would otherwise be an unhandled rejection the user
 // never sees.
-async function reportRefusal(action: () => Promise<void>, fallback: string) {
+async function reportRefusal(
+	action: () => Promise<void>,
+	fallback: string,
+): Promise<boolean> {
 	try {
 		await action();
+		return true;
 	} catch (e) {
 		reportErrorToast(e, fallback);
+		return false;
 	}
 }
 
@@ -60,7 +65,7 @@ export function addReply(
 	repoPath: string,
 	threadId: string,
 	text: string,
-): Promise<void> {
+): Promise<boolean> {
 	return reportRefusal(
 		() => safeInvoke("add_reply", { path: repoPath, threadId, text }),
 		"Failed to add reply",
@@ -71,26 +76,29 @@ export function editReply(
 	repoPath: string,
 	replyId: string,
 	text: string,
-): Promise<void> {
+): Promise<boolean> {
 	return reportRefusal(
 		() => safeInvoke("edit_reply", { path: repoPath, id: replyId, text }),
 		"Failed to edit reply",
 	);
 }
 
-export function deleteReply(repoPath: string, replyId: string): Promise<void> {
-	return reportRefusal(
+export async function deleteReply(
+	repoPath: string,
+	replyId: string,
+): Promise<void> {
+	await reportRefusal(
 		() => safeInvoke("delete_reply", { path: repoPath, id: replyId }),
 		"Failed to delete reply",
 	);
 }
 
-export function setThreadState(
+export async function setThreadState(
 	repoPath: string,
 	id: string,
 	next: ThreadState,
 ): Promise<void> {
-	return reportRefusal(
+	await reportRefusal(
 		() => safeInvoke("set_thread_state", { path: repoPath, id, next }),
 		"Failed to change thread state",
 	);

@@ -11,6 +11,8 @@
  */
 export interface Draft {
 	readonly editing: boolean;
+	/** Changes whenever this draft is opened, edited or closed. */
+	readonly revision: number;
 	text: string;
 	readonly valid: boolean;
 	/** Begins editing, seeding the text (defaults to empty). */
@@ -21,18 +23,22 @@ export interface Draft {
 }
 
 export function createDraft(): Draft {
-	const state = $state({ editing: false, text: "" });
+	const state = $state({ editing: false, text: "", revision: 0 });
 	const valid = $derived(state.text.trim().length > 0);
 
 	return {
 		get editing() {
 			return state.editing;
 		},
+		get revision() {
+			return state.revision;
+		},
 		get text() {
 			return state.text;
 		},
 		set text(value: string) {
 			state.text = value;
+			state.revision += 1;
 		},
 		get valid() {
 			return valid;
@@ -40,10 +46,12 @@ export function createDraft(): Draft {
 		open(seed = "") {
 			state.text = seed;
 			state.editing = true;
+			state.revision += 1;
 		},
 		close() {
 			state.editing = false;
 			state.text = "";
+			state.revision += 1;
 		},
 	};
 }

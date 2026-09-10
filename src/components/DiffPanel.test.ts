@@ -545,6 +545,36 @@ describe("DiffPanel", () => {
 		);
 	});
 
+	it("hides a retained composer after the diff target changes", async () => {
+		const editorStore = createReviewEditorStore();
+		const composerSession = editorStore.composer("diff");
+		const baseProps = {
+			fileDiffs: [testDiff],
+			commitDetail: nonMergeCommit,
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+			activeReviewId: "review-a",
+			composerSession,
+		};
+		const view = render(DiffPanel, { props: baseProps });
+		await flushPrefs();
+		await fireEvent.click(screen.getByText("Comment"));
+		await flushPrefs();
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "comment for the first commit" },
+		});
+
+		await view.rerender({
+			...baseProps,
+			commitDetail: { ...nonMergeCommit, oid: "other-commit" },
+		});
+		await flushPrefs();
+
+		expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+		expect(composerSession.draft.text).toBe("comment for the first commit");
+	});
+
 	it("shows Unstage Hunk button for staged diffs", async () => {
 		render(DiffPanel, {
 			props: {

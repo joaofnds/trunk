@@ -106,10 +106,19 @@ describe("CommentComposer", () => {
 	// The draft row has no review foreign key, so it survives a quit without
 	// stranding a review — but only if the composer reads it back on mount.
 	describe("draft restore", () => {
-		function draftOnDisk(text: string) {
+		const draftAnchor: Anchor = {
+			commit_oid: "abc123",
+			file_path: "src/main.ts",
+			source: "Diff",
+			side: "New",
+			start_line: 11,
+			end_line: 12,
+		};
+
+		function draftOnDisk(text: string, anchor: Anchor | null = draftAnchor) {
 			mockedInvoke.mockImplementation((cmd: string) =>
 				cmd === "get_draft"
-					? Promise.resolve({ text, anchor: null })
+					? Promise.resolve({ text, anchor })
 					: Promise.resolve(undefined),
 			);
 		}
@@ -140,6 +149,20 @@ describe("CommentComposer", () => {
 
 		it("leaves the textarea empty when the repo has no draft", async () => {
 			mockedInvoke.mockResolvedValue(null);
+			renderComposer();
+
+			await flush();
+
+			expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+				"",
+			);
+		});
+
+		it("does not restore a saved draft for another captured target", async () => {
+			draftOnDisk("saved for another file", {
+				...draftAnchor,
+				file_path: "src/other.ts",
+			});
 			renderComposer();
 
 			await flush();

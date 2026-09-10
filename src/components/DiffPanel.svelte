@@ -2,7 +2,6 @@
 import type { PanelDiffKind } from "../lib/comment-matching.js";
 import {
 	buildDiffAnchor,
-	type DiffAnchorResult,
 	hunkSelectableIndices,
 	resolveSide,
 } from "../lib/diff-anchor.js";
@@ -16,7 +15,10 @@ import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import {
 	createReviewComposerSession,
+	type ReviewComposerContext,
 	type ReviewComposerSession,
+	type ReviewComposerTarget,
+	reviewComposerTargetsEqual,
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import {
@@ -79,6 +81,8 @@ interface Props {
 	viewComments?: Thread[];
 	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	composerSession?: ReviewComposerSession;
+	composerContext?: ReviewComposerContext;
+	composerTarget?: ReviewComposerTarget;
 	refreshToken?: number;
 	emptyCommit?: boolean;
 }
@@ -101,6 +105,8 @@ let {
 	viewComments = [],
 	editorSessionForThread,
 	composerSession,
+	composerContext = "normal",
+	composerTarget,
 	refreshToken = 0,
 	emptyCommit = false,
 }: Props = $props();
@@ -179,7 +185,24 @@ const selectedFile = $derived(
 );
 const localComposerSession = createReviewComposerSession();
 const activeComposerSession = $derived(composerSession ?? localComposerSession);
-const composerOpen = $derived(activeComposerSession.mode === "diff");
+const defaultComposerTarget = $derived<ReviewComposerTarget>({
+	context: composerContext,
+	kind: diffKind,
+	commitOid: diffKind === "commit" ? (commitDetail?.oid ?? null) : null,
+	compareBaseOid,
+	filePath: selectedPath,
+});
+const activeComposerTarget = $derived(composerTarget ?? defaultComposerTarget);
+const composerTargetMatches = $derived(
+	activeComposerSession.target === null ||
+		reviewComposerTargetsEqual(
+			activeComposerSession.target,
+			activeComposerTarget,
+		),
+);
+const composerOpen = $derived(
+	activeComposerSession.mode === "diff" && composerTargetMatches,
+);
 const composerReviewId = $derived(activeComposerSession.originatingReviewId);
 // The diff-path capture is built ONCE, synchronously, when the composer opens (range +
 // excerpt from the hunk) and injected as a stable `captured` result — NOT derived
@@ -199,7 +222,7 @@ let composer = $state<CommentComposer | null>(null);
 // here (L-05) — no isMerge guard, unlike the diff path.
 let fullFileView = $state<FullFileView | null>(null);
 const fullFileComposerOpen = $derived(
-	activeComposerSession.mode === "full-file",
+	activeComposerSession.mode === "full-file" && composerTargetMatches,
 );
 const fullFileComposerPath = $derived(
 	fullFileComposerOpen ? activeComposerSession.filePath : null,
@@ -229,6 +252,20 @@ const currentFileTarget = $derived(
 			}
 		: undefined,
 );
+
+async function confirmComposerReplacement(): Promise<boolean> {
+	if (activeComposerSession.mode === null) return true;
+
+	if (!composer) {
+		return !activeComposerSession.draft.valid;
+	}
+
+	const proceed = await composer.confirmDiscardIfDirty();
+	if (!proceed) return false;
+
+	activeComposerSession.close();
+	return true;
+}
 
 function closeComposer() {
 	activeComposerSession.close();
@@ -265,12 +302,14 @@ async function openDiffComposer(
 			return;
 		}
 	}
+	if (!(await confirmComposerReplacement())) return;
 
 	// commit_oid is filled at submit by resolveCommentCommitOid; the range + excerpt
 	// (all the composer renders) come from the hunk and are stable from this instant.
 	activeComposerSession.openDiff(
 		buildDiffAnchor("", fd, hunkIndex, indices),
 		activeReviewId,
+		activeComposerTarget,
 	);
 }
 
@@ -321,14 +360,16 @@ async function handleCommentHunk(filePath: string, hunkIndex: number) {
 // NO Old-side guard (full-file is always New-side, buildFullFileAnchor). Establishes
 // nothing on open (see openDiffComposer); the EXPENSIVE working-tree snapshot stays
 // deferred to submit (resolveCommentCommitOid).
-function handleCommentFullFile(filePath: string, indices: Set<number>) {
+async function handleCommentFullFile(filePath: string, indices: Set<number>) {
 	const fd = fileDiffs.find((file) => file.path === filePath);
 	if (!fd || indices.size === 0) return;
+	if (!(await confirmComposerReplacement())) return;
 
 	activeComposerSession.openFullFile(
 		filePath,
 		buildFullFileAnchor(commitOid, fd, indices),
 		activeReviewId,
+		activeComposerTarget,
 	);
 }
 
@@ -1005,7 +1046,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 					{repoPath}
 					{activeReviewId}
 					originatingReviewId={composerReviewId}
-					canSubmit={reviewFilter !== "none"}
+					canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
 					onclose={closeComposer}
 				/>
 			</div>
@@ -1026,7 +1067,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 					{repoPath}
 					{activeReviewId}
 					originatingReviewId={composerReviewId}
-					canSubmit={reviewFilter !== "none"}
+					canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
 					onclose={closeComposer}
 				/>
 			</div>

@@ -42,9 +42,9 @@ describe("addReply", () => {
 			message: "a published review's threads are permanent",
 		});
 
-		await expect(
-			addReply("/repo", "thread-1", "too late"),
-		).resolves.toBeUndefined();
+		await expect(addReply("/repo", "thread-1", "too late")).resolves.toBe(
+			false,
+		);
 		expect(errorMessages()).toEqual([
 			"a published review's threads are permanent",
 		]);

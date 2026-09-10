@@ -1605,16 +1605,18 @@ describe("RepoView", () => {
 			if (!withCompare)
 				throw new Error("compare invoke implementation missing");
 			mockInvoke.mockImplementation((cmd, args) =>
-				cmd === "list_threads"
-					? Promise.resolve([
-							aThread({
-								id: "t1",
-								review_id: "r1",
-								text: "a note",
-								commit_oid: "oid-1",
-							}),
-						])
-					: withCompare(cmd, args),
+				cmd === "get_active_review"
+					? Promise.resolve("r1")
+					: cmd === "list_threads"
+						? Promise.resolve([
+								aThread({
+									id: "t1",
+									review_id: "r1",
+									text: "a note",
+									commit_oid: "oid-1",
+								}),
+							])
+						: withCompare(cmd, args),
 			);
 			const counts = vi.fn();
 			render(RepoView, {

@@ -62,10 +62,13 @@ async function saveNote() {
 	if (!submittedDraft.valid || noteSaving) return;
 
 	const text = submittedDraft.text.trim();
+	const submittedRevision = submittedDraft.revision;
 	noteSaving = true;
 	try {
 		await addCommitThread(repoPath, submittedCommitOid, text);
-		submittedDraft.close();
+		if (submittedDraft.revision === submittedRevision) {
+			submittedDraft.close();
+		}
 	} catch (e) {
 		reportErrorToast(e, "Failed to add note");
 	} finally {
@@ -102,6 +105,7 @@ async function saveNote() {
         rows="3"
         placeholder="Leave a note on this commit…"
         class="add-note-textarea"
+        disabled={noteSaving}
       ></textarea>
       <div class="add-note-actions">
         <button
@@ -112,6 +116,7 @@ async function saveNote() {
         <button
           type="button"
           onclick={cancelAddNote}
+          disabled={noteSaving}
         >Cancel</button>
       </div>
     </div>

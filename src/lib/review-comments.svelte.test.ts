@@ -196,6 +196,19 @@ describe("createReviewComments — refresh", () => {
 		expect(manager.threadsAuthoritative).toBe(true);
 		manager.destroy();
 	});
+
+	it("rejects a thread batch that belongs to another active review", async () => {
+		aPopulatedStore({
+			list_threads: [{ ...thread, review_id: "OTHER_REVIEW" }],
+		});
+
+		const manager = createReviewComments("/repo");
+		await flush();
+
+		expect(manager.threads).toHaveLength(0);
+		expect(manager.threadsAuthoritative).toBe(false);
+		manager.destroy();
+	});
 });
 
 describe("createReviewComments — reviews-changed listener", () => {

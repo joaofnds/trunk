@@ -58,6 +58,7 @@ const editor = $derived(
 );
 const draft = $derived(editor.rootEdit);
 const replyDraft = $derived(editor.reply);
+const replySaving = $derived(editor.replySaving);
 
 // Where the comment points, whichever shape it holds. A current-file thread
 // carries no anchor, so without this it rendered a card with no location at all
@@ -136,15 +137,23 @@ function saveEdit() {
 
 async function submitReply() {
 	const submittedDraft = replyDraft;
-	if (!submittedDraft.valid) return;
+	if (!submittedDraft.valid || replySaving) return;
 
 	const text = submittedDraft.text;
+	const submittedRevision = submittedDraft.revision;
+	editor.setReplySaving(true);
 	// addReply reports its own refusal (review-comment-actions.ts) rather than
 	// rethrowing, but this still awaits it before clearing the draft so a
 	// published-review refusal keeps the typed text on screen until the write
 	// settles.
-	await addReply(repoPath, thread.id, text);
-	submittedDraft.close();
+	try {
+		const saved = await addReply(repoPath, thread.id, text);
+		if (saved && submittedDraft.revision === submittedRevision) {
+			submittedDraft.close();
+		}
+	} finally {
+		editor.setReplySaving(false);
+	}
 }
 
 // The card owns only the wording per target state; which targets to offer, and
@@ -300,11 +309,12 @@ async function requestDeleteReply(replyId: string) {
       placeholder="Reply…"
       aria-label="Reply"
       class="card-textarea"
+      disabled={replySaving}
     ></textarea>
     <button
       type="button"
       onclick={submitReply}
-      disabled={!replyDraft.valid}
+      disabled={!replyDraft.valid || replySaving}
     >Reply</button>
   </div>
 </div>
