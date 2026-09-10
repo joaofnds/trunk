@@ -180,13 +180,26 @@ describe("a comment left on a commit's diff", () => {
 		const panelReply = await waitFor("the panel reply", () =>
 			app.review.replyDraft(),
 		);
+		expect(panelReply).toBe("panel reply in progress");
+		await app.review.submitReply();
+		await waitFor("the saved panel reply", () =>
+			app.review.replies().includes("panel reply in progress") ? true : null,
+		);
 		await app.review.jumpToThread();
 		const inlineReply = await waitFor("the inline reply", () =>
 			app.review.replyDraft(),
 		);
 
-		expect(panelReply).toBe("panel reply in progress");
 		expect(inlineReply).toBe("inline reply in progress");
+		await app.review.submitReply();
+		const replies = await waitFor("both replies on the original thread", () => {
+			const showing = app.review.replies();
+			return showing.length === 2 ? showing : null;
+		});
+		expect(replies).toEqual([
+			"panel reply in progress",
+			"inline reply in progress",
+		]);
 	});
 });
 

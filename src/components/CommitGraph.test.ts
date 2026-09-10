@@ -7,6 +7,7 @@ import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comme
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { resetCache } from "../lib/text-measure.js";
+import type { ReviewTone } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth).
@@ -222,6 +223,33 @@ describe("CommitGraph", () => {
 		});
 
 		expect(container.querySelectorAll(".comment-badge")).toHaveLength(0);
+	});
+
+	it("forwards independent filtered counts and tones to commit and WIP rows", async () => {
+		const { container } = render(CommitGraph, {
+			props: {
+				repoPath: "/test/repo",
+				tabActive: true,
+				reviewCommentsVisible: true,
+				wipCount: 1,
+				commentCounts: new Map([
+					[TEST_COMMITS[0].oid, 2],
+					["__wip__", 1],
+				]),
+				commentTones: new Map<string, ReviewTone>([
+					[TEST_COMMITS[0].oid, "addressed"],
+					["__wip__", "stale"],
+				]),
+			},
+		});
+		await screen.findByText("first commit");
+
+		const badges = container.querySelectorAll(".comment-badge");
+		expect(badges).toHaveLength(2);
+		expect(badges[0]).toHaveTextContent("1");
+		expect(badges[0]).toHaveClass("tone-stale");
+		expect(badges[1]).toHaveTextContent("2");
+		expect(badges[1]).toHaveClass("tone-addressed");
 	});
 
 	it("renders without crashing", () => {

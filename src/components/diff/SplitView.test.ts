@@ -129,6 +129,24 @@ function scrollTo(container: Element, top: number): void {
 }
 
 describe("SplitView", () => {
+	it("hides whole-hunk and selected-line comment actions under Hide all", async () => {
+		const hidden = { reviewFilter: "none" as const };
+		const view = render(SplitView, { props: defaultProps(hidden) });
+
+		expect(screen.queryByRole("button", { name: /^Comment/ })).toBeNull();
+
+		await view.rerender(
+			defaultProps({
+				...hidden,
+				selectedHunkKey: "src/main.ts-0",
+				selectedLineIndices: new Set([0]),
+				selectedCount: 1,
+			}),
+		);
+
+		expect(screen.queryByRole("button", { name: /^Comment/ })).toBeNull();
+	});
+
 	it("mounts a bounded number of pair rows for a file far larger than the viewport", () => {
 		const { container } = render(SplitView, {
 			props: defaultProps({

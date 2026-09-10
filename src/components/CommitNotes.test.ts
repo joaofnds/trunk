@@ -247,4 +247,52 @@ describe("CommitNotes", () => {
 			}),
 		).not.toBeInTheDocument();
 	});
+
+	it("restores and saves an externally owned note after Hide all", async () => {
+		const editors = createReviewEditorStore();
+		const editorDraftFor = (
+			reviewId: string | null,
+			surface: string,
+			target: string,
+		) => editors.draft(reviewId, surface, target);
+		const view = renderNotes([], {
+			activeReviewId: "review-a",
+			editorDraftFor,
+			reviewFilter: "all",
+		});
+		await fireEvent.click(screen.getByText("Add note"));
+		await fireEvent.input(
+			screen.getByPlaceholderText("Leave a note on this commit…"),
+			{ target: { value: "retained commit note" } },
+		);
+
+		await view.rerender({
+			notes: [],
+			repoPath: "/repo",
+			commitOid,
+			activeReviewId: "review-a",
+			editorDraftFor,
+			reviewFilter: "none",
+		});
+		expect(
+			screen.queryByPlaceholderText("Leave a note on this commit…"),
+		).not.toBeVisible();
+		view.unmount();
+		renderNotes([], {
+			activeReviewId: "review-a",
+			editorDraftFor,
+			reviewFilter: "all",
+		});
+
+		const restored = screen.getByPlaceholderText(
+			"Leave a note on this commit…",
+		);
+		expect(restored).toHaveValue("retained commit note");
+		await fireEvent.click(screen.getByText("Save"));
+		expect(callArgs("add_commit_thread")).toEqual({
+			path: "/repo",
+			commitOid,
+			text: "retained commit note",
+		});
+	});
 });

@@ -1,6 +1,12 @@
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
-import { firstMatching, openContextMenu, pressButton } from "./dom.js";
+import {
+	type CommentBadge,
+	commentBadgeIn,
+	firstMatching,
+	openContextMenu,
+	pressButton,
+} from "./dom.js";
 
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const STAGE_ALL = '[aria-label="Stage all changes"]';
@@ -18,6 +24,8 @@ const LINE_CONTENT = ".diff-line-content";
 const ADDED_LINE = `.diff-line-add ${LINE_CONTENT}`;
 const REMOVED_LINE = `.diff-line-delete ${LINE_CONTENT}`;
 const GRIP = ".gutter-selectable";
+const TREE_ROW = '[role="treeitem"]';
+const TREE_VIEW = '[aria-label="Switch to tree view"]';
 const STAGE_HUNK = "Stage Hunk";
 const DISCARD_LINES = "Discard Lines";
 const MARK_ALL_RESOLVED = "Mark All Resolved";
@@ -129,6 +137,33 @@ export class StagingDriver {
 	/** The files the panel is showing as staged, topmost first. */
 	stagedFiles(): string[] {
 		return filesIn(STAGED_SECTION);
+	}
+
+	/** Switches the staging lists to their collapsed-directory presentation. */
+	async switchToTreeView(): Promise<void> {
+		const control = await waitFor("the tree-view control", () =>
+			document.querySelector<HTMLButtonElement>(TREE_VIEW),
+		);
+		control.click();
+		await waitFor("a staging tree row", () => document.querySelector(TREE_ROW));
+	}
+
+	/** The aggregate review count pill on one unstaged directory. */
+	unstagedDirectoryCommentBadge(path: string): CommentBadge | null {
+		return commentBadgeIn(
+			firstMatching(`${UNSTAGED_SECTION} ${TREE_ROW}`, (text) =>
+				text.includes(path),
+			),
+		);
+	}
+
+	/** The review count pill on one staged file. */
+	stagedFileCommentBadge(path: string): CommentBadge | null {
+		return commentBadgeIn(
+			firstMatching(`${STAGED_SECTION} ${FILE_ROW}`, (text) =>
+				text.includes(path),
+			),
+		);
 	}
 
 	/** The content of every added row in the diff pane, topmost first. */

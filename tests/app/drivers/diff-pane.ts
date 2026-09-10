@@ -2,9 +2,11 @@ import { waitFor } from "../harness/wait.js";
 
 const SHOW_RENDERED = 'button[title="Show rendered markdown"]';
 const SHOW_FULL_FILE = 'button[title="Show full file"]';
+const SHOW_HUNKS = 'button[title="Show hunks"]';
 const SHOW_SIDE_BY_SIDE = 'button[title="Side-by-side view"]';
 const SHOW_INLINE = 'button[title="Inline view"]';
 const IGNORE_WHITESPACE = 'button[title="Ignore whitespace changes"]';
+const CLOSE_DIFF = 'button[aria-label="Close diff"]';
 const CONTEXT_LINE = ".diff-line-context .diff-line-content";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
@@ -29,11 +31,22 @@ export class DiffPaneDriver {
 
 	/** Switches the pane from hunk mode to the whole file. */
 	async showFullFile(): Promise<void> {
-		const button = await waitFor("the full-file toggle", () =>
-			document.querySelector<HTMLButtonElement>(SHOW_FULL_FILE),
+		await waitFor("the diff source view", () =>
+			document.querySelector<HTMLElement>(
+				".hunk-view, .split-view, .full-file, .rendered-diff",
+			),
+		);
+		const button = await waitFor("the full-file mode control", () =>
+			document.querySelector<HTMLButtonElement>(
+				`${SHOW_FULL_FILE}, ${SHOW_HUNKS}`,
+			),
 		);
 
-		button.click();
+		if (button.matches(SHOW_FULL_FILE)) button.click();
+
+		await waitFor("the full-file mode to render", () =>
+			document.querySelector<HTMLButtonElement>(SHOW_HUNKS),
+		);
 	}
 
 	/** Switches the pane from inline to side-by-side, if it is not there already. */
@@ -45,6 +58,17 @@ export class DiffPaneDriver {
 		);
 
 		if (button.matches(SHOW_SIDE_BY_SIDE)) button.click();
+	}
+
+	/** Closes the center diff and returns to the graph/detail layout. */
+	async close(): Promise<void> {
+		const button = await waitFor("the close-diff control", () =>
+			document.querySelector<HTMLButtonElement>(CLOSE_DIFF),
+		);
+		button.click();
+		await waitFor("the diff pane to close", () =>
+			document.querySelector(CLOSE_DIFF) ? null : true,
+		);
 	}
 
 	/** The ancestors of the first element matching `selector` that declare a

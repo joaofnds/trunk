@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
 import { makeFile } from "../__tests__/helpers/factories";
+import type { ReviewTone } from "../lib/types.js";
 import TreeFileList from "./TreeFileList.svelte";
 
 // Shared Tauri mock
@@ -38,6 +39,33 @@ describe("TreeFileList", () => {
 		// In tree mode, "src/lib" should be a compressed directory name
 		expect(screen.getByText("src/lib")).toBeInTheDocument();
 		expect(screen.getByText("README.md")).toBeInTheDocument();
+	});
+
+	it("rolls descendant comment counts and strongest tone into a collapsed directory", () => {
+		const files = [makeFile("src/a.ts"), makeFile("src/b.ts")];
+
+		render(TreeFileList, {
+			props: {
+				files,
+				treeMode: true,
+				actionLabel: "Stage",
+				onfileaction: vi.fn(),
+				commentCounts: new Map([
+					["src/a.ts", 1],
+					["src/b.ts", 2],
+				]),
+				commentTones: new Map<string, ReviewTone>([
+					["src/a.ts", "addressed"],
+					["src/b.ts", "open"],
+				]),
+			},
+		});
+
+		const directory = screen.getByRole("treeitem", { name: /src/ });
+		const badge = directory.querySelector(".comment-badge");
+		expect(badge).toHaveTextContent("3");
+		expect(badge).toHaveClass("tone-open");
+		expect(screen.queryByText("a.ts")).not.toBeInTheDocument();
 	});
 
 	it("calls onfileaction when file action triggered", async () => {

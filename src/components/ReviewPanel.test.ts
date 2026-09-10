@@ -498,6 +498,41 @@ describe("ReviewPanel", () => {
 			expect(noteRequests).toContainEqual([ACTIVE_REVIEW, "review-note"]);
 		});
 
+		it("restores and saves an externally owned note after Hide all", async () => {
+			installReads({ commits, comments: [], resolutions: [] });
+			const editors = createReviewEditorStore();
+			const props = {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+				editorNoteSessionFor: (reviewId: string | null, surface: string) =>
+					editors.note(reviewId, surface),
+				reviewFilter: "all" as const,
+			};
+			const view = render(ReviewPanel, { props });
+			await flush();
+			await fireEvent.click(screen.getAllByText("Add note")[0]);
+			await fireEvent.input(screen.getByRole("textbox"), {
+				target: { value: "retained panel note" },
+			});
+
+			await view.rerender({ ...props, reviewFilter: "none" });
+			expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+			view.unmount();
+			render(ReviewPanel, { props });
+			await tick();
+
+			expect(screen.getByRole("textbox")).toHaveValue("retained panel note");
+			await fireEvent.click(screen.getByText("Save"));
+			expect(callArgs("add_commit_thread")).toEqual({
+				path: "/repo",
+				commitOid: COMMIT_A,
+				text: "retained panel note",
+			});
+		});
+
 		it("allows only one add-note write while Save is pending", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			let settleSave!: () => void;
@@ -574,6 +609,104 @@ describe("ReviewPanel", () => {
 			const args = callArgs("edit_thread");
 			expect(args?.id).toBe("c1");
 			expect(args?.text).toBe("edited text");
+		});
+
+		it("restores and saves a root edit after its filter hides the thread", async () => {
+			const comment = lineAnchoredComment("c1", COMMIT_A, "original");
+			installReads({
+				commits,
+				comments: [comment],
+				resolutions: [resolvable("c1")],
+			});
+			const editors = createReviewEditorStore();
+			const props = {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+				editorSessionForThread: (thread: Thread) =>
+					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
+				reviewFilter: "all" as const,
+			};
+			const view = render(ReviewPanel, { props });
+			await flush();
+			await fireEvent.click(screen.getByText("Edit"));
+			await fireEvent.input(screen.getAllByRole("textbox")[0], {
+				target: { value: "retained root edit" },
+			});
+
+			await view.rerender({ ...props, reviewFilter: "done" });
+			expect(
+				screen.queryByDisplayValue("retained root edit"),
+			).not.toBeVisible();
+			view.unmount();
+			render(ReviewPanel, { props });
+			await tick();
+
+			const restored = screen.getByDisplayValue("retained root edit");
+			expect(restored).toBeVisible();
+			await fireEvent.click(screen.getByText("Save"));
+			expect(callArgs("edit_thread")).toEqual({
+				path: "/repo",
+				id: "c1",
+				text: "retained root edit",
+			});
+		});
+
+		it("restores and saves a reply edit after Hide all", async () => {
+			const comment = aThread({
+				...lineAnchoredComment("c1", COMMIT_A, "original"),
+				replies: [
+					{
+						id: "reply-1",
+						text: "reply original",
+						text_html: "",
+						channel: "human",
+						created_at: 1_000,
+					},
+				],
+			});
+			installReads({
+				commits,
+				comments: [comment],
+				resolutions: [resolvable("c1")],
+			});
+			const editors = createReviewEditorStore();
+			const props = {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+				editorSessionForThread: (thread: Thread) =>
+					editors.thread(ACTIVE_REVIEW, "review-panel", thread.id),
+				reviewFilter: "all" as const,
+			};
+			const view = render(ReviewPanel, { props });
+			await flush();
+			await fireEvent.click(screen.getByText("Edit reply"));
+			await fireEvent.input(
+				screen.getByRole("textbox", { name: "Edit reply" }),
+				{ target: { value: "retained reply edit" } },
+			);
+
+			await view.rerender({ ...props, reviewFilter: "none" });
+			expect(
+				screen.queryByRole("textbox", { name: "Edit reply" }),
+			).not.toBeInTheDocument();
+			view.unmount();
+			render(ReviewPanel, { props });
+			await tick();
+
+			const restored = screen.getByRole("textbox", { name: "Edit reply" });
+			expect(restored).toHaveValue("retained reply edit");
+			await fireEvent.click(screen.getByText("Save"));
+			expect(callArgs("edit_reply")).toEqual({
+				path: "/repo",
+				id: "reply-1",
+				text: "retained reply edit",
+			});
 		});
 
 		it("disables Save when the edit textarea is empty/whitespace", async () => {

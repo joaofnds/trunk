@@ -436,6 +436,8 @@ let rebaseFocusedCommitStat = $state<DiffStat | null>(null);
 let rebaseFocusedFileDiffs = $state.raw<FileDiff[]>([]);
 let rebaseFocusedFileSelected = $state<string | null>(null);
 let rebaseDiffFile = $state<string | null>(null);
+let rebaseFocusLoadSeq = 0;
+let rebaseDiffLoadSeq = 0;
 
 const wipCount = $derived(
 	dirtyCounts.staged + dirtyCounts.unstaged + dirtyCounts.conflicted,
@@ -1347,6 +1349,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 }
 
 function handleRebaseEditorClose() {
+	rebaseFocusLoadSeq++;
 	showRebaseEditor = false;
 	rebaseEditorCommits = [];
 	rebaseBaseOid = null;
@@ -1361,6 +1364,8 @@ function handleRebaseEditorClose() {
 
 async function handleRebaseFocusChange(oid: string) {
 	if (!repoPath) return;
+	const loadSeq = ++rebaseFocusLoadSeq;
+	const requestIsCurrent = () => loadSeq === rebaseFocusLoadSeq;
 	rebaseFocusedFileSelected = null;
 	rebaseDiffFile = null;
 	try {
@@ -1378,14 +1383,62 @@ async function handleRebaseFocusChange(oid: string) {
 				oid,
 			}).catch(() => null),
 		]);
+		if (!requestIsCurrent()) return;
+
 		rebaseFocusedCommitDetail = detail;
 		rebaseFocusedFileDiffs = files;
 		rebaseFocusedCommitStat = stat;
 	} catch {
+		if (!requestIsCurrent()) return;
+
 		rebaseFocusedCommitDetail = null;
 		rebaseFocusedFileDiffs = [];
 		rebaseFocusedCommitStat = null;
 	}
+}
+
+async function reloadRebaseFile(path: string, options: DiffRequestOptions) {
+	const oid = rebaseFocusedCommitDetail?.oid;
+	if (!repoPath || !oid) return;
+
+	const loadSeq = ++rebaseDiffLoadSeq;
+	const requestIsCurrent = () =>
+		loadSeq === rebaseDiffLoadSeq &&
+		rebaseFocusedCommitDetail?.oid === oid &&
+		rebaseDiffFile === path;
+
+	try {
+		const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
+			path: repoPath,
+			oid,
+			filePath: path,
+			options,
+		});
+		if (!requestIsCurrent()) return;
+
+		rebaseFocusedFileDiffs = patchLoadedDiff(
+			rebaseFocusedFileDiffs,
+			path,
+			fileDiffs,
+		);
+	} catch (e) {
+		if (!requestIsCurrent()) return;
+
+		reportErrorToast(e, "Failed to load diff");
+		// Keep the existing entry so the detail pane remains usable.
+	}
+}
+
+async function handleRebaseFileSelect(path: string) {
+	if (rebaseFocusedFileSelected === path) {
+		rebaseFocusedFileSelected = null;
+		rebaseDiffFile = null;
+		return;
+	}
+
+	rebaseFocusedFileSelected = path;
+	rebaseDiffFile = path;
+	await reloadRebaseFile(path, buildDiffOptions());
 }
 
 async function handleRebaseStart(
@@ -1517,6 +1570,10 @@ function startRightResize(e: MouseEvent) {
             editorSessionForThread={editorSessionForDiffThread}
             composerSession={diffComposerSession}
             composerTarget={diffComposerTarget}
+            ondiffoptionschange={async (options) => {
+              cachedDiffOptions = options;
+              if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
+            }}
             onclose={() => { rebaseDiffFile = null; }}
           />
         {/if}
@@ -1530,15 +1587,7 @@ function startRightResize(e: MouseEvent) {
             stat={rebaseFocusedCommitStat}
             fileDiffs={rebaseFocusedFileDiffs}
             selectedFile={rebaseFocusedFileSelected}
-            onfileselect={(path) => {
-              if (rebaseFocusedFileSelected === path) {
-                rebaseFocusedFileSelected = null;
-                rebaseDiffFile = null;
-              } else {
-                rebaseFocusedFileSelected = path;
-                rebaseDiffFile = path;
-              }
-            }}
+            onfileselect={handleRebaseFileSelect}
             onclose={() => { rebaseFocusedCommitDetail = null; rebaseFocusedCommitStat = null; }}
             {repoPath}
             reviewComments={reviewComments}

@@ -5,6 +5,11 @@ const ROW = "[data-rebase-row]";
 const MESSAGE = ".rebase-cell-message";
 const TOOLBAR = ".rebase-toolbar-meta";
 const START = ".rebase-btn-start";
+const CANCEL = ".rebase-btn-cancel";
+const FILE_ROW = '[data-testid="staging-file"]';
+const DETAIL_SUMMARY = ".commit-message .summary";
+const DIFF_PATH = '[data-testid="diff-path"]';
+const CLOSE_DIFF = '[aria-label="Close diff"]';
 
 /** The interactive-rebase plan, in the gestures the editor offers: rows read
  *  newest first, the way the graph shows them. */
@@ -46,6 +51,60 @@ export class RebaseEditorDriver {
 
 		select.value = action;
 		select.dispatchEvent(new Event("change", { bubbles: true }));
+	}
+
+	/** Focuses the commit whose detail and files the rebase takeover owns. */
+	async focus(summary: string): Promise<void> {
+		const rows = await this.openRows();
+		const row = rows.find(
+			(candidate) => textOf(candidate.querySelector(MESSAGE)) === summary,
+		);
+		if (!row) throw new Error(`the rebase plan has no ${summary} row`);
+
+		row.click();
+		await waitFor(`the ${summary} rebase detail`, () =>
+			textOf(document.querySelector(DETAIL_SUMMARY)) === summary ? true : null,
+		);
+	}
+
+	/** Opens one file from the focused commit in the rebase takeover's diff. */
+	async openFile(path: string): Promise<void> {
+		const row = await waitFor(
+			`the ${path} rebase file`,
+			() =>
+				[...document.querySelectorAll<HTMLElement>(FILE_ROW)].find(
+					(candidate) => textOf(candidate).includes(path),
+				) ?? null,
+		);
+
+		row.click();
+		await waitFor(`the ${path} rebase diff`, () =>
+			textOf(document.querySelector(DIFF_PATH)) === path ? true : null,
+		);
+	}
+
+	/** Leaves the focused diff while keeping the interactive-rebase takeover. */
+	async closeDiff(): Promise<void> {
+		const close = await waitFor("the rebase diff close control", () =>
+			document.querySelector<HTMLButtonElement>(CLOSE_DIFF),
+		);
+
+		close.click();
+		await waitFor("the rebase diff to close", () =>
+			document.querySelector(CLOSE_DIFF) === null ? true : null,
+		);
+	}
+
+	/** Closes the takeover without starting its plan. */
+	async cancel(): Promise<void> {
+		const cancel = await waitFor("the cancel-rebase button", () =>
+			document.querySelector<HTMLButtonElement>(CANCEL),
+		);
+
+		cancel.click();
+		await waitFor("the rebase editor to close", () =>
+			document.querySelector(EDITOR) === null ? true : null,
+		);
 	}
 
 	async start(): Promise<void> {

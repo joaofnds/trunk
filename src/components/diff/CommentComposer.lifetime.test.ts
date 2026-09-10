@@ -225,6 +225,28 @@ describe("composer operation lifetime", () => {
 		expect(host.threads).toEqual([]);
 		expect(screen.getByRole("textbox")).toHaveValue("belongs to a");
 	});
+
+	it("does not retarget a null-origin composer when a review becomes active", async () => {
+		const p = {
+			...props(),
+			originatingReviewId: null,
+			activeReviewId: null,
+		};
+		const view = mount(p);
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "belongs outside the new review" },
+		});
+
+		await view.rerender({ ...p, activeReviewId: "review-b" });
+		const submit = screen.getByRole("button", { name: "Submit" });
+		expect(submit).toBeDisabled();
+		await fireEvent.click(submit);
+
+		expect(host.threads).toEqual([]);
+		expect(screen.getByRole("textbox")).toHaveValue(
+			"belongs outside the new review",
+		);
+	});
 	it("submits to the captured commit when navigation occurs during autosave", async () => {
 		const file: FileDiff = {
 			path: "a.ts",

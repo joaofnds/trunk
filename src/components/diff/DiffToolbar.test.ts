@@ -27,6 +27,21 @@ const baseProps = {
 	onclose: () => {},
 };
 
+describe("DiffToolbar review actions", () => {
+	it("hides Comment File under Hide all", () => {
+		render(DiffToolbar, {
+			props: {
+				...baseProps,
+				selectedPath: "src/main.rs",
+				reviewCommentsVisible: true,
+				reviewFilter: "none",
+			},
+		});
+
+		expect(screen.queryByRole("button", { name: "Comment File" })).toBeNull();
+	});
+});
+
 describe("DiffToolbar Source|Rendered toggle", () => {
 	it("shows the toggle when the selected file is markdown", () => {
 		render(DiffToolbar, {

@@ -1,6 +1,23 @@
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
 
+export interface CommentBadge {
+	count: number;
+	tone: string;
+}
+
+/** The count and semantic tone of a review pill inside one rendered owner. */
+export function commentBadgeIn(owner: HTMLElement | null): CommentBadge | null {
+	const badge = owner?.querySelector<HTMLElement>(".comment-badge");
+	if (!badge) return null;
+
+	const tone = [...badge.classList]
+		.find((name) => name.startsWith("tone-"))
+		?.slice("tone-".length);
+	const count = Number(badge.textContent?.trim());
+	return tone && Number.isFinite(count) ? { count, tone } : null;
+}
+
 /** The first element matching `selector` whose text satisfies `matches`, or null
  *  while the interface is not showing one. Every driver locates its target by
  *  what the user reads on it. */

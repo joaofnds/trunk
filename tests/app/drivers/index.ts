@@ -119,6 +119,11 @@ export class AppDriver {
 		return this.internals.holdPrefsGet(key);
 	}
 
+	/** Freezes a frontend command before it reaches the application host. */
+	holdCommand(command: string): () => void {
+		return this.internals.holdCommand(command);
+	}
+
 	/** How many times the application has refetched the commit graph. What a
 	 *  debounced refresh is observable as when the graph it produces is
 	 *  unchanged. */

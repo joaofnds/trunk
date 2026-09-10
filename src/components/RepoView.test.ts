@@ -1101,6 +1101,59 @@ describe("RepoView", () => {
 			};
 		}
 
+		function makeRebaseDetail(oid: string, summary: string): CommitDetailType {
+			return {
+				oid,
+				short_oid: oid.slice(0, 7),
+				summary,
+				body: null,
+				author_name: "Test",
+				author_email: "test@test.com",
+				author_timestamp: 0,
+				committer_name: "Test",
+				committer_email: "test@test.com",
+				committer_timestamp: 0,
+				parent_oids: [PARENT_OID],
+			};
+		}
+
+		function makeRebaseFile(path: string): FileDiff {
+			return {
+				path,
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [],
+			};
+		}
+
+		function makeRebaseFileWithContent(
+			path: string,
+			content: string,
+		): FileDiff {
+			return {
+				...makeRebaseFile(path),
+				hunks: [
+					{
+						header: "@@ -1,1 +1,1 @@",
+						old_start: 1,
+						old_lines: 1,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content,
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+		}
+
 		function stubRebaseTodo(
 			baseOid: string | null,
 			startResult: { kind: string } = { kind: "completed" },
@@ -1213,6 +1266,181 @@ describe("RepoView", () => {
 					},
 				],
 			});
+		});
+
+		it("keeps the newest rebase focus when the previous focus resolves last", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let resolveStaleDetail: ((detail: CommitDetailType) => void) | undefined;
+			let resolveStaleFiles: ((files: FileDiff[]) => void) | undefined;
+			const staleDetail = new Promise<CommitDetailType>((resolve) => {
+				resolveStaleDetail = resolve;
+			});
+			const staleFiles = new Promise<FileDiff[]>((resolve) => {
+				resolveStaleFiles = resolve;
+			});
+			const focusedFile = makeRebaseFile("src/clicked.ts");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && a?.oid === HEAD_OID) {
+					return staleDetail;
+				}
+				if (cmd === "list_commit_files" && a?.oid === HEAD_OID) {
+					return staleFiles;
+				}
+				if (cmd === "get_commit_detail" && a?.oid === CLICKED_OID) {
+					return Promise.resolve(
+						makeRebaseDetail(CLICKED_OID, "clicked commit"),
+					);
+				}
+				if (cmd === "list_commit_files" && a?.oid === CLICKED_OID) {
+					return Promise.resolve([focusedFile]);
+				}
+				return base(cmd, args);
+			});
+
+			await openTheEditorOnTheClickedCommit();
+			if (!resolveStaleDetail || !resolveStaleFiles) {
+				throw new Error("the initial rebase focus did not enter its barriers");
+			}
+			await fireEvent.click(screen.getAllByRole("row")[1]);
+			expect(await screen.findByText(focusedFile.path)).toBeTruthy();
+
+			resolveStaleDetail(makeRebaseDetail(HEAD_OID, "head commit"));
+			resolveStaleFiles([makeRebaseFile("src/head.ts")]);
+			await flush();
+
+			expect(screen.queryByText("src/head.ts")).toBeFalsy();
+			expect(screen.getByText(focusedFile.path)).toBeTruthy();
+			await fireEvent.click(screen.getByText(focusedFile.path));
+			expect(mockInvoke).toHaveBeenCalledWith(
+				"diff_commit_file",
+				expect.objectContaining({
+					oid: CLICKED_OID,
+					filePath: focusedFile.path,
+				}),
+			);
+		});
+
+		it("keeps the newest rebase focus when the previous focus rejects last", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let rejectStaleDetail: ((reason?: unknown) => void) | undefined;
+			const staleDetail = new Promise<CommitDetailType>((_resolve, reject) => {
+				rejectStaleDetail = reject;
+			});
+			const focusedFile = makeRebaseFile("src/clicked.ts");
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && a?.oid === HEAD_OID) {
+					return staleDetail;
+				}
+				if (cmd === "list_commit_files" && a?.oid === HEAD_OID) {
+					return Promise.resolve([makeRebaseFile("src/head.ts")]);
+				}
+				if (cmd === "get_commit_detail" && a?.oid === CLICKED_OID) {
+					return Promise.resolve(
+						makeRebaseDetail(CLICKED_OID, "clicked commit"),
+					);
+				}
+				if (cmd === "list_commit_files" && a?.oid === CLICKED_OID) {
+					return Promise.resolve([focusedFile]);
+				}
+				return base(cmd, args);
+			});
+
+			await openTheEditorOnTheClickedCommit();
+			if (!rejectStaleDetail) {
+				throw new Error("the initial rebase focus did not enter its barrier");
+			}
+			await fireEvent.click(screen.getAllByRole("row")[1]);
+			expect(await screen.findByText(focusedFile.path)).toBeTruthy();
+
+			rejectStaleDetail(new Error("stale focus failed"));
+			await flush();
+
+			expect(screen.getByText(focusedFile.path)).toBeTruthy();
+		});
+
+		it("keeps the newest rebase diff options when older reloads finish last", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/rebase.ts";
+			let diffCall = 0;
+			let resolveOld: ((files: FileDiff[]) => void) | undefined;
+			let resolveNew: ((files: FileDiff[]) => void) | undefined;
+			let rejectOld: ((reason?: unknown) => void) | undefined;
+			let resolveNewest: ((files: FileDiff[]) => void) | undefined;
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				}
+				if (cmd === "list_commit_files" && typeof a?.oid === "string") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					diffCall++;
+					if (diffCall === 1) {
+						return Promise.resolve([
+							makeRebaseFileWithContent(path, "INITIAL"),
+						]);
+					}
+					if (diffCall === 2) {
+						return new Promise<FileDiff[]>((resolve) => {
+							resolveOld = resolve;
+						});
+					}
+					if (diffCall === 3) {
+						return new Promise<FileDiff[]>((resolve) => {
+							resolveNew = resolve;
+						});
+					}
+					if (diffCall === 4) {
+						return new Promise<FileDiff[]>((_resolve, reject) => {
+							rejectOld = reject;
+						});
+					}
+					return new Promise<FileDiff[]>((resolve) => {
+						resolveNewest = resolve;
+					});
+				}
+				return base(cmd, args);
+			});
+
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(await screen.findByText(path));
+			expect(await screen.findByText("INITIAL")).toBeTruthy();
+			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
+			await fireEvent.click(screen.getByTitle("Show full file"));
+			if (!resolveOld || !resolveNew) {
+				throw new Error("the first rebase diff reload pair did not enter");
+			}
+			resolveNew([makeRebaseFileWithContent(path, "NEWEST")]);
+			expect(await screen.findByText("NEWEST")).toBeTruthy();
+			resolveOld([makeRebaseFileWithContent(path, "STALE")]);
+			await flush();
+			expect(screen.queryByText("STALE")).toBeFalsy();
+
+			await fireEvent.click(screen.getByTitle("Ignore whitespace changes"));
+			await fireEvent.click(screen.getByTitle("Show hunks"));
+			if (!rejectOld || !resolveNewest) {
+				throw new Error("the second rebase diff reload pair did not enter");
+			}
+			resolveNewest([makeRebaseFileWithContent(path, "LATEST")]);
+			expect(await screen.findByText("LATEST")).toBeTruthy();
+			rejectOld(new Error("stale diff failed"));
+			await flush();
+			expect(toasts.items).not.toContainEqual(
+				expect.objectContaining({
+					message: "stale diff failed",
+					kind: "error",
+				}),
+			);
 		});
 
 		it("matches review comments in the focused rebase diff", async () => {

@@ -5,7 +5,13 @@ import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comme
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { BODY_CLAMP_LINES } from "../lib/commit-body-clamp.js";
 import { safeInvoke } from "../lib/invoke.js";
-import type { CommitDetail, DiffStat, FileDiff, Thread } from "../lib/types.js";
+import type {
+	CommitDetail,
+	DiffStat,
+	FileDiff,
+	ReviewTone,
+	Thread,
+} from "../lib/types.js";
 import CommitDetailComponent from "./CommitDetail.svelte";
 
 // Shared Tauri mock
@@ -637,6 +643,43 @@ describe("CommitDetail", () => {
 				},
 			});
 		}
+
+		it("forwards an explicit filtered file badge and note population", async () => {
+			const doneNote = aThread({
+				...note,
+				id: "done-note",
+				text: "completed note",
+				state: "done",
+			});
+			const reviewComments = createFakeReviewComments();
+			reviewComments.seed({ threads: [note, doneNote] });
+			await reviewComments.refresh();
+
+			render(CommitDetailComponent, {
+				props: {
+					commitDetail: detail,
+					fileDiffs,
+					selectedFile: null,
+					onfileselect: vi.fn(),
+					onclose: vi.fn(),
+					repoPath: "/repo",
+					reviewCommentsVisible: true,
+					reviewComments,
+					reviewFilter: "done",
+					commentCounts: new Map([[`${detail.oid}\0${fileDiffs[0].path}`, 2]]),
+					commentTones: new Map<string, ReviewTone>([
+						[`${detail.oid}\0${fileDiffs[0].path}`, "done"],
+					]),
+				},
+			});
+
+			const badge = screen.getByLabelText("2 review comments");
+			expect(badge).toHaveClass("tone-done");
+			expect(screen.getByText("completed note")).toBeVisible();
+			expect(
+				screen.getByText("left on the whole commit").closest("li"),
+			).toHaveStyle({ display: "none" });
+		});
 
 		it("files a note composed here against the full commit oid, not the abbreviation", async () => {
 			renderWithThreads([]);

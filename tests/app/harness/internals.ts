@@ -75,6 +75,8 @@ export class TauriInternals {
 	 *  until `release()` runs, rather than reaching the host. */
 	private heldPrefsKey: string | null = null;
 	private readonly heldReads: HeldRead[] = [];
+	private heldCommand: string | null = null;
+	private readonly heldCommands: Array<() => void> = [];
 
 	constructor(private readonly host: HostChannel) {}
 
@@ -91,6 +93,18 @@ export class TauriInternals {
 			this.heldPrefsKey = null;
 			const held = this.heldReads.splice(0);
 			for (const read of held) read.release();
+		};
+	}
+
+	/** Freezes every invocation of `command` at the frontend transport seam.
+	 * The returned release lets a scenario observe state while the real host
+	 * response is still pending. */
+	holdCommand(command: string): () => void {
+		this.heldCommand = command;
+		return () => {
+			this.heldCommand = null;
+			const held = this.heldCommands.splice(0);
+			for (const release of held) release();
 		};
 	}
 
@@ -149,6 +163,11 @@ export class TauriInternals {
 	): Promise<unknown> {
 		if (this.closed) return null;
 		this.records.push({ cmd, args });
+		if (cmd === this.heldCommand) {
+			await new Promise<void>((release) => {
+				this.heldCommands.push(release);
+			});
+		}
 
 		if (cmd === LISTEN) return await this.listen(args);
 		// A frontend `emit` goes to the host as a command, not through the host's

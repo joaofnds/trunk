@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
+import type { ReviewTone } from "../lib/types.js";
 import StagingPanel from "./StagingPanel.svelte";
 
 // All Tauri module mocks — declared locally for proper vi.mock hoisting.
@@ -156,6 +158,46 @@ describe("StagingPanel", () => {
 		await waitFor(() => {
 			expect(screen.getByText("feature/test")).toBeInTheDocument();
 		});
+	});
+
+	it("routes filtered snapshot badges and tones to both staging sections", async () => {
+		const workingTree = "working-tree-snapshot";
+		const index = "index-snapshot";
+		const reviewComments = createFakeReviewComments();
+		reviewComments.seed({
+			threads: [],
+			snapshots: {
+				working_tree_snapshot: workingTree,
+				index_snapshot: index,
+			},
+		});
+		await reviewComments.refresh();
+
+		render(StagingPanel, {
+			props: {
+				repoPath: "/test/repo",
+				reviewCommentsVisible: true,
+				reviewComments,
+				commentCounts: new Map([
+					[`${workingTree}\0README.md`, 2],
+					[`${index}\0src/main.ts`, 1],
+				]),
+				commentTones: new Map<string, ReviewTone>([
+					[`${workingTree}\0README.md`, "addressed"],
+					[`${index}\0src/main.ts`, "done"],
+				]),
+			},
+		});
+
+		await screen.findByText("README.md");
+		const unstaged = screen.getByTestId("staging-unstaged-section");
+		const staged = screen.getByTestId("staging-staged-section");
+		expect(unstaged.querySelector(".comment-badge")).toHaveTextContent("2");
+		expect(unstaged.querySelector(".comment-badge")).toHaveClass(
+			"tone-addressed",
+		);
+		expect(staged.querySelector(".comment-badge")).toHaveTextContent("1");
+		expect(staged.querySelector(".comment-badge")).toHaveClass("tone-done");
 	});
 
 	it("calls get_status on mount with repo path", async () => {

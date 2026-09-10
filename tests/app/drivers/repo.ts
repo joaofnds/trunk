@@ -2,12 +2,18 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
-import { firstMatching, openContextMenu } from "./dom.js";
+import {
+	type CommentBadge,
+	commentBadgeIn,
+	firstMatching,
+	openContextMenu,
+} from "./dom.js";
 
 const RECENT_ENTRY = '[role="button"]';
 const COMMIT_ROW = '[data-testid="commit-row"]';
 const COMMIT_SUMMARY = '[data-testid="commit-row-summary"]';
 const COMMIT_SHA = '[title="Copy SHA"]';
+const COMMIT_DETAIL_SHA = "button.sha-copy";
 // The label lives in a `span` inside this `foreignObject`, and a selector that
 // names the span matches nothing: jsdom does not reach across the SVG boundary
 // into its HTML children.
@@ -59,11 +65,19 @@ export class RepoDriver {
 	/** Selects a commit, returning once the detail pane is listing its files. */
 	async selectCommit(summary: string): Promise<void> {
 		const row = await waitFor(`the ${summary} row`, () => commitRow(summary));
+		const expectedSha = row
+			.querySelector<HTMLElement>(COMMIT_SHA)
+			?.textContent?.trim();
 
 		row.click();
 
 		await waitFor(`the files ${summary} touched`, () =>
-			document.querySelector<HTMLElement>(FILE_ROW) ? true : null,
+			document
+				.querySelector<HTMLElement>(COMMIT_DETAIL_SHA)
+				?.textContent?.trim() === expectedSha &&
+			document.querySelector<HTMLElement>(FILE_ROW)
+				? true
+				: null,
 		);
 	}
 
@@ -120,6 +134,25 @@ export class RepoDriver {
 
 		return [...rows].map((row) =>
 			(row.textContent ?? "").replace(/\s+/g, " ").trim(),
+		);
+	}
+
+	/** The review count pill on one graph commit, or null when filtering hides it. */
+	commitCommentBadge(summary: string): CommentBadge | null {
+		return commentBadgeIn(commitRow(summary));
+	}
+
+	/** The review count pill on the working-tree graph row. */
+	workingTreeCommentBadge(): CommentBadge | null {
+		return commentBadgeIn(
+			firstMatching(COMMIT_ROW, (text) => text.includes("// WIP")),
+		);
+	}
+
+	/** The review count pill on a selected commit's file row. */
+	commitFileCommentBadge(path: string): CommentBadge | null {
+		return commentBadgeIn(
+			firstMatching(FILE_ROW, (text) => text.includes(path)),
 		);
 	}
 
