@@ -99,9 +99,9 @@ let {
 	emptyCommit = false,
 }: Props = $props();
 
-// Keep raw comment cards mounted while "Hide all" is selected so a draft in a
-// diff composer survives a filter round trip. The child row models collapse the
-// hidden comment rows to zero height and suppress their controls.
+// Keep review inputs active while "Hide all" is selected for a view with comments
+// so a diff composer survives a filter round trip. The row models omit hidden
+// comment rows before layout, while the composer below stays display-hidden.
 let commentCardsMounted = $derived(
 	reviewCommentsVisible || (reviewFilter === "none" && viewComments.length > 0),
 );
