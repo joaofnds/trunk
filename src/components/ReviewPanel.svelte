@@ -12,14 +12,21 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { untrack } from "svelte";
 import { copySha } from "../lib/clipboard.js";
 import { commitOidForComment } from "../lib/comment-counts.js";
-import { createDraft } from "../lib/draft.svelte.js";
+import { createDraft, type Draft } from "../lib/draft.svelte.js";
 import { errorMessage } from "../lib/error-report.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createOwnedTimer } from "../lib/owned-timer.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
+import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
+import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
 import type { ReviewSessionManager } from "../lib/review-session.svelte.js";
 import { showToast } from "../lib/toast.svelte.js";
-import type { CommentResolution, OrphanReason, Thread } from "../lib/types.js";
+import type {
+	CommentResolution,
+	OrphanReason,
+	ReviewFilter,
+	Thread,
+} from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -39,6 +46,13 @@ interface Props {
 	// Open the file finder. One suppressible affordance rather than several, so
 	// milestone 5's hide-all has a single thing to hide.
 	oncommentonfile?: () => void;
+	reviewFilter?: ReviewFilter;
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	editorDraftFor?: (
+		reviewId: string | null,
+		surface: string,
+		target: string,
+	) => Draft;
 }
 
 let {
@@ -48,10 +62,14 @@ let {
 	onJump,
 	onJumpToCommit,
 	oncommentonfile,
+	reviewFilter = "all",
+	editorSessionForThread,
+	editorDraftFor,
 }: Props = $props();
 
 const commits = $derived(reviewComments.commits);
 const comments = $derived(reviewComments.threads);
+const visibleComments = $derived(filterThreads(comments, reviewFilter));
 const reviews = $derived(reviewComments.reviews);
 const activeReviewId = $derived(reviewComments.activeReviewId);
 const activeReview = $derived(
@@ -67,7 +85,14 @@ let resolutions = $state<CommentResolution[]>([]);
 // by which commit it's open for (draft.svelte.ts owns the shared text/valid
 // machinery).
 let addNoteForCommit = $state<string | null>(null);
-const draft = createDraft();
+const localDraft = createDraft();
+let draft = $state<Draft>(localDraft);
+
+$effect(() => {
+	const oid = addNoteForCommit;
+	if (oid === null) return;
+	draft = editorDraftFor?.(activeReviewId, "review-note", oid) ?? localDraft;
+});
 
 // LOCKED OrphanReason → badge label map (UI-SPEC § Copywriting Contract).
 const ORPHAN_LABEL: Record<OrphanReason, string> = {
@@ -174,6 +199,7 @@ const currentFileComments = $derived(
 );
 
 const hasAnyComment = $derived(comments.length > 0);
+const hasVisibleComment = $derived(visibleComments.length > 0);
 
 let copied = $state(false);
 const copiedRevert = createOwnedTimer();
@@ -231,6 +257,7 @@ async function loadResolutions() {
 
 function openAddNote(oid: string) {
 	addNoteForCommit = oid;
+	draft = editorDraftFor?.(activeReviewId, "review-note", oid) ?? localDraft;
 	draft.open();
 }
 
@@ -455,7 +482,7 @@ $effect(() => {
       font-size: 12px;
     "
   >
-    {#if oncommentonfile}
+    {#if oncommentonfile && reviewFilter !== "none"}
       <button
         type="button"
         class="comment-on-file-button flex items-center"
@@ -618,9 +645,9 @@ $effect(() => {
     </ul>
   </div>
 
-  {#if activeReview}
+  {#if activeReview && reviewFilter !== "none"}
     <span style="color: var(--color-text-muted); font-size: 11px; padding: var(--space-1) 0;">
-      {comments.length} {comments.length === 1 ? "comment" : "comments"} · {commits.length}
+      {visibleComments.length} {visibleComments.length === 1 ? "comment" : "comments"} · {commits.length}
       {commits.length === 1 ? "commit" : "commits"}
     </span>
   {/if}
@@ -651,12 +678,23 @@ $effect(() => {
         Select diff lines or add a commit note to comment.
       </span>
     </div>
+  {:else if !hasVisibleComment}
+    <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-3);">
+      <span>{reviewFilter === "none" ? "Review threads hidden." : "No threads match this filter."}</span>
+      <span style="color: var(--color-text-muted); font-size: 11px;">
+        The review inventory remains available above.
+      </span>
+    </div>
   {/if}
 
   {#if groups.length > 0}
     <ul class="flex flex-col" style="gap: var(--space-2); list-style: none; margin: 0; padding: 0;">
       {#each groups as group (group.oid)}
-        <li class="flex flex-col" style="gap: var(--space-1);">
+        {@const visibleGroupComments = filterThreads(group.comments, reviewFilter)}
+        <li
+          class="flex flex-col"
+          style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && group.comments.length > 0 && visibleGroupComments.length === 0) ? 'none' : 'flex'};"
+        >
           <!-- Commit group header (focal point): short SHA mono 600 + summary -->
           <div
             class="flex items-center"
@@ -703,6 +741,7 @@ $effect(() => {
               class="flex items-center"
               onclick={() => openAddNote(group.oid)}
               style="
+                display: {reviewFilter === 'none' ? 'none' : 'inline-flex'};
                 gap: var(--space-1);
                 background: transparent;
                 color: var(--color-text-muted);
@@ -723,7 +762,7 @@ $effect(() => {
 
           <!-- Inline add-note composer for this commit -->
           {#if addNoteForCommit === group.oid}
-            <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-1) 0;">
+            <div class="flex flex-col" style="gap: var(--space-1); padding: var(--space-1) 0; display: {reviewFilter === 'none' ? 'none' : 'flex'};">
               <textarea
                 bind:value={draft.text}
                 rows="3"
@@ -786,7 +825,7 @@ $effect(() => {
           {:else}
             <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
               {#each group.comments as comment (comment.id)}
-                <li>
+                <li style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}>
                   <ThreadCard
                     thread={comment}
                     {repoPath}
@@ -798,6 +837,7 @@ $effect(() => {
                     jumpable={isJumpable(comment)}
                     orphaned={isOrphan(comment)}
                     orphanLabel={orphanLabel(comment)}
+                    editorSessionForThread={editorSessionForThread}
                   />
                 </li>
               {/each}
@@ -809,13 +849,14 @@ $effect(() => {
   {/if}
 
   {#if currentFileComments.length > 0}
-    <div class="flex flex-col" style="gap: var(--space-1);">
+    {@const visibleCurrentFileComments = filterThreads(currentFileComments, reviewFilter)}
+    <div class="flex flex-col" style="gap: var(--space-1); display: {reviewFilter === 'none' || (reviewFilter !== 'all' && visibleCurrentFileComments.length === 0) ? 'none' : 'flex'};">
       <div class="text-xs" style="color: var(--color-text-muted); padding: 0 var(--space-1);">
         On current file content
       </div>
       <ul class="flex flex-col" style="gap: var(--space-1); list-style: none; margin: 0; padding: 0;">
         {#each currentFileComments as comment (comment.id)}
-          <li>
+          <li style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}>
             <ThreadCard
               thread={comment}
               {repoPath}
@@ -827,6 +868,7 @@ $effect(() => {
               jumpable={false}
               orphaned={isOrphan(comment)}
               orphanLabel={orphanLabel(comment)}
+              editorSessionForThread={editorSessionForThread}
             />
           </li>
         {/each}

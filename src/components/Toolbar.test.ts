@@ -361,33 +361,33 @@ describe("Toolbar", () => {
 		expect(vi.mocked(emit)).toHaveBeenCalledWith("review-toggle");
 	});
 
-	it("shows the inline-comment count on the toggle badge", () => {
+	it("shows the current-view count on the review filter badge", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				inlineCommentCount: 3,
+				viewCommentCount: 3,
 			},
 		});
 		expect(screen.getByText("3")).toBeInTheDocument();
 	});
 
-	it("hides the inline-comment badge when count is zero", () => {
+	it("hides the review filter badge when the view count is zero", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				inlineCommentCount: 0,
+				viewCommentCount: 0,
 			},
 		});
-		const btn = screen.getByRole("button", {
-			name: /Toggle inline comments/,
+		const select = screen.getByRole("combobox", {
+			name: "Review filter selection",
 		});
-		expect(btn.querySelector(".toolbar-badge")).toBeNull();
+		expect(select.parentElement?.querySelector(".toolbar-badge")).toBeNull();
 	});
 
 	it("shows the review-comment count on the Review button badge", () => {
@@ -425,68 +425,66 @@ describe("Toolbar", () => {
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				inlineCommentCount: 2,
+				viewCommentCount: 2,
 				reviewCommentCount: 4,
 			},
 		});
-		const toggleBtn = screen.getByRole("button", {
-			name: /Toggle inline comments/,
+		const filter = screen.getByRole("combobox", {
+			name: "Review filter selection",
 		});
 		const reviewBtn = screen.getByRole("button", { name: /Review/ });
-		expect(toggleBtn.querySelector(".toolbar-badge")?.textContent).toBe("2");
+		expect(
+			filter.parentElement?.querySelector(".toolbar-badge")?.textContent,
+		).toBe("2");
 		expect(reviewBtn.querySelector(".toolbar-badge")?.textContent).toBe("4");
 	});
 
-	it("fires ontoggleinlinecomments when the toggle is clicked", async () => {
-		const ontoggleinlinecomments = vi.fn();
+	it("fires onreviewfilterchange when the filter changes", async () => {
+		const onreviewfilterchange = vi.fn();
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				ontoggleinlinecomments,
+				onreviewfilterchange,
 			},
 		});
-		const btn = screen.getByRole("button", {
-			name: /Toggle inline comments/,
+		const select = screen.getByRole("combobox", {
+			name: "Review filter selection",
 		});
-		await fireEvent.click(btn);
-		expect(ontoggleinlinecomments).toHaveBeenCalledTimes(1);
+		await fireEvent.change(select, { target: { value: "done" } });
+		expect(onreviewfilterchange).toHaveBeenCalledWith("done");
 	});
 
-	it("reflects active state from showInlineComments", () => {
+	it("reflects the selected review filter", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				showInlineComments: true,
+				reviewFilter: "addressed",
 			},
 		});
-		const btn = screen.getByRole("button", {
-			name: /Toggle inline comments/,
-		});
-		expect(btn).toHaveClass("toolbar-btn-toggle-on");
-		expect(btn).toHaveAttribute("aria-pressed", "true");
+		expect(
+			screen.getByRole("combobox", { name: "Review filter selection" }),
+		).toHaveValue("addressed");
 	});
 
-	it("shows inactive state when showInlineComments is false", () => {
+	it("offers Hide all as the selector's empty presentation state", () => {
 		render(Toolbar, {
 			props: {
 				repoPath: "/test/repo",
 				remoteState: makeRemoteState(),
 				undoRedo: makeUndoRedo(),
 				reviewActive: false,
-				showInlineComments: false,
+				reviewFilter: "none",
 			},
 		});
-		const btn = screen.getByRole("button", {
-			name: /Toggle inline comments/,
-		});
-		expect(btn).not.toHaveClass("toolbar-btn-toggle-on");
-		expect(btn).toHaveAttribute("aria-pressed", "false");
+		expect(
+			screen.getByRole("combobox", { name: "Review filter selection" }),
+		).toHaveValue("none");
 	});
 });
 

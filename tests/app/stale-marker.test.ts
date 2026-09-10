@@ -28,7 +28,7 @@ describe("staleness on a comment about uncommitted work", () => {
 			const lines = app.staging.addedLines();
 			return lines.length > 0 ? lines : null;
 		});
-		await app.review.showInlineComments();
+		await app.review.showAllReviewThreads();
 		await app.review.commentOnHunk(0);
 		await app.review.write("this line needs a look");
 		await app.review.submit();

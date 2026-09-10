@@ -116,7 +116,11 @@ export function createVirtualizedDiff(
 	});
 
 	const threadsToProbe = $derived(
-		model.rows.flatMap((row) => (row.kind === "comment" ? row.threads : [])),
+		model.rows.flatMap((row) =>
+			row.kind === "comment"
+				? row.threads.filter((thread) => row.visibleThreadIds.has(thread.id))
+				: [],
+		),
 	);
 
 	// Invariant 8: withhold the list until every input exists, rather than render

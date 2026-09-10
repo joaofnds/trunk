@@ -1751,6 +1751,44 @@ describe("summary line", () => {
 	});
 });
 
+describe("Hide all filter", () => {
+	it("hides review cards and creation affordances but leaves management available", async () => {
+		installReads({
+			commits: commits.slice(0, 1),
+			comments: [lineAnchoredComment("c1", COMMIT_A, "hidden note")],
+			resolutions: [resolvable("c1")],
+		});
+		const oncommentonfile = vi.fn();
+		const { container } = render(ReviewPanel, {
+			props: {
+				repoPath: "/repo",
+				session: createReviewSession(),
+				reviewComments,
+				reviewFilter: "none",
+				oncommentonfile,
+				onJump: vi.fn(),
+				onJumpToCommit: vi.fn(),
+			},
+		});
+		await flush();
+
+		expect(screen.queryByText("1 comment · 1 commit")).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Comment on a file…" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: "Add note" }),
+		).not.toBeInTheDocument();
+		expect(container.querySelector(".comment-card")?.parentElement).toHaveStyle(
+			{
+				display: "none",
+			},
+		);
+		expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+		expect(oncommentonfile).not.toHaveBeenCalled();
+	});
+});
+
 // The panel is the app's only error surface for review reads. The owner is
 // alive for every open tab, so it records the failure and says nothing;
 // whoever is on screen does the telling.

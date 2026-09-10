@@ -34,7 +34,7 @@ let {
 const buildOptions = $derived({
 	content: "full" as const,
 	comments,
-	showInlineComments: true,
+	reviewCommentsVisible: true,
 	collapsed: new Set<string>(),
 	fileHeaders: false,
 	tabSize: TAB_SIZE,

@@ -5,17 +5,22 @@ import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { copySha } from "../lib/clipboard.js";
-import { fileCountsForOid } from "../lib/comment-counts.js";
+import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
+import type { Draft } from "../lib/draft.svelte.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { toFileStatusList } from "../lib/file-status.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
+import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import type {
 	CommitDetail,
 	CommitNav,
 	DiffStat,
 	FileDiff,
 	FileStatus,
+	ReviewFilter,
+	ReviewTone,
+	Thread,
 } from "../lib/types.js";
 import CommitAuthor from "./CommitAuthor.svelte";
 import CommitMessage from "./CommitMessage.svelte";
@@ -38,8 +43,18 @@ interface Props {
 	// The shared comments store, threaded from RepoView so the commit-notes block
 	// and the per-file badges read one source of truth.
 	reviewComments?: ReviewCommentsManager;
-	// Center-pane inline-comments toggle; gates the per-file count badges.
-	showInlineComments?: boolean;
+	// Center-pane review visibility; gates the per-file count badges.
+	reviewCommentsVisible?: boolean;
+	reviewFilter?: ReviewFilter;
+	commentCounts?: Map<string, number>;
+	commentTones?: Map<string, ReviewTone>;
+	activeReviewId?: string | null;
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	editorDraftFor?: (
+		reviewId: string | null,
+		surface: string,
+		target: string,
+	) => Draft;
 }
 
 let {
@@ -55,16 +70,30 @@ let {
 	nav = null,
 	onnavigate,
 	reviewComments,
-	showInlineComments = false,
+	reviewCommentsVisible = false,
+	reviewFilter = "all",
+	commentCounts,
+	commentTones,
+	activeReviewId = null,
+	editorSessionForThread,
+	editorDraftFor,
 }: Props = $props();
 
 // Per-file comment counts for this commit's file list. Gated so the badges
 // follow the toggle + an active session; keyed by the commit's own OID so the
 // badge can never disagree with what the diff pane shows for the same file.
 let fileCommentCounts = $derived(
-	showInlineComments && reviewComments?.hasThreads
-		? fileCountsForOid(reviewComments.countByFile, commitDetail.oid)
+	reviewCommentsVisible
+		? fileCountsForOid(
+				commentCounts ?? reviewComments?.countByFile ?? new Map(),
+				commitDetail.oid,
+			)
 		: new Map<string, number>(),
+);
+let fileCommentTones = $derived(
+	reviewCommentsVisible
+		? fileTonesForOid(commentTones ?? new Map(), commitDetail.oid)
+		: new Map<string, ReviewTone>(),
 );
 
 let fileStatusList = $derived<FileStatus[]>(toFileStatusList(fileDiffs));
@@ -211,7 +240,15 @@ let commitNotes = $derived(
     />
 
     <!-- Commit-level notes (whole-commit, anchor === null) -->
-    <CommitNotes notes={commitNotes} {repoPath} commitOid={commitDetail.oid} />
+    <CommitNotes
+      notes={commitNotes}
+      {repoPath}
+      commitOid={commitDetail.oid}
+      {reviewFilter}
+      {activeReviewId}
+      {editorSessionForThread}
+      {editorDraftFor}
+    />
 
     <!-- File list -->
     <div>
@@ -270,6 +307,7 @@ let commitNotes = $derived(
         onfileclick={(path) => onfileselect(path)}
         onfilecontextmenu={(e, _path, file) => showFileContextMenu(e, file)}
         commentCounts={fileCommentCounts}
+        commentTones={fileCommentTones}
       />
     </div>
 

@@ -14,6 +14,7 @@ import {
 } from "../lib/full-file-anchor.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { focusInEditable, keyChord } from "../lib/keyboard.js";
+import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
 import {
 	getDiffContentMode,
 	getDiffContextLines,
@@ -41,6 +42,7 @@ import type {
 	FileDiff,
 	LayoutMode,
 	RenderMode,
+	ReviewFilter,
 	Side,
 	Thread,
 } from "../lib/types.js";
@@ -67,8 +69,10 @@ interface Props {
 	) => void;
 	ondiffoptionschange?: (options: DiffRequestOptions) => void;
 	loading?: boolean;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
+	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	refreshToken?: number;
 	emptyCommit?: boolean;
 }
@@ -85,11 +89,20 @@ let {
 	onfileemptied,
 	ondiffoptionschange,
 	loading = false,
-	showInlineComments = true,
+	reviewCommentsVisible = true,
+	reviewFilter = "all",
 	viewComments = [],
+	editorSessionForThread,
 	refreshToken = 0,
 	emptyCommit = false,
 }: Props = $props();
+
+// Keep raw comment cards mounted while "Hide all" is selected so a draft in a
+// diff composer survives a filter round trip. The child row models collapse the
+// hidden comment rows to zero height and suppress their controls.
+let commentCardsMounted = $derived(
+	reviewCommentsVisible || (reviewFilter === "none" && viewComments.length > 0),
+);
 
 let contentMode = $state<ContentMode>("hunk");
 let layoutMode = $state<LayoutMode>("inline");
@@ -911,7 +924,8 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{ignoreWhitespace}
 		{showInvisibles}
 		{wordWrap}
-		{showInlineComments}
+		{reviewCommentsVisible}
+		{reviewFilter}
 		onignorewhitespacechange={handleIgnoreWhitespaceChange}
 		onshowinvisibleschange={handleShowInvisiblesChange}
 		onwordwrapchange={handleWordWrapChange}
@@ -959,33 +973,47 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		oncommenthunk={handleCommentHunk}
 		{commitOid}
 		{repoPath}
-		{showInlineComments}
+		reviewCommentsVisible={commentCardsMounted}
+		{reviewFilter}
 		{viewComments}
+		editorSessionForThread={editorSessionForThread}
 		{refreshToken}
 		oncommentfullfile={handleCommentFullFile}
 		bind:fullFileView
 	/>
 	{/if}
-	{#if composerOpen && diffCaptured}
-		<CommentComposer
-			bind:this={composer}
-			captured={diffCaptured}
-			{commitOid}
-			resolveCommitOid={resolveCommentCommitOid}
-			{repoPath}
-			onclose={closeComposer}
-		/>
-	{:else if fullFileComposerOpen && fullFileCaptured}
-		<CommentComposer
-			bind:this={composer}
-			captured={fullFileCaptured}
-			currentFile={currentFileTarget}
-			{commitOid}
-			resolveCommitOid={currentFileTarget
-				? undefined
-				: resolveCommentCommitOid}
-			{repoPath}
-			onclose={closeComposer}
-		/>
-	{/if}
+		{#if composerOpen && diffCaptured}
+			<div
+				style:display={reviewFilter === "none" ? "none" : "flex"}
+				aria-hidden={reviewFilter === "none"}
+			>
+				<CommentComposer
+					bind:this={composer}
+					captured={diffCaptured}
+					{commitOid}
+					resolveCommitOid={resolveCommentCommitOid}
+					{repoPath}
+					canSubmit={reviewFilter !== "none"}
+					onclose={closeComposer}
+				/>
+			</div>
+		{:else if fullFileComposerOpen && fullFileCaptured}
+			<div
+				style:display={reviewFilter === "none" ? "none" : "flex"}
+				aria-hidden={reviewFilter === "none"}
+			>
+				<CommentComposer
+					bind:this={composer}
+					captured={fullFileCaptured}
+					currentFile={currentFileTarget}
+					{commitOid}
+					resolveCommitOid={currentFileTarget
+						? undefined
+						: resolveCommentCommitOid}
+					{repoPath}
+					canSubmit={reviewFilter !== "none"}
+					onclose={closeComposer}
+				/>
+			</div>
+		{/if}
 </div>

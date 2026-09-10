@@ -1,6 +1,9 @@
 <script lang="ts">
-import { createDraft } from "../lib/draft.svelte.js";
 import { externalLinks } from "../lib/external-links.js";
+import {
+	createThreadEditorSession,
+	type ThreadEditorSession,
+} from "../lib/review-editors.svelte.js";
 import type { Reply } from "../lib/types.js";
 
 interface Props {
@@ -13,13 +16,17 @@ interface Props {
 	// until the write settles.
 	onreplyedit: (id: string, text: string) => void | Promise<void>;
 	onreplydelete: (id: string) => void;
+	editorSession?: ThreadEditorSession;
 }
 
-let { replies, published, onreplyedit, onreplydelete }: Props = $props();
+let { replies, published, onreplyedit, onreplydelete, editorSession }: Props =
+	$props();
 
 let repliesExpanded = $state(false);
-const replyEditDraft = createDraft();
-let editingReplyId = $state<string | null>(null);
+const fallbackEditorSession = createThreadEditorSession();
+const editor = $derived(editorSession ?? fallbackEditorSession);
+const replyEditDraft = $derived(editor.replyEdit);
+const editingReplyId = $derived(editor.editingReplyId);
 
 // More than three replies collapse to the last three, with a control that
 // reveals the rest — expand state belongs to the list, never a parent map.
@@ -29,12 +36,12 @@ const visibleReplies = $derived(
 );
 
 function openReplyEdit(replyId: string, text: string) {
-	editingReplyId = replyId;
+	editor.setEditingReply(replyId);
 	replyEditDraft.open(text);
 }
 
 function cancelReplyEdit() {
-	editingReplyId = null;
+	editor.setEditingReply(null);
 	replyEditDraft.close();
 }
 
@@ -43,7 +50,7 @@ async function saveReplyEdit() {
 	const id = editingReplyId;
 	const text = replyEditDraft.text;
 	await onreplyedit(id, text);
-	editingReplyId = null;
+	editor.setEditingReply(null);
 	replyEditDraft.close();
 }
 </script>

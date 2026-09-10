@@ -14,11 +14,13 @@ import {
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
+import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	DiffLine,
 	DiffOrigin,
 	FileDiff,
+	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
 import {
@@ -72,8 +74,10 @@ interface Props {
 	oncommentlines: (filePath: string, hunkIndex: number) => void;
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	repoPath?: string;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
+	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 }
 
 let {
@@ -101,8 +105,10 @@ let {
 	oncommentlines,
 	oncommenthunk,
 	repoPath = "",
-	showInlineComments = true,
+	reviewCommentsVisible = true,
+	reviewFilter = "all",
 	viewComments = [],
+	editorSessionForThread,
 }: Props = $props();
 
 const FLASH_MS = 600;
@@ -133,7 +139,8 @@ const model = $derived(
 		return buildInlineRows(fileDiffs, {
 			content: "hunk",
 			comments: viewComments,
-			showInlineComments,
+			reviewCommentsVisible,
+			reviewFilter,
 			collapsed: collapsedFiles,
 			// The per-file header bar is the multi-file view's; with one file
 			// selected the top bar already shows the path.
@@ -231,6 +238,7 @@ function lineColor(): string {
     {repoPath}
     onedit={(id, text) => editThread(repoPath, id, text)}
     ondelete={(id) => deleteThread(repoPath, id)}
+    editorSessionForThread={editorSessionForThread}
   />
 {/snippet}
 
@@ -283,7 +291,7 @@ function lineColor(): string {
                commit-mode Comment button markup/styles verbatim (no new color).
                New-side scope + Old-side guard live in the host. Leads the action
                cluster (260531-l02 UX: Comment to the left of staging). -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="hunk-btn hunk-btn-accent"
             onclick={() => oncommentlines(item.path, item.hunkIdx)}
@@ -312,7 +320,7 @@ function lineColor(): string {
                without selecting lines. Reuses the line-level accent button
                markup verbatim (no new color); host synthesizes the full-hunk
                selection + applies the New-side guard. Leads the action cluster. -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="hunk-btn hunk-btn-accent"
             onclick={() => oncommenthunk(item.path, item.hunkIdx)}
@@ -342,7 +350,7 @@ function lineColor(): string {
           <!-- Staged Comment affordance (260531-l02b): anchors to the INDEX
                snapshot (HEAD→index) — both sides resolve, so no Old-side guard.
                Reuses the accent button; leads the cluster. -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="hunk-btn hunk-btn-accent"
             onclick={() => oncommentlines(item.path, item.hunkIdx)}
@@ -360,7 +368,7 @@ function lineColor(): string {
           </button>
         {:else}
           <!-- Whole-hunk staged Comment (260531-l02b): index-snapshot anchored. -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="hunk-btn hunk-btn-accent"
             onclick={() => oncommenthunk(item.path, item.hunkIdx)}
@@ -378,7 +386,7 @@ function lineColor(): string {
           </button>
         {/if}
       {:else if diffKind === 'commit'}
-        {#if showInlineComments}
+        {#if reviewCommentsVisible && reviewFilter !== "none"}
         <!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
         <button
@@ -395,7 +403,9 @@ function lineColor(): string {
   {:else if item.kind === "comment"}
     <div class="inline-comment-row">
       {#each item.threads as c (c.id)}
-        {@render threadCard(c)}
+        <div style:display={item.visibleThreadIds.has(c.id) ? "block" : "none"}>
+          {@render threadCard(c)}
+        </div>
       {/each}
     </div>
   {:else if item.kind === "file-header"}
@@ -435,7 +445,7 @@ function lineColor(): string {
   {#if vd.threadsToProbe.length > 0}
     <div class="comment-probe" bind:this={vd.commentProbe}>
       {#each vd.threadsToProbe as c (c.id)}
-        <div class="inline-comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
+        <div class="inline-comment-row" data-thread-id={c.id} style:display={reviewFilter !== "none" ? "block" : "none"}>{@render threadCard(c)}</div>
       {/each}
     </div>
   {/if}

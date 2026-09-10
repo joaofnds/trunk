@@ -1,6 +1,6 @@
 import { waitFor } from "../harness/wait.js";
 
-const INLINE_COMMENTS = '[aria-label="Toggle inline comments"]';
+const REVIEW_FILTER = '[aria-label="Review filter selection"]';
 const REVIEW = '[aria-label="Review"]';
 const HUNK_TOOLBAR = ".hunk-toolbar";
 const COMMENT = "Comment";
@@ -30,14 +30,16 @@ const FULL_FILE_COMMENT = ".full-file-comment-button";
  * button, so a gesture issued early does nothing, quietly.
  */
 export class ReviewDriver {
-	/** Presses the toolbar's inline-comments toggle. The hunk toolbar renders no
-	 *  Comment button at all until it is on, and the pref starts off. */
-	async showInlineComments(): Promise<void> {
-		const toggle = await waitFor("the inline-comments toggle", () =>
-			enabled(INLINE_COMMENTS),
+	/** Selects the default all-threads presentation. The review filter is global
+	 *  and defaults to all, so this is intentionally idempotent for existing flows. */
+	async showAllReviewThreads(): Promise<void> {
+		const filter = await waitFor("the review filter", () =>
+			selectEnabled(REVIEW_FILTER),
 		);
 
-		toggle.click();
+		if (filter.value === "all") return;
+		filter.value = "all";
+		filter.dispatchEvent(new Event("change", { bubbles: true }));
 	}
 
 	/** Comments the hunk at `ordinal`, topmost first. With no line selection this
@@ -218,6 +220,12 @@ function textIn(card: HTMLElement, selector: string): string {
 
 function enabled(selector: string): HTMLButtonElement | null {
 	const control = document.querySelector<HTMLButtonElement>(selector);
+
+	return control && !control.disabled ? control : null;
+}
+
+function selectEnabled(selector: string): HTMLSelectElement | null {
+	const control = document.querySelector<HTMLSelectElement>(selector);
 
 	return control && !control.disabled ? control : null;
 }

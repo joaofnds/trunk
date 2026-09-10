@@ -23,6 +23,7 @@ import type {
 	DiffStatus,
 	LayoutMode,
 	RenderMode,
+	ReviewFilter,
 } from "../../lib/types.js";
 
 interface Props {
@@ -40,7 +41,8 @@ interface Props {
 	ignoreWhitespace: boolean;
 	showInvisibles: boolean;
 	wordWrap: boolean;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
+	reviewFilter?: ReviewFilter;
 	onignorewhitespacechange: (value: boolean) => void;
 	onshowinvisibleschange: (value: boolean) => void;
 	onwordwrapchange: (value: boolean) => void;
@@ -66,7 +68,8 @@ let {
 	ignoreWhitespace,
 	showInvisibles,
 	wordWrap,
-	showInlineComments = true,
+	reviewCommentsVisible = true,
+	reviewFilter = "all",
 	onignorewhitespacechange,
 	onshowinvisibleschange,
 	onwordwrapchange,
@@ -209,10 +212,10 @@ const renderedActive = $derived(
        against — commit diffs as well as the dirty tree (selectedPath is always set
        when this toolbar renders). A current-file view is excluded: commenting on
        one is a line selection, since a whole-file pin would go stale on any edit
-       anywhere in the file. Gated on review mode (showInlineComments) like the hunk
+       anywhere in the file. Gated on review mode (reviewCommentsVisible) like the hunk
        toolbar's Comment buttons, so a clean read-only diff shows no comment
        affordances; never gated on whitespace-ignore since it never stages. -->
-  {#if showInlineComments && diffKind !== "current_file"}
+  {#if reviewCommentsVisible && reviewFilter !== "none" && diffKind !== "current_file"}
   <button
     class="action-btn comment-btn"
     onclick={oncommentfile}

@@ -12,8 +12,14 @@ import {
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
+import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
-import type { DiffLine, FileDiff, Thread } from "../../lib/types.js";
+import type {
+	DiffLine,
+	FileDiff,
+	ReviewFilter,
+	Thread,
+} from "../../lib/types.js";
 import {
 	createVirtualizedDiff,
 	TAB_SIZE,
@@ -32,8 +38,10 @@ interface Props {
 	// hunks.flatMap(h => h.lines)) up to the DiffPanel host when the user clicks
 	// the Comment affordance.
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
+	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 }
 
 let {
@@ -44,8 +52,10 @@ let {
 	diffKind,
 	isMerge,
 	oncommentfullfile,
-	showInlineComments = true,
+	reviewCommentsVisible = true,
+	reviewFilter = "all",
 	viewComments = [],
+	editorSessionForThread,
 }: Props = $props();
 
 // Net-new contiguous selection state (D-01): a click sets a single-line anchor;
@@ -77,7 +87,8 @@ const model = $derived(
 		return buildInlineRows(fileDiffs, {
 			content: "full",
 			comments: viewComments,
-			showInlineComments,
+			reviewCommentsVisible,
+			reviewFilter,
 			collapsed: new Set<string>(),
 			fileHeaders: false,
 			tabSize: TAB_SIZE,
@@ -96,9 +107,10 @@ const vd = createVirtualizedDiff({
 // An allowlist, not a denylist: a diff kind the store cannot anchor a thread
 // against must not gain the affordance by being forgotten here.
 const affordanceVisible = $derived(
-	(diffKind === "commit" ||
-		diffKind === "unstaged" ||
-		diffKind === "current_file") &&
+	reviewFilter !== "none" &&
+		(diffKind === "commit" ||
+			diffKind === "unstaged" ||
+			diffKind === "current_file") &&
 		selectedPath !== null &&
 		selectedIndices.size > 0,
 );
@@ -205,6 +217,7 @@ function lineColor(): string {
     {repoPath}
     onedit={(id, text) => editThread(repoPath, id, text)}
     ondelete={(id) => deleteThread(repoPath, id)}
+    editorSessionForThread={editorSessionForThread}
   />
 {/snippet}
 
@@ -241,7 +254,7 @@ function lineColor(): string {
       ><span class="gutter-num" style="min-width: {vd.gutterW};">{line.old_lineno ?? ''}</span><span class="gutter-num" style="min-width: {vd.gutterW};">{line.new_lineno ?? ''}</span></span><span class="diff-line-content" style="user-select: text; -webkit-user-select: text; cursor: text;">{#if line.spans.length > 0}{#each line.spans as span}{@const sliced = line.content.slice(span.start, span.end)}{@const spanInTrailing = span.start >= trailStart}{#if showInvisibles}{@const segments = splitInvisibles(sliced, spanInTrailing || span.end > trailStart)}{#each segments as seg}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}{seg.isInvisible ? ' invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}<span class="{span.syntax_class}{span.emphasized ? (line.origin === 'Add' ? ' word-add' : ' word-delete') : ''}">{sliced}</span>{/if}{/each}{:else}{#if showInvisibles}{@const segments = splitInvisibles(line.content, false)}{#each segments as seg}<span class="{seg.isInvisible ? 'invisible-char' : ''}{seg.isTrailing ? ' trailing-ws' : ''}" data-glyph={seg.glyph}>{seg.text}</span>{/each}{:else}{line.content}{/if}{/if}</span></div>
   {:else if item.kind === "comment"}
     {#each item.threads as c (c.id)}
-      <div class="comment-row">{@render threadCard(c)}</div>
+      <div class="comment-row" style:display={item.visibleThreadIds.has(c.id) ? "block" : "none"}>{@render threadCard(c)}</div>
     {/each}
   {:else if item.kind === "binary"}
     <div class="binary-row">Binary file — no diff available</div>
@@ -299,7 +312,7 @@ function lineColor(): string {
     {#if vd.threadsToProbe.length > 0}
       <div class="comment-probe" bind:this={vd.commentProbe}>
         {#each vd.threadsToProbe as c (c.id)}
-          <div class="comment-row" data-thread-id={c.id}>{@render threadCard(c)}</div>
+          <div class="comment-row" data-thread-id={c.id} style:display={reviewFilter !== "none" ? "block" : "none"}>{@render threadCard(c)}</div>
         {/each}
       </div>
     {/if}

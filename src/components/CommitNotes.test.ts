@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import type { ComponentProps } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
@@ -32,9 +33,12 @@ function callArgs(cmd: string): Record<string, unknown> | undefined {
 	return call?.[1] as Record<string, unknown> | undefined;
 }
 
-function renderNotes(notes = [] as ReturnType<typeof aThread>[]) {
+function renderNotes(
+	notes = [] as ReturnType<typeof aThread>[],
+	overrides: Partial<ComponentProps<typeof CommitNotes>> = {},
+) {
 	return render(CommitNotes, {
-		props: { notes, repoPath: "/repo", commitOid },
+		props: { notes, repoPath: "/repo", commitOid, ...overrides },
 	});
 }
 
@@ -161,5 +165,39 @@ describe("CommitNotes", () => {
 		expect(
 			screen.getByPlaceholderText("Leave a note on this commit…"),
 		).toHaveValue("");
+	});
+
+	it("hides the notes chrome and active composer for Hide all", async () => {
+		const { container, rerender } = renderNotes([], { reviewFilter: "none" });
+		const root = container.querySelector(".commit-notes");
+
+		expect(root).toHaveStyle({ display: "none" });
+		expect(root).toHaveAttribute("aria-hidden", "true");
+		expect(
+			screen.queryByRole("button", { name: "Add note" }),
+		).not.toBeInTheDocument();
+
+		await rerender({
+			notes: [],
+			repoPath: "/repo",
+			commitOid,
+			reviewFilter: "all",
+		});
+		await fireEvent.click(screen.getByText("Add note"));
+		await rerender({
+			notes: [],
+			repoPath: "/repo",
+			commitOid,
+			reviewFilter: "none",
+		});
+
+		expect(container.querySelector(".commit-notes")).toHaveStyle({
+			display: "none",
+		});
+		expect(
+			screen.queryByRole("textbox", {
+				name: "Leave a note on this commit…",
+			}),
+		).not.toBeInTheDocument();
 	});
 });

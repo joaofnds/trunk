@@ -72,6 +72,7 @@ import type {
 	OverlayRefPill,
 	RefLabel,
 	RefType,
+	ReviewTone,
 	SearchResult,
 	StashEntry,
 	WipStats,
@@ -106,8 +107,11 @@ interface Props {
 	/** Whether this graph's tab is the active one. Every tab stays mounted, so the
 	 *  window-global search-toggle event reaches all of them. */
 	tabActive: boolean;
-	/** Center-pane inline-comments toggle; gates the per-row comment badge. */
-	showInlineComments?: boolean;
+	/** Center-pane review visibility; gates the per-row comment badge. */
+	reviewCommentsVisible?: boolean;
+	/** Filtered per-commit badge projection from RepoView. */
+	commentCounts?: Map<string, number>;
+	commentTones?: Map<string, ReviewTone>;
 	/** Shared comments store; supplies the per-commit count map. */
 	reviewComments?: ReviewCommentsManager;
 	/** Whether BranchSidebar's stored-visibility read for this repo has resolved
@@ -133,7 +137,9 @@ let {
 	onopenrebaseeditor,
 	onopenmessageeditor,
 	tabActive,
-	showInlineComments = false,
+	reviewCommentsVisible = false,
+	commentCounts,
+	commentTones,
 	reviewComments,
 	// Defaults true (load immediately) rather than false: RepoView is the one
 	// caller that has a BranchSidebar sibling to gate on and opts in explicitly.
@@ -146,8 +152,16 @@ let {
 // badge's self-hide at 0 also enforces the gate (children stay dumb). The WIP
 // row's oid is the literal "__wip__" key the store folds snapshot counts into.
 function commentCountFor(oid: string): number {
-	if (!showInlineComments || !reviewComments?.hasThreads) return 0;
-	return reviewComments.countByCommit.get(oid) ?? 0;
+	if (!reviewCommentsVisible) return 0;
+	return (
+		commentCounts?.get(oid) ??
+		(commentCounts ? 0 : (reviewComments?.countByCommit.get(oid) ?? 0))
+	);
+}
+
+function commentToneFor(oid: string): ReviewTone | null {
+	if (!reviewCommentsVisible) return null;
+	return commentTones?.get(oid) ?? null;
 }
 
 const BATCH = 200;
@@ -2147,7 +2161,7 @@ $effect(() => {
         {#snippet renderItem(commit, index)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
           </div>
         {/snippet}
       </VirtualList>

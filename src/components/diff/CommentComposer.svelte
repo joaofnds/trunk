@@ -34,6 +34,8 @@ interface Props {
 	resolveCommitOid?: () => Promise<string | null>;
 	repoPath: string;
 	onclose: () => void;
+	/** Hide-all keeps the editor mounted but must make submission impossible. */
+	canSubmit?: boolean;
 }
 
 let {
@@ -46,6 +48,7 @@ let {
 	resolveCommitOid,
 	repoPath,
 	onclose,
+	canSubmit = true,
 }: Props = $props();
 
 let text = $state("");
@@ -103,7 +106,7 @@ function deriveDiffCapture(): { anchor: Anchor; cachedExcerpt: string } {
 }
 const capturedResult = $derived(captured ?? deriveDiffCapture());
 
-const submitDisabled = $derived(text.trim() === "" || submitting);
+const submitDisabled = $derived(!canSubmit || text.trim() === "" || submitting);
 
 function scheduleDraftSave() {
 	draftSave.arm(() => void persistDraft(), DRAFT_DEBOUNCE_MS);

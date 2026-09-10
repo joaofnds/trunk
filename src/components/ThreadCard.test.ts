@@ -4,6 +4,7 @@ import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
 import type { Thread } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
@@ -361,6 +362,46 @@ describe("ThreadCard", () => {
 			name: "Edit reply",
 		}) as HTMLTextAreaElement;
 		expect(textarea.value).toBe("original");
+	});
+
+	it("keeps root and reply drafts when the card remounts", async () => {
+		const editorSession = createThreadEditorSession();
+		const first = renderCard({ editorSession });
+
+		await fireEvent.click(screen.getByText("Edit"));
+		await fireEvent.input(screen.getAllByRole("textbox")[0], {
+			target: { value: "unfinished root" },
+		});
+		await fireEvent.input(screen.getByLabelText("Reply"), {
+			target: { value: "unfinished reply" },
+		});
+		first.unmount();
+
+		renderCard({ editorSession });
+
+		expect(screen.getAllByRole("textbox")[0]).toHaveValue("unfinished root");
+		expect(screen.getByLabelText("Reply")).toHaveValue("unfinished reply");
+	});
+
+	it("keeps an active reply edit when the card remounts", async () => {
+		const humanReply: Thread = {
+			...comment,
+			replies: [aReply({ id: "r1", text: "original", channel: "human" })],
+		};
+		const editorSession = createThreadEditorSession();
+		const first = renderCard({ thread: humanReply, editorSession });
+
+		await fireEvent.click(screen.getByText("Edit reply"));
+		await fireEvent.input(screen.getByRole("textbox", { name: "Edit reply" }), {
+			target: { value: "unfinished reply edit" },
+		});
+		first.unmount();
+
+		renderCard({ thread: humanReply, editorSession });
+
+		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
+			"unfinished reply edit",
+		);
 	});
 
 	it("calls editReply with the repo path, reply id, and new text", async () => {

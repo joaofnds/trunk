@@ -3,9 +3,9 @@ import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	buildCommentCounts,
 	commitOidForComment,
-	currentFileCommentCounts,
 	fileCountKey,
 	fileCountsForOid,
+	fileTonesForOid,
 } from "./comment-counts.js";
 import type { Anchor, ReviewSnapshots, Thread } from "./types.js";
 
@@ -33,10 +33,15 @@ function commitNote(id: string, commitOid: string): Thread {
 	return aThread({ id, text: `note ${id}`, commit_oid: commitOid });
 }
 
-function currentFileComment(id: string, filePath: string): Thread {
+function currentFileComment(
+	id: string,
+	filePath: string,
+	state: Thread["state"] = "open",
+): Thread {
 	return aThread({
 		id,
 		text: `pin ${id}`,
+		state,
 		content_pin: {
 			file_path: filePath,
 			block: "code",
@@ -47,25 +52,28 @@ function currentFileComment(id: string, filePath: string): Thread {
 	});
 }
 
-describe("currentFileCommentCounts", () => {
+describe("current-file projection", () => {
 	it("counts a thread against the file its pin names", () => {
-		const counts = currentFileCommentCounts([
-			currentFileComment("a", "src/a.ts"),
-			currentFileComment("b", "src/a.ts"),
-			currentFileComment("c", "src/b.ts"),
-		]);
+		const { byCurrentFile } = buildCommentCounts(
+			[
+				currentFileComment("a", "src/a.ts"),
+				currentFileComment("b", "src/a.ts"),
+				currentFileComment("c", "src/b.ts"),
+			],
+			EMPTY_SNAPSHOTS,
+		);
 
-		expect(counts.get("src/a.ts")).toBe(2);
-		expect(counts.get("src/b.ts")).toBe(1);
+		expect(byCurrentFile.get("src/a.ts")).toBe(2);
+		expect(byCurrentFile.get("src/b.ts")).toBe(1);
 	});
 
 	it("leaves a commit-anchored comment out, since no file finder row is its own", () => {
-		const counts = currentFileCommentCounts([
-			lineComment("x", anchor("abc", "src/a.ts")),
-			commitNote("y", "abc"),
-		]);
+		const { byCurrentFile } = buildCommentCounts(
+			[lineComment("x", anchor("abc", "src/a.ts")), commitNote("y", "abc")],
+			EMPTY_SNAPSHOTS,
+		);
 
-		expect(counts.size).toBe(0);
+		expect(byCurrentFile.size).toBe(0);
 	});
 });
 
@@ -122,6 +130,54 @@ describe("buildCommentCounts", () => {
 		);
 		expect(byCommit.get("abc")).toBe(3);
 		expect(byFile.get(fileCountKey("abc", "a.ts"))).toBe(2);
+	});
+
+	it("counts only unresolved threads in the default population", () => {
+		const { byCommit } = buildCommentCounts(
+			[
+				lineComment("open", anchor("abc", "a.ts")),
+				aThread({
+					id: "done",
+					text: "comment done",
+					state: "done",
+					anchor: anchor("abc", "a.ts"),
+				}),
+			],
+			EMPTY_SNAPSHOTS,
+		);
+
+		expect(byCommit.get("abc")).toBe(1);
+	});
+
+	it("leaves resolved current-file threads out of the default finder badges", () => {
+		const { byCurrentFile } = buildCommentCounts(
+			[currentFileComment("done", "a.ts", "done")],
+			EMPTY_SNAPSHOTS,
+		);
+
+		expect(byCurrentFile.has("a.ts")).toBe(false);
+	});
+
+	it("projects an explicit state filter and carries its tone to commit/file buckets", () => {
+		const { byCommit, byFile, toneByCommit, toneByFile } = buildCommentCounts(
+			[
+				lineComment("open", anchor("abc", "a.ts")),
+				aThread({
+					id: "done",
+					text: "done",
+					state: "done",
+					anchor: anchor("abc", "a.ts"),
+				}),
+			],
+			EMPTY_SNAPSHOTS,
+			"done",
+		);
+
+		expect(byCommit.get("abc")).toBe(1);
+		expect(byFile.get(fileCountKey("abc", "a.ts"))).toBe(1);
+		expect(toneByCommit.get("abc")).toBe("done");
+		expect(toneByFile.get(fileCountKey("abc", "a.ts"))).toBe("done");
+		expect(fileTonesForOid(toneByFile, "abc").get("a.ts")).toBe("done");
 	});
 
 	it("folds working-tree and index snapshot comments into the __wip__ bucket", () => {

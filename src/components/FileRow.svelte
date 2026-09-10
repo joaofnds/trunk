@@ -4,7 +4,7 @@ import Plus from "@lucide/svelte/icons/plus";
 import { treeIndent } from "../lib/chrome-heights.js";
 import { renamePartsOf } from "../lib/rename-display.js";
 import { STATUS_BADGES, UNKNOWN_STATUS_BADGE } from "../lib/status-badges.js";
-import type { FileStatus } from "../lib/types.js";
+import type { FileStatus, ReviewTone } from "../lib/types.js";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
 	displayName?: string;
 	focused?: boolean;
 	commentCount?: number;
+	commentTone?: ReviewTone | null;
 }
 
 let {
@@ -31,6 +32,7 @@ let {
 	displayName,
 	focused = false,
 	commentCount = 0,
+	commentTone = null,
 }: Props = $props();
 
 let hovered = $state(false);
@@ -134,7 +136,7 @@ let badgeBg = $derived(
   </span>
 
   <!-- Review-comment count for this file -->
-  <CommentBadge count={commentCount} />
+  <CommentBadge count={commentCount} tone={commentTone} />
 
   <!-- Hover action button (hidden during loading or when no actionLabel) -->
   {#if hovered && !isLoading && actionLabel}

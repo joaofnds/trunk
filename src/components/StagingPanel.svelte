@@ -9,7 +9,7 @@ import List from "@lucide/svelte/icons/list";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
-import { fileCountsForOid } from "../lib/comment-counts.js";
+import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
@@ -20,6 +20,7 @@ import type {
 	FileStatusType,
 	MergeSides,
 	OperationInfo,
+	ReviewTone,
 	WorkingTreeStatus,
 } from "../lib/types.js";
 import CommitForm from "./CommitForm.svelte";
@@ -58,7 +59,9 @@ interface Props {
 	// Shared comments store + center-pane toggle, threaded from RepoView so the
 	// per-file count badges read the one source of truth.
 	reviewComments?: ReviewCommentsManager;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
+	commentCounts?: Map<string, number>;
+	commentTones?: Map<string, ReviewTone>;
 }
 
 let {
@@ -78,7 +81,9 @@ let {
 	ontreeviewtoggle,
 	onopenmessageeditor,
 	reviewComments,
-	showInlineComments = false,
+	reviewCommentsVisible = false,
+	commentCounts,
+	commentTones,
 }: Props = $props();
 
 let status = $state<WorkingTreeStatus | null>(null);
@@ -89,21 +94,43 @@ let status = $state<WorkingTreeStatus | null>(null);
 // render via MergeEditor (no inline comments), so resolveViewOid('conflicted')
 // is null → no badges there, matching what their merge view shows.
 let countsEnabled = $derived(
-	showInlineComments && (reviewComments?.hasThreads ?? false),
+	reviewCommentsVisible &&
+		((reviewComments?.hasThreads ?? false) || (commentCounts?.size ?? 0) > 0),
 );
 
 function sectionCounts(kind: "unstaged" | "staged"): Map<string, number> {
-	if (!countsEnabled || !reviewComments) return new Map();
+	if (!countsEnabled) return new Map();
 	const oid = resolveViewOid({
 		kind,
 		commitOid: null,
-		snapshots: reviewComments.snapshots,
+		snapshots: reviewComments?.snapshots ?? {
+			working_tree_snapshot: null,
+			index_snapshot: null,
+		},
 	});
-	return fileCountsForOid(reviewComments.countByFile, oid);
+	return fileCountsForOid(
+		commentCounts ?? reviewComments?.countByFile ?? new Map(),
+		oid,
+	);
+}
+
+function sectionTones(kind: "unstaged" | "staged"): Map<string, ReviewTone> {
+	if (!countsEnabled) return new Map();
+	const oid = resolveViewOid({
+		kind,
+		commitOid: null,
+		snapshots: reviewComments?.snapshots ?? {
+			working_tree_snapshot: null,
+			index_snapshot: null,
+		},
+	});
+	return fileTonesForOid(commentTones ?? new Map(), oid);
 }
 
 let unstagedCommentCounts = $derived(sectionCounts("unstaged"));
 let stagedCommentCounts = $derived(sectionCounts("staged"));
+let unstagedCommentTones = $derived(sectionTones("unstaged"));
+let stagedCommentTones = $derived(sectionTones("staged"));
 
 export function optimisticMove(
 	filePath: string,
@@ -1161,6 +1188,7 @@ $effect(() => {
             ondirectorycontextmenu={(e, dirPath) => showUnstagedDirContextMenu(e, dirPath)}
             selectedPath={selectedKind === 'unstaged' ? selectedPath : null}
             commentCounts={unstagedCommentCounts}
+            commentTones={unstagedCommentTones}
             {expandAllSignal}
             {collapseAllSignal}
           />
@@ -1235,6 +1263,7 @@ $effect(() => {
           ondirectorycontextmenu={(e, dirPath) => showStagedDirContextMenu(e, dirPath)}
           selectedPath={selectedKind === 'staged' ? selectedPath : null}
           commentCounts={stagedCommentCounts}
+          commentTones={stagedCommentTones}
           {expandAllSignal}
           {collapseAllSignal}
         />

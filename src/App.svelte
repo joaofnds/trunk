@@ -22,9 +22,9 @@ import {
 	getLeftPaneWidth,
 	getOpenRepo,
 	getOpenTabs,
+	getReviewFilter,
 	getRightPaneCollapsed,
 	getRightPaneWidth,
-	getShowInlineComments,
 	getZoomLevel,
 	removeRecentRepo,
 	setActiveTabId,
@@ -32,13 +32,14 @@ import {
 	setLeftPaneWidth,
 	setOpenRepo,
 	setOpenTabs,
+	setReviewFilter,
 	setRightPaneCollapsed,
 	setRightPaneWidth,
-	setShowInlineComments,
 	setZoomLevel,
 } from "./lib/store.js";
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
+import type { ReviewFilter, ReviewTone } from "./lib/types.js";
 import {
 	createUndoRedoState,
 	type UndoRedoManager,
@@ -65,26 +66,40 @@ let reviewPanelOpen = $state(false);
 // ending review (260531-l02e). Defaults true (panel shows on review entry).
 let activeReviewPanelShowing = $state(true);
 
-// Inline review comments: App owns the persisted global toggle; RepoView reports a
-// per-tab badge count up. The badge reflects only the ACTIVE tab's count (mirrors the
-// per-tab `reviewActive` scoping), so the map is keyed by tab id.
-let showInlineComments = $state(false);
-let commentCounts = $state<Map<string, { view: number; total: number }>>(
-	new Map(),
-);
+// Review presentation: App owns the persisted global filter; RepoView reports
+// per-tab filtered badge counts up. The active tab alone feeds the toolbar.
+let reviewFilter = $state<ReviewFilter>("all");
+let reviewFilterChanged = false;
+let commentCounts = $state<
+	Map<
+		string,
+		{
+			view: number;
+			total: number;
+			viewTone: ReviewTone | null;
+			totalTone: ReviewTone | null;
+		}
+	>
+>(new Map());
 
 function setCommentCounts(
 	tabId: string,
-	counts: { view: number; total: number },
+	counts: {
+		view: number;
+		total: number;
+		viewTone: ReviewTone | null;
+		totalTone: ReviewTone | null;
+	},
 ) {
 	const next = new Map(commentCounts);
 	next.set(tabId, counts);
 	commentCounts = next;
 }
 
-async function toggleInlineComments() {
-	showInlineComments = !showInlineComments;
-	await setShowInlineComments(showInlineComments);
+async function handleReviewFilterChange(filter: ReviewFilter) {
+	reviewFilterChanged = true;
+	reviewFilter = filter;
+	await setReviewFilter(filter);
 }
 
 // Tab state
@@ -97,6 +112,12 @@ const activeInlineCommentCount = $derived(
 
 const activeReviewCommentCount = $derived(
 	commentCounts.get(activeTabId)?.total ?? 0,
+);
+const activeInlineCommentTone = $derived(
+	commentCounts.get(activeTabId)?.viewTone ?? null,
+);
+const activeReviewCommentTone = $derived(
+	commentCounts.get(activeTabId)?.totalTone ?? null,
 );
 
 // Drop counts for closed tabs so the per-tab map can't grow unbounded across a
@@ -113,9 +134,9 @@ $effect(() => {
 			}
 		}
 		if (!stale) return;
-		const next = new Map<string, { view: number; total: number }>();
-		for (const [id, counts] of commentCounts) {
-			if (live.has(id)) next.set(id, counts);
+		const next = new Map(commentCounts);
+		for (const id of next.keys()) {
+			if (!live.has(id)) next.delete(id);
 		}
 		commentCounts = next;
 	});
@@ -433,10 +454,10 @@ $effect(() => {
 	});
 });
 
-// Inline-comments toggle persistence
+// Review filter persistence
 $effect(() => {
-	getShowInlineComments().then((show) => {
-		showInlineComments = show;
+	getReviewFilter().then((filter) => {
+		if (!reviewFilterChanged) reviewFilter = filter;
 	});
 });
 
@@ -648,7 +669,7 @@ $effect(() => {
     <div data-tauri-drag-region class="flex-1 h-full"></div>
     {#if activeTab?.repoPath}
       {@const activeState = getOrCreateTabState(activeTabId)}
-      <Toolbar repoPath={activeTab.repoPath} remoteState={activeState.remoteState} undoRedo={activeState.undoRedo} reviewActive={reviewPanelOpen} reviewPanelShowing={activeReviewPanelShowing} {showInlineComments} inlineCommentCount={activeInlineCommentCount} reviewCommentCount={activeReviewCommentCount} ontoggleinlinecomments={toggleInlineComments} />
+      <Toolbar repoPath={activeTab.repoPath} remoteState={activeState.remoteState} undoRedo={activeState.undoRedo} reviewActive={reviewPanelOpen} reviewPanelShowing={activeReviewPanelShowing} {reviewFilter} viewCommentCount={activeInlineCommentCount} reviewCommentCount={activeReviewCommentCount} viewCommentTone={activeInlineCommentTone} reviewCommentTone={activeReviewCommentTone} onreviewfilterchange={handleReviewFilterChange} />
     {/if}
   </div>
 
@@ -670,7 +691,7 @@ $effect(() => {
             {windowVisible}
             tabActive={tab.id === activeTabId}
             reviewActive={reviewPanelOpen && tab.id === activeTabId}
-            {showInlineComments}
+            {reviewFilter}
             oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
             onreviewpanelshowingchange={(s) => { activeReviewPanelShowing = s; }}
             onleftpanecollapsedchange={(c) => { leftPaneCollapsed = c; setLeftPaneCollapsed(c); }}

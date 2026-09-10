@@ -14,6 +14,7 @@ import {
 } from "../../lib/diff-utils.js";
 import { measure } from "../../lib/perf.js";
 import { deleteThread, editThread } from "../../lib/review-comment-actions.js";
+import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import { DIFF_ROW_FONT } from "../../lib/row-metrics.js";
 import type {
 	ContentMode,
@@ -40,6 +41,8 @@ interface Props {
 	selectedHunkKey: string | null;
 	selectedLineIndices: Set<number>;
 	selectedCount: number;
+	reviewFilter?: import("../../lib/types.js").ReviewFilter;
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	isMerge: boolean;
 	collapsedFiles: Set<string>;
 	onfilecollapsetoggle: (path: string) => void;
@@ -74,7 +77,7 @@ interface Props {
 	oncommentlines: (filePath: string, hunkIndex: number) => void;
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	repoPath?: string;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
 	viewComments?: Thread[];
 }
 
@@ -104,8 +107,10 @@ let {
 	oncommentlines,
 	oncommenthunk,
 	repoPath = "",
-	showInlineComments = true,
+	reviewCommentsVisible = true,
+	reviewFilter = "all",
 	viewComments = [],
+	editorSessionForThread,
 }: Props = $props();
 
 const FLASH_MS = 600;
@@ -136,7 +141,8 @@ const model = $derived(
 		return buildSplitRows(fileDiffs, {
 			content: contentMode,
 			comments: viewComments,
-			showInlineComments,
+			reviewCommentsVisible,
+			reviewFilter,
 			collapsed: collapsedFiles,
 			// The per-file header bar is the multi-file view's; with one file
 			// selected the top bar already shows the path.
@@ -260,6 +266,7 @@ function originClass(origin: string): string {
     {repoPath}
     onedit={(id, text) => editThread(repoPath, id, text)}
     ondelete={(id) => deleteThread(repoPath, id)}
+    editorSessionForThread={editorSessionForThread}
   />
 {/snippet}
 
@@ -344,7 +351,7 @@ function originClass(origin: string): string {
                commit-mode accent button class verbatim (no new color). New-side
                scope + Old-side guard live in the host. Leads the action cluster
                (260531-l02 UX: Comment left of staging). -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="staging-btn accent-btn"
             onclick={() => oncommentlines(item.path, item.hunkIdx)}
@@ -366,7 +373,7 @@ function originClass(origin: string): string {
           <!-- Whole-hunk Comment affordance (260531-l02): comment the hunk
                without selecting lines. Reuses the accent button class verbatim
                (no new color); host applies the New-side guard. -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="staging-btn accent-btn"
             onclick={() => oncommenthunk(item.path, item.hunkIdx)}
@@ -389,7 +396,7 @@ function originClass(origin: string): string {
         {#if hasSelection}
           <!-- Staged Comment (260531-l02b): index-snapshot anchored, both sides
                resolve (no Old-side guard). Leads the cluster. -->
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="staging-btn accent-btn"
             onclick={() => oncommentlines(item.path, item.hunkIdx)}
@@ -402,7 +409,7 @@ function originClass(origin: string): string {
             onclick={() => onunstagelines(item.path, item.hunkIdx)}
           >Unstage Lines ({selectedCount})</button>
         {:else}
-          {#if showInlineComments}
+          {#if reviewCommentsVisible && reviewFilter !== "none"}
           <button
             class="staging-btn accent-btn"
             onclick={() => oncommenthunk(item.path, item.hunkIdx)}
@@ -418,7 +425,7 @@ function originClass(origin: string): string {
       {:else if diffKind === 'commit'}
         <!-- Commit-diff Comment (260531-l02): whole-hunk when nothing is
              selected, line-scoped otherwise; both carry the isMerge guard. -->
-        {#if showInlineComments}
+        {#if reviewCommentsVisible && reviewFilter !== "none"}
         <button
           disabled={isMerge}
           title={isMerge ? "Diff comments aren't available on merge commits" : ""}
@@ -431,7 +438,9 @@ function originClass(origin: string): string {
   {:else if item.kind === "comment"}
     <div class="split-comment-row" style="position: sticky; left: 0; width: 100cqi;">
       {#each item.threads as c (c.id)}
-        {@render threadCard(c)}
+        <div style:display={item.visibleThreadIds.has(c.id) ? "block" : "none"}>
+          {@render threadCard(c)}
+        </div>
       {/each}
     </div>
   {:else if item.kind === "file-header"}

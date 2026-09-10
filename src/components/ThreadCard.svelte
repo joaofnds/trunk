@@ -3,7 +3,6 @@
 // panel-context decorations; inline hosts omit the optional props and get a bare
 // card. `variant` swaps width/padding tokens between the panel and inline hosts.
 
-import { createDraft } from "../lib/draft.svelte.js";
 import { externalLinks } from "../lib/external-links.js";
 import {
 	addReply,
@@ -11,6 +10,10 @@ import {
 	editReply,
 	setThreadState,
 } from "../lib/review-comment-actions.js";
+import {
+	createThreadEditorSession,
+	type ThreadEditorSession,
+} from "../lib/review-editors.svelte.js";
 import type { Thread, ThreadState } from "../lib/types.js";
 import ThreadReplies from "./ThreadReplies.svelte";
 
@@ -30,6 +33,8 @@ interface Props {
 	jumpable?: boolean;
 	orphaned?: boolean;
 	orphanLabel?: string | null;
+	editorSession?: ThreadEditorSession;
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 }
 
 let {
@@ -43,10 +48,16 @@ let {
 	jumpable = false,
 	orphaned = false,
 	orphanLabel = null,
+	editorSession,
+	editorSessionForThread,
 }: Props = $props();
 
-const draft = createDraft();
-const replyDraft = createDraft();
+const fallbackEditorSession = createThreadEditorSession();
+const editor = $derived(
+	editorSessionForThread?.(thread) ?? editorSession ?? fallbackEditorSession,
+);
+const draft = $derived(editor.rootEdit);
+const replyDraft = $derived(editor.reply);
 
 // Where the comment points, whichever shape it holds. A current-file thread
 // carries no anchor, so without this it rendered a card with no location at all
@@ -275,6 +286,7 @@ async function requestDeleteReply(replyId: string) {
   <ThreadReplies
     replies={thread.replies}
     published={thread.published}
+    editorSession={editor}
     onreplyedit={(id, text) => editReply(repoPath, id, text)}
     onreplydelete={requestDeleteReply}
   />

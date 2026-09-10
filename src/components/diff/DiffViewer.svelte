@@ -2,6 +2,7 @@
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import type { DiffNav } from "../../lib/diff-nav.js";
 import { isMarkdownPath } from "../../lib/markdown.js";
+import type { ThreadEditorSession } from "../../lib/review-editors.svelte.js";
 import type {
 	CommitDetail,
 	ContentMode,
@@ -10,6 +11,7 @@ import type {
 	FileDiff,
 	LayoutMode,
 	RenderMode,
+	ReviewFilter,
 	Thread,
 } from "../../lib/types.js";
 import FullFileView from "./FullFileView.svelte";
@@ -75,8 +77,10 @@ interface Props {
 	oncommenthunk: (filePath: string, hunkIndex: number) => void;
 	commitOid: string;
 	repoPath: string;
-	showInlineComments?: boolean;
+	reviewCommentsVisible?: boolean;
+	reviewFilter?: ReviewFilter;
 	viewComments?: Thread[];
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
 	oncommentfullfile: (filePath: string, selectedIndices: Set<number>) => void;
 	fullFileView?: import("./FullFileView.svelte").default | null;
 	/** Set by the mounted virtualized view, null when none is. */
@@ -120,8 +124,10 @@ let {
 	oncommenthunk,
 	commitOid,
 	repoPath,
-	showInlineComments = true,
+	reviewCommentsVisible = true,
+	reviewFilter = "all",
 	viewComments = [],
+	editorSessionForThread,
 	oncommentfullfile,
 	fullFileView = $bindable(null),
 	diffNav = $bindable(null),
@@ -211,8 +217,10 @@ const selectedFileDiff = $derived(
       oncommentlines={oncommentlines}
       oncommenthunk={oncommenthunk}
       {repoPath}
-      {showInlineComments}
+      {reviewCommentsVisible}
+      {reviewFilter}
       {viewComments}
+      {editorSessionForThread}
     />
   {:else if layoutMode === "inline" && contentMode === "full"}
     <FullFileView
@@ -224,8 +232,10 @@ const selectedFileDiff = $derived(
       {diffKind}
       {isMerge}
       {oncommentfullfile}
-      {showInlineComments}
+      {reviewCommentsVisible}
+      {reviewFilter}
       {viewComments}
+      {editorSessionForThread}
     />
   {:else}
     <SplitView bind:this={diffNav}
@@ -237,6 +247,6 @@ const selectedFileDiff = $derived(
       onstagehunk={onstagehunk} onunstagehunk={onunstagehunk} ondiscardhunk={ondiscardhunk}
       onstagelines={onstagelines} onunstagelines={onunstagelines} ondiscardlines={ondiscardlines}
       oncommentlines={oncommentlines} oncommenthunk={oncommenthunk}
-      {repoPath} {showInlineComments} {viewComments} />
+      {repoPath} {reviewCommentsVisible} {reviewFilter} {viewComments} {editorSessionForThread} />
   {/if}
 </div>

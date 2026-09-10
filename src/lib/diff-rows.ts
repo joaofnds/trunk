@@ -9,8 +9,15 @@ import { BAR_HEIGHT, UNIT } from "./chrome-heights.js";
 import { commentsForLine, spannedByComment } from "./comment-matching.js";
 import { type PairedRow, pairLines } from "./diff-utils.js";
 import { displayColumns } from "./display-columns.js";
+import { filterThreads } from "./review-filter.js";
 import { type RowMetrics, rowHeightFor } from "./row-metrics.js";
-import type { ContentMode, DiffLine, FileDiff, Thread } from "./types.js";
+import type {
+	ContentMode,
+	DiffLine,
+	FileDiff,
+	ReviewFilter,
+	Thread,
+} from "./types.js";
 
 export type DiffRow =
 	| { kind: "file-header"; path: string; collapsed: boolean }
@@ -45,6 +52,7 @@ export type DiffRow =
 			lineIdx: number;
 			flatIdx: number;
 			threads: Thread[];
+			visibleThreadIds: ReadonlySet<string>;
 	  };
 
 /** One hunk's place in the rendered document. The sequence is an ordinal one,
@@ -70,7 +78,8 @@ export interface DiffRowModel {
 export interface BuildOptions {
 	content: ContentMode;
 	comments: Thread[];
-	showInlineComments: boolean;
+	reviewCommentsVisible: boolean;
+	reviewFilter?: ReviewFilter;
 	collapsed: Set<string>;
 	/** Whether the view shows a per-file header bar, as the multi-file views do. */
 	fileHeaders: boolean;
@@ -128,6 +137,10 @@ export function buildInlineRows(
 		}
 
 		let flatIdx = 0;
+		const visibleComments = filterThreads(
+			opts.comments,
+			opts.reviewFilter ?? "all",
+		);
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
@@ -163,10 +176,11 @@ export function buildInlineRows(
 					flatIdx,
 					line,
 					columns,
-					spanned: opts.showInlineComments && isSpanned(line, opts.comments),
+					spanned:
+						opts.reviewCommentsVisible && isSpanned(line, visibleComments),
 				});
 
-				const threads = opts.showInlineComments
+				const threads = opts.reviewCommentsVisible
 					? threadsOn(line, opts.comments)
 					: [];
 				if (threads.length > 0) {
@@ -177,6 +191,11 @@ export function buildInlineRows(
 						lineIdx,
 						flatIdx,
 						threads,
+						visibleThreadIds: new Set(
+							threads
+								.filter((thread) => visibleComments.includes(thread))
+								.map((thread) => thread.id),
+						),
 					});
 				}
 
@@ -223,6 +242,10 @@ export function buildSplitRows(
 		}
 
 		let flatBase = 0;
+		const visibleComments = filterThreads(
+			opts.comments,
+			opts.reviewFilter ?? "all",
+		);
 
 		for (const [hunkIdx, hunk] of fd.hunks.entries()) {
 			hunkNav.push({ path: fd.path, hunkIdx, rowIndex: rows.length });
@@ -259,16 +282,20 @@ export function buildSplitRows(
 					leftColumns,
 					rightColumns,
 					spannedLeft:
-						opts.showInlineComments &&
+						opts.reviewCommentsVisible &&
 						pair.left !== null &&
-						spannedByComment(opts.comments, "Old", pair.left.line.old_lineno),
+						spannedByComment(visibleComments, "Old", pair.left.line.old_lineno),
 					spannedRight:
-						opts.showInlineComments &&
+						opts.reviewCommentsVisible &&
 						pair.right !== null &&
-						spannedByComment(opts.comments, "New", pair.right.line.new_lineno),
+						spannedByComment(
+							visibleComments,
+							"New",
+							pair.right.line.new_lineno,
+						),
 				});
 
-				const threads = opts.showInlineComments
+				const threads = opts.reviewCommentsVisible
 					? pairThreads(pair, opts.comments)
 					: [];
 				if (threads.length > 0) {
@@ -284,6 +311,11 @@ export function buildSplitRows(
 							lineIdx: anchor.lineIdx,
 							flatIdx: flatBase + anchor.lineIdx,
 							threads,
+							visibleThreadIds: new Set(
+								threads
+									.filter((thread) => visibleComments.includes(thread))
+									.map((thread) => thread.id),
+							),
 						});
 					}
 				}
@@ -398,7 +430,11 @@ function heightOf(
 
 	if (row.kind === "comment") {
 		return row.threads.reduce(
-			(total, thread) => total + probedHeight(probed, thread.id),
+			(total, thread) =>
+				total +
+				(row.visibleThreadIds.has(thread.id)
+					? probedHeight(probed, thread.id)
+					: 0),
 			0,
 		);
 	}

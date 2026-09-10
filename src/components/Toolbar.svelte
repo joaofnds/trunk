@@ -12,9 +12,13 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
+import {
+	isValidReviewFilter,
+	REVIEW_FILTER_OPTIONS,
+} from "../lib/review-filter.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { tooltip } from "../lib/tooltip.js";
-import type { StashEntry } from "../lib/types.js";
+import type { ReviewFilter, ReviewTone, StashEntry } from "../lib/types.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
 import InputDialog from "./InputDialog.svelte";
 import PullDropdown from "./PullDropdown.svelte";
@@ -28,12 +32,14 @@ interface Props {
 	// Defaults true so a consumer that only sets reviewActive still styles correctly
 	// (260531-l02e).
 	reviewPanelShowing?: boolean;
-	showInlineComments?: boolean;
-	// Comments in the current view (show-comments toggle badge).
-	inlineCommentCount?: number;
+	reviewFilter?: ReviewFilter;
+	// Comments in the current view (review-filter badge).
+	viewCommentCount?: number;
 	// Total comments in the session (Review button badge).
 	reviewCommentCount?: number;
-	ontoggleinlinecomments?: () => void;
+	viewCommentTone?: ReviewTone | null;
+	reviewCommentTone?: ReviewTone | null;
+	onreviewfilterchange?: (filter: ReviewFilter) => void;
 }
 
 let {
@@ -42,10 +48,12 @@ let {
 	undoRedo,
 	reviewActive,
 	reviewPanelShowing = true,
-	showInlineComments = true,
-	inlineCommentCount = 0,
+	reviewFilter = "all",
+	viewCommentCount = 0,
 	reviewCommentCount = 0,
-	ontoggleinlinecomments,
+	viewCommentTone = null,
+	reviewCommentTone = null,
+	onreviewfilterchange,
 }: Props = $props();
 
 // The Review button reflects whether the review PANEL is showing, not merely that a
@@ -298,19 +306,6 @@ async function handleBranchCreate(values: Record<string, string>) {
     box-shadow: inset 0 0 0 1px var(--accent-hi);
   }
 
-  /* Subtle "on" state for view-preference toggles (e.g. inline comments) —
-     accent tint + accent icon, matching the diff-toolbar view toggles, rather
-     than the loud solid fill the labeled Review button uses. */
-  .toolbar-btn.toolbar-btn-toggle-on {
-    background: var(--color-accent-bg);
-    box-shadow: inset 0 0 0 1px var(--color-accent-border);
-    color: var(--accent);
-  }
-  .toolbar-btn.toolbar-btn-toggle-on:hover:not(:disabled) {
-    background: color-mix(in oklch, var(--accent) 14%, transparent);
-    box-shadow: inset 0 0 0 1px var(--color-accent-border);
-  }
-
   .toolbar-btn-badged {
     position: relative;
   }
@@ -332,6 +327,38 @@ async function handleBranchCreate(values: Record<string, string>) {
     font-weight: 600;
     line-height: 1;
   }
+
+  .review-filter-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: var(--control-h);
+    padding: 0 var(--space-1);
+    color: var(--color-text-muted);
+    border-radius: var(--radius);
+  }
+  .review-filter-control:hover,
+  .review-filter-control:focus-within {
+    color: var(--color-text);
+    background: var(--bg-hover);
+  }
+  .review-filter-control select {
+    max-width: 92px;
+    height: var(--control-sm-h);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 11px;
+    padding: 0 var(--space-1);
+  }
+  .toolbar-badge.tone-open { background: var(--color-thread-open); }
+  .toolbar-badge.tone-addressed { background: var(--color-thread-addressed); }
+  .toolbar-badge.tone-done { background: var(--color-thread-done); }
+  .toolbar-badge.tone-dismissed { background: var(--color-thread-dismissed); }
+  .toolbar-badge.tone-stale { background: var(--color-thread-stale); }
 
   .btn-group {
     display: inline-flex;
@@ -391,19 +418,34 @@ async function handleBranchCreate(values: Record<string, string>) {
   <div class="toolbar-divider"></div>
 
   <div class="toolbar-group">
-    <button
-      class="toolbar-btn toolbar-btn-badged"
-      class:toolbar-btn-toggle-on={showInlineComments}
-      aria-pressed={showInlineComments}
-      aria-label="Toggle inline comments"
-      use:tooltip={"Toggle inline comments"}
-      onclick={ontoggleinlinecomments}
-    >
+    <label class="review-filter-control" title="Filter review threads">
       <MessageSquare size={14} />
-      {#if inlineCommentCount > 0}
-        <span class="toolbar-badge">{inlineCommentCount}</span>
+      <span class="sr-only">Review filter</span>
+		<select
+			aria-label="Review filter selection"
+			aria-describedby="review-filter-help"
+			value={reviewFilter}
+			onchange={(event) => {
+				const value = (event.currentTarget as HTMLSelectElement).value;
+				if (isValidReviewFilter(value)) onreviewfilterchange?.(value);
+			}}
+		>
+        {#each REVIEW_FILTER_OPTIONS as option (option.value)}
+          <option value={option.value}>{option.label}</option>
+		{/each}
+		</select>
+		<span id="review-filter-help" class="sr-only">
+			All threads shows every card; its badges count only open and addressed threads.
+			Other filters show matching thread states, and Hide all removes review content
+			and creation controls.
+		</span>
+      {#if viewCommentCount > 0}
+        <span
+          class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
+          aria-label="{viewCommentCount} {viewCommentTone ?? 'open'} review comments in this view"
+        >{viewCommentCount}</span>
       {/if}
-    </button>
+    </label>
     <button
       class="toolbar-btn toolbar-btn-badged"
       class:toolbar-btn-active={reviewButtonActive}
@@ -414,7 +456,10 @@ async function handleBranchCreate(values: Record<string, string>) {
     >
       <ClipboardCheck size={14} />
       {#if reviewCommentCount > 0}
-        <span class="toolbar-badge">{reviewCommentCount}</span>
+        <span
+          class="toolbar-badge tone-{reviewCommentTone ?? 'open'}"
+          aria-label="{reviewCommentCount} {reviewCommentTone ?? 'open'} review comments in this review"
+        >{reviewCommentCount}</span>
       {/if}
     </button>
   </div>

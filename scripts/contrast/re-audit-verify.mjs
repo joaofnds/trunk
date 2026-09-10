@@ -108,6 +108,18 @@ section("ReviewPanel orphan comment (opacity-on-text removed)");
 check("fileref dim -> solid --fg-3", "var(--fg-3)", "var(--color-surface)");
 check("diff gutter now full --fg-2 (add line)", "var(--color-text-muted)", "var(--color-bg)", { layers: ["var(--color-diff-add-bg)"] });
 
+section("State-aware review count pills and filter control (TRUNK-155)");
+for (const [state, color] of [
+	["open", "var(--color-thread-open)"],
+	["addressed", "var(--color-thread-addressed)"],
+	["done", "var(--color-thread-done)"],
+	["dismissed", "var(--color-thread-dismissed)"],
+	["stale", "var(--color-thread-stale)"],
+]) {
+	check(`${state} pill`, "var(--accent-fg)", color);
+}
+check("review filter selector", "var(--color-text)", "var(--color-surface)");
+
 section("Rebase DROP row (--opacity-dimmed 0.6 -> 0.8): message AAA, date AA (transient)");
 check("message --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });
 check("author --fg-1", "var(--fg-1)", "var(--color-selected-row)", { opacity: 0.8 });

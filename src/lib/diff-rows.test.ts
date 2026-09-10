@@ -78,7 +78,7 @@ function thread(
 const fullMode: BuildOptions = {
 	content: "full",
 	comments: [],
-	showInlineComments: true,
+	reviewCommentsVisible: true,
 	collapsed: new Set(),
 	fileHeaders: false,
 	tabSize: 4,
@@ -173,7 +173,7 @@ describe("buildInlineRows", () => {
 	it("omits comment rows when inline comments are hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			showInlineComments: false,
+			reviewCommentsVisible: false,
 			comments: [thread("t1", "New", 2, 2)],
 		});
 
@@ -196,7 +196,7 @@ describe("buildInlineRows", () => {
 	it("leaves lines unspanned when inline comments are hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
-			showInlineComments: false,
+			reviewCommentsVisible: false,
 			comments: [thread("t1", "New", 1, 2)],
 		});
 
@@ -502,7 +502,7 @@ describe("buildSplitRows", () => {
 	it("omits comment rows when inline comments are hidden", () => {
 		const model = buildSplitRows([pairable], {
 			...fullMode,
-			showInlineComments: false,
+			reviewCommentsVisible: false,
 			comments: [thread("t1", "New", 2, 2)],
 		});
 

@@ -7,13 +7,14 @@
 // itself; picking a row reports the path and the host opens it.
 
 import { rankFiles } from "../lib/file-finder.js";
-import type { TrackedFile } from "../lib/types.js";
+import type { ReviewTone, TrackedFile } from "../lib/types.js";
 
 interface Props {
 	files: TrackedFile[];
 	// How many current-file comments each path already carries, so a user sees
 	// where the discussion already is before opening anything.
 	commentCounts?: Map<string, number>;
+	commentTones?: Map<string, ReviewTone>;
 	onselect: (path: string) => void;
 	onclose: () => void;
 }
@@ -21,6 +22,7 @@ interface Props {
 let {
 	files,
 	commentCounts = new Map<string, number>(),
+	commentTones = new Map<string, ReviewTone>(),
 	onselect,
 	onclose,
 }: Props = $props();
@@ -170,14 +172,14 @@ function rowLabel(file: TrackedFile): string {
             {#if (commentCounts.get(file.path) ?? 0) > 0}
               <span
                 class="finder-comment-count"
-                aria-hidden="true"
+                aria-label="{commentCounts.get(file.path)} {commentTones.get(file.path) ?? 'open'} review comments"
                 style="
                   margin-left: auto;
                   flex-shrink: 0;
                   padding: 0 var(--space-1);
                   border-radius: var(--radius);
-                  background: var(--color-surface);
-                  color: var(--color-text-muted);
+                  background: var(--color-thread-{commentTones.get(file.path) ?? 'open'});
+                  color: var(--accent-fg);
                   font-size: 11px;
                 "
               >{commentCounts.get(file.path)}</span>

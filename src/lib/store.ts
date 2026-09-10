@@ -1,7 +1,13 @@
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
+import { isValidReviewFilter } from "./review-filter.js";
 import type { PersistedTab } from "./tab-types.js";
-import type { ContentMode, LayoutMode, RenderMode } from "./types.js";
+import type {
+	ContentMode,
+	LayoutMode,
+	RenderMode,
+	ReviewFilter,
+} from "./types.js";
 
 export type { PersistedTab } from "./tab-types.js";
 
@@ -256,16 +262,17 @@ export async function setTreeViewEnabled(enabled: boolean): Promise<void> {
 	await setPref(TREE_VIEW_KEY, enabled);
 }
 
-// Review mode preference (gates inline comment cards + in-diff Comment buttons).
-// Default off so diffs are clean/read-only until the user turns review on.
-const SHOW_INLINE_COMMENTS_KEY = "show_inline_comments";
+// Review presentation preference. The legacy show_inline_comments key remains
+// untouched on disk; it is deliberately not read or rewritten by this API.
+const REVIEW_FILTER_KEY = "review_filter";
 
-export async function getShowInlineComments(): Promise<boolean> {
-	return (await getPref<boolean>(SHOW_INLINE_COMMENTS_KEY)) ?? false;
+export async function getReviewFilter(): Promise<ReviewFilter> {
+	const stored = await getPref<unknown>(REVIEW_FILTER_KEY);
+	return isValidReviewFilter(stored) ? stored : "all";
 }
 
-export async function setShowInlineComments(show: boolean): Promise<void> {
-	await setPref(SHOW_INLINE_COMMENTS_KEY, show);
+export async function setReviewFilter(filter: ReviewFilter): Promise<void> {
+	await setPref(REVIEW_FILTER_KEY, filter);
 }
 
 // Diff display preferences (global, shared across tabs — per D-06)

@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
+import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
+import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { resetCache } from "../lib/text-measure.js";
 import CommitGraph from "./CommitGraph.svelte";
@@ -187,6 +189,36 @@ beforeEach(() => {
 });
 
 describe("CommitGraph", () => {
+	it("does not fall back to raw counts when a filtered map is explicitly empty", async () => {
+		const reviewComments = createFakeReviewComments();
+		reviewComments.seed({
+			threads: [
+				aThread({
+					id: "done-thread",
+					state: "done",
+					commit_oid: TEST_COMMITS[0].oid,
+				}),
+			],
+			activeReviewId: "REVIEW01",
+		});
+		await reviewComments.refresh();
+
+		const { container } = render(CommitGraph, {
+			props: {
+				repoPath: "/test/repo",
+				tabActive: true,
+				reviewCommentsVisible: true,
+				reviewComments,
+				commentCounts: new Map(),
+			},
+		});
+		await waitFor(() => {
+			expect(screen.getByText("first commit")).toBeInTheDocument();
+		});
+
+		expect(container.querySelector('[aria-label="1 open comment"]')).toBeNull();
+	});
+
 	it("renders without crashing", () => {
 		const { container } = render(CommitGraph, {
 			props: {

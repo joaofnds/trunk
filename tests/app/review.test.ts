@@ -35,7 +35,7 @@ describe("a comment left on a commit's diff", () => {
 		// Read while the graph is still on screen: opening the review panel takes
 		// the layout the commit rows live in with it.
 		const commit = app.repo.shaOf("Change main");
-		await app.review.showInlineComments();
+		await app.review.showAllReviewThreads();
 		await app.repo.openCommitFile(FILE);
 
 		await app.review.commentOnHunk(0);

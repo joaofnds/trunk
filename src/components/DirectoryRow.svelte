@@ -4,8 +4,13 @@ import ChevronRight from "@lucide/svelte/icons/chevron-right";
 import Minus from "@lucide/svelte/icons/minus";
 import Plus from "@lucide/svelte/icons/plus";
 import type { DirectoryNode } from "../lib/build-tree.js";
-import { countFiles, sumCommentsInSubtree } from "../lib/build-tree.js";
+import {
+	countFiles,
+	sumCommentsInSubtree,
+	toneInSubtree,
+} from "../lib/build-tree.js";
 import { treeIndent } from "../lib/chrome-heights.js";
+import type { ReviewTone } from "../lib/types.js";
 import CommentBadge from "./CommentBadge.svelte";
 
 interface Props {
@@ -18,6 +23,7 @@ interface Props {
 	onaction?: () => void;
 	oncontextmenu?: (e: MouseEvent) => void;
 	commentCounts?: Map<string, number>;
+	commentTones?: Map<string, ReviewTone>;
 }
 
 let {
@@ -30,6 +36,7 @@ let {
 	onaction,
 	oncontextmenu,
 	commentCounts,
+	commentTones,
 }: Props = $props();
 
 let hovered = $state(false);
@@ -40,6 +47,9 @@ let fileCount = $derived(countFiles(node.children));
 // visible descendant rows, so showing a sum too would double-read.
 let commentCount = $derived(
 	commentCounts ? sumCommentsInSubtree(node.children, commentCounts) : 0,
+);
+let commentTone = $derived(
+	commentTones ? toneInSubtree(node.children, commentTones) : null,
 );
 </script>
 
@@ -87,7 +97,7 @@ let commentCount = $derived(
   ">({fileCount})</span>
   <span style="flex: 1;"></span>
   {#if !expanded}
-    <CommentBadge count={commentCount} />
+    <CommentBadge count={commentCount} tone={commentTone} />
   {/if}
   {#if hovered && actionLabel && onaction}
     <button

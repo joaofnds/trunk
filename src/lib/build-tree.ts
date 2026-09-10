@@ -1,4 +1,5 @@
-import type { FileStatus } from "./types.js";
+import { combineReviewTone } from "./review-filter.js";
+import type { FileStatus, ReviewTone } from "./types.js";
 
 export interface DirectoryNode {
 	type: "directory";
@@ -159,6 +160,22 @@ export function sumCommentsInSubtree(
 		}
 	}
 	return sum;
+}
+
+/** Roll up the semantic tone alongside a collapsed directory's count. */
+export function toneInSubtree(
+	nodes: TreeNode[],
+	perFileTones: Map<string, ReviewTone>,
+): ReviewTone | null {
+	let tone: ReviewTone | null = null;
+	for (const node of nodes) {
+		const childTone =
+			node.type === "file"
+				? (perFileTones.get(node.path) ?? null)
+				: toneInSubtree(node.children, perFileTones);
+		tone = combineReviewTone(tone, childTone);
+	}
+	return tone;
 }
 
 /**

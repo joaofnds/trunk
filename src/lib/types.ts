@@ -443,6 +443,20 @@ export interface Draft {
 export type ThreadState = "open" | "addressed" | "done" | "dismissed";
 export type Channel = "human" | "agent";
 
+/** Presentation filters for the active review. "none" hides review content
+ * while keeping the review store and management actions alive. */
+export type ReviewFilter =
+	| "all"
+	| "open"
+	| "addressed"
+	| "done"
+	| "dismissed"
+	| "stale"
+	| "none";
+
+/** Semantic color bucket for review count pills. */
+export type ReviewTone = "open" | "addressed" | "done" | "dismissed" | "stale";
+
 // A durable, per-repo collection of threads plus a derived lifecycle state.
 export type ReviewState = "composing" | "ready" | "settled";
 

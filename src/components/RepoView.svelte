@@ -2,7 +2,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { onDestroy, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
-import { currentFileCommentCounts } from "../lib/comment-counts.js";
+import { buildCommentCounts } from "../lib/comment-counts.js";
 import {
 	commentsForView,
 	type PanelDiffKind,
@@ -26,6 +26,15 @@ import { createOwnedTimer } from "../lib/owned-timer.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
+import {
+	createReviewEditorStore,
+	type ReviewEditorStore,
+} from "../lib/review-editors.svelte.js";
+import {
+	badgeToneForThread,
+	combineReviewTone,
+	countBadgeThreads,
+} from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
 import {
 	clearCommitDraft,
@@ -53,6 +62,8 @@ import type {
 	RebaseTodo,
 	RebaseTodoItem,
 	RefsResponse,
+	ReviewFilter,
+	ReviewTone,
 	Side,
 	Thread,
 	TrackedFile,
@@ -100,9 +111,8 @@ interface Props {
 	// Review mode is toggled by the OS menu (review-toggle) at the App level so the
 	// global event only affects the active tab; App passes the flag down per tab.
 	reviewActive: boolean;
-	// Global "show inline comments" toggle, owned by App (persisted pref). Defaulted
-	// here so the gate stays green until App threads it down.
-	showInlineComments?: boolean;
+	// Global review presentation filter, owned by App (persisted pref).
+	reviewFilter?: ReviewFilter;
 	// Reports whether the active review tab's center pane is showing the review PANEL
 	// (vs. a diff) up to App, so the Toolbar Review button shares one source of truth
 	// with what's rendered: it's lit only when the panel shows, and a click while a
@@ -113,7 +123,12 @@ interface Props {
 	// (Review button badge). The predicate (which view's count to report) lives
 	// here because RepoView owns the view state. Optional so the gate stays green
 	// until App provides it.
-	oncommentcountschange?: (counts: { view: number; total: number }) => void;
+	oncommentcountschange?: (counts: {
+		view: number;
+		total: number;
+		viewTone: ReviewTone | null;
+		totalTone: ReviewTone | null;
+	}) => void;
 	onleftpanecollapsedchange: (collapsed: boolean) => void;
 	onrightpanecollapsedchange: (collapsed: boolean) => void;
 	onleftpanewidthchange: (width: number) => void;
@@ -132,7 +147,7 @@ let {
 	windowVisible,
 	tabActive,
 	reviewActive,
-	showInlineComments = true,
+	reviewFilter = "all",
 	onreviewpanelshowingchange,
 	oncommentcountschange,
 	onleftpanecollapsedchange,
@@ -155,7 +170,16 @@ const reviewSession = createReviewSession();
 // instance (App keys it by tab.id), so the one-time capture is intentional;
 // the rune owns its own listener teardown via destroy().
 const reviewComments = createReviewComments(untrack(() => repoPath));
+const reviewEditors: ReviewEditorStore = createReviewEditorStore();
 onDestroy(() => reviewComments.destroy());
+
+const editorSessionForThread = (thread: Thread) =>
+	reviewEditors.thread(reviewComments.activeReviewId, thread.id);
+const editorDraftFor = (
+	reviewId: string | null,
+	surface: string,
+	target: string,
+) => reviewEditors.draft(reviewId, surface, target);
 
 $effect(() => {
 	reviewSession.setReviewActive(reviewActive);
@@ -282,12 +306,16 @@ let finderOpen = $state(false);
 let finderFiles = $state.raw<TrackedFile[]>([]);
 let selectedCurrentFile = $state<string | null>(null);
 let currentFileDiffs = $state.raw<FileDiff[]>([]);
+let finderLoadSeq = 0;
 
 async function openFileFinder() {
+	const seq = ++finderLoadSeq;
 	try {
-		finderFiles = await safeInvoke<TrackedFile[]>("list_tracked_files", {
+		const files = await safeInvoke<TrackedFile[]>("list_tracked_files", {
 			path: repoPath,
 		});
+		if (seq !== finderLoadSeq || reviewFilter === "none") return;
+		finderFiles = files;
 		finderOpen = true;
 	} catch (e) {
 		reportErrorToast(e, "Could not list this repository's files");
@@ -476,26 +504,52 @@ let viewComments = $derived(
 		: [],
 );
 
-// Inline-comment badge count for the show-comments toggle: only the comments
-// this toggle governs in the CURRENT view.
-//   a diff open for a file → comments for that view/file
-//   CommitDetail is the active right pane → commit-level notes for its oid
-//   otherwise (commit graph / staging, no file) → 0 (nothing in this view)
-let inlineCommentCount = $derived(
-	compare
-		? 0
-		: showDiff && selectedDiffPath
-			? viewComments.length
-			: selectedCommitOid && commitDetail
-				? reviewComments.threads.filter(
-						(t) => t.anchor === null && t.commit_oid === commitDetail?.oid,
-					).length
-				: 0,
+// One presentation projection feeds every count surface. The manager remains
+// raw so lifecycle actions, copy/end, and review inventory never lose settled
+// threads when a filter changes.
+let presentation = $derived(
+	buildCommentCounts(
+		reviewComments.threads,
+		reviewComments.snapshots,
+		reviewFilter,
+	),
 );
+
+function toneForThreads(threads: Thread[]): ReviewTone | null {
+	let tone: ReviewTone | null = null;
+	for (const thread of threads) {
+		const next = badgeToneForThread(thread, reviewFilter);
+		if (next !== null) tone = combineReviewTone(tone, next);
+	}
+	return tone;
+}
+
+// Only the comments governed by the current pane receive the small toolbar
+// badge. The same thread set feeds both its count and its tone.
+let currentViewComments = $derived.by<Thread[]>(() => {
+	if (compare) return [];
+	if (showDiff && selectedDiffPath) return viewComments;
+	const selectedCommit = commitDetail;
+	if (selectedCommitOid && selectedCommit) {
+		return reviewComments.threads.filter(
+			(t) => t.anchor === null && t.commit_oid === selectedCommit.oid,
+		);
+	}
+	return [];
+});
+
+let inlineCommentCount = $derived(
+	countBadgeThreads(currentViewComments, reviewFilter),
+);
+
+let inlineCommentTone = $derived(toneForThreads(currentViewComments));
 
 // Total threads in the active review, for the Review button badge — independent
 // of which pane the user is looking at. 0 with no threads, so the badge hides.
-let reviewCommentTotal = $derived(reviewComments.totalCount);
+let reviewCommentTotal = $derived(
+	countBadgeThreads(reviewComments.threads, reviewFilter),
+);
+let reviewCommentTone = $derived(toneForThreads(reviewComments.threads));
 
 // Report both counts up through untrack: App's setCommentCounts copies the
 // counts map (`new Map(commentCounts)`) before writing it, so calling the
@@ -506,7 +560,16 @@ let reviewCommentTotal = $derived(reviewComments.totalCount);
 $effect(() => {
 	const view = inlineCommentCount;
 	const total = reviewCommentTotal;
-	untrack(() => oncommentcountschange?.({ view, total }));
+	const viewTone = inlineCommentTone;
+	const totalTone = reviewCommentTone;
+	untrack(() => oncommentcountschange?.({ view, total, viewTone, totalTone }));
+});
+
+$effect(() => {
+	if (reviewFilter === "none") {
+		finderLoadSeq += 1;
+		finderOpen = false;
+	}
 });
 
 async function loadDirtyCounts() {
@@ -1362,14 +1425,16 @@ function startRightResize(e: MouseEvent) {
           />
         </div>
         {#if rebaseDiffFile}
-            <DiffPanel
-              fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
-              commitDetail={rebaseFocusedCommitDetail}
-              selectedPath={rebaseDiffFile}
-              diffKind="commit"
-              {repoPath}
-              onclose={() => { rebaseDiffFile = null; }}
-            />
+          <DiffPanel
+            fileDiffs={rebaseFocusedFileDiffs.filter((f) => f.path === rebaseDiffFile)}
+            commitDetail={rebaseFocusedCommitDetail}
+            selectedPath={rebaseDiffFile}
+            diffKind="commit"
+            {repoPath}
+            reviewCommentsVisible={reviewFilter !== "none"}
+            {reviewFilter}
+            onclose={() => { rebaseDiffFile = null; }}
+          />
         {/if}
       </div>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1392,6 +1457,14 @@ function startRightResize(e: MouseEvent) {
             }}
             onclose={() => { rebaseFocusedCommitDetail = null; rebaseFocusedCommitStat = null; }}
             {repoPath}
+            reviewComments={reviewComments}
+            reviewCommentsVisible={reviewFilter !== "none"}
+            {reviewFilter}
+            commentCounts={presentation.byFile}
+            commentTones={presentation.toneByFile}
+            activeReviewId={reviewComments.activeReviewId}
+            editorSessionForThread={editorSessionForThread}
+            editorDraftFor={editorDraftFor}
             {treeViewEnabled}
             ontreeviewtoggle={handleTreeViewToggle}
           />
@@ -1419,7 +1492,7 @@ function startRightResize(e: MouseEvent) {
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
         <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
+          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} {reviewFilter} {editorSessionForThread} {editorDraftFor} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
         </div>
       {:else if showMergeEditor && selectedFile}
         <MergeEditor
@@ -1441,8 +1514,10 @@ function startRightResize(e: MouseEvent) {
           {diffKind}
           emptyCommit={commitEmpty}
           {repoPath}
-          showInlineComments={selectedCompareFile ? false : showInlineComments}
+          reviewCommentsVisible={selectedCompareFile ? false : reviewFilter !== "none"}
+          {reviewFilter}
           {viewComments}
+          {editorSessionForThread}
           refreshToken={diffRefreshToken}
           loading={stagingDiffLoading}
           onhunkaction={async (filePath) => {
@@ -1486,7 +1561,7 @@ function startRightResize(e: MouseEvent) {
             : handleDiffClose}
         />
       {:else}
-        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} {tabActive} {showInlineComments} {reviewComments} {compareOids} visibilityResolved={refVisibilityResolved} />
+        <CommitGraph bind:this={commitGraphRef} {repoPath} oncommitselect={handleCommitSelect} oncommitschange={(items, hasMore) => { graphDisplayItems = items; graphHasMore = hasMore; }} {wipCount} wipMessage={wipSubject.trim() || '// WIP'} {wipStats} onWipClick={handleWipClick} {refreshSignal} {selectedCommitOid} onopenrebaseeditor={handleOpenRebaseEditor} onopenmessageeditor={handleOpenMessageEditor} {tabActive} reviewCommentsVisible={reviewFilter !== "none"} commentCounts={presentation.byCommit} commentTones={presentation.toneByCommit} {reviewComments} {compareOids} visibilityResolved={refVisibilityResolved} />
       {/if}
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1515,7 +1590,12 @@ function startRightResize(e: MouseEvent) {
           onclose={clearCommit}
           {repoPath}
           {reviewComments}
-          {showInlineComments}
+          reviewCommentsVisible={reviewFilter !== "none"}
+          commentCounts={presentation.byFile}
+          commentTones={presentation.toneByFile}
+          activeReviewId={reviewComments.activeReviewId}
+          {editorSessionForThread}
+          {editorDraftFor}
           {treeViewEnabled}
           ontreeviewtoggle={handleTreeViewToggle}
           nav={commitNav}
@@ -1544,7 +1624,9 @@ function startRightResize(e: MouseEvent) {
           ontreeviewtoggle={handleTreeViewToggle}
           onopenmessageeditor={handleOpenMessageEditor}
           {reviewComments}
-          {showInlineComments}
+          reviewCommentsVisible={reviewFilter !== "none"}
+          commentCounts={presentation.byFile}
+          commentTones={presentation.toneByFile}
         />
       {/if}
     </div>
@@ -1555,7 +1637,8 @@ function startRightResize(e: MouseEvent) {
 {#if finderOpen}
   <FileFinder
     files={finderFiles}
-    commentCounts={currentFileCommentCounts(reviewComments.threads)}
+    commentCounts={presentation.byCurrentFile}
+    commentTones={presentation.toneByCurrentFile}
     onselect={openCurrentFile}
     onclose={() => (finderOpen = false)}
   />

@@ -193,6 +193,32 @@ describe("CommentComposer", () => {
 		expect(submit.disabled).toBe(disabled);
 	});
 
+	it("cannot submit while the review filter hides all threads", async () => {
+		const onclose = vi.fn();
+		render(CommentComposer, {
+			props: {
+				file: modifiedFile,
+				hunkIdx: 0,
+				selectedLineIndices: new Set([1]),
+				commitOid: "abc123",
+				repoPath: "/repo",
+				onclose,
+				canSubmit: false,
+			},
+		});
+
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "hidden comment" },
+		});
+		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+		expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+		expect(mockedInvoke.mock.calls.map((call) => call[0])).not.toContain(
+			"add_thread",
+		);
+		expect(onclose).not.toHaveBeenCalled();
+	});
+
 	it("persists a draft via save_draft after the debounce idle window", async () => {
 		vi.useFakeTimers();
 		render(CommentComposer, {

@@ -34,6 +34,8 @@ const {
 	removeRecentRepo,
 	getZoomLevel,
 	setZoomLevel,
+	getReviewFilter,
+	setReviewFilter,
 	getDiffContextLines,
 	setDiffContextLines,
 	getDiffIgnoreWhitespace,
@@ -162,6 +164,22 @@ describe("store", () => {
 			await setZoomLevel(1.5);
 			const level = await getZoomLevel();
 			expect(level).toBe(1.5);
+		});
+	});
+
+	describe("review filter", () => {
+		it("defaults to all when the preference is absent", async () => {
+			expect(await getReviewFilter()).toBe("all");
+		});
+
+		it("persists a valid filter", async () => {
+			await setReviewFilter("stale");
+			expect(await getReviewFilter()).toBe("stale");
+		});
+
+		it("falls back to all for an invalid stored value", async () => {
+			backingStore.set("review_filter", "legacy-toggle");
+			expect(await getReviewFilter()).toBe("all");
 		});
 	});
 

@@ -1,13 +1,15 @@
 <script lang="ts">
 import MessageSquarePlus from "@lucide/svelte/icons/message-square-plus";
-import { createDraft } from "../lib/draft.svelte.js";
+import { createDraft, type Draft } from "../lib/draft.svelte.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import {
 	addCommitThread,
 	deleteThread,
 	editThread,
 } from "../lib/review-comment-actions.js";
-import type { Thread } from "../lib/types.js";
+import type { ThreadEditorSession } from "../lib/review-editors.svelte.js";
+import { filterThreads, threadMatchesFilter } from "../lib/review-filter.js";
+import type { ReviewFilter, Thread } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
 interface Props {
@@ -15,11 +17,35 @@ interface Props {
 	notes: Thread[];
 	repoPath: string;
 	commitOid: string;
+	reviewFilter?: ReviewFilter;
+	activeReviewId?: string | null;
+	editorSessionForThread?: (thread: Thread) => ThreadEditorSession;
+	editorDraftFor?: (
+		reviewId: string | null,
+		surface: string,
+		target: string,
+	) => Draft;
 }
 
-let { notes, repoPath, commitOid }: Props = $props();
+let {
+	notes,
+	repoPath,
+	commitOid,
+	reviewFilter = "all",
+	activeReviewId = null,
+	editorSessionForThread,
+	editorDraftFor,
+}: Props = $props();
 
-const draft = createDraft();
+const visibleNotes = $derived(filterThreads(notes, reviewFilter));
+
+const localDraft = createDraft();
+let draft = $state<Draft>(localDraft);
+
+$effect(() => {
+	draft =
+		editorDraftFor?.(activeReviewId, "commit-note", commitOid) ?? localDraft;
+});
 let noteSaving = $state(false);
 
 function openAddNote() {
@@ -44,12 +70,16 @@ async function saveNote() {
 }
 </script>
 
-<div class="commit-notes">
+<div
+  class="commit-notes"
+  style:display={reviewFilter === "none" ? "none" : "flex"}
+  aria-hidden={reviewFilter === "none"}
+>
   <div class="commit-notes-head">
     <span class="commit-notes-title">
-      Notes{#if notes.length > 0} ({notes.length}){/if}
+      Notes{#if visibleNotes.length > 0} ({visibleNotes.length}){/if}
     </span>
-    {#if !draft.editing}
+    {#if !draft.editing && reviewFilter !== "none"}
       <button
         type="button"
         class="add-note-btn"
@@ -62,7 +92,7 @@ async function saveNote() {
   </div>
 
   {#if draft.editing}
-    <div class="add-note-composer">
+    <div class="add-note-composer" style:display={reviewFilter === "none" ? "none" : "flex"}>
       <textarea
         bind:value={draft.text}
         rows="3"
@@ -86,7 +116,7 @@ async function saveNote() {
   {#if notes.length > 0}
     <ul class="commit-notes-list">
       {#each notes as comment (comment.id)}
-        <li>
+        <li style:display={reviewFilter !== "none" && threadMatchesFilter(comment, reviewFilter) ? "list-item" : "none"}>
           <ThreadCard
             thread={comment}
             {repoPath}
@@ -94,6 +124,7 @@ async function saveNote() {
             confirmDelete={false}
             onedit={(id, text) => editThread(repoPath, id, text)}
             ondelete={(id) => deleteThread(repoPath, id)}
+            editorSessionForThread={editorSessionForThread}
           />
         </li>
       {/each}

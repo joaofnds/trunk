@@ -14,7 +14,12 @@ import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
 import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
 import { tooltip } from "../lib/tooltip.js";
-import type { DiffStat, GraphCommit, WipStats } from "../lib/types.js";
+import type {
+	DiffStat,
+	GraphCommit,
+	ReviewTone,
+	WipStats,
+} from "../lib/types.js";
 import Avatar from "./Avatar.svelte";
 import CommentBadge from "./CommentBadge.svelte";
 
@@ -43,6 +48,7 @@ interface Props {
 	/** Review-comment count anchored to this commit (line comments + notes).
 	 *  Parent zeroes it to enforce the toggle/active gate; badge self-hides at 0. */
 	commentCount?: number;
+	commentTone?: ReviewTone | null;
 	/** File-status breakdown for the synthetic WIP row (only set when isWip). */
 	wipStats?: WipStats;
 	/** Diff size for the Diff column. `undefined` = not yet computed (placeholder);
@@ -66,6 +72,7 @@ let {
 	inSession = false,
 	isPendingBase = false,
 	commentCount = 0,
+	commentTone = null,
 	wipStats,
 	diffStat,
 }: Props = $props();
@@ -166,7 +173,7 @@ const rowShadow = $derived(
       <span data-testid="commit-row-summary" class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
       >{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span>
     {/if}
-    <CommentBadge count={commentCount} />
+    <CommentBadge count={commentCount} tone={commentTone} />
   </div>
 
   <!-- Column 4: Diff size — log-scaled add/delete bar + counts. Renders for

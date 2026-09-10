@@ -9,7 +9,13 @@
  * hand-buildable `Thread` fixtures.
  */
 
-import type { ReviewSnapshots, Thread } from "./types.js";
+import { badgeToneForThread, combineReviewTone } from "./review-filter.js";
+import type {
+	ReviewFilter,
+	ReviewSnapshots,
+	ReviewTone,
+	Thread,
+} from "./types.js";
 
 /**
  * The synthetic graph row for uncommitted code has oid "__wip__" — not a
@@ -22,6 +28,10 @@ export const WIP_OID = "__wip__";
 export interface CommentCounts {
 	byCommit: Map<string, number>;
 	byFile: Map<string, number>;
+	byCurrentFile: Map<string, number>;
+	toneByCommit: Map<string, ReviewTone>;
+	toneByFile: Map<string, ReviewTone>;
+	toneByCurrentFile: Map<string, ReviewTone>;
 }
 
 /** The commit a comment is located through: a line comment's anchor, or a
@@ -29,26 +39,6 @@ export interface CommentCounts {
 export function commitOidForComment(c: Thread): string {
 	if (c.anchor !== null) return c.anchor.commit_oid;
 	return c.commit_oid ?? "";
-}
-
-/**
- * How many current-file threads each file carries, keyed by path alone.
- *
- * Separate from `buildCommentCounts` because that map is keyed by commit and
- * file together, and a current-file thread names no commit. The finder lists
- * files rather than commits, so the path is the only key it has.
- */
-export function currentFileCommentCounts(
-	comments: Thread[],
-): Map<string, number> {
-	const byPath = new Map<string, number>();
-	for (const c of comments) {
-		const path = c.content_pin?.file_path;
-		if (path === undefined) continue;
-		byPath.set(path, (byPath.get(path) ?? 0) + 1);
-	}
-
-	return byPath;
 }
 
 /** byFile key: a file path can't contain NUL, so it's an unambiguous separator. */
@@ -59,9 +49,14 @@ export function fileCountKey(commitOid: string, filePath: string): string {
 export function buildCommentCounts(
 	comments: Thread[],
 	snapshots: ReviewSnapshots,
+	filter: ReviewFilter = "all",
 ): CommentCounts {
 	const byCommit = new Map<string, number>();
 	const byFile = new Map<string, number>();
+	const byCurrentFile = new Map<string, number>();
+	const toneByCommit = new Map<string, ReviewTone>();
+	const toneByFile = new Map<string, ReviewTone>();
+	const toneByCurrentFile = new Map<string, ReviewTone>();
 
 	const snapshotOids = new Set(
 		[snapshots.working_tree_snapshot, snapshots.index_snapshot].filter(
@@ -70,11 +65,29 @@ export function buildCommentCounts(
 	);
 
 	for (const c of comments) {
+		const tone = badgeToneForThread(c, filter);
+		if (tone === null) continue;
+		if (c.content_pin?.file_path !== undefined) {
+			const path = c.content_pin.file_path;
+			byCurrentFile.set(path, (byCurrentFile.get(path) ?? 0) + 1);
+			toneByCurrentFile.set(
+				path,
+				combineReviewTone(toneByCurrentFile.get(path), tone) ?? tone,
+			);
+		}
 		const oid = commitOidForComment(c);
 		if (oid) {
 			byCommit.set(oid, (byCommit.get(oid) ?? 0) + 1);
+			toneByCommit.set(
+				oid,
+				combineReviewTone(toneByCommit.get(oid), tone) ?? tone,
+			);
 			if (snapshotOids.has(oid)) {
 				byCommit.set(WIP_OID, (byCommit.get(WIP_OID) ?? 0) + 1);
+				toneByCommit.set(
+					WIP_OID,
+					combineReviewTone(toneByCommit.get(WIP_OID), tone) ?? tone,
+				);
 			}
 		}
 
@@ -83,10 +96,18 @@ export function buildCommentCounts(
 		if (c.anchor !== null) {
 			const key = fileCountKey(c.anchor.commit_oid, c.anchor.file_path);
 			byFile.set(key, (byFile.get(key) ?? 0) + 1);
+			toneByFile.set(key, combineReviewTone(toneByFile.get(key), tone) ?? tone);
 		}
 	}
 
-	return { byCommit, byFile };
+	return {
+		byCommit,
+		byFile,
+		byCurrentFile,
+		toneByCommit,
+		toneByFile,
+		toneByCurrentFile,
+	};
 }
 
 /** Slice byFile down to a `path → count` map for one OID. A generic file-list
@@ -104,6 +125,20 @@ export function fileCountsForOid(
 		if (key.startsWith(prefix)) {
 			result.set(key.slice(prefix.length), count);
 		}
+	}
+	return result;
+}
+
+export function fileTonesForOid(
+	toneByFile: Map<string, ReviewTone>,
+	oid: string | null,
+): Map<string, ReviewTone> {
+	const result = new Map<string, ReviewTone>();
+	if (oid === null) return result;
+
+	const prefix = `${oid}\0`;
+	for (const [key, tone] of toneByFile) {
+		if (key.startsWith(prefix)) result.set(key.slice(prefix.length), tone);
 	}
 	return result;
 }

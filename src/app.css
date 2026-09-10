@@ -168,6 +168,7 @@
 	--color-thread-addressed: var(--color-warning);
 	--color-thread-done: var(--color-success);
 	--color-thread-dismissed: var(--color-text-muted);
+	--color-thread-stale: var(--info);
 
 	/* Diff lines */
 	--color-diff-text: var(--fg-0); /* code content = primary brightness, so

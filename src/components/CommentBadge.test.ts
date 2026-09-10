@@ -20,11 +20,11 @@ describe("CommentBadge", () => {
 
 	it("gives a singular accessible name for one comment", () => {
 		render(CommentBadge, { props: { count: 1 } });
-		expect(screen.getByLabelText("1 comment")).toBeInTheDocument();
+		expect(screen.getByLabelText("1 open comment")).toBeInTheDocument();
 	});
 
 	it("gives a plural accessible name for many comments", () => {
 		render(CommentBadge, { props: { count: 5 } });
-		expect(screen.getByLabelText("5 comments")).toBeInTheDocument();
+		expect(screen.getByLabelText("5 open comments")).toBeInTheDocument();
 	});
 });
