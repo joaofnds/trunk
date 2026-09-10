@@ -194,6 +194,11 @@ describe("CommitGraph", () => {
 		reviewComments.seed({
 			threads: [
 				aThread({
+					id: "open-thread",
+					state: "open",
+					commit_oid: TEST_COMMITS[0].oid,
+				}),
+				aThread({
 					id: "done-thread",
 					state: "done",
 					commit_oid: TEST_COMMITS[0].oid,
@@ -216,7 +221,9 @@ describe("CommitGraph", () => {
 			expect(screen.getByText("first commit")).toBeInTheDocument();
 		});
 
-		expect(container.querySelector('[aria-label="1 open comment"]')).toBeNull();
+		expect(
+			container.querySelector('[aria-label="1 review comment"]'),
+		).toBeNull();
 	});
 
 	it("renders without crashing", () => {

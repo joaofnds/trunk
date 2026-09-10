@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { describe, expect, it, vi } from "vitest";
-import type { TrackedFile } from "../lib/types.js";
+import type { ReviewTone, TrackedFile } from "../lib/types.js";
 import FileFinder from "./FileFinder.svelte";
 
 const FILES: TrackedFile[] = [
@@ -13,6 +13,7 @@ function open(
 	props: Partial<{
 		files: TrackedFile[];
 		commentCounts: Map<string, number>;
+		commentTones: Map<string, ReviewTone>;
 	}> = {},
 ) {
 	const onselect = vi.fn();
@@ -31,14 +32,20 @@ function rowPaths(): string[] {
 
 describe("FileFinder", () => {
 	it("shows how many comments an unchanged file already carries", () => {
-		open({ commentCounts: new Map([["src/alpha.ts", 2]]) });
+		open({
+			commentCounts: new Map([["src/alpha.ts", 2]]),
+			commentTones: new Map([["src/alpha.ts", "open"]]),
+		});
 
 		const alpha = screen
 			.getAllByRole("option")
 			.find((el) => el.textContent?.includes("src/alpha.ts"));
 
 		expect(alpha?.textContent).toContain("2");
-		expect(alpha?.getAttribute("aria-label")).toContain("2 comments");
+		expect(alpha?.getAttribute("aria-label")).toBe("src/alpha.ts, 2 comments");
+		expect(
+			alpha?.querySelector(".finder-comment-count")?.getAttribute("aria-label"),
+		).toBe("2 review comments");
 	});
 
 	it("shows no count on a file nothing is pinned to", () => {

@@ -172,7 +172,7 @@ function rowLabel(file: TrackedFile): string {
             {#if (commentCounts.get(file.path) ?? 0) > 0}
               <span
                 class="finder-comment-count"
-                aria-label="{commentCounts.get(file.path)} {commentTones.get(file.path) ?? 'open'} review comments"
+                aria-label="{commentCounts.get(file.path)} review comments"
                 style="
                   margin-left: auto;
                   flex-shrink: 0;

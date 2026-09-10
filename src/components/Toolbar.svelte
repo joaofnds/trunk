@@ -442,7 +442,7 @@ async function handleBranchCreate(values: Record<string, string>) {
       {#if viewCommentCount > 0}
         <span
           class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
-          aria-label="{viewCommentCount} {viewCommentTone ?? 'open'} review comments in this view"
+          aria-label="{viewCommentCount} review comments in this view"
         >{viewCommentCount}</span>
       {/if}
     </label>
@@ -458,7 +458,7 @@ async function handleBranchCreate(values: Record<string, string>) {
       {#if reviewCommentCount > 0}
         <span
           class="toolbar-badge tone-{reviewCommentTone ?? 'open'}"
-          aria-label="{reviewCommentCount} {reviewCommentTone ?? 'open'} review comments in this review"
+          aria-label="{reviewCommentCount} review comments in this review"
         >{reviewCommentCount}</span>
       {/if}
     </button>

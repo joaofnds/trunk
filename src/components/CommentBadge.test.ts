@@ -20,11 +20,17 @@ describe("CommentBadge", () => {
 
 	it("gives a singular accessible name for one comment", () => {
 		render(CommentBadge, { props: { count: 1 } });
-		expect(screen.getByLabelText("1 open comment")).toBeInTheDocument();
+		expect(screen.getByLabelText("1 review comment")).toBeInTheDocument();
 	});
 
 	it("gives a plural accessible name for many comments", () => {
 		render(CommentBadge, { props: { count: 5 } });
-		expect(screen.getByLabelText("5 open comments")).toBeInTheDocument();
+		expect(screen.getByLabelText("5 review comments")).toBeInTheDocument();
+	});
+
+	it("does not infer the population from the dominant tone", () => {
+		render(CommentBadge, { props: { count: 2, tone: "open" } });
+
+		expect(screen.getByLabelText("2 review comments")).toBeInTheDocument();
 	});
 });

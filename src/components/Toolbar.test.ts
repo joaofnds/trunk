@@ -439,6 +439,28 @@ describe("Toolbar", () => {
 		expect(reviewBtn.querySelector(".toolbar-badge")?.textContent).toBe("4");
 	});
 
+	it("keeps badge accessible names neutral when tone is only visual priority", () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+				viewCommentCount: 2,
+				viewCommentTone: "open",
+				reviewCommentCount: 2,
+				reviewCommentTone: "addressed",
+			},
+		});
+
+		expect(
+			screen.getByLabelText("2 review comments in this view"),
+		).toBeInTheDocument();
+		expect(
+			screen.getByLabelText("2 review comments in this review"),
+		).toBeInTheDocument();
+	});
+
 	it("fires onreviewfilterchange when the filter changes", async () => {
 		const onreviewfilterchange = vi.fn();
 		render(Toolbar, {

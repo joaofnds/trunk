@@ -11,21 +11,13 @@ interface Props {
 }
 
 let { count, tone = "open" }: Props = $props();
-
-const toneLabel: Record<ReviewTone, string> = {
-	open: "open",
-	addressed: "addressed",
-	done: "done",
-	dismissed: "dismissed",
-	stale: "stale",
-};
 </script>
 
 {#if count > 0}
   {@const effectiveTone = tone ?? "open"}
   <span
     class="comment-badge tone-{effectiveTone}"
-    aria-label="{count} {toneLabel[effectiveTone]} {count === 1 ? 'comment' : 'comments'}"
+    aria-label="{count} review {count === 1 ? 'comment' : 'comments'}"
   >{count}</span>
 {/if}
 
