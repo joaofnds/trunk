@@ -170,6 +170,16 @@ describe("buildInlineRows", () => {
 		).toEqual([0, 1, 1]);
 	});
 
+	it("removes a comment row when its threads do not match the selected filter", () => {
+		const model = buildInlineRows([twoHunks], {
+			...fullMode,
+			reviewFilter: "open",
+			comments: [{ ...thread("t1", "New", 2, 2), state: "done" }],
+		});
+
+		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
+	});
+
 	it("omits comment rows when inline comments are hidden", () => {
 		const model = buildInlineRows([twoHunks], {
 			...fullMode,
@@ -497,6 +507,16 @@ describe("buildSplitRows", () => {
 		expect(
 			comments[0].kind === "comment" && comments[0].threads.map((t) => t.id),
 		).toEqual(["tNew", "tOld"]);
+	});
+
+	it("removes a comment row when its threads do not match the selected filter", () => {
+		const model = buildSplitRows([pairable], {
+			...fullMode,
+			reviewFilter: "open",
+			comments: [{ ...thread("t1", "New", 2, 2), state: "done" }],
+		});
+
+		expect(model.rows.some((row) => row.kind === "comment")).toBe(false);
 	});
 
 	it("omits comment rows when inline comments are hidden", () => {

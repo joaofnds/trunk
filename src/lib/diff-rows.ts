@@ -183,18 +183,19 @@ export function buildInlineRows(
 				const threads = opts.reviewCommentsVisible
 					? threadsOn(line, opts.comments)
 					: [];
-				if (threads.length > 0) {
+				const visibleThreads = threads.filter((thread) =>
+					visibleComments.includes(thread),
+				);
+				if (visibleThreads.length > 0) {
 					rows.push({
 						kind: "comment",
 						path: fd.path,
 						hunkIdx,
 						lineIdx,
 						flatIdx,
-						threads,
+						threads: visibleThreads,
 						visibleThreadIds: new Set(
-							threads
-								.filter((thread) => visibleComments.includes(thread))
-								.map((thread) => thread.id),
+							visibleThreads.map((thread) => thread.id),
 						),
 					});
 				}
@@ -298,7 +299,10 @@ export function buildSplitRows(
 				const threads = opts.reviewCommentsVisible
 					? pairThreads(pair, opts.comments)
 					: [];
-				if (threads.length > 0) {
+				const visibleThreads = threads.filter((thread) =>
+					visibleComments.includes(thread),
+				);
+				if (visibleThreads.length > 0) {
 					// The right side anchors the row where it exists: it is the side
 					// the gutter arms selection from, and the one a New-side comment
 					// resolves against. A phantom right leaves the left side.
@@ -310,11 +314,9 @@ export function buildSplitRows(
 							hunkIdx,
 							lineIdx: anchor.lineIdx,
 							flatIdx: flatBase + anchor.lineIdx,
-							threads,
+							threads: visibleThreads,
 							visibleThreadIds: new Set(
-								threads
-									.filter((thread) => visibleComments.includes(thread))
-									.map((thread) => thread.id),
+								visibleThreads.map((thread) => thread.id),
 							),
 						});
 					}
