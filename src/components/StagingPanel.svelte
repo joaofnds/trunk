@@ -6,15 +6,18 @@ import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
 import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
 import FolderTree from "@lucide/svelte/icons/folder-tree";
 import List from "@lucide/svelte/icons/list";
-import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { onDestroy } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
+import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { fileCountsForOid, fileTonesForOid } from "../lib/comment-counts.js";
 import { resolveViewOid } from "../lib/comment-matching.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { pathMenuEntriesOf } from "../lib/file-menu.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
+import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	FileStatusType,
@@ -85,6 +88,7 @@ let {
 	commentCounts,
 	commentTones,
 }: Props = $props();
+const scheduler = getScheduler();
 
 let status = $state<WorkingTreeStatus | null>(null);
 
@@ -163,6 +167,7 @@ let unstaged_expanded = $state(true);
 let staged_expanded = $state(true);
 let loadingFiles = $state<Set<string>>(new Set());
 let loadSeq = 0;
+let panelActive = true;
 let conflicted_expanded = $state(true);
 let operationInfo = $state<OperationInfo | null>(null);
 
@@ -203,23 +208,36 @@ let totalCount = $derived(
 );
 let allResolved = $derived((status?.conflicted.length ?? 0) === 0);
 
-async function loadOperationState() {
+async function loadOperationState(path = repoPath) {
 	const result = await safeInvoke<OperationInfo>("get_operation_state", {
-		path: repoPath,
+		path,
 	});
+	if (!panelActive || path !== repoPath) return;
 	operationInfo = result;
 }
 
-async function loadStatus() {
+async function refreshStatus() {
 	const seq = ++loadSeq;
+	const path = repoPath;
 	const result = await safeInvoke<WorkingTreeStatus>("get_status", {
-		path: repoPath,
+		path,
 	});
-	if (seq === loadSeq) {
+	if (panelActive && path === repoPath && seq === loadSeq) {
 		status = result;
 		onstatuschange?.(result);
 	}
-	await loadOperationState();
+	if (panelActive && path === repoPath) await loadOperationState(path);
+}
+
+const statusRefresh = createCoalescedTask(scheduler, refreshStatus);
+onDestroy(() => {
+	panelActive = false;
+	loadSeq += 1;
+	statusRefresh.dispose();
+});
+
+async function loadStatus() {
+	await statusRefresh.run();
 }
 
 async function stageFile(filePath: string) {
@@ -768,20 +786,16 @@ function startBottomResize(e: MouseEvent) {
 
 // Initial load on mount
 $effect(() => {
-	if (repoPath) loadStatus();
+	if (repoPath) {
+		void loadStatus().catch((error) =>
+			reportErrorToast(error, "Failed to refresh status"),
+		);
+	}
 });
 
 // Auto-refresh on repo-changed event
 $effect(() => {
-	let unlisten: (() => void) | undefined;
-	listen<string>("repo-changed", (event) => {
-		if (event.payload === repoPath) loadStatus();
-	}).then((fn) => {
-		unlisten = fn;
-	});
-	return () => {
-		unlisten?.();
-	};
+	return subscribeToRepoChanges(repoPath, statusRefresh);
 });
 </script>
 

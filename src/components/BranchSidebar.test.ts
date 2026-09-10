@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import { toasts } from "../lib/toast.svelte.js";
 import BranchSidebar from "./BranchSidebar.svelte";
 
@@ -238,6 +240,36 @@ describe("BranchSidebar", () => {
 			props: { repoPath: "/test/repo" },
 		});
 		expect(container).toBeTruthy();
+	});
+
+	it("admits one refs read and one catch-up while refresh signals continue", async () => {
+		const scheduler = new FakeScheduler();
+		const pending: ((refs: unknown) => void)[] = [];
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "list_refs"
+				? new Promise((resolve) => pending.push(resolve))
+				: Promise.resolve(undefined),
+		);
+		const props = (refreshSignal: number) => ({
+			repoPath: "/test/repo",
+			refreshSignal,
+		});
+		const { rerender } = render(BranchSidebar, {
+			props: props(0),
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
+		await waitFor(() => expect(pending).toHaveLength(1));
+
+		for (let signal = 1; signal <= 5; signal += 1) {
+			await rerender(props(signal));
+		}
+		expect(pending).toHaveLength(1);
+
+		pending[0](mockListRefs());
+		await waitFor(() => expect(scheduler.pending).toBe(1));
+		scheduler.advanceBy(200);
+		await waitFor(() => expect(pending).toHaveLength(2));
+		pending[1](mockListRefs());
 	});
 
 	it("renders local branch section header", async () => {

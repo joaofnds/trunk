@@ -1,11 +1,30 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { FakeScheduler } from "./fakes/scheduler.js";
 import { HostClient } from "./harness/host-client.js";
-import { describeTimeout, waitFor } from "./harness/wait.js";
+import { describeTimeout, driveWaitsWith, waitFor } from "./harness/wait.js";
 
 const NEVER = () => null;
 
 describe("a wait that times out", () => {
-	afterEach(() => describeTimeout(null));
+	afterEach(() => {
+		describeTimeout(null);
+		driveWaitsWith(null);
+	});
+
+	it("drives registered application work between polls", async () => {
+		let ready = false;
+		let drives = 0;
+		driveWaitsWith((elapsedMs) => {
+			drives += 1;
+			expect(elapsedMs).toBe(5);
+			ready = true;
+		});
+
+		await expect(
+			waitFor("virtual work", () => (ready ? true : null)),
+		).resolves.toBe(true);
+		expect(drives).toBe(1);
+	});
 
 	it("names what it was waiting for", async () => {
 		const expired = waitFor("the stash in the graph", NEVER, 0);
@@ -31,6 +50,19 @@ describe("a wait that times out", () => {
 		const expired = waitFor("the graph", NEVER, 0);
 
 		await expect(expired).rejects.toThrow("the graph");
+	});
+});
+
+describe("the application scheduler", () => {
+	it("fires every timer inside an interval in deadline order", () => {
+		const scheduler = new FakeScheduler();
+		const fired: string[] = [];
+		scheduler.setTimeout(() => fired.push("later"), 200);
+		scheduler.setTimeout(() => fired.push("earlier"), 100);
+
+		scheduler.advanceBy(200);
+
+		expect(fired).toEqual(["earlier", "later"]);
 	});
 });
 

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { createReviewComments } from "./review-comments.svelte.js";
+import type { Scheduler } from "./scheduler.js";
 import type { Review, SessionCommit, Thread } from "./types";
 
 // safeInvoke is a thin wrapper around @tauri-apps/api/core::invoke
@@ -23,6 +24,26 @@ vi.mock("@tauri-apps/api/event", () => ({
 	),
 }));
 
+class TestScheduler implements Scheduler {
+	private callbacks: Array<() => void> = [];
+	private nextHandle = 1;
+
+	setTimeout(callback: () => void, _delayMs: number): number {
+		this.callbacks.push(callback);
+		return this.nextHandle++;
+	}
+
+	clearTimeout(_handle: number): void {}
+
+	flush(): void {
+		const callbacks = this.callbacks;
+		this.callbacks = [];
+		for (const callback of callbacks) callback();
+	}
+}
+
+let scheduler = new TestScheduler();
+
 function fireReviewsChanged(payload: string | null): void {
 	handlers.get("reviews-changed")?.({ payload });
 }
@@ -32,6 +53,7 @@ function fireRepoChanged(payload: string): void {
 }
 
 async function flush() {
+	scheduler.flush();
 	await new Promise((r) => setTimeout(r, 0));
 }
 
@@ -93,13 +115,14 @@ function aPopulatedStore(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
 	vi.clearAllMocks();
 	handlers.clear();
+	scheduler = new TestScheduler();
 });
 
 describe("createReviewComments — refresh", () => {
 	it("populates threads, reviews, the active pointer and snapshots", async () => {
 		aPopulatedStore();
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.threads).toHaveLength(1);
@@ -113,7 +136,7 @@ describe("createReviewComments — refresh", () => {
 	it("reports having threads to show, which is what every badge gates on", async () => {
 		aPopulatedStore();
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.hasThreads).toBe(true);
@@ -123,7 +146,7 @@ describe("createReviewComments — refresh", () => {
 	it("has nothing to show for a repo with reviews but no threads", async () => {
 		aPopulatedStore({ list_threads: [] });
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.hasThreads).toBe(false);
@@ -138,7 +161,7 @@ describe("createReviewComments — refresh", () => {
 			list_threads: [],
 		});
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.threads).toHaveLength(0);
@@ -149,7 +172,7 @@ describe("createReviewComments — refresh", () => {
 	it("exposes the oids of the active review's commits", async () => {
 		aPopulatedStore();
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.oids.has("abc")).toBe(true);
@@ -164,7 +187,7 @@ describe("createReviewComments — refresh", () => {
 			list_session_commits: [],
 		});
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.threads).toHaveLength(0);
@@ -191,7 +214,7 @@ describe("createReviewComments — refresh", () => {
 	it("reports a read failure rather than swallowing it", async () => {
 		failing("list_threads");
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.lastError).toContain("database is locked");
@@ -201,7 +224,7 @@ describe("createReviewComments — refresh", () => {
 
 	it("clears a read failure once a refresh comes back clean", async () => {
 		failing("list_threads");
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		expect(manager.lastError).not.toBeNull();
 
@@ -218,7 +241,7 @@ describe("createReviewComments — refresh", () => {
 			list_threads: [{ ...thread, review_id: "OTHER_REVIEW" }],
 		});
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		expect(manager.threads).toHaveLength(0);
@@ -230,7 +253,7 @@ describe("createReviewComments — refresh", () => {
 describe("createReviewComments — reviews-changed listener", () => {
 	it("refreshes on an event for its own repo", async () => {
 		aPopulatedStore();
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		const before = manager.revision;
 
@@ -245,7 +268,7 @@ describe("createReviewComments — reviews-changed listener", () => {
 		// The poll can't know which repo a foreign commit touched, so it
 		// announces with no payload and every tab refreshes its own.
 		aPopulatedStore();
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		const before = manager.revision;
 
@@ -258,7 +281,7 @@ describe("createReviewComments — reviews-changed listener", () => {
 
 	it("ignores an event for another repo", async () => {
 		aPopulatedStore();
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		const before = manager.revision;
 
@@ -283,7 +306,7 @@ describe("createReviewComments — reviews-changed listener", () => {
 			}
 			return base?.(c, args, options) ?? Promise.resolve(undefined);
 		});
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 
 		await manager.refresh();
@@ -303,7 +326,7 @@ describe("createReviewComments — reviews-changed listener", () => {
 			if (cmd === "canonical_repo_path") return new Promise(() => {});
 			return Promise.resolve(cmd === "list_reviews" ? [review] : []);
 		});
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		const before = manager.revision;
 
@@ -318,7 +341,7 @@ describe("createReviewComments — reviews-changed listener", () => {
 describe("createReviewComments — repo-changed listener", () => {
 	it("recomputes staleness when this repo's files change", async () => {
 		aPopulatedStore({ refresh_thread_staleness: 0 });
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		mockInvoke.mockClear();
 
@@ -333,7 +356,7 @@ describe("createReviewComments — repo-changed listener", () => {
 
 	it("ignores a change in another repo", async () => {
 		aPopulatedStore({ refresh_thread_staleness: 0 });
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
 		mockInvoke.mockClear();
 
@@ -348,11 +371,49 @@ describe("createReviewComments — repo-changed listener", () => {
 	});
 });
 
-describe("createReviewComments — overlapping refreshes", () => {
-	it("keeps the newest result when an older refresh resolves last", async () => {
-		// Two refreshes in flight, each blocked on its own list_threads. The
-		// older one resolves last and must not install its snapshot over the
-		// newer one.
+describe("createReviewComments - refresh backpressure", () => {
+	it("coalesces review events caused by repeated staleness refreshes", async () => {
+		const gates: ((value: Thread[]) => void)[] = [];
+		mockInvoke.mockImplementation((cmd: string) => {
+			switch (cmd) {
+				case "list_reviews":
+					return Promise.resolve([review]);
+				case "get_active_review":
+					return Promise.resolve("REVIEW01");
+				case "list_threads":
+					return new Promise<Thread[]>((resolve) => gates.push(resolve));
+				case "canonical_repo_path":
+					return Promise.resolve("/repo");
+				case "refresh_thread_staleness":
+					fireReviewsChanged("/repo");
+					return Promise.resolve(0);
+				default:
+					return Promise.resolve([]);
+			}
+		});
+
+		const manager = createReviewComments("/repo", scheduler);
+		await flush();
+		expect(gates).toHaveLength(1);
+
+		for (let index = 0; index < 5; index += 1) {
+			fireRepoChanged("/repo");
+			await flush();
+		}
+		expect(gates).toHaveLength(1);
+
+		gates[0]?.([]);
+		await flush();
+		await flush();
+		expect(gates).toHaveLength(2);
+		gates[1]?.([thread]);
+		await flush();
+
+		expect(manager.threads).toEqual([thread]);
+		manager.destroy();
+	});
+
+	it("admits one later batch while a review read is active", async () => {
 		const gates: ((value: Thread[]) => void)[] = [];
 		mockInvoke.mockImplementation((cmd: string) => {
 			switch (cmd) {
@@ -369,16 +430,19 @@ describe("createReviewComments — overlapping refreshes", () => {
 			}
 		});
 
-		const manager = createReviewComments("/repo");
+		const manager = createReviewComments("/repo", scheduler);
 		await flush();
-		const second = manager.refresh();
-		await flush();
+		const later = manager.refresh();
+		await Promise.resolve();
+		expect(gates).toHaveLength(1);
 
-		// Resolve the NEWER read first, then let the older one land.
-		gates[1]?.([thread]);
-		await second;
 		gates[0]?.([]);
 		await flush();
+		await flush();
+		expect(gates).toHaveLength(2);
+
+		gates[1]?.([thread]);
+		await later;
 
 		expect(manager.threads).toHaveLength(1);
 		manager.destroy();

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
@@ -14,6 +15,7 @@ import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import { _resetToasts, toasts } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
@@ -329,9 +331,13 @@ describe("RepoView", () => {
 	// balance between the reads, so they stop moving together. One owner fetches
 	// them as a set, always.
 	it("fetches the whole store as a set, so nothing owns a second copy", async () => {
+		const scheduler = new FakeScheduler();
 		render(RepoView, {
 			props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+			context: new Map([[SCHEDULER, scheduler]]),
 		});
+		await new Promise((r) => setTimeout(r, 0));
+		scheduler.advanceBy(200);
 		await new Promise((r) => setTimeout(r, 0));
 
 		const timesCalled = (cmd: string) =>
@@ -513,24 +519,31 @@ describe("RepoView", () => {
 			await new Promise((r) => setTimeout(r, 0));
 		}
 
-		it("keeps the newest counts when an older load resolves last", async () => {
+		it("serializes a newer repository load behind the active read", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
+			const scheduler = new FakeScheduler();
 			const pending: ((counts: unknown) => void)[] = [];
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === "get_dirty_counts"
 					? new Promise((resolve) => pending.push(resolve))
 					: base(cmd, args),
 			);
-			const { container, rerender } = render(RepoView, { props: props() });
+			const { container, rerender } = render(RepoView, {
+				props: props(),
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
 			await flush();
-			await rerender(props());
+			await rerender({ ...props(), repoPath: "/test/other" });
 			await flush();
-			expect(pending.length).toBeGreaterThanOrEqual(2);
+			expect(pending).toHaveLength(1);
 
-			pending[pending.length - 1]({ staged: 1, unstaged: 0, conflicted: 0 });
-			await flush();
 			pending[0]({ staged: 0, unstaged: 0, conflicted: 0 });
+			await flush();
+			scheduler.advanceBy(200);
+			await flush();
+			expect(pending).toHaveLength(2);
+			pending[1]({ staged: 1, unstaged: 0, conflicted: 0 });
 			await flush();
 
 			expect(container.textContent).toContain("// WIP");

@@ -2,12 +2,14 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { mount, tick, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { safeInvoke, type TrunkError } from "../lib/invoke.js";
 import { reactiveProps } from "../lib/reactive-props.svelte.js";
 import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import PushRecoveryPrompt from "./PushRecoveryPrompt.svelte";
 
@@ -427,6 +429,41 @@ describe("PushRecoveryPrompt gate liveness", () => {
 		props.refreshSignal = 1;
 
 		expect(await screen.findByText("Force Push")).toBeInTheDocument();
+	});
+
+	it("admits one operation probe and one catch-up while events continue", async () => {
+		const scheduler = new FakeScheduler();
+		const first = deferred<typeof NONE_OP>();
+		const catchUp = deferred<typeof NONE_OP>();
+		const probes = [first.promise, catchUp.promise];
+		respondWith({
+			get_operation_state: () => probes.shift() ?? Promise.resolve(NONE_OP),
+		});
+		const props = reactiveProps(propsFor(stateWith(err("non_fast_forward"))));
+		app = mount(PushRecoveryPrompt, {
+			target,
+			props,
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
+		await tick();
+
+		for (let signal = 1; signal <= 5; signal += 1) {
+			props.refreshSignal = signal;
+			await tick();
+		}
+		expect(
+			mockInvoke.mock.calls.filter(([cmd]) => cmd === "get_operation_state"),
+		).toHaveLength(1);
+
+		first.resolve(MERGE_OP);
+		await tick();
+		await Promise.resolve();
+		scheduler.advanceBy(200);
+		await tick();
+		expect(
+			mockInvoke.mock.calls.filter(([cmd]) => cmd === "get_operation_state"),
+		).toHaveLength(2);
+		catchUp.resolve(NONE_OP);
 	});
 });
 

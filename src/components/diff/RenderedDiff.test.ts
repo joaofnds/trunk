@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/svelte";
 import { flushSync, mount, tick, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../../tests/app/fakes/scheduler.js";
 import type { DiffRow, MarkdownDiff } from "../../lib/markdown.js";
 import { reactiveProps } from "../../lib/reactive-props.svelte.js";
+import { SCHEDULER } from "../../lib/scheduler.js";
 import RenderedDiff from "./RenderedDiff.svelte";
 
 function deferred<T>() {
@@ -1285,6 +1287,49 @@ describe("RenderedDiff", () => {
 		}
 	});
 
+	it("admits one rendered refresh and one catch-up while tokens continue", async () => {
+		const scheduler = new FakeScheduler();
+		const initial: MarkdownDiff = {
+			whitespaceOnly: false,
+			rows: [],
+			changedLines: [],
+		};
+		const first = deferred<MarkdownDiff>();
+		const catchUp = deferred<MarkdownDiff>();
+		safeInvoke
+			.mockResolvedValueOnce(initial)
+			.mockImplementationOnce(() => first.promise)
+			.mockImplementationOnce(() => catchUp.promise);
+		const props = reactiveProps({ ...baseProps, refreshToken: 0 });
+		const target = document.body.appendChild(document.createElement("div"));
+		const app = mount(RenderedDiff, {
+			target,
+			props,
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
+		try {
+			await tick();
+			await Promise.resolve();
+			props.refreshToken = 1;
+			await tick();
+			for (let token = 2; token <= 5; token += 1) {
+				props.refreshToken = token;
+				await tick();
+			}
+			expect(safeInvoke).toHaveBeenCalledTimes(2);
+
+			first.resolve(initial);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			scheduler.advanceBy(200);
+			await tick();
+			expect(safeInvoke).toHaveBeenCalledTimes(3);
+			catchUp.resolve(initial);
+		} finally {
+			await unmount(app);
+			target.remove();
+		}
+	});
+
 	it("sends the old path with the fetch and refetches when it changes", async () => {
 		safeInvoke.mockResolvedValue({
 			whitespaceOnly: false,
@@ -1664,6 +1709,7 @@ describe("RenderedDiff", () => {
 	});
 
 	it("ignores a stale in-flight render when the selected file changes mid-flight", async () => {
+		const scheduler = new FakeScheduler();
 		const first = deferred<MarkdownDiff>();
 		const second = deferred<MarkdownDiff>();
 		safeInvoke.mockImplementation((_cmd: string, args: { filePath: string }) =>
@@ -1672,27 +1718,13 @@ describe("RenderedDiff", () => {
 
 		const { rerender } = render(RenderedDiff, {
 			props: { ...baseProps, layoutMode: "inline", selectedPath: "A.md" },
+			context: new Map([[SCHEDULER, scheduler]]),
 		});
 		await rerender({
 			...baseProps,
 			layoutMode: "inline",
 			selectedPath: "B.md",
 		});
-
-		second.resolve({
-			rows: [
-				{
-					kind: "unchanged",
-					blockKind: "paragraph",
-					html: "<p>SECOND</p>",
-					afterStart: 1,
-					afterEnd: 1,
-				},
-			],
-			whitespaceOnly: false,
-			changedLines: [],
-		});
-		expect(await screen.findByText("SECOND")).toBeInTheDocument();
 
 		first.resolve({
 			rows: [
@@ -1708,7 +1740,26 @@ describe("RenderedDiff", () => {
 			changedLines: [],
 		});
 		await tick();
-		await Promise.resolve();
+		await vi.waitFor(() => expect(scheduler.pending).toBe(1));
+		expect(screen.queryByText("FIRST")).toBeNull();
+
+		scheduler.advanceBy(200);
+		await vi.waitFor(() => expect(safeInvoke).toHaveBeenCalledTimes(2));
+
+		second.resolve({
+			rows: [
+				{
+					kind: "unchanged",
+					blockKind: "paragraph",
+					html: "<p>SECOND</p>",
+					afterStart: 1,
+					afterEnd: 1,
+				},
+			],
+			whitespaceOnly: false,
+			changedLines: [],
+		});
+		expect(await screen.findByText("SECOND")).toBeInTheDocument();
 
 		expect(screen.queryByText("FIRST")).toBeNull();
 		expect(screen.getByText("SECOND")).toBeInTheDocument();

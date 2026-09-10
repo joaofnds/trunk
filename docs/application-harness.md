@@ -142,6 +142,19 @@ mode, so the line-selection gestures `driver.review.selectLine` and
 through the finder swaps the centre pane away from the review panel, so a test that wants to
 read a thread card afterwards reopens the panel first.
 
+Repository refresh backpressure, in `tests/app/repo-change-backpressure.test.ts`: virtual
+events keep arriving before the 200 ms policy interval, but the graph starts at the first
+deadline. Command barriers hold graph, status and dirty-count reads while more events arrive,
+proving each owner admits one active read and one catch-up. The staging case also records the
+new status read owed after a mutation rather than accepting the older in-flight read as its
+completion.
+
+The injected scheduler stays frozen for exact deadline assertions. An eventual-state `waitFor`
+advances virtual time by its 5 ms polling interval, so ordinary gestures can observe scheduled
+application work while longer interaction timers keep their ordering. Use `app.advanceBy(ms)`
+when the deadline itself is the assertion; the condition is checked before `waitFor` advances
+anything.
+
 `backlog/docs/doc-26` ranks what still has no end-to-end test and is the queue new scenarios
 come off; its §2 table carries the driven-command count and how to re-derive it.
 
@@ -149,7 +162,7 @@ come off; its §2 table carries the driven-command count and how to re-derive it
 
 The filesystem watcher is off — `WatcherState::disabled()`, so `open_repo` runs unchanged while
 no watch is created — and `driver.events.externalChange(path)` fires the identical
-`app.emit("repo-changed", path)` call `watcher.rs:45` makes. What that gives up is one link:
+`app.emit("repo-changed", path)` call `watcher.rs` makes. What that gives up is one link:
 whether the watcher itself fires.
 
 The macOS traffic-light reposition is off too, through `TrafficLights::disabled()`.
@@ -203,15 +216,18 @@ variant on both sides to reach a shape it cannot build yet. Commits are day-spac
 step pins `at`, because the graph sorts `TOPOLOGICAL | TIME` and same-second commits sort
 arbitrarily.
 
-RepoView debounces `repo-changed` before refetching, and in the harness that debounce runs
-on a frozen `FakeScheduler` installed through `mount`'s context option. Every owned timer
-(`GLOSSARY.md`) lands in the same scheduler: the review panel's Copied, end-confirm and
-delete-confirm reverts and the comment composer's draft autosave queue beside the debounce,
-and `flush` fires them all. No wall-clock window outlasts it, so a test advances it
-deliberately:
+Repository-change consumers use a fixed-deadline coalescer backed by the frozen
+`FakeScheduler` installed through `mount`'s context option. The first invalidation arms a
+200 ms deadline; later invalidations do not move it. While its command is active, a consumer
+holds one pending catch-up and schedules that catch-up 200 ms after completion. Consumers
+remain independent, so a held status read does not hold graph refresh. Every other owned
+timer (`GLOSSARY.md`) lands in the same scheduler, and `flush` fires the currently armed
+generation. No wall-clock window outlasts it, so a test advances it deliberately:
 
 - `app.elapse()` waits for a timer to be armed and fires it. Use it after a gesture that
   produces one `repo-changed` emit.
+- `app.advanceBy(ms)` advances virtual time and fires only deadlines reached in that span.
+  Use it to distinguish a fixed first deadline from a trailing debounce.
 - `app.elapseUntil(description, condition)` waits for `condition`, firing timers as they arm.
   Use it when one user action produces several emits — a revert, an undo, a redo — so the
   test asserts on the state it wants rather than counting emits it does not control.
@@ -243,17 +259,17 @@ reply. Those want different fixes, and until this existed a red run could not te
 sent, so a command the stall knob is deliberately starving still reads as outstanding.
 
 `app.events.externalChange()` waits for the application's in-flight `listen` calls before it
-emits, because registering a listener costs a host round trip. Two of the four `repo-changed`
-registrations, `RepoView.svelte:836` and `StagingPanel.svelte:752`, had still not landed when
-`repo.open()` returned, by a measured margin of one to four milliseconds. The real watcher
+emits, because registering a listener costs a host round trip. In the pre-TRUNK-130 harness,
+two of the four measured `repo-changed` registrations in RepoView and StagingPanel had still
+not landed when `repo.open()` returned, by a margin of one to four milliseconds. The real watcher
 emits over and over and never notices a lost first event, so nothing in the product cares; a
 test emits once, so the listener that missed it never hears about the change and the wait that
 follows times out five seconds later saying only that the state never arrived (TRUNK-45).
 
 ## Budget
 
-`just app-test` runs in **5.9 s** of wall time against a 10 s ceiling; the end of this
-section carries the current measurement, and the paragraphs between it and here hold the
+Before TRUNK-130, `just app-test` ran in **5.9 s** of wall time against a 10 s ceiling; the end of this
+section carries that measurement, and the paragraphs between it and here hold the
 cost model and its corrections. The pool measurement first. 7.5 s with the host binary
 already built was the median of twelve runs, each alternated against a run on the `forks` pool so
 machine drift hit both arms. The same twelve runs on `forks` measured 9.4 s, and one of them

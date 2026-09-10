@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import type { ReviewTone } from "../lib/types.js";
 import StagingPanel from "./StagingPanel.svelte";
 
@@ -32,8 +35,16 @@ vi.mock("@tauri-apps/api/path", () => ({
 	homeDir: vi.fn().mockResolvedValue("/Users/test"),
 }));
 
+const eventHandlers = vi.hoisted(
+	() => new Map<string, (event: { payload: string }) => void>(),
+);
 vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn().mockResolvedValue(() => {}),
+	listen: vi.fn(
+		(name: string, callback: (event: { payload: string }) => void) => {
+			eventHandlers.set(name, callback);
+			return Promise.resolve(() => eventHandlers.delete(name));
+		},
+	),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -61,8 +72,23 @@ vi.mock("@tauri-apps/plugin-window-state", () => ({}));
 
 const mockInvoke = vi.mocked(safeInvoke);
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
+
+function stagingRowFor(element: Element): HTMLElement {
+	const row = element.closest<HTMLElement>('[data-testid="staging-file"]');
+	if (!row) throw new Error("expected content inside a staging file row");
+	return row;
+}
+
 describe("StagingPanel", () => {
 	beforeEach(() => {
+		eventHandlers.clear();
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
 			if (cmd === "get_status")
@@ -211,6 +237,71 @@ describe("StagingPanel", () => {
 				path: "/my/repo",
 			});
 		});
+	});
+
+	it("keeps a staging action pending for a post-action status read", async () => {
+		const scheduler = new FakeScheduler();
+		const beforeAction = {
+			unstaged: [{ path: "README.md", status: "Modified", is_binary: false }],
+			staged: [],
+			conflicted: [],
+		};
+		const afterAction = {
+			unstaged: [],
+			staged: [{ path: "README.md", status: "Modified", is_binary: false }],
+			conflicted: [],
+		};
+		const held = deferred<typeof beforeAction>();
+		const caughtUp = deferred<typeof afterAction>();
+		let statusReads = 0;
+		mockInvoke.mockImplementation((cmd: string) => {
+			if (cmd === "get_status") {
+				statusReads += 1;
+				if (statusReads === 1) return Promise.resolve(beforeAction);
+				if (statusReads === 2) return held.promise;
+				return caughtUp.promise;
+			}
+			if (cmd === "get_operation_state") {
+				return Promise.resolve({ op_type: "None" });
+			}
+			return Promise.resolve(undefined);
+		});
+
+		render(StagingPanel, {
+			props: { repoPath: "/test/repo" },
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
+		const row = await screen.findByText("README.md");
+		eventHandlers.get("repo-changed")?.({ payload: "/test/repo" });
+		scheduler.advanceBy(200);
+		await tick();
+		expect(statusReads).toBe(2);
+
+		await fireEvent.mouseEnter(stagingRowFor(row));
+		await fireEvent.click(screen.getByLabelText("Stage file"));
+		await waitFor(() => {
+			expect(mockInvoke).toHaveBeenCalledWith("stage_file", {
+				path: "/test/repo",
+				filePath: "README.md",
+			});
+		});
+
+		held.resolve(beforeAction);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(statusReads).toBe(2);
+		expect(screen.queryByLabelText("Stage file")).toBeNull();
+
+		scheduler.advanceBy(200);
+		await tick();
+		expect(statusReads).toBe(3);
+		expect(screen.queryByLabelText("Stage file")).toBeNull();
+
+		caughtUp.resolve(afterAction);
+		await waitFor(() => {
+			expect(screen.getByText("README.md")).toBeInTheDocument();
+		});
+		await fireEvent.mouseEnter(stagingRowFor(screen.getByText("README.md")));
+		expect(await screen.findByLabelText("Unstage file")).toBeInTheDocument();
 	});
 });
 

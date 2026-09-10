@@ -59,7 +59,7 @@ export class AppDriver {
 	readonly window: FakeWindow;
 	readonly webview: FakeWebview;
 	readonly path: FakePath;
-	/** The application's timers, frozen. A debounced refresh runs only when a
+	/** The application's timers, frozen. A scheduled refresh runs only when a
 	 *  test fires them. */
 	readonly scheduler: FakeScheduler;
 
@@ -125,7 +125,7 @@ export class AppDriver {
 	}
 
 	/** How many times the application has refetched the commit graph. What a
-	 *  debounced refresh is observable as when the graph it produces is
+	 *  scheduled refresh is observable as when the graph it produces is
 	 *  unchanged. */
 	refreshes(): number {
 		return this.internals.invokes.filter(
@@ -134,8 +134,8 @@ export class AppDriver {
 	}
 
 	/**
-	 * Runs the application's debounced work: waits for a timer to be armed, then
-	 * fires it. What the debounce goes on to do is still asynchronous, so the
+	 * Runs the application's scheduled work: waits for a timer to be armed, then
+	 * fires it. What the callback goes on to do is still asynchronous, so the
 	 * assertion after this waits on the state it expects.
 	 */
 	async elapse(): Promise<void> {
@@ -146,10 +146,15 @@ export class AppDriver {
 		this.scheduler.flush();
 	}
 
+	/** Advances only timers whose virtual deadline falls in this interval. */
+	advanceBy(elapsedMs: number): void {
+		this.scheduler.advanceBy(elapsedMs);
+	}
+
 	/**
 	 * Waits for `condition`, firing the application's timers as they arm. One
-	 * user action can produce several `repo-changed` emits, each arming the
-	 * debounce again; the test asserts on the state it wants rather than
+	 * user action can produce several `repo-changed` emits and catch-up timers;
+	 * the test asserts on the state it wants rather than
 	 * counting emits it does not control.
 	 */
 	async elapseUntil<T>(description: string, condition: () => T | null) {
@@ -163,11 +168,11 @@ export class AppDriver {
 	}
 
 	/**
-	 * Runs every debounced refresh to completion, so the next gesture acts on a
+	 * Runs every scheduled refresh to completion, so the next gesture acts on a
 	 * view that will not re-render under it. A refresh that lands mid-gesture
 	 * discards a selection the test had just made.
 	 *
-	 * Quiet has to hold twice, either side of a Svelte flush. The debounce
+	 * Quiet has to hold twice, either side of a Svelte flush. The scheduled
 	 * callback only bumps a signal; the invoke it leads to is issued from an
 	 * effect a microtask later, so a single sample can see no timer and no
 	 * invoke while a refresh is already on its way.

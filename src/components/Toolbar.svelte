@@ -9,13 +9,16 @@ import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
+import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
+import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import {
 	isValidReviewFilter,
 	REVIEW_FILTER_OPTIONS,
 } from "../lib/review-filter.js";
+import { getScheduler } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import { tooltip } from "../lib/tooltip.js";
 import type { ReviewFilter, ReviewTone, StashEntry } from "../lib/types.js";
@@ -55,6 +58,7 @@ let {
 	reviewCommentTone = null,
 	onreviewfilterchange,
 }: Props = $props();
+const scheduler = getScheduler();
 
 // The Review button reflects whether the review PANEL is showing, not merely that a
 // session is alive: active only when reviewActive AND the center pane shows the panel.
@@ -108,35 +112,38 @@ let canRedo = $derived(
 		pendingRedo.repoPath === repoPath,
 );
 
-async function checkUndoAvailable() {
+async function readUndoState(path: string) {
+	let nextCanUndo = false;
+	let nextHeadOid: string | null = null;
 	try {
-		canUndo = await safeInvoke<boolean>("check_undo_available", {
-			path: repoPath,
+		nextCanUndo = await safeInvoke<boolean>("check_undo_available", {
+			path,
 		});
-	} catch {
-		canUndo = false;
-	}
+	} catch {}
 	try {
-		headOid = await safeInvoke<string | null>("head_oid", { path: repoPath });
-	} catch {
-		headOid = null;
-	}
+		nextHeadOid = await safeInvoke<string | null>("head_oid", { path });
+	} catch {}
+	return { canUndo: nextCanUndo, headOid: nextHeadOid };
 }
 
 // Check undo availability on mount and repo changes
 $effect(() => {
-	// Re-run when repoPath changes
-	void repoPath;
-	checkUndoAvailable();
-
-	const unlistenPromise = listen<string>("repo-changed", (event) => {
-		if (event.payload === repoPath) {
-			checkUndoAvailable();
-		}
+	const path = repoPath;
+	let active = true;
+	const refresh = createCoalescedTask(scheduler, async () => {
+		const next = await readUndoState(path);
+		if (!active) return;
+		canUndo = next.canUndo;
+		headOid = next.headOid;
 	});
+	void refresh.run();
+
+	const unsubscribe = subscribeToRepoChanges(path, refresh);
 
 	return () => {
-		unlistenPromise.then((fn) => fn());
+		active = false;
+		refresh.dispose();
+		unsubscribe();
 	};
 });
 

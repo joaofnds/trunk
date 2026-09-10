@@ -158,9 +158,17 @@
 
 1. `notify_debouncer_mini` detects change in watched repo directory (300ms debounce)
 2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with repo path string
-3. `App.svelte` listener calls `safeInvoke("get_dirty_counts", { path })` → updates `tab.dirty` badge
-4. `RepoView.svelte` listener increments `refreshSignal` → `CommitGraph` and `StagingPanel` re-fetch
-5. `Toolbar.svelte` listener calls `check_undo_available` to update undo button state
+3. Path-scoped frontend consumers arm a fixed 200 ms first deadline; more events do not move it
+4. Each consumer admits one active read and one pending catch-up, so status, graph, review,
+   toolbar and dirty-count work complete independently without growing with the event count
+5. `App.svelte` refreshes each open tab's dirty badge; `RepoView.svelte` notifies its graph,
+   refs, recovery prompt and rendered working-tree diff while separately refreshing its own
+   dirty counts, HEAD branch and selected file
+6. Post-mutation status and review callers enter the same guard and wait for a run admitted
+   after the active read rather than returning its older completion
+
+The watcher still reports ignored build output. The frontend bound limits resulting work but
+does not filter those events or establish a build-time CPU target.
 
 ### Staging a File
 

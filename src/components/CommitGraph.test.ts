@@ -2,10 +2,12 @@ import { MenuItem } from "@tauri-apps/api/menu";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import { resetCache } from "../lib/text-measure.js";
 import type { ReviewTone } from "../lib/types.js";
 import CommitGraph from "./CommitGraph.svelte";
@@ -743,7 +745,7 @@ describe("CommitGraph", () => {
 		});
 	});
 
-	describe("out-of-order refreshes", () => {
+	describe("refresh backpressure", () => {
 		const props = (refreshSignal: number) => ({
 			repoPath: "/test/repo",
 			tabActive: true,
@@ -757,7 +759,8 @@ describe("CommitGraph", () => {
 			};
 		}
 
-		it("keeps the newest layout when an older refresh resolves last", async () => {
+		it("admits one active refresh and one later catch-up", async () => {
+			const scheduler = new FakeScheduler();
 			const pending: ((page: unknown) => void)[] = [];
 			installReads({
 				override: (cmd) =>
@@ -765,7 +768,10 @@ describe("CommitGraph", () => {
 						? new Promise((resolve) => pending.push(resolve))
 						: undefined,
 			});
-			const { rerender } = render(CommitGraph, { props: props(0) });
+			const { rerender } = render(CommitGraph, {
+				props: props(0),
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
 			await waitFor(() => {
 				expect(screen.getByText("first commit")).toBeInTheDocument();
 			});
@@ -773,15 +779,20 @@ describe("CommitGraph", () => {
 			await flush();
 			await rerender(props(2));
 			await flush();
+			expect(pending).toHaveLength(1);
+
+			pending[0](graphPage("first refresh", "5"));
+			await flush();
+			expect(pending).toHaveLength(1);
+
+			scheduler.advanceBy(200);
+			await flush();
 			expect(pending).toHaveLength(2);
-
-			pending[1](graphPage("fresh refresh", "f"));
-			await flush();
-			pending[0](graphPage("stale refresh", "5"));
+			pending[1](graphPage("caught-up refresh", "f"));
 			await flush();
 
-			expect(screen.getByText("fresh refresh")).toBeInTheDocument();
-			expect(screen.queryByText("stale refresh")).not.toBeInTheDocument();
+			expect(screen.getByText("caught-up refresh")).toBeInTheDocument();
+			expect(screen.queryByText("first refresh")).not.toBeInTheDocument();
 		});
 	});
 

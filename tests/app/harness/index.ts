@@ -14,7 +14,7 @@ import { FakeWindow } from "../fakes/window.js";
 import { installDomPolyfills, restoreDomPolyfills } from "./dom.js";
 import { HostClient, type RepoSpec } from "./host-client.js";
 import { TauriInternals } from "./internals.js";
-import { describeTimeout } from "./wait.js";
+import { describeTimeout, driveWaitsWith } from "./wait.js";
 
 export type { RepoSpec, SpecStep } from "./host-client.js";
 
@@ -68,6 +68,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 	internals.route(Object.values(fakes));
 
 	const scheduler = new FakeScheduler();
+	driveWaitsWith((elapsedMs) => scheduler.advanceBy(elapsedMs));
 
 	installDomPolyfills({ viewportHeight: options.viewportHeight });
 	internals.install();
@@ -90,6 +91,7 @@ export async function setup(options: SetupOptions = {}): Promise<AppDriver> {
 		running = { host, internals, root, app, untrackScroll };
 		return new AppDriver(host, internals, fakes, scheduler, repoPath);
 	} catch (error) {
+		driveWaitsWith(null);
 		root.remove();
 		internals.uninstall();
 		restoreDomPolyfills();
@@ -107,6 +109,7 @@ export async function teardown(): Promise<void> {
 	const { host, internals, root, app, untrackScroll } = running;
 	running = null;
 	describeTimeout(null);
+	driveWaitsWith(null);
 
 	await unmount(app);
 	untrackScroll();

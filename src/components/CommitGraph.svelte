@@ -13,7 +13,7 @@ import {
 } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { tick, untrack } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import {
 	mergeBranch,
@@ -21,6 +21,10 @@ import {
 	resolveForkPoint,
 } from "../lib/branch-op.js";
 import { copySha } from "../lib/clipboard.js";
+import {
+	type CoalescedTask,
+	createCoalescedTask,
+} from "../lib/coalesced-task.js";
 import {
 	authorContentWidth,
 	dateContentWidth,
@@ -55,6 +59,7 @@ import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
+import { getScheduler } from "../lib/scheduler.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
@@ -147,6 +152,7 @@ let {
 	// visibility set for this repo, so there is nothing to wait for.
 	visibilityResolved: refVisibilityResolved = true,
 }: Props = $props();
+const scheduler = getScheduler();
 
 // Per-row comment badge count. Gated on the toggle + an active session so the
 // badge's self-hide at 0 also enforces the gate (children stay dumb). The WIP
@@ -228,13 +234,10 @@ let wipDiffStat = $state<DiffStat | undefined>(undefined);
 let columnVisibilityResolved = $state(false);
 // Plain (non-reactive) latch for the hidden→visible backfill trigger.
 let diffColumnWasVisible = false;
-// Monotonic token so out-of-order WIP-stat responses can't clobber a newer one
-// (the working tree changes constantly; only the latest fetch's result is valid).
-let wipStatsSeq = 0;
+let graphActive = true;
 
-// Same token for whole-graph refreshes. Layout now depends on worktree dirtiness, so
-// a burst of edits issues overlapping refreshes; a late one would freeze a layout
-// that disagrees with the tree until the next fs event.
+// Whole-graph generation. showGraph can replace the page independently while a
+// refresh is active, so an older response must not overwrite that replacement.
 let refreshSeq = 0;
 
 let columnWidths = $state<ColumnWidths>({
@@ -412,15 +415,19 @@ const reviewOids = $derived(reviewComments?.oids ?? EMPTY_OIDS);
 let pendingBase = $state<string | null>(null);
 
 async function loadStashMap() {
+	const path = repoPath;
 	try {
 		const stashes = await safeInvoke<StashEntry[]>("list_stashes", {
-			path: repoPath,
+			path,
 		});
+		if (!graphActive || path !== repoPath) return;
 		stashOids = new Set(stashes.map((stash) => stash.oid));
 	} catch {
-		stashOids = new Set();
+		if (graphActive && path === repoPath) stashOids = new Set();
 	}
 }
+
+const stashMapRefresh = createCoalescedTask(scheduler, loadStashMap);
 
 function startColumnResize(
 	column: keyof ColumnWidths,
@@ -1355,8 +1362,9 @@ function overlayMouseLeave() {
 // graph never waits on stats; merges into the latest commitStats map AFTER the
 // await (synchronous read-modify-write) so concurrent page fetches can't drop
 // each other's entries. Gated on the column being visible.
-async function fetchPageStats(pageOffset: number) {
-	if (!columnVisibilityResolved || !columnVisibility.diff) return;
+async function readPageStats(pageOffset: number) {
+	if (!graphActive || !columnVisibilityResolved || !columnVisibility.diff)
+		return;
 	try {
 		const stats = await safeInvoke<Record<string, DiffStat>>(
 			"get_commit_stats",
@@ -1364,13 +1372,32 @@ async function fetchPageStats(pageOffset: number) {
 		);
 		// Re-check after the await: the column may have been toggled off while the
 		// request was in flight — honor "hidden column does zero work".
-		if (!columnVisibility.diff) return;
+		if (!graphActive || !columnVisibility.diff) return;
 		const next = new Map(commitStats);
 		for (const [oid, stat] of Object.entries(stats)) next.set(oid, stat);
 		commitStats = next;
 	} catch {
 		// Stats are an enhancement; a failure must never disrupt the graph.
 	}
+}
+
+const pageStatsRefreshes = new Map<number, CoalescedTask>();
+
+function pageStatsRefresh(pageOffset: number): CoalescedTask {
+	let refresh = pageStatsRefreshes.get(pageOffset);
+	if (!refresh) {
+		refresh = createCoalescedTask(scheduler, () => readPageStats(pageOffset));
+		pageStatsRefreshes.set(pageOffset, refresh);
+	}
+	return refresh;
+}
+
+function fetchPageStats(pageOffset: number): Promise<void> {
+	return pageStatsRefresh(pageOffset).run();
+}
+
+function requestPageStats(pageOffset: number): void {
+	pageStatsRefresh(pageOffset).request();
 }
 
 // Backfill every loaded page's stats — used when the column is toggled on after
@@ -1388,12 +1415,12 @@ async function backfillAllPageStats() {
 // 0 during a clean→dirty refresh. The working tree is already in its new state,
 // so get_wip_diff_stats returns the correct value; when wipCount catches up and
 // the WIP row appears, its stat is already loaded.
-async function fetchWipStats() {
+async function readWipStats() {
+	if (!graphActive) return;
 	if (!columnVisibilityResolved || !columnVisibility.diff) {
 		wipDiffStat = undefined;
 		return;
 	}
-	const seq = ++wipStatsSeq;
 	try {
 		const stat = await safeInvoke<DiffStat>("get_wip_diff_stats", {
 			path: repoPath,
@@ -1401,12 +1428,25 @@ async function fetchWipStats() {
 		// Drop the response if a newer fetch won (rapid working-tree edits) or the
 		// column was toggled off in flight — honor "hidden column does zero work",
 		// matching fetchPageStats' post-await re-check.
-		if (seq !== wipStatsSeq || !columnVisibility.diff) return;
+		if (!graphActive || !columnVisibility.diff) return;
 		wipDiffStat = stat;
 	} catch {
-		if (seq === wipStatsSeq) wipDiffStat = undefined;
+		if (graphActive) wipDiffStat = undefined;
 	}
 }
+
+const wipStatsRefresh = createCoalescedTask(scheduler, readWipStats);
+
+function requestWipStats(): void {
+	wipStatsRefresh.request();
+}
+
+onDestroy(() => {
+	graphActive = false;
+	wipStatsRefresh.dispose();
+	stashMapRefresh.dispose();
+	for (const refresh of pageStatsRefreshes.values()) refresh.dispose();
+});
 
 async function loadMore(): Promise<PageResult> {
 	// Blocks every caller -- the mount effect below, VirtualList's own
@@ -1414,7 +1454,7 @@ async function loadMore(): Promise<PageResult> {
 	// independent of that effect), and scrollToOid -- until BranchSidebar's
 	// stored-visibility read has resolved. Otherwise this pages against
 	// open_repo's unfiltered default, which is the paint TRUNK-128 fixed.
-	if (!refVisibilityResolved) return "idle";
+	if (!graphActive || !refVisibilityResolved) return "idle";
 	if (loading || !hasMore) return "idle";
 	loading = true;
 	error = null;
@@ -1431,22 +1471,22 @@ async function loadMore(): Promise<PageResult> {
 		// Drop it rather than append: these rows were laid out under the old
 		// graph, and offset now indexes the new one. The viewport re-triggers a
 		// load for whatever it still needs.
-		if (seq !== refreshSeq) return "stale";
+		if (!graphActive || seq !== refreshSeq) return "stale";
 		commits.push(...response.commits);
 		maxColumns = response.max_columns;
 		updateContentWidths(response.commits);
 		offset += response.commits.length;
 		if (response.commits.length < BATCH) hasMore = false;
-		void fetchPageStats(requestedOffset);
+		requestPageStats(requestedOffset);
 		return "appended";
 	} catch (e) {
 		// A page that failed for the graph we no longer show is not this graph's
 		// error, and reporting it would bury the rebuilt view under a stale bar.
-		if (seq !== refreshSeq) return "stale";
+		if (!graphActive || seq !== refreshSeq) return "stale";
 		error = errorMessage(e, "Failed to load commits");
 		return "failed";
 	} finally {
-		loading = false;
+		if (graphActive) loading = false;
 	}
 }
 
@@ -1499,6 +1539,7 @@ export function loadedRows(): number {
  *  visibility change returns it. Any refresh still in flight is older than this
  *  page and is dropped when it lands. */
 export function showGraph(response: GraphResponse): void {
+	if (!graphActive) return;
 	refreshSeq += 1;
 	// Swap data atomically -- old data stays visible until this assignment
 	commits = response.commits;
@@ -1510,26 +1551,29 @@ export function showGraph(response: GraphResponse): void {
 	// Drop stale per-oid stats (amend/rebase may have rewritten oids) and
 	// refetch the now-current first page + the WIP row.
 	commitStats = new Map();
-	void fetchPageStats(0);
-	void fetchWipStats();
+	requestPageStats(0);
+	requestWipStats();
 }
 
-async function refresh() {
+async function refreshGraph() {
 	const seq = ++refreshSeq;
 	try {
 		const response = await safeInvoke<GraphResponse>("refresh_commit_graph", {
 			path: repoPath,
 			loaded: offset,
 		});
-		if (seq !== refreshSeq) return;
+		if (!graphActive || seq !== refreshSeq) return;
 		showGraph(response);
-		await loadStashMap();
+		await stashMapRefresh.run();
 	} catch (e) {
-		if (seq !== refreshSeq) return;
+		if (!graphActive || seq !== refreshSeq) return;
 		error = errorMessage(e, "Failed to load commits");
 		// Keep old commits visible on error -- do NOT clear
 	}
 }
+
+const graphRefresh = createCoalescedTask(scheduler, refreshGraph);
+onDestroy(() => graphRefresh.dispose());
 
 // Waits on the parent's ref-visibility resolution before the first page load, so
 // this never paints against open_repo's unfiltered default -- the backend has
@@ -1540,7 +1584,7 @@ $effect(() => {
 	if (!refVisibilityResolved) return;
 	untrack(async () => {
 		await loadMore();
-		await loadStashMap();
+		await stashMapRefresh.run();
 		// Diff stats (page + WIP) are driven by the visibility-resolution effect
 		// below, so the column does zero stat work until the persisted visibility
 		// is known.
@@ -1561,7 +1605,7 @@ $effect(() => {
 	if (visible && !diffColumnWasVisible) {
 		untrack(() => {
 			void backfillAllPageStats();
-			void fetchWipStats();
+			requestWipStats();
 		});
 	}
 	diffColumnWasVisible = visible;
@@ -1585,7 +1629,7 @@ $effect(() => {
 	// Access refreshSignal to create reactive dependency
 	if (!refVisibilityResolved) return;
 	if (refreshSignal !== undefined && refreshSignal > 0) {
-		untrack(() => refresh());
+		untrack(() => graphRefresh.request());
 	}
 });
 

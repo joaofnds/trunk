@@ -2,11 +2,13 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { safeInvoke } from "../lib/invoke.js";
 import {
 	createRemoteState,
 	type RemoteState,
 } from "../lib/remote-state.svelte.js";
+import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { UndoEntry } from "../lib/undo-redo.svelte.js";
 import Toolbar from "./Toolbar.svelte";
@@ -67,6 +69,14 @@ function makeUndoRedo() {
 		pop: vi.fn(),
 		clear: vi.fn(),
 	};
+}
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
 }
 
 describe("Toolbar", () => {
@@ -130,6 +140,49 @@ describe("Toolbar", () => {
 		});
 		expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Redo" })).toBeInTheDocument();
+	});
+
+	it("admits one undo-state read and one catch-up while repo events continue", async () => {
+		const scheduler = new FakeScheduler();
+		const first = deferred<boolean>();
+		let undoReads = 0;
+		let repoChanged: ((event: { payload: string }) => void) | undefined;
+		vi.mocked(listen).mockImplementation(async (name, callback) => {
+			if (name === "repo-changed") {
+				repoChanged = callback as (event: { payload: string }) => void;
+			}
+			return () => {};
+		});
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) => {
+			if (cmd === "check_undo_available") {
+				undoReads += 1;
+				return undoReads === 1 ? first.promise : Promise.resolve(false);
+			}
+			if (cmd === "head_oid") return Promise.resolve(null);
+			return Promise.resolve(undefined);
+		});
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+			context: new Map([[SCHEDULER, scheduler]]),
+		});
+		await waitFor(() => expect(undoReads).toBe(1));
+
+		for (let index = 0; index < 5; index += 1) {
+			repoChanged?.({ payload: "/test/repo" });
+			scheduler.advanceBy(200);
+		}
+		expect(undoReads).toBe(1);
+
+		first.resolve(false);
+		await waitFor(() => expect(scheduler.pending).toBe(1));
+		scheduler.advanceBy(200);
+		await waitFor(() => expect(undoReads).toBe(2));
 	});
 
 	it("disables Pull and Push when remote operation is running", () => {

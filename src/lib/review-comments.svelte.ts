@@ -1,7 +1,10 @@
 import { listen } from "@tauri-apps/api/event";
+import { createCoalescedTask } from "./coalesced-task.js";
 import { buildCommentCounts } from "./comment-counts.js";
 import { errorMessage } from "./error-report.js";
 import { safeInvoke } from "./invoke.js";
+import { subscribeToRepoChanges } from "./repo-change-subscription.js";
+import { realScheduler, type Scheduler } from "./scheduler.js";
 import type { Review, ReviewSnapshots, SessionCommit, Thread } from "./types";
 
 /**
@@ -58,7 +61,10 @@ function firstRealFailure(
 	return null;
 }
 
-export function createReviewComments(repoPath: string): ReviewCommentsManager {
+export function createReviewComments(
+	repoPath: string,
+	scheduler: Scheduler = realScheduler,
+): ReviewCommentsManager {
 	const state = $state({
 		threads: [] as Thread[],
 		reviews: [] as Review[],
@@ -87,16 +93,15 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	// payload is that canonical string, so the listener filters on it. Tracked
 	// separately so the filter can fail-closed while it is still null.
 	let canonicalPath: string | null = null;
+	let cancelled = false;
 
-	// Generation guard. Refreshes overlap freely — a reviews-changed burst
-	// landing on a manual refresh — and every write below is a whole-state
-	// replacement, so a slow older read would otherwise install its snapshot over
-	// a newer one. Modelled on BranchSidebar's loadSeq.
+	// Generation guard protects this batch from an independent state replacement.
 	let loadSeq = 0;
 
-	async function refresh(): Promise<void> {
+	async function readReviewState(): Promise<void> {
 		const seq = ++loadSeq;
 		await learnCanonicalPath();
+		if (cancelled || seq !== loadSeq) return;
 
 		// allSettled, not all: a read can reject while the repo is closing, and
 		// with Promise.all one rejection aborts the whole update, leaving stale
@@ -111,7 +116,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 				safeInvoke<SessionCommit[]>("list_session_commits", { path: repoPath }),
 			]);
 
-		if (seq !== loadSeq) return;
+		if (cancelled || seq !== loadSeq) return;
 
 		state.reviews =
 			reviewsR.status === "fulfilled" && Array.isArray(reviewsR.value)
@@ -168,13 +173,21 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		state.revision += 1;
 	}
 
+	const reviewRefresh = createCoalescedTask(scheduler, readReviewState);
+	const stalenessRefresh = createCoalescedTask(scheduler, async () => {
+		await safeInvoke("refresh_thread_staleness", { path: repoPath });
+	});
+
+	function refresh(): Promise<void> {
+		return reviewRefresh.run();
+	}
+
 	// Live coordination: refresh when a reviews-changed event arrives for this
 	// repo's canonical path. The payload is the canonical path; until one read
 	// has reported it, fail closed so cross-repo events during the cold-start
 	// window don't trigger a refresh. The `cancelled` flag disposes a listener
 	// the promise delivers after destroy().
 	const unlisteners: (() => void)[] = [];
-	let cancelled = false;
 	function subscribe(promise: Promise<() => void>): void {
 		promise.then((fn) => {
 			if (cancelled) fn();
@@ -188,7 +201,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		listen<string | null>("reviews-changed", (event) => {
 			if (!canonicalPath) return;
 			if (event.payload != null && event.payload !== canonicalPath) return;
-			refresh().catch(() => {});
+			reviewRefresh.invalidate();
 		}),
 	);
 
@@ -196,14 +209,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 	// have gone stale. The backend decides and stays silent unless a thread
 	// actually moved; when one did, its own reviews-changed brings the new
 	// rows back through the listener above.
-	subscribe(
-		listen<string>("repo-changed", (event) => {
-			if (event.payload !== repoPath) return;
-			safeInvoke("refresh_thread_staleness", { path: repoPath }).catch(
-				() => {},
-			);
-		}),
-	);
+	unlisteners.push(subscribeToRepoChanges(repoPath, stalenessRefresh));
 
 	// Retried on every refresh, not resolved once: a single rejection would
 	// otherwise leave the filter failing closed for the rest of the tab's life,
@@ -219,7 +225,7 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		}
 	}
 
-	refresh().catch(() => {});
+	refresh().catch((error) => console.error("Review refresh failed", error));
 
 	return {
 		get threads() {
@@ -264,6 +270,9 @@ export function createReviewComments(repoPath: string): ReviewCommentsManager {
 		refresh,
 		destroy() {
 			cancelled = true;
+			loadSeq += 1;
+			reviewRefresh.dispose();
+			stalenessRefresh.dispose();
 			for (const unlisten of unlisteners) unlisten();
 		},
 	};

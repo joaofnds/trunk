@@ -2,6 +2,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { onDestroy, untrack } from "svelte";
 import { buildTree, collectFilePaths } from "../lib/build-tree.js";
+import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { buildCommentCounts } from "../lib/comment-counts.js";
 import {
 	commentsForView,
@@ -22,9 +23,9 @@ import { resolveDiffTarget } from "../lib/diff-in-view.js";
 import { reportErrorToast } from "../lib/error-report.js";
 import { patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
-import { createOwnedTimer } from "../lib/owned-timer.js";
 import { span } from "../lib/perf.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
+import { subscribeToRepoChanges } from "../lib/repo-change-subscription.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
@@ -38,6 +39,7 @@ import {
 	countBadgeThreads,
 } from "../lib/review-filter.js";
 import { createReviewSession } from "../lib/review-session.svelte.js";
+import { getScheduler } from "../lib/scheduler.js";
 import {
 	clearCommitDraft,
 	getCommitDraft,
@@ -157,8 +159,13 @@ let {
 	onleftpanewidthchange,
 	onrightpanewidthchange,
 }: Props = $props();
+const scheduler = getScheduler();
+let repoViewActive = true;
 
-const repoChangedRefresh = createOwnedTimer();
+const repoNotification = createCoalescedTask(scheduler, async () => {
+	handleRefresh();
+	diffRefreshToken += 1;
+});
 
 // Center-pane Review-mode state (UI-SPEC:133, LOCKED to the center pane). The
 // rune owns rightPaneMode (panel|diff); jumpTo composes the existing
@@ -171,7 +178,10 @@ const reviewSession = createReviewSession();
 // one reviews-changed subscription. repoPath is stable for this tab's RepoView
 // instance (App keys it by tab.id), so the one-time capture is intentional;
 // the rune owns its own listener teardown via destroy().
-const reviewComments = createReviewComments(untrack(() => repoPath));
+const reviewComments = createReviewComments(
+	untrack(() => repoPath),
+	scheduler,
+);
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
 onDestroy(() => reviewComments.destroy());
 
@@ -311,7 +321,22 @@ let selectedFile = $state<{
 let stagingDiffFiles = $state.raw<FileDiff[]>([]);
 let stagingDiffLoading = $state(false);
 let selectGeneration = 0;
-// Bumped on every debounced repo-changed so the rendered-markdown preview
+let selectedDiffEmptyGeneration = -1;
+
+interface SelectedDiffLoad {
+	path: string;
+	kind: "unstaged" | "staged";
+	options?: DiffRequestOptions;
+	generation: number;
+	reportError: boolean;
+}
+
+let pendingSelectedDiff: SelectedDiffLoad | null = null;
+const selectedDiffRefresh = createCoalescedTask(
+	scheduler,
+	readSelectedFileDiff,
+);
+// Bumped on every coalesced repo-changed notification so the rendered-markdown preview
 // refetches alongside Source's fileDiffs (the fs watcher only reaches Source's
 // data path; the preview holds its own fetch).
 let diffRefreshToken = $state(0);
@@ -655,11 +680,12 @@ $effect(() => {
 
 async function loadDirtyCounts() {
 	const seq = ++dirtyCountsSeq;
+	const path = repoPath;
 	try {
 		const result = await safeInvoke<DirtyCounts>("get_dirty_counts", {
-			path: repoPath,
+			path,
 		});
-		if (seq !== dirtyCountsSeq) return;
+		if (!repoViewActive || path !== repoPath || seq !== dirtyCountsSeq) return;
 		dirtyCounts = result;
 	} catch {
 		// non-fatal -- keep previous counts
@@ -667,21 +693,36 @@ async function loadDirtyCounts() {
 }
 
 async function loadHeadBranch() {
+	const path = repoPath;
 	try {
 		const refs = await safeInvoke<RefsResponse>("list_refs", {
-			path: repoPath,
+			path,
 		});
+		if (!repoViewActive || path !== repoPath) return;
 		headBranch = refs.local.find((b) => b.is_head)?.name;
 	} catch {
 		// non-fatal -- keep previous value
 	}
 }
 
+const dirtyCountsRefresh = createCoalescedTask(scheduler, loadDirtyCounts);
+const headBranchRefresh = createCoalescedTask(scheduler, loadHeadBranch);
+
+onDestroy(() => {
+	repoViewActive = false;
+	repoNotification.dispose();
+	dirtyCountsRefresh.dispose();
+	headBranchRefresh.dispose();
+	selectedDiffRefresh.dispose();
+});
+
 function handleRefresh() {
 	refreshSignal += 1;
 }
 
 function clearStagingDiff() {
+	selectGeneration += 1;
+	pendingSelectedDiff = null;
 	selectedFile = null;
 	stagingDiffFiles = [];
 	stagingDiffLoading = false;
@@ -805,30 +846,12 @@ async function handleFileSelect(
 	if (!repoPath) return;
 	if (kind === "conflicted") {
 		// MergeEditor loads its own data via get_merge_sides
+		selectGeneration += 1;
+		pendingSelectedDiff = null;
 		stagingDiffFiles = [];
 		return;
 	}
-	const gen = ++selectGeneration;
-	stagingDiffLoading = true;
-	try {
-		const command = kind === "unstaged" ? "diff_unstaged" : "diff_staged";
-		const options = buildDiffOptions();
-		const result = await safeInvoke<FileDiff[]>(command, {
-			path: repoPath,
-			filePath: path,
-			options,
-		});
-		if (gen !== selectGeneration) return;
-		stagingDiffFiles = result;
-	} catch (e) {
-		if (gen !== selectGeneration) return;
-		reportErrorToast(e, "Failed to load diff");
-		stagingDiffFiles = [];
-	} finally {
-		if (gen === selectGeneration) {
-			stagingDiffLoading = false;
-		}
-	}
+	await loadSelectedFileDiff(path, kind, undefined, true);
 }
 
 // Idempotent selection — never clears, never toggles. Loads commit detail
@@ -1137,30 +1160,82 @@ async function handleCommitFileSelect(path: string) {
 	await selectCommitFileIdempotent(path);
 }
 
+async function readSelectedFileDiff(): Promise<void> {
+	const load = pendingSelectedDiff;
+	if (!load) return;
+	const repo = repoPath;
+	try {
+		const command = load.kind === "unstaged" ? "diff_unstaged" : "diff_staged";
+		const reloadOptions = load.options ?? buildDiffOptions();
+		const result = await safeInvoke<FileDiff[]>(command, {
+			path: repo,
+			filePath: load.path,
+			options: reloadOptions,
+		});
+		if (
+			!repoViewActive ||
+			repo !== repoPath ||
+			load.generation !== selectGeneration ||
+			selectedFile?.path !== load.path ||
+			selectedFile.kind !== load.kind
+		)
+			return;
+		stagingDiffFiles = result;
+		if (
+			result.length === 0 ||
+			result.every((file) => file.hunks.length === 0)
+		) {
+			selectedDiffEmptyGeneration = load.generation;
+		}
+	} catch (error) {
+		if (
+			!repoViewActive ||
+			repo !== repoPath ||
+			load.generation !== selectGeneration
+		)
+			return;
+		if (load.reportError) reportErrorToast(error, "Failed to load diff");
+		stagingDiffFiles = [];
+	} finally {
+		if (repoViewActive && load.generation === selectGeneration) {
+			stagingDiffLoading = false;
+		}
+	}
+}
+
+function prepareSelectedFileDiff(
+	path: string,
+	kind: "unstaged" | "staged",
+	options: DiffRequestOptions | undefined,
+	reportError: boolean,
+	advanceGeneration = true,
+): number {
+	if (advanceGeneration) selectGeneration += 1;
+	const generation = selectGeneration;
+	selectedDiffEmptyGeneration = -1;
+	pendingSelectedDiff = { path, kind, options, generation, reportError };
+	stagingDiffLoading = true;
+	return generation;
+}
+
+async function loadSelectedFileDiff(
+	path: string,
+	kind: "unstaged" | "staged",
+	options: DiffRequestOptions | undefined,
+	reportError: boolean,
+): Promise<boolean> {
+	const generation = prepareSelectedFileDiff(path, kind, options, reportError);
+	await selectedDiffRefresh.run();
+	return selectedDiffEmptyGeneration === generation;
+}
+
 async function refetchFileDiff(
 	path: string,
 	kind: "unstaged" | "staged" | "conflicted",
 	options?: DiffRequestOptions,
 ): Promise<boolean> {
-	if (!repoPath) return false;
-	if (kind === "conflicted") return false; // MergeEditor handles its own data loading
-	const gen = selectGeneration;
-	try {
-		const command = kind === "unstaged" ? "diff_unstaged" : "diff_staged";
-		const reloadOptions = options ?? buildDiffOptions();
-		const result = await safeInvoke<FileDiff[]>(command, {
-			path: repoPath,
-			filePath: path,
-			options: reloadOptions,
-		});
-		if (gen !== selectGeneration) return false;
-		stagingDiffFiles = result;
-		return result.length === 0 || result.every((f) => f.hunks.length === 0);
-	} catch {
-		if (gen !== selectGeneration) return false;
-		stagingDiffFiles = [];
-		return false;
-	}
+	if (!repoPath || kind === "conflicted") return false;
+	return loadSelectedFileDiff(path, kind, options, false);
 }
 
 function handleTreeViewToggle() {
@@ -1171,10 +1246,10 @@ function handleTreeViewToggle() {
 // Load initial data
 $effect(() => {
 	void repoPath;
-	loadDirtyCounts();
-	loadHeadBranch();
+	void dirtyCountsRefresh.run();
+	void headBranchRefresh.run();
 	getTreeViewEnabled().then((v) => {
-		treeViewEnabled = v;
+		if (repoViewActive) treeViewEnabled = v;
 	});
 });
 
@@ -1236,29 +1311,25 @@ $effect(() => {
 
 // Listen for repo-changed events scoped to this repo
 $effect(() => {
-	let unlisten: (() => void) | undefined;
 	const path = repoPath;
-
-	listen<string>("repo-changed", (event) => {
-		if (event.payload === path) {
-			repoChangedRefresh.arm(() => {
-				handleRefresh();
-				loadDirtyCounts();
-				loadHeadBranch();
-				diffRefreshToken += 1;
-				if (selectedFile) {
-					refetchFileDiff(selectedFile.path, selectedFile.kind);
-				}
-			}, 200);
-		}
-	}).then((fn) => {
-		unlisten = fn;
+	return subscribeToRepoChanges(path, {
+		invalidate() {
+			repoNotification.invalidate();
+			dirtyCountsRefresh.invalidate();
+			headBranchRefresh.invalidate();
+			const selected = selectedFile;
+			if (selected && selected.kind !== "conflicted") {
+				prepareSelectedFileDiff(
+					selected.path,
+					selected.kind,
+					undefined,
+					false,
+					false,
+				);
+				selectedDiffRefresh.invalidate();
+			}
+		},
 	});
-
-	return () => {
-		unlisten?.();
-		repoChangedRefresh.cancel();
-	};
 });
 
 // Escape key handler for closing diffs

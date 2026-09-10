@@ -1,11 +1,13 @@
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
 import Search from "@lucide/svelte/icons/search";
+import { onDestroy } from "svelte";
 import {
 	mergeBranch,
 	rebaseBranch,
 	resolveForkPoint,
 } from "../lib/branch-op.js";
+import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import {
@@ -23,6 +25,7 @@ import {
 	toggleStash,
 	visibilityVerb,
 } from "../lib/ref-visibility.js";
+import { getScheduler } from "../lib/scheduler.js";
 import { getRefVisibility, setRefVisibility } from "../lib/store.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type {
@@ -73,6 +76,8 @@ let {
 	onopenrebaseeditor,
 	onopenmessageeditor,
 }: Props = $props();
+const scheduler = getScheduler();
+let sidebarActive = true;
 
 let refs = $state<RefsResponse | null>(null);
 let loading = $state(false);
@@ -135,7 +140,7 @@ async function pushVisibility(path: string, next: RefVisibility) {
 		visibility: next,
 		loaded: loadedRows?.() ?? 0,
 	});
-	onvisibilitychanged?.(graph);
+	if (sidebarActive && path === repoPath) onvisibilitychanged?.(graph);
 }
 
 async function saveVisibility(next: RefVisibility) {
@@ -149,6 +154,7 @@ async function saveVisibility(next: RefVisibility) {
 async function loadVisibility(path: string) {
 	try {
 		const stored = await getRefVisibility(path);
+		if (!sidebarActive || path !== repoPath) return;
 		visibility = stored;
 		// Opening a repository walks with everything visible, so a repo with a stored set
 		// needs it pushed before its first graph is drawn.
@@ -158,7 +164,7 @@ async function loadVisibility(path: string) {
 	} finally {
 		// Fires on failure too: CommitGraph's first load is gated on this signal, and
 		// a stuck gate would leave the graph with no first page at all.
-		onvisibilityresolved?.();
+		if (sidebarActive && path === repoPath) onvisibilityresolved?.();
 	}
 }
 
@@ -235,14 +241,15 @@ let tagMembers = $derived(
 // Load refs on mount and when repoPath changes
 $effect(() => {
 	const path = repoPath;
-	loadRefs(path);
-	loadVisibility(path);
+	void loadRefs(path);
+	void loadVisibility(path);
 });
 
 // Reload refs when parent signals a refresh (e.g. context menu actions)
 $effect(() => {
 	if (refreshSignal !== undefined && refreshSignal > 0) {
-		loadRefs(repoPath);
+		refsPath = repoPath;
+		refsRefresh.request();
 	}
 });
 
@@ -259,23 +266,38 @@ $effect(() => {
 	if (search) checkoutError = null;
 });
 
-async function loadRefs(path: string) {
+let refsPath = "";
+
+async function refreshRefs() {
+	const path = refsPath;
 	const seq = ++loadSeq;
 	loading = true;
 	try {
 		const result = await safeInvoke<RefsResponse>("list_refs", { path });
-		if (seq === loadSeq) {
+		if (sidebarActive && seq === loadSeq && path === refsPath) {
 			refs = result;
 		}
 	} catch {
-		if (seq === loadSeq) {
+		if (sidebarActive && seq === loadSeq && path === refsPath) {
 			refs = null;
 		}
 	} finally {
-		if (seq === loadSeq) {
+		if (sidebarActive && seq === loadSeq && path === refsPath) {
 			loading = false;
 		}
 	}
+}
+
+const refsRefresh = createCoalescedTask(scheduler, refreshRefs);
+onDestroy(() => {
+	sidebarActive = false;
+	loadSeq += 1;
+	refsRefresh.dispose();
+});
+
+async function loadRefs(path: string) {
+	refsPath = path;
+	await refsRefresh.run();
 }
 
 async function handleCheckout(branchName: string) {

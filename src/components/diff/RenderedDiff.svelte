@@ -1,6 +1,7 @@
 <script lang="ts">
-import { untrack } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
+import { createCoalescedTask } from "../../lib/coalesced-task.js";
 import type { PanelDiffKind } from "../../lib/comment-matching.js";
 import { externalLinks } from "../../lib/external-links.js";
 import { isTrunkError } from "../../lib/invoke.js";
@@ -10,6 +11,7 @@ import {
 	type DiffRow,
 	renderMarkdownDiff,
 } from "../../lib/markdown.js";
+import { getScheduler } from "../../lib/scheduler.js";
 import { createHorizontalScrollSync } from "../../lib/scroll-sync.js";
 import type { CommitDetail } from "../../lib/types.js";
 
@@ -45,7 +47,7 @@ interface Props {
 	contextLines: number;
 	ignoreWhitespace: boolean;
 	wordWrap: boolean;
-	// Bumped by the host when the repo changes on disk (RepoView's debounced
+	// Bumped by the host when the repo changes on disk (RepoView's coalesced
 	// repo-changed handler) so a stale preview refetches. Optional: the rebase-
 	// mode DiffPanel doesn't thread it (rebase-preview staleness is out of scope).
 	refreshToken?: number;
@@ -70,6 +72,7 @@ let {
 	refreshToken = 0,
 	hunkElements,
 }: Props = $props();
+const scheduler = getScheduler();
 
 // Each changed row's first content block, keyed by its document-order change
 // index. An action feeds this; the effect below projects it into the host's
@@ -130,15 +133,53 @@ type LoadState =
 
 let state = $state<LoadState>({ kind: "loading" });
 
-// Per-run token: each effect run bumps it, and a fetch's async result is only
-// applied if its run is still the latest. Without this, switching files or revs
-// while a fetch is in flight lets the slower stale request clobber the fresh one.
-let seq = 0;
-
 // The request the rows on screen were fetched for. A re-run whose request is
 // unchanged is the refresh token firing, which only the working-tree kinds
 // need to act on. Plain state, not `$state`: only the effect reads it.
 let fetched: string | null = null;
+let requested: string | null = null;
+let generation = 0;
+let active = true;
+
+type RenderArgs = Parameters<typeof renderMarkdownDiff>;
+interface PendingLoad {
+	args: RenderArgs;
+	request: string;
+	generation: number;
+}
+
+let pendingLoad: PendingLoad | null = null;
+
+async function readRenderedDiff(load: PendingLoad) {
+	try {
+		const diff = await renderMarkdownDiff(...load.args);
+		if (!active || load.generation !== generation) return;
+		fetched = load.request;
+		state = {
+			kind: "rows",
+			rows: diff.rows,
+			whitespaceOnly: diff.whitespaceOnly,
+			changedLines: diff.changedLines,
+		};
+	} catch (error) {
+		if (!active || load.generation !== generation) return;
+		state = {
+			kind: "error",
+			message: isTrunkError(error)
+				? error.message
+				: "Failed to render markdown",
+		};
+	}
+}
+
+const renderedRefresh = createCoalescedTask(scheduler, async () => {
+	const load = pendingLoad;
+	if (load) await readRenderedDiff(load);
+});
+onDestroy(() => {
+	active = false;
+	renderedRefresh.dispose();
+});
 
 const parentOid = $derived(commitDetail?.parent_oids[0] ?? null);
 
@@ -146,7 +187,6 @@ $effect(() => {
 	// Snapshot every dependency up front so the async resolve isn't racing a
 	// later reactive change. Layout/content-mode are deliberately NOT read here:
 	// they re-project the held array, they must not re-fetch.
-	const my = ++seq;
 	const repo = repoPath;
 	const file = { path: selectedPath, oldPath };
 	const kind = diffKind;
@@ -195,35 +235,19 @@ $effect(() => {
 	if (kind === "commit" && showing === "rows" && request === lastRequest)
 		return;
 
+	const inputChanged = request !== requested;
+	if (inputChanged) generation += 1;
+	requested = request;
+	const load = { args: [...args], request, generation } satisfies PendingLoad;
+	pendingLoad = load;
+
 	// Hold the rows already on screen while the replacement is in flight. The
 	// placeholder empties the scroller, and a scroller with no content is
 	// clamped to the top — which is the rendered preview jumping to the top of
 	// the document on every repo change (TRUNK-127). Only a pane with nothing to
 	// show yet shows the placeholder.
 	if (showing !== "rows") state = { kind: "loading" };
-	renderMarkdownDiff(...args)
-		.then((diff) => {
-			if (my === seq) {
-				// Recorded with the rows, never at request time: the skip above
-				// reads it as "the rows on screen already answer this request",
-				// and a re-run landing while the first fetch is still in flight
-				// would otherwise skip and leave the previous file on screen.
-				fetched = request;
-				state = {
-					kind: "rows",
-					rows: diff.rows,
-					whitespaceOnly: diff.whitespaceOnly,
-					changedLines: diff.changedLines,
-				};
-			}
-		})
-		.catch((e) => {
-			if (my !== seq) return;
-			state = {
-				kind: "error",
-				message: isTrunkError(e) ? e.message : "Failed to render markdown",
-			};
-		});
+	renderedRefresh.request();
 });
 
 const rows = $derived(state.kind === "rows" ? state.rows : []);

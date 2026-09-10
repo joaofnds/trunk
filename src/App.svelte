@@ -9,12 +9,17 @@ import TabBar from "./components/TabBar.svelte";
 import Toast from "./components/Toast.svelte";
 import Toolbar from "./components/Toolbar.svelte";
 import WelcomeScreen from "./components/WelcomeScreen.svelte";
+import {
+	type CoalescedTask,
+	createCoalescedTask,
+} from "./lib/coalesced-task.js";
 import { safeInvoke } from "./lib/invoke.js";
 import { focusInEditable, keyChord } from "./lib/keyboard.js";
 import {
 	createRemoteState,
 	type RemoteState,
 } from "./lib/remote-state.svelte.js";
+import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
 	getActiveTabId,
@@ -105,6 +110,8 @@ async function handleReviewFilterChange(filter: ReviewFilter) {
 // Tab state
 let tabs = $state<TabInfo[]>([]);
 let activeTabId = $state<string>("");
+const scheduler = getScheduler();
+const dirtyCountRefreshes = new Map<string, CoalescedTask>();
 
 const activeInlineCommentCount = $derived(
 	commentCounts.get(activeTabId)?.view ?? 0,
@@ -610,28 +617,61 @@ $effect(() => {
 
 // Dirty detection: listen for repo-changed events and update tab.dirty for ALL tabs (TAB-07, D-04, D-05)
 $effect(() => {
+	const livePaths = new Set(
+		tabs.flatMap((tab) => (tab.repoPath ? [tab.repoPath] : [])),
+	);
+	untrack(() => {
+		for (const [path, refresh] of dirtyCountRefreshes) {
+			if (livePaths.has(path)) continue;
+			refresh.dispose();
+			dirtyCountRefreshes.delete(path);
+		}
+	});
+});
+
+$effect(() => {
+	let disposed = false;
 	let unlisten: (() => void) | undefined;
 
-	listen<string>("repo-changed", async (event) => {
+	function refreshFor(repoPath: string): CoalescedTask {
+		let refresh = dirtyCountRefreshes.get(repoPath);
+		if (refresh) return refresh;
+
+		refresh = createCoalescedTask(scheduler, async () => {
+			const tab = tabs.find((candidate) => candidate.repoPath === repoPath);
+			if (!tab) return;
+			try {
+				const counts = await safeInvoke<{
+					staged: number;
+					unstaged: number;
+					conflicted: number;
+				}>("get_dirty_counts", { path: repoPath });
+				if (tabs.includes(tab)) {
+					tab.dirty = counts.staged + counts.unstaged > 0;
+				}
+			} catch {
+				// Non-fatal: keep the previous dirty state.
+			}
+		});
+		dirtyCountRefreshes.set(repoPath, refresh);
+		return refresh;
+	}
+
+	listen<string>("repo-changed", (event) => {
 		const repoPath = event.payload;
 		const tab = tabs.find((t) => t.repoPath === repoPath);
 		if (!tab) return;
-		try {
-			const counts = await safeInvoke<{
-				staged: number;
-				unstaged: number;
-				conflicted: number;
-			}>("get_dirty_counts", { path: repoPath });
-			tab.dirty = counts.staged + counts.unstaged > 0;
-		} catch {
-			// non-fatal -- keep previous dirty state
-		}
+		refreshFor(repoPath).invalidate();
 	}).then((fn) => {
-		unlisten = fn;
+		if (disposed) fn();
+		else unlisten = fn;
 	});
 
 	return () => {
+		disposed = true;
 		unlisten?.();
+		for (const refresh of dirtyCountRefreshes.values()) refresh.dispose();
+		dirtyCountRefreshes.clear();
 	};
 });
 

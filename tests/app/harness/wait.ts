@@ -23,12 +23,19 @@ const KNOWN_FLAKE =
  * `waitFor` call sites keep their two arguments and still get the evidence.
  */
 type TimeoutDescriber = () => string;
+type WaitDriver = (elapsedMs: number) => void;
 
 let describeHost: TimeoutDescriber | null = null;
+let driveApplication: WaitDriver | null = null;
 
 /** Registers the source the next timeout reports from, or clears it. */
 export function describeTimeout(source: TimeoutDescriber | null): void {
 	describeHost = source;
+}
+
+/** Lets eventual-state waits advance the application's injected virtual clock. */
+export function driveWaitsWith(source: WaitDriver | null): void {
+	driveApplication = source;
 }
 
 /** Never lets a failing diagnostic replace the failure being diagnosed. */
@@ -62,6 +69,7 @@ export async function waitFor<T>(
 				`timed out waiting for ${description}${diagnostics()}\n\n${KNOWN_FLAKE}`,
 			);
 		}
+		driveApplication?.(POLL_MS);
 		await delay(POLL_MS);
 	}
 }

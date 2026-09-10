@@ -52,13 +52,13 @@ re-try them.
 ## Wall-clock waits inside scenarios
 
 The app harness used to offer `settle()`, a 250 ms quiet window sized to outlast RepoView's
-200 ms `repo-changed` debounce. It cost that window on every call, and nothing tied the two
-numbers together: raising the debounce would have made every caller assert early. TRUNK-110
+former 200 ms `repo-changed` debounce. It cost that window on every call, and nothing tied the two
+numbers together: raising the delay would have made every caller assert early. TRUNK-110
 replaced it with a frozen scheduler the tests advance themselves (`docs/application-harness.md`
-§Writing a scenario), so a debounced refresh costs a flush instead of a window.
+§Writing a scenario), so scheduled refresh work costs a flush instead of a window.
 
 **Rule:** wait on observable state, never on a duration. Where the state comes from a
-debounce, advance the scheduler rather than sizing a window against it. (The testing skill's
+scheduled delay, advance the scheduler rather than sizing a window against it. (The testing skill's
 sleep-based-waits ban is the general form; this is its cost in this suite.)
 
 ## Freshly linked binaries pay a first-exec scan (TRUNK-12, 2026-08-31)
