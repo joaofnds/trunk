@@ -28,6 +28,7 @@ import type { RemoteState } from "../lib/remote-state.svelte.js";
 import { createReviewComments } from "../lib/review-comments.svelte.js";
 import {
 	createReviewEditorStore,
+	type ReviewEditorHost,
 	type ReviewEditorStore,
 } from "../lib/review-editors.svelte.js";
 import {
@@ -173,8 +174,11 @@ const reviewComments = createReviewComments(untrack(() => repoPath));
 const reviewEditors: ReviewEditorStore = createReviewEditorStore();
 onDestroy(() => reviewComments.destroy());
 
-const editorSessionForThread = (thread: Thread) =>
-	reviewEditors.thread(reviewComments.activeReviewId, thread.id);
+const editorSessionFor = (host: ReviewEditorHost) => (thread: Thread) =>
+	reviewEditors.thread(reviewComments.activeReviewId, host, thread.id);
+const editorSessionForPanelThread = editorSessionFor("review-panel");
+const editorSessionForCommitNoteThread = editorSessionFor("commit-notes");
+const editorSessionForDiffThread = editorSessionFor("diff");
 const editorDraftFor = (
 	reviewId: string | null,
 	surface: string,
@@ -1463,7 +1467,7 @@ function startRightResize(e: MouseEvent) {
             commentCounts={presentation.byFile}
             commentTones={presentation.toneByFile}
             activeReviewId={reviewComments.activeReviewId}
-            editorSessionForThread={editorSessionForThread}
+            editorSessionForThread={editorSessionForCommitNoteThread}
             editorDraftFor={editorDraftFor}
             {treeViewEnabled}
             ontreeviewtoggle={handleTreeViewToggle}
@@ -1492,7 +1496,7 @@ function startRightResize(e: MouseEvent) {
              height:100% (not flex:1) so the ReviewPanel scroll body has a constrained
              height — its parent .flex-1 is a flex *child* (Phase 72 gap closure). -->
         <div class="flex flex-col" style="height: 100%; min-height: 0; overflow: hidden;">
-          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} {reviewFilter} {editorSessionForThread} {editorDraftFor} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
+          <ReviewPanel {repoPath} session={reviewSession} {reviewComments} {reviewFilter} editorSessionForThread={editorSessionForPanelThread} {editorDraftFor} onJump={handleReviewJump} onJumpToCommit={handleReviewJumpToCommit} oncommentonfile={openFileFinder} />
         </div>
       {:else if showMergeEditor && selectedFile}
         <MergeEditor
@@ -1517,7 +1521,7 @@ function startRightResize(e: MouseEvent) {
           reviewCommentsVisible={selectedCompareFile ? false : reviewFilter !== "none"}
           {reviewFilter}
           {viewComments}
-          {editorSessionForThread}
+          editorSessionForThread={editorSessionForDiffThread}
           refreshToken={diffRefreshToken}
           loading={stagingDiffLoading}
           onhunkaction={async (filePath) => {
@@ -1595,7 +1599,7 @@ function startRightResize(e: MouseEvent) {
           commentCounts={presentation.byFile}
           commentTones={presentation.toneByFile}
           activeReviewId={reviewComments.activeReviewId}
-          {editorSessionForThread}
+          editorSessionForThread={editorSessionForCommitNoteThread}
           {editorDraftFor}
           {treeViewEnabled}
           ontreeviewtoggle={handleTreeViewToggle}

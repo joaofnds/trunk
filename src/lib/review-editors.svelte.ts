@@ -9,13 +9,20 @@ export interface ThreadEditorSession {
 	setEditingReply(id: string | null): void;
 }
 
+/** A mounted review surface whose same thread needs an independent editor. */
+export type ReviewEditorHost = "review-panel" | "commit-notes" | "diff";
+
 /**
  * Repository-tab lifetime for review editors. The key includes the active
  * review so a draft from one review cannot be submitted into another one after
  * switching the active review.
  */
 export interface ReviewEditorStore {
-	thread(reviewId: string | null, threadId: string): ThreadEditorSession;
+	thread(
+		reviewId: string | null,
+		host: ReviewEditorHost,
+		threadId: string,
+	): ThreadEditorSession;
 	draft(reviewId: string | null, surface: string, target: string): Draft;
 }
 
@@ -40,8 +47,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 	const drafts = new Map<string, Draft>();
 
 	return {
-		thread(reviewId, threadId) {
-			const key = `${reviewId ?? "none"}:thread:${threadId}`;
+		thread(reviewId, host, threadId) {
+			const key = JSON.stringify([reviewId, host, threadId]);
 			let session = threadSessions.get(key);
 			if (!session) {
 				session = createThreadEditorSession();
