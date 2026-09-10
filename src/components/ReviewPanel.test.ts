@@ -461,13 +461,17 @@ describe("ReviewPanel", () => {
 		it("keeps the note target and draft through a panel remount", async () => {
 			installReads({ commits, comments: [], resolutions: [] });
 			const editors = createReviewEditorStore();
+			const noteRequests: Array<[string | null, string]> = [];
 			const panelProps = {
 				repoPath: "/repo",
 				session: createReviewSession(),
 				reviewComments,
 				onJump: vi.fn(),
 				onJumpToCommit: vi.fn(),
-				editorNoteSessionFor: () => editors.note(ACTIVE_REVIEW, "review-note"),
+				editorNoteSessionFor: (reviewId: string | null, surface: string) => {
+					noteRequests.push([reviewId, surface]);
+					return editors.note(reviewId, surface);
+				},
 			};
 
 			const first = render(ReviewPanel, { props: panelProps });
@@ -491,6 +495,7 @@ describe("ReviewPanel", () => {
 			const args = callArgs("add_commit_thread");
 			expect(args?.commitOid).toBe(COMMIT_A);
 			expect(args?.text).toBe("unfinished note");
+			expect(noteRequests).toContainEqual([ACTIVE_REVIEW, "review-note"]);
 		});
 
 		it("allows only one add-note write while Save is pending", async () => {

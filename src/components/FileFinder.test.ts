@@ -34,7 +34,7 @@ describe("FileFinder", () => {
 	it("shows how many comments an unchanged file already carries", () => {
 		open({
 			commentCounts: new Map([["src/alpha.ts", 2]]),
-			commentTones: new Map([["src/alpha.ts", "open"]]),
+			commentTones: new Map([["src/alpha.ts", "done"]]),
 		});
 
 		const alpha = screen
@@ -43,9 +43,11 @@ describe("FileFinder", () => {
 
 		expect(alpha?.textContent).toContain("2");
 		expect(alpha?.getAttribute("aria-label")).toBe("src/alpha.ts, 2 comments");
-		expect(
-			alpha?.querySelector(".finder-comment-count")?.getAttribute("aria-label"),
-		).toBe("2 review comments");
+		const badge = alpha?.querySelector(".finder-comment-count");
+		expect(badge?.getAttribute("aria-label")).toBe("2 review comments");
+		expect(badge?.getAttribute("style")).toContain(
+			"background: var(--color-thread-done)",
+		);
 	});
 
 	it("shows no count on a file nothing is pinned to", () => {

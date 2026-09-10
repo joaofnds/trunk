@@ -575,6 +575,80 @@ describe("DiffPanel", () => {
 		expect(composerSession.draft.text).toBe("comment for the first commit");
 	});
 
+	it("does not close a replacement target when an older submit resolves", async () => {
+		const editorStore = createReviewEditorStore();
+		const targetA = {
+			context: "normal" as const,
+			kind: "commit" as const,
+			commitOid: nonMergeCommit.oid,
+			compareBaseOid: null,
+			filePath: null,
+		};
+		const targetB = { ...targetA, commitOid: "other-commit" };
+		const sessionA = editorStore.composer(targetA);
+		const sessionB = editorStore.composer(targetB);
+		let releaseSubmit!: () => void;
+		vi.mocked(safeInvoke).mockImplementation((command: string) =>
+			command === "add_thread"
+				? new Promise<void>((resolve) => {
+						releaseSubmit = resolve;
+					})
+				: Promise.resolve(undefined),
+		);
+		const baseProps = {
+			fileDiffs: [testDiff],
+			commitDetail: nonMergeCommit,
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+			activeReviewId: "review-a",
+			composerSession: sessionA,
+			composerTarget: targetA,
+		};
+		const view = render(DiffPanel, { props: baseProps });
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment"));
+		await flushPrefs();
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "comment for target A" },
+		});
+		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await tick();
+
+		sessionB.openDiff(
+			{
+				anchor: {
+					commit_oid: "other-commit",
+					file_path: "src/main.ts",
+					source: "Diff",
+					side: "New",
+					start_line: 2,
+					end_line: 2,
+				},
+				cachedExcerpt: "+ target B",
+			},
+			"review-a",
+			targetB,
+		);
+		sessionB.draft.text = "draft for target B";
+		await view.rerender({
+			...baseProps,
+			commitDetail: { ...nonMergeCommit, oid: "other-commit" },
+			composerSession: sessionB,
+			composerTarget: targetB,
+		});
+		await flushPrefs();
+
+		expect(screen.getByRole("textbox")).toHaveValue("draft for target B");
+		releaseSubmit();
+		await flushPrefs();
+
+		expect(screen.getByRole("textbox")).toHaveValue("draft for target B");
+		expect(sessionB.draft.text).toBe("draft for target B");
+		view.unmount();
+	});
+
 	it("shows Unstage Hunk button for staged diffs", async () => {
 		render(DiffPanel, {
 			props: {

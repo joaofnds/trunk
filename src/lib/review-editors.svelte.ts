@@ -32,13 +32,34 @@ export type ReviewComposerMode = "diff" | "full-file";
 export type ReviewComposerContext = "normal" | "rebase";
 
 /** The navigation identity that owns one diff composer session. */
-export interface ReviewComposerTarget {
-	readonly context: ReviewComposerContext;
-	readonly kind: PanelDiffKind;
+type NormalCommitComposerTarget = {
+	readonly context: "normal";
+	readonly kind: "commit";
 	readonly commitOid: string | null;
 	readonly compareBaseOid: string | null;
 	readonly filePath: string | null;
-}
+};
+
+type NormalWorkingComposerTarget = {
+	readonly context: "normal";
+	readonly kind: Exclude<PanelDiffKind, "commit">;
+	readonly commitOid: null;
+	readonly compareBaseOid: null;
+	readonly filePath: string | null;
+};
+
+type RebaseCommitComposerTarget = {
+	readonly context: "rebase";
+	readonly kind: "commit";
+	readonly commitOid: string | null;
+	readonly compareBaseOid: null;
+	readonly filePath: string | null;
+};
+
+export type ReviewComposerTarget =
+	| NormalCommitComposerTarget
+	| NormalWorkingComposerTarget
+	| RebaseCommitComposerTarget;
 
 export function reviewComposerTargetsEqual(
 	left: ReviewComposerTarget | null,
@@ -61,6 +82,7 @@ export interface ReviewComposerCapture {
 /** A diff composer that survives conditional DiffPanel mounts. */
 export interface ReviewComposerSession {
 	readonly draft: Draft;
+	readonly submitting: boolean;
 	readonly mode: ReviewComposerMode | null;
 	readonly filePath: string | null;
 	readonly captured: ReviewComposerCapture | null;
@@ -77,6 +99,7 @@ export interface ReviewComposerSession {
 		reviewId: string | null,
 		target: ReviewComposerTarget,
 	): boolean;
+	setSubmitting(submitting: boolean): void;
 	close(): void;
 }
 
@@ -179,6 +202,7 @@ export function createReviewComposerSession(
 		captured: null as ReviewComposerCapture | null,
 		originatingReviewId: null as string | null,
 		target: null as ReviewComposerTarget | null,
+		submitting: false,
 	});
 	const draft = createDraft();
 
@@ -216,6 +240,9 @@ export function createReviewComposerSession(
 
 	return {
 		draft,
+		get submitting() {
+			return state.submitting;
+		},
 		get mode() {
 			return state.mode;
 		},
@@ -236,6 +263,9 @@ export function createReviewComposerSession(
 		},
 		openFullFile(filePath, captured, reviewId, target) {
 			return open("full-file", filePath, captured, reviewId, target);
+		},
+		setSubmitting(submitting) {
+			state.submitting = submitting;
 		},
 		close() {
 			draft.close();
@@ -275,6 +305,8 @@ export function createReviewEditorStore(): ReviewEditorStore {
 	};
 	const threadIdentity = (reviewId: string | null, threadId: string) =>
 		JSON.stringify([reviewId, threadId]);
+	const composerIsIdle = (session: ReviewComposerSession) =>
+		session.mode === null && !session.draft.editing && !session.submitting;
 
 	function closeThreadSession(session: ThreadEditorSession): void {
 		session.rootEdit.close();
@@ -313,6 +345,11 @@ export function createReviewEditorStore(): ReviewEditorStore {
 		},
 		composer(target) {
 			const key = JSON.stringify([target ?? null]);
+			for (const [existingKey, existing] of composerSessions) {
+				if (existingKey !== key && composerIsIdle(existing)) {
+					composerSessions.delete(existingKey);
+				}
+			}
 			let session = composerSessions.get(key);
 			if (!session) {
 				let created: ReviewComposerSession | null = null;

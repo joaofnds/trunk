@@ -427,6 +427,28 @@ describe("ThreadCard", () => {
 		});
 	});
 
+	it("keeps an edited reply when editReply is refused", async () => {
+		vi.mocked(safeInvoke).mockRejectedValueOnce({
+			code: "review_published",
+			message: "a published review's replies are permanent",
+		});
+		const humanReply: Thread = {
+			...comment,
+			replies: [aReply({ id: "r1", text: "original", channel: "human" })],
+		};
+		renderCard({ thread: humanReply });
+
+		await fireEvent.click(screen.getByText("Edit reply"));
+		const textarea = screen.getByRole("textbox", {
+			name: "Edit reply",
+		}) as HTMLTextAreaElement;
+		await fireEvent.input(textarea, { target: { value: "keep this edit" } });
+		await fireEvent.click(screen.getByText("Save"));
+		await flush();
+
+		expect(textarea).toHaveValue("keep this edit");
+	});
+
 	it("submits the typed reply via addReply with the repo path and clears the composer", async () => {
 		renderCard();
 
@@ -441,6 +463,21 @@ describe("ThreadCard", () => {
 			text: "sounds good",
 		});
 		expect(textarea.value).toBe("");
+	});
+
+	it("keeps a typed reply when addReply is refused", async () => {
+		vi.mocked(safeInvoke).mockRejectedValueOnce({
+			code: "review_published",
+			message: "a published review's replies are permanent",
+		});
+		renderCard();
+
+		const textarea = screen.getByLabelText("Reply") as HTMLTextAreaElement;
+		await fireEvent.input(textarea, { target: { value: "keep this reply" } });
+		await fireEvent.click(screen.getByText("Reply"));
+		await flush();
+
+		expect(textarea).toHaveValue("keep this reply");
 	});
 
 	it("does not clear a replacement reply draft when the first save resolves", async () => {

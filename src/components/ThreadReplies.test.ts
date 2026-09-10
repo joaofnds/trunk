@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/svelte";
 import { tick } from "svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { aReply } from "../__tests__/helpers/thread-fixture.js";
 import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
 import ThreadReplies from "./ThreadReplies.svelte";
@@ -8,19 +8,19 @@ import ThreadReplies from "./ThreadReplies.svelte";
 const reply = aReply({ id: "r1", text: "original", channel: "human" });
 
 describe("ThreadReplies", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
 	it("keeps a reply edit open when the save is refused", async () => {
-		const onreplyedit = vi.fn().mockResolvedValue(false);
+		const edits: [string, string][] = [];
+		const onreplyedit = async (id: string, text: string) => {
+			edits.push([id, text]);
+			return false;
+		};
 		const editorSession = createThreadEditorSession();
 		render(ThreadReplies, {
 			props: {
 				replies: [reply],
 				published: false,
 				onreplyedit,
-				onreplydelete: vi.fn(),
+				onreplydelete: () => {},
 				editorSession,
 			},
 		});
@@ -31,7 +31,7 @@ describe("ThreadReplies", () => {
 		await fireEvent.click(screen.getByText("Save"));
 		await tick();
 
-		expect(onreplyedit).toHaveBeenCalledWith("r1", "refused edit");
+		expect(edits).toEqual([["r1", "refused edit"]]);
 		expect(screen.getByRole("textbox", { name: "Edit reply" })).toHaveValue(
 			"refused edit",
 		);
@@ -39,19 +39,17 @@ describe("ThreadReplies", () => {
 
 	it("does not clear a replacement edit draft when the first save resolves", async () => {
 		let settleFirst!: () => void;
-		const onreplyedit = vi.fn(
-			() =>
-				new Promise<void>((resolve) => {
-					settleFirst = resolve;
-				}),
-		);
+		const onreplyedit = () =>
+			new Promise<void>((resolve) => {
+				settleFirst = resolve;
+			});
 		const firstSession = createThreadEditorSession();
 		const replacementSession = createThreadEditorSession();
 		const props = {
 			replies: [reply],
 			published: false,
 			onreplyedit,
-			onreplydelete: vi.fn(),
+			onreplydelete: () => {},
 			editorSession: firstSession,
 		};
 		const view = render(ThreadReplies, { props });
@@ -92,8 +90,8 @@ describe("ThreadReplies", () => {
 		const props = {
 			replies,
 			published: false,
-			onreplyedit: vi.fn(),
-			onreplydelete: vi.fn(),
+			onreplyedit: () => undefined,
+			onreplydelete: () => {},
 			editorSession,
 		};
 		let view = render(ThreadReplies, { props });

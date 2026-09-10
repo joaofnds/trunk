@@ -10,6 +10,7 @@ import {
 	getDraft,
 	saveDraft,
 } from "../../lib/review-comment-actions.js";
+import type { ReviewComposerSession } from "../../lib/review-editors.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
 
 interface Props {
@@ -43,6 +44,8 @@ interface Props {
 	activeReviewId?: string | null;
 	/** Repository-tab-owned draft that survives conditional composer mounts. */
 	editorDraft?: Draft;
+	/** Repository-tab-owned submission latch that survives conditional mounts. */
+	composerSession?: ReviewComposerSession;
 }
 
 let {
@@ -59,11 +62,15 @@ let {
 	originatingReviewId = null,
 	activeReviewId = null,
 	editorDraft,
+	composerSession,
 }: Props = $props();
 
 const localEditorDraft = createDraft();
 const composerDraft = $derived(editorDraft ?? localEditorDraft);
-let submitting = $state(false);
+let localSubmitting = $state(false);
+const submitting = $derived(
+	localSubmitting || (composerSession?.submitting ?? false),
+);
 
 function anchorsEqual(left: Anchor | null, right: Anchor | null): boolean {
 	return (
@@ -178,14 +185,21 @@ async function discardDraft() {
 }
 
 async function handleSubmit() {
+	const submittedDraft = composerDraft;
 	const submittedText = composerDraft.text;
-	const submittedRevision = composerDraft.revision;
+	const submittedRevision = submittedDraft.revision;
 	const submittedCaptured = capturedResult;
 	const submittedCurrentFile = currentFile;
 	const submittedResolveCommitOid = resolveCommitOid;
+	const submittedComposerSession = composerSession;
+	const submittedOnClose = onclose;
 	if (submitDisabled) return;
 
-	submitting = true;
+	if (submittedComposerSession) {
+		submittedComposerSession.setSubmitting(true);
+	} else {
+		localSubmitting = true;
+	}
 	await settleDraftSave();
 	try {
 		if (originatingReviewId !== activeReviewId) return;
@@ -219,11 +233,15 @@ async function handleSubmit() {
 		reportErrorToast(e, "Add comment failed");
 		return;
 	} finally {
-		submitting = false;
+		if (submittedComposerSession) {
+			submittedComposerSession.setSubmitting(false);
+		} else {
+			localSubmitting = false;
+		}
 	}
-	if (composerDraft.revision === submittedRevision) {
-		composerDraft.close();
-		onclose();
+	if (submittedDraft.revision === submittedRevision) {
+		submittedDraft.close();
+		submittedOnClose();
 	}
 }
 

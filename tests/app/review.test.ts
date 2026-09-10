@@ -28,30 +28,9 @@ const TWO_COMMITS: RepoSpec = {
 describe("a comment left on a commit's diff", () => {
 	afterEach(teardown);
 
-	it("becomes a thread the panel keeps through publishing, and reaches done in the copied doc", async () => {
+	it("becomes a thread the panel keeps through publishing", async () => {
 		const app = await setup({ repo: TWO_COMMITS });
-		await app.repo.open();
-		await app.repo.selectCommit("Change main");
-		// Read while the graph is still on screen: opening the review panel takes
-		// the layout the commit rows live in with it.
-		const commit = app.repo.shaOf("Change main");
-		await app.review.showAllReviewThreads();
-		await app.repo.openCommitFile(FILE);
-
-		await app.review.commentOnHunk(0);
-		await app.review.write(COMMENT);
-		await app.review.submit();
-		await app.review.openPanel();
-
-		const threads = await waitFor("the review panel's threads", () => {
-			const showing = app.review.threads();
-			return showing.length > 0 ? showing : null;
-		});
-		expect(threads).toEqual([ANCHOR]);
-		expect(app.review.states()).toEqual(["open"]);
-		await waitFor("the unresolved review badge", () =>
-			app.review.reviewBadgeCount() === 1 ? true : null,
-		);
+		await createReviewThread(app);
 
 		await app.review.publish();
 
@@ -67,6 +46,13 @@ describe("a comment left on a commit's diff", () => {
 		expect(published).toEqual(["Mark done", "Dismiss", "Edit"]);
 		expect(app.review.threads()).toEqual([ANCHOR]);
 		expect(app.review.states()).toEqual(["open"]);
+	});
+
+	it("filters a completed thread and copies its review document", async () => {
+		const app = await setup({ repo: TWO_COMMITS });
+		const commit = await createReviewThread(app);
+
+		await app.review.publish();
 
 		await app.review.markDone();
 
@@ -78,9 +64,9 @@ describe("a comment left on a commit's diff", () => {
 			app.review.reviewBadgeCount() === null ? true : null,
 		);
 
-		await app.review.showReviewFilter("done");
-		await waitFor("the done review badge to reappear", () =>
-			app.review.reviewBadgeCount() === 1 ? true : null,
+		await app.review.showReviewFilter(
+			"done",
+			() => app.review.reviewBadgeCount() === 1,
 		);
 
 		await app.review.copyDoc();
@@ -92,6 +78,34 @@ describe("a comment left on a commit's diff", () => {
 		expect(doc).toContain(`${ANCHOR} (${commit}, after) — done`);
 	});
 });
+
+async function createReviewThread(
+	app: Awaited<ReturnType<typeof setup>>,
+): Promise<string> {
+	await app.repo.open();
+	await app.repo.selectCommit("Change main");
+	// Read while the graph is still on screen: opening the review panel takes
+	// the layout the commit rows live in with it.
+	const commit = app.repo.shaOf("Change main");
+	await app.repo.openCommitFile(FILE);
+
+	await app.review.commentOnHunk(0);
+	await app.review.write(COMMENT);
+	await app.review.submit();
+	await app.review.openPanel();
+
+	const threads = await waitFor("the review panel's threads", () => {
+		const showing = app.review.threads();
+		return showing.length > 0 ? showing : null;
+	});
+	expect(threads).toEqual([ANCHOR]);
+	expect(app.review.states()).toEqual(["open"]);
+	await waitFor("the unresolved review badge", () =>
+		app.review.reviewBadgeCount() === 1 ? true : null,
+	);
+
+	return commit;
+}
 
 function fileOf(rows: string[]): string {
 	return `${rows.join("\n")}\n`;

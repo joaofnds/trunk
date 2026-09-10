@@ -185,13 +185,31 @@ const selectedFile = $derived(
 );
 const localComposerSession = createReviewComposerSession();
 const activeComposerSession = $derived(composerSession ?? localComposerSession);
-const defaultComposerTarget = $derived<ReviewComposerTarget>({
-	context: composerContext,
-	kind: diffKind,
-	commitOid: diffKind === "commit" ? (commitDetail?.oid ?? null) : null,
-	compareBaseOid,
-	filePath: selectedPath,
-});
+const defaultComposerTarget = $derived<ReviewComposerTarget>(
+	composerContext === "rebase"
+		? {
+				context: "rebase",
+				kind: "commit",
+				commitOid: commitDetail?.oid ?? null,
+				compareBaseOid: null,
+				filePath: selectedPath,
+			}
+		: diffKind === "commit"
+			? {
+					context: "normal",
+					kind: "commit",
+					commitOid: commitDetail?.oid ?? null,
+					compareBaseOid,
+					filePath: selectedPath,
+				}
+			: {
+					context: "normal",
+					kind: diffKind,
+					commitOid: null,
+					compareBaseOid: null,
+					filePath: selectedPath,
+				},
+);
 const activeComposerTarget = $derived(composerTarget ?? defaultComposerTarget);
 const composerTargetMatches = $derived(
 	activeComposerSession.target === null ||
@@ -267,11 +285,18 @@ async function confirmComposerReplacement(): Promise<boolean> {
 	return true;
 }
 
-function closeComposer() {
-	activeComposerSession.close();
+function closeComposerFor(session: ReviewComposerSession) {
+	session.close();
+	if (session !== activeComposerSession) return;
+
 	workingTreeSnapshotOid = null;
 	clearSelection();
 }
+
+const composerOnClose = $derived.by(() => {
+	const session = activeComposerSession;
+	return () => closeComposerFor(session);
+});
 
 // Open the comment composer SYNCHRONOUSLY. The composer only needs the line range,
 // which comes from the hunk. The EXPENSIVE working-tree snapshot is deferred to
@@ -1041,13 +1066,14 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 					bind:this={composer}
 					captured={diffCaptured}
 					editorDraft={activeComposerSession.draft}
+					composerSession={activeComposerSession}
 					{commitOid}
 					resolveCommitOid={resolveCommentCommitOid}
 					{repoPath}
 					{activeReviewId}
 					originatingReviewId={composerReviewId}
 					canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
-					onclose={closeComposer}
+					onclose={composerOnClose}
 				/>
 			</div>
 		{:else if fullFileComposerOpen && fullFileCaptured}
@@ -1059,6 +1085,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 					bind:this={composer}
 					captured={fullFileCaptured}
 					editorDraft={activeComposerSession.draft}
+					composerSession={activeComposerSession}
 					currentFile={currentFileTarget}
 					{commitOid}
 					resolveCommitOid={currentFileTarget
@@ -1068,7 +1095,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 					{activeReviewId}
 					originatingReviewId={composerReviewId}
 					canSubmit={reviewCommentsVisible && reviewFilter !== "none"}
-					onclose={closeComposer}
+					onclose={composerOnClose}
 				/>
 			</div>
 		{/if}

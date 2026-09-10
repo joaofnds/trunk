@@ -221,9 +221,7 @@ describe("CommitGraph", () => {
 			expect(screen.getByText("first commit")).toBeInTheDocument();
 		});
 
-		expect(
-			container.querySelector('[aria-label="1 review comment"]'),
-		).toBeNull();
+		expect(container.querySelectorAll(".comment-badge")).toHaveLength(0);
 	});
 
 	it("renders without crashing", () => {

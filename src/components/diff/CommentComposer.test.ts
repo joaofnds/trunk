@@ -3,6 +3,7 @@ import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../../tests/app/fakes/scheduler.js";
 import { safeInvoke } from "../../lib/invoke.js";
+import { createReviewComposerSession } from "../../lib/review-editors.svelte.js";
 import { SCHEDULER } from "../../lib/scheduler.js";
 import { _resetToasts, toasts } from "../../lib/toast.svelte.js";
 import type { Anchor, FileDiff } from "../../lib/types.js";
@@ -359,6 +360,50 @@ describe("CommentComposer", () => {
 		expect(typeof args.cachedExcerpt).toBe("string");
 		expect(args.cachedExcerpt.length).toBeGreaterThan(0);
 		expect(onclose).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps a pending submit disabled when the composer remounts", async () => {
+		let releaseSubmit!: () => void;
+		mockedInvoke.mockImplementation((command: string) =>
+			command === "add_thread"
+				? new Promise<void>((resolve) => {
+						releaseSubmit = resolve;
+					})
+				: Promise.resolve(undefined),
+		);
+		const session = createReviewComposerSession();
+		const props = {
+			file: modifiedFile,
+			hunkIdx: 0,
+			selectedLineIndices: new Set([1, 2]),
+			commitOid: "abc123",
+			repoPath: "/repo",
+			onclose: () => {},
+			editorDraft: session.draft,
+			composerSession: session,
+		};
+		let view = render(CommentComposer, { props });
+
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "one pending comment" },
+		});
+		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		await tick();
+
+		expect(session.submitting).toBe(true);
+		view.unmount();
+		view = render(CommentComposer, { props });
+		expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
+
+		await fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+		expect(
+			mockedInvoke.mock.calls.filter((call) => call[0] === "add_thread"),
+		).toHaveLength(1);
+
+		releaseSubmit();
+		await flush();
+		expect(session.submitting).toBe(false);
+		view.unmount();
 	});
 
 	describe("confirmDiscardIfDirty", () => {

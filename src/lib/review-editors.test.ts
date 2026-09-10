@@ -203,6 +203,21 @@ describe("review editor store", () => {
 	it("scopes diff composers by navigation target", () => {
 		const store = createReviewEditorStore();
 		const first = store.composer(diffTarget);
+		first.openDiff(
+			{
+				anchor: {
+					commit_oid: "commit-1",
+					file_path: "src/main.ts",
+					source: "Diff",
+					side: "New",
+					start_line: 1,
+					end_line: 1,
+				},
+				cachedExcerpt: "+ kept line",
+			},
+			"review-a",
+			diffTarget,
+		);
 		const second = store.composer({
 			...diffTarget,
 			commitOid: "commit-2",
@@ -216,6 +231,26 @@ describe("review editor store", () => {
 		const store = createReviewEditorStore();
 		const first = store.composer(diffTarget);
 		first.close();
+
+		expect(store.composer(diffTarget)).not.toBe(first);
+	});
+
+	it("keeps a composer submission latch across remounts", () => {
+		const store = createReviewEditorStore();
+		const first = store.composer(diffTarget);
+		first.setSubmitting(true);
+
+		expect(store.composer(diffTarget).submitting).toBe(true);
+
+		first.setSubmitting(false);
+		expect(store.composer(diffTarget).submitting).toBe(false);
+	});
+
+	it("evicts unopened composer targets while navigating", () => {
+		const store = createReviewEditorStore();
+		const first = store.composer(diffTarget);
+
+		store.composer({ ...diffTarget, commitOid: "commit-2" });
 
 		expect(store.composer(diffTarget)).not.toBe(first);
 	});

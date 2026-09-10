@@ -31,8 +31,11 @@ const FULL_FILE_COMMENT = ".full-file-comment-button";
  * button, so a gesture issued early does nothing, quietly.
  */
 export class ReviewDriver {
-	/** Selects a review-thread presentation and waits for the control to reflect it. */
-	async showReviewFilter(filterValue: ReviewFilter): Promise<void> {
+	/** Selects a review-thread presentation and waits for its visible effect. */
+	async showReviewFilter(
+		filterValue: ReviewFilter,
+		observePresentation: () => boolean,
+	): Promise<void> {
 		const filter = await waitFor("the review filter", () =>
 			selectEnabled(REVIEW_FILTER),
 		);
@@ -44,13 +47,10 @@ export class ReviewDriver {
 
 		await waitFor(`the review filter to become ${filterValue}`, () => {
 			const current = document.querySelector<HTMLSelectElement>(REVIEW_FILTER);
-			return current?.value === filterValue ? true : null;
+			return current?.value === filterValue && observePresentation()
+				? true
+				: null;
 		});
-	}
-
-	/** Selects the default all-threads presentation. */
-	async showAllReviewThreads(): Promise<void> {
-		await this.showReviewFilter("all");
 	}
 
 	/** Comments the hunk at `ordinal`, topmost first. With no line selection this

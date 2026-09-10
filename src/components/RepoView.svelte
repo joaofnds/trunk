@@ -551,18 +551,25 @@ const diffComposerTarget = $derived<ReviewComposerTarget>(
 				compareBaseOid: null,
 				filePath: rebaseDiffFile,
 			}
-		: {
-				context: "normal",
-				kind: diffKind,
-				commitOid:
-					diffKind === "commit"
-						? selectedCompareFile
-							? (compare?.targetOid ?? null)
-							: (selectedCommitOid ?? null)
+		: diffKind === "commit"
+			? {
+					context: "normal",
+					kind: "commit",
+					commitOid: selectedCompareFile
+						? (compare?.targetOid ?? null)
+						: (selectedCommitOid ?? null),
+					compareBaseOid: selectedCompareFile
+						? (compare?.baseOid ?? null)
 						: null,
-				compareBaseOid: selectedCompareFile ? (compare?.baseOid ?? null) : null,
-				filePath: selectedCompareFile ?? selectedDiffPath,
-			},
+					filePath: selectedCompareFile ?? selectedDiffPath,
+				}
+			: {
+					context: "normal",
+					kind: diffKind,
+					commitOid: null,
+					compareBaseOid: null,
+					filePath: selectedDiffPath,
+				},
 );
 const diffComposerSession = $derived(
 	reviewEditors.composer(diffComposerTarget),

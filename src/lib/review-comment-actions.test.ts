@@ -61,6 +61,20 @@ describe("editReply", () => {
 			text: "corrected",
 		});
 	});
+
+	it("raises a toast and returns false when the backend refuses", async () => {
+		mockInvoke.mockRejectedValue({
+			code: "review_published",
+			message: "a published review's replies are permanent",
+		});
+
+		await expect(editReply("/repo", "reply-1", "too late")).resolves.toBe(
+			false,
+		);
+		expect(errorMessages()).toEqual([
+			"a published review's replies are permanent",
+		]);
+	});
 });
 
 describe("deleteReply", () => {

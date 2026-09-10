@@ -29,8 +29,12 @@ describe("CommentBadge", () => {
 	});
 
 	it("does not infer the population from the dominant tone", () => {
-		render(CommentBadge, { props: { count: 2, tone: "open" } });
+		const { container } = render(CommentBadge, {
+			props: { count: 2, tone: "done" },
+		});
 
-		expect(screen.getByLabelText("2 review comments")).toBeInTheDocument();
+		const badge = screen.getByLabelText("2 review comments");
+		expect(badge).toBeInTheDocument();
+		expect(container.querySelector(".comment-badge")).toHaveClass("tone-done");
 	});
 });

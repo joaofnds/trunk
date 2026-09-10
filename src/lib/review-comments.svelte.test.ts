@@ -132,6 +132,20 @@ describe("createReviewComments — refresh", () => {
 		manager.destroy();
 	});
 
+	it("accepts an empty batch for an active review with no threads", async () => {
+		aPopulatedStore({
+			list_reviews: [{ ...review, thread_count: 0 }],
+			list_threads: [],
+		});
+
+		const manager = createReviewComments("/repo");
+		await flush();
+
+		expect(manager.threads).toHaveLength(0);
+		expect(manager.threadsAuthoritative).toBe(true);
+		manager.destroy();
+	});
+
 	it("exposes the oids of the active review's commits", async () => {
 		aPopulatedStore();
 
