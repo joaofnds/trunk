@@ -278,7 +278,6 @@ export async function setReviewFilter(filter: ReviewFilter): Promise<void> {
 // Diff display preferences (global, shared across tabs — per D-06)
 const DIFF_CONTEXT_LINES_KEY = "diff_context_lines";
 const DIFF_IGNORE_WHITESPACE_KEY = "diff_ignore_whitespace";
-const DIFF_SHOW_FULL_FILE_KEY = "diff_show_full_file";
 
 export async function getDiffContextLines(): Promise<number> {
 	return (await getPref<number>(DIFF_CONTEXT_LINES_KEY)) ?? 3;
@@ -294,14 +293,6 @@ export async function getDiffIgnoreWhitespace(): Promise<boolean> {
 
 export async function setDiffIgnoreWhitespace(ignore: boolean): Promise<void> {
 	await setPref(DIFF_IGNORE_WHITESPACE_KEY, ignore);
-}
-
-export async function getDiffShowFullFile(): Promise<boolean> {
-	return (await getPref<boolean>(DIFF_SHOW_FULL_FILE_KEY)) ?? false;
-}
-
-export async function setDiffShowFullFile(show: boolean): Promise<void> {
-	await setPref(DIFF_SHOW_FULL_FILE_KEY, show);
 }
 
 const DIFF_VIEW_MODE_KEY = "diff_view_mode"; // legacy key for migration

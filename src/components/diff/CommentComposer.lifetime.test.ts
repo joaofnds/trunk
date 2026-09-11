@@ -12,6 +12,7 @@ import {
 	type HostChannel,
 	TauriInternals,
 } from "../../../tests/app/harness/internals.js";
+import DiffPanel from "../../__tests__/helpers/controlled-diff-panel.svelte";
 import {
 	restoreLayout,
 	stubLayout,
@@ -19,7 +20,6 @@ import {
 import { createReviewComposerSession } from "../../lib/review-editors.svelte.js";
 import { SCHEDULER } from "../../lib/scheduler.js";
 import type { Anchor, CommitDetail, FileDiff } from "../../lib/types.js";
-import DiffPanel from "../DiffPanel.svelte";
 import CommentComposer from "./CommentComposer.svelte";
 
 async function flushTransport() {

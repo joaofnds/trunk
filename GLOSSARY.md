@@ -182,6 +182,14 @@ shell fixture corpus is day-spaced and takes the time path.
 
 ## Diff surfaces
 
+**Content mode** — the global choice between **hunk mode**, which shows changed hunks with
+context, and **full-file mode**, which shows the whole file. On request-backed Source views,
+the toolbar, view and `DiffRequestOptions.showFullFile` derive from the same value in every
+mounted tab; Source hunks from another mode stay hidden while their replacement loads or has
+failed (TRUNK-224). Rendered Markdown holds both complete revisions and projects either mode
+locally, so its rows remain available while Source reloads. A current-file view is forced to
+full-file because it has no diff hunks; its toolbar mismatch is tracked by TRUNK-201.
+
 **Old path** — where a renamed file came from, carried on every file diff as `old_path`
 and null for every other status (TRUNK-82). Rename pairing runs over the whole tree
 before a single file is picked out, so a rename arrives already paired from commit,
@@ -426,4 +434,3 @@ signals, and whether a second remote operation may start on that repository at a
 graph's Diff column. A commit's diff never changes, so an entry is never invalidated,
 only dropped wholesale when its repository closes. Filled lazily and only while that
 column is visible.
-

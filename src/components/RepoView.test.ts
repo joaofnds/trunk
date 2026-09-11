@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
+import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
@@ -22,7 +24,6 @@ import type {
 	FileDiff,
 } from "../lib/types.js";
 import type { UndoRedoManager } from "../lib/undo-redo.svelte.js";
-import RepoView from "./RepoView.svelte";
 
 // Stub OffscreenCanvas for jsdom — used by text-measure.ts (measureTextWidth) via CommitGraph
 if (typeof globalThis.OffscreenCanvas === "undefined") {
@@ -550,6 +551,199 @@ describe("RepoView", () => {
 		});
 	});
 
+	describe("staging diff content mode", () => {
+		function stagingDiff(content: string): FileDiff {
+			return {
+				path: "README.md",
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [
+					{
+						header: "@@ -1,0 +1,1 @@",
+						old_start: 1,
+						old_lines: 0,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content,
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+		}
+
+		it("keeps the newest staging mode when superseded requests settle later", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("INITIAL STAGING")]);
+				}
+				return base(cmd, args);
+			});
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("INITIAL STAGING")).toBeTruthy();
+			let resolveFull!: (files: FileDiff[]) => void;
+			let resolveHunk!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_unstaged") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				return new Promise<FileDiff[]>((resolve) => {
+					if (options.showFullFile) resolveFull = resolve;
+					else resolveHunk = resolve;
+				});
+			});
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await view.rerender({ ...props, contentMode: "hunk" });
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			resolveFull([stagingDiff("STALE STAGING")]);
+			await tick();
+			expect(screen.queryByText("STALE STAGING")).toBeFalsy();
+			await vi.waitFor(() => expect(resolveHunk).toBeTypeOf("function"));
+			resolveHunk([stagingDiff("NEW STAGING")]);
+
+			expect(await screen.findByText("NEW STAGING")).toBeTruthy();
+			expect(screen.queryByText("STALE STAGING")).toBeFalsy();
+		});
+
+		it("ignores a stale staging failure while the newest mode is loading", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("INITIAL STAGING")]);
+				}
+				return base(cmd, args);
+			});
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("INITIAL STAGING")).toBeTruthy();
+			let rejectFull!: (reason?: unknown) => void;
+			let resolveHunk!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_unstaged") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				return new Promise<FileDiff[]>((resolve, reject) => {
+					if (options.showFullFile) rejectFull = reject;
+					else resolveHunk = resolve;
+				});
+			});
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await view.rerender({ ...props, contentMode: "hunk" });
+			rejectFull(new Error("stale full-file load failed"));
+			await vi.waitFor(() => expect(resolveHunk).toBeTypeOf("function"));
+
+			expect(screen.queryByText("Could not load diff")).toBeFalsy();
+			expect(screen.queryByText("INITIAL STAGING")).toBeFalsy();
+			resolveHunk([stagingDiff("NEW STAGING")]);
+			expect(await screen.findByText("NEW STAGING")).toBeTruthy();
+		});
+
+		it("withholds the staging payload when the current mode reload fails", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("OLD STAGING")]);
+				}
+				return base(cmd, args);
+			});
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("OLD STAGING")).toBeTruthy();
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_unstaged"
+					? Promise.reject(new Error("staging full failed"))
+					: base(cmd, args),
+			);
+
+			await view.rerender({ ...props, contentMode: "full" });
+
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.queryByText("OLD STAGING")).toBeFalsy();
+		});
+
+		it("shows a retryable error when the first staging load fails", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.reject(new Error("first load failed"));
+				}
+				return base(cmd, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+
+			await fireEvent.click(await screen.findByText("README.md"));
+
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+		});
+	});
+
 	describe("diff-in-view commit navigation", () => {
 		function makeFileDiff(path: string): FileDiff {
 			return {
@@ -688,6 +882,158 @@ describe("RepoView", () => {
 				lines: 1,
 				fullFile: "false",
 			});
+		});
+
+		it("keeps the newest commit-file mode when reloads finish in reverse order", async () => {
+			commits = [makeCommit({ oid: "oid-2", summary: "second commit" })];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2") };
+			diffFor = (path) => makeFileDiffWithContent(path, "INITIAL");
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("INITIAL")).toBeTruthy();
+
+			let resolveFull!: (files: FileDiff[]) => void;
+			let resolveHunk!: (files: FileDiff[]) => void;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_commit_file") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				return new Promise<FileDiff[]>((resolve) => {
+					if (options.showFullFile) resolveFull = resolve;
+					else resolveHunk = resolve;
+				});
+			});
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await view.rerender({ ...props, contentMode: "hunk" });
+			resolveHunk([makeFileDiffWithContent("f.ts", "NEWEST")]);
+			expect(await screen.findByText("NEWEST")).toBeTruthy();
+			resolveFull([makeFileDiffWithContent("f.ts", "STALE")]);
+			await flush();
+
+			expect(screen.queryByText("STALE")).toBeFalsy();
+			expect(screen.getByText("NEWEST")).toBeTruthy();
+		});
+
+		it("ignores a stale commit-file failure while the newest mode is loading", async () => {
+			commits = [makeCommit({ oid: "oid-2", summary: "second commit" })];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2") };
+			diffFor = (path) => makeFileDiffWithContent(path, "INITIAL");
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("INITIAL")).toBeTruthy();
+			let rejectFull!: (reason?: unknown) => void;
+			let resolveHunk!: (files: FileDiff[]) => void;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_commit_file") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				return new Promise<FileDiff[]>((resolve, reject) => {
+					if (options.showFullFile) rejectFull = reject;
+					else resolveHunk = resolve;
+				});
+			});
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await view.rerender({ ...props, contentMode: "hunk" });
+			rejectFull(new Error("stale full-file load failed"));
+			await vi.waitFor(() => expect(resolveHunk).toBeTypeOf("function"));
+
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(screen.queryByText("Could not load diff")).toBeFalsy();
+			resolveHunk([makeFileDiffWithContent("f.ts", "NEWEST")]);
+			expect(await screen.findByText("NEWEST")).toBeTruthy();
+		});
+
+		it("does not apply a commit-file response after its diff closes", async () => {
+			commits = [makeCommit({ oid: "oid-2", summary: "second commit" })];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2") };
+			diffFor = (path) => makeFileDiffWithContent(path, "INITIAL");
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("INITIAL")).toBeTruthy();
+			let resolveDiff!: (files: FileDiff[]) => void;
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_commit_file"
+					? new Promise<FileDiff[]>((resolve) => {
+							resolveDiff = resolve;
+						})
+					: base(cmd, args),
+			);
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await fireEvent.click(screen.getByLabelText("Close diff"));
+			resolveDiff([makeFileDiffWithContent("f.ts", "CLOSED COMMIT")]);
+			await flush();
+
+			expect(screen.queryByText("CLOSED COMMIT")).toBeFalsy();
+		});
+
+		it("withholds the previous commit payload when the current mode reload fails", async () => {
+			commits = [makeCommit({ oid: "oid-2", summary: "second commit" })];
+			filesByOid = { "oid-2": [makeFileDiff("f.ts")] };
+			detailByOid = { "oid-2": makeDetail("oid-2") };
+			diffFor = (path) => makeFileDiffWithContent(path, "OLD HUNK");
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[0]);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("OLD HUNK")).toBeTruthy();
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_commit_file"
+					? Promise.reject(new Error("full load failed"))
+					: base(cmd, args),
+			);
+
+			await view.rerender({ ...props, contentMode: "full" });
+
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.queryByText("OLD HUNK")).toBeFalsy();
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_commit_file"
+					? Promise.resolve([makeFileDiffWithContent("f.ts", "RETRIED FULL")])
+					: base(cmd, args),
+			);
+			await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+			expect(await screen.findByText("RETRIED FULL")).toBeTruthy();
 		});
 
 		it("reopens the viewed file when the pager moves to a commit touching it", async () => {
@@ -1222,13 +1568,16 @@ describe("RepoView", () => {
 
 		beforeEach(_resetToasts);
 
-		async function openTheEditorOnTheClickedCommit() {
-			render(RepoView, { props: baseProps(createMockRemoteState()) });
+		async function openTheEditorOnTheClickedCommit(
+			props = baseProps(createMockRemoteState()),
+		) {
+			const view = render(RepoView, { props });
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.contextMenu(rows[1]);
 			await flush();
 			await getMenuAction("Interactive Rebase...")();
 			await flush();
+			return view;
 		}
 
 		it("raises a toast when the rebase stops", async () => {
@@ -1456,6 +1805,42 @@ describe("RepoView", () => {
 			);
 		});
 
+		it("withholds the rebase payload when the current mode reload fails", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/rebase.ts";
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				}
+				if (cmd === "list_commit_files" && typeof a?.oid === "string") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					return Promise.resolve([
+						makeRebaseFileWithContent(path, "OLD REBASE"),
+					]);
+				}
+				return base(cmd, args);
+			});
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(await screen.findByText(path));
+			expect(await screen.findByText("OLD REBASE")).toBeTruthy();
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_commit_file"
+					? Promise.reject(new Error("rebase full failed"))
+					: base(cmd, args),
+			);
+
+			await fireEvent.click(screen.getByTitle("Show full file"));
+
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.queryByText("OLD REBASE")).toBeFalsy();
+		});
+
 		it("matches review comments in the focused rebase diff", async () => {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();
@@ -1518,6 +1903,9 @@ describe("RepoView", () => {
 				if (cmd === "list_commit_files" && a?.oid === CLICKED_OID) {
 					return Promise.resolve([fileDiff]);
 				}
+				if (cmd === "diff_commit_file" && a?.oid === CLICKED_OID) {
+					return Promise.resolve([fileDiff]);
+				}
 				if (cmd === "list_reviews") {
 					return Promise.resolve([
 						{
@@ -1555,6 +1943,29 @@ describe("RepoView", () => {
 				is_binary: false,
 				hunks: [],
 			};
+		}
+
+		function makeFileDiffWithContent(path: string, content: string): FileDiff {
+			const diff = makeFileDiff(path);
+			diff.hunks = [
+				{
+					header: "@@ -1,0 +1,1 @@",
+					old_start: 1,
+					old_lines: 0,
+					new_start: 1,
+					new_lines: 1,
+					lines: [
+						{
+							origin: "Add",
+							content,
+							old_lineno: null,
+							new_lineno: 1,
+							spans: [],
+						},
+					],
+				},
+			];
+			return diff;
 		}
 
 		function makeDetail(
@@ -1709,6 +2120,192 @@ describe("RepoView", () => {
 				targetOid: "oid-3",
 				filePath: "f.ts",
 			});
+		});
+
+		it("keeps the newest compare mode when reloads finish in reverse order", async () => {
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			await fireEvent.click(await screen.findByText("f.ts"));
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let resolveFull!: (files: FileDiff[]) => void;
+			let resolveHunk!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_compare_file") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				return new Promise<FileDiff[]>((resolve) => {
+					if (options.showFullFile) resolveFull = resolve;
+					else resolveHunk = resolve;
+				});
+			});
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await view.rerender({ ...props, contentMode: "hunk" });
+			resolveHunk([makeFileDiffWithContent("f.ts", "NEW COMPARE")]);
+			expect(await screen.findByText("NEW COMPARE")).toBeTruthy();
+			resolveFull([makeFileDiffWithContent("f.ts", "STALE COMPARE")]);
+			await flush();
+
+			expect(screen.queryByText("STALE COMPARE")).toBeFalsy();
+			expect(screen.getByText("NEW COMPARE")).toBeTruthy();
+		});
+
+		it("ignores a stale compare failure while the newest mode is loading", async () => {
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			await fireEvent.click(await screen.findByText("f.ts"));
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let rejectFull!: (reason?: unknown) => void;
+			let resolveHunk!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_compare_file") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				return new Promise<FileDiff[]>((resolve, reject) => {
+					if (options.showFullFile) rejectFull = reject;
+					else resolveHunk = resolve;
+				});
+			});
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await view.rerender({ ...props, contentMode: "hunk" });
+			rejectFull(new Error("stale compare load failed"));
+			await vi.waitFor(() => expect(resolveHunk).toBeTypeOf("function"));
+
+			expect(screen.queryByText("Could not load diff")).toBeFalsy();
+			resolveHunk([makeFileDiffWithContent("f.ts", "NEW COMPARE")]);
+			expect(await screen.findByText("NEW COMPARE")).toBeTruthy();
+		});
+
+		it("withholds the compare payload when the current mode reload fails", async () => {
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			await fireEvent.click(await screen.findByText("f.ts"));
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_compare_file"
+					? Promise.reject(new Error("compare full failed"))
+					: base(cmd, args),
+			);
+
+			await view.rerender({ ...props, contentMode: "full" });
+
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+		});
+
+		it("does not apply a compare response after its file closes", async () => {
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let resolveDiff!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_compare_file"
+					? new Promise<FileDiff[]>((resolve) => {
+							resolveDiff = resolve;
+						})
+					: base(cmd, args),
+			);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await fireEvent.click(await screen.findByLabelText("Close diff"));
+
+			resolveDiff([makeFileDiffWithContent("f.ts", "CLOSED COMPARE")]);
+			await flush();
+
+			expect(screen.queryByText("CLOSED COMPARE")).toBeFalsy();
+		});
+
+		it("does not apply a compare response after switching files", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "list_compare_files"
+					? Promise.resolve([makeFileDiff("f.ts"), makeFileDiff("g.ts")])
+					: base(cmd, args),
+			);
+			const rows = await renderAndGetRows();
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			let resolveF!: (files: FileDiff[]) => void;
+			let resolveG!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_compare_file") return base(cmd, args);
+				const path = (args as { filePath: string }).filePath;
+				return new Promise<FileDiff[]>((resolve) => {
+					if (path === "f.ts") resolveF = resolve;
+					else resolveG = resolve;
+				});
+			});
+
+			await fireEvent.click(await screen.findByText("f.ts"));
+			await fireEvent.click(await screen.findByText("g.ts"));
+			resolveF([makeFileDiffWithContent("f.ts", "OLD FILE")]);
+			await flush();
+			expect(screen.queryByText("OLD FILE")).toBeFalsy();
+			resolveG([makeFileDiffWithContent("g.ts", "NEW FILE")]);
+
+			expect(await screen.findByText("NEW FILE")).toBeTruthy();
+		});
+
+		it("does not apply a compare response after the pair swaps", async () => {
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			const rows = await screen.findAllByTestId("commit-row");
+			await fireEvent.click(rows[2]);
+			await fireEvent.click(rows[0], { metaKey: true });
+			await fireEvent.click(await screen.findByText("f.ts"));
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let resolveDiff!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_compare_file"
+					? new Promise<FileDiff[]>((resolve) => {
+							resolveDiff = resolve;
+						})
+					: base(cmd, args),
+			);
+
+			await view.rerender({ ...props, contentMode: "full" });
+			await fireEvent.click(
+				await screen.findByLabelText("Swap comparison direction"),
+			);
+			resolveDiff([makeFileDiffWithContent("f.ts", "OLD PAIR")]);
+			await flush();
+
+			expect(screen.queryByText("OLD PAIR")).toBeFalsy();
+			expect(await screen.findByTestId("compare-header")).toHaveTextContent(
+				"oid-3",
+			);
 		});
 
 		it("escape clears the compare", async () => {

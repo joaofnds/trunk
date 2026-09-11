@@ -45,7 +45,6 @@ import {
 	getCommitDraft,
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
-	getDiffShowFullFile,
 	getFetchIntervalMs,
 	getTreeViewEnabled,
 	setCommitDraft,
@@ -58,6 +57,7 @@ import {
 import { showToast } from "../lib/toast.svelte.js";
 import type {
 	CommitDetail as CommitDetailType,
+	ContentMode,
 	DiffRequestOptions,
 	DiffStat,
 	FileDiff,
@@ -117,6 +117,8 @@ interface Props {
 	reviewActive: boolean;
 	// Global review presentation filter, owned by App (persisted pref).
 	reviewFilter?: ReviewFilter;
+	contentMode: ContentMode;
+	oncontentmodechange: (mode: ContentMode) => void;
 	// Reports whether the active review tab's center pane is showing the review PANEL
 	// (vs. a diff) up to App, so the Toolbar Review button shares one source of truth
 	// with what's rendered: it's lit only when the panel shows, and a click while a
@@ -152,6 +154,8 @@ let {
 	tabActive,
 	reviewActive,
 	reviewFilter = "all",
+	contentMode,
+	oncontentmodechange,
 	onreviewpanelshowingchange,
 	oncommentcountschange,
 	onleftpanecollapsedchange,
@@ -320,6 +324,8 @@ let selectedFile = $state<{
 // push here updates nothing on screen.
 let stagingDiffFiles = $state.raw<FileDiff[]>([]);
 let stagingDiffLoading = $state(false);
+let stagingDiffError = $state<string | null>(null);
+let stagingDiffMode = $state<ContentMode | null>(null);
 let selectGeneration = 0;
 let selectedDiffEmptyGeneration = -1;
 
@@ -329,6 +335,7 @@ interface SelectedDiffLoad {
 	options?: DiffRequestOptions;
 	generation: number;
 	reportError: boolean;
+	mode: ContentMode;
 }
 
 let pendingSelectedDiff: SelectedDiffLoad | null = null;
@@ -397,6 +404,10 @@ let commitDetailStat = $state<DiffStat | null>(null);
 // push here updates nothing on screen.
 let commitFileDiffs = $state.raw<FileDiff[]>([]);
 let selectedCommitFile = $state<string | null>(null);
+let commitDiffLoadSeq = 0;
+let commitDiffLoading = $state(false);
+let commitDiffError = $state<string | null>(null);
+let commitDiffMode = $state<ContentMode | null>(null);
 // Bumped on every selectCommitIdempotent call so an out-of-order commit-switch
 // response can't clobber a newer one, and a failed switch's catch arm can tell
 // it's still the latest before clearing state.
@@ -413,6 +424,10 @@ let compareFileDiffs = $state.raw<FileDiff[]>([]);
 let compareStat = $state<DiffStat | null>(null);
 let selectedCompareFile = $state<string | null>(null);
 let compareGeneration = 0;
+let compareDiffLoadSeq = 0;
+let compareDiffLoading = $state(false);
+let compareDiffError = $state<string | null>(null);
+let compareDiffMode = $state<ContentMode | null>(null);
 let compareOids = $derived<ReadonlySet<string>>(
 	new Set(compare ? compare.picked : []),
 );
@@ -463,6 +478,9 @@ let rebaseFocusedFileSelected = $state<string | null>(null);
 let rebaseDiffFile = $state<string | null>(null);
 let rebaseFocusLoadSeq = 0;
 let rebaseDiffLoadSeq = 0;
+let rebaseDiffLoading = $state(false);
+let rebaseDiffError = $state<string | null>(null);
+let rebaseDiffMode = $state<ContentMode | null>(null);
 
 const wipCount = $derived(
 	dirtyCounts.staged + dirtyCounts.unstaged + dirtyCounts.conflicted,
@@ -533,6 +551,44 @@ let diffKind = $derived<PanelDiffKind>(
 let selectedDiffPath = $derived(
 	selectedCommitFile ?? selectedFile?.path ?? selectedCurrentFile ?? null,
 );
+
+let currentSourceMode = $derived(
+	selectedCompareFile
+		? compareDiffMode
+		: selectedCommitFile
+			? commitDiffMode
+			: selectedFile
+				? stagingDiffMode
+				: null,
+);
+let currentSourceError = $derived(
+	selectedCompareFile
+		? compareDiffError
+		: selectedCommitFile
+			? commitDiffError
+			: selectedFile
+				? stagingDiffError
+				: null,
+);
+let currentSourceLoading = $derived.by(() => {
+	if (selectedCurrentFile) return false;
+	const loading = selectedCompareFile
+		? compareDiffLoading
+		: selectedCommitFile
+			? commitDiffLoading
+			: selectedFile
+				? stagingDiffLoading
+				: false;
+	const hasRequestBackedSelection = Boolean(
+		selectedCompareFile || selectedCommitFile || selectedFile,
+	);
+	return (
+		loading ||
+		(hasRequestBackedSelection &&
+			!currentSourceError &&
+			currentSourceMode !== contentMode)
+	);
+});
 
 // ViewDescriptor for the current diff. resolveViewOid handles per-kind OID
 // selection (commit→commitOid, unstaged/staged→snapshots, conflicted→null), so
@@ -710,6 +766,9 @@ const headBranchRefresh = createCoalescedTask(scheduler, loadHeadBranch);
 
 onDestroy(() => {
 	repoViewActive = false;
+	commitDiffLoadSeq += 1;
+	compareDiffLoadSeq += 1;
+	rebaseDiffLoadSeq += 1;
 	repoNotification.dispose();
 	dirtyCountsRefresh.dispose();
 	headBranchRefresh.dispose();
@@ -726,6 +785,8 @@ function clearStagingDiff() {
 	selectedFile = null;
 	stagingDiffFiles = [];
 	stagingDiffLoading = false;
+	stagingDiffError = null;
+	stagingDiffMode = null;
 }
 
 // Every status refresh passes through here, including the one that follows an
@@ -744,12 +805,17 @@ function handleStatusChange(s: WorkingTreeStatus) {
 }
 
 function clearCommitFileDiff() {
+	commitDiffLoadSeq += 1;
 	selectedCommitFile = null;
+	commitDiffLoading = false;
+	commitDiffError = null;
+	commitDiffMode = null;
 	diffInViewPath = null;
 	commitEmpty = false;
 }
 
 function clearCommit() {
+	commitDiffLoadSeq += 1;
 	selectedCommitOid = null;
 	commitDetail = null;
 	commitDetailStat = null;
@@ -757,31 +823,37 @@ function clearCommit() {
 	selectedCommitFile = null;
 	diffInViewPath = null;
 	commitEmpty = false;
+	commitDiffLoading = false;
+	commitDiffError = null;
+	commitDiffMode = null;
 }
 
-// Cached diff options — loaded once on mount, updated via ondiffoptionschange callback.
-// Avoids 3 prefs IPC reads per file click.
-let cachedDiffOptions = $state<DiffRequestOptions>({
+// Request-local options are cached here; global content mode is owned by App
+// and is derived at the request boundary so mounted tabs cannot drift.
+let cachedDiffOptions = $state<Omit<DiffRequestOptions, "showFullFile">>({
 	contextLines: 3,
 	ignoreWhitespace: false,
-	showFullFile: false,
 });
 
 $effect(() => {
 	void repoPath; // re-load when repo changes
-	Promise.all([
-		getDiffContextLines(),
-		getDiffIgnoreWhitespace(),
-		getDiffShowFullFile(),
-	])
-		.then(([contextLines, ignoreWhitespace, showFullFile]) => {
-			cachedDiffOptions = { contextLines, ignoreWhitespace, showFullFile };
+	Promise.all([getDiffContextLines(), getDiffIgnoreWhitespace()])
+		.then(([contextLines, ignoreWhitespace]) => {
+			cachedDiffOptions = { contextLines, ignoreWhitespace };
 		})
 		.catch(() => {});
 });
 
 function buildDiffOptions(): DiffRequestOptions {
-	return cachedDiffOptions;
+	return { ...cachedDiffOptions, showFullFile: contentMode === "full" };
+}
+
+function modeFor(options: DiffRequestOptions): ContentMode {
+	return options.showFullFile ? "full" : "hunk";
+}
+
+function loadErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : "Failed to load diff";
 }
 
 /** WIP row clicked -- switch to staging view and auto-open right pane if collapsed. */
@@ -849,6 +921,9 @@ async function handleFileSelect(
 		selectGeneration += 1;
 		pendingSelectedDiff = null;
 		stagingDiffFiles = [];
+		stagingDiffLoading = false;
+		stagingDiffError = null;
+		stagingDiffMode = null;
 		return;
 	}
 	await loadSelectedFileDiff(path, kind, undefined, true);
@@ -928,12 +1003,16 @@ async function selectCommitIdempotent(oid: string) {
 }
 
 function clearCompare() {
+	compareDiffLoadSeq += 1;
 	compare = null;
 	compareBaseDetail = null;
 	compareTargetDetail = null;
 	compareFileDiffs = [];
 	compareStat = null;
 	selectedCompareFile = null;
+	compareDiffLoading = false;
+	compareDiffError = null;
+	compareDiffMode = null;
 	compareGeneration++;
 }
 
@@ -1012,26 +1091,45 @@ async function reloadCompareFile(
 	options: DiffRequestOptions,
 ) {
 	if (!repoPath || !compare) return;
+	const fireRepo = repoPath;
 	const firePair = compare;
+	const loadSeq = ++compareDiffLoadSeq;
+	const requestMode = modeFor(options);
+	const requestIsCurrent = () =>
+		repoViewActive &&
+		loadSeq === compareDiffLoadSeq &&
+		repoPath === fireRepo &&
+		compare === firePair &&
+		selectedCompareFile === filePath;
+	compareDiffLoading = true;
+	compareDiffError = null;
 	try {
 		const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
-			path: repoPath,
+			path: fireRepo,
 			baseOid: firePair.baseOid,
 			targetOid: firePair.targetOid,
 			filePath,
 			options,
 		});
-		if (compare !== firePair) return;
+		if (!requestIsCurrent()) return;
 		compareFileDiffs = patchLoadedDiff(compareFileDiffs, filePath, fileDiffs);
-	} catch {
-		// Keep the lightweight entry — DiffPanel will show empty diff
+		compareDiffMode = requestMode;
+		compareDiffLoading = false;
+	} catch (error) {
+		if (!requestIsCurrent()) return;
+		compareDiffLoading = false;
+		compareDiffError = loadErrorMessage(error);
 	}
 }
 
 // Compare file clicks toggle like commit-detail file clicks.
 async function handleCompareFileSelect(path: string) {
 	if (selectedCompareFile === path) {
+		compareDiffLoadSeq += 1;
 		selectedCompareFile = null;
+		compareDiffLoading = false;
+		compareDiffError = null;
+		compareDiffMode = null;
 		return;
 	}
 	selectedCompareFile = path;
@@ -1114,40 +1212,66 @@ function countDiffLines(fileDiffs: FileDiff[]): number {
 // for `path` (or no-ops if already loaded). This is the seam the rune binds
 // to (WR-04): the jump gesture must never clear the file it's about to scroll
 // into, otherwise rightPaneMode='diff' lands on a view with no selected file.
+async function reloadCommitFile(
+	path: string,
+	options: DiffRequestOptions,
+	observeOpen = false,
+) {
+	if (!repoPath || !selectedCommitOid) return;
+	const fireRepo = repoPath;
+	const fireOid = selectedCommitOid;
+	const loadSeq = ++commitDiffLoadSeq;
+	const requestMode = modeFor(options);
+	const requestIsCurrent = () =>
+		repoViewActive &&
+		loadSeq === commitDiffLoadSeq &&
+		repoPath === fireRepo &&
+		selectedCommitOid === fireOid &&
+		selectedCommitFile === path;
+	commitDiffLoading = true;
+	commitDiffError = null;
+	try {
+		const load = async () => {
+			const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
+				path: fireRepo,
+				oid: fireOid,
+				filePath: path,
+				options,
+			});
+			if (!requestIsCurrent()) return;
+			commitFileDiffs = patchLoadedDiff(commitFileDiffs, path, fileDiffs);
+			commitDiffMode = requestMode;
+			commitDiffLoading = false;
+		};
+
+		if (observeOpen) {
+			await span("diff.openCommitFile", async (observation) => {
+				observation.attr("path", path);
+				await load();
+				if (!requestIsCurrent()) return;
+				observation.attr(
+					"lines",
+					countDiffLines(commitFileDiffs.filter((file) => file.path === path)),
+				);
+				observation.attr("fullFile", String(options.showFullFile));
+			});
+		} else {
+			await load();
+		}
+	} catch (error) {
+		if (!requestIsCurrent()) return;
+		commitDiffLoading = false;
+		commitDiffError = loadErrorMessage(error);
+	}
+}
+
 async function selectCommitFileIdempotent(path: string) {
 	if (selectedCommitFile === path) return;
 	selectedCommitFile = path;
 	diffInViewPath = path;
 	// Close the review panel (swap to diff) so the clicked file is visible (260531-l02d).
 	if (reviewSession.state.reviewActive) reviewSession.showDiff();
-	if (!repoPath || !selectedCommitOid) return;
-	// Captured at fire time: a same-path reopen on a later commit switch can
-	// resolve after this one, and the replacement below is path-keyed only, so
-	// without this a slow response would patch the new commit's entry with the
-	// old commit's hunks.
-	const fireOid = selectedCommitOid;
-	try {
-		await span("diff.openCommitFile", async (observation) => {
-			observation.attr("path", path);
-
-			const options = buildDiffOptions();
-			const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-				path: repoPath,
-				oid: fireOid,
-				filePath: path,
-				options,
-			});
-
-			observation.attr("lines", countDiffLines(fileDiffs));
-			observation.attr("fullFile", String(options.showFullFile));
-
-			if (fireOid !== selectedCommitOid) return;
-			// Replace the lightweight entry with the raw diff data
-			commitFileDiffs = patchLoadedDiff(commitFileDiffs, path, fileDiffs);
-		});
-	} catch {
-		// Keep the lightweight entry — DiffPanel will show empty diff
-	}
+	await reloadCommitFile(path, buildDiffOptions(), true);
 }
 
 // Toggle wrapper for CommitDetail file clicks: re-clicking the selected file
@@ -1181,6 +1305,8 @@ async function readSelectedFileDiff(): Promise<void> {
 		)
 			return;
 		stagingDiffFiles = result;
+		stagingDiffMode = load.mode;
+		stagingDiffError = null;
 		if (
 			result.length === 0 ||
 			result.every((file) => file.hunks.length === 0)
@@ -1191,11 +1317,13 @@ async function readSelectedFileDiff(): Promise<void> {
 		if (
 			!repoViewActive ||
 			repo !== repoPath ||
-			load.generation !== selectGeneration
+			load.generation !== selectGeneration ||
+			selectedFile?.path !== load.path ||
+			selectedFile.kind !== load.kind
 		)
 			return;
 		if (load.reportError) reportErrorToast(error, "Failed to load diff");
-		stagingDiffFiles = [];
+		stagingDiffError = loadErrorMessage(error);
 	} finally {
 		if (repoViewActive && load.generation === selectGeneration) {
 			stagingDiffLoading = false;
@@ -1212,9 +1340,18 @@ function prepareSelectedFileDiff(
 ): number {
 	if (advanceGeneration) selectGeneration += 1;
 	const generation = selectGeneration;
+	const requestOptions = options ?? buildDiffOptions();
 	selectedDiffEmptyGeneration = -1;
-	pendingSelectedDiff = { path, kind, options, generation, reportError };
+	pendingSelectedDiff = {
+		path,
+		kind,
+		options: requestOptions,
+		generation,
+		reportError,
+		mode: modeFor(requestOptions),
+	};
 	stagingDiffLoading = true;
+	stagingDiffError = null;
 	return generation;
 }
 
@@ -1421,6 +1558,7 @@ async function handleOpenRebaseEditor(baseOid: string, inclusive = false) {
 
 function handleRebaseEditorClose() {
 	rebaseFocusLoadSeq++;
+	rebaseDiffLoadSeq++;
 	showRebaseEditor = false;
 	rebaseEditorCommits = [];
 	rebaseBaseOid = null;
@@ -1431,6 +1569,9 @@ function handleRebaseEditorClose() {
 	rebaseFocusedFileDiffs = [];
 	rebaseFocusedFileSelected = null;
 	rebaseDiffFile = null;
+	rebaseDiffLoading = false;
+	rebaseDiffError = null;
+	rebaseDiffMode = null;
 }
 
 async function handleRebaseFocusChange(oid: string) {
@@ -1439,6 +1580,10 @@ async function handleRebaseFocusChange(oid: string) {
 	const requestIsCurrent = () => loadSeq === rebaseFocusLoadSeq;
 	rebaseFocusedFileSelected = null;
 	rebaseDiffFile = null;
+	rebaseDiffLoadSeq++;
+	rebaseDiffLoading = false;
+	rebaseDiffError = null;
+	rebaseDiffMode = null;
 	try {
 		const [detail, files, stat] = await Promise.all([
 			safeInvoke<CommitDetailType>("get_commit_detail", {
@@ -1472,15 +1617,21 @@ async function reloadRebaseFile(path: string, options: DiffRequestOptions) {
 	const oid = rebaseFocusedCommitDetail?.oid;
 	if (!repoPath || !oid) return;
 
+	const fireRepo = repoPath;
 	const loadSeq = ++rebaseDiffLoadSeq;
+	const requestMode = modeFor(options);
 	const requestIsCurrent = () =>
+		repoViewActive &&
 		loadSeq === rebaseDiffLoadSeq &&
+		repoPath === fireRepo &&
 		rebaseFocusedCommitDetail?.oid === oid &&
 		rebaseDiffFile === path;
+	rebaseDiffLoading = true;
+	rebaseDiffError = null;
 
 	try {
 		const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-			path: repoPath,
+			path: fireRepo,
 			oid,
 			filePath: path,
 			options,
@@ -1492,18 +1643,25 @@ async function reloadRebaseFile(path: string, options: DiffRequestOptions) {
 			path,
 			fileDiffs,
 		);
+		rebaseDiffMode = requestMode;
+		rebaseDiffLoading = false;
 	} catch (e) {
 		if (!requestIsCurrent()) return;
 
+		rebaseDiffLoading = false;
+		rebaseDiffError = loadErrorMessage(e);
 		reportErrorToast(e, "Failed to load diff");
-		// Keep the existing entry so the detail pane remains usable.
 	}
 }
 
 async function handleRebaseFileSelect(path: string) {
 	if (rebaseFocusedFileSelected === path) {
+		rebaseDiffLoadSeq++;
 		rebaseFocusedFileSelected = null;
 		rebaseDiffFile = null;
+		rebaseDiffLoading = false;
+		rebaseDiffError = null;
+		rebaseDiffMode = null;
 		return;
 	}
 
@@ -1511,6 +1669,27 @@ async function handleRebaseFileSelect(path: string) {
 	rebaseDiffFile = path;
 	await reloadRebaseFile(path, buildDiffOptions());
 }
+
+async function reloadVisibleDiffForCurrentMode() {
+	const options = buildDiffOptions();
+	if (showRebaseEditor && rebaseDiffFile) {
+		await reloadRebaseFile(rebaseDiffFile, options);
+	} else if (selectedFile && selectedFile.kind !== "conflicted") {
+		await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
+	} else if (selectedCompareFile && compare) {
+		await reloadCompareFile(selectedCompareFile, options);
+	} else if (selectedCommitFile && selectedCommitOid) {
+		await reloadCommitFile(selectedCommitFile, options);
+	}
+}
+
+let observedContentMode = untrack(() => contentMode);
+$effect(() => {
+	const nextMode = contentMode;
+	if (nextMode === observedContentMode) return;
+	observedContentMode = nextMode;
+	void reloadVisibleDiffForCurrentMode();
+});
 
 async function handleRebaseStart(
 	todoItems: {
@@ -1641,6 +1820,11 @@ function startRightResize(e: MouseEvent) {
             editorSessionForThread={editorSessionForDiffThread}
             composerSession={diffComposerSession}
             composerTarget={diffComposerTarget}
+            {contentMode}
+            {oncontentmodechange}
+            loading={rebaseDiffLoading || (rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode)}
+            loadError={rebaseDiffError}
+            onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
             ondiffoptionschange={async (options) => {
               cachedDiffOptions = options;
               if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
@@ -1726,7 +1910,11 @@ function startRightResize(e: MouseEvent) {
           composerSession={diffComposerSession}
           composerTarget={diffComposerTarget}
           refreshToken={diffRefreshToken}
-          loading={stagingDiffLoading}
+          {contentMode}
+          {oncontentmodechange}
+          loading={currentSourceLoading}
+          loadError={currentSourceError}
+          onretry={() => { void reloadVisibleDiffForCurrentMode(); }}
           onhunkaction={async (filePath) => {
             if (selectedFile) {
               const { path, kind } = selectedFile;
@@ -1750,17 +1938,7 @@ function startRightResize(e: MouseEvent) {
             } else if (selectedCompareFile && compare) {
               await reloadCompareFile(selectedCompareFile, options);
             } else if (selectedCommitFile && selectedCommitOid) {
-              try {
-                const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-                  path: repoPath,
-                  oid: selectedCommitOid,
-                  filePath: selectedCommitFile,
-                  options,
-                });
-                commitFileDiffs = patchLoadedDiff(commitFileDiffs, selectedCommitFile, fileDiffs);
-              } catch {
-                // non-fatal
-              }
+              await reloadCommitFile(selectedCommitFile, options);
             }
           }}
           onclose={reviewSession.state.reviewActive

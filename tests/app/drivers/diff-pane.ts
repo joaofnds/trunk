@@ -49,6 +49,17 @@ export class DiffPaneDriver {
 		);
 	}
 
+	/** Switches the pane from full-file mode to hunks, if needed. */
+	async showHunks(): Promise<void> {
+		const button = await waitFor("the hunk mode control", () =>
+			document.querySelector<HTMLButtonElement>(
+				`${SHOW_HUNKS}, ${SHOW_FULL_FILE}`,
+			),
+		);
+
+		if (button.matches(SHOW_HUNKS)) button.click();
+	}
+
 	/** Switches the pane from inline to side-by-side, if it is not there already. */
 	async showSideBySide(): Promise<void> {
 		const button = await waitFor("the layout toggle", () =>

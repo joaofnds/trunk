@@ -23,6 +23,7 @@ import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
 	getActiveTabId,
+	getDiffContentMode,
 	getLeftPaneCollapsed,
 	getLeftPaneWidth,
 	getOpenRepo,
@@ -33,6 +34,7 @@ import {
 	getZoomLevel,
 	removeRecentRepo,
 	setActiveTabId,
+	setDiffContentMode,
 	setLeftPaneCollapsed,
 	setLeftPaneWidth,
 	setOpenRepo,
@@ -44,7 +46,8 @@ import {
 } from "./lib/store.js";
 import type { TabInfo } from "./lib/tab-types.js";
 import { createTabId } from "./lib/tab-types.js";
-import type { ReviewFilter, ReviewTone } from "./lib/types.js";
+import { showToast } from "./lib/toast.svelte.js";
+import type { ContentMode, ReviewFilter, ReviewTone } from "./lib/types.js";
 import {
 	createUndoRedoState,
 	type UndoRedoManager,
@@ -75,6 +78,9 @@ let activeReviewPanelShowing = $state(true);
 // per-tab filtered badge counts up. The active tab alone feeds the toolbar.
 let reviewFilter = $state<ReviewFilter>("all");
 let reviewFilterChanged = false;
+let diffContentMode = $state<ContentMode>("hunk");
+let diffContentModeChanged = false;
+let diffContentModeLoaded = $state(false);
 let commentCounts = $state<
 	Map<
 		string,
@@ -105,6 +111,16 @@ async function handleReviewFilterChange(filter: ReviewFilter) {
 	reviewFilterChanged = true;
 	reviewFilter = filter;
 	await setReviewFilter(filter);
+}
+
+async function handleDiffContentModeChange(mode: ContentMode) {
+	diffContentModeChanged = true;
+	diffContentMode = mode;
+	try {
+		await setDiffContentMode(mode);
+	} catch {
+		showToast("Could not save diff content mode", "error");
+	}
 }
 
 // Tab state
@@ -468,6 +484,21 @@ $effect(() => {
 	});
 });
 
+// Content mode is one global preference and must be known before any RepoView
+// can issue its first mode-bound diff request.
+$effect(() => {
+	getDiffContentMode()
+		.then((mode) => {
+			if (!diffContentModeChanged) diffContentMode = mode;
+		})
+		.catch(() => {
+			showToast("Could not load diff content mode", "error");
+		})
+		.finally(() => {
+			diffContentModeLoaded = true;
+		});
+});
+
 // Track fullscreen state (hide traffic-light padding when fullscreen)
 $effect(() => {
 	const appWindow = getCurrentWindow();
@@ -717,9 +748,10 @@ $effect(() => {
     {#each tabs as tab (tab.id)}
       <div style="position: absolute; inset: 0; display: flex; flex-direction: column; {tab.id !== activeTabId ? 'visibility: hidden; pointer-events: none;' : ''}">
         {#if tab.repoPath}
-          {#key tab.repoPath}
-          {@const tabState = getOrCreateTabState(tab.id)}
-          <RepoView
+          {#if diffContentModeLoaded}
+            {#key tab.repoPath}
+            {@const tabState = getOrCreateTabState(tab.id)}
+            <RepoView
             repoPath={tab.repoPath}
             repoName={tab.repoName}
             remoteState={tabState.remoteState}
@@ -732,14 +764,21 @@ $effect(() => {
             tabActive={tab.id === activeTabId}
             reviewActive={reviewPanelOpen && tab.id === activeTabId}
             {reviewFilter}
+            contentMode={diffContentMode}
+            oncontentmodechange={handleDiffContentModeChange}
             oncommentcountschange={(c) => setCommentCounts(tab.id, c)}
             onreviewpanelshowingchange={(s) => { activeReviewPanelShowing = s; }}
             onleftpanecollapsedchange={(c) => { leftPaneCollapsed = c; setLeftPaneCollapsed(c); }}
             onrightpanecollapsedchange={(c) => { rightPaneCollapsed = c; setRightPaneCollapsed(c); }}
             onleftpanewidthchange={(w) => { leftPaneWidth = w; setLeftPaneWidth(w); }}
             onrightpanewidthchange={(w) => { rightPaneWidth = w; setRightPaneWidth(w); }}
-          />
-          {/key}
+            />
+            {/key}
+          {:else}
+            <div aria-label="Loading repository" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--fg-3); font-size: 13px;">
+              Loading repository…
+            </div>
+          {/if}
         {:else}
           <WelcomeScreen {isFullscreen} onopen={(path, name) => openRepoInTab(tab.id, path, name)} />
         {/if}

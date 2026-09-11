@@ -40,8 +40,6 @@ const {
 	setDiffContextLines,
 	getDiffIgnoreWhitespace,
 	setDiffIgnoreWhitespace,
-	getDiffShowFullFile,
-	setDiffShowFullFile,
 	getDiffContentMode,
 	setDiffContentMode,
 	getDiffLayoutMode,
@@ -204,17 +202,6 @@ describe("store", () => {
 			await setDiffIgnoreWhitespace(true);
 			const ignore = await getDiffIgnoreWhitespace();
 			expect(ignore).toBe(true);
-		});
-
-		it("getDiffShowFullFile returns false when store is empty (default)", async () => {
-			const show = await getDiffShowFullFile();
-			expect(show).toBe(false);
-		});
-
-		it("setDiffShowFullFile persists and getDiffShowFullFile retrieves it", async () => {
-			await setDiffShowFullFile(true);
-			const show = await getDiffShowFullFile();
-			expect(show).toBe(true);
 		});
 	});
 

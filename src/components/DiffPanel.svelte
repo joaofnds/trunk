@@ -22,18 +22,14 @@ import {
 	type ThreadEditorSession,
 } from "../lib/review-editors.svelte.js";
 import {
-	getDiffContentMode,
 	getDiffContextLines,
 	getDiffIgnoreWhitespace,
 	getDiffLayoutMode,
-	getDiffShowFullFile,
 	getDiffShowInvisibles,
 	getDiffWordWrap,
 	getRenderMode,
-	setDiffContentMode,
 	setDiffIgnoreWhitespace,
 	setDiffLayoutMode,
-	setDiffShowFullFile,
 	setDiffShowInvisibles,
 	setDiffWordWrap,
 	setRenderMode,
@@ -74,7 +70,11 @@ interface Props {
 		action: "stage" | "unstage" | "discard",
 	) => void;
 	ondiffoptionschange?: (options: DiffRequestOptions) => void;
+	contentMode: ContentMode;
+	oncontentmodechange: (mode: ContentMode) => void;
 	loading?: boolean;
+	loadError?: string | null;
+	onretry?: () => void;
 	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
 	activeReviewId?: string | null;
@@ -98,7 +98,11 @@ let {
 	onhunkaction,
 	onfileemptied,
 	ondiffoptionschange,
+	contentMode,
+	oncontentmodechange,
 	loading = false,
+	loadError = null,
+	onretry,
 	reviewCommentsVisible = true,
 	reviewFilter = "all",
 	activeReviewId = null,
@@ -118,7 +122,6 @@ let commentCardsMounted = $derived(
 	reviewCommentsVisible || (reviewFilter === "none" && viewComments.length > 0),
 );
 
-let contentMode = $state<ContentMode>("hunk");
 let layoutMode = $state<LayoutMode>("inline");
 let renderMode = $state<RenderMode>("source");
 let contextLines = $state(3);
@@ -453,7 +456,6 @@ async function handleCommentFile() {
 
 $effect(() => {
 	Promise.all([
-		getDiffContentMode(),
 		getDiffLayoutMode(),
 		getDiffContextLines(),
 		getDiffIgnoreWhitespace(),
@@ -461,8 +463,7 @@ $effect(() => {
 		getDiffWordWrap(),
 		getRenderMode(),
 	])
-		.then(([cm, lm, cl, iw, si, ww, rm]) => {
-			contentMode = cm;
+		.then(([lm, cl, iw, si, ww, rm]) => {
 			layoutMode = lm;
 			contextLines = cl;
 			ignoreWhitespace = iw;
@@ -489,12 +490,9 @@ function currentDiffOptions(
 	};
 }
 
-async function handleContentModeChange(mode: ContentMode) {
-	contentMode = mode;
-	const shouldShowFull = mode === "full";
+function handleContentModeChange(mode: ContentMode) {
 	clearSelection();
-	ondiffoptionschange?.(currentDiffOptions({ showFullFile: shouldShowFull }));
-	Promise.all([setDiffContentMode(mode), setDiffShowFullFile(shouldShowFull)]);
+	oncontentmodechange(mode);
 }
 
 async function handleLayoutModeChange(mode: LayoutMode) {
@@ -1058,6 +1056,8 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{diffKind}
 		{emptyCommit}
 		{loading}
+		{loadError}
+		{onretry}
 		{hunkOperationInFlight}
 		{ignoreWhitespace}
 		{showInvisibles}

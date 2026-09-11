@@ -20,9 +20,14 @@ import type {
 	TauriInternals,
 } from "../tests/app/harness/internals.js";
 import { TauriInternals as AppInternals } from "../tests/app/harness/internals.js";
+import { makeCommit } from "./__tests__/helpers/factories.js";
+import { restoreLayout, stubLayout } from "./__tests__/helpers/layout-stub.js";
 import { aReply, aThread } from "./__tests__/helpers/thread-fixture.js";
 import App from "./App.svelte";
 import type {
+	CommitDetail,
+	DiffRequestOptions,
+	FileDiff,
 	Review,
 	ReviewFilter,
 	SessionCommit,
@@ -74,6 +79,14 @@ class StatefulAppHost implements HostChannel {
 	private readonly readPreferences: string[] = [];
 	private readonly eventHandlers: EventHandler[] = [];
 	private readonly reviews = new Map<string, RepositoryReviews>();
+	private readonly commitDiffs = new Map<
+		string,
+		{ oid: string; filePath: string }
+	>();
+	readonly diffRequests: { path: string; options: DiffRequestOptions }[] = [];
+	private heldDiffMode: boolean | null = null;
+	private readonly rejectedPreferenceReads = new Set<string>();
+	private readonly rejectedPreferenceWrites = new Set<string>();
 	private readonly heldReads = new Map<
 		string,
 		{
@@ -98,6 +111,26 @@ class StatefulAppHost implements HostChannel {
 
 	seedReview(path: string, review: RepositoryReview): void {
 		this.seedReviews(path, [review], review.review.id);
+	}
+
+	seedCommitDiff(path: string, oid: string, filePath: string): void {
+		this.commitDiffs.set(path, { oid, filePath });
+	}
+
+	holdDiffMode(showFullFile: boolean): void {
+		this.heldDiffMode = showFullFile;
+	}
+
+	releaseDiffMode(): void {
+		this.heldDiffMode = null;
+	}
+
+	rejectPreferenceRead(key: string): void {
+		this.rejectedPreferenceReads.add(key);
+	}
+
+	rejectPreferenceWrite(key: string): void {
+		this.rejectedPreferenceWrites.add(key);
 	}
 
 	seedReviews(
@@ -155,6 +188,7 @@ class StatefulAppHost implements HostChannel {
 
 		const path = String(args.path ?? "");
 		const repositoryReviews = this.reviews.get(path);
+		const commitDiff = this.commitDiffs.get(path);
 		const activeReview = repositoryReviews?.reviews.find(
 			({ review }) => review.id === repositoryReviews.activeReviewId,
 		);
@@ -162,6 +196,9 @@ class StatefulAppHost implements HostChannel {
 			case "prefs_get": {
 				const key = String(args.key);
 				this.readPreferences.push(key);
+				if (this.rejectedPreferenceReads.has(key)) {
+					throw new Error(`could not read ${key}`);
+				}
 				const captured = this.preferences.has(key)
 					? this.preferences.get(key)
 					: null;
@@ -175,6 +212,9 @@ class StatefulAppHost implements HostChannel {
 				return captured;
 			}
 			case "prefs_set":
+				if (this.rejectedPreferenceWrites.has(String(args.key))) {
+					throw new Error(`could not write ${String(args.key)}`);
+				}
 				this.preferences.set(String(args.key), args.value);
 				return null;
 			case "canonical_repo_path":
@@ -203,7 +243,29 @@ class StatefulAppHost implements HostChannel {
 			case "validate_recent_path":
 				return true;
 			case "get_commit_graph":
-				return { commits: [], max_columns: 0 };
+				return {
+					commits: commitDiff
+						? [makeCommit({ oid: commitDiff.oid, summary: `${path} commit` })]
+						: [],
+					max_columns: commitDiff ? 1 : 0,
+				};
+			case "get_commit_detail":
+				return commitDiff ? commitDetail(commitDiff.oid) : null;
+			case "list_commit_files":
+				return commitDiff ? [fileDiff(commitDiff.filePath)] : [];
+			case "diff_commit_file": {
+				const options = args.options as DiffRequestOptions;
+				this.diffRequests.push({ path, options });
+				if (this.heldDiffMode === options.showFullFile)
+					return new Promise(() => {});
+
+				return [
+					fileDiff(
+						String(args.filePath),
+						`${options.showFullFile ? "FULL" : "HUNK"} ${path}`,
+					),
+				];
+			}
 			case "list_refs":
 				return { local: [], remote: [], tags: [], stashes: [] };
 			case "get_operation_state":
@@ -245,6 +307,7 @@ let host: StatefulAppHost;
 let internals: TauriInternals;
 
 beforeEach(() => {
+	stubLayout({ width: 900, height: 400 });
 	host = new StatefulAppHost();
 	internals = new AppInternals(host);
 	internals.route([
@@ -263,6 +326,7 @@ afterEach(async () => {
 	cleanup();
 	await Promise.resolve();
 	internals.uninstall();
+	restoreLayout();
 });
 
 describe("App review preference", () => {
@@ -397,6 +461,130 @@ describe("App review preference", () => {
 	});
 });
 
+describe("App diff content mode", () => {
+	it("shows a non-interactive repository loading state until content mode is known", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		const read = host.holdPreferenceRead("diff_content_mode");
+		render(App);
+		await read.entered;
+
+		expect(await screen.findByLabelText("Loading repository")).toBeTruthy();
+		expect(
+			screen.queryByRole("button", { name: "Open Repository" }),
+		).toBeFalsy();
+
+		read.release();
+		expect(await screen.findByTestId("commit-row")).toBeTruthy();
+	});
+
+	it("uses the in-memory mode and reports a persistence failure", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		host.rejectPreferenceWrite("diff_content_mode");
+		render(App);
+		const row = await screen.findByTestId("commit-row");
+		await fireEvent.click(row);
+		await fireEvent.click(await screen.findByText("a.ts"));
+		await screen.findByText(`HUNK ${REPO_A}`);
+
+		await fireEvent.click(screen.getByTitle("Show full file"));
+
+		expect(await screen.findByText(`FULL ${REPO_A}`)).toBeTruthy();
+		expect(
+			await screen.findByText("Could not save diff content mode"),
+		).toBeTruthy();
+	});
+
+	it("falls back to hunk mode and reports a preference read failure", async () => {
+		seedOneTab();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		host.rejectPreferenceRead("diff_content_mode");
+		render(App);
+		const row = await screen.findByTestId("commit-row");
+		await fireEvent.click(row);
+		await fireEvent.click(await screen.findByText("a.ts"));
+
+		expect(await screen.findByText(`HUNK ${REPO_A}`)).toBeTruthy();
+		expect(
+			await screen.findByText("Could not load diff content mode"),
+		).toBeTruthy();
+	});
+
+	it("reloads already-open diffs in every mounted repository tab", async () => {
+		seedTwoTabs();
+		host.seedPreference("diff_content_mode", "full");
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		host.seedCommitDiff(REPO_B, "commit-b", "b.ts");
+		host.holdDiffMode(false);
+		render(App);
+		const rows = await waitFor(() => {
+			const mounted = screen.getAllByTestId("commit-row");
+			expect(mounted).toHaveLength(2);
+			return mounted;
+		});
+
+		await fireEvent.click(rows[0]);
+		await fireEvent.click(await screen.findByText("a.ts"));
+		await screen.findByText(`FULL ${REPO_A}`);
+		await fireEvent.click(rows[1]);
+		await fireEvent.click(await screen.findByText("b.ts"));
+		await screen.findByText(`FULL ${REPO_B}`);
+
+		await fireEvent.click(screen.getAllByTitle("Show hunks")[0]);
+
+		await waitFor(() => {
+			const hunkRequests = host.diffRequests.filter(
+				({ options }) => !options.showFullFile,
+			);
+			expect(hunkRequests.map(({ path }) => path)).toEqual([REPO_A, REPO_B]);
+			expect(screen.queryByText(`FULL ${REPO_A}`)).not.toBeInTheDocument();
+			expect(screen.queryByText(`FULL ${REPO_B}`)).not.toBeInTheDocument();
+		});
+		expect(host.preference("diff_content_mode")).toBe("hunk");
+
+		host.releaseDiffMode();
+		await fireEvent.click(screen.getAllByLabelText("Close diff")[0]);
+		await fireEvent.click(await screen.findByText("a.ts"));
+
+		expect(await screen.findByText(`HUNK ${REPO_A}`)).toBeTruthy();
+		expect(host.diffRequests.at(-1)).toEqual({
+			path: REPO_A,
+			options: expect.objectContaining({ showFullFile: false }),
+		});
+	});
+
+	it("reloads every mounted tab when switching from hunks to full files", async () => {
+		seedTwoTabs();
+		host.seedCommitDiff(REPO_A, "commit-a", "a.ts");
+		host.seedCommitDiff(REPO_B, "commit-b", "b.ts");
+		host.holdDiffMode(true);
+		render(App);
+		const rows = await waitFor(() => {
+			const mounted = screen.getAllByTestId("commit-row");
+			expect(mounted).toHaveLength(2);
+			return mounted;
+		});
+		await fireEvent.click(rows[0]);
+		await fireEvent.click(await screen.findByText("a.ts"));
+		await screen.findByText(`HUNK ${REPO_A}`);
+		await fireEvent.click(rows[1]);
+		await fireEvent.click(await screen.findByText("b.ts"));
+		await screen.findByText(`HUNK ${REPO_B}`);
+
+		await fireEvent.click(screen.getAllByTitle("Show full file")[0]);
+
+		await waitFor(() => {
+			const fullRequests = host.diffRequests.filter(
+				({ options }) => options.showFullFile,
+			);
+			expect(fullRequests.map(({ path }) => path)).toEqual([REPO_A, REPO_B]);
+			expect(screen.queryByText(`HUNK ${REPO_A}`)).not.toBeInTheDocument();
+			expect(screen.queryByText(`HUNK ${REPO_B}`)).not.toBeInTheDocument();
+		});
+	});
+});
+
 function seedOneTab(): void {
 	host.seedPreference("open_tabs", [
 		{ id: "tab-a", repoPath: REPO_A, repoName: "A" },
@@ -448,6 +636,51 @@ function reviewWith(
 				is_snapshot: false,
 			},
 		],
+	};
+}
+
+function commitDetail(oid: string): CommitDetail {
+	return {
+		oid,
+		short_oid: oid,
+		summary: oid,
+		body: null,
+		author_name: "Test",
+		author_email: "test@example.com",
+		author_timestamp: 0,
+		committer_name: "Test",
+		committer_email: "test@example.com",
+		committer_timestamp: 0,
+		parent_oids: [],
+	};
+}
+
+function fileDiff(path: string, content?: string): FileDiff {
+	return {
+		path,
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: content
+			? [
+					{
+						header: "@@ -1,0 +1,1 @@",
+						old_start: 1,
+						old_lines: 0,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content,
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				]
+			: [],
 	};
 }
 

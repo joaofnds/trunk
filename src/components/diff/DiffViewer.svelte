@@ -34,6 +34,8 @@ interface Props {
 	diffKind: PanelDiffKind;
 	emptyCommit?: boolean;
 	loading: boolean;
+	loadError?: string | null;
+	onretry?: () => void;
 	hunkOperationInFlight: boolean;
 	ignoreWhitespace: boolean;
 	showInvisibles: boolean;
@@ -100,6 +102,8 @@ let {
 	diffKind,
 	emptyCommit = false,
 	loading,
+	loadError = null,
+	onretry,
 	hunkOperationInFlight,
 	ignoreWhitespace,
 	showInvisibles,
@@ -151,7 +155,7 @@ const selectedFileDiff = $derived(
      scrollIntoView and scroll chaining can move, and WebKit hands it a phantom
      scroll range the size of the rendered pane's content (TRUNK-127). -->
 <div style="flex: 1; overflow: clip; min-height: 0; position: relative; container-type: inline-size; overscroll-behavior-x: none;">
-  {#if fileDiffs.length === 0 && commitDetail === null && !loading}
+  {#if fileDiffs.length === 0 && commitDetail === null && !loading && !loadError}
     <div style="
       flex: 1;
       display: flex;
@@ -190,6 +194,17 @@ const selectedFileDiff = $derived(
       {refreshToken}
       {hunkElements}
     />
+  {:else if loadError}
+    <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: 13px;">
+      <span>Could not load diff</span>
+      {#if onretry}
+        <button type="button" onclick={onretry}>Retry</button>
+      {/if}
+    </div>
+  {:else if loading}
+    <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 13px;">
+      Loading diff…
+    </div>
   {:else if layoutMode === "inline" && contentMode === "hunk"}
     <HunkView
       bind:this={diffNav}

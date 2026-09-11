@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import DiffPanel from "../__tests__/helpers/controlled-diff-panel.svelte";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import {
 	pairLines,
@@ -10,7 +11,6 @@ import {
 import { safeInvoke } from "../lib/invoke.js";
 import { createReviewEditorStore } from "../lib/review-editors.svelte.js";
 import type { CommitDetail, DiffLine, FileDiff } from "../lib/types.js";
-import DiffPanel from "./DiffPanel.svelte";
 
 // Shared Tauri mock
 import "../__tests__/helpers/tauri-mock";
@@ -95,8 +95,6 @@ vi.mock("../lib/store.js", () => {
 			currentIgnoreWhitespace = v;
 			return Promise.resolve(undefined);
 		}),
-		getDiffShowFullFile: vi.fn().mockResolvedValue(false),
-		setDiffShowFullFile: vi.fn().mockResolvedValue(undefined),
 		getDiffShowInvisibles: vi.fn(() => Promise.resolve(currentShowInvisibles)),
 		setDiffShowInvisibles: vi.fn((v: boolean) => {
 			currentShowInvisibles = v;
@@ -1124,6 +1122,7 @@ describe("VIEW-04: reopening a large file", () => {
 
 		const { container } = render(DiffPanel, {
 			props: {
+				contentMode: "full",
 				fileDiffs: [bigFile],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -1750,6 +1749,7 @@ describe("VIEW-05: Staging in split view", () => {
 
 		render(DiffPanel, {
 			props: {
+				contentMode: "full",
 				fileDiffs: [testDiff],
 				commitDetail: null,
 				onclose: vi.fn(),
@@ -2857,6 +2857,112 @@ describe("DiffPanel hunk navigation", () => {
 			expect(scrolled).toHaveBeenCalled();
 		} finally {
 			Element.prototype.scrollIntoView = original;
+			vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+				Promise.resolve("source"),
+			);
+		}
+	});
+
+	it("reprojects rendered markdown immediately while Source is loading", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+			Promise.resolve("rendered"),
+		);
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "render_markdown_diff"
+				? Promise.resolve({
+						rows: [
+							{
+								kind: "changed",
+								beforeHtml: "<p>before</p>",
+								afterHtml: "<p>after</p>",
+								mergedHtml: "<p>full projection</p>",
+								hunkMergedHtml: "<p>prior hunk projection</p>",
+								afterStart: 1,
+								afterEnd: 1,
+							},
+						],
+						whitespaceOnly: false,
+						changedLines: [1],
+					})
+				: Promise.resolve(undefined),
+		);
+		const props = {
+			fileDiffs: [{ ...navDiff, path: "README.md" }],
+			commitDetail: null,
+			onclose: vi.fn(),
+			diffKind: "unstaged" as const,
+			repoPath: "/repo",
+			selectedPath: "README.md",
+			contentMode: "hunk" as const,
+			loading: false,
+		};
+		try {
+			const view = render(DiffPanel, { props });
+			await flushPrefs();
+			expect(await screen.findByText("prior hunk projection")).toBeTruthy();
+
+			await view.rerender({
+				...props,
+				contentMode: "full",
+				loading: true,
+			});
+
+			expect(await screen.findByText("full projection")).toBeTruthy();
+			expect(screen.queryByText("prior hunk projection")).toBeFalsy();
+		} finally {
+			vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+				Promise.resolve("source"),
+			);
+		}
+	});
+
+	it("keeps rendered markdown visible while the source reload has failed", async () => {
+		const storeMock = await import("../lib/store.js");
+		vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
+			Promise.resolve("rendered"),
+		);
+		vi.mocked(safeInvoke).mockImplementation((cmd: string) =>
+			cmd === "render_markdown_diff"
+				? Promise.resolve({
+						rows: [
+							{
+								kind: "changed",
+								beforeHtml: "<p>before</p>",
+								afterHtml: "<p>rendered full stays</p>",
+								mergedHtml: "<p>rendered full stays</p>",
+								hunkMergedHtml: "<p>stale hunk projection</p>",
+								afterStart: 1,
+								afterEnd: 1,
+							},
+						],
+						whitespaceOnly: false,
+						changedLines: [1],
+					})
+				: Promise.resolve(undefined),
+		);
+		try {
+			render(DiffPanel, {
+				props: {
+					fileDiffs: [{ ...navDiff, path: "README.md" }],
+					commitDetail: null,
+					onclose: vi.fn(),
+					diffKind: "unstaged",
+					repoPath: "/repo",
+					selectedPath: "README.md",
+					contentMode: "full",
+					loadError: "source failed",
+					onretry: vi.fn(),
+				},
+			});
+			await flushPrefs();
+
+			expect(await screen.findByText("rendered full stays")).toBeTruthy();
+			expect(screen.queryByText("stale hunk projection")).toBeFalsy();
+			await fireEvent.click(screen.getByTitle("Show source"));
+			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+		} finally {
 			vi.mocked(storeMock.getRenderMode).mockImplementation(() =>
 				Promise.resolve("source"),
 			);
