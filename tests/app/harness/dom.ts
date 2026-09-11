@@ -20,6 +20,7 @@ const WIDE_GLYPH = /[0-9mwMW]/;
 export function installDomPolyfills(options: DomOptions = {}): void {
 	installDialog();
 	installAnimate();
+	installReducedMotion();
 	installScrolling();
 	installLayout(options);
 	installTextMeasurement();
@@ -63,6 +64,25 @@ function installAnimate(): void {
 		}) as unknown as Animation;
 }
 
+let originalMatchMedia: typeof window.matchMedia | undefined;
+let hadMatchMedia = false;
+
+function installReducedMotion(): void {
+	hadMatchMedia = "matchMedia" in window;
+	originalMatchMedia = window.matchMedia;
+	window.matchMedia = (query) =>
+		({
+			matches: query === "(prefers-reduced-motion: reduce)",
+			media: query,
+			onchange: null,
+			addListener() {},
+			removeListener() {},
+			addEventListener() {},
+			removeEventListener() {},
+			dispatchEvent: () => false,
+		}) as MediaQueryList;
+}
+
 function installScrolling(): void {
 	if (typeof Element.prototype.scrollTo === "undefined") {
 		Element.prototype.scrollTo = () => {};
@@ -89,6 +109,11 @@ function installLayout(options: DomOptions): void {
  *  them. `teardown()` is where the harness returns the state it took. */
 export function restoreDomPolyfills(): void {
 	restoreVirtualListLayout();
+	if (hadMatchMedia && originalMatchMedia) {
+		window.matchMedia = originalMatchMedia;
+	} else {
+		Reflect.deleteProperty(window, "matchMedia");
+	}
 }
 
 function installTextMeasurement(): void {

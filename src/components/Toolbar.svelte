@@ -1,3 +1,14 @@
+<script module lang="ts">
+import { slide } from "svelte/transition";
+
+export function reviewFilterSlide(node: Element) {
+	const reduceMotion =
+		typeof window !== "undefined" &&
+		window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+	return slide(node, { axis: "x", duration: reduceMotion ? 0 : 160 });
+}
+</script>
+
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
 import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
@@ -9,7 +20,6 @@ import MessageSquare from "@lucide/svelte/icons/message-square";
 import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
-import { slide } from "svelte/transition";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
@@ -84,13 +94,6 @@ function handleReviewThreadsToggle() {
 	onreviewfilterchange?.(
 		reviewFilter === "none" ? lastVisibleReviewFilter : "none",
 	);
-}
-
-function reviewFilterSlide(node: Element) {
-	const reduceMotion =
-		typeof window !== "undefined" &&
-		window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-	return slide(node, { axis: "x", duration: reduceMotion ? 0 : 160 });
 }
 
 // Listen to remote-progress events from backend (relocated from StatusBar)
@@ -361,8 +364,35 @@ async function handleBranchCreate(values: Record<string, string>) {
     height: var(--control-h);
     flex-shrink: 0;
   }
+  .review-filter-control-active,
+  .review-filter-control:has(.review-filter-select) {
+    gap: 0;
+    border-radius: var(--radius);
+    background: var(--color-accent-bg);
+    box-shadow: inset 0 0 0 1px var(--color-accent-border);
+  }
+  .review-filter-control-active .review-filter-select select,
+  .review-filter-control:has(.review-filter-select) .review-filter-select select {
+    height: var(--control-h);
+    border-color: transparent;
+    border-radius: var(--radius) 0 0 var(--radius);
+    background: transparent;
+    color: var(--fg-0);
+    padding: 0 var(--space-2);
+  }
+  .review-filter-control-active > .toolbar-btn,
+  .review-filter-control:has(.review-filter-select) > .toolbar-btn {
+    border-radius: 0 var(--radius) var(--radius) 0;
+    background: var(--accent);
+    box-shadow: none;
+    color: var(--accent-fg);
+  }
+  .review-filter-control-active > .toolbar-btn:hover:not(:disabled),
+  .review-filter-control:has(.review-filter-select) > .toolbar-btn:hover:not(:disabled) {
+    background: var(--accent-hi);
+  }
   .review-filter-select {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     overflow: hidden;
   }
@@ -441,23 +471,10 @@ async function handleBranchCreate(values: Record<string, string>) {
   <div class="toolbar-divider"></div>
 
   <div class="toolbar-group">
-    <div class="review-filter-control">
-      <button
-        class="toolbar-btn toolbar-btn-badged"
-        class:toolbar-btn-active={reviewFilter !== "none"}
-        aria-pressed={reviewFilter !== "none"}
-        aria-label={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
-        use:tooltip={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
-        onclick={handleReviewThreadsToggle}
-      >
-        <MessageSquare size={14} />
-        {#if viewCommentCount > 0}
-          <span
-            class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
-            aria-label="{viewCommentCount} review comments in this view"
-          >{viewCommentCount}</span>
-        {/if}
-      </button>
+    <div
+      class="review-filter-control"
+      class:review-filter-control-active={reviewFilter !== "none"}
+    >
       {#if reviewFilter !== "none"}
         <label
           class="review-filter-select"
@@ -485,6 +502,22 @@ async function handleBranchCreate(values: Record<string, string>) {
           </span>
         </label>
       {/if}
+      <button
+        class="toolbar-btn toolbar-btn-badged"
+        class:toolbar-btn-active={reviewFilter !== "none"}
+        aria-pressed={reviewFilter !== "none"}
+        aria-label={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+        use:tooltip={reviewFilter === "none" ? "Show review threads" : "Hide review threads"}
+        onclick={handleReviewThreadsToggle}
+      >
+        <MessageSquare size={14} />
+        {#if viewCommentCount > 0}
+          <span
+            class="toolbar-badge tone-{viewCommentTone ?? 'open'}"
+            aria-label="{viewCommentCount} review comments in this view"
+          >{viewCommentCount}</span>
+        {/if}
+      </button>
     </div>
     <button
       class="toolbar-btn toolbar-btn-badged"

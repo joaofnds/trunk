@@ -46,6 +46,27 @@ export class ReviewDriver {
 		filterValue: ReviewFilter,
 		observePresentation: () => boolean,
 	): Promise<void> {
+		if (filterValue === "none") {
+			const toggle = await waitFor("the review threads toggle", () =>
+				enabled('[aria-label="Hide review threads"]'),
+			);
+			toggle.click();
+
+			await waitFor("the review filter to become none", () =>
+				document.querySelector('[aria-label="Show review threads"]') &&
+				!document.querySelector(REVIEW_FILTER) &&
+				observePresentation()
+					? true
+					: null,
+			);
+			return;
+		}
+
+		const showToggle = document.querySelector<HTMLButtonElement>(
+			'[aria-label="Show review threads"]',
+		);
+		showToggle?.click();
+
 		const filter = await waitFor("the review filter", () =>
 			selectEnabled(REVIEW_FILTER),
 		);
@@ -286,6 +307,9 @@ export class ReviewDriver {
 		const button = await waitFor("the review button", () => enabled(REVIEW));
 
 		button.click();
+		await waitFor("the review panel to open", () =>
+			button.getAttribute("aria-pressed") === "true" ? true : null,
+		);
 	}
 
 	/** Closes the review panel and returns to the repository layout. */

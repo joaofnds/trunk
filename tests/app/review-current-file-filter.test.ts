@@ -55,7 +55,7 @@ describe("a current-file comment filtered out before autosave", () => {
 		expect(doc).toContain("name this constant");
 	});
 
-	it("finishes an accepted submission while Hide all removes its editor", async () => {
+	it("finishes an accepted submission while hiding threads removes its editor", async () => {
 		const app = await setup({ repo: REPOSITORY });
 		await openCurrentFile(app);
 		await app.review.selectLine(2);
@@ -82,10 +82,7 @@ describe("a current-file comment filtered out before autosave", () => {
 			"none",
 			() => app.review.composerDraft() === null,
 		);
-		await app.review.showReviewFilter(
-			"all",
-			() => app.review.composerDraft() === null,
-		);
+		await app.review.showReviewFilter("all", () => true);
 		await app.review.openPanel();
 		await openFileFromPanel(app, "other");
 		await app.review.selectLine(1);

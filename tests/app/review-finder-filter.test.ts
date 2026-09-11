@@ -17,7 +17,7 @@ const REPOSITORY: RepoSpec = {
 describe("the review file finder while comments are hidden", () => {
 	afterEach(teardown);
 
-	it("ignores a finder response invalidated by Hide all", async () => {
+	it("ignores a finder response invalidated by hiding threads", async () => {
 		const app = await setup({ repo: REPOSITORY });
 		await app.repo.open();
 		await app.review.openPanel();

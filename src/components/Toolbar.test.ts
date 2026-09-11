@@ -11,7 +11,7 @@ import {
 import { SCHEDULER } from "../lib/scheduler.js";
 import { showToast } from "../lib/toast.svelte.js";
 import type { UndoEntry } from "../lib/undo-redo.svelte.js";
-import Toolbar from "./Toolbar.svelte";
+import Toolbar, { reviewFilterSlide } from "./Toolbar.svelte";
 
 // All Tauri module mocks — declared locally (NOT via ../__tests__/helpers/tauri-mock)
 // for proper vi.mock hoisting before Toolbar.svelte's static imports resolve.
@@ -77,6 +77,32 @@ function deferred<T>() {
 		resolve = done;
 	});
 	return { promise, resolve };
+}
+
+function injectedStyleRule(
+	selectorIncludes: string[],
+	selectorExcludes: string[] = [],
+): CSSStyleRule {
+	for (const sheet of Array.from(document.styleSheets)) {
+		for (const rule of Array.from(sheet.cssRules)) {
+			if (
+				rule instanceof CSSStyleRule &&
+				rule.selectorText
+					.split(",")
+					.some(
+						(selector) =>
+							selectorIncludes.every((part) => selector.includes(part)) &&
+							selectorExcludes.every((part) => !selector.includes(part)),
+					)
+			) {
+				return rule;
+			}
+		}
+	}
+
+	throw new Error(
+		`no style rule found including ${selectorIncludes.join(", ")}`,
+	);
 }
 
 describe("Toolbar", () => {
@@ -547,6 +573,94 @@ describe("Toolbar", () => {
 		).toHaveValue("addressed");
 	});
 
+	it("renders the filter selector before the review threads toggle in DOM order", () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+
+		expect(
+			screen.getByRole("combobox", { name: "Review filter selection" }),
+		).toAppearBefore(
+			screen.getByRole("button", { name: "Hide review threads" }),
+		);
+	});
+
+	it("groups the active filter and toggle in one container", () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		const select = screen.getByRole("combobox", {
+			name: "Review filter selection",
+		});
+		const threadsButton = screen.getByRole("button", {
+			name: "Hide review threads",
+		});
+
+		expect(threadsButton.parentElement).toContainElement(select);
+		expect(threadsButton.parentElement).toHaveClass(
+			"review-filter-control-active",
+		);
+	});
+
+	it("styles the active review filter as the soft sleeve", () => {
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		const select = screen.getByRole("combobox", {
+			name: "Review filter selection",
+		});
+		const threadsButton = screen.getByRole("button", {
+			name: "Hide review threads",
+		});
+		const control = threadsButton.parentElement as HTMLElement;
+
+		expect(getComputedStyle(control).flexDirection).toBe("row");
+
+		const sleeve = injectedStyleRule(
+			[".review-filter-control-active"],
+			[".review-filter-select", ".toolbar-btn"],
+		).cssText;
+		expect(sleeve).toContain("background: var(--color-accent-bg)");
+		expect(sleeve).toContain(
+			"box-shadow: inset 0 0 0 1px var(--color-accent-border)",
+		);
+
+		const selectSegment = injectedStyleRule([
+			".review-filter-control-active",
+			".review-filter-select",
+			"select",
+		]).cssText;
+		expect(selectSegment).toContain(
+			"border-radius: var(--radius) 0 0 var(--radius)",
+		);
+		expect(selectSegment).toContain("background: transparent");
+
+		const toggleSegment = injectedStyleRule(
+			[".review-filter-control-active", ".toolbar-btn"],
+			[":hover"],
+		).cssText;
+		expect(toggleSegment).toContain(
+			"border-radius: 0 var(--radius) var(--radius) 0",
+		);
+		expect(toggleSegment).toContain("background: var(--accent)");
+		expect(control).toContainElement(select);
+	});
+
 	it("hides the filter selector when review threads are hidden", () => {
 		render(Toolbar, {
 			props: {
@@ -563,6 +677,28 @@ describe("Toolbar", () => {
 		expect(
 			screen.getByRole("button", { name: "Show review threads" }),
 		).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it("slides the filter horizontally and removes motion when requested", () => {
+		const node = document.createElement("label");
+		node.style.cssText =
+			"display: flex; width: 92px; height: 28px; padding: 0; margin: 0; border-width: 0";
+		document.body.append(node);
+
+		try {
+			vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+			const horizontal = reviewFilterSlide(node);
+			const collapsedDeclarations = (horizontal.css?.(0, 1) ?? "").split(";");
+			expect(collapsedDeclarations).toContain("width: 0px");
+			expect(collapsedDeclarations).not.toContain("height: 0px");
+			expect(horizontal.duration).toBe(160);
+
+			vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+			expect(reviewFilterSlide(node).duration).toBe(0);
+		} finally {
+			node.remove();
+			vi.unstubAllGlobals();
+		}
 	});
 
 	it.each(["all", "open", "addressed", "done", "dismissed", "stale"] as const)(
