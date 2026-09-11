@@ -60,7 +60,7 @@ pub enum SnapshotStanding {
 pub fn recompute(
     conn: &Connection,
     repo_path: &Path,
-    standing: &impl Fn(&str) -> SnapshotStanding,
+    standing: &impl Fn(&str) -> Result<SnapshotStanding, TrunkError>,
     read_file: &impl Fn(&str) -> Option<String>,
 ) -> Result<usize, TrunkError> {
     let mut changed = 0;
@@ -70,12 +70,13 @@ pub fn recompute(
         });
         let is_stale = match resolved {
             Some(found) => found.is_none(),
-            None => row.commit_oid.as_deref().is_some_and(|oid| {
-                matches!(
-                    standing(oid),
+            None => match row.commit_oid.as_deref() {
+                Some(oid) => matches!(
+                    standing(oid)?,
                     SnapshotStanding::Superseded | SnapshotStanding::Collected
-                )
-            }),
+                ),
+                None => false,
+            },
         };
         let resolved_line = resolved.flatten();
         if is_stale == row.was_stale && resolved_line == row.resolved_start_line {
@@ -325,17 +326,19 @@ mod tests {
     /// list, because two adjacent lists of oids are transposable: swapping the
     /// superseded and collected ones left every test here green, since both
     /// standings mean stale.
-    fn standing_where(table: &[(&str, SnapshotStanding)]) -> impl Fn(&str) -> SnapshotStanding {
+    fn standing_where(
+        table: &[(&str, SnapshotStanding)],
+    ) -> impl Fn(&str) -> Result<SnapshotStanding, TrunkError> {
         let table: HashMap<String, SnapshotStanding> = table
             .iter()
             .map(|(oid, standing)| ((*oid).to_string(), *standing))
             .collect();
 
         move |oid: &str| {
-            table
+            Ok(table
                 .get(oid)
                 .copied()
-                .unwrap_or(SnapshotStanding::NotASnapshot)
+                .unwrap_or(SnapshotStanding::NotASnapshot))
         }
     }
 

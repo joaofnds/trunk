@@ -1422,10 +1422,9 @@ pub fn ensure_review_snapshot_inner(
 ///
 /// A snapshot commit's tree is the tree it captured, so a thread is current
 /// exactly when its commit's tree still equals one of the two trees the repo
-/// would capture now. Both are computed without writing: `workdir_tree_oid`
-/// builds a throwaway index and `index_tree_oid` writes a tree object, and
-/// neither persists `.git/index`. Nothing on this path may write the
-/// repository.
+/// would capture now. The real index is compared directly, without writing a
+/// tree object. The worktree tree is built lazily in a memory-only object
+/// database. Nothing on this path may write or freshen repository data.
 ///
 /// An anchor oid the repository cannot resolve to a commit is stale whatever
 /// kind of commit it was, because the code it describes is unreachable and the
@@ -1440,30 +1439,47 @@ pub fn recompute_staleness(
     canonical: &Path,
     repo_path: &str,
 ) -> Result<usize, TrunkError> {
-    use crate::git::workdir_snapshot::{index_tree_oid, is_snapshot_commit, workdir_tree_oid};
+    use crate::git::workdir_snapshot::{
+        in_memory_workdir_tree_oid, is_snapshot_commit, tree_matches_index,
+    };
     use crate::reviewdb::stale::SnapshotStanding;
+    use std::cell::RefCell;
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let current = [workdir_tree_oid(&repo)?, index_tree_oid(&repo)?];
+    let current_workdir_tree = RefCell::new(None);
 
     let standing_of = |oid: &str| {
         let Ok(parsed) = git2::Oid::from_str(oid) else {
-            return SnapshotStanding::NotASnapshot;
+            return Ok(SnapshotStanding::NotASnapshot);
         };
 
         let Ok(commit) = repo.find_commit(parsed) else {
-            return SnapshotStanding::Collected;
+            return Ok(SnapshotStanding::Collected);
         };
 
         if !is_snapshot_commit(&commit) {
-            return SnapshotStanding::NotASnapshot;
+            return Ok(SnapshotStanding::NotASnapshot);
         }
 
-        if current.contains(&commit.tree_id()) {
+        let snapshot_tree = commit.tree()?;
+        if tree_matches_index(&repo, &snapshot_tree)? {
+            return Ok(SnapshotStanding::Current);
+        }
+
+        let cached_workdir_tree = *current_workdir_tree.borrow();
+        let workdir_tree = if let Some(oid) = cached_workdir_tree {
+            oid
+        } else {
+            let oid = in_memory_workdir_tree_oid(Path::new(repo_path))?;
+            current_workdir_tree.replace(Some(oid));
+            oid
+        };
+
+        Ok(if snapshot_tree.id() == workdir_tree {
             SnapshotStanding::Current
         } else {
             SnapshotStanding::Superseded
-        }
+        })
     };
 
     // Every read goes through `blob_reader`, whose working-tree branch carries

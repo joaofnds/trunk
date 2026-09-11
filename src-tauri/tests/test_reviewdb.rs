@@ -4706,6 +4706,72 @@ fn a_thread_on_a_workdir_snapshot(
     (ctx, store, snapshot)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct RepositoryEntry {
+    file_type: std::fs::FileType,
+    len: u64,
+    modified: std::time::SystemTime,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(unix)]
+    changed: (i64, i64),
+}
+
+fn repository_manifest(
+    root: &std::path::Path,
+) -> std::collections::BTreeMap<std::path::PathBuf, RepositoryEntry> {
+    #[cfg(unix)]
+    use std::os::unix::fs::MetadataExt as _;
+
+    fn visit(
+        root: &std::path::Path,
+        path: &std::path::Path,
+        entries: &mut std::collections::BTreeMap<std::path::PathBuf, RepositoryEntry>,
+    ) {
+        let metadata = std::fs::symlink_metadata(path).unwrap();
+        entries.insert(
+            path.strip_prefix(root).unwrap().to_path_buf(),
+            RepositoryEntry {
+                file_type: metadata.file_type(),
+                len: metadata.len(),
+                modified: metadata.modified().unwrap(),
+                #[cfg(unix)]
+                inode: metadata.ino(),
+                #[cfg(unix)]
+                changed: (metadata.ctime(), metadata.ctime_nsec()),
+            },
+        );
+
+        if metadata.is_dir() {
+            for entry in std::fs::read_dir(path).unwrap() {
+                visit(root, &entry.unwrap().path(), entries);
+            }
+        }
+    }
+
+    let mut entries = std::collections::BTreeMap::new();
+    visit(root, root, &mut entries);
+    entries
+}
+
+#[test]
+fn empty_review_recomputation_leaves_the_repository_untouched() {
+    let ctx = TestContext::builder()
+        .with_file("tracked.txt", "tracked")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("untracked.txt"), "untracked").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let before = repository_manifest(ctx.repo_path());
+
+    let first = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    let second = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!((first, second), (0, 0));
+    assert_eq!(repository_manifest(ctx.repo_path()), before);
+}
+
 /// The production sequence exactly: the app advances `repo_snapshots` only when
 /// a comment is submitted, so the recompute must decide against the repository
 /// as it stands rather than against that pointer.
@@ -4737,6 +4803,19 @@ fn a_thread_on_the_current_snapshot_stays_fresh() {
         "an unchanged repo gives the poll nothing to hear"
     );
     assert!(!only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn unchanged_snapshot_recomputation_leaves_the_repository_untouched() {
+    let (ctx, store, _) = a_thread_on_a_workdir_snapshot("still true");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let before = repository_manifest(ctx.repo_path());
+
+    let first = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    let second = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!((first, second), (0, 0));
+    assert_eq!(repository_manifest(ctx.repo_path()), before);
 }
 
 #[test]

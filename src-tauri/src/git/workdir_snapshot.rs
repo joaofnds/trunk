@@ -8,6 +8,7 @@
 //! with no new Source/Side variant.
 
 use crate::error::TrunkError;
+use std::path::Path;
 
 /// Build the current working-tree TREE (staged + unstaged + untracked-not-ignored)
 /// and write it to the ODB, returning its Oid — WITHOUT creating a commit and
@@ -44,6 +45,49 @@ pub fn workdir_tree_oid(repo: &git2::Repository) -> Result<git2::Oid, TrunkError
 
     // 3. Write the tree objects to the ODB (does NOT persist the on-disk index).
     Ok(idx.write_tree_to(repo)?)
+}
+
+/// Build the current working-tree tree without writing or freshening objects
+/// in the repository's on-disk object database.
+///
+/// A dedicated repository handle is required because `set_odb` replaces that
+/// handle's object database. The replacement contains only a memory pack: a
+/// disk backend or alternate would let libgit2 freshen objects on disk while
+/// answering this read.
+///
+/// # Errors
+///
+/// Returns the git error when the repository, memory object database, index, or
+/// tree cannot be prepared.
+pub fn in_memory_workdir_tree_oid(repo_path: &Path) -> Result<git2::Oid, TrunkError> {
+    let repo = git2::Repository::open(repo_path)?;
+    let odb = git2::Odb::new()?;
+    let _memory = odb.add_new_mempack_backend(1_000)?;
+    repo.set_odb(&odb)?;
+
+    workdir_tree_oid(&repo)
+}
+
+/// Whether the real on-disk index has the same entries as `tree`.
+///
+/// The comparison itself writes no tree object. A conflicted index cannot
+/// establish equality even if its stage-zero entries happen to match.
+///
+/// # Errors
+///
+/// Returns the git error when the index or diff cannot be read.
+pub fn tree_matches_index(
+    repo: &git2::Repository,
+    tree: &git2::Tree<'_>,
+) -> Result<bool, TrunkError> {
+    let index = repo.index()?;
+    if index.has_conflicts() {
+        return Ok(false);
+    }
+
+    let mut options = git2::DiffOptions::new();
+    let diff = repo.diff_tree_to_index(Some(tree), Some(&index), Some(&mut options))?;
+    Ok(diff.deltas().len() == 0)
 }
 
 /// Build the STAGED (index) tree and write it to the ODB, returning its Oid.
