@@ -194,12 +194,13 @@ const selectedFileDiff = $derived(
       {refreshToken}
       {hunkElements}
     />
-  {:else if loadError}
-    <div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: 13px;">
-      <span>Could not load diff</span>
-      {#if onretry}
-        <button type="button" onclick={onretry}>Retry</button>
-      {/if}
+	{:else if loadError}
+		<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); color: var(--color-text-muted); font-size: 13px;">
+			<span>Could not load diff</span>
+			<span>{loadError}</span>
+			{#if onretry}
+				<button class="retry-button" type="button" onclick={onretry}>Retry</button>
+			{/if}
     </div>
   {:else if loading}
     <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 13px;">
@@ -263,5 +264,30 @@ const selectedFileDiff = $derived(
       onstagelines={onstagelines} onunstagelines={onunstagelines} ondiscardlines={ondiscardlines}
       oncommentlines={oncommentlines} oncommenthunk={oncommenthunk}
       {repoPath} {reviewCommentsVisible} {reviewFilter} {viewComments} {editorSessionForThread} />
-  {/if}
+	{/if}
 </div>
+
+<style>
+	.retry-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: var(--target-min);
+		padding: 0 var(--space-3);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.retry-button:hover {
+		background: var(--color-hover);
+	}
+
+	.retry-button:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+</style>

@@ -552,9 +552,9 @@ describe("RepoView", () => {
 	});
 
 	describe("staging diff content mode", () => {
-		function stagingDiff(content: string): FileDiff {
+		function stagingDiff(content: string, path = "README.md"): FileDiff {
 			return {
-				path: "README.md",
+				path,
 				old_path: null,
 				status: "Modified",
 				is_binary: false,
@@ -731,7 +731,12 @@ describe("RepoView", () => {
 					});
 				}
 				if (cmd === "diff_unstaged") {
-					return Promise.reject(new Error("first load failed"));
+					return Promise.reject(
+						JSON.stringify({
+							code: "diff_failed",
+							message: "first load failed",
+						}),
+					);
 				}
 				return base(cmd, args);
 			});
@@ -740,7 +745,51 @@ describe("RepoView", () => {
 			await fireEvent.click(await screen.findByText("README.md"));
 
 			expect(await screen.findByText("Could not load diff")).toBeTruthy();
+			expect(screen.getByText("first load failed")).toBeTruthy();
 			expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+		});
+
+		it("ignores an empty staging response after the selected target changes", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let resolveFirst!: (files: FileDiff[]) => void;
+			let resolveSecond!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "first.ts", status: "Modified", is_binary: false },
+							{ path: "second.ts", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					const path = (args as { filePath: string }).filePath;
+					return new Promise<FileDiff[]>((resolve) => {
+						if (path === "first.ts") resolveFirst = resolve;
+						else resolveSecond = resolve;
+					});
+				}
+				return base(cmd, args);
+			});
+			render(RepoView, { props: baseProps(createMockRemoteState()) });
+
+			await fireEvent.click(await screen.findByText("first.ts"));
+			await vi.waitFor(() => expect(resolveFirst).toBeTypeOf("function"));
+			await fireEvent.click(screen.getByText("second.ts"));
+			resolveFirst([]);
+			await tick();
+
+			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			await vi.waitFor(() => expect(resolveSecond).toBeTypeOf("function"));
+			resolveSecond([stagingDiff("SECOND TARGET", "second.ts")]);
+
+			expect(await screen.findByText("SECOND TARGET")).toBeTruthy();
+			expect(
+				screen.queryByText("Select a file or commit to view its diff"),
+			).toBeFalsy();
 		});
 	});
 
@@ -1841,6 +1890,40 @@ describe("RepoView", () => {
 			expect(screen.queryByText("OLD REBASE")).toBeFalsy();
 		});
 
+		it("does not apply a rebase diff response after its file closes", async () => {
+			stubRebaseTodo(PARENT_OID);
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			const path = "src/rebase.ts";
+			let resolveDiff!: (files: FileDiff[]) => void;
+			mockInvoke.mockImplementation((cmd, args) => {
+				const a = args as Record<string, unknown> | undefined;
+				if (cmd === "get_commit_detail" && typeof a?.oid === "string") {
+					return Promise.resolve(makeRebaseDetail(a.oid, "focused commit"));
+				}
+				if (cmd === "list_commit_files" && typeof a?.oid === "string") {
+					return Promise.resolve([makeRebaseFile(path)]);
+				}
+				if (cmd === "diff_commit_file") {
+					return new Promise<FileDiff[]>((resolve) => {
+						resolveDiff = resolve;
+					});
+				}
+				return base(cmd, args);
+			});
+
+			await openTheEditorOnTheClickedCommit();
+			await fireEvent.click(screen.getAllByRole("row")[1]);
+			await fireEvent.click(await screen.findByText(path));
+			await vi.waitFor(() => expect(resolveDiff).toBeTypeOf("function"));
+			await fireEvent.click(screen.getByTestId("staging-file"));
+			resolveDiff([makeRebaseFileWithContent(path, "CLOSED REBASE")]);
+			await flush();
+
+			expect(screen.queryByText("CLOSED REBASE")).toBeFalsy();
+			expect(screen.queryByText("Loading diff…")).toBeFalsy();
+		});
+
 		it("matches review comments in the focused rebase diff", async () => {
 			stubRebaseTodo(PARENT_OID);
 			const base = mockInvoke.getMockImplementation();
@@ -2203,9 +2286,15 @@ describe("RepoView", () => {
 			const rows = await screen.findAllByTestId("commit-row");
 			await fireEvent.click(rows[2]);
 			await fireEvent.click(rows[0], { metaKey: true });
-			await fireEvent.click(await screen.findByText("f.ts"));
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) =>
+				cmd === "diff_compare_file"
+					? Promise.resolve([makeFileDiffWithContent("f.ts", "OLD COMPARE")])
+					: base(cmd, args),
+			);
+			await fireEvent.click(await screen.findByText("f.ts"));
+			expect(await screen.findByText("OLD COMPARE")).toBeTruthy();
 			mockInvoke.mockImplementation((cmd, args) =>
 				cmd === "diff_compare_file"
 					? Promise.reject(new Error("compare full failed"))
@@ -2216,6 +2305,7 @@ describe("RepoView", () => {
 
 			expect(await screen.findByText("Could not load diff")).toBeTruthy();
 			expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+			expect(screen.queryByText("OLD COMPARE")).toBeFalsy();
 		});
 
 		it("does not apply a compare response after its file closes", async () => {

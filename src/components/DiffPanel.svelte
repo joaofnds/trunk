@@ -130,7 +130,7 @@ let showInvisibles = $state(false);
 let wordWrap = $state(false);
 let hunkOperationInFlight = $state(false);
 
-// The seven values above start at defaults the persisted preferences then
+// The six display values above start at defaults the persisted preferences then
 // replace a microtask later. Rendering a diff view against those defaults picks
 // the wrong view for one frame, and inline+hunk against a full-file payload —
 // what a reopened large file hands us, since the fetched diff outlives the

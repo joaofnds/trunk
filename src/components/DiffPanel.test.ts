@@ -837,7 +837,7 @@ describe("DiffPanel", () => {
 				onclose: vi.fn(),
 			},
 		});
-		// Let the initial $effect (getDiffContentMode/getDiffLayoutMode) settle
+		// Let the persisted layout preference settle
 		await flushPrefs();
 		await fireEvent.click(screen.getByTitle("Side-by-side view"));
 		// Flush Svelte reactivity
@@ -1083,20 +1083,8 @@ describe("VIEW-04: Full file view", () => {
 	});
 });
 
-describe("VIEW-04: reopening a large file", () => {
-	// Closing the diff leaves the fetched payload in RepoView's commitFileDiffs,
-	// so a reopen mounts DiffPanel against the whole file. The persisted mode
-	// arrives a microtask later, so the first frame renders whatever the
-	// optimistic default routes to — and against a full-file payload that frame
-	// is the freeze this milestone exists to remove.
-	it("mounts no rows before the persisted diff mode has resolved", async () => {
-		const storeMock = await import("../lib/store.js");
-		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
-			Promise.resolve("full"),
-		);
-		vi.mocked(storeMock.getDiffLayoutMode).mockImplementation(() =>
-			Promise.resolve("inline"),
-		);
+describe("VIEW-04: a large full-file payload", () => {
+	it("keeps the rendered row window bounded", async () => {
 		const bigFile: FileDiff = {
 			path: "src/huge.ts",
 			old_path: null,
@@ -1129,15 +1117,9 @@ describe("VIEW-04: reopening a large file", () => {
 			},
 		});
 
-		expect(container.querySelectorAll(".diff-line").length).toBe(0);
-
 		await flushPrefs();
 
 		expect(container.querySelectorAll(".diff-line").length).toBeLessThan(200);
-
-		vi.mocked(storeMock.getDiffContentMode).mockImplementation(() =>
-			Promise.resolve("hunk"),
-		);
 	});
 });
 

@@ -20,6 +20,16 @@ export class DiffPaneDriver {
 		return textsOf(CONTEXT_LINE);
 	}
 
+	/** Whether the center pane is withholding its previous Source payload while
+	 *  the request for the active target is still pending. */
+	isLoading(): boolean {
+		return [...document.querySelectorAll<HTMLElement>("div")].some(
+			(element) =>
+				element.children.length === 0 &&
+				element.textContent?.trim() === "Loading diff…",
+		);
+	}
+
 	/** Switches the pane from source to rendered markdown. */
 	async showRendered(): Promise<void> {
 		const button = await waitFor("the rendered-markdown toggle", () =>

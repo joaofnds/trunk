@@ -20,7 +20,7 @@ import {
 	swapCompare,
 } from "../lib/compare-select.js";
 import { resolveDiffTarget } from "../lib/diff-in-view.js";
-import { reportErrorToast } from "../lib/error-report.js";
+import { errorMessage, reportErrorToast } from "../lib/error-report.js";
 import { patchLoadedDiff } from "../lib/file-status.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { span } from "../lib/perf.js";
@@ -332,7 +332,7 @@ let selectedDiffEmptyGeneration = -1;
 interface SelectedDiffLoad {
 	path: string;
 	kind: "unstaged" | "staged";
-	options?: DiffRequestOptions;
+	options: DiffRequestOptions;
 	generation: number;
 	reportError: boolean;
 	mode: ContentMode;
@@ -571,7 +571,6 @@ let currentSourceError = $derived(
 				: null,
 );
 let currentSourceLoading = $derived.by(() => {
-	if (selectedCurrentFile) return false;
 	const loading = selectedCompareFile
 		? compareDiffLoading
 		: selectedCommitFile
@@ -853,7 +852,14 @@ function modeFor(options: DiffRequestOptions): ContentMode {
 }
 
 function loadErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : "Failed to load diff";
+	return errorMessage(error, "Failed to load diff");
+}
+
+function rememberLocalDiffOptions(options: DiffRequestOptions): void {
+	cachedDiffOptions = {
+		contextLines: options.contextLines,
+		ignoreWhitespace: options.ignoreWhitespace,
+	};
 }
 
 /** WIP row clicked -- switch to staging view and auto-open right pane if collapsed. */
@@ -1290,7 +1296,7 @@ async function readSelectedFileDiff(): Promise<void> {
 	const repo = repoPath;
 	try {
 		const command = load.kind === "unstaged" ? "diff_unstaged" : "diff_staged";
-		const reloadOptions = load.options ?? buildDiffOptions();
+		const reloadOptions = load.options;
 		const result = await safeInvoke<FileDiff[]>(command, {
 			path: repo,
 			filePath: load.path,
@@ -1826,7 +1832,7 @@ function startRightResize(e: MouseEvent) {
             loadError={rebaseDiffError}
             onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
             ondiffoptionschange={async (options) => {
-              cachedDiffOptions = options;
+			  rememberLocalDiffOptions(options);
               if (rebaseDiffFile) await reloadRebaseFile(rebaseDiffFile, options);
             }}
             onclose={() => { rebaseDiffFile = null; }}
@@ -1932,7 +1938,7 @@ function startRightResize(e: MouseEvent) {
             }
           }}
           ondiffoptionschange={async (options) => {
-            cachedDiffOptions = options;
+			rememberLocalDiffOptions(options);
             if (selectedFile && selectedFile.kind !== "conflicted") {
               await refetchFileDiff(selectedFile.path, selectedFile.kind, options);
             } else if (selectedCompareFile && compare) {

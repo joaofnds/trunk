@@ -95,4 +95,41 @@ describe("leaving a current-file view", () => {
 		});
 		expect(shown).toEqual(["let count = 1;"]);
 	});
+
+	it("withholds cached staging hunks after leaving a current-file view", async () => {
+		const app = await setup({ repo: ONE_EDIT });
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile(EDITED);
+		await waitFor("the initial staging diff", () =>
+			app.staging.addedLines().length > 0 ? true : null,
+		);
+		await app.review.openPanel();
+		await app.review.openFileFinder();
+		await app.review.findFile("untouched");
+		await waitFor("the narrowed list", () =>
+			app.review.finderRows().length === 1 ? true : null,
+		);
+		await app.review.openTopFinderRow();
+		await waitFor("the current-file content", () =>
+			app.diffPane.contextLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showFullFile();
+		const requestCount = app
+			.invokes()
+			.filter(({ cmd }) => cmd === "diff_unstaged").length;
+		const release = app.holdCommand("diff_unstaged");
+
+		await app.staging.openFile(EDITED);
+		await waitFor("the held staging request", () =>
+			app.invokes().filter(({ cmd }) => cmd === "diff_unstaged").length >
+			requestCount
+				? true
+				: null,
+		);
+
+		expect(app.diffPane.isLoading()).toBe(true);
+		expect(app.staging.addedLines()).toEqual([]);
+		release();
+	});
 });
