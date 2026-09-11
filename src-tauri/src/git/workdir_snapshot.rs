@@ -87,6 +87,7 @@ pub fn tree_matches_index(
 
     let mut options = git2::DiffOptions::new();
     let diff = repo.diff_tree_to_index(Some(tree), Some(&index), Some(&mut options))?;
+
     Ok(diff.deltas().len() == 0)
 }
 

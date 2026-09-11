@@ -1462,6 +1462,7 @@ pub fn recompute_staleness(
         }
 
         let snapshot_tree = commit.tree()?;
+
         if tree_matches_index(&repo, &snapshot_tree)? {
             return Ok(SnapshotStanding::Current);
         }
@@ -1495,12 +1496,7 @@ pub fn recompute_staleness(
         .and_then(|bytes| String::from_utf8(bytes).ok())
     };
 
-    store.write_if(
-        |tx| {
-            crate::reviewdb::stale::recompute(tx, canonical, &standing_of, &read_working_tree_file)
-        },
-        |changed| *changed > 0,
-    )
+    crate::reviewdb::stale::recompute(store, canonical, &standing_of, &read_working_tree_file)
 }
 
 /// Delete the keepalive refs of snapshots that are finished with.

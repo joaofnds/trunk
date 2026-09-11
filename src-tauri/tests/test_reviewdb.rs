@@ -4,6 +4,7 @@
 mod common;
 
 use common::context::TestContext;
+use common::repository_manifest::repository_manifest;
 use trunk_lib::commands::review::{
     SubmitThreadRequest, list_threads_inner, set_thread_state_inner, submit_thread_inner,
 };
@@ -4706,52 +4707,34 @@ fn a_thread_on_a_workdir_snapshot(
     (ctx, store, snapshot)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct RepositoryEntry {
-    file_type: std::fs::FileType,
-    len: u64,
-    modified: std::time::SystemTime,
-    #[cfg(unix)]
-    inode: u64,
-    #[cfg(unix)]
-    changed: (i64, i64),
-}
+fn a_thread_on_an_index_snapshot(text: &str) -> (common::context::TestContext, reviewdb::Store) {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "committed")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("a.txt"), "staged").unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+    drop(index);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let snapshot =
+        ensure_review_snapshot_inner(&store, &canonical, ctx.path(), SnapshotKind::Index, 1_000)
+            .unwrap();
+    let mut request = submission(text);
+    request.anchor = Some(Anchor {
+        commit_oid: snapshot,
+        file_path: "a.txt".to_string(),
+        source: Source::Diff,
+        side: Side::New,
+        start_line: 1,
+        end_line: 1,
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), request, 1_000).unwrap();
 
-fn repository_manifest(
-    root: &std::path::Path,
-) -> std::collections::BTreeMap<std::path::PathBuf, RepositoryEntry> {
-    #[cfg(unix)]
-    use std::os::unix::fs::MetadataExt as _;
-
-    fn visit(
-        root: &std::path::Path,
-        path: &std::path::Path,
-        entries: &mut std::collections::BTreeMap<std::path::PathBuf, RepositoryEntry>,
-    ) {
-        let metadata = std::fs::symlink_metadata(path).unwrap();
-        entries.insert(
-            path.strip_prefix(root).unwrap().to_path_buf(),
-            RepositoryEntry {
-                file_type: metadata.file_type(),
-                len: metadata.len(),
-                modified: metadata.modified().unwrap(),
-                #[cfg(unix)]
-                inode: metadata.ino(),
-                #[cfg(unix)]
-                changed: (metadata.ctime(), metadata.ctime_nsec()),
-            },
-        );
-
-        if metadata.is_dir() {
-            for entry in std::fs::read_dir(path).unwrap() {
-                visit(root, &entry.unwrap().path(), entries);
-            }
-        }
-    }
-
-    let mut entries = std::collections::BTreeMap::new();
-    visit(root, root, &mut entries);
-    entries
+    (ctx, store)
 }
 
 #[test]
@@ -4816,6 +4799,62 @@ fn unchanged_snapshot_recomputation_leaves_the_repository_untouched() {
 
     assert_eq!((first, second), (0, 0));
     assert_eq!(repository_manifest(ctx.repo_path()), before);
+}
+
+#[test]
+fn a_matching_staged_index_keeps_a_snapshot_fresh_while_the_worktree_differs() {
+    let (ctx, store) = a_thread_on_an_index_snapshot("still staged");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "worktree").unwrap();
+    let before = repository_manifest(ctx.repo_path());
+
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 0);
+    assert!(!only_thread(&store, &canonical).stale);
+    assert_eq!(repository_manifest(ctx.repo_path()), before);
+}
+
+#[test]
+fn a_staged_snapshot_goes_stale_when_neither_index_nor_worktree_matches() {
+    let (ctx, store) = a_thread_on_an_index_snapshot("no longer staged");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "new index").unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "worktree").unwrap();
+    let before = repository_manifest(ctx.repo_path());
+
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1);
+    assert!(only_thread(&store, &canonical).stale);
+    assert_eq!(repository_manifest(ctx.repo_path()), before);
+}
+
+#[test]
+fn reverting_worktree_content_clears_a_snapshot_stale_marker_without_writing_the_repository() {
+    let (ctx, store, _) = a_thread_on_a_workdir_snapshot("watch this");
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "changed").unwrap();
+    let changed_manifest = repository_manifest(ctx.repo_path());
+
+    let raised = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(raised, 1);
+    assert!(only_thread(&store, &canonical).stale);
+    assert_eq!(repository_manifest(ctx.repo_path()), changed_manifest);
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "edited").unwrap();
+    let reverted_manifest = repository_manifest(ctx.repo_path());
+
+    let cleared = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(cleared, 1);
+    assert!(!only_thread(&store, &canonical).stale);
+    assert_eq!(repository_manifest(ctx.repo_path()), reverted_manifest);
 }
 
 #[test]

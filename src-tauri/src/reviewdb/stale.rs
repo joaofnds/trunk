@@ -21,11 +21,21 @@
 //! the very snapshot the thread anchors to, and no thread would ever read as
 //! superseded.
 
-use super::{repo_key, sqlite_error};
+use super::{Store, repo_key, sqlite_error};
 use crate::error::TrunkError;
 use crate::git::types::ContentPin;
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+
+type RecomputeGenerations = Mutex<HashMap<GenerationKey, Weak<Mutex<u64>>>>;
+
+#[derive(Hash, PartialEq, Eq)]
+struct GenerationKey {
+    data_dir: Box<Path>,
+    repo_path: Box<Path>,
+}
 
 /// Where a thread's anchor oid stands against the repository right now.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -56,15 +66,76 @@ pub enum SnapshotStanding {
 ///
 /// # Errors
 ///
-/// Returns the `SQLite` error when a query or a write fails.
+/// Returns the `SQLite` error when a query or a write fails, or the repository
+/// error returned by `standing`.
+///
+/// # Panics
+///
+/// Panics when the process-wide per-repository generation is poisoned.
 pub fn recompute(
-    conn: &Connection,
+    store: &Store,
     repo_path: &Path,
     standing: &impl Fn(&str) -> Result<SnapshotStanding, TrunkError>,
     read_file: &impl Fn(&str) -> Option<String>,
 ) -> Result<usize, TrunkError> {
-    let mut changed = 0;
-    for row in rows(conn, repo_path)? {
+    let generation_clock = generation_clock(store, repo_path);
+    let generation = {
+        let mut current = generation_clock.lock().unwrap();
+        *current = current.wrapping_add(1);
+        *current
+    };
+    let rows = store.read(|conn| rows(conn, repo_path))?;
+    let changes = plan(rows, standing, read_file)?;
+
+    // Hold the generation only across the short store write. A newer pass can
+    // invalidate this observation while repository I/O is in flight, but can
+    // never start between this check and the write it protects.
+    let current = generation_clock.lock().unwrap();
+    if *current != generation {
+        return Ok(0);
+    }
+
+    let result = store.write_if(|tx| apply(tx, &changes), |changed| *changed > 0);
+    debug_assert_eq!(*current, generation);
+
+    result
+}
+
+/// The latest observation started for each repository. The registry keeps weak
+/// entries so closing a repository leaves no permanent process state behind.
+fn generation_clock(store: &Store, repo_path: &Path) -> Arc<Mutex<u64>> {
+    static GENERATIONS: OnceLock<RecomputeGenerations> = OnceLock::new();
+
+    let key = GenerationKey {
+        data_dir: store.data_dir.clone().into_boxed_path(),
+        repo_path: repo_path.into(),
+    };
+    let mut generations = GENERATIONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
+    generations.retain(|_, generation| generation.strong_count() > 0);
+    if let Some(generation) = generations.get(&key).and_then(Weak::upgrade) {
+        return generation;
+    }
+
+    let generation = Arc::new(Mutex::new(0));
+    generations.insert(key, Arc::downgrade(&generation));
+
+    generation
+}
+
+/// Decide the required updates without holding the process-wide store mutex or
+/// a SQLite transaction. Repository observation can traverse the whole
+/// worktree, so keeping it outside both is what lets unrelated review writes
+/// continue while a background refresh is running.
+fn plan(
+    rows: Vec<StaleRow>,
+    standing: &impl Fn(&str) -> Result<SnapshotStanding, TrunkError>,
+    read_file: &impl Fn(&str) -> Option<String>,
+) -> Result<Vec<StaleChange>, TrunkError> {
+    let mut changes = Vec::new();
+    for row in rows {
         let resolved = row.pin.as_ref().map(|pin| {
             read_file(&pin.file_path).and_then(|text| find_block(&text, &pin.block, pin.ordinal))
         });
@@ -83,15 +154,41 @@ pub fn recompute(
             continue;
         }
 
-        conn.execute(
-            "UPDATE threads SET stale = ?2, resolved_start_line = ?3 WHERE id = ?1",
-            rusqlite::params![row.id, i64::from(is_stale), resolved_line.map(i64::from)],
-        )
-        .map_err(sqlite_error)?;
-        changed += 1;
+        changes.push(StaleChange {
+            id: row.id,
+            is_stale,
+            resolved_start_line: resolved_line,
+            was_stale: row.was_stale,
+            was_resolved_start_line: row.resolved_start_line,
+        });
     }
 
-    Ok(changed)
+    Ok(changes)
+}
+
+/// Apply only observations whose row still has the state that was read. A
+/// concurrent external writer may have changed or removed the row while this
+/// pass inspected the repository; that newer state must not be overwritten.
+fn apply(conn: &Connection, changes: &[StaleChange]) -> Result<usize, TrunkError> {
+    let mut applied = 0;
+    for change in changes {
+        applied += conn
+            .execute(
+                "UPDATE threads
+                 SET stale = ?2, resolved_start_line = ?3
+                 WHERE id = ?1 AND stale = ?4 AND resolved_start_line IS ?5",
+                rusqlite::params![
+                    change.id,
+                    i64::from(change.is_stale),
+                    change.resolved_start_line.map(i64::from),
+                    i64::from(change.was_stale),
+                    change.was_resolved_start_line.map(i64::from),
+                ],
+            )
+            .map_err(sqlite_error)?;
+    }
+
+    Ok(applied)
 }
 
 /// A thread's staleness inputs: the content pin when it has one, and the anchor
@@ -102,6 +199,17 @@ struct StaleRow {
     pin: Option<PinRef>,
     was_stale: bool,
     resolved_start_line: Option<u32>,
+}
+
+/// A decision paired with the row state it was based on. The old state makes
+/// the write optimistic: a newer concurrent decision wins instead of being
+/// silently replaced.
+struct StaleChange {
+    id: String,
+    is_stale: bool,
+    resolved_start_line: Option<u32>,
+    was_stale: bool,
+    was_resolved_start_line: Option<u32>,
 }
 
 /// What the block search needs from a row. Not the full `ContentPin`: the
@@ -258,8 +366,11 @@ mod tests {
     use super::*;
     use crate::git::types::{Anchor, Side, Source};
     use crate::reviewdb::{Store, open, reviews, threads};
+    use std::cell::Cell;
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::sync::{Arc, mpsc};
+    use std::thread;
     use tempfile::TempDir;
 
     const REPO: &str = "/repo";
@@ -347,19 +458,16 @@ mod tests {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "OLDSNAP");
 
-        let changed = store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &repo_path(),
-                    &standing_where(&[
-                        ("NEWSNAP", SnapshotStanding::Current),
-                        ("OLDSNAP", SnapshotStanding::Superseded),
-                    ]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        let changed = recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[
+                ("NEWSNAP", SnapshotStanding::Current),
+                ("OLDSNAP", SnapshotStanding::Superseded),
+            ]),
+            &no_file,
+        )
+        .unwrap();
 
         assert_eq!(changed, 1, "the superseded thread's value must change");
         assert!(
@@ -373,21 +481,130 @@ mod tests {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "NEWSNAP");
 
-        store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &repo_path(),
-                    &standing_where(&[("NEWSNAP", SnapshotStanding::Current)]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[("NEWSNAP", SnapshotStanding::Current)]),
+            &no_file,
+        )
+        .unwrap();
 
         assert!(
             !staleness_of(&store, &id),
             "a thread anchored to what the repo would capture now is not stale",
         );
+    }
+
+    #[test]
+    fn a_standing_error_aborts_recomputation() {
+        let (_dir, store) = store();
+        let first = thread_anchored_to(&store, "FIRST");
+        let second = thread_anchored_to(&store, "SECOND");
+        let calls = Cell::new(0);
+        let failing_standing = |_: &str| {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                Ok(SnapshotStanding::Superseded)
+            } else {
+                Err(TrunkError::new("git_error", "cannot compare"))
+            }
+        };
+        let revision_before = store
+            .read(crate::reviewdb::revision)
+            .expect("revision before recomputation");
+
+        let error = recompute(&store, &repo_path(), &failing_standing, &no_file).unwrap_err();
+
+        assert_eq!(error.code, "git_error");
+        assert!(!staleness_of(&store, &first));
+        assert!(!staleness_of(&store, &second));
+        assert_eq!(
+            store.read(crate::reviewdb::revision).unwrap(),
+            revision_before
+        );
+    }
+
+    #[test]
+    fn repository_observation_does_not_block_an_unrelated_store_write() {
+        let dir = TempDir::new().unwrap();
+        let store = open(dir.path()).unwrap();
+        let id = thread_anchored_to(&store, "SNAP");
+
+        let changed = recompute(
+            &store,
+            &repo_path(),
+            &|_| {
+                let connection = store.conn.try_lock().map_err(|_| {
+                    TrunkError::new(
+                        "store_locked",
+                        "repository observation held the store mutex",
+                    )
+                })?;
+                drop(connection);
+                store.write(|tx| {
+                    reviews::ensure_active(tx, &PathBuf::from("/other-repo"), 1).map(|_| ())
+                })?;
+
+                Ok(SnapshotStanding::Superseded)
+            },
+            &no_file,
+        )
+        .unwrap();
+
+        assert_eq!(changed, 1);
+        assert!(staleness_of(&store, &id));
+    }
+
+    #[test]
+    fn a_newer_recomputation_wins_when_repository_state_changes_during_an_older_pass() {
+        let dir = TempDir::new().unwrap();
+        let store = Arc::new(open(dir.path()).unwrap());
+        let id = thread_anchored_to(&store, "SNAP");
+        recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[("SNAP", SnapshotStanding::Superseded)]),
+            &no_file,
+        )
+        .unwrap();
+        assert!(staleness_of(&store, &id));
+
+        let (older_observed, wait_for_older) = mpsc::sync_channel(0);
+        let (release_older, older_released) = mpsc::sync_channel(0);
+        let older_store = Arc::clone(&store);
+        let older = thread::spawn(move || {
+            recompute(
+                &older_store,
+                &repo_path(),
+                &|_| {
+                    older_observed.send(()).unwrap();
+                    older_released.recv().unwrap();
+                    Ok(SnapshotStanding::Current)
+                },
+                &no_file,
+            )
+        });
+        wait_for_older.recv().unwrap();
+
+        let (newer_observed, wait_for_newer) = mpsc::sync_channel(0);
+        let newer_store = Arc::clone(&store);
+        let newer = thread::spawn(move || {
+            recompute(
+                &newer_store,
+                &repo_path(),
+                &|_| {
+                    newer_observed.send(()).unwrap();
+                    Ok(SnapshotStanding::Superseded)
+                },
+                &no_file,
+            )
+        });
+        wait_for_newer.recv().unwrap();
+        assert_eq!(newer.join().unwrap().unwrap(), 0);
+
+        release_older.send(()).unwrap();
+        assert_eq!(older.join().unwrap().unwrap(), 0);
+        assert!(staleness_of(&store, &id));
     }
 
     /// This proves only that `recompute` has the extra match arm. The defect
@@ -399,19 +616,16 @@ mod tests {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "GONE");
 
-        let changed = store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &repo_path(),
-                    &standing_where(&[
-                        ("NEWSNAP", SnapshotStanding::Current),
-                        ("GONE", SnapshotStanding::Collected),
-                    ]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        let changed = recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[
+                ("NEWSNAP", SnapshotStanding::Current),
+                ("GONE", SnapshotStanding::Collected),
+            ]),
+            &no_file,
+        )
+        .unwrap();
 
         assert_eq!(changed, 1, "the collected thread's value must change");
         assert!(
@@ -426,19 +640,16 @@ mod tests {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "REALCOMMIT");
 
-        store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &repo_path(),
-                    &standing_where(&[
-                        ("NEWSNAP", SnapshotStanding::Current),
-                        ("OLDSNAP", SnapshotStanding::Superseded),
-                    ]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[
+                ("NEWSNAP", SnapshotStanding::Current),
+                ("OLDSNAP", SnapshotStanding::Superseded),
+            ]),
+            &no_file,
+        )
+        .unwrap();
 
         assert!(
             !staleness_of(&store, &id),
@@ -455,13 +666,9 @@ mod tests {
             ("NEWSNAP", SnapshotStanding::Current),
             ("OLDSNAP", SnapshotStanding::Superseded),
         ]);
-        store
-            .write(|tx| recompute(tx, &repo_path(), &standing, &no_file))
-            .unwrap();
+        recompute(&store, &repo_path(), &standing, &no_file).unwrap();
 
-        let changed = store
-            .write(|tx| recompute(tx, &repo_path(), &standing, &no_file))
-            .unwrap();
+        let changed = recompute(&store, &repo_path(), &standing, &no_file).unwrap();
 
         assert_eq!(
             changed, 0,
@@ -475,19 +682,16 @@ mod tests {
         let id = thread_anchored_to(&store, "OLDSNAP");
         let other = PathBuf::from("/other-repo");
 
-        let changed = store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &other,
-                    &standing_where(&[
-                        ("NEWSNAP", SnapshotStanding::Current),
-                        ("OLDSNAP", SnapshotStanding::Superseded),
-                    ]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        let changed = recompute(
+            &store,
+            &other,
+            &standing_where(&[
+                ("NEWSNAP", SnapshotStanding::Current),
+                ("OLDSNAP", SnapshotStanding::Superseded),
+            ]),
+            &no_file,
+        )
+        .unwrap();
 
         assert_eq!(changed, 0, "one database holds every repo");
         assert!(
@@ -500,33 +704,27 @@ mod tests {
     fn a_stale_thread_clears_when_its_snapshot_is_current_again() {
         let (_dir, store) = store();
         let id = thread_anchored_to(&store, "SNAPA");
-        store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &repo_path(),
-                    &standing_where(&[
-                        ("SNAPB", SnapshotStanding::Current),
-                        ("SNAPA", SnapshotStanding::Superseded),
-                    ]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[
+                ("SNAPB", SnapshotStanding::Current),
+                ("SNAPA", SnapshotStanding::Superseded),
+            ]),
+            &no_file,
+        )
+        .unwrap();
 
-        let changed = store
-            .write(|tx| {
-                recompute(
-                    tx,
-                    &repo_path(),
-                    &standing_where(&[
-                        ("SNAPA", SnapshotStanding::Current),
-                        ("SNAPB", SnapshotStanding::Superseded),
-                    ]),
-                    &no_file,
-                )
-            })
-            .unwrap();
+        let changed = recompute(
+            &store,
+            &repo_path(),
+            &standing_where(&[
+                ("SNAPA", SnapshotStanding::Current),
+                ("SNAPB", SnapshotStanding::Superseded),
+            ]),
+            &no_file,
+        )
+        .unwrap();
 
         assert_eq!(changed, 1);
         assert!(
