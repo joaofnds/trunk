@@ -45,6 +45,23 @@ describe("a current-file view whose file changes on disk", () => {
 		expect(app.diffPane.selectedPath()).toBe(WATCHED);
 	});
 
+	it("drops a selection made against the payload it replaces", async () => {
+		const app = await setup({ repo: ONE_TRACKED_FILE });
+		await app.repo.open();
+		await app.review.openPanel();
+		await app.openTrackedFile("watched");
+		await app.review.selectLine(1);
+		expect(app.review.canCommentOnSelection()).toBe(true);
+
+		app.repo.writeWorkingTreeFile(WATCHED, AFTER);
+		await app.events.externalChange(app.repo.path);
+		await waitFor("the edited content in the open pane", () =>
+			app.diffPane.contextLines().includes(MOVED_BLOCK) ? true : null,
+		);
+
+		expect(app.review.canCommentOnSelection()).toBe(false);
+	});
+
 	// The composer captures its range when it opens and the backend re-reads the
 	// block at submit, so a refresh under an open composer neither moves the range
 	// nor discards the text. Refreshing the pane does not close the window between

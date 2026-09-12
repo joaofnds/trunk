@@ -135,6 +135,11 @@ export class ReviewDriver {
 		button.click();
 	}
 
+	/** Whether the current full-file line selection has armed its Comment action. */
+	canCommentOnSelection(): boolean {
+		return enabled(FULL_FILE_COMMENT) !== null;
+	}
+
 	/** Types into the open composer. */
 	async write(text: string): Promise<void> {
 		const field = await waitFor("the open composer", () =>
