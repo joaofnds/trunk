@@ -93,6 +93,24 @@ export class AppDriver {
 		this.scheduler = scheduler;
 	}
 
+	/**
+	 * Reaches a tracked file no pending change touches the way a reviewer does:
+	 * the finder, narrowed to one row, that row opened, and the centre pane left
+	 * showing the file's content.
+	 */
+	async openTrackedFile(query: string): Promise<void> {
+		await this.review.openFileFinder();
+		await this.review.findFile(query);
+		await waitFor(`the finder narrowed to ${query}`, () =>
+			this.review.finderRows().length === 1 ? true : null,
+		);
+
+		await this.review.openTopFinderRow();
+		await waitFor("the file's content in the pane", () =>
+			this.diffPane.contextLines().length > 0 ? true : null,
+		);
+	}
+
 	/** Everything the application is telling the user right now, oldest first. */
 	toasts(): string[] {
 		const showing = document.querySelectorAll<HTMLElement>(TOAST);

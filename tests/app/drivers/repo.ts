@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { FakeMenu } from "../fakes/menu.js";
 import { waitFor } from "../harness/wait.js";
@@ -210,6 +210,13 @@ export class RepoDriver {
 	 *  content at the next gesture that reloads status. */
 	writeWorkingTreeFile(relativePath: string, content: string): void {
 		writeFileSync(join(this.path, relativePath), content);
+	}
+
+	/** Deletes a working-tree file, the way a user deletes one outside the app.
+	 *  The path stays in the index, so the file is still tracked and still
+	 *  unreadable. */
+	deleteWorkingTreeFile(relativePath: string): void {
+		rmSync(join(this.path, relativePath));
 	}
 
 	/**

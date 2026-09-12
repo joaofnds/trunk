@@ -142,6 +142,15 @@ mode, so the line-selection gestures `driver.review.selectLine` and
 through the finder swaps the centre pane away from the review panel, so a test that wants to
 read a thread card afterwards reopens the panel first.
 
+The current-file refresh workflow, in `tests/app/current-file-refresh.test.ts`: an outside
+edit that moves and rewords a block while the file is open in the pane, the new content and
+the same selected path read back without reopening it, the block selected by what the pane
+shows and the excerpt the submitted comment pinned, and an open composer left holding the
+text and range it captured. Its two siblings cover the read's edges: reads held under a burst
+of events in `current-file-refresh-lifetime.test.ts`, and a file deleted under the open pane
+in `current-file-refresh-error.test.ts`. `driver.openTrackedFile(query)` is the finder
+gesture all three open with.
+
 Repository refresh backpressure, in `tests/app/repo-change-backpressure.test.ts`: virtual
 events keep arriving before the 200 ms policy interval, but the graph starts at the first
 deadline. Command barriers hold graph, status and dirty-count reads while more events arrive,

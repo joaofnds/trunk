@@ -358,7 +358,27 @@ let finderOpen = $state(false);
 let finderFiles = $state.raw<TrackedFile[]>([]);
 let selectedCurrentFile = $state<string | null>(null);
 let currentFileDiffs = $state.raw<FileDiff[]>([]);
+let currentFileLoading = $state(false);
+let currentFileError = $state<string | null>(null);
 let finderLoadSeq = 0;
+
+// The open current file is read by two callers — the finder's pick and every
+// repository change under it — through one coalesced owner, so a burst of
+// events cannot put two reads of the same file in flight. `generation` is the
+// selection's lifetime: closing the view, picking another file and teardown all
+// advance it, so a read in flight when the user leaves is dropped rather than
+// painted over whatever they left for. Leaving a file and returning to it lands
+// on a new generation, so the earlier response stays rejected even though the
+// path matches again.
+interface CurrentFileLoad {
+	path: string;
+	generation: number;
+	reportError: boolean;
+}
+
+let currentFileGeneration = 0;
+let pendingCurrentFile: CurrentFileLoad | null = null;
+const currentFileRefresh = createCoalescedTask(scheduler, readCurrentFile);
 
 async function openFileFinder() {
 	const seq = ++finderLoadSeq;
@@ -374,26 +394,72 @@ async function openFileFinder() {
 	}
 }
 
-async function openCurrentFile(filePath: string) {
-	finderOpen = false;
+/** Reads the file the current-file selection names, for whichever caller asked
+ *  last. Navigation belongs to the explicit open below, never to this: a
+ *  refresh that cleared selections or re-showed the diff would move the user
+ *  off whatever they had picked since. */
+async function readCurrentFile(): Promise<void> {
+	const load = pendingCurrentFile;
+	if (!load) return;
+	const repo = repoPath;
+	const loadIsCurrent = () =>
+		repoViewActive &&
+		repo === repoPath &&
+		load.generation === currentFileGeneration &&
+		selectedCurrentFile === load.path;
+
 	try {
-		currentFileDiffs = await safeInvoke<FileDiff[]>("open_current_file", {
-			path: repoPath,
-			filePath,
+		const result = await safeInvoke<FileDiff[]>("open_current_file", {
+			path: repo,
+			filePath: load.path,
 		});
-		selectedCurrentFile = filePath;
-		selectedFile = null;
-		selectedCommitFile = null;
-		selectedCompareFile = null;
-		if (reviewSession.state.reviewActive) reviewSession.showDiff();
-	} catch (e) {
-		reportErrorToast(e, `Could not open ${filePath}`);
+		if (!loadIsCurrent()) return;
+		currentFileDiffs = result;
+		currentFileError = null;
+	} catch (error) {
+		if (!loadIsCurrent()) return;
+		if (load.reportError)
+			reportErrorToast(error, `Could not open ${load.path}`);
+		// A file that has gone, or has stopped being readable, keeps its selected
+		// path and shows the pane's error with a retry. Dropping the payload is
+		// what stops the user selecting lines that are no longer in the file.
+		currentFileDiffs = [];
+		currentFileError = loadErrorMessage(error);
+	} finally {
+		if (loadIsCurrent()) currentFileLoading = false;
 	}
 }
 
+function prepareCurrentFileRead(path: string, reportError: boolean): void {
+	pendingCurrentFile = {
+		path,
+		generation: currentFileGeneration,
+		reportError,
+	};
+	currentFileLoading = true;
+	currentFileError = null;
+}
+
+async function openCurrentFile(filePath: string) {
+	finderOpen = false;
+	currentFileGeneration += 1;
+	currentFileDiffs = [];
+	prepareCurrentFileRead(filePath, true);
+	selectedCurrentFile = filePath;
+	selectedFile = null;
+	selectedCommitFile = null;
+	selectedCompareFile = null;
+	if (reviewSession.state.reviewActive) reviewSession.showDiff();
+	await currentFileRefresh.run();
+}
+
 function closeCurrentFile() {
+	currentFileGeneration += 1;
+	pendingCurrentFile = null;
 	selectedCurrentFile = null;
 	currentFileDiffs = [];
+	currentFileLoading = false;
+	currentFileError = null;
 }
 
 // Commit selection (from CommitGraph)
@@ -523,6 +589,17 @@ let currentDiffFiles = $derived(
 					: stagingDiffFiles,
 );
 
+// Whether the current-file view is the one on screen: every other selection
+// supersedes it in `currentDiffFiles` above, and the rebase takeover replaces
+// the pane outright.
+let currentFileShown = $derived(
+	selectedCurrentFile !== null &&
+		!showRebaseEditor &&
+		selectedCompareFile === null &&
+		selectedCommitFile === null &&
+		selectedFile === null,
+);
+
 // The diffKind the active DiffPanel renders under — mirrors the template prop
 // (a conflicted file shows via MergeEditor, never DiffPanel, so it folds to the
 // commit kind there too). Lifted to a derived so the matcher's ViewDescriptor
@@ -568,7 +645,9 @@ let currentSourceError = $derived(
 			? commitDiffError
 			: selectedFile
 				? stagingDiffError
-				: null,
+				: selectedCurrentFile
+					? currentFileError
+					: null,
 );
 let currentSourceLoading = $derived.by(() => {
 	const loading = selectedCompareFile
@@ -577,7 +656,11 @@ let currentSourceLoading = $derived.by(() => {
 			? commitDiffLoading
 			: selectedFile
 				? stagingDiffLoading
-				: false;
+				: selectedCurrentFile
+					? currentFileLoading
+					: false;
+	// A current-file view is forced to full-file content, so the global mode it
+	// does not follow must not read as a payload still on its way.
 	const hasRequestBackedSelection = Boolean(
 		selectedCompareFile || selectedCommitFile || selectedFile,
 	);
@@ -768,10 +851,12 @@ onDestroy(() => {
 	commitDiffLoadSeq += 1;
 	compareDiffLoadSeq += 1;
 	rebaseDiffLoadSeq += 1;
+	currentFileGeneration += 1;
 	repoNotification.dispose();
 	dirtyCountsRefresh.dispose();
 	headBranchRefresh.dispose();
 	selectedDiffRefresh.dispose();
+	currentFileRefresh.dispose();
 });
 
 function handleRefresh() {
@@ -1471,6 +1556,11 @@ $effect(() => {
 				);
 				selectedDiffRefresh.invalidate();
 			}
+			const currentFile = selectedCurrentFile;
+			if (currentFile !== null) {
+				prepareCurrentFileRead(currentFile, false);
+				currentFileRefresh.invalidate();
+			}
 		},
 	});
 });
@@ -1697,6 +1787,18 @@ $effect(() => {
 	void reloadVisibleDiffForCurrentMode();
 });
 
+/** The pane's Retry, which re-reads whatever the pane is showing. A current-file
+ *  view carries no request options, which is why it is not reached through the
+ *  mode reload above: the global mode has nothing to change about it. */
+async function retryVisibleDiff(): Promise<void> {
+	if (currentFileShown && selectedCurrentFile !== null) {
+		prepareCurrentFileRead(selectedCurrentFile, false);
+		await currentFileRefresh.run();
+		return;
+	}
+	await reloadVisibleDiffForCurrentMode();
+}
+
 async function handleRebaseStart(
 	todoItems: {
 		oid: string;
@@ -1920,7 +2022,7 @@ function startRightResize(e: MouseEvent) {
           {oncontentmodechange}
           loading={currentSourceLoading}
           loadError={currentSourceError}
-          onretry={() => { void reloadVisibleDiffForCurrentMode(); }}
+          onretry={() => { void retryVisibleDiff(); }}
           onhunkaction={async (filePath) => {
             if (selectedFile) {
               const { path, kind } = selectedFile;

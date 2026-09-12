@@ -14,6 +14,7 @@ const FILE_REF = ".comment-card-fileref";
 const STATE_CHIP = ".thread-state-chip";
 const CARD_ACTION = ".card-action";
 const ORPHAN_BADGE = ".orphan-badge";
+const EXCERPT_LINE = ".comment-card-diff .diff-content";
 const PUBLISH = ".publish-button";
 const CONFIRM_PUBLISH = "Click again to confirm";
 const COPY = ".copy-button";
@@ -374,6 +375,16 @@ export class ReviewDriver {
 	/** The file each thread card is anchored to, topmost first. */
 	threads(): string[] {
 		return cards().map((card) => textIn(card, FILE_REF));
+	}
+
+	/** The pinned code the topmost thread card shows, line by line. For a
+	 *  current-file thread this is the block the backend read at submit, which is
+	 *  what tells a test whether the selected line numbers named the block the
+	 *  user was looking at. */
+	threadExcerpt(): string[] {
+		const lines = cards()[0]?.querySelectorAll<HTMLElement>(EXCERPT_LINE) ?? [];
+
+		return [...lines].map(collapse);
 	}
 
 	/** The orphan badge each thread card carries, topmost first, empty where a

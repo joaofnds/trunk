@@ -8,6 +8,8 @@ const SHOW_INLINE = 'button[title="Inline view"]';
 const IGNORE_WHITESPACE = 'button[title="Ignore whitespace changes"]';
 const CLOSE_DIFF = 'button[aria-label="Close diff"]';
 const CONTEXT_LINE = ".diff-line-context .diff-line-content";
+const DIFF_PATH = '[data-testid="diff-path"]';
+const LOAD_ERROR = ".retry-button";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 
@@ -18,6 +20,30 @@ export class DiffPaneDriver {
 	 *  current-file view is all context, so this is how a test reads it. */
 	contextLines(): string[] {
 		return textsOf(CONTEXT_LINE);
+	}
+
+	/** The path the pane's header says it is showing, which is what a refresh in
+	 *  place must leave alone. */
+	selectedPath(): string | null {
+		return (
+			document.querySelector<HTMLElement>(DIFF_PATH)?.textContent?.trim() ??
+			null
+		);
+	}
+
+	/** Whether the pane is showing a failed read rather than content, which is
+	 *  the presentation that carries the Retry. */
+	showsLoadError(): boolean {
+		return document.querySelector(LOAD_ERROR) !== null;
+	}
+
+	/** Re-asks for the content the pane failed to load. */
+	async retry(): Promise<void> {
+		const button = await waitFor("the pane's retry control", () =>
+			document.querySelector<HTMLButtonElement>(LOAD_ERROR),
+		);
+
+		button.click();
 	}
 
 	/** Whether the center pane is withholding its previous Source payload while
