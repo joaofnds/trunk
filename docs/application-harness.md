@@ -148,8 +148,9 @@ the same selected path read back without reopening it, the block selected by wha
 shows and the excerpt the submitted comment pinned, and an open composer left holding the
 text and range it captured. Its two siblings cover the read's edges: reads held under a burst
 of events in `current-file-refresh-lifetime.test.ts`, and a file deleted under the open pane
-in `current-file-refresh-error.test.ts`. `driver.openTrackedFile(query)` is the finder
-gesture all three open with.
+in `current-file-refresh-error.test.ts`. `app.openTrackedFile(query)` is the finder gesture
+all three open with. The split keeps their nine app boots on parallel workers instead of
+making one serial file the suite's critical path.
 
 Repository refresh backpressure, in `tests/app/repo-change-backpressure.test.ts`: virtual
 events keep arriving before the 200 ms policy interval, but the graph starts at the first

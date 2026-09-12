@@ -182,13 +182,6 @@ shell fixture corpus is day-spaced and takes the time path.
 
 ## Diff surfaces
 
-**Current-file view** — the centre pane showing the whole of one tracked file as it stands
-in the working tree, reached through the finder because no pending change lists it. It
-follows the file: a repository change re-reads it in place, keeping the selected path and
-renumbering the lines, and a read that fails leaves the path with the pane's error and retry
-rather than lines the file no longer has. Every other selection supersedes it, and nothing it
-shows survives leaving it.
-
 **Content mode** — the global choice between **hunk mode**, which shows changed hunks with
 context, and **full-file mode**, which shows the whole file. On request-backed Source views,
 the toolbar, view and `DiffRequestOptions.showFullFile` derive from the same value in every
