@@ -31,15 +31,7 @@ describe("leaving a current-file view", () => {
 		await app.staging.openFile(EDITED);
 		await app.diffPane.showFullFile();
 		await app.review.openPanel();
-		await app.review.openFileFinder();
-		await app.review.findFile("untouched");
-		await waitFor("the narrowed list", () =>
-			app.review.finderRows().length === 1 ? true : null,
-		);
-		await app.review.openTopFinderRow();
-		await waitFor("the current-file content", () =>
-			app.diffPane.contextLines().length > 0 ? true : null,
-		);
+		await app.openTrackedFile("untouched");
 		const diffRequests = app
 			.invokes()
 			.filter(({ cmd }) => MODE_BOUND_DIFF_COMMANDS.has(cmd));
@@ -77,15 +69,7 @@ describe("leaving a current-file view", () => {
 		await app.repo.open();
 		await app.staging.open();
 		await app.review.openPanel();
-		await app.review.openFileFinder();
-		await app.review.findFile("untouched");
-		await waitFor("the narrowed list", () =>
-			app.review.finderRows().length === 1 ? true : null,
-		);
-		await app.review.openTopFinderRow();
-		await waitFor("the current-file content", () =>
-			app.diffPane.contextLines().length > 0 ? true : null,
-		);
+		await app.openTrackedFile("untouched");
 
 		await app.staging.openFile(EDITED);
 
@@ -105,15 +89,7 @@ describe("leaving a current-file view", () => {
 			app.staging.addedLines().length > 0 ? true : null,
 		);
 		await app.review.openPanel();
-		await app.review.openFileFinder();
-		await app.review.findFile("untouched");
-		await waitFor("the narrowed list", () =>
-			app.review.finderRows().length === 1 ? true : null,
-		);
-		await app.review.openTopFinderRow();
-		await waitFor("the current-file content", () =>
-			app.diffPane.contextLines().length > 0 ? true : null,
-		);
+		await app.openTrackedFile("untouched");
 		await app.diffPane.showFullFile();
 		const requestCount = app
 			.invokes()

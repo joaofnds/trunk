@@ -27,16 +27,7 @@ const ONE_UNTOUCHED_FILE: RepoSpec = {
 async function openTheUntouchedFile(app: Awaited<ReturnType<typeof setup>>) {
 	await app.repo.open();
 	await app.review.openPanel();
-	await app.review.openFileFinder();
-	await app.review.findFile("untouched");
-	await waitFor("the narrowed list", () =>
-		app.review.finderRows().length === 1 ? true : null,
-	);
-	await app.review.openTopFinderRow();
-	await waitFor("the file's content in the pane", () => {
-		const lines = app.diffPane.contextLines();
-		return lines.length > 0 ? lines : null;
-	});
+	await app.openTrackedFile("untouched");
 }
 
 describe("commenting on a file no pending change touches", () => {
