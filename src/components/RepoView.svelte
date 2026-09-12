@@ -589,15 +589,16 @@ let currentDiffFiles = $derived(
 					: stagingDiffFiles,
 );
 
-// Whether the current-file view is the one on screen: every other selection
+// The current file while it is the one on screen: every other selection
 // supersedes it in `currentDiffFiles` above, and the rebase takeover replaces
 // the pane outright.
-let currentFileShown = $derived(
-	selectedCurrentFile !== null &&
-		!showRebaseEditor &&
+let shownCurrentFile = $derived(
+	!showRebaseEditor &&
 		selectedCompareFile === null &&
 		selectedCommitFile === null &&
-		selectedFile === null,
+		selectedFile === null
+		? selectedCurrentFile
+		: null,
 );
 
 // The diffKind the active DiffPanel renders under — mirrors the template prop
@@ -659,8 +660,8 @@ let currentSourceLoading = $derived.by(() => {
 				: selectedCurrentFile
 					? currentFileLoading
 					: false;
-	// A current-file view is forced to full-file content, so the global mode it
-	// does not follow must not read as a payload still on its way.
+	// Adding the current-file selection here would read a view that is forced to
+	// full-file content as one still waiting for the global mode's payload.
 	const hasRequestBackedSelection = Boolean(
 		selectedCompareFile || selectedCommitFile || selectedFile,
 	);
@@ -1791,8 +1792,9 @@ $effect(() => {
  *  view carries no request options, which is why it is not reached through the
  *  mode reload above: the global mode has nothing to change about it. */
 async function retryVisibleDiff(): Promise<void> {
-	if (currentFileShown && selectedCurrentFile !== null) {
-		prepareCurrentFileRead(selectedCurrentFile, false);
+	const currentFile = shownCurrentFile;
+	if (currentFile !== null) {
+		prepareCurrentFileRead(currentFile, false);
 		await currentFileRefresh.run();
 		return;
 	}

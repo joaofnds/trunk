@@ -10,6 +10,7 @@ const CLOSE_DIFF = 'button[aria-label="Close diff"]';
 const CONTEXT_LINE = ".diff-line-context .diff-line-content";
 const DIFF_PATH = '[data-testid="diff-path"]';
 const LOAD_ERROR = ".retry-button";
+const RENDERED_VIEW = ".rendered-diff";
 const ADDED_BLOCK = ".rendered-diff .md-added";
 const REMOVED_BLOCK = ".rendered-diff .md-removed";
 
@@ -35,6 +36,13 @@ export class DiffPaneDriver {
 	 *  the presentation that carries the Retry. */
 	showsLoadError(): boolean {
 		return document.querySelector(LOAD_ERROR) !== null;
+	}
+
+	/** Whether the pane is rendering markdown rather than source. The rendered
+	 *  view outranks the failed-read presentation, so it stays up on whatever
+	 *  payload the pane still holds. */
+	rendersMarkdown(): boolean {
+		return document.querySelector(RENDERED_VIEW) !== null;
 	}
 
 	/** Re-asks for the content the pane failed to load. */

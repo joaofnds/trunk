@@ -57,7 +57,6 @@ describe("a current-file view whose file changes on disk", () => {
 		await app.review.selectLine(1);
 		await app.review.commentOnSelection();
 		await app.review.write("half a thought");
-		const composing = app.review.composerDraft();
 
 		app.repo.writeWorkingTreeFile(WATCHED, AFTER);
 		await app.events.externalChange(app.repo.path);
@@ -65,11 +64,10 @@ describe("a current-file view whose file changes on disk", () => {
 			app.diffPane.contextLines().includes(MOVED_BLOCK) ? true : null,
 		);
 
-		expect(composing).toEqual({
+		expect(app.review.composerDraft()).toEqual({
 			text: "half a thought",
 			range: "Comments on lines 1-1",
 		});
-		expect(app.review.composerDraft()).toEqual(composing);
 	});
 
 	it("pins the block the user sees, at the line numbers it moved to", async () => {

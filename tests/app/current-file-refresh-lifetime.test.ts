@@ -5,6 +5,7 @@ import { setup, teardown } from "./harness/index.js";
 import { waitFor } from "./harness/wait.js";
 
 const WATCHED = "src/watched.ts";
+const EDITED = "src/edited.ts";
 const SETTLED = "const answer = 44;\nexport { answer };\n";
 
 const ONE_TRACKED_FILE: RepoSpec = {
@@ -14,7 +15,9 @@ const ONE_TRACKED_FILE: RepoSpec = {
 			path: WATCHED,
 			content: "const answer = 42;\nexport { answer };\n",
 		},
+		{ step: "file", path: EDITED, content: "let count = 0;\n" },
 		{ step: "commit", message: "base" },
+		{ step: "file", path: EDITED, content: "let count = 1;\n" },
 	],
 };
 
@@ -50,6 +53,31 @@ describe("a current-file read still in flight when more changes arrive", () => {
 			"const answer = 44;",
 			"export { answer };",
 		]);
+	});
+
+	it("leaves the surface the user picked instead while it was in flight", async () => {
+		const app = await setup({ repo: ONE_TRACKED_FILE });
+		await app.repo.open();
+		await app.staging.open();
+		await app.review.openPanel();
+		await app.openTrackedFile("watched");
+		const before = reads(app);
+		const release = app.holdCommand("open_current_file");
+		app.repo.writeWorkingTreeFile(WATCHED, SETTLED);
+		await app.events.externalChange(app.repo.path);
+		await waitFor("the held refresh", () =>
+			reads(app) > before ? true : null,
+		);
+
+		await app.staging.openFile(EDITED);
+		await waitFor("the staging diff", () =>
+			app.staging.addedLines().length > 0 ? true : null,
+		);
+		release();
+		await app.settled();
+
+		expect(app.diffPane.selectedPath()).toBe(EDITED);
+		expect(app.staging.addedLines()).toEqual(["let count = 1;"]);
 	});
 
 	it("does not bring the pane back once the user has closed it", async () => {

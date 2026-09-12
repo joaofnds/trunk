@@ -5,25 +5,25 @@ import { waitFor } from "./harness/wait.js";
 
 const WATCHED = "src/watched.ts";
 const CONTENT = "const answer = 42;\nexport { answer };\n";
+const NOTES = "docs/notes.md";
 
 const ONE_TRACKED_FILE: RepoSpec = {
 	steps: [
 		{ step: "file", path: WATCHED, content: CONTENT },
+		{ step: "file", path: NOTES, content: "# Title\n\nA paragraph.\n" },
 		{ step: "commit", message: "base" },
 	],
 };
 
-/** Opens the tracked file, then deletes it under the open pane. */
+/** Opens a tracked file, then deletes it under the open pane. */
 async function deleteTheOpenFile(
 	app: Awaited<ReturnType<typeof setup>>,
+	query: string,
+	path: string,
 ): Promise<void> {
-	await app.repo.open();
-	await app.review.openPanel();
-	await app.openTrackedFile("watched");
-
-	app.repo.deleteWorkingTreeFile(WATCHED);
+	app.repo.deleteWorkingTreeFile(path);
 	await app.events.externalChange(app.repo.path);
-	await waitFor("the failed read in the pane", () =>
+	await waitFor(`the failed read of ${query} in the pane`, () =>
 		app.diffPane.showsLoadError() ? true : null,
 	);
 }
@@ -31,18 +31,42 @@ async function deleteTheOpenFile(
 describe("a current-file view whose file stops being readable", () => {
 	afterEach(teardown);
 
-	it("keeps the path and leaves no line of the old content selectable", async () => {
+	it("keeps the path and shows the failed read in place of the lines", async () => {
 		const app = await setup({ repo: ONE_TRACKED_FILE });
+		await app.repo.open();
+		await app.review.openPanel();
+		await app.openTrackedFile("watched");
 
-		await deleteTheOpenFile(app);
+		await deleteTheOpenFile(app, "watched", WATCHED);
 
 		expect(app.diffPane.selectedPath()).toBe(WATCHED);
 		expect(app.diffPane.contextLines()).toEqual([]);
 	});
 
+	// The rendered view outranks the failed-read presentation in DiffViewer, so
+	// it is the surface that says whether the unreadable file's payload is still
+	// in hand: keep it and the pane renders the document that has gone.
+	it("takes the rendered markdown view down with the file", async () => {
+		const app = await setup({ repo: ONE_TRACKED_FILE });
+		await app.repo.open();
+		await app.review.openPanel();
+		await app.openTrackedFile("notes");
+		await app.diffPane.showRendered();
+		await waitFor("the rendered view", () =>
+			app.diffPane.rendersMarkdown() ? true : null,
+		);
+
+		await deleteTheOpenFile(app, "notes", NOTES);
+
+		expect(app.diffPane.rendersMarkdown()).toBe(false);
+	});
+
 	it("shows the file again when a retry can read it", async () => {
 		const app = await setup({ repo: ONE_TRACKED_FILE });
-		await deleteTheOpenFile(app);
+		await app.repo.open();
+		await app.review.openPanel();
+		await app.openTrackedFile("watched");
+		await deleteTheOpenFile(app, "watched", WATCHED);
 
 		app.repo.writeWorkingTreeFile(WATCHED, CONTENT);
 		await app.diffPane.retry();
