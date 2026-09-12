@@ -24,7 +24,7 @@ describe("commenting on an arbitrary compare", () => {
 
 		await app.review.selectNewLine(1);
 
-		expect(app.review.canCommentOnSelection()).toBe(false);
+		expect(app.review.showsCommentOnSelection()).toBe(false);
 		expect(app.review.composerDraft()).toBeNull();
 	});
 });

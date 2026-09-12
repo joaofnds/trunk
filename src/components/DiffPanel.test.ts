@@ -543,6 +543,62 @@ describe("DiffPanel", () => {
 		);
 	});
 
+	it("blocks a retained full-file composer when comments are unavailable", async () => {
+		const editorStore = createReviewEditorStore();
+		const target = {
+			context: "normal" as const,
+			kind: "commit" as const,
+			commitOid: nonMergeCommit.oid,
+			compareBaseOid: "compare-base",
+			filePath: "src/main.ts",
+		};
+		const composerSession = editorStore.composer(target, "review-a");
+		composerSession.openFullFile(
+			"src/main.ts",
+			{
+				anchor: {
+					commit_oid: nonMergeCommit.oid,
+					file_path: "src/main.ts",
+					source: "FullFile",
+					side: "New",
+					start_line: 2,
+					end_line: 2,
+				},
+				cachedExcerpt: "+ const x = 2;",
+			},
+			"review-a",
+			target,
+		);
+		const props = {
+			fileDiffs: [testDiff],
+			commitDetail: nonMergeCommit,
+			compareBaseOid: "compare-base",
+			selectedPath: "src/main.ts",
+			onclose: vi.fn(),
+			diffKind: "commit" as const,
+			repoPath: "/repo",
+			activeReviewId: "review-a",
+			reviewCommentsVisible: false,
+			contentMode: "full" as const,
+			composerSession,
+			composerTarget: target,
+		};
+		render(DiffPanel, { props });
+		await flushPrefs();
+
+		await fireEvent.input(screen.getByRole("textbox"), {
+			target: { value: "comment on a compare" },
+		});
+		const submit = screen.getByRole("button", { name: /submit/i });
+		vi.mocked(safeInvoke).mockClear();
+		await fireEvent.click(submit);
+
+		expect(submit).toBeDisabled();
+		expect(
+			vi.mocked(safeInvoke).mock.calls.map((call) => call[0]),
+		).not.toContain("add_thread");
+	});
+
 	it("hides a retained composer after the diff target changes", async () => {
 		const editorStore = createReviewEditorStore();
 		const composerSession = editorStore.composer();

@@ -140,6 +140,11 @@ export class ReviewDriver {
 		return enabled(FULL_FILE_COMMENT) !== null;
 	}
 
+	/** Whether the full-file Comment action is visible, including when disabled. */
+	showsCommentOnSelection(): boolean {
+		return visibleElement(FULL_FILE_COMMENT) !== null;
+	}
+
 	/** Types into the open composer. */
 	async write(text: string): Promise<void> {
 		const field = await waitFor("the open composer", () =>
