@@ -10,7 +10,7 @@
 			"*.json",
 			"*.svelte",
 			"!!**/.claude",
-			"!!**/.delta",
+			"!.delta",
 			"!!src-tauri/target",
 			"!!node_modules",
 			"!!**/.git"
