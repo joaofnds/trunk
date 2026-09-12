@@ -426,6 +426,30 @@ describe("DiffPanel", () => {
 		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
 	});
 
+	it("stretches the comment composer across the diff panel", async () => {
+		const { container } = render(DiffPanel, {
+			props: {
+				fileDiffs: [testDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+		const composer = container.querySelector(
+			".comment-composer",
+		) as HTMLElement;
+		const style = getComputedStyle(composer);
+
+		expect(style.width).toBe("100%");
+		expect(style.boxSizing).toBe("border-box");
+	});
+
 	// Regression (260531-l02): opening a whole-hunk comment captures the anchor
 	// up-front. A working-tree comment writes a snapshot commit, which fires a
 	// repo-changed → diff refetch → clearSelection mid-compose. Previously the

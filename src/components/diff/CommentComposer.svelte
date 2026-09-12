@@ -303,6 +303,8 @@ export async function confirmDiscardIfDirty(): Promise<boolean> {
 	.comment-composer {
 		display: flex;
 		flex-direction: column;
+		width: 100%;
+		box-sizing: border-box;
 		gap: var(--space-2);
 		padding: var(--space-2);
 		background: var(--color-surface);
