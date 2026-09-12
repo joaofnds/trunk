@@ -166,6 +166,22 @@ const testDiff: FileDiff = {
 	],
 };
 
+function shiftDiffLines(file: FileDiff, offset: number): FileDiff {
+	return {
+		...file,
+		hunks: file.hunks.map((hunk) => ({
+			...hunk,
+			old_start: hunk.old_start + offset,
+			new_start: hunk.new_start + offset,
+			lines: hunk.lines.map((line) => ({
+				...line,
+				old_lineno: line.old_lineno === null ? null : line.old_lineno + offset,
+				new_lineno: line.new_lineno === null ? null : line.new_lineno + offset,
+			})),
+		})),
+	};
+}
+
 const binaryDiff: FileDiff = {
 	path: "image.png",
 	old_path: null,
@@ -416,6 +432,53 @@ describe("DiffPanel", () => {
 				diffKind: "unstaged",
 				repoPath: "/test/repo",
 				selectedPath: "src/main.ts",
+				contentMode: "full",
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+
+		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+	});
+
+	it("loads the whole file before commenting from hunk mode", async () => {
+		const hunkOnlyDiff = shiftDiffLines(testDiff, 39);
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [hunkOnlyDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				onloadfullfile: async (filePath) =>
+					filePath === "src/main.ts" ? testDiff : null,
+			},
+		});
+		await flushPrefs();
+
+		await fireEvent.click(screen.getByText("Comment File"));
+		await flushPrefs();
+
+		expect(screen.getByText("Comments on lines 1-4")).toBeInTheDocument();
+		expect(screen.getByTitle("Show full file")).toBeInTheDocument();
+	});
+
+	it("loads the whole file while a full-mode payload is still pending", async () => {
+		const hunkOnlyDiff = shiftDiffLines(testDiff, 39);
+		render(DiffPanel, {
+			props: {
+				fileDiffs: [hunkOnlyDiff],
+				commitDetail: null,
+				onclose: vi.fn(),
+				diffKind: "unstaged",
+				repoPath: "/test/repo",
+				selectedPath: "src/main.ts",
+				contentMode: "full",
+				loading: true,
+				onloadfullfile: async () => testDiff,
 			},
 		});
 		await flushPrefs();
@@ -435,6 +498,7 @@ describe("DiffPanel", () => {
 				diffKind: "unstaged",
 				repoPath: "/test/repo",
 				selectedPath: "src/main.ts",
+				contentMode: "full",
 			},
 		});
 		await flushPrefs();
@@ -484,25 +548,14 @@ describe("DiffPanel", () => {
 	});
 
 	it("keeps the full-file comment anchor when the diff reloads mid-compose", async () => {
-		const reloadedFile: FileDiff = {
-			...testDiff,
-			hunks: testDiff.hunks.map((hunk) => ({
-				...hunk,
-				old_start: 40,
-				new_start: 40,
-				lines: hunk.lines.map((line) => ({
-					...line,
-					old_lineno: line.old_lineno === null ? null : line.old_lineno + 39,
-					new_lineno: line.new_lineno === null ? null : line.new_lineno + 39,
-				})),
-			})),
-		};
+		const reloadedFile = shiftDiffLines(testDiff, 39);
 		const baseProps = {
 			commitDetail: null,
 			onclose: vi.fn(),
 			diffKind: "unstaged" as const,
 			repoPath: "/test/repo",
 			selectedPath: "src/main.ts",
+			contentMode: "full" as const,
 		};
 		const view = render(DiffPanel, {
 			props: { ...baseProps, fileDiffs: [testDiff] },

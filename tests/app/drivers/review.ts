@@ -6,6 +6,7 @@ const REVIEW = '[aria-label="Review"]';
 const VIEW_BADGE = '[aria-label$="review comments in this view"]';
 const HUNK_TOOLBAR = ".hunk-toolbar";
 const COMMENT = "Comment";
+const COMMENT_FILE = ".toolbar .comment-btn";
 const COMPOSER_TEXT = ".composer-textarea";
 const SUBMIT = ".submit-btn";
 const CARD = ".comment-card";
@@ -90,6 +91,15 @@ export class ReviewDriver {
 	async commentOnHunk(ordinal: number): Promise<void> {
 		const button = await waitFor(`${COMMENT} on hunk ${ordinal}`, () =>
 			enabledIn(toolbars()[ordinal], COMMENT),
+		);
+
+		button.click();
+	}
+
+	/** Comments the entire file from the diff toolbar. */
+	async commentOnFile(): Promise<void> {
+		const button = await waitFor("the Comment File affordance", () =>
+			enabled(COMMENT_FILE),
 		);
 
 		button.click();

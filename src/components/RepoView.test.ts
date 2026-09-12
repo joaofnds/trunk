@@ -630,6 +630,118 @@ describe("RepoView", () => {
 			expect(screen.queryByText("STALE STAGING")).toBeFalsy();
 		});
 
+		it("drops a Comment File read superseded by a same-file reload", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("INITIAL STAGING")]);
+				}
+				return base(cmd, args);
+			});
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("INITIAL STAGING")).toBeTruthy();
+
+			let resolveComment!: (files: FileDiff[]) => void;
+			let fullReads = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_unstaged") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				if (!options.showFullFile)
+					return Promise.resolve([stagingDiff("NEW HUNK")]);
+
+				fullReads += 1;
+				return fullReads === 1
+					? new Promise<FileDiff[]>((resolve) => {
+							resolveComment = resolve;
+						})
+					: Promise.resolve([stagingDiff("NEW FULL")]);
+			});
+
+			await fireEvent.click(screen.getByText("Comment File"));
+			await vi.waitFor(() => expect(resolveComment).toBeTypeOf("function"));
+			await view.rerender({ ...props, contentMode: "full" });
+			expect(await screen.findByText("NEW FULL")).toBeTruthy();
+			resolveComment([stagingDiff("STALE COMMENT")]);
+			await tick();
+
+			expect(document.querySelector(".composer-textarea")).toBeNull();
+		});
+
+		it("ignores a superseded Comment File read failure", async () => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					return Promise.resolve([stagingDiff("INITIAL STAGING")]);
+				}
+				return base(cmd, args);
+			});
+			const props = {
+				...baseProps(createMockRemoteState()),
+				contentMode: "hunk" as const,
+				oncontentmodechange: vi.fn(),
+			};
+			const view = render(RepoView, { props });
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("INITIAL STAGING")).toBeTruthy();
+
+			let rejectComment!: (reason?: unknown) => void;
+			let fullReads = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd !== "diff_unstaged") return base(cmd, args);
+				const options = (args as { options: { showFullFile: boolean } })
+					.options;
+				if (!options.showFullFile)
+					return Promise.resolve([stagingDiff("NEW HUNK")]);
+
+				fullReads += 1;
+				return fullReads === 1
+					? new Promise<FileDiff[]>((_resolve, reject) => {
+							rejectComment = reject;
+						})
+					: Promise.resolve([stagingDiff("NEW FULL")]);
+			});
+
+			_resetToasts();
+			await fireEvent.click(screen.getByText("Comment File"));
+			await vi.waitFor(() => expect(rejectComment).toBeTypeOf("function"));
+			await view.rerender({ ...props, contentMode: "full" });
+			expect(await screen.findByText("NEW FULL")).toBeTruthy();
+			rejectComment(new Error("stale comment load failed"));
+			await tick();
+
+			expect(toasts.items).not.toContainEqual(
+				expect.objectContaining({ message: "stale comment load failed" }),
+			);
+			expect(document.querySelector(".composer-textarea")).toBeNull();
+		});
+
 		it("ignores a stale staging failure while the newest mode is loading", async () => {
 			const base = mockInvoke.getMockImplementation();
 			if (!base) throw new Error("base invoke implementation missing");

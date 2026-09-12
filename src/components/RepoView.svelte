@@ -937,6 +937,128 @@ function modeFor(options: DiffRequestOptions): ContentMode {
 	return options.showFullFile ? "full" : "hunk";
 }
 
+function requestStagingFileDiff(
+	repo: string,
+	kind: "unstaged" | "staged",
+	filePath: string,
+	options: DiffRequestOptions,
+): Promise<FileDiff[]> {
+	return safeInvoke<FileDiff[]>(
+		kind === "unstaged" ? "diff_unstaged" : "diff_staged",
+		{ path: repo, filePath, options },
+	);
+}
+
+function requestCommitFileDiff(
+	repo: string,
+	oid: string,
+	filePath: string,
+	options: DiffRequestOptions,
+): Promise<FileDiff[]> {
+	return safeInvoke<FileDiff[]>("diff_commit_file", {
+		path: repo,
+		oid,
+		filePath,
+		options,
+	});
+}
+
+function requestCompareFileDiff(
+	repo: string,
+	baseOid: string | null,
+	targetOid: string,
+	filePath: string,
+	options: DiffRequestOptions,
+): Promise<FileDiff[]> {
+	return safeInvoke<FileDiff[]>("diff_compare_file", {
+		path: repo,
+		baseOid,
+		targetOid,
+		filePath,
+		options,
+	});
+}
+
+async function fileFromCurrentRead(
+	request: Promise<FileDiff[]>,
+	filePath: string,
+	requestIsCurrent: () => boolean,
+): Promise<FileDiff | null> {
+	try {
+		const files = await request;
+		if (!requestIsCurrent()) return null;
+
+		return files.find((file) => file.path === filePath) ?? null;
+	} catch (error) {
+		if (!requestIsCurrent()) return null;
+
+		throw error;
+	}
+}
+
+async function loadFullFileForComment(
+	filePath: string,
+): Promise<FileDiff | null> {
+	const options = { ...buildDiffOptions(), showFullFile: true };
+	const fireRepo = repoPath;
+
+	if (selectedCompareFile === filePath && compare) {
+		const firePair = compare;
+		const loadSeq = compareDiffLoadSeq;
+
+		return await fileFromCurrentRead(
+			requestCompareFileDiff(
+				fireRepo,
+				firePair.baseOid,
+				firePair.targetOid,
+				filePath,
+				options,
+			),
+			filePath,
+			() =>
+				repoViewActive &&
+				repoPath === fireRepo &&
+				compareDiffLoadSeq === loadSeq &&
+				compare === firePair &&
+				selectedCompareFile === filePath,
+		);
+	}
+
+	if (selectedCommitFile === filePath && selectedCommitOid) {
+		const fireOid = selectedCommitOid;
+		const loadSeq = commitDiffLoadSeq;
+
+		return await fileFromCurrentRead(
+			requestCommitFileDiff(fireRepo, fireOid, filePath, options),
+			filePath,
+			() =>
+				repoViewActive &&
+				repoPath === fireRepo &&
+				commitDiffLoadSeq === loadSeq &&
+				selectedCommitOid === fireOid &&
+				selectedCommitFile === filePath,
+		);
+	}
+
+	if (selectedFile?.path === filePath && selectedFile.kind !== "conflicted") {
+		const kind = selectedFile.kind;
+		const generation = selectGeneration;
+
+		return await fileFromCurrentRead(
+			requestStagingFileDiff(fireRepo, kind, filePath, options),
+			filePath,
+			() =>
+				repoViewActive &&
+				repoPath === fireRepo &&
+				selectGeneration === generation &&
+				selectedFile?.path === filePath &&
+				selectedFile.kind === kind,
+		);
+	}
+
+	return null;
+}
+
 function loadErrorMessage(error: unknown): string {
 	return errorMessage(error, "Failed to load diff");
 }
@@ -1196,13 +1318,13 @@ async function reloadCompareFile(
 	compareDiffLoading = true;
 	compareDiffError = null;
 	try {
-		const fileDiffs = await safeInvoke<FileDiff[]>("diff_compare_file", {
-			path: fireRepo,
-			baseOid: firePair.baseOid,
-			targetOid: firePair.targetOid,
+		const fileDiffs = await requestCompareFileDiff(
+			fireRepo,
+			firePair.baseOid,
+			firePair.targetOid,
 			filePath,
 			options,
-		});
+		);
 		if (!requestIsCurrent()) return;
 		compareFileDiffs = patchLoadedDiff(compareFileDiffs, filePath, fileDiffs);
 		compareDiffMode = requestMode;
@@ -1324,12 +1446,12 @@ async function reloadCommitFile(
 	commitDiffError = null;
 	try {
 		const load = async () => {
-			const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-				path: fireRepo,
-				oid: fireOid,
-				filePath: path,
+			const fileDiffs = await requestCommitFileDiff(
+				fireRepo,
+				fireOid,
+				path,
 				options,
-			});
+			);
 			if (!requestIsCurrent()) return;
 			commitFileDiffs = patchLoadedDiff(commitFileDiffs, path, fileDiffs);
 			commitDiffMode = requestMode;
@@ -1381,13 +1503,13 @@ async function readSelectedFileDiff(): Promise<void> {
 	if (!load) return;
 	const repo = repoPath;
 	try {
-		const command = load.kind === "unstaged" ? "diff_unstaged" : "diff_staged";
 		const reloadOptions = load.options;
-		const result = await safeInvoke<FileDiff[]>(command, {
-			path: repo,
-			filePath: load.path,
-			options: reloadOptions,
-		});
+		const result = await requestStagingFileDiff(
+			repo,
+			load.kind,
+			load.path,
+			reloadOptions,
+		);
 		if (
 			!repoViewActive ||
 			repo !== repoPath ||
@@ -1727,12 +1849,7 @@ async function reloadRebaseFile(path: string, options: DiffRequestOptions) {
 	rebaseDiffError = null;
 
 	try {
-		const fileDiffs = await safeInvoke<FileDiff[]>("diff_commit_file", {
-			path: fireRepo,
-			oid,
-			filePath: path,
-			options,
-		});
+		const fileDiffs = await requestCommitFileDiff(fireRepo, oid, path, options);
 		if (!requestIsCurrent()) return;
 
 		rebaseFocusedFileDiffs = patchLoadedDiff(
@@ -1749,6 +1866,28 @@ async function reloadRebaseFile(path: string, options: DiffRequestOptions) {
 		rebaseDiffError = loadErrorMessage(e);
 		reportErrorToast(e, "Failed to load diff");
 	}
+}
+
+async function loadRebaseFullFileForComment(
+	filePath: string,
+): Promise<FileDiff | null> {
+	const oid = rebaseFocusedCommitDetail?.oid;
+	if (!repoPath || !oid || rebaseDiffFile !== filePath) return null;
+
+	const fireRepo = repoPath;
+	const loadSeq = rebaseDiffLoadSeq;
+	const options = { ...buildDiffOptions(), showFullFile: true };
+
+	return await fileFromCurrentRead(
+		requestCommitFileDiff(fireRepo, oid, filePath, options),
+		filePath,
+		() =>
+			repoViewActive &&
+			repoPath === fireRepo &&
+			rebaseDiffLoadSeq === loadSeq &&
+			rebaseFocusedCommitDetail?.oid === oid &&
+			rebaseDiffFile === filePath,
+	);
 }
 
 async function handleRebaseFileSelect(path: string) {
@@ -1934,6 +2073,7 @@ function startRightResize(e: MouseEvent) {
             {oncontentmodechange}
             loading={rebaseDiffLoading || (rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode)}
             loadError={rebaseDiffError}
+            onloadfullfile={loadRebaseFullFileForComment}
             onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
             ondiffoptionschange={async (options) => {
 			  rememberLocalDiffOptions(options);
@@ -2024,6 +2164,7 @@ function startRightResize(e: MouseEvent) {
           {oncontentmodechange}
           loading={currentSourceLoading}
           loadError={currentSourceError}
+          onloadfullfile={loadFullFileForComment}
           onretry={() => { void retryVisibleDiff(); }}
           onhunkaction={async (filePath) => {
             if (selectedFile) {

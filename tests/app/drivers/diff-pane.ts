@@ -104,6 +104,11 @@ export class DiffPaneDriver {
 		if (button.matches(SHOW_HUNKS)) button.click();
 	}
 
+	/** Whether the pane remains in hunk mode. */
+	isInHunkMode(): boolean {
+		return document.querySelector(SHOW_FULL_FILE) !== null;
+	}
+
 	/** Switches the pane from inline to side-by-side, if it is not there already. */
 	async showSideBySide(): Promise<void> {
 		const button = await waitFor("the layout toggle", () =>

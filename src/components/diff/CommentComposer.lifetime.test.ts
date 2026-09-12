@@ -293,6 +293,7 @@ describe("composer operation lifetime", () => {
 			diffKind: "commit" as const,
 			repoPath: "/repo",
 			composerSession: session,
+			contentMode: "full" as const,
 			onclose: () => {},
 		};
 		const view = render(DiffPanel, {

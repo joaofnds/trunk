@@ -75,6 +75,7 @@ interface Props {
 	loading?: boolean;
 	loadError?: string | null;
 	onretry?: () => void;
+	onloadfullfile?: (filePath: string) => Promise<FileDiff | null>;
 	reviewCommentsVisible?: boolean;
 	reviewFilter?: ReviewFilter;
 	activeReviewId?: string | null;
@@ -103,6 +104,7 @@ let {
 	loading = false,
 	loadError = null,
 	onretry,
+	onloadfullfile,
 	reviewCommentsVisible = true,
 	reviewFilter = "all",
 	activeReviewId = null,
@@ -414,9 +416,8 @@ async function handleCommentHunk(filePath: string, hunkIndex: number) {
 // NO Old-side guard (full-file is always New-side, buildFullFileAnchor). Establishes
 // nothing on open (see openDiffComposer); the EXPENSIVE working-tree snapshot stays
 // deferred to submit (resolveCommentCommitOid).
-async function handleCommentFullFile(filePath: string, indices: Set<number>) {
-	const fd = fileDiffs.find((file) => file.path === filePath);
-	if (!fd || indices.size === 0) return;
+async function openFullFileComposer(fd: FileDiff, indices: Set<number>) {
+	if (indices.size === 0) return;
 	const session = activeComposerSession;
 	const target = activeComposerTarget;
 	const reviewId = activeReviewId;
@@ -429,11 +430,34 @@ async function handleCommentFullFile(filePath: string, indices: Set<number>) {
 		return;
 
 	session.openFullFile(
-		filePath,
+		fd.path,
 		buildFullFileAnchor(commitOid, fd, indices),
 		reviewId,
 		target,
 	);
+}
+
+async function handleCommentFullFile(filePath: string, indices: Set<number>) {
+	const fd = fileDiffs.find((file) => file.path === filePath);
+	if (!fd) return;
+
+	await openFullFileComposer(fd, indices);
+}
+
+async function loadFullFileForComment(
+	filePath: string,
+): Promise<FileDiff | null> {
+	if (contentMode === "full" && !loading && !loadError) {
+		return fileDiffs.find((file) => file.path === filePath) ?? null;
+	}
+	if (!onloadfullfile) return null;
+
+	try {
+		return await onloadfullfile(filePath);
+	} catch (error) {
+		reportErrorToast(error, "Failed to load full file");
+		return null;
+	}
 }
 
 // One-click whole-file Comment (260531-l02e): comment every change in the file
@@ -444,14 +468,27 @@ async function handleCommentFullFile(filePath: string, indices: Set<number>) {
 // guard. Operates on the toolbar's current `selectedPath` (like Stage File).
 async function handleCommentFile() {
 	if (!selectedPath) return;
-	const fd = fileDiffs.find((f) => f.path === selectedPath);
-	if (!fd) return;
+	const filePath = selectedPath;
+	const session = activeComposerSession;
+	const target = activeComposerTarget;
+	const reviewId = activeReviewId;
+
+	const fd = await loadFullFileForComment(filePath);
+	if (
+		!fd ||
+		selectedPath !== filePath ||
+		session !== activeComposerSession ||
+		!reviewComposerTargetsEqual(target, activeComposerTarget) ||
+		reviewId !== activeReviewId
+	)
+		return;
+
 	const indices = fileSelectableIndices(fd);
 	if (indices.size === 0) {
 		showToast("Commenting on removed lines isn't supported yet", "error");
 		return;
 	}
-	await handleCommentFullFile(fd.path, indices);
+	await openFullFileComposer(fd, indices);
 }
 
 $effect(() => {
