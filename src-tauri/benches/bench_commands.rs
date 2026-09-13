@@ -5,6 +5,8 @@ use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 use trunk_lib::state::OpenRepos;
 
+mod support;
+
 struct BenchRepo {
     _dir: tempfile::TempDir,
     path: std::path::PathBuf,
@@ -13,8 +15,7 @@ struct BenchRepo {
 /// Create a repo with an initial commit on main, then `branch_count` additional branches
 /// each with 2 extra commits. Produces a repo with many refs for `list_refs_inner` to enumerate.
 fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     // Initial commit on main
@@ -77,8 +78,7 @@ fn make_repo_with_branches(branch_count: usize) -> BenchRepo {
 /// Create a repo with an initial commit containing README.md, then modify
 /// README.md on the filesystem to produce unstaged changes for diff and status benchmarks.
 fn make_repo_with_unstaged_changes() -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     // Write README.md to filesystem and commit it
@@ -110,8 +110,7 @@ fn make_repo_with_unstaged_changes() -> BenchRepo {
 /// Create a fresh repo with an unstaged hunk for `stage_hunk_inner` (mutating operation).
 /// Returns (dir, `path_string`, `state_map`) -- dir must live until the iteration ends.
 fn make_repo_for_stage_hunk() -> (tempfile::TempDir, String, OpenRepos) {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     // Write README.md and commit
@@ -317,8 +316,7 @@ export function computeStats(diffs: FileDiff[]): { added: number; removed: numbe
 /// Create a repo with a realistic code file (TypeScript) that has multiple changed hunks.
 /// Tests the full enrichment pipeline: syntax highlighting + word-level diff.
 fn make_repo_with_code_changes() -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     std::fs::write(dir.path().join("diff-utils.ts"), CODE_BEFORE).unwrap();
@@ -477,8 +475,7 @@ fn large_typescript_file_variant(changed_blocks: &[usize], nonce: usize) -> Stri
 
 /// A repo with the ~3,000-line file committed and the working tree matching it.
 fn make_repo_with_committed_large_file() -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     std::fs::write(dir.path().join("large.ts"), large_typescript_file(None)).unwrap();
@@ -627,6 +624,7 @@ static CALIBRATION_TS: OnceLock<String> = OnceLock::new();
 static CALIBRATION_SYNTAX: OnceLock<SyntaxSet> = OnceLock::new();
 static CALIBRATION_THEMES: OnceLock<ThemeSet> = OnceLock::new();
 static CALIBRATION_REPO: OnceLock<BenchRepo> = OnceLock::new();
+static CALIBRATION_WORKTREE_REPO: OnceLock<BenchRepo> = OnceLock::new();
 
 /// A fixed syntect highlight, the divisor for every syntect-class benchmark.
 fn bench_calibration_syntect(c: &mut Criterion) {
@@ -636,7 +634,7 @@ fn bench_calibration_syntect(c: &mut Criterion) {
     let syntax = syntaxes.find_syntax_by_extension("ts").unwrap();
     let theme = &themes.themes["base16-ocean.dark"];
 
-    c.bench_function("calibration/syntect", |b| {
+    c.bench_function("calibration/syntect-v1", |b| {
         b.iter(|| {
             let mut highlighter = HighlightLines::new(syntax, theme);
             let mut spans = 0usize;
@@ -652,7 +650,7 @@ fn bench_calibration_syntect(c: &mut Criterion) {
 fn bench_calibration_git2(c: &mut Criterion) {
     let bench_repo = CALIBRATION_REPO.get_or_init(make_calibration_repo);
 
-    c.bench_function("calibration/git2", |b| {
+    c.bench_function("calibration/git2-v1", |b| {
         b.iter(|| {
             let repo = git2::Repository::open(&bench_repo.path).unwrap();
             let mut walk = repo.revwalk().unwrap();
@@ -672,9 +670,46 @@ fn bench_calibration_git2(c: &mut Criterion) {
     });
 }
 
+/// Fixed git2 status and diff reads, the divisor for working-tree benchmarks.
+fn bench_calibration_worktree(c: &mut Criterion) {
+    let bench_repo = CALIBRATION_WORKTREE_REPO.get_or_init(make_worktree_calibration_repo);
+    assert_eq!(measure_worktree_calibration(&bench_repo.path), (1, 1));
+
+    c.bench_function("calibration/worktree-v1", |b| {
+        b.iter(|| measure_worktree_calibration(&bench_repo.path));
+    });
+}
+
+fn measure_worktree_calibration(path: &std::path::Path) -> (usize, usize) {
+    let repo = git2::Repository::open(path).unwrap();
+    let statuses = repo.statuses(None).unwrap();
+    let diff = repo.diff_index_to_workdir(None, None).unwrap();
+    (statuses.len(), diff.deltas().len())
+}
+
+fn make_worktree_calibration_repo() -> BenchRepo {
+    let (dir, repo) = support::init_repo_on_main();
+    let when = git2::Time::new(1_700_000_000, 0);
+    let sig = git2::Signature::new("Calibration", "calibration@test.com", &when).unwrap();
+
+    std::fs::write(dir.path().join("calibration.txt"), "before\n").unwrap();
+    let mut index = repo.index().unwrap();
+    index
+        .add_path(std::path::Path::new("calibration.txt"))
+        .unwrap();
+    index.write().unwrap();
+    let tree_oid = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_oid).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "Calibration commit", &tree, &[])
+        .unwrap();
+    std::fs::write(dir.path().join("calibration.txt"), "after\n").unwrap();
+
+    let path = dir.path().to_path_buf();
+    BenchRepo { _dir: dir, path }
+}
+
 fn make_calibration_repo() -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let when = git2::Time::new(1_700_000_000, 0);
     let sig = git2::Signature::new("Calibration", "calibration@test.com", &when).unwrap();
 
@@ -713,6 +748,7 @@ criterion_group!(
     benches,
     bench_calibration_syntect,
     bench_calibration_git2,
+    bench_calibration_worktree,
     bench_draft_write,
     bench_list_refs,
     bench_diff_unstaged,

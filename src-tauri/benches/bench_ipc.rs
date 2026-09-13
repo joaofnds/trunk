@@ -3,6 +3,8 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use trunk_lib::state::OpenRepos;
 
+mod support;
+
 struct BenchRepo {
     _dir: tempfile::TempDir,
     path: std::path::PathBuf,
@@ -10,8 +12,7 @@ struct BenchRepo {
 
 /// Create a linear repo with `n` commits for graph benchmarks.
 fn make_linear_repo(n: usize) -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     let mut parent_oid: Option<git2::Oid> = None;
@@ -51,8 +52,7 @@ fn make_linear_repo(n: usize) -> BenchRepo {
 
 /// Create a repo with branches and unstaged changes for combined benchmarks.
 fn make_startup_repo() -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     // Create 100 commits

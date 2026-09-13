@@ -2,6 +2,8 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::sync::OnceLock;
 use std::time::Duration;
 
+mod support;
+
 struct BenchRepo {
     _dir: tempfile::TempDir,
     path: std::path::PathBuf,
@@ -12,8 +14,7 @@ struct BenchRepo {
 /// Uses git2's in-memory blob + treebuilder API to avoid filesystem I/O.
 /// Each commit gets its own single-file tree (not cumulative) to keep creation fast.
 fn make_linear_repo(n: usize) -> BenchRepo {
-    let dir = tempfile::tempdir().unwrap();
-    let repo = git2::Repository::init(dir.path()).unwrap();
+    let (dir, repo) = support::init_repo_on_main();
     let sig = git2::Signature::now("Bench", "bench@test.com").unwrap();
 
     let mut parent_oid: Option<git2::Oid> = None;

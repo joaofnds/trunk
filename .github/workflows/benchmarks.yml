@@ -49,7 +49,10 @@ jobs:
         run: rm -rf src-tauri/target/criterion
 
       - name: Run benchmarks
-        run: cd src-tauri && cargo bench --bench bench_graph --bench bench_commands --bench bench_ipc -- --output-format bencher | tee output.txt
+        run: |
+          set -o pipefail
+          cd src-tauri
+          cargo bench --bench bench_graph --bench bench_commands --bench bench_ipc -- --output-format bencher | tee output.txt
 
       - name: Normalize against the calibration benchmarks
         run: bun run scripts/bench-gate.ts src-tauri/output.txt > src-tauri/normalized.txt

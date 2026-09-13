@@ -6,9 +6,16 @@ function bench(name: string, value: string, deviation = "1"): string {
 	return `test ${name} ... bench: ${value} ns/iter (+/- ${deviation})`;
 }
 
+function expectNormalizeError(input: string, message: string): void {
+	const act = () => normalize(input);
+	expect(act).toThrowError(NormalizeError);
+	expect(act).toThrowError(new NormalizeError(message));
+}
+
 const CALIBRATIONS = [
-	bench("calibration/syntect", "2,000,000"),
-	bench("calibration/git2", "500,000"),
+	bench("calibration/syntect-v1", "2,000,000"),
+	bench("calibration/git2-v1", "500,000"),
+	bench("calibration/worktree-v1", "250,000"),
 ].join("\n");
 
 describe("normalize", () => {
@@ -18,7 +25,7 @@ describe("normalize", () => {
 		const output = normalize(input);
 
 		expect(output).toContain(
-			"test norm/enrich_ts_new_perfile ... bench: 4000000 ns/iter",
+			"test norm/syntect-v1/enrich_ts_new_perfile ... bench: 4000000 ns/iter",
 		);
 	});
 
@@ -28,17 +35,45 @@ describe("normalize", () => {
 		const output = normalize(input);
 
 		expect(output).toContain(
-			"test norm/snapshot/10k ... bench: 3000000 ns/iter",
+			"test norm/git2-v1/snapshot/10k ... bench: 3000000 ns/iter",
 		);
 	});
+
+	it.each([
+		"diff_unstaged_inner",
+		"get_status_inner",
+		"stage_hunk_inner",
+		"ipc_round_trip/diff_unstaged",
+	])("puts $name in the fresh working-tree series", (name) => {
+		const input = `${CALIBRATIONS}\n${bench(name, "500,000")}`;
+
+		const output = normalize(input);
+
+		expect(output).toBe(
+			`test norm/worktree-v1/${name} ... bench: 2000000 ns/iter (+/- 4)`,
+		);
+	});
+
+	it.each(["ipc_round_trip/get_commit_graph", "ipc_round_trip/list_refs"])(
+		"keeps $name in the git2 series",
+		(name) => {
+			const input = `${CALIBRATIONS}\n${bench(name, "1,000,000")}`;
+
+			const output = normalize(input);
+
+			expect(output).toBe(
+				`test norm/git2-v1/${name} ... bench: 2000000 ns/iter (+/- 2)`,
+			);
+		},
+	);
 
 	it("scales the deviation by the same factor as the value", () => {
 		const input = `${CALIBRATIONS}\n${bench("get_status_inner", "250,000", "5,000")}`;
 
 		const output = normalize(input);
 
-		expect(output).toContain(
-			"test norm/get_status_inner ... bench: 500000 ns/iter (+/- 10000)",
+		expect(output).toBe(
+			"test norm/worktree-v1/get_status_inner ... bench: 1000000 ns/iter (+/- 20000)",
 		);
 	});
 
@@ -64,18 +99,41 @@ describe("normalize", () => {
 		const output = normalize(input);
 
 		expect(output.split("\n")).toEqual([
-			"test norm/list_refs_inner ... bench: 1000000 ns/iter (+/- 2)",
+			"test norm/git2-v1/list_refs_inner ... bench: 1000000 ns/iter (+/- 2)",
 		]);
 	});
 
 	describe("when a calibration benchmark is missing", () => {
 		it("throws NormalizeError naming the calibration", () => {
-			const input = `${bench("calibration/git2", "500,000")}\n${bench("list_refs_inner", "500,000")}`;
+			const input = `${bench("calibration/git2-v1", "500,000")}\n${bench("list_refs_inner", "500,000")}`;
 
-			expect(() => normalize(input)).toThrowError(
-				new NormalizeError(
-					"calibration/syntect is absent from the benchmark output",
-				),
+			expectNormalizeError(
+				input,
+				"calibration/syntect-* is absent from the benchmark output",
+			);
+		});
+
+		it("throws NormalizeError naming the working-tree calibration", () => {
+			const input = [
+				bench("calibration/syntect-v1", "2,000,000"),
+				bench("calibration/git2-v1", "500,000"),
+				bench("stage_hunk_inner", "500,000"),
+			].join("\n");
+
+			expectNormalizeError(
+				input,
+				"calibration/worktree-* is absent from the benchmark output",
+			);
+		});
+	});
+
+	describe("when calibration generations overlap", () => {
+		it("rejects two generations for one workload", () => {
+			const input = `${CALIBRATIONS}\n${bench("calibration/worktree-v2", "250,000")}`;
+
+			expectNormalizeError(
+				input,
+				"calibration/worktree-* appears more than once in the benchmark output",
 			);
 		});
 	});
@@ -84,20 +142,18 @@ describe("normalize", () => {
 		it("throws NormalizeError naming the benchmark", () => {
 			const input = `${CALIBRATIONS}\n${bench("brand_new_inner", "1,000")}`;
 
-			expect(() => normalize(input)).toThrowError(
-				new NormalizeError(
-					"brand_new_inner belongs to no class and is not excluded",
-				),
+			expectNormalizeError(
+				input,
+				"brand_new_inner belongs to no class and is not excluded",
 			);
 		});
 	});
 
 	describe("when the input is a CI run recorded before the calibrations existed", () => {
 		it("reports the missing calibration, having classified every benchmark in it", () => {
-			expect(() => normalize(recordedRun)).toThrowError(
-				new NormalizeError(
-					"calibration/syntect is absent from the benchmark output",
-				),
+			expectNormalizeError(
+				recordedRun,
+				"calibration/syntect-* is absent from the benchmark output",
 			);
 		});
 	});
