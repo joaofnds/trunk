@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { aReply, aThread } from "../__tests__/helpers/thread-fixture.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { createThreadEditorSession } from "../lib/review-editors.svelte.js";
-import type { Thread } from "../lib/types.js";
+import type { Thread, ThreadState } from "../lib/types.js";
 import ThreadCard from "./ThreadCard.svelte";
 
 // Shared Tauri mock (provides @tauri-apps/plugin-dialog `ask`, defaulting to false).
@@ -106,29 +106,35 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("src/untouched.ts:L7-L7")).toBeTruthy();
 	});
 
-	it("shows the stale marker exactly while the backend marks the thread stale", async () => {
-		const view = renderCard({
-			thread: { ...comment, stale: false },
-		});
+	it.each<ThreadState>(["open", "addressed", "done", "dismissed"])(
+		"shows the stale marker exactly while the backend marks a %s thread stale",
+		async (state) => {
+			const view = renderCard({
+				thread: { ...comment, state, stale: false },
+			});
 
-		expect(screen.queryByText("stale")).not.toBeInTheDocument();
+			expect(screen.queryByText("stale")).not.toBeInTheDocument();
 
-		await view.rerender({
-			thread: { ...comment, stale: true },
-			repoPath: "/repo",
-			onedit: () => {},
-			ondelete: () => {},
-		});
-		expect(screen.getByText("stale")).toBeInTheDocument();
+			await view.rerender({
+				thread: { ...comment, state, stale: true },
+				repoPath: "/repo",
+				onedit: () => {},
+				ondelete: () => {},
+			});
+			expect(screen.getByText("stale")).toBeInTheDocument();
+			expect(
+				view.container.querySelector(".orphan-badge"),
+			).not.toBeInTheDocument();
 
-		await view.rerender({
-			thread: { ...comment, stale: false },
-			repoPath: "/repo",
-			onedit: () => {},
-			ondelete: () => {},
-		});
-		expect(screen.queryByText("stale")).not.toBeInTheDocument();
-	});
+			await view.rerender({
+				thread: { ...comment, state, stale: false },
+				repoPath: "/repo",
+				onedit: () => {},
+				ondelete: () => {},
+			});
+			expect(screen.queryByText("stale")).not.toBeInTheDocument();
+		},
+	);
 
 	/// A stale current-file thread points at code that is gone, so the excerpt is
 	/// the only place its subject survives.

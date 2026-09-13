@@ -1,7 +1,6 @@
 <script lang="ts">
 // The orphan badge, the file-ref jump affordance, and the diff excerpt are
-// panel-context decorations; inline hosts omit those optional props. Staleness
-// comes from the thread itself, so its marker appears in every host. `variant`
+// panel-context decorations; inline hosts omit those optional props. `variant`
 // swaps width/padding tokens between the panel and inline hosts.
 
 import { externalLinks } from "../lib/external-links.js";
@@ -445,7 +444,6 @@ async function requestDeleteReply(replyId: string) {
     white-space: nowrap;
   }
 
-  /* Root attribution, state, and staleness share one compact metadata shape. */
   .comment-card-channel,
   .thread-stale-chip,
   .thread-state-chip {
@@ -458,9 +456,6 @@ async function requestDeleteReply(replyId: string) {
     white-space: nowrap;
   }
 
-  /* Staleness is orthogonal to thread state and orphan resolution, so it gets
-     its own textual chip. The filled stale pair is audited by the contrast
-     gate; visible text keeps color from carrying the meaning alone. */
   .thread-stale-chip {
     color: var(--accent-fg);
     background: var(--color-thread-stale);

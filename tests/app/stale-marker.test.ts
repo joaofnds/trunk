@@ -1,5 +1,3 @@
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import type { RepoSpec } from "./harness/host-client.js";
 import { setup, teardown } from "./harness/index.js";
@@ -38,14 +36,14 @@ describe("staleness on a comment about uncommitted work", () => {
 				: null;
 		});
 
-		writeFileSync(join(app.repo.path, "a.txt"), "one\nREWRITTEN\nthree\n");
+		app.repo.writeWorkingTreeFile("a.txt", "one\nREWRITTEN\nthree\n");
 		await app.events.externalChange(app.repo.path);
 
 		await waitFor("the visible stale marker", () =>
 			app.review.staleMarkers()[0] === "stale" ? true : null,
 		);
 
-		writeFileSync(join(app.repo.path, "a.txt"), "one\nEDITED\nthree\n");
+		app.repo.writeWorkingTreeFile("a.txt", "one\nEDITED\nthree\n");
 		await app.events.externalChange(app.repo.path);
 
 		await waitFor("the cleared stale marker", () =>
