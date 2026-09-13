@@ -1,4 +1,5 @@
-# A test that stops making progress must fail, not hang a CI runner. The
-# slowest honest test is ~40s, so 120s only fires on something stuck.
+# A test that stops making progress must fail, not hang a CI runner. The 120s
+# termination ceiling was set above the measured ~28s honest-test ceiling;
+# watcher tests stay below one 30s slow period.
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 4 }
