@@ -1,8 +1,8 @@
 # The CI benchmark gate
 
 `.github/workflows/benchmarks.yml` runs the criterion suite on every push to `main` and
-fails the build when a benchmark gets slower than the previous run. This page says what it
-compares and why, because the obvious reading of the numbers is wrong.
+fails the build when a gated benchmark gets slower than the previous run. This page says
+what it compares and why, because the obvious reading of the numbers is wrong.
 
 ## What it compares
 
@@ -16,12 +16,21 @@ Three calibrations live in `src-tauri/benches/bench_commands.rs`:
 | Calibration | Measures | Divides |
 |---|---|---|
 | `calibration/syntect-v1` | A fixed syntect highlight of an embedded TypeScript constant | `diff_ts_full_pipeline`, `enrich_ts_new_perfile`, every `diff_ts_large_file/*` |
-| `calibration/git2-v1` | A fixed revwalk and blob read over a repository the benchmark builds itself | `list_refs_inner`, every `snapshot/*` and `toggle_visibility/*`, the graph and refs `ipc_round_trip/*` benchmarks, and `startup/*` |
+| `calibration/git2-v1` | A fixed revwalk and blob read over a repository the benchmark builds itself | `list_refs_inner`, every `snapshot/*` and `toggle_visibility/walk/*`, the graph and refs `ipc_round_trip/*` benchmarks, and `startup/*` |
 | `calibration/worktree-v1` | Fixed status and diff reads over a modified working tree through git2 directly | `diff_unstaged_inner`, `get_status_inner`, `stage_hunk_inner`, and `ipc_round_trip/diff_unstaged` |
 
-`reviewdb_draft_write` is excluded. It measures an fsync, it fits neither calibration, and
-its own doc comment in the bench file says a threshold on it reports how loaded the runner
-was rather than anything about Trunk.
+`reviewdb_draft_write` and `toggle_visibility/cached/*` are excluded.
+`reviewdb_draft_write` measures an fsync and fits none of the calibrations. A cached
+visibility toggle measures CPU and allocation work after the repository capture already
+exists, so dividing it by the Git-object calibration adds that calibration's independent
+runner variance instead of removing noise. Both measurements remain in the raw artifact;
+either needs an independent matching calibration before it can join the hard gate.
+
+Attempt 1 of run 34773521544 exposed the mismatch against run 34729512090. The Git
+calibration moved to 0.657x of the baseline while cached toggles moved to 0.935x raw at 1k
+and 1.155x raw at 10k. Dividing those independent changes reported false regressions of
+1.423x and 1.758x. Attempt 2 of the same commit passed when those timings happened to move
+together instead.
 
 **The calibrations must never call `trunk_lib`.** Their whole job is to move with the
 machine and not with our code. A calibration that tracked Trunk's code would divide a real

@@ -8,14 +8,14 @@ export class NormalizeError extends Error {
 type WorkloadClass = {
 	readonly calibrationPrefix: string;
 	readonly names: readonly string[];
-	readonly groups: readonly string[];
+	readonly prefixes: readonly string[];
 };
 
 const CLASSES: readonly WorkloadClass[] = [
 	{
 		calibrationPrefix: "calibration/syntect-",
 		names: ["diff_ts_full_pipeline", "enrich_ts_new_perfile"],
-		groups: ["diff_ts_large_file"],
+		prefixes: ["diff_ts_large_file/"],
 	},
 	{
 		calibrationPrefix: "calibration/worktree-",
@@ -25,16 +25,22 @@ const CLASSES: readonly WorkloadClass[] = [
 			"stage_hunk_inner",
 			"ipc_round_trip/diff_unstaged",
 		],
-		groups: [],
+		prefixes: [],
 	},
 	{
 		calibrationPrefix: "calibration/git2-",
 		names: ["list_refs_inner"],
-		groups: ["snapshot", "toggle_visibility", "ipc_round_trip", "startup"],
+		prefixes: [
+			"snapshot/",
+			"toggle_visibility/walk/",
+			"ipc_round_trip/",
+			"startup/",
+		],
 	},
 ];
 
 const EXCLUDED: readonly string[] = ["reviewdb_draft_write"];
+const EXCLUDED_PREFIXES: readonly string[] = ["toggle_visibility/cached/"];
 
 const BENCH_LINE =
 	/^test (.+?)\s+\.\.\. bench:\s+([\d,]+) (\w+\/\w+) \(\+\/- ([\d,]+)\)$/;
@@ -71,16 +77,24 @@ function parse(input: string): Sample[] {
 }
 
 function workloadOf(name: string): WorkloadClass | undefined {
-	const group = name.split("/")[0];
 	return (
 		CLASSES.find((workload) => workload.names.includes(name)) ??
-		CLASSES.find((workload) => workload.groups.includes(group))
+		CLASSES.find((workload) =>
+			workload.prefixes.some((prefix) => name.startsWith(prefix)),
+		)
 	);
 }
 
 function isCalibration(name: string): boolean {
 	return CLASSES.some((workload) =>
 		name.startsWith(workload.calibrationPrefix),
+	);
+}
+
+function isExcluded(name: string): boolean {
+	return (
+		EXCLUDED.includes(name) ||
+		EXCLUDED_PREFIXES.some((prefix) => name.startsWith(prefix))
 	);
 }
 
@@ -92,7 +106,7 @@ export function normalize(input: string): string {
 	const samples = parse(input);
 	const gated: Array<{ sample: Sample; workload: WorkloadClass }> = [];
 	for (const sample of samples) {
-		if (isCalibration(sample.name) || EXCLUDED.includes(sample.name)) {
+		if (isCalibration(sample.name) || isExcluded(sample.name)) {
 			continue;
 		}
 

@@ -93,6 +93,23 @@ describe("normalize", () => {
 		expect(output).not.toContain("reviewdb_draft_write");
 	});
 
+	it("gates walked visibility toggles and drops cached toggles", () => {
+		const input = [
+			CALIBRATIONS,
+			bench("toggle_visibility/walk/1k", "1,000,000"),
+			bench("toggle_visibility/cached/1k", "1,707,376"),
+			bench("toggle_visibility/walk/10k", "2,000,000"),
+			bench("toggle_visibility/cached/10k", "25,627,348"),
+		].join("\n");
+
+		const output = normalize(input);
+
+		expect(output.split("\n")).toEqual([
+			"test norm/git2-v1/toggle_visibility/walk/1k ... bench: 2000000 ns/iter (+/- 2)",
+			"test norm/git2-v1/toggle_visibility/walk/10k ... bench: 4000000 ns/iter (+/- 2)",
+		]);
+	});
+
 	it("ignores lines that are not benchmark results", () => {
 		const input = `Running benches/bench_commands.rs\n${CALIBRATIONS}\n\n${bench("list_refs_inner", "500,000")}`;
 
