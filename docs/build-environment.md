@@ -129,18 +129,19 @@ to `com.joaofnds.trunk.dev`, and that override is real — it is what keeps dev
 state out of the installed app's. It just has nothing to attach to without a
 bundle, so changing it does not help.
 
-`just dev-app` is the route that works. It builds a debug `.app` under the dev
-identifier and opens it:
+`just dev-app` is the route that works. It builds and opens `Trunk Dev.app`
+under the dev identifier:
 
 ```bash
 just dev-app
 ```
 
-The result is addressable as `com.joaofnds.trunk.dev`, distinct from the
-installed `/Applications/Trunk.app` (`com.joaofnds.trunk`), so a session can
-drive its own copy while the developer's stays untouched. It embeds the built
-frontend rather than pointing at Vite, so it needs no dev server and does not
-hot-reload: rebuild to see a change.
+The result is named `Trunk Dev` and addressable as `com.joaofnds.trunk.dev`,
+distinct from the installed `/Applications/Trunk.app` (`Trunk`,
+`com.joaofnds.trunk`), so the two running apps are easy to tell apart and a
+session can drive its own copy while the developer's stays untouched. It embeds
+the built frontend rather than pointing at Vite, so it needs no dev server and
+does not hot-reload: rebuild to see a change.
 
 Screenshots of the dev window work from the background as they are. Clicks
 need one more thing: WebKit drops a mouse event aimed at a window that is not

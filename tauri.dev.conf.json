@@ -1,4 +1,5 @@
 {
+	"productName": "Trunk Dev",
 	"identifier": "com.joaofnds.trunk.dev",
 	"app": {
 		"windows": [

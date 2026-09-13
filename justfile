@@ -25,14 +25,14 @@ default:
 dev:
     bun run tauri dev -c tauri.dev.conf.json
 
-# Build and launch a dev .app bundle an agent's screen tools can see (docs/build-environment.md)
+# Build and launch the Trunk Dev .app bundle an agent's screen tools can see (docs/build-environment.md)
 dev-app:
     #!/usr/bin/env bash
     set -euo pipefail
     # mise's python ships an `xattr` that shadows the system one and rejects the
     # `-r` that tauri's bundling step passes it.
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" bun run tauri build --debug -b app -c tauri.dev.conf.json
-    open -n src-tauri/target/debug/bundle/macos/Trunk.app
+    open -n "{{target}}/debug/bundle/macos/Trunk Dev.app"
 
 # Dev server with performance instrumentation on (samples: /tmp/trunk-perf/samples.jsonl)
 perf:
@@ -134,8 +134,13 @@ dev-conf-parity:
     set -euo pipefail
     python3 - <<'EOF'
     import json, sys
-    shipped = json.load(open("src-tauri/tauri.conf.json"))["app"]["windows"]
-    dev = json.load(open("tauri.dev.conf.json"))["app"]["windows"]
+    shipped_config = json.load(open("src-tauri/tauri.conf.json"))
+    dev_config = json.load(open("tauri.dev.conf.json"))
+    if shipped_config["productName"] != "Trunk" or dev_config.get("productName") != "Trunk Dev":
+        print("::error::the shipped product must be named 'Trunk' and the dev overlay must rename it to 'Trunk Dev', so both running apps are distinguishable in macOS.")
+        sys.exit(1)
+    shipped = shipped_config["app"]["windows"]
+    dev = dev_config["app"]["windows"]
     dev_only = {"acceptFirstMouse": True}
     stripped = [{k: v for k, v in w.items() if k not in dev_only} for w in dev]
     missing = [k for w in dev for k, v in dev_only.items() if w.get(k) != v]
