@@ -1222,24 +1222,17 @@ pub async fn open_current_file(
 /// the file, which is what an unchanged file's full-file diff would look like if
 /// git emitted one.
 ///
-/// The read goes through `blob_reader`, whose working-tree branch carries the
-/// canonicalize-and-`starts_with` escape guard, so a path that resolves outside
-/// the repository cannot be read here.
+/// The read goes through `blob_reader`'s current-file path, which requires an
+/// exact regular-file index entry and refuses links at every working-tree path
+/// component.
 ///
 /// # Errors
 ///
-/// Returns `not_found` when the file does not exist in the working tree, and the
-/// escape guard's error when the path resolves outside the repository.
+/// Returns `not_found` when the path is not an indexed regular file, is missing
+/// from the working tree, or traverses a link. Other filesystem failures are
+/// returned as `io_error`.
 pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<FileDiff, TrunkError> {
-    if !is_readable_tracked_file(repo, file_path) {
-        return Err(TrunkError::new(
-            "not_found",
-            format!("not a tracked file: {file_path}"),
-        ));
-    }
-
-    let bytes =
-        blob_reader::read_file_at_inner(repo, file_path, &blob_reader::RevSpec::WorkingTree)?;
+    let bytes = blob_reader::read_tracked_working_tree_file(repo, file_path)?;
 
     if is_binary(&bytes) {
         return Ok(FileDiff {
@@ -1296,49 +1289,6 @@ pub fn current_file_diff(repo: &git2::Repository, file_path: &str) -> Result<Fil
     Ok(file_diffs.remove(0))
 }
 
-/// Whether the index holds a regular-file entry for this exact path.
-///
-/// Two things have to hold, and the escape guard in `blob_reader` supplies
-/// neither. It checks containment, and every gitignored file and every `.git`
-/// internal is inside the repository root, so containment alone lets both
-/// through. Trackedness alone is not enough either: a repository can track a
-/// symlink whose target is one of them, and reading it follows the link. So a
-/// path the index does not hold is refused, and so is one it holds as a link.
-/// Whether the index holds `file_path` as a regular file.
-///
-/// Containment inside the repository root is not enough on its own: every
-/// gitignored file and every `.git` internal is inside it. Trackedness is not
-/// enough either, because a repository can track a symlink pointing at one of
-/// those, and the read follows the link.
-#[must_use]
-pub fn is_readable_tracked_file(repo: &git2::Repository, file_path: &str) -> bool {
-    let Ok(index) = repo.index() else {
-        return false;
-    };
-
-    let path = std::path::Path::new(file_path);
-    // `get_path` unwraps its own error, so anything libgit2 will not take as an
-    // index path panics here rather than missing the index. The empty path has
-    // no components at all and so satisfies `all` vacuously; a NUL byte is not
-    // a separator and so hides inside a `Normal` component.
-    let is_index_path = !file_path.is_empty()
-        && !file_path.contains('\0')
-        && path
-            .components()
-            .all(|c| matches!(c, std::path::Component::Normal(_)));
-    if !is_index_path {
-        return false;
-    }
-
-    let Some(entry) = index.get_path(path, 0) else {
-        return false;
-    };
-
-    // The index stores a symlink with mode 0o120_000 and a regular file with
-    // 0o100_644 or 0o100_755, so the file-type bits tell them apart.
-    entry.mode & 0o170_000 == 0o100_000
-}
-
 /// The 1-based line number for a 0-based index, saturating rather than wrapping
 /// on a file longer than `u32` can count.
 fn line_number(index: usize) -> u32 {
@@ -1361,7 +1311,9 @@ mod current_file_tests {
     fn repo_with_file(path: &str, content: &str) -> (TempDir, git2::Repository) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
-        fs::write(dir.path().join(path), content).unwrap();
+        let file = dir.path().join(path);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, content).unwrap();
         {
             let mut index = repo.index().unwrap();
             index.add_path(std::path::Path::new(path)).unwrap();
@@ -1392,6 +1344,16 @@ mod current_file_tests {
                 .all(|l| l.origin == DiffOrigin::Context),
             "a file with no pending change has no added or deleted lines"
         );
+    }
+
+    #[test]
+    fn reads_a_nested_tracked_file_at_its_full_path() {
+        let (_dir, repo) = repo_with_file("nested/notes.txt", "one\ntwo\n");
+
+        let fd = current_file_diff(&repo, "nested/notes.txt").unwrap();
+
+        assert_eq!(fd.path, "nested/notes.txt");
+        assert_eq!(contents(&fd), vec!["one\n", "two\n"]);
     }
 
     #[test]
@@ -1476,10 +1438,9 @@ mod current_file_tests {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
 
-        assert!(
-            !is_readable_tracked_file(&repo, file_path),
-            "{file_path} should be refused"
-        );
+        let err = current_file_diff(&repo, file_path).unwrap_err();
+
+        assert_eq!(err.code, "not_found", "{file_path} should be refused");
     }
 
     macro_rules! refuses_path {
@@ -1543,6 +1504,33 @@ mod current_file_tests {
     }
 
     #[test]
+    fn a_regular_index_entry_replaced_by_a_worktree_symlink_is_refused() {
+        let (dir, repo) = repo_with_file("leak.txt", "tracked\n");
+        fs::write(dir.path().join("secret.env"), "DUMMY_SECRET\n").unwrap();
+        fs::remove_file(dir.path().join("leak.txt")).unwrap();
+        std::os::unix::fs::symlink("secret.env", dir.path().join("leak.txt")).unwrap();
+
+        let err = current_file_diff(&repo, "leak.txt").unwrap_err();
+
+        assert_eq!(err.code, "not_found");
+        assert!(!err.message.contains("DUMMY_SECRET"));
+    }
+
+    #[test]
+    fn a_regular_index_entry_below_a_symlinked_parent_is_refused() {
+        let (dir, repo) = repo_with_file("alias/private", "tracked\n");
+        fs::remove_file(dir.path().join("alias/private")).unwrap();
+        fs::remove_dir(dir.path().join("alias")).unwrap();
+        fs::write(dir.path().join(".git/private"), "DUMMY_SECRET\n").unwrap();
+        std::os::unix::fs::symlink(".git", dir.path().join("alias")).unwrap();
+
+        let err = current_file_diff(&repo, "alias/private").unwrap_err();
+
+        assert_eq!(err.code, "not_found");
+        assert!(!err.message.contains("DUMMY_SECRET"));
+    }
+
+    #[test]
     fn an_untracked_file_inside_the_repository_is_refused() {
         let (dir, repo) = repo_with_file("tracked.txt", "one\n");
         fs::write(dir.path().join("untracked.txt"), "two\n").unwrap();
@@ -1561,6 +1549,39 @@ mod current_file_tests {
         let (_dir, repo) = repo_with_file("present.txt", "one\n");
 
         let err = current_file_diff(&repo, "absent.txt").unwrap_err();
+
+        assert_eq!(err.code, "not_found");
+    }
+
+    #[test]
+    fn a_tracked_file_missing_from_the_worktree_is_not_found() {
+        let (dir, repo) = repo_with_file("present.txt", "one\n");
+        fs::remove_file(dir.path().join("present.txt")).unwrap();
+
+        let err = current_file_diff(&repo, "present.txt").unwrap_err();
+
+        assert_eq!(err.code, "not_found");
+    }
+
+    #[test]
+    fn a_tracked_file_replaced_by_a_directory_is_an_io_error() {
+        let (dir, repo) = repo_with_file("present.txt", "one\n");
+        fs::remove_file(dir.path().join("present.txt")).unwrap();
+        fs::create_dir(dir.path().join("present.txt")).unwrap();
+
+        let err = current_file_diff(&repo, "present.txt").unwrap_err();
+
+        assert_eq!(err.code, "io_error");
+    }
+
+    #[test]
+    fn an_unreadable_index_is_reported_as_not_found() {
+        let (dir, repo) = repo_with_file("present.txt", "one\n");
+        drop(repo);
+        fs::write(dir.path().join(".git/index"), "not a git index").unwrap();
+        let repo = git2::Repository::open(dir.path()).unwrap();
+
+        let err = current_file_diff(&repo, "present.txt").unwrap_err();
 
         assert_eq!(err.code, "not_found");
     }

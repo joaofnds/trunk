@@ -458,23 +458,7 @@ pub fn submit_current_file_thread_inner(
     now: i64,
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    // The pin copies the file's bytes into the store, as the block and as the
-    // excerpt the panel and the published document render, so the same guard
-    // `open_current_file` uses gates the write too. Containment inside the
-    // repository root would admit every gitignored file and every `.git`
-    // internal.
-    if !crate::commands::diff::is_readable_tracked_file(&repo, file_path) {
-        return Err(TrunkError::new(
-            "not_found",
-            format!("not a tracked file: {file_path}"),
-        ));
-    }
-
-    let bytes = crate::git::blob_reader::read_file_at_inner(
-        &repo,
-        file_path,
-        &crate::git::blob_reader::RevSpec::WorkingTree,
-    )?;
+    let bytes = crate::git::blob_reader::read_tracked_working_tree_file(&repo, file_path)?;
     let text_of_file = String::from_utf8(bytes)
         .map_err(|_| TrunkError::new("not_found", format!("{file_path} is not text")))?;
 
@@ -1483,17 +1467,13 @@ pub fn recompute_staleness(
         })
     };
 
-    // Every read goes through `blob_reader`, whose working-tree branch carries
-    // the path-escape guard. A thread's pinned path is stored text and a
-    // renamed or deleted file simply reads as absent, which is stale.
+    // Refuse links at every path component. A thread's pinned path is stored
+    // text, and an unavailable or non-text file simply reads as absent, which
+    // marks the pin stale.
     let read_working_tree_file = |file_path: &str| {
-        crate::git::blob_reader::read_file_at_inner(
-            &repo,
-            file_path,
-            &crate::git::blob_reader::RevSpec::WorkingTree,
-        )
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
+        crate::git::blob_reader::read_working_tree_file_without_links(&repo, file_path)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
     };
 
     crate::reviewdb::stale::recompute(store, canonical, &standing_of, &read_working_tree_file)

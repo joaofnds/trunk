@@ -43,6 +43,8 @@ tauri-plugin-single-instance = "2"
 comrak = "0.54"
 clap = { version = "4", features = ["derive"] }
 ammonia = "4"
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
 # Already in the tree via syntect; used here to parse markdown front matter into a
 # diffable key/value table. Pinned to the version syntect resolves so nothing new
 # is pulled in.
@@ -62,7 +64,10 @@ getrandom = "0.4"
 # AttachConsole for the `trunk review` argv branch: the release binary is
 # windows_subsystem = "windows", so an interactive invocation has no console
 # until it attaches to its parent's.
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Console",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -157,4 +162,3 @@ struct_excessive_bools = "allow"
 #
 # A third site means splitting it, not adding it here.
 too_many_lines = "allow"
-

@@ -4987,6 +4987,33 @@ fn pinning_a_line_range_captures_that_range_from_the_file() {
     );
 }
 
+#[test]
+fn pinning_a_nested_file_keeps_its_full_path() {
+    let ctx = TestContext::builder()
+        .with_file("nested/a.txt", "one\ntwo\nthree\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "nested/a.txt",
+        2,
+        2,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+
+    let thread = only_thread(&store, &canonical);
+    let pin = thread.content_pin.expect("a content pin");
+    assert_eq!(pin.file_path, "nested/a.txt");
+    assert_eq!(pin.block, "two");
+}
+
 /// The ordinal must name the occurrence the user actually selected, not the
 /// first one in the file, or the thread renders against the wrong twin.
 #[test]
@@ -5052,6 +5079,50 @@ fn a_current_file_thread_whose_block_is_still_there_is_not_stale() {
         Some(3),
         "the backend resolves the line the block moved to, so the frontend never searches",
     );
+}
+
+#[test]
+fn a_current_file_thread_on_a_worktree_symlink_is_stale() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "PINNED_BLOCK\n", "PINNED_BLOCK", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::write(ctx.repo_path().join("secret.env"), "PINNED_BLOCK\n").unwrap();
+    std::fs::remove_file(ctx.repo_path().join("a.txt")).unwrap();
+    std::os::unix::fs::symlink("secret.env", ctx.repo_path().join("a.txt")).unwrap();
+
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1);
+    assert!(only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn a_current_file_thread_below_a_symlinked_parent_is_stale() {
+    let (ctx, store) =
+        a_repo_with_a_pinned_block("alias/private", "PINNED_BLOCK\n", "PINNED_BLOCK", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    std::fs::remove_file(ctx.repo_path().join("alias/private")).unwrap();
+    std::fs::remove_dir(ctx.repo_path().join("alias")).unwrap();
+    std::fs::write(ctx.repo_path().join(".git/private"), "PINNED_BLOCK\n").unwrap();
+    std::os::unix::fs::symlink(".git", ctx.repo_path().join("alias")).unwrap();
+
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert_eq!(changed, 1);
+    assert!(only_thread(&store, &canonical).stale);
+}
+
+#[test]
+fn removing_only_the_index_entry_keeps_a_matching_current_file_thread_fresh() {
+    let (ctx, store) = a_repo_with_a_pinned_block("a.txt", "PINNED_BLOCK\n", "PINNED_BLOCK", 0);
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let repo = git2::Repository::open(ctx.repo_path()).unwrap();
+    let mut index = repo.index().unwrap();
+    index.remove_path(std::path::Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+
+    assert!(!only_thread(&store, &canonical).stale);
 }
 
 /// The ratified bend of criterion 9. The anchored occurrence is deleted, a
@@ -5175,6 +5246,91 @@ fn pinning_refuses_a_tracked_symlink() {
     );
 }
 
+#[test]
+fn pinning_refuses_a_regular_index_entry_replaced_by_a_symlink_before_writing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "tracked")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join("secret.env"), "DUMMY_SECRET").unwrap();
+    std::fs::remove_file(ctx.repo_path().join("a.txt")).unwrap();
+    std::os::unix::fs::symlink("secret.env", ctx.repo_path().join("a.txt")).unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let error = submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        1,
+        1,
+        "look",
+        1_000,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "not_found");
+    assert!(!error.message.contains("DUMMY_SECRET"));
+    assert_eq!(thread_count(&store, &canonical), 0);
+}
+
+#[test]
+fn pinning_refuses_a_regular_index_entry_below_a_symlinked_parent_before_writing() {
+    let ctx = TestContext::builder()
+        .with_file("alias/private", "tracked")
+        .with_commit("c1")
+        .build();
+    std::fs::remove_file(ctx.repo_path().join("alias/private")).unwrap();
+    std::fs::remove_dir(ctx.repo_path().join("alias")).unwrap();
+    std::fs::write(ctx.repo_path().join(".git/private"), "DUMMY_SECRET").unwrap();
+    std::os::unix::fs::symlink(".git", ctx.repo_path().join("alias")).unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let error = submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "alias/private",
+        1,
+        1,
+        "look",
+        1_000,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "not_found");
+    assert!(!error.message.contains("DUMMY_SECRET"));
+    assert_eq!(thread_count(&store, &canonical), 0);
+}
+
+#[test]
+fn pinning_reports_an_unreadable_index_as_not_found_before_writing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "tracked")
+        .with_commit("c1")
+        .build();
+    std::fs::write(ctx.repo_path().join(".git/index"), "not a git index").unwrap();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    let error = submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        1,
+        1,
+        "look",
+        1_000,
+    )
+    .unwrap_err();
+
+    assert_eq!(error.code, "not_found");
+    assert_eq!(thread_count(&store, &canonical), 0);
+}
+
 /// The pin is a store row, so a fresh process reads it back on the same lines.
 /// Closing and reopening the store is what a restart is, from the thread's side.
 #[test]
@@ -5253,6 +5409,17 @@ fn only_thread(store: &reviewdb::Store, canonical: &std::path::Path) -> reviewdb
             let review_id = reviewdb::reviews::active(conn, canonical)?.unwrap();
             let mut listed = reviewdb::threads::list_for_review(conn, &review_id)?;
             Ok(listed.remove(0))
+        })
+        .unwrap()
+}
+
+fn thread_count(store: &reviewdb::Store, canonical: &std::path::Path) -> usize {
+    store
+        .read(|connection| {
+            let Some(review_id) = reviewdb::reviews::active(connection, canonical)? else {
+                return Ok(0);
+            };
+            Ok(reviewdb::threads::list_for_review(connection, &review_id)?.len())
         })
         .unwrap()
 }

@@ -101,12 +101,8 @@ fn classify_pin(
     pin: &crate::git::types::ContentPin,
     repo: &git2::Repository,
 ) -> Result<(), OrphanReason> {
-    let bytes = crate::git::blob_reader::read_file_at_inner(
-        repo,
-        &pin.file_path,
-        &crate::git::blob_reader::RevSpec::WorkingTree,
-    )
-    .map_err(|_| OrphanReason::FileGone)?;
+    let bytes = crate::git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
+        .map_err(|_| OrphanReason::FileGone)?;
     let text = String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?;
 
     if crate::reviewdb::stale::block_occurs(&text, &pin.block) {
@@ -485,7 +481,9 @@ mod current_file_tests {
     fn a_repo_holding(path: &str, contents: &str) -> (TempDir, git2::Repository) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();
-        std::fs::write(dir.path().join(path), contents).unwrap();
+        let file = dir.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, contents).unwrap();
         (dir, repo)
     }
 
@@ -518,6 +516,15 @@ mod current_file_tests {
         );
     }
 
+    #[test]
+    fn a_pinned_block_in_a_nested_file_resolves() {
+        let (_dir, repo) = a_repo_holding("nested/a.txt", "one\ntwo\nthree\n");
+
+        let resolved = resolve_all(&[a_thread_pinned_to("nested/a.txt", "two")], &repo);
+
+        assert!(resolved[0].resolvable);
+    }
+
     /// Without a working-tree arm this fell to the neither-anchor-nor-commit
     /// case and every current-file thread wore a "commit gone" badge.
     #[test]
@@ -534,6 +541,32 @@ mod current_file_tests {
         let (_dir, repo) = a_repo_holding("a.txt", "one\n");
 
         let resolved = resolve_all(&[a_thread_pinned_to("absent.txt", "two")], &repo);
+
+        assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
+    }
+
+    #[test]
+    fn a_pin_naming_a_worktree_symlink_reports_file_gone() {
+        let (dir, repo) = a_repo_holding("target.txt", "PINNED_BLOCK\n");
+        std::os::unix::fs::symlink("target.txt", dir.path().join("link.txt")).unwrap();
+
+        let resolved = resolve_all(&[a_thread_pinned_to("link.txt", "PINNED_BLOCK")], &repo);
+
+        assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
+    }
+
+    #[test]
+    fn a_pin_below_a_symlinked_parent_reports_file_gone() {
+        let (dir, repo) = a_repo_holding("alias/private", "placeholder");
+        std::fs::remove_file(dir.path().join("alias/private")).unwrap();
+        std::fs::remove_dir(dir.path().join("alias")).unwrap();
+        std::fs::write(dir.path().join(".git/private"), "PINNED_BLOCK\n").unwrap();
+        std::os::unix::fs::symlink(".git", dir.path().join("alias")).unwrap();
+
+        let resolved = resolve_all(
+            &[a_thread_pinned_to("alias/private", "PINNED_BLOCK")],
+            &repo,
+        );
 
         assert_eq!(resolved[0].reason, Some(OrphanReason::FileGone));
     }
