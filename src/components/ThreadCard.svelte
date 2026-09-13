@@ -1,7 +1,8 @@
 <script lang="ts">
 // The orphan badge, the file-ref jump affordance, and the diff excerpt are
-// panel-context decorations; inline hosts omit the optional props and get a bare
-// card. `variant` swaps width/padding tokens between the panel and inline hosts.
+// panel-context decorations; inline hosts omit those optional props. Staleness
+// comes from the thread itself, so its marker appears in every host. `variant`
+// swaps width/padding tokens between the panel and inline hosts.
 
 import { externalLinks } from "../lib/external-links.js";
 import {
@@ -226,6 +227,9 @@ async function requestDeleteReply(replyId: string) {
     {#if orphanLabel}
       <span class="orphan-badge">{orphanLabel}</span>
     {/if}
+    {#if thread.stale}
+      <span class="thread-stale-chip">stale</span>
+    {/if}
     <span class="comment-card-channel">{thread.channel}</span>
     <span class="thread-state-chip thread-state-{thread.state}">{thread.state}</span>
     {#each stateActions as action (action.next)}
@@ -436,6 +440,21 @@ async function requestDeleteReply(replyId: string) {
     line-height: 1.4;
     color: var(--color-warning);
     background: var(--color-warning-bg);
+    border-radius: var(--radius);
+    padding: 0 var(--space-2);
+    white-space: nowrap;
+  }
+
+  /* Staleness is orthogonal to thread state and orphan resolution, so it gets
+     its own textual chip. The filled stale pair is audited by the contrast
+     gate; visible text keeps color from carrying the meaning alone. */
+  .thread-stale-chip {
+    font-size: 10px;
+    line-height: 1.4;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--accent-fg);
+    background: var(--color-thread-stale);
     border-radius: var(--radius);
     padding: 0 var(--space-2);
     white-space: nowrap;

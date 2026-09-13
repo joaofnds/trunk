@@ -106,6 +106,30 @@ describe("ThreadCard", () => {
 		expect(screen.getByText("src/untouched.ts:L7-L7")).toBeTruthy();
 	});
 
+	it("shows the stale marker exactly while the backend marks the thread stale", async () => {
+		const view = renderCard({
+			thread: { ...comment, stale: false },
+		});
+
+		expect(screen.queryByText("stale")).not.toBeInTheDocument();
+
+		await view.rerender({
+			thread: { ...comment, stale: true },
+			repoPath: "/repo",
+			onedit: () => {},
+			ondelete: () => {},
+		});
+		expect(screen.getByText("stale")).toBeInTheDocument();
+
+		await view.rerender({
+			thread: { ...comment, stale: false },
+			repoPath: "/repo",
+			onedit: () => {},
+			ondelete: () => {},
+		});
+		expect(screen.queryByText("stale")).not.toBeInTheDocument();
+	});
+
 	/// A stale current-file thread points at code that is gone, so the excerpt is
 	/// the only place its subject survives.
 	it("still shows the excerpt of a stale current-file comment", () => {
@@ -117,6 +141,7 @@ describe("ThreadCard", () => {
 
 		expect(screen.getByText("const answer = 42;")).toBeTruthy();
 		expect(screen.getByText("code gone")).toBeTruthy();
+		expect(screen.getByText("stale")).toBeTruthy();
 	});
 
 	it("keeps the comment body and excerpt code selectable while the gutter stays unselectable", () => {

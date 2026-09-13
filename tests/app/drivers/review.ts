@@ -15,6 +15,7 @@ const FILE_REF = ".comment-card-fileref";
 const STATE_CHIP = ".thread-state-chip";
 const CARD_ACTION = ".card-action";
 const ORPHAN_BADGE = ".orphan-badge";
+const STALE_CHIP = ".thread-stale-chip";
 const EXCERPT_LINE = ".comment-card-diff .diff-content";
 const PUBLISH = ".publish-button";
 const CONFIRM_PUBLISH = "Click again to confirm";
@@ -412,6 +413,11 @@ export class ReviewDriver {
 	 *  resolves against the repository. */
 	orphanBadges(): string[] {
 		return cards().map((card) => textIn(card, ORPHAN_BADGE));
+	}
+
+	/** The visible stale marker each thread card carries, empty while fresh. */
+	staleMarkers(): string[] {
+		return cards().map((card) => textIn(card, STALE_CHIP));
 	}
 
 	/** The state chip each thread card carries, topmost first. */

@@ -136,11 +136,18 @@ opened.
 The current-file comment workflow, in `tests/app/current-file-comment.test.ts`: reaching a
 file no pending change touches through the finder, selecting a line in it, commenting, and
 reading the thread back off the panel; then rewriting that file on disk, firing the watcher's
-event, and watching the "code gone" badge arrive. A current-file view forces full-file content
-mode, so the line-selection gestures `driver.review.selectLine` and
+event, and watching the separate "code gone" and "stale" markers arrive. A current-file view
+forces full-file content mode, so the line-selection gestures `driver.review.selectLine` and
 `driver.review.commentOnSelection` reach the affordance without a mode switch. Opening a file
 through the finder swaps the centre pane away from the review panel, so a test that wants to
 read a thread card afterwards reopens the panel first.
+
+The snapshot stale-marker workflow, in `tests/app/stale-marker.test.ts`: commenting on an
+uncommitted hunk creates a fresh snapshot thread with no marker; replacing the anchored content
+on disk makes the visible card show "stale", and restoring that content clears the marker. The
+test drives both repository changes through `driver.events.externalChange`, so it covers the
+frontend recomputation request, the backend stale transition, the `reviews-changed` refresh,
+and the card that renders the result.
 
 The current-file refresh workflow, in `tests/app/current-file-refresh.test.ts`: an outside
 edit that moves and rewords a block while the file is open in the pane, the new content and

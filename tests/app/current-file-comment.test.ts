@@ -69,8 +69,11 @@ describe("commenting on a file no pending change touches", () => {
 		);
 		await app.events.externalChange(app.repo.path);
 
-		await waitFor("the orphan badge the vanished code earns", () =>
-			app.review.orphanBadges()[0] === "code gone" ? true : null,
+		await waitFor("the orphan and stale markers the vanished code earns", () =>
+			app.review.orphanBadges()[0] === "code gone" &&
+			app.review.staleMarkers()[0] === "stale"
+				? true
+				: null,
 		);
 	});
 });
