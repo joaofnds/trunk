@@ -445,37 +445,9 @@ async function requestDeleteReply(replyId: string) {
     white-space: nowrap;
   }
 
-  /* Staleness is orthogonal to thread state and orphan resolution, so it gets
-     its own textual chip. The filled stale pair is audited by the contrast
-     gate; visible text keeps color from carrying the meaning alone. */
-  .thread-stale-chip {
-    font-size: 10px;
-    line-height: 1.4;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: var(--accent-fg);
-    background: var(--color-thread-stale);
-    border-radius: var(--radius);
-    padding: 0 var(--space-2);
-    white-space: nowrap;
-  }
-
-  /* Root channel chip — mirrors .thread-reply-channel so the root's
-     attribution reads the same as a reply's. */
-  .comment-card-channel {
-    font-size: 10px;
-    line-height: 1.4;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-    color: var(--color-text-muted);
-    background: var(--color-muted-bg);
-    border-radius: var(--radius);
-    padding: 0 var(--space-2);
-    white-space: nowrap;
-  }
-
-  /* Thread state chip — color carries no meaning alone; the text is the
-     state's own name, so it survives color blindness and grayscale. */
+  /* Root attribution, state, and staleness share one compact metadata shape. */
+  .comment-card-channel,
+  .thread-stale-chip,
   .thread-state-chip {
     font-size: 10px;
     line-height: 1.4;
@@ -484,6 +456,26 @@ async function requestDeleteReply(replyId: string) {
     border-radius: var(--radius);
     padding: 0 var(--space-2);
     white-space: nowrap;
+  }
+
+  /* Staleness is orthogonal to thread state and orphan resolution, so it gets
+     its own textual chip. The filled stale pair is audited by the contrast
+     gate; visible text keeps color from carrying the meaning alone. */
+  .thread-stale-chip {
+    color: var(--accent-fg);
+    background: var(--color-thread-stale);
+  }
+
+  /* Root channel chip — mirrors .thread-reply-channel so the root's
+     attribution reads the same as a reply's. */
+  .comment-card-channel {
+    color: var(--color-text-muted);
+    background: var(--color-muted-bg);
+  }
+
+  /* Thread state chip — color carries no meaning alone; the text is the
+     state's own name, so it survives color blindness and grayscale. */
+  .thread-state-chip {
     background: var(--color-muted-bg);
   }
   .thread-state-open { color: var(--color-thread-open); }
