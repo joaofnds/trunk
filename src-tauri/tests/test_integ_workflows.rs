@@ -84,6 +84,7 @@ fn workflow_stash_save_checkout_pop() {
 
     // Modify tracked file
     std::fs::write(ctx.repo_path().join("README.md"), "modified content").unwrap();
+    ctx.stage_file("README.md").unwrap();
 
     // Stash the changes
     ctx.stash_save("work in progress").unwrap();

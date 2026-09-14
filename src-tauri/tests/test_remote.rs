@@ -366,6 +366,7 @@ fn pull_over_a_preexisting_stash_pop_conflict_is_not_blamed_as_an_autostash_conf
     let remote = ctx.remote();
     remote.push().unwrap();
     std::fs::write(ctx.repo_path().join("file.txt"), "stashed content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
     ctx.stash_save("wip").unwrap();
     std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
     ctx.stage_file("file.txt").unwrap();
@@ -608,6 +609,7 @@ fn force_push_refuses_a_worktree_with_unresolved_conflicts() {
     let bare = bare_remote(&ctx, "origin");
     let before = remote_tip(&bare, "main");
     std::fs::write(ctx.repo_path().join("file.txt"), "stashed content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
     ctx.stash_save("wip").unwrap();
     std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
     ctx.stage_file("file.txt").unwrap();

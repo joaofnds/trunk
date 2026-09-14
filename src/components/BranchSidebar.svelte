@@ -386,11 +386,7 @@ async function handleStashSave() {
 		stashName = "";
 		await loadRefs(repoPath);
 	} catch (e) {
-		if (isTrunkError(e) && e.code === "nothing_to_stash") {
-			stashCreateError = "Nothing to stash — working tree is clean";
-		} else {
-			stashCreateError = errorMessage(e, "Failed to create stash");
-		}
+		stashCreateError = errorMessage(e, "Failed to create stash");
 	} finally {
 		stashSaving = false;
 	}

@@ -21,6 +21,7 @@ import Redo2 from "@lucide/svelte/icons/redo-2";
 import Undo2 from "@lucide/svelte/icons/undo-2";
 import { emit, listen } from "@tauri-apps/api/event";
 import { createCoalescedTask } from "../lib/coalesced-task.js";
+import { reportErrorToast } from "../lib/error-report.js";
 import { isTrunkError, safeInvoke } from "../lib/invoke.js";
 import { runRemoteOp } from "../lib/remote-op.js";
 import type { RemoteState } from "../lib/remote-state.svelte.js";
@@ -225,7 +226,7 @@ async function handleStash() {
 		showToast("Stash created", "success");
 	} catch (e) {
 		console.error("stash_save failed:", e);
-		showToast("Failed to create stash", "error");
+		reportErrorToast(e, "Failed to create stash");
 	}
 }
 

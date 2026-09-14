@@ -24,6 +24,9 @@ describe("stash", () => {
 			app.repo.commitRows().some((row) => row.includes(WIP_ROW)) ? true : null,
 		);
 
+		await app.staging.open();
+		await app.staging.stageEverything();
+
 		await app.toolbar.stash();
 
 		await app.elapseUntil("the stash in the graph", () =>

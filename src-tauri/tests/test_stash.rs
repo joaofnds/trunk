@@ -61,6 +61,203 @@ fn stash_save_on_clean_workdir_returns_error() {
 
     let err = ctx.stash_save("test").unwrap_err();
     assert_eq!(err.code, "nothing_to_stash");
+    assert_eq!(err.message, "Nothing to stash — stage changes first.");
+}
+
+#[test]
+fn stash_save_with_unstaged_changes_only_returns_nothing_to_stash_and_preserves_workdir() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("README.md"), "hello edited").unwrap();
+    std::fs::write(ctx.repo_path().join("untracked.txt"), "untracked").unwrap();
+
+    let err = ctx.stash_save("test").unwrap_err();
+    assert_eq!(err.code, "nothing_to_stash");
+    assert_eq!(err.message, "Nothing to stash — stage changes first.");
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+
+    ctx.assert_file_content("README.md", "hello edited");
+    ctx.assert_file_unstaged("README.md");
+    assert!(ctx.repo_path().join("untracked.txt").exists());
+}
+
+#[test]
+fn stash_save_takes_only_staged_changes_and_preserves_other_unstaged_files() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "initial readme")
+        .with_file("unstaged.txt", "initial unstaged")
+        .with_commit("Initial commit")
+        .build();
+
+    // Stage a change to README.md
+    std::fs::write(ctx.repo_path().join("README.md"), "staged readme").unwrap();
+    ctx.stage_file("README.md").unwrap();
+
+    // Leave an unstaged change in unstaged.txt
+    std::fs::write(
+        ctx.repo_path().join("unstaged.txt"),
+        "unstaged modification",
+    )
+    .unwrap();
+
+    ctx.stash_save("staged only").unwrap();
+
+    let stashes = ctx.list_stashes().unwrap();
+    assert_eq!(stashes.len(), 1);
+
+    // Staged change was stashed, so README.md reverts to HEAD content
+    ctx.assert_file_content("README.md", "initial readme");
+
+    // Unstaged change in unstaged.txt is preserved in worktree and still unstaged
+    ctx.assert_file_content("unstaged.txt", "unstaged modification");
+    ctx.assert_file_unstaged("unstaged.txt");
+
+    // Index is clean
+    let status =
+        trunk_lib::commands::staging::get_status_inner(ctx.path(), ctx.state_map()).unwrap();
+    assert!(status.staged.is_empty());
+}
+
+#[test]
+fn stash_save_partially_staged_file_non_overlapping_preserves_unstaged_edit() {
+    let initial_content =
+        "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n";
+    let ctx = TestContext::builder()
+        .with_file("file.txt", initial_content)
+        .with_commit("Initial commit")
+        .build();
+
+    // Stage an edit to line 1
+    let staged_content =
+        "line 1 STAGED\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n";
+    std::fs::write(ctx.repo_path().join("file.txt"), staged_content).unwrap();
+    ctx.stage_file("file.txt").unwrap();
+
+    // Unstaged edit to line 10 in working tree
+    let worktree_content = "line 1 STAGED\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10 UNSTAGED\n";
+    std::fs::write(ctx.repo_path().join("file.txt"), worktree_content).unwrap();
+
+    ctx.stash_save("partially staged").unwrap();
+
+    let stashes = ctx.list_stashes().unwrap();
+    assert_eq!(stashes.len(), 1);
+
+    // In worktree: line 1 reverted to HEAD ("line 1\n"), while line 10 kept the unstaged edit
+    let expected_worktree = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10 UNSTAGED\n";
+    ctx.assert_file_content("file.txt", expected_worktree);
+    ctx.assert_file_unstaged("file.txt");
+}
+
+#[test]
+fn stash_save_partially_staged_file_overlapping_refuses_with_cannot_separate_changes() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "original content\n")
+        .with_commit("Initial commit")
+        .build();
+
+    // Stage edit
+    std::fs::write(ctx.repo_path().join("file.txt"), "staged edit\n").unwrap();
+    ctx.stage_file("file.txt").unwrap();
+
+    // Overlapping unstaged edit
+    std::fs::write(ctx.repo_path().join("file.txt"), "unstaged edit\n").unwrap();
+
+    let err = ctx.stash_save("test").unwrap_err();
+    assert_eq!(err.code, "cannot_separate_changes");
+    assert!(
+        err.message
+            .contains("Cannot separate staged and unstaged changes in file.txt")
+    );
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+
+    // Working tree is untouched
+    ctx.assert_file_content("file.txt", "unstaged edit\n");
+    ctx.assert_file_staged("file.txt");
+    ctx.assert_file_unstaged("file.txt");
+}
+
+#[test]
+fn stash_save_staged_add_further_edited_in_worktree_refuses() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    // Stage a new file
+    std::fs::write(ctx.repo_path().join("new.txt"), "initial new content\n").unwrap();
+    ctx.stage_file("new.txt").unwrap();
+
+    // Unstaged edit to the new file
+    std::fs::write(ctx.repo_path().join("new.txt"), "diverged new content\n").unwrap();
+
+    let err = ctx.stash_save("test").unwrap_err();
+    assert_eq!(err.code, "cannot_separate_changes");
+    assert!(
+        err.message
+            .contains("Cannot separate staged and unstaged changes in new.txt")
+    );
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+
+    ctx.assert_file_content("new.txt", "diverged new content\n");
+}
+
+#[test]
+fn stash_save_staged_deletion_reverts_file_in_worktree() {
+    let ctx = TestContext::builder()
+        .with_file("to_delete.txt", "content to delete")
+        .with_commit("Initial commit")
+        .build();
+
+    // Delete file and stage deletion
+    std::fs::remove_file(ctx.repo_path().join("to_delete.txt")).unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index
+            .remove_path(std::path::Path::new("to_delete.txt"))
+            .unwrap();
+        index.write().unwrap();
+    }
+
+    ctx.stash_save("stash deletion").unwrap();
+
+    let stashes = ctx.list_stashes().unwrap();
+    assert_eq!(stashes.len(), 1);
+
+    // In worktree: file was restored from HEAD and is clean
+    ctx.assert_file_content("to_delete.txt", "content to delete");
+    ctx.assert_status_clean();
+}
+
+#[test]
+fn stash_save_conflicted_index_returns_error() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "base")
+        .with_commit("Initial commit")
+        .with_branch("feature")
+        .checkout("feature")
+        .with_file("file.txt", "feature content")
+        .with_commit("Feature commit")
+        .checkout("main")
+        .with_file("file.txt", "main content")
+        .with_commit("Main commit")
+        .with_conflict("feature")
+        .build();
+
+    let err = ctx.stash_save("test").unwrap_err();
+    assert_eq!(err.code, "conflicted_index");
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+}
+
+#[test]
+fn stash_save_unborn_branch_returns_error() {
+    let ctx = TestContext::new_empty();
+
+    let err = ctx.stash_save("test").unwrap_err();
+    assert_eq!(err.code, "unborn_branch");
 }
 
 // -- list_stashes tests --
@@ -172,6 +369,7 @@ fn ctx_with_a_conflicting_stash() -> TestContext {
         .build();
 
     std::fs::write(ctx.repo_path().join("file.txt"), "stashed content").unwrap();
+    ctx.stage_file("file.txt").unwrap();
     ctx.stash_save("wip").unwrap();
     std::fs::write(ctx.repo_path().join("file.txt"), "committed content").unwrap();
     ctx.stage_file("file.txt").unwrap();
