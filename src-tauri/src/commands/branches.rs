@@ -5,6 +5,7 @@ use crate::git::{
 };
 use crate::shell_env;
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use git2::BranchType;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -336,7 +337,7 @@ pub async fn checkout_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
 
     Ok(())
 }
@@ -406,7 +407,7 @@ pub async fn fast_forward_to<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
 
     Ok(())
 }
@@ -516,7 +517,7 @@ pub async fn create_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
 
     Ok(())
 }
@@ -549,7 +550,7 @@ pub async fn delete_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -589,6 +590,6 @@ pub async fn rename_branch<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }

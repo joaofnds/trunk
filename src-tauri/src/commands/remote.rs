@@ -10,6 +10,7 @@ use crate::git::graph;
 use crate::git::graph_input::GraphSource;
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp, kill_process};
+use crate::watcher::RepoChanged;
 
 /// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
 /// markers to these is what keeps a hook printing either phrase from turning every
@@ -165,7 +166,7 @@ async fn refresh_graph<R: Runtime>(
         )
         .await?;
 
-    let _ = app.emit("repo-changed", path_owned);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path_owned));
     Ok(())
 }
 

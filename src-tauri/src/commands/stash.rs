@@ -2,6 +2,7 @@ use crate::error::TrunkError;
 use crate::git::graph_input::GraphSource;
 use crate::git::{graph, types::StashEntry};
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
@@ -228,7 +229,7 @@ pub async fn stash_save<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -259,7 +260,7 @@ pub async fn stash_pop<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -290,7 +291,7 @@ pub async fn stash_apply<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -321,6 +322,6 @@ pub async fn stash_drop<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }

@@ -3,6 +3,7 @@ use crate::git::graph_input::{GraphSnapshot, GraphSource};
 use crate::git::{graph, types::UndoResult};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a clean two-step revert begin.
@@ -353,7 +354,7 @@ pub async fn reset_to_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -384,7 +385,7 @@ pub async fn checkout_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -419,7 +420,7 @@ pub async fn create_tag<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -450,7 +451,7 @@ pub async fn delete_tag<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -481,7 +482,7 @@ pub async fn cherry_pick<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -516,7 +517,7 @@ pub async fn revert_commit_begin<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(RevertBeginResult { graph, message })
 }
 
@@ -547,7 +548,7 @@ pub async fn cherry_pick_continue<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -577,7 +578,7 @@ pub async fn cherry_pick_abort<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -608,7 +609,7 @@ pub async fn revert_continue<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -638,7 +639,7 @@ pub async fn revert_abort<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -801,7 +802,7 @@ pub async fn undo_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(undo_result)
 }
 
@@ -847,7 +848,7 @@ pub async fn redo_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 

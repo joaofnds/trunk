@@ -6,6 +6,7 @@ use crate::git::{
 };
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// Outcome of a two-step merge begin.
@@ -532,7 +533,7 @@ pub async fn merge_continue<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -561,7 +562,7 @@ pub async fn merge_abort<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -591,7 +592,7 @@ pub async fn rebase_continue<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -620,7 +621,7 @@ pub async fn rebase_skip<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -649,7 +650,7 @@ pub async fn rebase_abort<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -703,7 +704,7 @@ pub async fn merge_branch_begin<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(outcome.into_result(graph))
 }
 
@@ -733,7 +734,7 @@ pub async fn rebase_branch<R: Runtime>(
         })
         .await
         .map_err(|e| e.to_json())?;
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 

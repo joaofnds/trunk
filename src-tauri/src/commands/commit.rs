@@ -2,6 +2,7 @@ use crate::error::TrunkError;
 use crate::git::graph_input::GraphSource;
 use crate::git::{graph, types::HeadCommitMessage};
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 fn refresh_commit_cache(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
@@ -131,7 +132,7 @@ pub async fn create_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 
@@ -164,7 +165,7 @@ pub async fn amend_commit<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }
 

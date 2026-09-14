@@ -172,10 +172,10 @@ describe("Toolbar", () => {
 		const scheduler = new FakeScheduler();
 		const first = deferred<boolean>();
 		let undoReads = 0;
-		let repoChanged: ((event: { payload: string }) => void) | undefined;
+		let repoChanged: ((event: { payload: unknown }) => void) | undefined;
 		vi.mocked(listen).mockImplementation(async (name, callback) => {
 			if (name === "repo-changed") {
-				repoChanged = callback as (event: { payload: string }) => void;
+				repoChanged = callback as (event: { payload: unknown }) => void;
 			}
 			return () => {};
 		});
@@ -200,7 +200,7 @@ describe("Toolbar", () => {
 		await waitFor(() => expect(undoReads).toBe(1));
 
 		for (let index = 0; index < 5; index += 1) {
-			repoChanged?.({ payload: "/test/repo" });
+			repoChanged?.({ payload: { repo: "/test/repo", paths: [] } });
 			scheduler.advanceBy(200);
 		}
 		expect(undoReads).toBe(1);

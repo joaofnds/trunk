@@ -7,6 +7,7 @@ import RepoView from "../__tests__/helpers/controlled-repo-view.svelte";
 import { makeCommit } from "../__tests__/helpers/factories.js";
 import { restoreLayout, stubLayout } from "../__tests__/helpers/layout-stub";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { REPO_CHANGE_DELAY_MS } from "../lib/coalesced-task.js";
 import {
 	disablePerf,
 	enablePerf,
@@ -65,9 +66,28 @@ vi.mock("@tauri-apps/api/path", () => ({
 	homeDir: vi.fn().mockResolvedValue("/Users/test"),
 }));
 
+// Captured so a test can drive the watcher's `repo-changed` path; the suite
+// otherwise never fires one.
+const eventHandlers = new Map<
+	string,
+	Array<(event: { payload: unknown }) => void>
+>();
 vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn().mockResolvedValue(() => {}),
+	listen: vi.fn(
+		(name: string, handler: (event: { payload: unknown }) => void) => {
+			const registered = eventHandlers.get(name) ?? [];
+			registered.push(handler);
+			eventHandlers.set(name, registered);
+			return Promise.resolve(() => {});
+		},
+	),
 }));
+
+function fireRepoChanged(repo: string, paths: string[]): void {
+	const registered = eventHandlers.get("repo-changed") ?? [];
+	if (registered.length === 0) throw new Error("no repo-changed listener");
+	for (const handler of registered) handler({ payload: { repo, paths } });
+}
 
 vi.mock("@tauri-apps/api/window", () => ({
 	getCurrentWindow: vi.fn().mockReturnValue({
@@ -142,6 +162,7 @@ describe("RepoView", () => {
 		// The diff views render through a virtual list, which mounts no rows at
 		// all against jsdom's zero-height viewport.
 		stubLayout({ width: 900, height: 400 });
+		eventHandlers.clear();
 		menuActions.clear();
 		mockInvoke.mockReset();
 		mockInvoke.mockImplementation((cmd: string) => {
@@ -628,6 +649,77 @@ describe("RepoView", () => {
 
 			expect(await screen.findByText("NEW STAGING")).toBeTruthy();
 			expect(screen.queryByText("STALE STAGING")).toBeFalsy();
+		});
+
+		// The watcher reports every write under the repository, so a concurrent
+		// process touching an unrelated file used to refetch the diff on screen
+		// (TRUNK-232). The refresh is coalesced behind a deadline, so the test
+		// drives the scheduler rather than waiting on one.
+		interface OpenDiff {
+			scheduler: FakeScheduler;
+			diffCalls: () => number;
+			settle: () => Promise<void>;
+		}
+
+		async function openStagedReadme(): Promise<OpenDiff> {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			let diffCalls = 0;
+			mockInvoke.mockImplementation((cmd, args) => {
+				if (cmd === "get_status") {
+					return Promise.resolve({
+						unstaged: [
+							{ path: "README.md", status: "Modified", is_binary: false },
+						],
+						staged: [],
+						conflicted: [],
+					});
+				}
+				if (cmd === "diff_unstaged") {
+					diffCalls += 1;
+					return Promise.resolve([stagingDiff("STABLE CONTENT")]);
+				}
+				return base(cmd, args);
+			});
+
+			const scheduler = new FakeScheduler();
+			const settle = async () => {
+				await new Promise((resolve) => setTimeout(resolve, 0));
+				scheduler.advanceBy(REPO_CHANGE_DELAY_MS);
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			};
+
+			render(RepoView, {
+				props: baseProps(createMockRemoteState()),
+				context: new Map([[SCHEDULER, scheduler]]),
+			});
+			await fireEvent.click(await screen.findByText("README.md"));
+			expect(await screen.findByText("STABLE CONTENT")).toBeTruthy();
+			await settle();
+
+			return { scheduler, diffCalls: () => diffCalls, settle };
+		}
+
+		it("leaves the open diff alone when another file is written", async () => {
+			const { diffCalls, settle } = await openStagedReadme();
+			const before = diffCalls();
+
+			fireRepoChanged("/test/repo", ["docs/unrelated.md"]);
+			await settle();
+
+			expect(diffCalls()).toBe(before);
+			expect(screen.queryByText("STABLE CONTENT")).toBeTruthy();
+		});
+
+		it("refetches the open diff when its own file is written", async () => {
+			const { diffCalls, settle } = await openStagedReadme();
+			const before = diffCalls();
+
+			fireRepoChanged("/test/repo", ["README.md"]);
+			await settle();
+
+			expect(diffCalls()).toBeGreaterThan(before);
+			expect(screen.queryByText("STABLE CONTENT")).toBeTruthy();
 		});
 
 		it("drops a Comment File read superseded by a same-file reload", async () => {

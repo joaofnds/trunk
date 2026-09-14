@@ -36,11 +36,11 @@ vi.mock("@tauri-apps/api/path", () => ({
 }));
 
 const eventHandlers = vi.hoisted(
-	() => new Map<string, (event: { payload: string }) => void>(),
+	() => new Map<string, (event: { payload: unknown }) => void>(),
 );
 vi.mock("@tauri-apps/api/event", () => ({
 	listen: vi.fn(
-		(name: string, callback: (event: { payload: string }) => void) => {
+		(name: string, callback: (event: { payload: unknown }) => void) => {
 			eventHandlers.set(name, callback);
 			return Promise.resolve(() => eventHandlers.delete(name));
 		},
@@ -272,7 +272,9 @@ describe("StagingPanel", () => {
 			context: new Map([[SCHEDULER, scheduler]]),
 		});
 		const row = await screen.findByText("README.md");
-		eventHandlers.get("repo-changed")?.({ payload: "/test/repo" });
+		eventHandlers.get("repo-changed")?.({
+			payload: { repo: "/test/repo", paths: [] },
+		});
 		scheduler.advanceBy(200);
 		await tick();
 		expect(statusReads).toBe(2);

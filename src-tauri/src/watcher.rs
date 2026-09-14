@@ -1,10 +1,65 @@
 use notify_debouncer_mini::notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime};
+
+/// The `repo-changed` payload.
+///
+/// `paths` names the files the change touched, relative to the repository root
+/// and sorted, so a subscriber can tell whether a write concerns what it is
+/// showing. An empty `paths` means the writer could not say, and every
+/// subscriber refreshes: that is what the command sites emit, since a commit or
+/// a checkout changes more than any list they could give (TRUNK-232).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct RepoChanged {
+    pub repo: String,
+    pub paths: Vec<String>,
+}
+
+impl RepoChanged {
+    /// A change whose extent is unknown, so every subscriber refreshes.
+    #[must_use]
+    pub fn whole_repo(repo: impl Into<String>) -> Self {
+        Self {
+            repo: repo.into(),
+            paths: Vec::new(),
+        }
+    }
+
+    /// A change confined to `changed`. A path outside `repo`, or one that cannot
+    /// be made relative to it, leaves the payload unscoped rather than naming a
+    /// file no subscriber can match.
+    ///
+    /// `roots` are the forms of the repository root a reported path may carry.
+    /// The watcher passes the watched path and its canonical form, because
+    /// `notify` reports through resolved symlinks: on macOS a repository under
+    /// `/var/...` is reported under `/private/var/...`, and stripping only the
+    /// watched path would leave every event unscoped (TRUNK-232).
+    #[must_use]
+    pub fn scoped_to(repo: &Path, roots: &[PathBuf], changed: &[PathBuf]) -> Self {
+        let repo_string = repo.to_string_lossy().to_string();
+        let mut paths = Vec::with_capacity(changed.len());
+
+        for path in changed {
+            let Some(relative) = roots.iter().find_map(|root| path.strip_prefix(root).ok()) else {
+                return Self::whole_repo(repo_string);
+            };
+            paths.push(relative.to_string_lossy().replace('\\', "/"));
+        }
+
+        paths.sort_unstable();
+        paths.dedup();
+
+        Self {
+            repo: repo_string,
+            paths,
+        }
+    }
+}
 
 pub type WatcherMap = HashMap<String, Debouncer<RecommendedWatcher>>;
 pub struct WatcherState {
@@ -62,14 +117,20 @@ fn start_watcher_with_registration<R, F>(
         return;
     }
 
-    let path_clone = path.to_path_buf();
+    let watched = path.to_path_buf();
+    let roots = root_forms(path);
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(300),
         move |res: DebounceEventResult| {
-            if res.is_ok() {
-                let _ = app.emit("repo-changed", path_clone.to_string_lossy().to_string());
-            }
+            let Ok(events) = res else { return };
+
+            let changed: Vec<PathBuf> = events.into_iter().map(|event| event.path).collect();
+
+            let _ = app.emit(
+                "repo-changed",
+                RepoChanged::scoped_to(&watched, &roots, &changed),
+            );
         },
     )
     .expect("failed to create debouncer");
@@ -81,6 +142,20 @@ fn start_watcher_with_registration<R, F>(
         .lock()
         .unwrap()
         .insert(path.to_string_lossy().to_string(), debouncer);
+}
+
+/// The forms of `path` a reported event may carry: the path itself, and its
+/// canonical form when resolving symlinks yields a different one.
+fn root_forms(path: &Path) -> Vec<PathBuf> {
+    let mut roots = vec![path.to_path_buf()];
+
+    if let Ok(canonical) = path.canonicalize()
+        && canonical != path
+    {
+        roots.push(canonical);
+    }
+
+    roots
 }
 
 /// Stop watching `path`. A path with no watcher is not an error.
@@ -97,6 +172,77 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+
+    #[test]
+    fn an_unscoped_change_names_no_path() {
+        let payload = RepoChanged::whole_repo("/repo");
+
+        assert_eq!(payload.repo, "/repo");
+        assert!(payload.paths.is_empty());
+    }
+
+    #[test]
+    fn a_scoped_change_names_each_path_relative_to_the_repository() {
+        let payload = RepoChanged::scoped_to(
+            Path::new("/repo"),
+            &[PathBuf::from("/repo")],
+            &[
+                PathBuf::from("/repo/src/main.rs"),
+                PathBuf::from("/repo/README.md"),
+            ],
+        );
+
+        assert_eq!(payload.paths, vec!["README.md", "src/main.rs"]);
+    }
+
+    #[test]
+    fn a_path_repeated_in_one_batch_is_named_once() {
+        let payload = RepoChanged::scoped_to(
+            Path::new("/repo"),
+            &[PathBuf::from("/repo")],
+            &[PathBuf::from("/repo/a.txt"), PathBuf::from("/repo/a.txt")],
+        );
+
+        assert_eq!(payload.paths, vec!["a.txt"]);
+    }
+
+    #[test]
+    fn a_path_outside_the_repository_leaves_the_change_unscoped() {
+        let payload = RepoChanged::scoped_to(
+            Path::new("/repo"),
+            &[PathBuf::from("/repo")],
+            &[
+                PathBuf::from("/repo/a.txt"),
+                PathBuf::from("/elsewhere/b.txt"),
+            ],
+        );
+
+        assert_eq!(payload, RepoChanged::whole_repo("/repo"));
+    }
+
+    // `notify` reports through resolved symlinks, so a repository opened under
+    // a symlinked path sees every event arrive under the resolved one.
+    #[test]
+    fn a_path_reported_under_the_resolved_root_is_still_named() {
+        let payload = RepoChanged::scoped_to(
+            Path::new("/var/repo"),
+            &[
+                PathBuf::from("/var/repo"),
+                PathBuf::from("/private/var/repo"),
+            ],
+            &[PathBuf::from("/private/var/repo/a.txt")],
+        );
+
+        assert_eq!(payload.repo, "/var/repo");
+        assert_eq!(payload.paths, vec!["a.txt"]);
+    }
+
+    #[test]
+    fn an_empty_batch_leaves_the_change_unscoped() {
+        let payload = RepoChanged::scoped_to(Path::new("/repo"), &[PathBuf::from("/repo")], &[]);
+
+        assert_eq!(payload, RepoChanged::whole_repo("/repo"));
+    }
 
     #[test]
     fn an_enabled_start_records_the_path() {

@@ -4,8 +4,8 @@ import type { TauriInternals } from "../harness/internals.js";
 /**
  * Events the application would otherwise receive from the outside world. The
  * filesystem watcher is off in the harness, so the external-change gesture is
- * the host making the identical `app.emit("repo-changed", path)` call that
- * `src-tauri/src/watcher.rs:45` makes: indistinguishable downstream.
+ * the host making the identical `app.emit("repo-changed", payload)` call that
+ * `src-tauri/src/watcher.rs` makes: indistinguishable downstream.
  */
 export class EventsDriver {
 	constructor(
@@ -14,10 +14,14 @@ export class EventsDriver {
 	) {}
 
 	/** One emit, so it waits until the application is listening. The watcher this
-	 *  stands in for emits over and over and can afford to lose the first. */
-	async externalChange(path: string): Promise<void> {
+	 *  stands in for emits over and over and can afford to lose the first.
+	 *
+	 *  `paths` names what the change touched, relative to the repository root.
+	 *  Omitting it emits the unscoped form every subscriber refreshes for, which
+	 *  is what the write commands in `src-tauri/src/commands/` emit. */
+	async externalChange(path: string, paths: string[] = []): Promise<void> {
 		await this.internals.registrationsSettled();
-		await this.host.emit("repo-changed", path);
+		await this.host.emit("repo-changed", { repo: path, paths });
 	}
 
 	/** The rebase the user aborted in a terminal: the repository changes with no

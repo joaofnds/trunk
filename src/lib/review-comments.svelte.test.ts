@@ -12,16 +12,14 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 // Capture the rune's event callbacks by name so tests can simulate a cross-tab
 // emit or a filesystem change; the real IPC core is undefined under jsdom.
-const handlers = new Map<string, (event: { payload: string | null }) => void>();
+const handlers = new Map<string, (event: { payload: unknown }) => void>();
 vi.mock("@tauri-apps/api/event", () => ({
-	listen: vi.fn(
-		(name: string, cb: (event: { payload: string | null }) => void) => {
-			handlers.set(name, cb);
-			return Promise.resolve(() => {
-				handlers.delete(name);
-			});
-		},
-	),
+	listen: vi.fn((name: string, cb: (event: { payload: unknown }) => void) => {
+		handlers.set(name, cb);
+		return Promise.resolve(() => {
+			handlers.delete(name);
+		});
+	}),
 }));
 
 class TestScheduler implements Scheduler {
@@ -48,8 +46,8 @@ function fireReviewsChanged(payload: string | null): void {
 	handlers.get("reviews-changed")?.({ payload });
 }
 
-function fireRepoChanged(payload: string): void {
-	handlers.get("repo-changed")?.({ payload });
+function fireRepoChanged(repo: string): void {
+	handlers.get("repo-changed")?.({ payload: { repo, paths: [] } });
 }
 
 async function flush() {

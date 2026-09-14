@@ -84,7 +84,7 @@
 | `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/src/git/repository.rs` |
 | `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/src/git/types.rs` |
 | `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path; `GraphRebuild` bundles `CommitCache` and `RefVisibilityState` behind the one method every rebuild site calls instead of repeating the read-visibility/walk/write-cache triple | `src-tauri/src/state.rs` |
-| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
+| `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries the changed paths; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
 ## Pattern Overview
 
@@ -157,13 +157,19 @@
 ### Filesystem Change Path
 
 1. `notify_debouncer_mini` detects change in watched repo directory (300ms debounce)
-2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with repo path string
-3. Path-scoped frontend consumers arm a fixed 200 ms first deadline; more events do not move it
+2. `watcher.rs:start_watcher` emits Tauri event `"repo-changed"` with a `RepoChanged`
+   payload: the repo path plus the changed paths relative to it. The write sites in
+   `commands/` emit the same event with an empty path list, meaning the extent is
+   unknown and every subscriber refreshes
+3. Path-scoped frontend consumers arm a fixed 200 ms first deadline; more events do not move it.
+   A consumer may also pass `subscribeToRepoChanges` a filter over the changed paths, so a
+   write that names only files it is not showing never reaches it
 4. Each consumer admits one active read and one pending catch-up, so status, graph, review,
    toolbar and dirty-count work complete independently without growing with the event count
 5. `App.svelte` refreshes each open tab's dirty badge; `RepoView.svelte` notifies its graph,
    refs, recovery prompt and rendered working-tree diff while separately refreshing its own
-   dirty counts, HEAD branch and selected file
+   dirty counts, HEAD branch and selected file. The selected file's diff subscribes
+   separately and refetches only for a change naming that file or anything under `.git`
 6. Post-mutation status and review callers enter the same guard and wait for a run admitted
    after the active read rather than returning its older completion
 

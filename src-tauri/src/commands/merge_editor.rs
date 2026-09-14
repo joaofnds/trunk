@@ -2,6 +2,7 @@ use crate::error::TrunkError;
 use crate::git::graph;
 use crate::git::types::MergeSides;
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
 
 /// The file's conflict entry, or `not_conflicted` when the index holds none for
@@ -178,6 +179,6 @@ pub async fn save_merge_result<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(())
 }

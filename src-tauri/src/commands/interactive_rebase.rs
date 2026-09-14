@@ -3,6 +3,7 @@ use crate::git::graph_input::GraphSource;
 use crate::git::{graph, types::RebaseTodoItem};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
+use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime, State};
 
@@ -390,7 +391,7 @@ pub async fn start_interactive_rebase<R: Runtime>(
         .await
         .map_err(|e| e.to_json())?;
 
-    let _ = app.emit("repo-changed", path);
+    let _ = app.emit("repo-changed", RepoChanged::whole_repo(path));
     Ok(outcome)
 }
 

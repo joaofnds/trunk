@@ -150,15 +150,15 @@ describe("the application", () => {
 	it("reaches a listener whose registration is still in flight", async () => {
 		const app = await setup({ repo: FOUR_COMMITS });
 		await app.repo.open();
-		let heard: string | undefined;
-		const registering = listen<string>("repo-changed", (event) => {
+		let heard: { repo: string } | undefined;
+		const registering = listen<{ repo: string }>("repo-changed", (event) => {
 			heard = event.payload;
 		});
 
 		await app.events.externalChange(app.repo.path);
 
 		await registering;
-		expect(heard).toBe(app.repo.path);
+		expect(heard?.repo).toBe(app.repo.path);
 	});
 
 	it("holds no filesystem watch", async () => {

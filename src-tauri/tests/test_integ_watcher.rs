@@ -7,7 +7,7 @@ mod common;
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 use tauri::Listener;
-use trunk_lib::watcher::{WatcherState, start_watcher};
+use trunk_lib::watcher::{RepoChanged, WatcherState, start_watcher};
 
 /// How long a test waits for an event before calling it absent. Generous per
 /// D-05: it bounds a failure, never a pass.
@@ -26,7 +26,7 @@ fn repo_changed_events<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> Recei
 }
 
 #[test]
-fn watcher_emits_repo_path_for_rapid_nested_writes() {
+fn watcher_names_the_repository_for_rapid_nested_writes() {
     let app = tauri::test::mock_app();
     let handle = app.handle().clone();
     let events = repo_changed_events(&handle);
@@ -48,7 +48,34 @@ fn watcher_emits_repo_path_for_rapid_nested_writes() {
     let payload = events
         .recv_timeout(EVENT_TIMEOUT)
         .expect("repo-changed should fire once the debounce window closes");
-    let emitted_path: String = serde_json::from_str(&payload).unwrap();
+    let emitted: RepoChanged = serde_json::from_str(&payload).unwrap();
 
-    assert_eq!(emitted_path, path);
+    assert_eq!(emitted.repo, path);
+}
+
+/// The event carries what changed, so a subscriber showing one file can tell a
+/// write to it from a write to anything else under the repository (TRUNK-232).
+#[test]
+fn watcher_names_the_written_file_relative_to_the_repository() {
+    let app = tauri::test::mock_app();
+    let handle = app.handle().clone();
+    let events = repo_changed_events(&handle);
+    let dir = tempfile::tempdir().unwrap();
+    git2::Repository::init(dir.path()).unwrap();
+    let nested_dir = dir.path().join("nested");
+    std::fs::create_dir(&nested_dir).unwrap();
+    let watcher_state = WatcherState::default();
+
+    start_watcher(dir.path(), handle, &watcher_state);
+    std::fs::write(nested_dir.join("only.txt"), "content").unwrap();
+    let payload = events
+        .recv_timeout(EVENT_TIMEOUT)
+        .expect("repo-changed should fire once the debounce window closes");
+    let emitted: RepoChanged = serde_json::from_str(&payload).unwrap();
+
+    assert!(
+        emitted.paths.contains(&"nested/only.txt".to_string()),
+        "expected the written file among {:?}",
+        emitted.paths
+    );
 }

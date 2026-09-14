@@ -19,6 +19,7 @@ import {
 	createRemoteState,
 	type RemoteState,
 } from "./lib/remote-state.svelte.js";
+import type { RepoChanged } from "./lib/repo-change-subscription.js";
 import { getScheduler } from "./lib/scheduler.js";
 import {
 	addRecentRepo,
@@ -688,8 +689,8 @@ $effect(() => {
 		return refresh;
 	}
 
-	listen<string>("repo-changed", (event) => {
-		const repoPath = event.payload;
+	listen<RepoChanged>("repo-changed", (event) => {
+		const repoPath = event.payload.repo;
 		const tab = tabs.find((t) => t.repoPath === repoPath);
 		if (!tab) return;
 		refreshFor(repoPath).invalidate();

@@ -934,6 +934,33 @@ function buildDiffOptions(): DiffRequestOptions {
 	return { ...cachedDiffOptions, showFullFile: contentMode === "full" };
 }
 
+/** The working-tree paths whose content the open views are showing. */
+function openFilePaths(): Set<string> {
+	const paths = new Set<string>();
+	if (selectedFile && selectedFile.kind !== "conflicted") {
+		paths.add(selectedFile.path);
+	}
+	if (selectedCurrentFile !== null) paths.add(selectedCurrentFile);
+	return paths;
+}
+
+/**
+ * Whether a change confined to `changed` can alter what the open views show. A
+ * staged diff reads the index rather than the working tree, and an operation
+ * that rewrites HEAD moves what every diff compares against, so any write under
+ * `.git` counts alongside a write to the open file itself. An empty `changed`
+ * is a change whose extent the writer could not state, so it concerns
+ * everything.
+ */
+function concernsOpenFiles(changed: readonly string[]): boolean {
+	if (changed.length === 0) return true;
+
+	const open = openFilePaths();
+	return changed.some(
+		(path) => open.has(path) || path === ".git" || path.startsWith(".git/"),
+	);
+}
+
 function modeFor(options: DiffRequestOptions): ContentMode {
 	return options.showFullFile ? "full" : "hunk";
 }
@@ -1661,14 +1688,22 @@ $effect(() => {
 	};
 });
 
-// Listen for repo-changed events scoped to this repo
+// Listen for repo-changed events scoped to this repo. Status, HEAD and the
+// notification read the whole repository, so every change concerns them. The
+// open file's diff is the one piece of work a change can miss, and it refetches
+// only for a change naming that file: every write anywhere under the repository
+// reaches the watcher, build output and ignored paths included, so a concurrent
+// process writing an unrelated file used to refetch the diff on screen
+// (TRUNK-232).
 $effect(() => {
 	const path = repoPath;
 	return subscribeToRepoChanges(path, {
-		invalidate() {
+		invalidate(changed) {
 			repoNotification.invalidate();
 			dirtyCountsRefresh.invalidate();
 			headBranchRefresh.invalidate();
+			if (!concernsOpenFiles(changed)) return;
+
 			const selected = selectedFile;
 			if (selected && selected.kind !== "conflicted") {
 				prepareSelectedFileDiff(
