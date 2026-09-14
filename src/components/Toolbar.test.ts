@@ -810,6 +810,31 @@ describe("Toolbar remote failure feedback", () => {
 		expect(mockToast).not.toHaveBeenCalled();
 	});
 
+	it("still shows a success toast on a successful push", async () => {
+		mockInvoke.mockResolvedValue(false);
+		const remoteState = makeRemoteState();
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState,
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Push" }));
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith("Pushed successfully", "success"),
+		);
+		expect(remoteState.error).toBeNull();
+	});
+});
+
+describe("Toolbar stash", () => {
+	const mockInvoke = vi.mocked(safeInvoke);
+	const mockToast = vi.mocked(showToast);
+
 	// TRUNK-231: with nothing staged the backend names staging as the next step. A bare
 	// "Failed to create stash" tells the user nothing they can act on.
 	it("shows the backend's stage-first message when nothing is staged", async () => {
@@ -838,25 +863,5 @@ describe("Toolbar remote failure feedback", () => {
 				"error",
 			),
 		);
-	});
-
-	it("still shows a success toast on a successful push", async () => {
-		mockInvoke.mockResolvedValue(false);
-		const remoteState = makeRemoteState();
-
-		render(Toolbar, {
-			props: {
-				repoPath: "/test/repo",
-				remoteState,
-				undoRedo: makeUndoRedo(),
-				reviewActive: false,
-			},
-		});
-		await fireEvent.click(screen.getByRole("button", { name: "Push" }));
-
-		await waitFor(() =>
-			expect(mockToast).toHaveBeenCalledWith("Pushed successfully", "success"),
-		);
-		expect(remoteState.error).toBeNull();
 	});
 });

@@ -783,31 +783,6 @@ describe("BranchSidebar ref visibility", () => {
 		});
 	});
 
-	// TRUNK-231: the backend refuses with nothing staged and names staging as the next
-	// step. The form used to overwrite that with its own "working tree is clean", which
-	// is wrong now that a tree full of unstaged changes still stashes nothing.
-	it("shows the backend's stage-first message when nothing is staged", async () => {
-		const base = mockInvoke.getMockImplementation();
-		mockInvoke.mockImplementation((cmd, args) => {
-			if (cmd === "stash_save")
-				return Promise.reject(
-					JSON.stringify({
-						code: "nothing_to_stash",
-						message: "Nothing to stash — stage changes first.",
-					}),
-				);
-			return base ? base(cmd, args) : Promise.resolve(undefined);
-		});
-		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
-
-		await fireEvent.click(await screen.findByLabelText("Create new stash"));
-		await fireEvent.click(await screen.findByText("Stash"));
-
-		expect(
-			await screen.findByText("Nothing to stash — stage changes first."),
-		).toBeInTheDocument();
-	});
-
 	// Acceptance #5: a stash row carries a toggle like every other row. A stash has no
 	// stable name, so it is keyed by its commit OID.
 	it("offers a toggle on a stash row, keyed by its oid", async () => {
@@ -1180,5 +1155,32 @@ describe("BranchSidebar ref visibility", () => {
 				expect.objectContaining({ loaded: 400 }),
 			);
 		});
+	});
+});
+
+describe("BranchSidebar stash creation", () => {
+	// TRUNK-231: the backend refuses with nothing staged and names staging as the next
+	// step. The form used to overwrite that with its own "working tree is clean", which
+	// is wrong now that a tree full of unstaged changes still stashes nothing.
+	it("shows the backend's stage-first message when nothing is staged", async () => {
+		const base = mockInvoke.getMockImplementation();
+		mockInvoke.mockImplementation((cmd, args) => {
+			if (cmd === "stash_save")
+				return Promise.reject(
+					JSON.stringify({
+						code: "nothing_to_stash",
+						message: "Nothing to stash — stage changes first.",
+					}),
+				);
+			return base ? base(cmd, args) : Promise.resolve(undefined);
+		});
+		render(BranchSidebar, { props: { repoPath: "/test/repo" } });
+
+		await fireEvent.click(await screen.findByLabelText("Create new stash"));
+		await fireEvent.click(await screen.findByText("Stash"));
+
+		expect(
+			await screen.findByText("Nothing to stash — stage changes first."),
+		).toBeInTheDocument();
 	});
 });

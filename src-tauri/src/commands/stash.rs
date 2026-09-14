@@ -18,9 +18,14 @@ const APPLY_CONFLICT_MESSAGE: &str =
 /// cleaning leaves the staged work in the entry as well as in the index. Writing the
 /// entry last would instead leave it only in the index, over a worktree already
 /// reverted, where one ordinary unstage destroys it.
+///
+/// The remedy is deliberately only "fix the cause and stash again": by the time this
+/// fires, earlier files in the plan may already be reverted, and their staged content
+/// then lives only in the index and this entry. Dropping the entry would put that
+/// content one unstage from loss.
 fn incomplete_message(cause: &std::io::Error) -> String {
     format!(
-        "The stash was created and holds your staged changes, but the working tree could not be cleaned: {cause}. Your changes are still staged. Drop the stash, or fix the cause and stash again."
+        "The stash was created and holds your staged changes, but the working tree could not be cleaned: {cause}. Your changes are still staged. Fix the cause, then stash again."
     )
 }
 
@@ -317,10 +322,14 @@ pub fn stash_save_inner(
             } => {
                 let target = workdir.join(path);
                 if let Some(parent) = target.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                 }
+                // Removing first is what keeps the write below from following a symlink
+                // still sitting here, into a file the plan never named.
                 if target.is_symlink() || target.is_file() {
-                    let _ = std::fs::remove_file(&target);
+                    std::fs::remove_file(&target)
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                 }
                 #[cfg(unix)]
                 if (mode & 0o170_000) == 0o120_000 {
@@ -338,8 +347,8 @@ pub fn stash_save_inner(
                 } else {
                     std::fs::write(&target, &content)
                         .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
-                    let _ =
-                        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode));
+                    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode))
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                 }
                 #[cfg(not(unix))]
                 {
@@ -350,7 +359,8 @@ pub fn stash_save_inner(
             PlanAction::DeleteFile { path } => {
                 let target = workdir.join(path);
                 if target.is_symlink() || target.is_file() {
-                    let _ = std::fs::remove_file(&target);
+                    std::fs::remove_file(&target)
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                 }
                 let mut curr = target.parent();
                 while let Some(parent) = curr {

@@ -325,36 +325,24 @@ fn stash_save_reports_the_entry_it_kept_when_the_worktree_cannot_be_cleaned() {
     ctx.assert_file_staged("locked/file.txt");
 }
 
-/// The symlink branch removes the path before recreating it, so a failure to recreate
-/// must be reported rather than leaving the path missing with the stash reported good.
+/// Removing the old path is what keeps the write from following it. A symlink left in
+/// place because the remove failed would take the write to whatever it points at, so a
+/// failed remove has to stop the stash rather than be discarded.
 #[cfg(unix)]
 #[test]
-fn stash_save_reports_a_symlink_it_could_not_restore() {
+fn stash_save_never_writes_through_a_symlink_it_could_not_remove() {
     use std::os::unix::fs::PermissionsExt;
 
     let ctx = TestContext::builder()
-        .with_file("target.txt", "pointed at\n")
+        .with_file("locked/f.txt", "committed\n")
+        .with_file("victim.txt", "never staged, never planned\n")
         .with_commit("Initial commit")
         .build();
 
-    let link = ctx.repo_path().join("locked/link");
-    std::fs::create_dir(ctx.repo_path().join("locked")).unwrap();
-    std::os::unix::fs::symlink("../target.txt", &link).unwrap();
-    ctx.stage_file("locked/link").unwrap();
-    {
-        let repo = ctx.repo();
-        let mut index = repo.index().unwrap();
-        let tree = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree).unwrap();
-        let sig = repo.signature().unwrap();
-        let head = repo.head().unwrap().peel_to_commit().unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "add the link", &tree, &[&head])
-            .unwrap();
-    }
-
-    std::fs::remove_file(&link).unwrap();
-    std::os::unix::fs::symlink("elsewhere.txt", &link).unwrap();
-    ctx.stage_file("locked/link").unwrap();
+    // Stage a typechange: the regular file becomes a link pointing outside the plan.
+    std::fs::remove_file(ctx.repo_path().join("locked/f.txt")).unwrap();
+    std::os::unix::fs::symlink("../victim.txt", ctx.repo_path().join("locked/f.txt")).unwrap();
+    ctx.stage_file("locked/f.txt").unwrap();
 
     let dir = ctx.repo_path().join("locked");
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
@@ -362,6 +350,47 @@ fn stash_save_reports_a_symlink_it_could_not_restore() {
     std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
 
     assert_eq!(err.code, "stash_incomplete");
+    ctx.assert_file_content("victim.txt", "never staged, never planned\n");
+}
+
+/// A staged symlink change is reverted by recreating the link HEAD holds, not by
+/// writing its target string into a regular file.
+#[cfg(unix)]
+#[test]
+fn stash_save_restores_the_symlink_head_holds() {
+    let ctx = TestContext::builder()
+        .with_file("first.txt", "first\n")
+        .with_file("second.txt", "second\n")
+        .with_commit("Initial commit")
+        .build();
+
+    let link = ctx.repo_path().join("link");
+    std::os::unix::fs::symlink("first.txt", &link).unwrap();
+    ctx.stage_file("link").unwrap();
+    ctx.create_commit("add the link", None).unwrap();
+
+    // Retarget it and stage that
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink("second.txt", &link).unwrap();
+    ctx.stage_file("link").unwrap();
+
+    let oid = {
+        ctx.stash_save("retarget").unwrap();
+        ctx.top_stash_oid()
+    };
+
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the restored path must be a symlink, not a file holding the target string"
+    );
+    assert_eq!(
+        std::fs::read_link(&link).unwrap(),
+        std::path::Path::new("first.txt")
+    );
+    ctx.assert_stash_content(&oid, "link", "second.txt");
 }
 
 #[test]
