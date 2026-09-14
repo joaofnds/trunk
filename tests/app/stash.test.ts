@@ -17,7 +17,7 @@ const STASH_ROW = "WIP on main";
 describe("stash", () => {
 	afterEach(teardown);
 
-	it("clears the working tree into a graph stash and pops it back", async () => {
+	it("takes the staged changes into a graph stash and pops them back", async () => {
 		const app = await setup({ repo: ONE_DIRTY_FILE });
 		await app.repo.open();
 		await waitFor("the working-tree row", () =>

@@ -14,6 +14,16 @@ const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve con
 const APPLY_CONFLICT_MESSAGE: &str =
     "Stash applied with conflicts — resolve conflicts before continuing";
 
+/// The stash entry is written before the worktree is cleaned, so a failure while
+/// cleaning leaves the staged work in the entry as well as in the index. Writing the
+/// entry last would instead leave it only in the index, over a worktree already
+/// reverted, where one ordinary unstage destroys it.
+fn incomplete_message(cause: &std::io::Error) -> String {
+    format!(
+        "The stash was created and holds your staged changes, but the working tree could not be cleaned: {cause}. Your changes are still staged. Drop the stash, or fix the cause and stash again."
+    )
+}
+
 /// A planned worktree modification during stash creation.
 enum PlanAction {
     WriteFile {
@@ -96,6 +106,7 @@ pub fn list_stashes_inner(
 ///
 /// Returns `not_open` when `path` names no open repository, `nothing_to_stash` when the
 /// index has no staged changes, `cannot_separate_changes` when changes cannot be separated,
+/// `stash_incomplete` when the entry was written but the worktree could not be cleaned,
 /// and the git error when the signature is unset or the stash will not write.
 pub fn stash_save_inner(
     path: &str,
@@ -153,12 +164,7 @@ pub fn stash_save_inner(
             continue;
         };
 
-        let wt_diverges = status.intersects(
-            git2::Status::WT_MODIFIED
-                | git2::Status::WT_DELETED
-                | git2::Status::WT_RENAMED
-                | git2::Status::WT_TYPECHANGE,
-        );
+        let wt_diverges = status.intersects(crate::git::status::UNSTAGED_BITS);
 
         if wt_diverges {
             // Worktree diverges from index: three-way merge
@@ -322,17 +328,15 @@ pub fn stash_save_inner(
                         let _ = std::os::unix::fs::symlink(target_str, &target);
                     }
                 } else {
-                    std::fs::write(&target, &content).map_err(|e| {
-                        TrunkError::new("io_error", format!("Failed to write file: {e}"))
-                    })?;
+                    std::fs::write(&target, &content)
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                     let _ =
                         std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode));
                 }
                 #[cfg(not(unix))]
                 {
-                    std::fs::write(&target, &content).map_err(|e| {
-                        TrunkError::new("io_error", format!("Failed to write file: {e}"))
-                    })?;
+                    std::fs::write(&target, &content)
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                 }
             }
             PlanAction::DeleteFile { path } => {

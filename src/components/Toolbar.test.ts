@@ -810,6 +810,36 @@ describe("Toolbar remote failure feedback", () => {
 		expect(mockToast).not.toHaveBeenCalled();
 	});
 
+	// TRUNK-231: with nothing staged the backend names staging as the next step. A bare
+	// "Failed to create stash" tells the user nothing they can act on.
+	it("shows the backend's stage-first message when nothing is staged", async () => {
+		mockInvoke.mockImplementation((cmd: string) =>
+			cmd === "stash_save"
+				? Promise.reject({
+						code: "nothing_to_stash",
+						message: "Nothing to stash — stage changes first.",
+					})
+				: Promise.resolve(false),
+		);
+
+		render(Toolbar, {
+			props: {
+				repoPath: "/test/repo",
+				remoteState: makeRemoteState(),
+				undoRedo: makeUndoRedo(),
+				reviewActive: false,
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Stash" }));
+
+		await waitFor(() =>
+			expect(mockToast).toHaveBeenCalledWith(
+				"Nothing to stash — stage changes first.",
+				"error",
+			),
+		);
+	});
+
 	it("still shows a success toast on a successful push", async () => {
 		mockInvoke.mockResolvedValue(false);
 		const remoteState = makeRemoteState();

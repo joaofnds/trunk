@@ -109,6 +109,30 @@ impl TestContext {
         );
     }
 
+    /// What the stash entry captured, which `assert_file_content` cannot see: the
+    /// worktree after a stash holds what was left behind, not what was taken.
+    pub fn assert_stash_content(&self, oid: &str, file: &str, expected: &str) {
+        let repo = self.repo();
+        let stash_oid = git2::Oid::from_str(oid).unwrap_or_else(|e| panic!("bad oid '{oid}': {e}"));
+        let commit = repo
+            .find_commit(stash_oid)
+            .unwrap_or_else(|e| panic!("no stash commit '{oid}': {e}"));
+        let tree = commit.tree().expect("a stash commit has a tree");
+        let entry = tree
+            .get_path(std::path::Path::new(file))
+            .unwrap_or_else(|e| panic!("'{file}' is not in the stash entry: {e}"));
+        let blob = entry
+            .to_object(&repo)
+            .ok()
+            .and_then(|object| object.into_blob().ok())
+            .unwrap_or_else(|| panic!("'{file}' in the stash entry is not a blob"));
+        let content = String::from_utf8_lossy(blob.content());
+        assert_eq!(
+            content, expected,
+            "expected the stash entry's '{file}' to be '{expected}', got '{content}'"
+        );
+    }
+
     pub fn assert_conflict_state(&self) {
         let repo = self.repo();
         assert!(

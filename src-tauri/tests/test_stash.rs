@@ -122,6 +122,25 @@ fn stash_save_takes_only_staged_changes_and_preserves_other_unstaged_files() {
 }
 
 #[test]
+fn stash_save_entry_holds_the_staged_content_and_not_the_unstaged_one() {
+    let ctx = TestContext::builder()
+        .with_file("staged.txt", "committed staged\n")
+        .with_file("unstaged.txt", "committed unstaged\n")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("staged.txt"), "staged edit\n").unwrap();
+    ctx.stage_file("staged.txt").unwrap();
+    std::fs::write(ctx.repo_path().join("unstaged.txt"), "unstaged edit\n").unwrap();
+
+    ctx.stash_save("staged only").unwrap();
+
+    let oid = ctx.top_stash_oid();
+    ctx.assert_stash_content(&oid, "staged.txt", "staged edit\n");
+    ctx.assert_stash_content(&oid, "unstaged.txt", "committed unstaged\n");
+}
+
+#[test]
 fn stash_save_partially_staged_file_non_overlapping_preserves_unstaged_edit() {
     let initial_content =
         "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\n";
@@ -205,6 +224,40 @@ fn stash_save_staged_add_further_edited_in_worktree_refuses() {
 }
 
 #[test]
+fn stash_save_staged_deletion_with_the_file_recreated_unstaged_refuses() {
+    let ctx = TestContext::builder()
+        .with_file("file.txt", "committed content\n")
+        .with_commit("Initial commit")
+        .build();
+
+    // Stage the deletion
+    std::fs::remove_file(ctx.repo_path().join("file.txt")).unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        index.remove_path(std::path::Path::new("file.txt")).unwrap();
+        index.write().unwrap();
+    }
+
+    // The user writes a new file at the same path, unstaged
+    std::fs::write(
+        ctx.repo_path().join("file.txt"),
+        "recreated, never staged\n",
+    )
+    .unwrap();
+
+    let err = ctx.stash_save("test").unwrap_err();
+    assert_eq!(err.code, "cannot_separate_changes");
+    assert!(
+        err.message
+            .contains("Cannot separate staged and unstaged changes in file.txt")
+    );
+    assert_eq!(ctx.list_stashes().unwrap().len(), 0);
+
+    ctx.assert_file_content("file.txt", "recreated, never staged\n");
+}
+
+#[test]
 fn stash_save_staged_deletion_reverts_file_in_worktree() {
     let ctx = TestContext::builder()
         .with_file("to_delete.txt", "content to delete")
@@ -230,6 +283,46 @@ fn stash_save_staged_deletion_reverts_file_in_worktree() {
     // In worktree: file was restored from HEAD and is clean
     ctx.assert_file_content("to_delete.txt", "content to delete");
     ctx.assert_status_clean();
+}
+
+/// The entry is written before the worktree is cleaned, so that a failure here leaves
+/// the staged work in the entry as well as the index. The user needs to be told that.
+#[cfg(unix)]
+#[test]
+fn stash_save_reports_the_entry_it_kept_when_the_worktree_cannot_be_cleaned() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let ctx = TestContext::builder()
+        .with_file("locked/file.txt", "committed\n")
+        .with_commit("Initial commit")
+        .build();
+
+    std::fs::write(ctx.repo_path().join("locked/file.txt"), "staged\n").unwrap();
+    ctx.stage_file("locked/file.txt").unwrap();
+
+    // Removing the file is what the write phase does first, and only the directory's
+    // write bit governs that. Clearing it is what makes the write fail.
+    let dir = ctx.repo_path().join("locked");
+    std::fs::set_permissions(
+        ctx.repo_path().join("locked/file.txt"),
+        std::fs::Permissions::from_mode(0o400),
+    )
+    .unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let err = ctx.stash_save("test").unwrap_err();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(err.code, "stash_incomplete");
+    assert!(
+        err.message.contains("still staged"),
+        "the message must say the changes are still staged, got '{}'",
+        err.message
+    );
+
+    let oid = ctx.top_stash_oid();
+    ctx.assert_stash_content(&oid, "locked/file.txt", "staged\n");
+    ctx.assert_file_content("locked/file.txt", "staged\n");
+    ctx.assert_file_staged("locked/file.txt");
 }
 
 #[test]
