@@ -539,6 +539,7 @@ describe("CommitForm", () => {
 			expect(bodyTextarea().value).toBe("wip body");
 		});
 	});
+
 	describe("submitting with nothing staged", () => {
 		beforeEach(() => {
 			vi.mocked(safeInvoke).mockReset();
