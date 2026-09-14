@@ -325,6 +325,45 @@ fn stash_save_reports_the_entry_it_kept_when_the_worktree_cannot_be_cleaned() {
     ctx.assert_file_staged("locked/file.txt");
 }
 
+/// The symlink branch removes the path before recreating it, so a failure to recreate
+/// must be reported rather than leaving the path missing with the stash reported good.
+#[cfg(unix)]
+#[test]
+fn stash_save_reports_a_symlink_it_could_not_restore() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let ctx = TestContext::builder()
+        .with_file("target.txt", "pointed at\n")
+        .with_commit("Initial commit")
+        .build();
+
+    let link = ctx.repo_path().join("locked/link");
+    std::fs::create_dir(ctx.repo_path().join("locked")).unwrap();
+    std::os::unix::fs::symlink("../target.txt", &link).unwrap();
+    ctx.stage_file("locked/link").unwrap();
+    {
+        let repo = ctx.repo();
+        let mut index = repo.index().unwrap();
+        let tree = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree).unwrap();
+        let sig = repo.signature().unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "add the link", &tree, &[&head])
+            .unwrap();
+    }
+
+    std::fs::remove_file(&link).unwrap();
+    std::os::unix::fs::symlink("elsewhere.txt", &link).unwrap();
+    ctx.stage_file("locked/link").unwrap();
+
+    let dir = ctx.repo_path().join("locked");
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let err = ctx.stash_save("test").unwrap_err();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(err.code, "stash_incomplete");
+}
+
 #[test]
 fn stash_save_conflicted_index_returns_error() {
     let ctx = TestContext::builder()

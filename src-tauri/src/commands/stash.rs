@@ -323,10 +323,18 @@ pub fn stash_save_inner(
                     let _ = std::fs::remove_file(&target);
                 }
                 #[cfg(unix)]
-                if mode == 0o120_000 || (mode & 0o170_000) == 0o120_000 {
-                    if let Ok(target_str) = std::str::from_utf8(&content) {
-                        let _ = std::os::unix::fs::symlink(target_str, &target);
-                    }
+                if (mode & 0o170_000) == 0o120_000 {
+                    let link_target = std::str::from_utf8(&content).map_err(|_| {
+                        TrunkError::new(
+                            "stash_incomplete",
+                            incomplete_message(&std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "the symlink target is not valid UTF-8",
+                            )),
+                        )
+                    })?;
+                    std::os::unix::fs::symlink(link_target, &target)
+                        .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
                 } else {
                     std::fs::write(&target, &content)
                         .map_err(|e| TrunkError::new("stash_incomplete", incomplete_message(&e)))?;
