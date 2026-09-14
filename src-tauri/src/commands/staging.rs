@@ -1182,6 +1182,15 @@ struct HunkBody {
     new_count: u32,
 }
 
+/// Whether libgit2 gave this origin to a no-newline-at-end-of-file marker.
+///
+/// It marks one side or the other (probed, git2 0.21): '>' the old side, '<' the
+/// new side, '=' both. Which side it names does not matter here, because the
+/// marker follows the line it annotates either way.
+const fn is_no_newline_marker(origin: char) -> bool {
+    matches!(origin, '<' | '>' | '=')
+}
+
 /// Rewrite one hunk's lines, keeping only what the selection stages.
 ///
 /// Each line becomes an addition, a deletion, context, or nothing, per the origin
@@ -1200,27 +1209,37 @@ fn rewrite_hunk_lines(
         old_count: 0,
         new_count: 0,
     };
+    let mut run = ChangeRun::default();
 
     for line_idx in 0..num_lines {
         let line = patch.line_in_hunk(hunk_idx, line_idx)?;
+        let origin = line.origin();
         let content = String::from_utf8_lossy(line.content());
+
+        if is_no_newline_marker(origin) {
+            continue;
+        }
+
+        // A line libgit2 hands over without a newline is the file's last, and
+        // git spells that as the marker on its own line straight after. The
+        // marker counts toward neither side's line count.
         let content_str = if content.ends_with('\n') {
             content.into_owned()
         } else {
-            format!("{content}\n")
+            format!("{content}\n\\ No newline at end of file\n")
         };
 
         let selected = selected_set.contains(&u32::try_from(line_idx).unwrap_or(u32::MAX));
 
-        match (line.origin(), selected, reverse) {
+        match (origin, selected, reverse) {
             // A selected line is staged onto one side. Reversing swaps which one,
             // so an add undone reads as a delete and a delete undone as an add.
             ('+', true, false) | ('-', true, true) => {
-                body.lines.push(format!("+{content_str}"));
+                run.additions.push(format!("+{content_str}"));
                 body.new_count += 1;
             }
             ('+', true, true) | ('-', true, false) => {
-                body.lines.push(format!("-{content_str}"));
+                run.deletions.push(format!("-{content_str}"));
                 body.old_count += 1;
             }
             // Contributes nothing: an unselected add is not staged, and an
@@ -1228,14 +1247,36 @@ fn rewrite_hunk_lines(
             ('+', false, false) | ('-', false, true) => {}
             // Everything else survives on both sides, so it becomes context.
             _ => {
+                run.flush_into(&mut body.lines);
                 body.lines.push(format!(" {content_str}"));
                 body.old_count += 1;
                 body.new_count += 1;
             }
         }
     }
+    run.flush_into(&mut body.lines);
 
     Ok(body)
+}
+
+/// The changed lines between two pieces of context, held apart by side.
+///
+/// Reversing a patch turns each add into a delete and each delete into an add,
+/// which leaves them interleaved in libgit2's original order. git writes a run's
+/// deletions before its additions, and libgit2's own parser only accepts an
+/// end-of-file marker on the last line of a side's run, so a patch built in the
+/// interleaved order is rejected outright (probed, git2 0.21).
+#[derive(Default)]
+struct ChangeRun {
+    deletions: Vec<String>,
+    additions: Vec<String>,
+}
+
+impl ChangeRun {
+    fn flush_into(&mut self, lines: &mut Vec<String>) {
+        lines.append(&mut self.deletions);
+        lines.append(&mut self.additions);
+    }
 }
 
 /// The `diff --git` and `---`/`+++` lines a hunk's patch must carry, newline-terminated.

@@ -197,4 +197,16 @@ impl TestContext {
             .collect();
         staging::unstage_files_inner(self.path(), &paths, self.state_map())
     }
+
+    /// The bytes a path holds in the index, as staging left them.
+    pub fn staged_content(&self, file_path: &str) -> String {
+        let repo = self.repo();
+        let index = repo.index().expect("failed to read index");
+        let entry = index
+            .get_path(std::path::Path::new(file_path), 0)
+            .unwrap_or_else(|| panic!("{file_path} is not in the index"));
+        let blob = repo.find_blob(entry.id).expect("failed to read blob");
+
+        String::from_utf8_lossy(blob.content()).into_owned()
+    }
 }

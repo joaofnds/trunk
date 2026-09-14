@@ -1666,3 +1666,176 @@ fn unstaging_a_hunk_under_ignore_whitespace_unstages_the_lines_the_view_showed()
         "the whitespace-only change the view hid must stay staged, got:\n{staged}"
     );
 }
+
+// -- no-newline-at-EOF marker tests --
+
+/// A file whose last line has no trailing newline, changed on both its first
+/// and its last line, so the hunk carries the marker on each side.
+fn create_no_trailing_newline_file(ctx: &TestContext) {
+    let path = ctx.repo_path().join("nonl.txt");
+    std::fs::write(&path, "a\nb\nc\nd").unwrap();
+
+    let repo = ctx.repo();
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("nonl.txt")).unwrap();
+    index.write().unwrap();
+    let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+    let sig = repo.signature().unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "Add nonl.txt", &tree, &[&head])
+        .unwrap();
+
+    std::fs::write(&path, "A\nb\nc\nD").unwrap();
+}
+
+#[test]
+fn stage_lines_stages_the_first_line_of_a_file_without_a_trailing_newline() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    create_no_trailing_newline_file(&ctx);
+
+    let unstaged = ctx.diff_unstaged("nonl.txt").expect("diff_unstaged failed");
+    let hunk0 = &unstaged[0].hunks[0];
+    let first_change: Vec<u32> = hunk0
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .take(2)
+        .collect();
+
+    ctx.stage_lines("nonl.txt", 0, &first_change)
+        .expect("stage_lines failed");
+
+    assert_eq!(
+        ctx.staged_content("nonl.txt"),
+        "A\nb\nc\nd",
+        "staging the first line's change leaves the last line at its old value, still unterminated"
+    );
+}
+
+#[test]
+fn stage_lines_stages_the_unterminated_last_line_of_a_file() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    create_no_trailing_newline_file(&ctx);
+
+    let unstaged = ctx.diff_unstaged("nonl.txt").expect("diff_unstaged failed");
+    let hunk0 = &unstaged[0].hunks[0];
+    let last_change: Vec<u32> = hunk0
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .skip(2)
+        .collect();
+
+    ctx.stage_lines("nonl.txt", 0, &last_change)
+        .expect("stage_lines failed");
+
+    assert_eq!(
+        ctx.staged_content("nonl.txt"),
+        "a\nb\nc\nD",
+        "staging the last line's change keeps it unterminated and leaves the first line alone"
+    );
+}
+
+#[test]
+fn stage_lines_stages_a_newly_added_trailing_newline() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    create_no_trailing_newline_file(&ctx);
+    // The change now only terminates the last line, leaving its text alone.
+    std::fs::write(ctx.repo_path().join("nonl.txt"), "a\nb\nc\nd\n").unwrap();
+
+    let unstaged = ctx.diff_unstaged("nonl.txt").expect("diff_unstaged failed");
+    let hunk0 = &unstaged[0].hunks[0];
+    let changed: Vec<u32> = hunk0
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .collect();
+
+    ctx.stage_lines("nonl.txt", 0, &changed)
+        .expect("stage_lines failed");
+
+    assert_eq!(
+        ctx.staged_content("nonl.txt"),
+        "a\nb\nc\nd\n",
+        "staging the change that terminates the last line writes the newline"
+    );
+}
+
+#[test]
+fn discard_lines_discards_a_change_to_an_unterminated_last_line() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    create_no_trailing_newline_file(&ctx);
+
+    let unstaged = ctx.diff_unstaged("nonl.txt").expect("diff_unstaged failed");
+    let hunk0 = &unstaged[0].hunks[0];
+    let last_change: Vec<u32> = hunk0
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .skip(2)
+        .collect();
+
+    ctx.discard_lines("nonl.txt", 0, &last_change)
+        .expect("discard_lines failed");
+
+    assert_eq!(
+        std::fs::read_to_string(ctx.repo_path().join("nonl.txt")).unwrap(),
+        "A\nb\nc\nd",
+        "discarding the last line's change restores it, still unterminated"
+    );
+}
+
+#[test]
+fn unstage_lines_unstages_a_change_to_an_unterminated_last_line() {
+    let ctx = TestContext::builder()
+        .with_file("README.md", "hello")
+        .with_commit("Initial commit")
+        .build();
+
+    create_no_trailing_newline_file(&ctx);
+    ctx.stage_file("nonl.txt").expect("stage_file failed");
+
+    let staged = ctx.diff_staged("nonl.txt").expect("diff_staged failed");
+    let hunk0 = &staged[0].hunks[0];
+    let last_change: Vec<u32> = hunk0
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| matches!(l.origin, DiffOrigin::Add | DiffOrigin::Delete))
+        .map(|(i, _)| u32::try_from(i).unwrap())
+        .skip(2)
+        .collect();
+
+    ctx.unstage_lines("nonl.txt", 0, &last_change)
+        .expect("unstage_lines failed");
+
+    assert_eq!(
+        ctx.staged_content("nonl.txt"),
+        "A\nb\nc\nd",
+        "unstaging the last line's change leaves it at its old value, still unterminated"
+    );
+}
