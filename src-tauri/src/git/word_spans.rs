@@ -59,7 +59,7 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Hun
     let mut i = 0;
 
     while i < lines.len() {
-        if matches!(lines[i].origin, DiffOrigin::Context) {
+        if matches!(lines[i].origin, DiffOrigin::Context | DiffOrigin::NoNewline) {
             i += 1;
             continue;
         }
@@ -68,20 +68,29 @@ pub fn compute_word_spans_for_hunk(lines: &[DiffLine], deadline: Instant) -> Hun
         while i < lines.len() && matches!(lines[i].origin, DiffOrigin::Delete) {
             i += 1;
         }
+        let del_end = i;
+        // The marker annotates the delete above it, so it sits between the two
+        // runs of a replacement. Stepping over it keeps the add run attached to
+        // its deletes; leaving it in would end the run and strand both sides.
+        if del_end > del_start && i < lines.len() && lines[i].origin == DiffOrigin::NoNewline {
+            i += 1;
+        }
         let add_start = i;
         while i < lines.len() && matches!(lines[i].origin, DiffOrigin::Add) {
             i += 1;
         }
 
-        if del_start == add_start || add_start == i {
-            for pairing in &mut result.pairing[del_start..i] {
-                *pairing = LinePairing::Alone;
+        if del_start == del_end || add_start == i {
+            for (offset, pairing) in result.pairing[del_start..i].iter_mut().enumerate() {
+                if lines[del_start + offset].origin != DiffOrigin::NoNewline {
+                    *pairing = LinePairing::Alone;
+                }
             }
             continue;
         }
         emphasize_run(
             lines,
-            del_start..add_start,
+            del_start..del_end,
             add_start..i,
             deadline,
             &mut result,
@@ -173,7 +182,10 @@ fn emphasize_run(
     // deadline-cut refinement produced depend on machine timing, so the run
     // falls back to positional pairing rather than seating lines by them.
     if deadline <= Instant::now() {
-        for pairing in &mut result.pairing[del.start..add.end] {
+        for pairing in &mut result.pairing[del] {
+            *pairing = LinePairing::Unknown;
+        }
+        for pairing in &mut result.pairing[add] {
             *pairing = LinePairing::Unknown;
         }
     }
@@ -350,6 +362,19 @@ mod word_span_tests {
             content: content.to_string(),
             old_lineno: None,
             new_lineno: Some(1),
+            spans: vec![],
+            pairing: LinePairing::Unknown,
+        }
+    }
+
+    /// git's "\\ No newline at end of file" marker, which libgit2 hands back as a
+    /// line of the hunk between the delete and the add it annotates.
+    fn eofnl() -> DiffLine {
+        DiffLine {
+            origin: DiffOrigin::NoNewline,
+            content: "\n\\ No newline at end of file\n".to_string(),
+            old_lineno: None,
+            new_lineno: None,
             spans: vec![],
             pairing: LinePairing::Unknown,
         }
@@ -582,6 +607,47 @@ mod word_span_tests {
                 LinePairing::Partner { line: 1 },
                 LinePairing::Partner { line: 2 },
             ]
+        );
+    }
+
+    #[test]
+    fn a_no_newline_marker_does_not_split_the_run_it_sits_in() {
+        let lines = vec![
+            del("the final line of the file\n"),
+            eofnl(),
+            add("the final line of the file\n"),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![
+                LinePairing::Partner { line: 2 },
+                LinePairing::Unknown,
+                LinePairing::Partner { line: 0 },
+            ],
+            "the marker annotates the delete; it must not end the delete run and strand the add"
+        );
+    }
+
+    #[test]
+    fn a_marker_on_each_side_still_leaves_one_replacement() {
+        let lines = vec![
+            del("the quick brown fox jumps over the lazy dog"),
+            eofnl(),
+            add("the quick brown cat jumps over the lazy dog"),
+            eofnl(),
+        ];
+
+        assert_eq!(
+            pairings(&lines, word_diff_budget()),
+            vec![
+                LinePairing::Partner { line: 2 },
+                LinePairing::Unknown,
+                LinePairing::Partner { line: 0 },
+                LinePairing::Unknown,
+            ],
+            "a file lacking its final newline on both sides carries two markers, and \
+             neither is a line to seat"
         );
     }
 

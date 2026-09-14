@@ -33,10 +33,28 @@ export function pairLines(lines: DiffLine[]): PairedRow[] {
 			continue;
 		}
 
+		// git's no-newline marker annotates the line above it rather than being a
+		// line of either side, so it occupies no row on either half.
+		if (line.origin === "NoNewline") {
+			i++;
+			continue;
+		}
+
 		// Collect consecutive deletes
 		const deletes: { line: DiffLine; lineIdx: number }[] = [];
 		while (i < lines.length && lines[i].origin === "Delete") {
 			deletes.push({ line: lines[i], lineIdx: i });
+			i++;
+		}
+
+		// The marker between a replacement's two halves must not end the delete
+		// run: stepping over it keeps the adds paired with the deletes they
+		// replace, which is the single row git itself shows.
+		if (
+			deletes.length > 0 &&
+			i < lines.length &&
+			lines[i].origin === "NoNewline"
+		) {
 			i++;
 		}
 

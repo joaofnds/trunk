@@ -15,7 +15,11 @@ export type FileStatusType =
 	| "Renamed"
 	| "Typechange"
 	| "Conflicted";
-export type DiffOrigin = "Context" | "Add" | "Delete";
+/** "NoNewline" is git's "\ No newline at end of file" marker. It annotates the
+ *  line above it rather than being a line of either side, so it carries no line
+ *  numbers, occupies no row in the split view, and cannot be selected. It keeps
+ *  its index in the hunk's line array, which is what staging addresses lines by. */
+export type DiffOrigin = "Context" | "Add" | "Delete" | "NoNewline";
 
 // start/end are UTF-16 code-unit indices — `content.slice(start, end)` is the
 // intended read; Rust converts from its byte offsets before serializing.

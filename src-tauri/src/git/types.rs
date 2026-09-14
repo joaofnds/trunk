@@ -175,6 +175,10 @@ pub enum DiffOrigin {
     Context,
     Add,
     Delete,
+    /// git's "\ No newline at end of file" marker. It annotates the line above
+    /// it rather than being a line of either side, so it carries no line numbers
+    /// and no side of the split view seats it.
+    NoNewline,
 }
 
 #[derive(Debug, Serialize, Clone, Default)]

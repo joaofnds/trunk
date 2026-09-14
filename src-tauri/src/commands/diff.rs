@@ -375,12 +375,14 @@ fn hunks_of(patch: &git2::Patch<'_>) -> Result<Vec<DiffHunk>, TrunkError> {
 /// EOFNL markers ('<', '>', '=') carry line numbers too (probed, git2 0.21),
 /// which would paint real-code spans onto them; null both linenos for any origin
 /// the frontend doesn't treat as a real diff line, so `pick_side_line` naturally
-/// skips them.
+/// skips them. They keep their seat in the hunk because staging addresses lines
+/// by their index in this vector, which is libgit2's own patch line index.
 fn diff_line_of(line: &git2::DiffLine<'_>) -> DiffLine {
     let raw_origin = line.origin();
     let origin = match raw_origin {
         '+' => DiffOrigin::Add,
         '-' => DiffOrigin::Delete,
+        '<' | '>' | '=' => DiffOrigin::NoNewline,
         _ => DiffOrigin::Context,
     };
     let (old_lineno, new_lineno) = if matches!(raw_origin, '+' | '-' | ' ') {
@@ -388,15 +390,30 @@ fn diff_line_of(line: &git2::DiffLine<'_>) -> DiffLine {
     } else {
         (None, None)
     };
+    let raw_content = String::from_utf8_lossy(line.content());
+    let content = if origin == DiffOrigin::NoNewline {
+        marker_text(&raw_content)
+    } else {
+        raw_content.into_owned()
+    };
 
     DiffLine {
         origin,
-        content: String::from_utf8_lossy(line.content()).into_owned(),
+        content,
         old_lineno,
         new_lineno,
         spans: vec![],
         pairing: LinePairing::Unknown,
     }
+}
+
+/// The marker's own text, without the newline libgit2 puts in front of it.
+///
+/// That newline is the one closing the line the marker annotates, not part of
+/// the marker, and a view rendering the content verbatim paints it as a blank
+/// row above the marker's text.
+fn marker_text(content: &str) -> String {
+    content.strip_prefix('\n').unwrap_or(content).to_string()
 }
 
 /// Collect diff lines from git2 and enrich with syntax highlighting + word-level diff.
@@ -513,6 +530,7 @@ fn token_source(line: &DiffLine, new_available: bool) -> Option<TokenSource> {
                 line.old_lineno.map(TokenSource::Old)
             }
         }
+        DiffOrigin::NoNewline => None,
     }
 }
 
@@ -676,24 +694,11 @@ fn walk_diff_raw_for_bench(
             true
         }),
         Some(&mut |_delta, _hunk, line| {
-            let origin = match line.origin() {
-                '+' => DiffOrigin::Add,
-                '-' => DiffOrigin::Delete,
-                _ => DiffOrigin::Context,
-            };
-            let content = String::from_utf8_lossy(line.content()).into_owned();
             let mut diffs = file_diffs.borrow_mut();
             if let Some(fd) = diffs.last_mut()
                 && let Some(hunk) = fd.hunks.last_mut()
             {
-                hunk.lines.push(DiffLine {
-                    origin,
-                    content,
-                    old_lineno: line.old_lineno(),
-                    new_lineno: line.new_lineno(),
-                    spans: vec![],
-                    pairing: LinePairing::Unknown,
-                });
+                hunk.lines.push(diff_line_of(&line));
             }
             true
         }),
@@ -2296,6 +2301,135 @@ mod enrich_tests {
             syntax_classes(deepest).is_empty(),
             "a side spanning more than the cap must carry no syntax spans, got {:?}",
             deepest.spans
+        );
+    }
+}
+
+#[cfg(test)]
+mod eofnl_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// A repo whose committed `f.txt` holds `before`, with `after` in the
+    /// working tree, so the diff is the one the staging view renders.
+    fn workdir_hunks(before: &str, after: &str) -> Vec<DiffHunk> {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let file = dir.path().join("f.txt");
+        fs::write(&file, before).unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("f.txt")).unwrap();
+            index.write().unwrap();
+        }
+        fs::write(&file, after).unwrap();
+
+        let mut opts = workdir_diff_opts("f.txt");
+        let diff = repo.diff_index_to_workdir(None, Some(&mut opts)).unwrap();
+
+        walk_diff(&diff, &repo, NewSideSource::Workdir)
+            .unwrap()
+            .remove(0)
+            .hunks
+    }
+
+    fn origins(hunks: &[DiffHunk]) -> Vec<&DiffOrigin> {
+        hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .map(|l| &l.origin)
+            .collect()
+    }
+
+    #[test]
+    fn the_no_newline_marker_reads_as_its_own_origin_not_as_context() {
+        let hunks = workdir_hunks("a\nlast", "a\nlast\n");
+
+        assert_eq!(
+            origins(&hunks),
+            vec![
+                &DiffOrigin::Context,
+                &DiffOrigin::Delete,
+                &DiffOrigin::NoNewline,
+                &DiffOrigin::Add,
+            ],
+            "the marker git prints between the two halves is not a line of either side"
+        );
+    }
+
+    #[test]
+    fn a_marker_keeps_its_seat_so_staging_line_indices_stay_true() {
+        let hunks = workdir_hunks("a\nlast", "a\nlast\n");
+
+        assert_eq!(
+            hunks[0].lines.len(),
+            4,
+            "staging addresses lines by index into this vector, so dropping the \
+             marker would stage the wrong lines"
+        );
+    }
+
+    #[test]
+    fn a_marker_renders_as_one_line_of_text() {
+        let hunks = workdir_hunks("a\nlast", "a\nlast\n");
+
+        assert_eq!(
+            hunks[0].lines[2].content, "\\ No newline at end of file\n",
+            "libgit2 prefixes the newline that closes the annotated line; kept, it \
+             paints a blank row above the marker"
+        );
+    }
+
+    #[test]
+    fn a_marker_carries_no_line_numbers() {
+        let hunks = workdir_hunks("a\nlast", "a\nlast\n");
+        let marker = &hunks[0].lines[2];
+
+        assert_eq!((marker.old_lineno, marker.new_lineno), (None, None));
+    }
+
+    #[test]
+    fn the_replacement_around_a_marker_pairs_across_it() {
+        let hunks = workdir_hunks(
+            "a\nthe quick brown fox jumps over the lazy dog",
+            "a\nthe quick brown cat jumps over the lazy dog\n",
+        );
+        let lines = &hunks[0].lines;
+
+        assert_eq!(
+            (&lines[1].pairing, &lines[3].pairing),
+            (
+                &LinePairing::Partner { line: 3 },
+                &LinePairing::Partner { line: 1 }
+            ),
+            "the delete and the add are one replacement, so the split view seats them in one row"
+        );
+    }
+
+    #[test]
+    fn the_word_diff_reaches_across_a_marker_to_emphasize_the_changed_word() {
+        let hunks = workdir_hunks(
+            "a\nthe quick brown fox jumps over the lazy dog",
+            "a\nthe quick brown cat jumps over the lazy dog\n",
+        );
+        let lines = &hunks[0].lines;
+
+        assert!(
+            lines[1].spans.iter().any(|s| s.emphasized)
+                && lines[3].spans.iter().any(|s| s.emphasized),
+            "the marker sitting between the two halves must not block word-level emphasis"
+        );
+    }
+
+    #[test]
+    fn a_marker_after_a_context_line_reads_as_a_marker_too() {
+        let hunks = workdir_hunks("x\ny\nlast", "CHANGED\ny\nlast");
+
+        assert_eq!(
+            origins(&hunks).last(),
+            Some(&&DiffOrigin::NoNewline),
+            "a file that lacks its final newline on both sides still ends with the marker"
         );
     }
 }
