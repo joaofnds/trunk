@@ -340,6 +340,17 @@ re-classify as `non_fast_forward`, so the error code alone cannot distinguish a 
 from a first-time divergence — the stderr can. Retrying the force push is a guaranteed no-op
 until the user integrates, so Trunk offers no force-push action on a lease refusal.
 
+## Stashing (TRUNK-231, 2026-09-14)
+
+**Staged changes** — what the index holds that HEAD does not. In Trunk this is the whole
+of what a stash takes: a change the user has not staged is never stashed, and with
+nothing staged there is no stash to create, only a message asking the user to stage
+first. Trunk does not infer what an empty index means (João, 2026-09-14).
+
+**Stash entry** — one saved set of staged changes, addressed by the oid of its commit
+rather than by its `stash@{n}` position, because a second window, a terminal, or this
+app on another tab can renumber that position between listing an entry and acting on it.
+
 ## Application harness (spec 2026-08-25)
 
 **Application harness** — the Harness that boots the real application headlessly: the real
