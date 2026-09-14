@@ -539,4 +539,56 @@ describe("CommitForm", () => {
 			expect(bodyTextarea().value).toBe("wip body");
 		});
 	});
+	describe("submitting with nothing staged", () => {
+		beforeEach(() => {
+			vi.mocked(safeInvoke).mockReset();
+			vi.mocked(safeInvoke).mockResolvedValue(undefined);
+		});
+
+		function submit(): HTMLElement {
+			return screen.getByTestId("commit-form-submit");
+		}
+
+		function stashTab(): HTMLElement {
+			const found = screen
+				.getAllByRole("button")
+				.find(
+					(b) =>
+						b.getAttribute("data-testid") !== "commit-form-submit" &&
+						b.textContent?.trim() === "Stash",
+				);
+			if (!found) throw new Error('tab "Stash" not found');
+			return found;
+		}
+
+		it("tells the user to stage first in stash mode", async () => {
+			render(CommitForm, { props: { ...defaultProps, stagedCount: 0 } });
+
+			await fireEvent.click(stashTab());
+			await fireEvent.click(submit());
+
+			expect(
+				await screen.findByText("Nothing to stash — stage changes first."),
+			).toBeInTheDocument();
+			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
+				"stash_save",
+				expect.anything(),
+			);
+		});
+
+		it("names the empty staging area in commit mode", async () => {
+			render(CommitForm, { props: { ...defaultProps, stagedCount: 0 } });
+
+			await fireEvent.input(screen.getByTestId("commit-form-subject"), {
+				target: { value: "a subject" },
+			});
+			await fireEvent.click(submit());
+
+			expect(await screen.findByText("No files staged")).toBeInTheDocument();
+			expect(vi.mocked(safeInvoke)).not.toHaveBeenCalledWith(
+				"create_commit",
+				expect.anything(),
+			);
+		});
+	});
 });

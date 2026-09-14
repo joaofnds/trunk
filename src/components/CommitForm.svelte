@@ -129,9 +129,14 @@ async function handleSubmit() {
 		return;
 	}
 
-	// All modes require staged files (except amend which can amend message-only)
+	// All modes require staged files (except amend which can amend message-only).
+	// Stash mode repeats the backend's nothing_to_stash wording, so the guard and
+	// stash_save name the same next step wherever the user reaches stashing from.
 	if (mode !== "amend" && stagedCount === 0) {
-		stagedError = "No files staged";
+		stagedError =
+			mode === "stash"
+				? "Nothing to stash — stage changes first."
+				: "No files staged";
 		return;
 	}
 
