@@ -48,6 +48,13 @@ impl RepoChanged {
             let Some(relative) = roots.iter().find_map(|root| path.strip_prefix(root).ok()) else {
                 return Self::whole_repo(repo_string);
             };
+
+            // The root stripped against itself, so the report names the whole
+            // repository rather than a file in it.
+            if relative.as_os_str().is_empty() {
+                return Self::whole_repo(repo_string);
+            }
+
             paths.push(relative.to_string_lossy().replace('\\', "/"));
         }
 
@@ -235,6 +242,20 @@ mod tests {
 
         assert_eq!(payload.repo, "/var/repo");
         assert_eq!(payload.paths, vec!["a.txt"]);
+    }
+
+    // Stripping the root against itself yields an empty relative path, which
+    // names no file any subscriber can match. It is the same "could not say"
+    // condition an empty batch is, so it takes the same answer.
+    #[test]
+    fn the_repository_root_itself_leaves_the_change_unscoped() {
+        let payload = RepoChanged::scoped_to(
+            Path::new("/repo"),
+            &[PathBuf::from("/repo")],
+            &[PathBuf::from("/repo")],
+        );
+
+        assert_eq!(payload, RepoChanged::whole_repo("/repo"));
     }
 
     #[test]

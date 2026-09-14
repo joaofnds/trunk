@@ -162,25 +162,29 @@
    `commands/` emit the same event with an empty path list, meaning the extent is
    unknown and every subscriber refreshes
 3. Path-scoped frontend consumers arm a fixed 200 ms first deadline; more events do not move it.
-   A consumer may also pass `subscribeToRepoChanges` a filter over the changed paths, so a
-   write that names only files it is not showing never reaches it
+   `subscribeToRepoChanges` hands each event's changed paths to its subscriber, so a
+   subscriber whose work depends on particular files can skip a write naming none of them
 4. Each consumer admits one active read and one pending catch-up, so status, graph, review,
    toolbar and dirty-count work complete independently without growing with the event count
 5. `App.svelte` refreshes each open tab's dirty badge; `RepoView.svelte` notifies its graph,
    refs, recovery prompt and rendered working-tree diff while separately refreshing its own
-   dirty counts, HEAD branch and selected file. The selected file's diff subscribes
-   separately and refetches only for a change naming that file or anything under `.git`
+   dirty counts, HEAD branch and selected file. Status, HEAD and the change notification
+   refresh for every event, while the selected file's diff refetches only for a change
+   naming that file or anything under `.git`, since the index and HEAD move what a staged
+   diff compares against
 6. Post-mutation status and review callers enter the same guard and wait for a run admitted
    after the active read rather than returning its older completion
 
-The watcher still reports ignored build output. The frontend bound limits resulting work but
-does not filter those events or establish a build-time CPU target.
+The watcher still reports ignored build output: it applies no gitignore filtering. The event
+now names the changed paths, so a subscriber that depends on particular files skips a write
+naming none of them, and the frontend bound limits the rest. No build-time CPU target is
+established.
 
 ### Staging a File
 
 1. User clicks stage button in `StagingPanel.svelte` → calls `safeInvoke("stage_file", { path, filePath })`
 2. Rust `stage_file` (`src-tauri/src/commands/staging.rs`) opens fresh `git2::Repository`, calls `repo.index().add_path()`, writes index
-3. Returns `Ok(())` → frontend calls `emit("repo-changed", path)` indirectly via watcher (or directly refreshes)
+3. Returns `Ok(())` → the watcher emits `repo-changed` naming the written path (or the frontend refreshes directly)
 4. `StagingPanel` re-fetches status; `DiffPanel` re-fetches diff
 
 ### Remote Operation (Fetch/Pull/Push) Path

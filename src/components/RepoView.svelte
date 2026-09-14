@@ -168,6 +168,12 @@ let repoViewActive = true;
 
 const repoNotification = createCoalescedTask(scheduler, async () => {
 	handleRefresh();
+});
+
+// The rendered-markdown view refetches off this token rather than through the
+// selected-diff task, so it needs its own coalesced task to stay behind the
+// same path gate as the rest of the open file's work (TRUNK-232).
+const displayedDiffNotification = createCoalescedTask(scheduler, async () => {
 	diffRefreshToken += 1;
 });
 
@@ -855,6 +861,7 @@ onDestroy(() => {
 	rebaseDiffLoadSeq += 1;
 	currentFileGeneration += 1;
 	repoNotification.dispose();
+	displayedDiffNotification.dispose();
 	dirtyCountsRefresh.dispose();
 	headBranchRefresh.dispose();
 	selectedDiffRefresh.dispose();
@@ -1703,6 +1710,8 @@ $effect(() => {
 			dirtyCountsRefresh.invalidate();
 			headBranchRefresh.invalidate();
 			if (!concernsOpenFiles(changed)) return;
+
+			displayedDiffNotification.invalidate();
 
 			const selected = selectedFile;
 			if (selected && selected.kind !== "conflicted") {

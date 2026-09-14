@@ -202,4 +202,58 @@ describe("DiffViewer while a diff is loading", () => {
 
 		expect(queryByText("Loading diff…")).not.toBeNull();
 	});
+
+	// A commit's file list arrives as metadata, one hunkless entry per file, before
+	// any file's diff is fetched. Reading that entry as content leaves an empty
+	// pane where the placeholder belongs.
+	it("shows the placeholder when the selected file holds only list metadata", () => {
+		const metadataOnly: FileDiff = {
+			path: "README.md",
+			old_path: null,
+			status: "Modified",
+			is_binary: false,
+			hunks: [],
+		};
+
+		const { queryByText } = render(DiffViewer, {
+			props: { ...baseProps, loading: true, fileDiffs: [metadataOnly] },
+		});
+
+		expect(queryByText("Loading diff…")).not.toBeNull();
+	});
+
+	// A binary file carries no hunks of its own and is content all the same.
+	it("keeps a binary file's row on screen while it refreshes", () => {
+		const binary: FileDiff = {
+			path: "README.md",
+			old_path: null,
+			status: "Modified",
+			is_binary: true,
+			hunks: [],
+		};
+
+		const { container, queryByText } = render(DiffViewer, {
+			props: { ...baseProps, loading: true, fileDiffs: [binary] },
+		});
+
+		expect(queryByText("Loading diff…")).toBeNull();
+		expect(container.querySelector(".binary-row")).not.toBeNull();
+	});
+
+	// Content the viewer keeps has to answer the path being asked for. The list
+	// still holds the previous file's payload while the newly selected one is in
+	// flight, and showing it would caption one file's hunks with another's name.
+	it("shows the placeholder when the loaded diff is for another file", () => {
+		const { queryByText } = render(DiffViewer, {
+			props: {
+				...baseProps,
+				selectedPath: "docs/other.md",
+				loading: true,
+				fileDiffs: [modifiedReadme],
+			},
+		});
+
+		expect(queryByText("STABLE CONTENT")).toBeNull();
+		expect(queryByText("Loading diff…")).not.toBeNull();
+	});
 });

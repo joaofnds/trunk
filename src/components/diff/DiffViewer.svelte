@@ -152,14 +152,26 @@ const selectedFileDiff = $derived(
 	fileDiffs.find((f) => f.path === selectedPath),
 );
 
-// A refresh of what is already on screen keeps it there. The watcher refetches
-// the open diff on any write under the repo, and a placeholder ahead of the
-// content branches tore a still-valid diff out of the DOM for the length of
-// each fetch (TRUNK-232). A payload the caller has marked stale is not content
-// to keep: it answers a mode nobody is asking for any more.
+// Whether the pane holds content that answers what is being asked for, which is
+// what lets a refresh keep it on screen instead of tearing it out for the length
+// of the fetch. Two ways it can fail to answer: the caller has marked the
+// payload stale, meaning it is the shape of a content mode nobody wants any
+// more; or a path is selected and the list does not hold that path's diff yet,
+// which is a selection still in flight rather than a refresh. A commit view
+// selects no single path, so the whole list is its content.
 const hasContent = $derived(
-	!payloadStale && (fileDiffs.length > 0 || commitDetail !== null),
+	!payloadStale &&
+		(selectedPath !== null
+			? isLoaded(selectedFileDiff)
+			: fileDiffs.length > 0 || commitDetail !== null),
 );
+
+// A commit's file list arrives as one hunkless entry per file before any of
+// them is fetched, so a hunkless entry is metadata rather than content. A
+// binary file carries no hunks either and is content all the same.
+function isLoaded(diff: FileDiff | undefined): boolean {
+	return diff !== undefined && (diff.hunks.length > 0 || diff.is_binary);
+}
 </script>
 
 <!-- Every view mounted here owns its own scroller, so this wrapper must never be

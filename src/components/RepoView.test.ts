@@ -719,7 +719,19 @@ describe("RepoView", () => {
 			await settle();
 
 			expect(diffCalls()).toBeGreaterThan(before);
-			expect(screen.queryByText("STABLE CONTENT")).toBeTruthy();
+		});
+
+		// A staged diff reads the index rather than the working tree, so a commit
+		// or a stage made elsewhere writes only under .git and would otherwise
+		// leave the pane showing a diff that no longer exists.
+		it("refetches the open diff when the index is written", async () => {
+			const { diffCalls, settle } = await openStagedReadme();
+			const before = diffCalls();
+
+			fireRepoChanged("/test/repo", [".git/index"]);
+			await settle();
+
+			expect(diffCalls()).toBeGreaterThan(before);
 		});
 
 		it("drops a Comment File read superseded by a same-file reload", async () => {

@@ -179,7 +179,8 @@ come off; its §2 table carries the driven-command count and how to re-derive it
 
 The filesystem watcher is off — `WatcherState::disabled()`, so `open_repo` runs unchanged while
 no watch is created — and `driver.events.externalChange(path)` fires the identical
-`app.emit("repo-changed", path)` call `watcher.rs` makes. What that gives up is one link:
+`app.emit("repo-changed", payload)` call `watcher.rs` makes, defaulting to the unscoped
+payload the write commands emit; pass changed paths as its second argument to emit a scoped one. What that gives up is one link:
 whether the watcher itself fires.
 
 The macOS traffic-light reposition is off too, through `TrafficLights::disabled()`.
