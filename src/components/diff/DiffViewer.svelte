@@ -34,6 +34,10 @@ interface Props {
 	diffKind: PanelDiffKind;
 	emptyCommit?: boolean;
 	loading: boolean;
+	/** The payload on screen answers a different content mode than the one asked
+	 *  for. Unlike `loading`, it means what is mounted is the wrong shape, so it
+	 *  comes down for the placeholder rather than staying up (TRUNK-232). */
+	payloadStale?: boolean;
 	loadError?: string | null;
 	onretry?: () => void;
 	hunkOperationInFlight: boolean;
@@ -102,6 +106,7 @@ let {
 	diffKind,
 	emptyCommit = false,
 	loading,
+	payloadStale = false,
 	loadError = null,
 	onretry,
 	hunkOperationInFlight,
@@ -146,6 +151,15 @@ let {
 const selectedFileDiff = $derived(
 	fileDiffs.find((f) => f.path === selectedPath),
 );
+
+// A refresh of what is already on screen keeps it there. The watcher refetches
+// the open diff on any write under the repo, and a placeholder ahead of the
+// content branches tore a still-valid diff out of the DOM for the length of
+// each fetch (TRUNK-232). A payload the caller has marked stale is not content
+// to keep: it answers a mode nobody is asking for any more.
+const hasContent = $derived(
+	!payloadStale && (fileDiffs.length > 0 || commitDetail !== null),
+);
 </script>
 
 <!-- Every view mounted here owns its own scroller, so this wrapper must never be
@@ -155,7 +169,7 @@ const selectedFileDiff = $derived(
      scrollIntoView and scroll chaining can move, and WebKit hands it a phantom
      scroll range the size of the rendered pane's content (TRUNK-127). -->
 <div style="flex: 1; overflow: clip; min-height: 0; position: relative; container-type: inline-size; overscroll-behavior-x: none;">
-  {#if fileDiffs.length === 0 && commitDetail === null && !loading && !loadError}
+  {#if fileDiffs.length === 0 && commitDetail === null && !loading && !payloadStale && !loadError}
     <div style="
       flex: 1;
       display: flex;
@@ -202,7 +216,7 @@ const selectedFileDiff = $derived(
 				<button class="retry-button" type="button" onclick={onretry}>Retry</button>
 			{/if}
     </div>
-  {:else if loading}
+  {:else if (loading || payloadStale) && !hasContent}
     <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); font-size: 13px;">
       Loading diff…
     </div>

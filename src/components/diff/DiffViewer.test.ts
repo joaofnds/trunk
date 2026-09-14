@@ -1,5 +1,9 @@
 import { render } from "@testing-library/svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	restoreLayout,
+	stubLayout,
+} from "../../__tests__/helpers/layout-stub.js";
 import type { FileDiff } from "../../lib/types.js";
 import DiffViewer from "./DiffViewer.svelte";
 
@@ -145,5 +149,57 @@ describe("DiffViewer's wrapper", () => {
 		const { container } = render(DiffViewer, { props: baseProps });
 		const wrapper = container.firstElementChild as HTMLElement;
 		expect(wrapper.getAttribute("style")).toContain("overflow: clip");
+	});
+});
+
+// A write anywhere under the repo refetches the open diff, and the placeholder
+// branch used to sit ahead of the content branches, so the valid diff it was
+// refreshing left the DOM for the length of the fetch (TRUNK-232).
+describe("DiffViewer while a diff is loading", () => {
+	const modifiedReadme: FileDiff = {
+		path: "README.md",
+		old_path: null,
+		status: "Modified",
+		is_binary: false,
+		hunks: [
+			{
+				header: "@@ -1,0 +1,1 @@",
+				old_start: 1,
+				old_lines: 0,
+				new_start: 1,
+				new_lines: 1,
+				lines: [
+					{
+						origin: "Add",
+						content: "STABLE CONTENT",
+						old_lineno: null,
+						new_lineno: 1,
+						spans: [],
+					},
+				],
+			},
+		],
+	};
+
+	// The hunk view virtualizes its rows off the viewport's measured height,
+	// which jsdom reports as zero, so the content needs a box to render into.
+	beforeEach(() => stubLayout({ width: 900, height: 600 }));
+	afterEach(restoreLayout);
+
+	it("keeps the content it already has on screen", async () => {
+		const { queryByText, findByText } = render(DiffViewer, {
+			props: { ...baseProps, loading: true, fileDiffs: [modifiedReadme] },
+		});
+
+		expect(await findByText("STABLE CONTENT")).toBeTruthy();
+		expect(queryByText("Loading diff…")).toBeNull();
+	});
+
+	it("shows the placeholder when there is nothing to show yet", () => {
+		const { queryByText } = render(DiffViewer, {
+			props: { ...baseProps, loading: true, fileDiffs: [] },
+		});
+
+		expect(queryByText("Loading diff…")).not.toBeNull();
 	});
 });

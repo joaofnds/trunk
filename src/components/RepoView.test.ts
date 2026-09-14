@@ -619,7 +619,7 @@ describe("RepoView", () => {
 
 			await view.rerender({ ...props, contentMode: "full" });
 			await view.rerender({ ...props, contentMode: "hunk" });
-			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(screen.queryByText("Loading diff…")).toBeFalsy();
 			resolveFull([stagingDiff("STALE STAGING")]);
 			await tick();
 			expect(screen.queryByText("STALE STAGING")).toBeFalsy();
@@ -786,7 +786,6 @@ describe("RepoView", () => {
 			await vi.waitFor(() => expect(resolveHunk).toBeTypeOf("function"));
 
 			expect(screen.queryByText("Could not load diff")).toBeFalsy();
-			expect(screen.queryByText("INITIAL STAGING")).toBeFalsy();
 			resolveHunk([stagingDiff("NEW STAGING")]);
 			expect(await screen.findByText("NEW STAGING")).toBeTruthy();
 		});
@@ -1120,7 +1119,7 @@ describe("RepoView", () => {
 			rejectFull(new Error("stale full-file load failed"));
 			await vi.waitFor(() => expect(resolveHunk).toBeTypeOf("function"));
 
-			expect(screen.getByText("Loading diff…")).toBeTruthy();
+			expect(screen.queryByText("Loading diff…")).toBeFalsy();
 			expect(screen.queryByText("Could not load diff")).toBeFalsy();
 			resolveHunk([makeFileDiffWithContent("f.ts", "NEWEST")]);
 			expect(await screen.findByText("NEWEST")).toBeTruthy();

@@ -650,8 +650,8 @@ let currentSourceError = $derived(
 					? currentFileError
 					: null,
 );
-let currentSourceLoading = $derived.by(() => {
-	const loading = selectedCompareFile
+let currentSourceLoading = $derived(
+	selectedCompareFile
 		? compareDiffLoading
 		: selectedCommitFile
 			? commitDiffLoading
@@ -659,19 +659,20 @@ let currentSourceLoading = $derived.by(() => {
 				? stagingDiffLoading
 				: selectedCurrentFile
 					? currentFileLoading
-					: false;
-	// Adding the current-file selection here would read a view that is forced to
-	// full-file content as one still waiting for the global mode's payload.
-	const hasRequestBackedSelection = Boolean(
-		selectedCompareFile || selectedCommitFile || selectedFile,
-	);
-	return (
-		loading ||
-		(hasRequestBackedSelection &&
-			!currentSourceError &&
-			currentSourceMode !== contentMode)
-	);
-});
+					: false,
+);
+
+// The payload on screen answers a different content mode than the one asked
+// for, so it is the wrong shape rather than merely old: the viewer hides it
+// instead of keeping it up through the fetch (TRUNK-232).
+//
+// Adding the current-file selection here would read a view that is forced to
+// full-file content as one still waiting for the global mode's payload.
+let currentSourcePayloadStale = $derived(
+	Boolean(selectedCompareFile || selectedCommitFile || selectedFile) &&
+		!currentSourceError &&
+		currentSourceMode !== contentMode,
+);
 
 // ViewDescriptor for the current diff. resolveViewOid handles per-kind OID
 // selection (commit→commitOid, unstaged/staged→snapshots, conflicted→null), so
@@ -2071,7 +2072,8 @@ function startRightResize(e: MouseEvent) {
             composerTarget={diffComposerTarget}
             {contentMode}
             {oncontentmodechange}
-            loading={rebaseDiffLoading || (rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode)}
+            loading={rebaseDiffLoading}
+            payloadStale={rebaseDiffFile !== null && !rebaseDiffError && rebaseDiffMode !== contentMode}
             loadError={rebaseDiffError}
             onloadfullfile={loadRebaseFullFileForComment}
             onretry={() => { if (rebaseDiffFile) void reloadRebaseFile(rebaseDiffFile, buildDiffOptions()); }}
@@ -2163,6 +2165,7 @@ function startRightResize(e: MouseEvent) {
           {contentMode}
           {oncontentmodechange}
           loading={currentSourceLoading}
+          payloadStale={currentSourcePayloadStale}
           loadError={currentSourceError}
           onloadfullfile={loadFullFileForComment}
           onretry={() => { void retryVisibleDiff(); }}

@@ -73,6 +73,9 @@ interface Props {
 	contentMode: ContentMode;
 	oncontentmodechange: (mode: ContentMode) => void;
 	loading?: boolean;
+	/** The payload on screen answers a different content mode than the one asked
+	 *  for, so the viewer hides it rather than keeping it up through the fetch. */
+	payloadStale?: boolean;
 	loadError?: string | null;
 	onretry?: () => void;
 	onloadfullfile?: (filePath: string) => Promise<FileDiff | null>;
@@ -102,6 +105,7 @@ let {
 	contentMode,
 	oncontentmodechange,
 	loading = false,
+	payloadStale = false,
 	loadError = null,
 	onretry,
 	onloadfullfile,
@@ -447,7 +451,7 @@ async function handleCommentFullFile(filePath: string, indices: Set<number>) {
 async function loadFullFileForComment(
 	filePath: string,
 ): Promise<FileDiff | null> {
-	if (contentMode === "full" && !loading && !loadError) {
+	if (contentMode === "full" && !loading && !payloadStale && !loadError) {
 		return fileDiffs.find((file) => file.path === filePath) ?? null;
 	}
 	if (!onloadfullfile) return null;
@@ -1093,6 +1097,7 @@ async function handleDiscardLines(filePath: string, hunkIndex: number) {
 		{diffKind}
 		{emptyCommit}
 		{loading}
+		{payloadStale}
 		{loadError}
 		{onretry}
 		{hunkOperationInFlight}
