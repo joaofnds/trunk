@@ -172,6 +172,28 @@ Two things the recipe encodes, both of which cost a session an hour on
   the system paths first. Prefixing `PATH` outside `mise exec` does not survive:
   mise re-resolves it, so the override has to be inside.
 
+The computer-use tools are `app_screenshot`, which captures a window by bundle
+identifier, `list_granted_applications`, which reports which applications the
+session may reach, and `click` and `type`, which drive that window. Ask for
+`com.joaofnds.trunk.dev`, the dev bundle. A session that has these tools does
+not thereby have the approval to use them on this app, and an empty list from
+`list_granted_applications` means the approval has not been given yet rather
+than that it was refused. Requesting it raises a dialog that has to reach João
+before the session can capture anything. Re-check these names when the
+computer-use server is upgraded, since a rename leaves the old ones reading as
+absent.
+
+`screencapture -l <window_id>` returns real window content too, and captures a
+different moment than `app_screenshot` does. Hover-revealed UI present in an
+`app_screenshot` was missing from a `screencapture` taken seconds later, so
+capture anything that depends on hover through `app_screenshot`, in the same
+batch as the pointer action that reveals it. Re-check that divergence after a
+macOS or computer-use server upgrade.
+
+TRUNK-241 replaces this route with a command channel the app exposes directly,
+which needs no approval, and the definition-of-done item pointing here changes
+with it.
+
 ## Scanners must not walk `src-tauri/target`
 
 The target dir is orders of magnitude bigger than the source. Biome's scanner is
