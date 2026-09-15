@@ -17,7 +17,7 @@ const DAY_SECS: i64 = 86_400;
 
 pub const CASE: Case = Case {
     name: "11-rendered-markdown",
-    summary: "The rendered-markdown diff defects: badge, markup, fold, quote, task list.",
+    summary: "The rendered-markdown diff defects: badge, image-only block, markup, fold, quote, task list.",
     repos: &["rendered-markdown"],
     build,
 };
@@ -497,7 +497,7 @@ row is a leaf like a list item, and its note must respect the table's shape."##,
         &mut repo,
         r##"# Rendered markdown diff
 
-Thirteen defects and design cases, one commit pair each. Open a commit,
+Fourteen defects and design cases, one commit pair each. Open a commit,
 switch the centre pane to the rendered view (the toggle beside the diff), and
 compare against the commit's own message: each says what the rendered view
 should show and what would count as wrong.
@@ -521,6 +521,7 @@ unchanged image used to render struck through and duplicated.
 | `docs: edit one item of a list far below a heading` | The heading on screen as context; every filler sentence between it and the list gone | A filler sentence surviving, or the heading itself gone |
 | `docs: edit two list items far enough apart to leave a gap between them` | Three visible runs, two separate fold notes | One run, or one note covering both changes |
 | `docs: edit one row of a twenty-row table` | The table folds; its note spans both columns of its own row | The note beside the row instead of spanning it, or the table unfolded |
+| `docs: swap the image on the diagram page` | The image rendered on both sides, in split and in inline | `![alt](badge.png)` in a code box on either side |
 
 The rendered view has an inline (merged) mode and a split mode, and a hunk
 (folded) mode and a full-file mode. The fold rows above are about hunk mode,
@@ -561,6 +562,42 @@ source-mode counterpart to disagree with.
 "##,
     );
     fixture_commit(&mut repo, 25, r##"docs: record what to look at"##);
+    fixture_write(
+        &mut repo,
+        "DIAGRAM.md",
+        r##"# Diagram
+
+![the first badge](badge.png)
+
+A paragraph after the image, so it is not the file's only block.
+"##,
+    );
+    fixture_commit(
+        &mut repo,
+        26,
+        r##"docs: add a page whose block is only an image"##,
+    );
+    fixture_write(
+        &mut repo,
+        "DIAGRAM.md",
+        r##"# Diagram
+
+![the second badge](badge.png)
+
+A paragraph after the image, so it is not the file's only block.
+"##,
+    );
+    fixture_commit(
+        &mut repo,
+        27,
+        r##"docs: swap the image on the diagram page
+
+Rendered view: the image renders on both sides, in split and inline alike.
+An image-only paragraph carries no text, so the emptiness test read it as
+blank and the split columns showed `![alt](badge.png)` in a code box while
+inline rendered the picture. Markdown source in place of the image is the
+defect."##,
+    );
     fixture_write(
         &mut repo,
         "README.md",
