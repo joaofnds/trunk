@@ -1725,12 +1725,24 @@ fn marks_point_at_words(before: &str, after: &str) -> bool {
 ///
 /// The rendered view's recurring question, asked at every point where a block
 /// could reach the screen blank: the oracle's two arms, the identical-render
-/// claim, the fold, and the source fallback in `extract_blocks`. Named because
-/// it is one idea — a fragment with no visible text says nothing, whatever
-/// markup it carries — and because spelling it out invites reading the
-/// allocation as the point rather than the emptiness.
+/// claim, the fold, and the source fallback in `extract_blocks`.
+///
+/// Text is not the only thing a reader sees. An image, a horizontal rule and a
+/// checkbox render from their markup alone and carry no text at all, so a
+/// fragment holding one is showing something even when `visible` comes back
+/// empty.
 fn shows_nothing(html: &str) -> bool {
-    visible(html).is_empty()
+    visible(html).is_empty() && !holds_visual_content(html)
+}
+
+/// The void elements that draw something on their own, with no text between
+/// tags. `<input>` is here for a task-list checkbox, the one form control
+/// `sanitize_html` allows through.
+const VISUAL_TAGS: &[&str] = &["<img", "<hr", "<input"];
+
+/// Whether a fragment renders an element the reader can see without text.
+fn holds_visual_content(html: &str) -> bool {
+    VISUAL_TAGS.iter().any(|tag| html.contains(tag))
 }
 
 /// Whether two rendered fragments show the same visible text. Compares the
@@ -4634,6 +4646,71 @@ mod tests {
         );
     }
 
+    /// The whole command path, not just the block diff: an image-only paragraph
+    /// must reach the split columns as an `<img>` pointing at the asset URL the
+    /// protocol handler serves, on both sides of the diff.
+    #[test]
+    fn an_image_only_block_reaches_both_split_columns_as_an_image() {
+        let dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let commit = |repo: &git2::Repository, body: &str, parents: &[git2::Oid]| {
+            fs::write(dir.path().join("page.md"), body).unwrap();
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("page.md")).unwrap();
+            index.write().unwrap();
+            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+            let s = sig();
+            let parents: Vec<git2::Commit> = parents
+                .iter()
+                .map(|p| repo.find_commit(*p).unwrap())
+                .collect();
+            let refs: Vec<&git2::Commit> = parents.iter().collect();
+            repo.commit(Some("HEAD"), &s, &s, "c", &tree, &refs)
+                .unwrap()
+        };
+        let before = commit(&repo, "# T\n\n![first](one.svg)\n", &[]);
+        let after = commit(&repo, "# T\n\n![second](two.svg)\n", &[before]);
+        let repo_str = dir.path().to_string_lossy().to_string();
+        let state_map = OpenRepos::from_iter([(repo_str.clone(), dir.path().to_path_buf())]);
+
+        let rows = render_markdown_diff_from_state(
+            &repo_str,
+            "page.md",
+            None,
+            &RevSpec::Commit {
+                oid: before.to_string(),
+            },
+            &RevSpec::Commit {
+                oid: after.to_string(),
+            },
+            false,
+            3,
+            &state_map,
+        )
+        .unwrap()
+        .rows;
+
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            ..
+        } = rows
+            .iter()
+            .find(|r| matches!(r, DiffRow::Changed { .. }))
+            .unwrap_or_else(|| panic!("the image block changed: {rows:?}"))
+        else {
+            unreachable!()
+        };
+        assert!(
+            before_html.contains("<img") && before_html.contains("one.svg"),
+            "the before column renders the old image: {before_html}"
+        );
+        assert!(
+            after_html.contains("<img") && after_html.contains("two.svg"),
+            "the after column renders the new image: {after_html}"
+        );
+    }
+
     #[test]
     fn index_to_workdir_diff_shows_only_the_unstaged_edit() {
         // B1: the unstaged preview's base is the INDEX, so a partially staged
@@ -6145,6 +6222,55 @@ mod tests {
         assert!(
             !illegible_rows(&rows).is_empty(),
             "both sides blank: the identical-render claim is vacuous and the row is illegible"
+        );
+    }
+
+    /// An image carries its content in an attribute, not in text, so the
+    /// emptiness test read an image-only block as blank and the split columns
+    /// showed the reader `![alt](file.svg)` in a code box while the inline copy
+    /// rendered the picture. Both views must show the image.
+    #[test]
+    fn a_changed_image_block_renders_the_image_in_both_views() {
+        let rows = diff_rows("# T\n\n![old](one.svg)\n", "# T\n\n![new](two.svg)\n");
+        let DiffRow::Changed {
+            before_html,
+            after_html,
+            merged_html,
+            ..
+        } = &rows[1]
+        else {
+            panic!("expected the image block changed: {rows:?}");
+        };
+
+        assert!(
+            before_html.contains("<img") && after_html.contains("<img"),
+            "the split columns render the image rather than its source: {rows:?}"
+        );
+        assert!(
+            merged_html.as_deref().is_some_and(|m| m.contains("<img")),
+            "the inline copy keeps rendering the image: {rows:?}"
+        );
+    }
+
+    /// The same blindness on a one-sided row: an added image is content, and a
+    /// source-fallback code box in its place is the defect.
+    #[test]
+    fn an_added_image_block_renders_the_image() {
+        let rows = diff_rows("intro\n", "intro\n\n![a diagram](pieces.svg)\n");
+        let added: Vec<&DiffRow> = rows
+            .iter()
+            .filter(|r| matches!(r, DiffRow::Added { .. }))
+            .collect();
+        let DiffRow::Added { html, .. } = added
+            .first()
+            .unwrap_or_else(|| panic!("an added block: {rows:?}"))
+        else {
+            unreachable!()
+        };
+
+        assert!(
+            html.contains("<img"),
+            "the added image renders rather than showing its markdown: {rows:?}"
         );
     }
 
