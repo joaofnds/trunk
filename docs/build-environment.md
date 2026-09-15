@@ -232,8 +232,14 @@ than something to retry.
 
 Two narrower failures are also recorded, for agents that did hold tools: a
 `getApp` call that hung and needed interrupting (TRUNK-210:143), and an
-Accessibility denial that allowed screenshots but no clicks (TRUNK-154.3). No
-record settles whether the grant crosses a spawn by design.
+Accessibility denial that allowed screenshots but no clicks (TRUNK-154.3).
+
+Granting the app to the parent does not change this. Probed on 2026-09-15 from a
+session holding `com.joaofnds.trunk.dev` at tier `full`, with `app_screenshot`
+already returning real window content: the agent it spawned reported `Read` and
+`Bash` only. The tools themselves do not cross the spawn, so there is no grant to
+inherit. Dispatch for a CLI or a written record, which needs no screen tool;
+observe the window from a session that holds them.
 
 `screencapture -l <window_id>` returns real window content too, and captures a
 different moment than `app_screenshot` does. Hover-revealed UI present in an
