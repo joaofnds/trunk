@@ -173,15 +173,29 @@ Two things the recipe encodes, both of which cost a session an hour on
   mise re-resolves it, so the override has to be inside.
 
 The computer-use tools are `app_screenshot`, which captures a window by bundle
-identifier, `list_granted_applications`, which reports which applications the
-session may reach, and `click` and `type`, which drive that window. Ask for
-`com.joaofnds.trunk.dev`, the dev bundle. A session that has these tools does
-not thereby have the approval to use them on this app, and an empty list from
-`list_granted_applications` means the approval has not been given yet rather
-than that it was refused. Requesting it raises a dialog that has to reach João
-before the session can capture anything. Re-check these names when the
+identifier, `app_click` and `app_type`, which drive that window,
+`list_granted_applications`, which reports which applications the session may
+reach, and `request_access`, which asks for one. Ask for
+`com.joaofnds.trunk.dev`, the dev bundle. A registry search finds them under the
+`mcp__computer-use__` namespace rather than bare, so search on that prefix or on
+a fragment like `granted` before concluding the tools are absent. Several
+sessions have held none of them at all, so a session that finds nothing has
+learned its own capability rather than a fact about the machine.
+
+The approval is granted per session and does not carry over. Every session that
+has checked found `list_granted_applications` empty at the start, and an empty
+list means the approval has not been given yet rather than that it was refused.
+`request_access` raises a dialog that has to reach João before the session can
+capture anything, and returns `user_denied` when he does not approve it. One
+recorded `user_denied` came from the dialog never reaching him rather than from
+a refusal, so treat it as a wait on João. Re-check these names when the
 computer-use server is upgraded, since a rename leaves the old ones reading as
 absent.
+
+A dispatched agent does not reliably inherit the grant. Fresh agents sent to
+observe have reported holding the tools and still failing to bind to the running
+app, so check that the agent reports real window content rather than assuming
+the dispatch succeeded.
 
 `screencapture -l <window_id>` returns real window content too, and captures a
 different moment than `app_screenshot` does. Hover-revealed UI present in an
@@ -190,9 +204,9 @@ capture anything that depends on hover through `app_screenshot`, in the same
 batch as the pointer action that reveals it. Re-check that divergence after a
 macOS or computer-use server upgrade.
 
-TRUNK-241 replaces this route with a command channel the app exposes directly,
-which needs no approval, and the definition-of-done item pointing here changes
-with it.
+TRUNK-241 would replace this route with a command channel the app exposes
+directly, needing no approval. Once that channel exists, the definition-of-done
+item pointing here changes with it.
 
 ## Scanners must not walk `src-tauri/target`
 
