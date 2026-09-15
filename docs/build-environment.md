@@ -188,7 +188,25 @@ has learned its own capability rather than a fact about the machine.
 The working order is `list_granted_applications`, then `request_access` if the
 list is empty, then `app_list_windows` for the `window_id`, then
 `app_screenshot`. Verified end to end on 2026-09-15: empty allowlist to real
-window content in four calls, with the grant returning tier `full`.
+window content in four calls, with the grant returning tier `full`. If the app
+is not running, `open_application` starts it in the background without taking
+the developer's focus, so it does not have to be open before you begin.
+
+Typing needs a focusing click first. The webview exposes no positional text
+element, so an `app_type` aimed straight at a field's coordinate fails with
+"there is no text field at this point" — which reads like a permission problem
+and is not one. Click the field and type in the same `app_batch`. Two related
+traps, both measured on 2026-09-15: `overwrite_existing: true` is refused here
+because it blocks the raw-keystroke fallback, so clear a field with
+`mode: "replace"` or with backspaces; and `key` with `repeat: N` delivered one
+keystroke rather than N, so send individual actions when you need several.
+
+Clicking and typing were confirmed to land on 2026-09-15: a click switched the
+active repo tab and the graph changed with it, and typed text appeared in the
+commit summary field. That session needed no separate Accessibility grant, which
+means the host process was already trusted — not that the grant is irrelevant.
+Where `AXIsProcessTrusted()` is 0, clicks are dropped while capture still works,
+which is exactly what TRUNK-154.1 hit.
 
 Prefer element indices to coordinates. `app_screenshot` returns an
 accessibility summary beside the image, each line carrying an `[N]` index, a
