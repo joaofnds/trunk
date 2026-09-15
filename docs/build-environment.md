@@ -192,10 +192,31 @@ a refusal, so treat it as a wait on João. Re-check these names when the
 computer-use server is upgraded, since a rename leaves the old ones reading as
 absent.
 
-A dispatched agent does not reliably inherit the grant. Fresh agents sent to
-observe have reported holding the tools and still failing to bind to the running
-app, so check that the agent reports real window content rather than assuming
-the dispatch succeeded.
+Accessibility in System Settings is a separate approval from the computer-use
+one, and it matters for a different thing. It is not what unblocks window
+capture: asking for it to fix a black or missing screenshot was the wrong ask on
+TRUNK-154 and its three children, across three sessions, before TRUNK-190
+recorded the right one. It IS what unblocks clicking and typing. TRUNK-190:43,
+on João's call, reads "either grant Screen Recording (and Accessibility, if
+clicking is wanted)", and TRUNK-154.1:166 records a dispatched agent that could
+screenshot the app but could not click, with `AXIsProcessTrusted()=0` verified
+there by a compiled probe (TRUNK-154.1:190). So a genuine Accessibility denial
+is real and blocks input; it is simply not the fix for a capture failure.
+
+A dispatched agent usually holds no screen tools at all. This is the common
+case, not an anomaly: agents spawned here have reported holding only `Read` and
+`Bash`, with no computer-use tool and no `ToolSearch` with which to find one
+(TRUNK-232.1:53 and TRUNK-232.2:61, "the computer-use MCP tools are not
+available inside a subagent in this session, and ToolSearch is disabled there";
+TRUNK-232.2 records a session that held the tools while the agent it dispatched
+did not). So a session that holds the tools cannot pass that capability on by
+dispatching, and a no-tools report from an agent is the expected outcome rather
+than something to retry.
+
+Two narrower failures are also recorded, for agents that did hold tools: a
+`getApp` call that hung and needed interrupting (TRUNK-210:143), and an
+Accessibility denial that allowed screenshots but no clicks (TRUNK-154.3). No
+record settles whether the grant crosses a spawn by design.
 
 `screencapture -l <window_id>` returns real window content too, and captures a
 different moment than `app_screenshot` does. Hover-revealed UI present in an
@@ -204,9 +225,10 @@ capture anything that depends on hover through `app_screenshot`, in the same
 batch as the pointer action that reveals it. Re-check that divergence after a
 macOS or computer-use server upgrade.
 
-TRUNK-241 would replace this route with a command channel the app exposes
-directly, needing no approval. Once that channel exists, the definition-of-done
-item pointing here changes with it.
+The m-8 chain (TRUNK-233 through TRUNK-240) builds a command channel into the
+running dev build, and TRUNK-241, type docs, then repoints this section and the
+definition-of-done item at it. Whether that channel needs an approval is not
+settled on any card, so do not plan on it replacing the grant.
 
 ## Scanners must not walk `src-tauri/target`
 
