@@ -109,3 +109,25 @@ export function bumpCargoLock(contents: string, version: string): string {
 		(_match, prefix: string) => `${prefix}"${version}"`,
 	);
 }
+
+// The release skill used to compute this by hand from `git tag --sort=-v:refname`
+// on every release, which put the one calculation that can push a backwards tag
+// in prose rather than under test.
+export function nextVersion(baseline: string, level: string): string {
+	requireVersionShape(baseline);
+
+	const [major, minor, patch] = parts(baseline);
+
+	switch (level) {
+		case "major":
+			return `${major + 1}.0.0`;
+		case "minor":
+			return `${major}.${minor + 1}.0`;
+		case "patch":
+			return `${major}.${minor}.${patch + 1}`;
+		default:
+			throw new ReleaseError(
+				`"${level}" is not a bump level; expected major, minor or patch`,
+			);
+	}
+}

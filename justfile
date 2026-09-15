@@ -52,6 +52,16 @@ icons master="src-tauri/icons/icon.png":
 
 # ── Release ──────────────────────────────────────────
 
+# Cut the next major, minor or patch release, computing the version from the newest tag (scripts/release-next.ts)
+release-bump level:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The level reaches `just release` only as a version this script has already
+    # validated into an x.y.z triplet, so an unrecognized or metacharacter-bearing
+    # argument dies here rather than reaching a git command.
+    version="$(bun run scripts/release-next.ts {{ quote(level) }})"
+    just release "$version"
+
 # Bump the four version manifests to <version> in one commit and tag it (scripts/release-apply.ts)
 release version:
     #!/usr/bin/env bash

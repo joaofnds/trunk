@@ -1,6 +1,7 @@
 # Cutting a release
 
-`just release <version>` is the only way to bump the app's version. Tauri names every
+`just release-bump <major|minor|patch>` and `just release <version>` are the only ways to
+bump the app's version. Tauri names every
 bundle from `src-tauri/tauri.conf.json`'s `version` field, and the release workflow
 (`.github/workflows/release.yml`) reads the same field into `TAURI_VERSION` to build the
 DMG asset URLs it downloads — a version that only ever changes by hand drifts from the
@@ -26,6 +27,17 @@ early development and 2026-09 shipping DMGs named `trunk_0.12.8_*.dmg` regardles
 The version bump and the tag push are separate steps on purpose: the recipe never
 pushes. Push the commit and the tag yourself once you're ready to cut the release.
 
+## Choosing the version for you
+
+`just release-bump major|minor|patch` computes the next version from the newest release
+tag and hands it to `just release`, so the level is the only thing a caller decides. It
+is the same computation the release skill used to spell out as prose and redo by hand
+every release, which is why it now lives in `scripts/release.ts` under unit test: an
+arithmetic slip there is what pushes a backwards tag.
+
+An unrecognized level is refused before any git command runs, so the argument never
+reaches `git commit` or `git tag`.
+
 ## Recovering from a failed run
 
 If the recipe dies after committing but before tagging (or a tag push fails and gets
@@ -37,5 +49,6 @@ no matching `v<version>` tag, and tells you to tag it by hand or reset past it.
 
 The pure bump-and-validate logic lives in `scripts/release.ts`, unit-tested in
 `scripts/release.test.ts` — the same split as `scripts/bench-normalize.ts`. The thin CLI
-wrapper the justfile recipe invokes is `scripts/release-apply.ts`; the git plumbing (dirty
+wrappers the justfile recipes invoke are `scripts/release-apply.ts` and
+`scripts/release-next.ts`; the git plumbing (dirty
 check, partial-failure detection, commit, tag) stays in the justfile recipe itself.

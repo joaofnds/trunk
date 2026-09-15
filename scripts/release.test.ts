@@ -5,6 +5,7 @@ import {
 	bumpPackageJson,
 	bumpTauriConf,
 	currentVersion,
+	nextVersion,
 	ReleaseError,
 	releaseBaseline,
 	requireIncrement,
@@ -245,6 +246,34 @@ describe("releaseBaseline", () => {
 
 		expect(() => requireIncrement(baseline, "0.30.5")).toThrowError(
 			new ReleaseError("0.30.5 is not greater than the current version 0.44.0"),
+		);
+	});
+});
+
+describe("nextVersion", () => {
+	it("increments the patch segment for a patch bump", () => {
+		expect(nextVersion("0.47.4", "patch")).toBe("0.47.5");
+	});
+
+	it("increments the minor segment and resets the patch for a minor bump", () => {
+		expect(nextVersion("0.47.4", "minor")).toBe("0.48.0");
+	});
+
+	it("increments the major segment and resets the rest for a major bump", () => {
+		expect(nextVersion("0.47.4", "major")).toBe("1.0.0");
+	});
+
+	it("rejects a bump level it does not recognize", () => {
+		expect(() => nextVersion("0.47.4", "moderate")).toThrowError(
+			new ReleaseError(
+				'"moderate" is not a bump level; expected major, minor or patch',
+			),
+		);
+	});
+
+	it("rejects a baseline that is not a plain x.y.z version", () => {
+		expect(() => nextVersion("v0.47.4", "patch")).toThrowError(
+			new ReleaseError('"v0.47.4" is not a valid x.y.z version'),
 		);
 	});
 });
