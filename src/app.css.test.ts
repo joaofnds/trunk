@@ -302,60 +302,49 @@ describe("rendered markdown word marks", () => {
 	});
 
 	/* The reader sees one whole picture added or removed, which is what a
-	   tinted block is. So an image-only mark takes the block tints' own
-	   tokens, wash and rail both: the split columns and the inline copy cannot
-	   drift to different colours for the same state. The --color-md-word-*
-	   pair is calibrated for a few marked words inside a line and floods a
-	   diagram. */
-	it("tints an image-only mark with the block wash, not the word-mark wash", () => {
-		const imageMark = (mark: "delete" | "add") =>
+	   tinted block is, so an image-only mark takes the block tint itself: one
+	   rule per state carrying both selectors. Asserted as shared structure
+	   rather than as two rules holding equal values, because equal values are
+	   what drifted — the mark inherited --color-md-word-*-bg, calibrated for a
+	   few marked words inside a line, and flooded the diagram. */
+	it("tints an image-only mark with the block tint rule itself", () => {
+		const sharedRule = (
+			cls: "md-added" | "md-removed",
+			mark: "add" | "delete",
+		) =>
 			css.match(
 				new RegExp(
-					`\\n\\.md-word-${mark}:has\\(> img:only-child\\) \\{(\\s*background:[^}]*)\\}`,
+					`\\n\\.${cls},\\n\\.md-word-${mark}:has\\(> img:only-child\\) \\{([^}]*)\\}`,
 				),
 			)?.[1];
 
-		const removed = imageMark("delete");
-		const added = imageMark("add");
+		const added = sharedRule("md-added", "add");
+		const removed = sharedRule("md-removed", "delete");
 
-		expect(removed).toMatch(/background:\s*var\(--color-diff-delete-bg\)/);
-		expect(removed).toMatch(
-			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-delete\)/,
-		);
+		expect(added).toBeDefined();
+		expect(removed).toBeDefined();
 		expect(added).toMatch(/background:\s*var\(--color-diff-add-bg\)/);
 		expect(added).toMatch(
 			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-add\)/,
 		);
-		expect(removed).not.toMatch(/--color-md-word/);
-		expect(added).not.toMatch(/--color-md-word/);
+		expect(removed).toMatch(/background:\s*var\(--color-diff-delete-bg\)/);
+		expect(removed).toMatch(
+			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-delete\)/,
+		);
 	});
 
-	/* The split columns' own tints, read from the same stylesheet, so this
-	   fails if either side is retuned without the other. */
-	it("uses the same tokens the split columns tint a block with", () => {
-		const block = (cls: "md-added" | "md-removed") =>
-			css.match(new RegExp(`\\n\\.${cls} \\{([^}]*)\\}`))?.[1];
-		const imageMark = (mark: "delete" | "add") =>
-			css.match(
-				new RegExp(
-					`\\n\\.md-word-${mark}:has\\(> img:only-child\\) \\{(\\s*background:[^}]*)\\}`,
-				),
-			)?.[1];
+	/* The word-mark wash must not reach an image-only mark by any route: no
+	   later rule may set one back onto it. */
+	it("never washes an image-only mark with a word-mark token", () => {
+		const imageRules = [
+			...css.matchAll(
+				/\.md-word-(?:add|delete):has\(> img:only-child\)[^{]*\{([^}]*)\}/g,
+			),
+		].map((m) => m[1]);
 
-		const token = (rule: string | undefined, prop: string) =>
-			rule?.match(new RegExp(`${prop}:\\s*([^;]+);`))?.[1];
-
-		expect(token(block("md-removed"), "background")).toBe(
-			token(imageMark("delete"), "background"),
-		);
-		expect(token(block("md-added"), "background")).toBe(
-			token(imageMark("add"), "background"),
-		);
-		expect(token(block("md-removed"), "box-shadow")).toBe(
-			token(imageMark("delete"), "box-shadow"),
-		);
-		expect(token(block("md-added"), "box-shadow")).toBe(
-			token(imageMark("add"), "box-shadow"),
-		);
+		expect(imageRules.length).toBeGreaterThan(0);
+		for (const rule of imageRules) {
+			expect(rule).not.toMatch(/--color-md-word/);
+		}
 	});
 });

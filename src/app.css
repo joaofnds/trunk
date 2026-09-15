@@ -579,11 +579,13 @@ textarea::placeholder {
    left rail so the add/change/remove state survives grayscale (a11y: color is not
    the sole carrier). The rail renders on the block/li boxes; a tinted table row
    is carried by its background alone (box-shadow is unreliable on <tr>). */
-.md-added {
+.md-added,
+.md-word-add:has(> img:only-child) {
 	background: var(--color-diff-add-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-add);
 }
-.md-removed {
+.md-removed,
+.md-word-delete:has(> img:only-child) {
 	background: var(--color-diff-delete-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
@@ -674,14 +676,6 @@ li.md-removed::before {
 	width: fit-content;
 	padding-left: var(--space-2);
 	text-decoration: none;
-}
-.md-word-delete:has(> img:only-child) {
-	background: var(--color-diff-delete-bg);
-	box-shadow: inset 3px 0 0 var(--color-diff-delete);
-}
-.md-word-add:has(> img:only-child) {
-	background: var(--color-diff-add-bg);
-	box-shadow: inset 3px 0 0 var(--color-diff-add);
 }
 /* Text on a mark is the primary diff color, whatever it is: body text, a link,
    a code span, .markdown-body del's muted strikethrough. The same rule the
