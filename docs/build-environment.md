@@ -172,15 +172,30 @@ Two things the recipe encodes, both of which cost a session an hour on
   the system paths first. Prefixing `PATH` outside `mise exec` does not survive:
   mise re-resolves it, so the override has to be inside.
 
-The computer-use tools are `app_screenshot`, which captures a window by bundle
-identifier, `app_click` and `app_type`, which drive that window,
-`list_granted_applications`, which reports which applications the session may
-reach, and `request_access`, which asks for one. Ask for
-`com.joaofnds.trunk.dev`, the dev bundle. A registry search finds them under the
-`mcp__computer-use__` namespace rather than bare, so search on that prefix or on
-a fragment like `granted` before concluding the tools are absent. Several
-sessions have held none of them at all, so a session that finds nothing has
-learned its own capability rather than a fact about the machine.
+The computer-use tools are `list_granted_applications`, which reports which
+applications the session may reach, `request_access`, which asks for one,
+`app_list_windows`, which returns each window's `window_id`, title and bounds,
+`app_screenshot`, which captures one of those windows, and `app_click`,
+`app_type`, `app_key`, `app_scroll` and `app_drag`, which drive it.
+`app_ax_find` searches the captured accessibility elements, `app_batch` runs a
+predictable sequence in one call, and `app_release` drops the background lock.
+Ask for `com.joaofnds.trunk.dev`, the dev bundle. A registry search finds them
+under the `mcp__computer-use__` namespace rather than bare, so search on that
+prefix or on a fragment like `granted` before concluding the tools are absent.
+Several sessions have held none of them at all, so a session that finds nothing
+has learned its own capability rather than a fact about the machine.
+
+The working order is `list_granted_applications`, then `request_access` if the
+list is empty, then `app_list_windows` for the `window_id`, then
+`app_screenshot`. Verified end to end on 2026-09-15: empty allowlist to real
+window content in four calls, with the grant returning tier `full`.
+
+Prefer element indices to coordinates. `app_screenshot` returns an
+accessibility summary beside the image, each line carrying an `[N]` index, a
+role, a title and bounds; passing that `N` as `element_index` to `app_click` or
+`app_type` targets the element directly and sidesteps the coordinate frame,
+which is the full-resolution one even when the image was scaled down. The dev
+window reported 58 elements, 33 of them actionable.
 
 The approval is granted per session and does not carry over. Every session that
 has checked found `list_granted_applications` empty at the start, and an empty
@@ -188,7 +203,9 @@ list means the approval has not been given yet rather than that it was refused.
 `request_access` raises a dialog that has to reach João before the session can
 capture anything, and returns `user_denied` when he does not approve it. One
 recorded `user_denied` came from the dialog never reaching him rather than from
-a refusal, so treat it as a wait on João. Re-check these names when the
+a refusal, so treat it as a wait on João. A session on 2026-09-15 confirmed both
+halves: the list was empty at the start despite five earlier sessions on the same
+card, and the dialog reached him and returned a grant. Re-check these names when the
 computer-use server is upgraded, since a rename leaves the old ones reading as
 absent.
 
