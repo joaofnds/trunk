@@ -285,4 +285,35 @@ describe("rendered markdown word marks", () => {
 		expect(synRules.length).toBeGreaterThan(0);
 		expect(Math.max(...synRules)).toBeLessThan(markRule);
 	});
+
+	/* An image carries no text, so an inline mark around one paints its
+	   background over the line box and leaves the picture itself untinted: the
+	   reader saw a coloured bar above the old diagram and below the new one,
+	   with neither image marked. A mark holding nothing but an image lays out
+	   as a block instead, so the wash sits behind the whole picture the way the
+	   split columns tint an image's block. */
+	it("lays out an image-only mark as a block so its wash covers the image", () => {
+		const rule = css.match(
+			/\.md-word-delete:has\(> img:only-child\),\s*\.md-word-add:has\(> img:only-child\)\s*\{([^}]*)\}/,
+		)?.[1];
+
+		expect(rule).toBeDefined();
+		expect(rule).toMatch(/display:\s*block/);
+	});
+
+	/* Dropping the strike and underline off an image mark would leave colour as
+	   the only carrier of removed-versus-added. The rail takes their place, in
+	   the same hues and the same 3px inset the block tints use. */
+	it("gives an image-only mark a rail in place of its decoration", () => {
+		/* The rail rule is the one whose selector stands alone, so the pattern
+		   requires the declaration to open that block: `[^}]*` would span the
+		   shared display:block rule above it and match either hue. */
+		const railRule = (mark: "delete" | "add", hue: string) =>
+			new RegExp(
+				`\\n\\.md-word-${mark}:has\\(> img:only-child\\) \\{\\s*box-shadow:\\s*inset 3px 0 0 var\\(${hue}\\);\\s*\\}`,
+			);
+
+		expect(css).toMatch(railRule("delete", "--color-diff-delete"));
+		expect(css).toMatch(railRule("add", "--color-diff-add"));
+	});
 });
