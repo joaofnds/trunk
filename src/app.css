@@ -654,15 +654,20 @@ li.md-removed::before {
 /* A mark wrapping nothing but an image. An inline box paints its background
    across the line box and not behind a replaced element, so the reader got a
    coloured bar above the removed image and below the added one while both
-   pictures stayed untinted. As a block the mark takes the image's own box, so
-   the wash sits behind the whole picture — the treatment the split columns
-   give an image's block. width:fit-content keeps the wash on the picture
-   instead of running to the pane edge.
-   The strike and underline go, because a line drawn across a diagram reads as
-   part of the drawing. The inset rail replaces them as the non-colour carrier,
-   the same 3px edge .md-added/.md-removed put on a tinted block, so the state
-   still survives grayscale (the accessibility floor in coding-style-frontend
-   §6). Padding clears the rail of the picture. */
+   pictures stayed untinted.
+
+   Such a mark takes the SAME treatment a tinted block gets in the split
+   columns — .md-removed / .md-added above, the same --color-diff-*-bg wash and
+   the same 3px rail — because it is the same thing to the reader: one whole
+   picture, added or removed. The --color-md-word-*-bg pair it would otherwise
+   inherit is calibrated for a few marked words sitting alone in a line of
+   prose (38%, a 2:1 step); flooding a diagram with it reads as a coloured
+   sheet over the drawing rather than a diff tint.
+
+   The strike and underline go with it: a line drawn across a diagram reads as
+   part of the drawing, and the rail is the non-colour carrier in its place, so
+   the state still survives grayscale (the accessibility floor in
+   coding-style-frontend §6). */
 .md-word-delete:has(> img:only-child),
 .md-word-add:has(> img:only-child) {
 	display: block;
@@ -671,9 +676,11 @@ li.md-removed::before {
 	text-decoration: none;
 }
 .md-word-delete:has(> img:only-child) {
+	background: var(--color-diff-delete-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
 .md-word-add:has(> img:only-child) {
+	background: var(--color-diff-add-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-add);
 }
 /* Text on a mark is the primary diff color, whatever it is: body text, a link,
