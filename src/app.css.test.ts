@@ -350,14 +350,16 @@ describe("rendered markdown word marks", () => {
 });
 
 describe("rendered markdown list item tints", () => {
-	/* The rail suppression has to outrank the block tint AFTER the build merges
-	   that tint's two selectors into :is(.md-added, .md-word-add:has(> img...)).
-	   :is() takes the specificity of its most specific argument, so the merged
-	   selector scores (0,2,0) and a plain `li.md-added` at (0,1,1) loses: the
-	   rail survived into the shipped build while every source read said it was
-	   suppressed. Asserted as a doubled class, which is what buys the specificity
-	   — the suppression must stay at least (0,2,1). */
-	it("suppresses the item rail specifically enough to survive the :is() merge", () => {
+	/* The rail moves from the item's box to the far edge of its ::before, which
+	   is the pane edge. Taking it off the box has to outrank the block tint
+	   AFTER the build merges that tint's two selectors into :is(.md-added,
+	   .md-word-add:has(> img...)): :is() takes the specificity of its most
+	   specific argument, so the merged selector scores (0,2,0) and a plain
+	   `li.md-added` at (0,1,1) loses. The rail then stayed on the box in the
+	   shipped build, drawing a second edge at the item's text, while every
+	   source read said otherwise. The doubled class is what buys the
+	   specificity — this must stay at least (0,2,1). */
+	it("takes the rail off the item's box specifically enough to survive the :is() merge", () => {
 		const suppression = css.match(
 			/(li\.md-added[^,{]*,\s*li\.md-removed[^,{]*)\{([^}]*)\}/,
 		);
@@ -366,6 +368,32 @@ describe("rendered markdown list item tints", () => {
 		expect(suppression?.[2]).toMatch(/box-shadow:\s*none/);
 		expect(suppression?.[1]).toMatch(/li\.md-added\.md-added/);
 		expect(suppression?.[1]).toMatch(/li\.md-removed\.md-removed/);
+	});
+
+	/* The rail itself, on the ::before's far edge. A changed item and a changed
+	   source line are one edit to the reader, so they carry the same 3px in the
+	   same hue at the same pane edge (HunkView's .diff-line border-left). An
+	   earlier version dropped the item rail entirely, on the premise that the
+	   Changed-pair wrapper always paints one behind it; one item edited inside
+	   an unchanged list gives a bare .rendered-block with no tint class, so the
+	   change reached the reader with no rail at all. */
+	it("rails a tinted item at the pane edge, in the source view's hue and width", () => {
+		/* The hue rules are the ones declaring a background; the shared geometry
+		   rule above them lists the same two selectors and would match first. */
+		const hueRule = (state: "added" | "removed") =>
+			css.match(
+				new RegExp(`\\nli\\.md-${state}::before \\{([^}]*background[^}]*)\\}`),
+			)?.[1];
+
+		const add = hueRule("added");
+		const remove = hueRule("removed");
+
+		expect(add).toBeDefined();
+		expect(add).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--color-diff-add\)/);
+		expect(remove).toBeDefined();
+		expect(remove).toMatch(
+			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-delete\)/,
+		);
 	});
 
 	/* A tinted item of the outermost list means the same thing to the reader as

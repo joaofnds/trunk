@@ -598,14 +598,23 @@ textarea::placeholder {
 .rendered-block.md-removed.no-wash {
 	background: var(--bg-0);
 }
-/* A tinted list item carries NO rail of its own — its Changed-pair wrapper
-   always paints the block-level rail (RenderedDiff cell tints), so an item
-   rail reads as a duplicate edge; like a tinted table row, the item pinpoint
-   is its brighter stacked background. The box is never nudged on the LEFT:
-   WKWebView anchors the outside ::marker to the li border box, so a shift
-   there drags the bullet out of line with untinted siblings. The ::before
-   extends the tint across the ul's gutter so the bullet sits on the highlight
-   without the box moving.
+/* A tinted list item carries no rail on the BOX. It carries one on the far
+   edge of its ::before instead, which is the pane's own edge — the same place,
+   and the same 3px, the source view gives a changed line (HunkView's
+   .diff-line border-left). The two views show one edit as one shape.
+
+   A rail on the box would sit at the item's text, inboard of the highlight's
+   own left edge, which is the duplicate edge this split avoids. An earlier
+   version suppressed the rail outright, on the premise that the Changed-pair
+   wrapper always paints a block-level rail behind it. That premise does not
+   hold for the common case: one item edited inside an otherwise unchanged list
+   gives a bare .rendered-block with no tint class, so nothing painted a rail
+   and the change reached the reader with none.
+
+   The box is never nudged on the LEFT: WKWebView anchors the outside ::marker
+   to the li border box, so a shift there drags the bullet out of line with
+   untinted siblings. The ::before extends the tint across the ul's gutter so
+   the bullet sits on the highlight without the box moving.
 
    The class is doubled to raise specificity, not by taste. The build's minifier
    merges the two selectors of the block tint above into `:is(.md-added,
@@ -630,9 +639,11 @@ li.md-removed::before {
 }
 li.md-added::before {
 	background: var(--color-diff-add-bg);
+	box-shadow: inset 3px 0 0 var(--color-diff-add);
 }
 li.md-removed::before {
 	background: var(--color-diff-delete-bg);
+	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
 /* An item of the block's OUTERMOST list spans the pane, exactly as a tinted
    whole block does: its highlight crosses .rendered-block's horizontal padding
