@@ -348,3 +348,103 @@ describe("rendered markdown word marks", () => {
 		}
 	});
 });
+
+describe("rendered markdown list item tints", () => {
+	/* The rail suppression has to outrank the block tint AFTER the build merges
+	   that tint's two selectors into :is(.md-added, .md-word-add:has(> img...)).
+	   :is() takes the specificity of its most specific argument, so the merged
+	   selector scores (0,2,0) and a plain `li.md-added` at (0,1,1) loses: the
+	   rail survived into the shipped build while every source read said it was
+	   suppressed. Asserted as a doubled class, which is what buys the specificity
+	   — the suppression must stay at least (0,2,1). */
+	it("suppresses the item rail specifically enough to survive the :is() merge", () => {
+		const suppression = css.match(
+			/(li\.md-added[^,{]*,\s*li\.md-removed[^,{]*)\{([^}]*)\}/,
+		);
+
+		expect(suppression).not.toBeNull();
+		expect(suppression?.[2]).toMatch(/box-shadow:\s*none/);
+		expect(suppression?.[1]).toMatch(/li\.md-added\.md-added/);
+		expect(suppression?.[1]).toMatch(/li\.md-removed\.md-removed/);
+	});
+
+	/* A tinted item of the outermost list means the same thing to the reader as
+	   a tinted whole block: this line was added. It has to look the same too,
+	   and it did not — the item's highlight stopped at the list's border box,
+	   leaving .rendered-block's horizontal padding dark at both ends, so a
+	   full-width wash sat directly above a band inset from each edge. The reach
+	   is --md-prose-inset, which the container sets to the value it pads with;
+	   a literal length here would be the drift that produced the bug. */
+	it("bleeds an outermost-list item's tint across the prose inset", () => {
+		const before = css.match(
+			/\.markdown-body > ul > li\.md-added::before,[^{]*\{([^}]*)\}/,
+		)?.[1];
+		const box = css.match(
+			/\.markdown-body > ul > li\.md-added,[^{]*\{([^}]*)\}/,
+		)?.[1];
+
+		expect(before).toBeDefined();
+		expect(before).toMatch(
+			/left:\s*calc\(-1 \* \(var\(--md-list-gutter\) \+ var\(--md-prose-inset, 0px\)\)\)/,
+		);
+		expect(before).toMatch(
+			/width:\s*calc\(var\(--md-list-gutter\) \+ var\(--md-prose-inset, 0px\)\)/,
+		);
+
+		expect(box).toBeDefined();
+		expect(box).toMatch(
+			/margin-right:\s*calc\(-1 \* var\(--md-prose-inset, 0px\)\)/,
+		);
+		expect(box).toMatch(/padding-right:\s*var\(--md-prose-inset, 0px\)/);
+	});
+
+	/* The negative margin is given back as padding, so the content box ends
+	   where it did and the left side is never touched: WKWebView anchors the
+	   outside ::marker to the li border box, and a bullet out of line with its
+	   untinted siblings is the regression this pairing exists to avoid. */
+	it("never shifts a tinted item's left edge, so the bullet stays in line", () => {
+		const box = css.match(
+			/\.markdown-body > ul > li\.md-added,[^{]*\{([^}]*)\}/,
+		)?.[1];
+
+		expect(box).toBeDefined();
+		expect(box).not.toMatch(/margin-left/);
+		expect(box).not.toMatch(/padding-left/);
+	});
+
+	/* A nested item keeps its highlight starting at its own bullet: that inset
+	   is what says the item belongs to the sub-list and not to the pane. Only
+	   a direct child of .markdown-body's own list gets the full bleed. */
+	it("leaves a nested item's tint at its own gutter", () => {
+		const bleedSelectors = css.match(
+			/([^}]*)\{[^}]*left:\s*calc\(-1 \* \(var\(--md-list-gutter\) \+ var\(--md-prose-inset, 0px\)\)\)/,
+		)?.[1];
+
+		expect(bleedSelectors).toBeDefined();
+		for (const selector of (bleedSelectors ?? "").split(",")) {
+			if (selector.trim()) {
+				expect(selector.trim()).toMatch(/^\.markdown-body > (?:ul|ol) > li\./);
+			}
+		}
+	});
+
+	/* The default is no bleed, so a .markdown-body host that does not inset its
+	   prose (a comment body) reaches its own content edge and nowhere further.
+	   It has to be a var() fallback rather than a declaration: .markdown-body
+	   declaring its own default overwrites the container's value for every
+	   descendant, which is exactly where these rules read it, and the bleed
+	   collapses to zero while the container still pads. That is a bug the
+	   stylesheet reads as correct, so it is pinned here. */
+	it("takes the zero inset as a fallback, never as its own declaration", () => {
+		const prose = css.match(/\.markdown-body \{([^}]*)\}/)?.[1];
+
+		expect(prose).toBeDefined();
+		expect(prose).not.toMatch(/--md-prose-inset:/);
+
+		const reads = [...css.matchAll(/var\(--md-prose-inset([^)]*)\)/g)];
+		expect(reads.length).toBeGreaterThan(0);
+		for (const [, fallback] of reads) {
+			expect(fallback).toBe(", 0px");
+		}
+	});
+});

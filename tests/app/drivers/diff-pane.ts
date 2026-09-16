@@ -253,6 +253,24 @@ export class DiffPaneDriver {
 			),
 		];
 	}
+
+	/** Every tinted list item, as its text and whether it is a direct child of
+	 *  the block's outermost list — which is what decides whether its highlight
+	 *  bleeds across the prose inset to the pane edge or stops at its own
+	 *  bullet. jsdom lays nothing out, so this reports the structure the CSS
+	 *  keys on, not the painted geometry. */
+	renderedTintedItems(): { text: string; outermost: boolean }[] {
+		return [
+			...document.querySelectorAll<HTMLElement>(
+				".rendered-diff li.md-added, .rendered-diff li.md-removed",
+			),
+		].map((li) => ({
+			text: li.textContent?.trim() ?? "",
+			outermost: Boolean(
+				li.parentElement?.parentElement?.classList.contains("markdown-body"),
+			),
+		}));
+	}
 }
 
 function textsOf(selector: string): string[] {

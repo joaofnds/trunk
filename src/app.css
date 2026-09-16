@@ -601,13 +601,21 @@ textarea::placeholder {
 /* A tinted list item carries NO rail of its own — its Changed-pair wrapper
    always paints the block-level rail (RenderedDiff cell tints), so an item
    rail reads as a duplicate edge; like a tinted table row, the item pinpoint
-   is its brighter stacked background. The box is never nudged: WKWebView
-   anchors the outside ::marker to the li border box, so any margin/padding
-   shift drags the bullet out of line with untinted siblings. The ::before
-   extends the tint across the ul's 1.6em gutter so the bullet sits on the
-   highlight without the box moving. */
-li.md-added,
-li.md-removed {
+   is its brighter stacked background. The box is never nudged on the LEFT:
+   WKWebView anchors the outside ::marker to the li border box, so a shift
+   there drags the bullet out of line with untinted siblings. The ::before
+   extends the tint across the ul's gutter so the bullet sits on the highlight
+   without the box moving.
+
+   The class is doubled to raise specificity, not by taste. The build's minifier
+   merges the two selectors of the block tint above into `:is(.md-added,
+   .md-word-add:has(> img:only-child))`, and :is() takes the specificity of its
+   MOST specific argument — (0,2,0) from the :has() branch, which outranks a
+   plain `li.md-added` at (0,1,1). The rail then survived into the shipped build
+   and drew the duplicate edge this rule exists to remove, while every source
+   read of app.css said it was suppressed. */
+li.md-added.md-added,
+li.md-removed.md-removed {
 	position: relative;
 	box-shadow: none;
 }
@@ -625,6 +633,34 @@ li.md-added::before {
 }
 li.md-removed::before {
 	background: var(--color-diff-delete-bg);
+}
+/* An item of the block's OUTERMOST list spans the pane, exactly as a tinted
+   whole block does: its highlight crosses .rendered-block's horizontal padding
+   at both ends, so the two ways of saying "this was added" read as one shape
+   instead of a full-width wash next to a band inset 16px from each edge. The
+   right end is a negative margin the padding gives back, which leaves the
+   content box where it was; the left end is the ::before above, widened by the
+   same inset, so the ::marker never moves. A nested item is deliberately left
+   alone: its highlight starts at its own bullet, which is what marks it as
+   belonging to the sub-list rather than to the pane. The reach comes from
+   --md-prose-inset, which the container sets to the very value it pads with,
+   so the two cannot drift apart. It is read with a 0 fallback and declared on
+   no element here: .markdown-body declaring its own default would overwrite
+   the container's value for every descendant that reads it, which is the whole
+   of this rule, and the bleed would silently collapse to nothing. */
+.markdown-body > ul > li.md-added,
+.markdown-body > ul > li.md-removed,
+.markdown-body > ol > li.md-added,
+.markdown-body > ol > li.md-removed {
+	margin-right: calc(-1 * var(--md-prose-inset, 0px));
+	padding-right: var(--md-prose-inset, 0px);
+}
+.markdown-body > ul > li.md-added::before,
+.markdown-body > ul > li.md-removed::before,
+.markdown-body > ol > li.md-added::before,
+.markdown-body > ol > li.md-removed::before {
+	left: calc(-1 * (var(--md-list-gutter) + var(--md-prose-inset, 0px)));
+	width: calc(var(--md-list-gutter) + var(--md-prose-inset, 0px));
 }
 
 /* ── Word-level inline diff marks ──

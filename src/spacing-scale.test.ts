@@ -67,12 +67,26 @@ const namedPart = /^(0|auto|var\(--[\w-]+\)|[\d.]+em|@(?:px)?)$/;
 /** A Svelte interpolation and a `calc()` built only from the scale are each one
  *  opaque value however many spaces they hold, so both are masked before the
  *  shorthand is split into its sides. A `calc()` naming any length the scale
- *  does not own stays raw and fails. */
+ *  does not own stays raw and fails.
+ *
+ *  `--md-prose-inset` is on the scale by construction: a container sets it to
+ *  the very spacing token it pads its prose with, and it is 0 everywhere else.
+ *  It earns a place here because a full-bleed highlight has to negate it, and a
+ *  negation is the one form a bare var() cannot take. */
 const onScaleCalc =
-	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[1-4]|depth(?:,\s*0)?)\))+\)/g;
+	/calc\((?:\s|\d+|\*|\+|-|\/|\(|\)|var\(--(?:u|space-[1-4]|md-prose-inset(?:,\s*0px)?|depth(?:,\s*0)?)\))+\)/g;
+
+/* A var() carrying a fallback holds a space, so it would split into two parts
+   that are each nonsense on their own. Masked to one token like a calc() is.
+   Named rather than left open to any token: a general `var(--anything, 0px)`
+   would wave through a fallback nothing on the scale vouches for. */
+const varWithFallback = /var\(--md-prose-inset,\s*0px\)/g;
 
 const mask = (value: string) =>
-	value.replace(/\{[^}]*\}/g, "@").replace(onScaleCalc, "@");
+	value
+		.replace(/\{[^}]*\}/g, "@")
+		.replace(onScaleCalc, "@")
+		.replace(varWithFallback, "@");
 
 describe("spacing scale", () => {
 	it("carries no raw pixel value in a gap, padding or margin", () => {
@@ -180,6 +194,19 @@ describe("spacing scale", () => {
 					.every(
 						(part) => part === "0" || /^var\(--radius(-pill)?\)$/.test(part),
 					),
+		);
+
+		expect(raw).toEqual([]);
+	});
+
+	/* --md-prose-inset is exempted inside calc() above, so what keeps that from
+	   being a hole is this: every value it is ever given must itself be on the
+	   scale. A container that set it to a literal would smuggle a raw length
+	   past the guard that just waved it through. */
+	it("only ever sets the prose inset to a spacing token or zero", () => {
+		const raw = offences(
+			/--md-prose-inset: ([^;"\n]+)/g,
+			(value) => value === "0" || /^var\(--space-[1-4]\)$/.test(value),
 		);
 
 		expect(raw).toEqual([]);

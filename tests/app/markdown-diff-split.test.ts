@@ -89,4 +89,44 @@ describe("the rendered markdown diff, side by side", () => {
 			"6 items hidden",
 		]);
 	});
+
+	// The reported defect: a changed item's highlight stopped at the list's
+	// border box while a changed whole block ran the full width of the pane, so
+	// the same "this changed" arrived as two different shapes stacked on one
+	// screen. The bleed is keyed on the item being a direct child of the block's
+	// outermost list, so that structure is what this pins; the painted widths
+	// are a WKWebView matter jsdom cannot answer.
+	it("tints a changed item as a child of the block's outermost list", async () => {
+		const doc = (third: string) =>
+			["- alpha", "- beta", `- ${third}`].join("\n");
+		const app = await setup({
+			repo: {
+				steps: [
+					{ step: "file", path: "doc.md", content: `${doc("old")}\n` },
+					{ step: "commit", message: "base" },
+					{ step: "file", path: "doc.md", content: `${doc("new")}\n` },
+				],
+			},
+		});
+		await app.repo.open();
+		await app.staging.open();
+		await app.staging.openFile("doc.md");
+		await waitFor("the plain diff of doc.md", () =>
+			app.staging.removedLines().length > 0 ? true : null,
+		);
+		await app.diffPane.showRendered();
+		await app.diffPane.showSideBySide();
+
+		const tinted = await waitFor("the tinted items", () => {
+			const found = app.diffPane.renderedTintedItems();
+			return found.length > 0 ? found : null;
+		});
+
+		// Both columns tint their own copy of the changed item, and each sits
+		// directly under the block's own <ul> — the selector the bleed keys on.
+		expect(tinted).toEqual([
+			{ text: "old", outermost: true },
+			{ text: "new", outermost: true },
+		]);
+	});
 });

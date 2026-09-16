@@ -840,7 +840,8 @@ function rowHeights(node: HTMLElement, _rows: readonly SplitRow[]) {
      Padding-only box: rowHeights reconstructs each cell as markdown-body height
      + this padding — a border or margin here silently breaks row equalization. */
   .rendered-block {
-    padding: var(--space-2) var(--space-4);
+    --md-prose-inset: var(--space-4);
+    padding: var(--space-2) var(--md-prose-inset);
     min-width: 0;
   }
   /* GitHub's comment-prose size; the 16px browser default reads oversized
