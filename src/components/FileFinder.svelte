@@ -42,6 +42,7 @@ function handleInput(e: Event) {
 function handleKeydown(e: KeyboardEvent) {
 	if (e.key === "Escape") {
 		e.preventDefault();
+		e.stopPropagation();
 		onclose();
 	} else if (e.key === "ArrowDown") {
 		e.preventDefault();

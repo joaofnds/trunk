@@ -1709,6 +1709,7 @@ describe("RepoView", () => {
 			expect(diffCommitFileCalls()).toHaveLength(1);
 		});
 	});
+
 	describe("interactive rebase from a commit's context menu", () => {
 		const HEAD_OID = "aaa1111aaa1111aaa1111aaa1111aaa1111aaa11";
 		const CLICKED_OID = "bbb2222bbb2222bbb2222bbb2222bbb2222bbb22";
@@ -2778,6 +2779,113 @@ describe("RepoView", () => {
 			await flush();
 
 			expect(counts.mock.calls.at(-1)?.[0].view).toBe(0);
+		});
+	});
+
+	describe("escape inside an overlay (TRUNK-195)", () => {
+		function makeFileDiff(path: string): FileDiff {
+			return {
+				path,
+				old_path: null,
+				status: "Modified",
+				is_binary: false,
+				hunks: [
+					{
+						header: "@@ -1,1 +1,1 @@",
+						old_start: 1,
+						old_lines: 1,
+						new_start: 1,
+						new_lines: 1,
+						lines: [
+							{
+								origin: "Add",
+								content: "FILE BEHIND THE FINDER",
+								old_lineno: null,
+								new_lineno: 1,
+								spans: [],
+							},
+						],
+					},
+				],
+			};
+		}
+
+		async function flush() {
+			await new Promise((r) => setTimeout(r, 0));
+		}
+
+		function fireReviewShowPanel(): void {
+			const registered = eventHandlers.get("review-show-panel") ?? [];
+			if (registered.length === 0)
+				throw new Error("no review-show-panel listener");
+			for (const handler of registered) handler({ payload: undefined });
+		}
+
+		beforeEach(() => {
+			const base = mockInvoke.getMockImplementation();
+			if (!base) throw new Error("base invoke implementation missing");
+			mockInvoke.mockImplementation((cmd, args) => {
+				switch (cmd) {
+					case "list_tracked_files":
+						return Promise.resolve([{ path: "src/alpha.ts", changed: false }]);
+					case "open_current_file":
+						return Promise.resolve([makeFileDiff("src/alpha.ts")]);
+					case "get_active_review":
+						return Promise.resolve("r1");
+					default:
+						return base(cmd, args);
+				}
+			});
+		});
+
+		it("escape in the file finder keeps the file the finder was opened over", async () => {
+			const props = {
+				...baseProps(createMockRemoteState()),
+				reviewActive: true,
+			};
+			const { rerender } = render(RepoView, { props });
+			await flush();
+			await fireEvent.click(await screen.findByText(/Comment on a file/));
+			await flush();
+			await fireEvent.click(await screen.findByRole("option"));
+			await flush();
+			expect(await screen.findByText("FILE BEHIND THE FINDER")).toBeTruthy();
+			fireReviewShowPanel();
+			await flush();
+			await fireEvent.click(await screen.findByText(/Comment on a file/));
+			await flush();
+			expect(screen.queryByRole("dialog")).toBeTruthy();
+
+			await fireEvent.keyDown(
+				screen.getByLabelText("Find a tracked file to comment on"),
+				{ key: "Escape" },
+			);
+			await flush();
+			expect(screen.queryByRole("dialog")).toBeNull();
+
+			// Leaving review mode hands the centre pane back to the diff, which is
+			// where the file the finder was opened over becomes visible again.
+			await rerender({ ...props, reviewActive: false });
+			await flush();
+
+			expect(screen.queryByText("FILE BEHIND THE FINDER")).toBeTruthy();
+		});
+
+		it("escape with no overlay up still closes the file", async () => {
+			render(RepoView, {
+				props: { ...baseProps(createMockRemoteState()), reviewActive: true },
+			});
+			await flush();
+			await fireEvent.click(await screen.findByText(/Comment on a file/));
+			await flush();
+			await fireEvent.click(await screen.findByRole("option"));
+			await flush();
+			expect(await screen.findByText("FILE BEHIND THE FINDER")).toBeTruthy();
+
+			await fireEvent.keyDown(window, { key: "Escape" });
+			await flush();
+
+			expect(screen.queryByText("FILE BEHIND THE FINDER")).toBeNull();
 		});
 	});
 });

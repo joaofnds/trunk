@@ -247,6 +247,7 @@ describe("composer operation lifetime", () => {
 			"belongs outside the new review",
 		);
 	});
+
 	it("submits to the captured commit when navigation occurs during autosave", async () => {
 		const file: FileDiff = {
 			path: "a.ts",
