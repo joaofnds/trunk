@@ -372,27 +372,59 @@ describe("rendered markdown list item tints", () => {
 
 	/* The rail itself, on the ::before's far edge. A changed item and a changed
 	   source line are one edit to the reader, so they carry the same 3px in the
-	   same hue at the same pane edge (HunkView's .diff-line border-left). An
-	   earlier version dropped the item rail entirely, on the premise that the
-	   Changed-pair wrapper always paints one behind it; one item edited inside
-	   an unchanged list gives a bare .rendered-block with no tint class, so the
-	   change reached the reader with no rail at all. */
+	   same hue at the same pane edge (HunkView and SplitView's .diff-line
+	   border-left). An earlier version dropped the item rail entirely, on the
+	   premise that the Changed-pair wrapper always paints one behind it; one
+	   item edited inside an unchanged list gives a bare .rendered-block with no
+	   tint class, so the change reached the reader with no rail at all. */
 	it("rails a tinted item at the pane edge, in the source view's hue and width", () => {
-		/* The hue rules are the ones declaring a background; the shared geometry
-		   rule above them lists the same two selectors and would match first. */
-		const hueRule = (state: "added" | "removed") =>
+		const railRule = (state: "added" | "removed") =>
 			css.match(
-				new RegExp(`\\nli\\.md-${state}::before \\{([^}]*background[^}]*)\\}`),
-			)?.[1];
+				new RegExp(
+					`([^}]*li\\.md-${state}::before[^{]*)\\{([^}]*box-shadow[^}]*)\\}`,
+				),
+			);
 
-		const add = hueRule("added");
-		const remove = hueRule("removed");
+		const add = railRule("added");
+		const remove = railRule("removed");
 
-		expect(add).toBeDefined();
-		expect(add).toMatch(/box-shadow:\s*inset 3px 0 0 var\(--color-diff-add\)/);
-		expect(remove).toBeDefined();
-		expect(remove).toMatch(
+		expect(add).not.toBeNull();
+		expect(add?.[2]).toMatch(
+			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-add\)/,
+		);
+		expect(remove).not.toBeNull();
+		expect(remove?.[2]).toMatch(
 			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-delete\)/,
+		);
+	});
+
+	/* The rail belongs to the changed leaf, never to the block around it. A
+	   Changed pair's columns carry .md-added.no-wash / .md-removed.no-wash, and
+	   that rule has to drop the block's own rail as well as its background: a
+	   block-level rail runs the full height of a column whose other items never
+	   changed, which is not what the source split view does — there a changed
+	   line takes the colored rail and its neighbours keep the neutral one. The
+	   defect was visible as a full-height red bar beside one edited item. */
+	it("drops the block rail where the leaves carry the change", () => {
+		const noWash = css.match(
+			/\.rendered-block\.md-added\.no-wash,[^{]*\{([^}]*)\}/,
+		)?.[1];
+
+		expect(noWash).toBeDefined();
+		expect(noWash).toMatch(/box-shadow:\s*none/);
+	});
+
+	/* A wholly added or removed block still rails itself: it paints its own
+	   surface across everything inside, so the rail is that surface's edge and
+	   there is no changed leaf to hand it to. */
+	it("keeps the block rail where the whole block is the change", () => {
+		const blockTint = css.match(
+			/\n\.md-added,\n\.md-word-add:has\(> img:only-child\) \{([^}]*)\}/,
+		)?.[1];
+
+		expect(blockTint).toBeDefined();
+		expect(blockTint).toMatch(
+			/box-shadow:\s*inset 3px 0 0 var\(--color-diff-add\)/,
 		);
 	});
 

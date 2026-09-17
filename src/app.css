@@ -589,14 +589,20 @@ textarea::placeholder {
 	background: var(--color-diff-delete-bg);
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
-/* A Changed pair whose leaves are tinted keeps the rail and drops the wash, so
-   the changed item is the only highlighted thing instead of a brighter patch
-   inside a fully painted block. Two classes beat the single-class rule above on
-   specificity, so background alone is overridden and box-shadow is left alone —
-   colour is still not the sole carrier of the before/after distinction. */
+/* A Changed pair whose leaves are tinted drops BOTH the wash and the rail, so
+   the changed leaf is the only highlighted thing instead of a brighter patch
+   inside a fully painted block. The rail went too because it is a highlight
+   like the wash is: spanning the block, it ran the full height of a column
+   whose other items never changed, which is not what the source view does —
+   there a changed line takes the colored rail and its neighbours keep the
+   neutral one (SplitView's .diff-line-add / .diff-line-delete). Colour is
+   still not the sole carrier: the tinted leaf carries its own 3px rail below,
+   at the same pane edge, so the carrier moved to the leaf rather than going
+   away. Two classes beat the single-class rule above on specificity. */
 .rendered-block.md-added.no-wash,
 .rendered-block.md-removed.no-wash {
 	background: var(--bg-0);
+	box-shadow: none;
 }
 /* A tinted list item carries no rail on the BOX. It carries one on the far
    edge of its ::before instead, which is the pane's own edge — the same place,
@@ -639,10 +645,26 @@ li.md-removed::before {
 }
 li.md-added::before {
 	background: var(--color-diff-add-bg);
-	box-shadow: inset 3px 0 0 var(--color-diff-add);
 }
 li.md-removed::before {
 	background: var(--color-diff-delete-bg);
+}
+/* The item's own rail, on the far edge of its ::before — the pane edge, which
+   is where the source view rails a changed line (HunkView and SplitView's
+   .diff-line border-left), so one edit reads as one shape across the two views
+   and both layouts. This is the carrier the no-wash rule above hands down: a
+   Changed pair's columns rail their changed leaf, not their whole block.
+
+   Not when the block is washing. A wholly added or removed block paints its
+   own background and rail across everything inside it, and a leaf rail there
+   would draw a second edge inside a surface that is already entirely the one
+   colour. */
+.rendered-block:not(.md-added):not(.md-removed) li.md-added::before,
+.rendered-block.no-wash li.md-added::before {
+	box-shadow: inset 3px 0 0 var(--color-diff-add);
+}
+.rendered-block:not(.md-added):not(.md-removed) li.md-removed::before,
+.rendered-block.no-wash li.md-removed::before {
 	box-shadow: inset 3px 0 0 var(--color-diff-delete);
 }
 /* An item of the block's OUTERMOST list spans the pane, exactly as a tinted
