@@ -70,6 +70,7 @@ import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
+import { edgeFadeWidth, stickyDotX } from "../lib/sticky-dot.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
@@ -1275,19 +1276,6 @@ const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
 const svgSettings = $derived({ ...displaySettings, rowHeight: svgRowHeight });
 const geometry = $derived(makePathContext(svgSettings));
 
-// A dot slides along its horizontal line to stay inside the panned viewport
-// (bead-on-a-string). `graphX` is the dot's unscrolled centre — from the node
-// for the dots layer, from the pill for its connector.
-function stickyDotX(graphX: number, colWidth: number, scroll: number): number {
-	return Math.max(
-		displaySettings.laneWidth / 2,
-		Math.min(
-			colWidth - 2 * COLUMN_PADDING_X - displaySettings.dotRadius,
-			graphX - scroll,
-		),
-	);
-}
-
 const graphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
 const paths = $derived.by(() => buildOverlayPaths(graphData, svgSettings));
 const pillData = $derived.by(() =>
@@ -1918,15 +1906,35 @@ $effect(() => {
                hidden CommitRow drops that cell and the Message text slides into
                the band, so anything painted here lands on top of it. -->
           {#if columnVisibility.graph}
+          {@const railBandX = refOffset + COLUMN_PADDING_X}
+          {@const railBandWidth = graphColWidth - 2 * COLUMN_PADDING_X}
+          {@const lanesRunPastEdge = maxGraphScrollX > 0}
+          {@const fadeWidth = edgeFadeWidth(railBandWidth)}
           <!-- GRAPH-02: clip graph content to column width -->
           <defs>
             <clipPath id="graph-clip">
-              <rect x={refOffset + COLUMN_PADDING_X} y="0" width={graphColWidth - 2 * COLUMN_PADDING_X} height={contentHeight} />
+              <rect x={railBandX} y="0" width={railBandWidth} height={contentHeight} />
             </clipPath>
+            <!-- Rails are cut off at the column's right edge whenever lanes run
+                 past it. Ending them on a hard line reads as broken rendering,
+                 so they fade over the last few pixels instead: the dots clamp to
+                 that same edge and stay solid on top. -->
+            {#if lanesRunPastEdge}
+              <linearGradient id="graph-edge-fade" gradientUnits="userSpaceOnUse"
+                x1={railBandX + railBandWidth - fadeWidth} x2={railBandX + railBandWidth}>
+                <stop offset="0" stop-color="white" stop-opacity="1" />
+                <stop offset="1" stop-color="white" stop-opacity="0" />
+              </linearGradient>
+              <mask id="graph-edge-mask" maskUnits="userSpaceOnUse"
+                x={railBandX} y="0" width={railBandWidth} height={contentHeight}>
+                <rect x={railBandX} y="0" width={railBandWidth - fadeWidth} height={contentHeight} fill="white" />
+                <rect x={railBandX + railBandWidth - fadeWidth} y="0" width={fadeWidth} height={contentHeight} fill="url(#graph-edge-fade)" />
+              </mask>
+            {/if}
           </defs>
           <!-- GRAPH-02: Layer A — rails + connections, scrolled and clipped.
                Translated left by scrollX to pan through lanes. -->
-          <g clip-path="url(#graph-clip)">
+          <g clip-path="url(#graph-clip)" mask={lanesRunPastEdge ? 'url(#graph-edge-mask)' : undefined}>
             <g class="overlay-paths" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
               {#each visible.paths as path}
                 <path d={path.d} fill="none"
@@ -1943,7 +1951,7 @@ $effect(() => {
                Dots clamp to viewport edges (bead-on-a-string effect). -->
           <g class="overlay-dots" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
             {#each visible.dots as node}
-              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
+              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX, displaySettings)}
               {#if node.isWip}
                 <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill="none" stroke={laneColor(node.colorIndex)}
@@ -1976,7 +1984,7 @@ $effect(() => {
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
-                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
+                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX, displaySettings)}
                   {@const connectorEndX = refOffset + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
                   <line
                     x1={pillGroupRightX}

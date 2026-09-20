@@ -23,6 +23,8 @@ export const DEFAULT_GRAPH_SETTINGS: GraphDisplaySettings = {
 
 // Column layout constants
 export const COLUMN_PADDING_X = 4;
+/** How far the rails fade before the graph column's right edge. */
+export const EDGE_FADE_WIDTH = 3 * UNIT;
 
 // Ref pill constants
 export const PILL_HEIGHT = 5 * UNIT;

@@ -2,7 +2,13 @@
   <defs>
     <clipPath id="graph-clip">
       <rect height="4000" width="16" x="124" y="0">
-  <g clip-path="url(#graph-clip)">
+    <linearGradient gradientUnits="userSpaceOnUse" id="graph-edge-fade" x1="132" x2="140">
+      <stop offset="0" stop-color="white" stop-opacity="1">
+      <stop offset="1" stop-color="white" stop-opacity="0">
+    <mask height="4000" id="graph-edge-mask" maskUnits="userSpaceOnUse" width="16" x="124" y="0">
+      <rect fill="white" height="4000" width="8" x="124" y="0">
+      <rect fill="url(#graph-edge-fade)" height="4000" width="8" x="132" y="0">
+  <g clip-path="url(#graph-clip)" mask="url(#graph-edge-mask)">
     <g class="overlay-paths" transform="translate(124, 0)">
       <path d="M 8 14 V 70" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 24 51 V 62 C 24 66.41827799864635 19.58172200135365 70 16 70 H 8" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
@@ -10,7 +16,7 @@
       <path d="M 8 98 V 126" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g class="overlay-dots" transform="translate(124, 0)">
     <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
-    <rect fill="none" height="12" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-1)" width="12" x="4" y="36">
+    <rect fill="none" height="12" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-1)" width="12" x="2" y="36">
     <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
     <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
     <circle cx="8" cy="126" fill="var(--lane-0)" r="6">

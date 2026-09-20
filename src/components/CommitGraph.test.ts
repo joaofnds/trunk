@@ -838,6 +838,61 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	// The rails are clipped at the column's right edge. A hard cut reads as
+	// broken rendering; the fade says the lanes continue out of view, which is
+	// what the clip actually means.
+	describe("the graph column's right edge", () => {
+		function mountWithLanes(maxColumns: number, graphWidth: number) {
+			installReads({
+				override: (cmd, args) => {
+					if (cmd === "prefs_get" && args?.key === "column_widths") {
+						return Promise.resolve({
+							ref: 120,
+							graph: graphWidth,
+							diff: 96,
+							author: 60,
+							date: 40,
+							sha: 50,
+						});
+					}
+					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph") {
+						return Promise.resolve({
+							commits: TEST_COMMITS,
+							max_columns: maxColumns,
+						});
+					}
+					return undefined;
+				},
+			});
+
+			return render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+		}
+
+		it("fades the rails out where lanes continue past the column", async () => {
+			const { container } = mountWithLanes(8, 24);
+
+			await waitFor(() => {
+				expect(container.querySelector(".overlay-paths")).not.toBeNull();
+			});
+
+			expect(container.querySelector("#graph-edge-fade")).not.toBeNull();
+		});
+
+		describe("when every lane already fits", () => {
+			it("leaves the rails unfaded", async () => {
+				const { container } = mountWithLanes(1, 200);
+
+				await waitFor(() => {
+					expect(container.querySelector(".overlay-paths")).not.toBeNull();
+				});
+
+				expect(container.querySelector("#graph-edge-fade")).toBeNull();
+			});
+		});
+	});
+
 	describe("mount scroll anchor", () => {
 		function detachedPage() {
 			return Array.from({ length: 200 }, (_, i) =>
