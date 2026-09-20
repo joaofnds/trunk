@@ -3,10 +3,12 @@ import { makeCommit } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
+	columnFloors,
 	dateContentWidth,
 	graphTargetWidth,
 	headerMinWidths,
 	shaContentWidth,
+	showsHeaderLabel,
 } from "./column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "./graph-constants.js";
 import { relativeLabel } from "./relative-time.js";
@@ -108,16 +110,18 @@ describe("shaContentWidth", () => {
 
 describe("graphTargetWidth", () => {
 	it("fits every lane", () => {
-		expect(graphTargetWidth(3, LANE_WIDTH, 0)).toBe(3 * LANE_WIDTH + PADDING);
+		expect(graphTargetWidth(3, LANE_WIDTH)).toBe(3 * LANE_WIDTH + PADDING);
 	});
 
 	it("keeps one lane's width for a graph with no commits", () => {
-		expect(graphTargetWidth(0, LANE_WIDTH, 0)).toBe(LANE_WIDTH + PADDING);
+		expect(graphTargetWidth(0, LANE_WIDTH)).toBe(LANE_WIDTH + PADDING);
 	});
 
-	describe("when the lanes are narrower than the header", () => {
-		it("keeps the header readable", () => {
-			expect(graphTargetWidth(1, LANE_WIDTH, 500)).toBe(500);
+	// The header word no longer sets the width: a graph narrower than "Graph"
+	// shows the header's icon, so auto-fit is free to size to the lanes alone.
+	describe("when the lanes are narrower than the header word", () => {
+		it("still fits the lanes rather than the word", () => {
+			expect(graphTargetWidth(1, LANE_WIDTH)).toBe(LANE_WIDTH + PADDING);
 		});
 	});
 });
@@ -138,5 +142,50 @@ describe("headerMinWidths", () => {
 			"ref",
 			"sha",
 		]);
+	});
+});
+
+describe("columnFloors", () => {
+	it("lets the graph shrink to a single lane of commits", () => {
+		expect(columnFloors().graph).toBe(LANE_WIDTH + PADDING);
+	});
+
+	it("covers every resizable column", () => {
+		expect(Object.keys(columnFloors()).sort()).toEqual([
+			"author",
+			"date",
+			"diff",
+			"graph",
+			"ref",
+			"sha",
+		]);
+	});
+
+	// The floor is what the cell needs to show anything at all, so it must not
+	// depend on the header word — that dependency is what kept the graph two
+	// lanes wide.
+	it("is narrower than the header label needs", () => {
+		const floors = columnFloors();
+		const labelMins = headerMinWidths(measure);
+
+		for (const column of Object.keys(floors) as (keyof typeof floors)[]) {
+			expect(floors[column]).toBeLessThan(labelMins[column]);
+		}
+	});
+});
+
+describe("showsHeaderLabel", () => {
+	it("shows the word when the column fits it", () => {
+		expect(showsHeaderLabel(100, 50)).toBe(true);
+	});
+
+	it("hides the word when the column is narrower than it", () => {
+		expect(showsHeaderLabel(30, 50)).toBe(false);
+	});
+
+	// At exactly the label's own minimum the word still fits, which is what that
+	// minimum means.
+	it("shows the word at exactly its minimum", () => {
+		expect(showsHeaderLabel(50, 50)).toBe(true);
 	});
 });

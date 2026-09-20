@@ -1,8 +1,15 @@
 <script lang="ts">
 import Archive from "@lucide/svelte/icons/archive";
+import Clock from "@lucide/svelte/icons/clock";
+import FileDiff from "@lucide/svelte/icons/file-diff";
+import GitBranch from "@lucide/svelte/icons/git-branch";
 import Globe from "@lucide/svelte/icons/globe";
+import Hash from "@lucide/svelte/icons/hash";
 import Laptop from "@lucide/svelte/icons/laptop";
+import MessageSquare from "@lucide/svelte/icons/message-square";
+import Network from "@lucide/svelte/icons/network";
 import Tag from "@lucide/svelte/icons/tag";
+import User from "@lucide/svelte/icons/user";
 import { listen } from "@tauri-apps/api/event";
 import {
 	CheckMenuItem,
@@ -13,7 +20,7 @@ import {
 } from "@tauri-apps/api/menu";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { onDestroy, tick, untrack } from "svelte";
+import { type Component, onDestroy, tick, untrack } from "svelte";
 import { buildGraphData } from "../lib/active-lanes.js";
 import {
 	mergeBranch,
@@ -27,10 +34,13 @@ import {
 } from "../lib/coalesced-task.js";
 import {
 	authorContentWidth,
+	columnFloors,
 	dateContentWidth,
 	graphTargetWidth,
+	HEADER_ICON_WIDTH,
 	headerMinWidths,
 	shaContentWidth,
+	showsHeaderLabel,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import {
@@ -311,6 +321,7 @@ $effect(() => {
 });
 
 const headerMins = headerMinWidths(measureTextWidth);
+const floors = columnFloors();
 
 // Track which columns the user has explicitly resized this session.
 const userResizedColumns = new Set<keyof ColumnWidths>();
@@ -342,11 +353,7 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 // Auto-fit column widths to content. Uses untrack on columnWidths reads to avoid
 // infinite reactive loops (each effect writes columnWidths, which would re-trigger others).
 $effect(() => {
-	const targetWidth = graphTargetWidth(
-		maxColumns,
-		displaySettings.laneWidth,
-		headerMins.graph,
-	);
+	const targetWidth = graphTargetWidth(maxColumns, displaySettings.laneWidth);
 	const cur = untrack(() => columnWidths);
 	if (!userResizedColumns.has("graph")) {
 		columnWidths = { ...cur, graph: targetWidth };
@@ -358,7 +365,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxAuthorContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.max(w, headerMins.author);
+	const targetWidth = Math.max(w, floors.author);
 	if (!userResizedColumns.has("author")) {
 		columnWidths = { ...untrack(() => columnWidths), author: targetWidth };
 	}
@@ -367,7 +374,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxDateContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.max(w, headerMins.date);
+	const targetWidth = Math.max(w, floors.date);
 	if (!userResizedColumns.has("date")) {
 		columnWidths = { ...untrack(() => columnWidths), date: targetWidth };
 	}
@@ -376,7 +383,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxShaContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.max(w, headerMins.sha);
+	const targetWidth = Math.max(w, floors.sha);
 	if (!userResizedColumns.has("sha")) {
 		columnWidths = { ...untrack(() => columnWidths), sha: targetWidth };
 	}
@@ -429,21 +436,14 @@ async function loadStashMap() {
 
 const stashMapRefresh = createCoalescedTask(scheduler, loadStashMap);
 
-function startColumnResize(
-	column: keyof ColumnWidths,
-	e: MouseEvent,
-	invert = false,
-) {
+function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	e.preventDefault();
 	userResizedColumns.add(column);
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
 	const maxWidths: Record<keyof ColumnWidths, number> = {
 		ref: 400,
-		graph: Math.max(
-			naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
-			headerMins.graph,
-		),
+		graph: naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
 		diff: 400,
 		author: 400,
 		date: 400,
@@ -451,9 +451,9 @@ function startColumnResize(
 	};
 
 	function onMouseMove(ev: MouseEvent) {
-		const delta = (ev.clientX - startX) * (invert ? -1 : 1);
+		const delta = ev.clientX - startX;
 		const newWidth = Math.max(
-			headerMins[column],
+			floors[column],
 			Math.min(maxWidths[column], startWidth + delta),
 		);
 		columnWidths = { ...columnWidths, [column]: newWidth };
@@ -469,14 +469,23 @@ function startColumnResize(
 	window.addEventListener("mouseup", onMouseUp);
 }
 
-const columnLabels: { key: keyof ColumnVisibility; label: string }[] = [
-	{ key: "ref", label: "Branch/Tag" },
-	{ key: "graph", label: "Graph" },
-	{ key: "message", label: "Message" },
-	{ key: "diff", label: "Diff" },
-	{ key: "author", label: "Author" },
-	{ key: "date", label: "Date" },
-	{ key: "sha", label: "SHA" },
+/**
+ * Message takes the space the sized columns leave, so it has no entry in
+ * ColumnWidths and no resize handle. The union keeps that difference in the
+ * type rather than in a comparison against the key.
+ */
+type ColumnHeader =
+	| { key: keyof ColumnWidths; label: string; icon: Component; sized: true }
+	| { key: "message"; label: string; icon: Component; sized: false };
+
+const columnLabels: ColumnHeader[] = [
+	{ key: "ref", label: "Branch/Tag", icon: GitBranch, sized: true },
+	{ key: "graph", label: "Graph", icon: Network, sized: true },
+	{ key: "message", label: "Message", icon: MessageSquare, sized: false },
+	{ key: "diff", label: "Diff", icon: FileDiff, sized: true },
+	{ key: "author", label: "Author", icon: User, sized: true },
+	{ key: "date", label: "Date", icon: Clock, sized: true },
+	{ key: "sha", label: "SHA", icon: Hash, sized: true },
 ];
 
 // InputDialog state
@@ -1812,69 +1821,38 @@ $effect(() => {
     style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
     oncontextmenu={showHeaderContextMenu}
   >
-    {#if columnVisibility.ref}
-      <div class="flex-shrink-0 relative" style="width: {columnWidths.ref}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Branch/Tag
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'ref' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('ref', e)}></div>
+    {#each columnLabels as col (col.key)}
+      {#if columnVisibility[col.key]}
+        {#if col.sized}
+          {@const width = columnWidths[col.key]}
+          <div
+            class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
+            data-column={col.key}
+            style="width: {width}px; padding: 0 {COLUMN_PADDING_X}px;"
+            title={col.label}
+          >
+            {#if showsHeaderLabel(width, headerMins[col.key])}
+              {col.label}
+            {:else}
+              <col.icon size={HEADER_ICON_WIDTH} aria-hidden="true" />
+            {/if}
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            {#if col.key !== lastVisibleColumn}
+              <div class="col-resize-handle" onmousedown={(e) => startColumnResize(col.key, e)}></div>
+            {/if}
+          </div>
+        {:else}
+          <div
+            class="relative flex-1 overflow-hidden whitespace-nowrap"
+            data-column={col.key}
+            style="padding: 0 {COLUMN_PADDING_X}px;"
+            title={col.label}
+          >
+            {col.label}
+          </div>
         {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.graph}
-      <div class="flex-shrink-0 relative" style="width: {columnWidths.graph}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Graph
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'graph' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('graph', e)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.message}
-      <div class="flex-1 relative" style="padding: 0 {COLUMN_PADDING_X}px;">
-        Message
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'message' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('diff', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.diff}
-      <div class="flex-shrink-0 relative" style="width: {columnWidths.diff}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Diff
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'diff' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('author', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.author}
-      <div class="flex-shrink-0 relative" style="width: {columnWidths.author}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Author
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'author' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('date', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.date}
-      <div class="flex-shrink-0 relative" style="width: {columnWidths.date}px; padding: 0 {COLUMN_PADDING_X}px;">
-        Date
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'date' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('sha', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
-    {#if columnVisibility.sha}
-      <div class="flex-shrink-0" style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;">
-        SHA
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        {#if 'sha' !== lastVisibleColumn}
-          <div class="col-resize-handle" onmousedown={(e) => startColumnResize('sha', e, true)}></div>
-        {/if}
-      </div>
-    {/if}
+      {/if}
+    {/each}
   </div>
 
   <!-- Content area (grows to fill remaining space) -->

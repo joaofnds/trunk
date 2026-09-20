@@ -1,4 +1,4 @@
-import { COLUMN_PADDING_X } from "./graph-constants.js";
+import { COLUMN_PADDING_X, LANE_WIDTH } from "./graph-constants.js";
 import { WIDEST_LABELS } from "./relative-time.js";
 import type { ColumnWidths } from "./store.js";
 import type { GraphCommit } from "./types.js";
@@ -16,6 +16,8 @@ const SHA_CONTENT_FONT = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
 export const AUTHOR_AVATAR_WIDTH = 18 + 8;
 
 const CELL_PAD = 2 * COLUMN_PADDING_X;
+/** Size of the icon a header falls back to when its word no longer fits. */
+export const HEADER_ICON_WIDTH = 12;
 /** 2× for the CSS padding, 2× so a header never touches its divider. */
 const HEADER_PAD = 4 * COLUMN_PADDING_X;
 
@@ -28,7 +30,7 @@ const HEADER_LABELS: Record<keyof ColumnWidths, string> = {
 	sha: "SHA",
 };
 
-/** The narrowest each column may be dragged: its own header, still readable. */
+/** The width below which a header shows its icon instead of its word. */
 export function headerMinWidths(
 	measure: MeasureText,
 ): Record<keyof ColumnWidths, number> {
@@ -38,6 +40,28 @@ export function headerMinWidths(
 			measure(label, HEADER_FONT) + HEADER_PAD;
 	}
 	return mins;
+}
+
+/**
+ * The narrowest each column may be dragged. Sized for the cell's content, never
+ * for the header word: a header too narrow for its word shows an icon, so the
+ * word cannot be what stops the drag. The graph's floor is one lane, which is
+ * the single line of commits the column exists to show.
+ */
+export function columnFloors(): Record<keyof ColumnWidths, number> {
+	return {
+		ref: HEADER_ICON_WIDTH + CELL_PAD,
+		graph: LANE_WIDTH + CELL_PAD,
+		diff: HEADER_ICON_WIDTH + CELL_PAD,
+		author: HEADER_ICON_WIDTH + CELL_PAD,
+		date: HEADER_ICON_WIDTH + CELL_PAD,
+		sha: HEADER_ICON_WIDTH + CELL_PAD,
+	};
+}
+
+/** Whether a header of this width has room for its word rather than its icon. */
+export function showsHeaderLabel(width: number, labelMin: number): boolean {
+	return width >= labelMin;
 }
 
 /**
@@ -76,12 +100,10 @@ export function shaContentWidth(measure: MeasureText): number {
 	return measure("0000000", SHA_CONTENT_FONT) + CELL_PAD;
 }
 
-/** Width that shows every lane, never narrower than the header needs. */
+/** Width that shows every lane. */
 export function graphTargetWidth(
 	maxColumns: number,
 	laneWidth: number,
-	headerMin: number,
 ): number {
-	const fitWidth = Math.max(maxColumns, 1) * laneWidth + CELL_PAD;
-	return Math.max(fitWidth, headerMin);
+	return Math.max(maxColumns, 1) * laneWidth + CELL_PAD;
 }

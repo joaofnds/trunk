@@ -6,6 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { resetCache } from "../lib/text-measure.js";
@@ -264,6 +265,9 @@ describe("CommitGraph", () => {
 		expect(container).toBeTruthy();
 	});
 
+	// The graph defaults to a single lane, which is narrower than the word
+	// "Graph" — that header shows its icon instead, covered by the header tests
+	// further down.
 	it("renders column headers", async () => {
 		render(CommitGraph, {
 			props: {
@@ -274,7 +278,6 @@ describe("CommitGraph", () => {
 		await waitFor(() => {
 			expect(screen.getByText("Branch/Tag")).toBeInTheDocument();
 		});
-		expect(screen.getByText("Graph")).toBeInTheDocument();
 		expect(screen.getByText("Message")).toBeInTheDocument();
 		expect(screen.getByText("Author")).toBeInTheDocument();
 		expect(screen.getByText("Date")).toBeInTheDocument();
@@ -701,6 +704,137 @@ describe("CommitGraph", () => {
 
 			expect(count(container, ".overlay-dots")).toBe(0);
 			expect(count(container, ".overlay-paths")).toBe(0);
+		});
+	});
+
+	describe("column headers", () => {
+		function mountHeader(visibility?: Partial<Record<string, boolean>>) {
+			installReads({
+				override: (cmd, args) =>
+					cmd === "prefs_get" && args?.key === "column_visibility"
+						? Promise.resolve({
+								ref: true,
+								graph: true,
+								message: true,
+								diff: true,
+								author: true,
+								date: true,
+								sha: true,
+								...visibility,
+							})
+						: undefined,
+			});
+
+			return render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+		}
+
+		function headerCell(container: HTMLElement, label: string): HTMLElement {
+			const header = container.querySelector(
+				"[role=listbox] > div",
+			) as HTMLElement;
+			const cell = [...header.children].find(
+				(c) => c.getAttribute("data-column") === label,
+			);
+			if (!cell) {
+				throw new Error(
+					`no header cell for "${label}"; found: ${[...header.children]
+						.map((c) => c.getAttribute("data-column"))
+						.join(", ")}`,
+				);
+			}
+			return cell as HTMLElement;
+		}
+
+		async function drag(handle: Element, dx: number) {
+			await fireEvent.mouseDown(handle, { clientX: 500 });
+			await fireEvent(
+				window,
+				new MouseEvent("mousemove", { clientX: 500 + dx }),
+			);
+			await fireEvent(window, new MouseEvent("mouseup"));
+			await flush();
+		}
+
+		// A handle sits on its own cell's right edge, so the column it moves must
+		// be the one the user grabbed the edge of — not its neighbour.
+		it("resizes the column whose edge the handle sits on", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const author = headerCell(container, "author");
+			const before = author.style.width;
+
+			await drag(author.querySelector(".col-resize-handle") as Element, 60);
+
+			expect({ before, after: author.style.width }).toEqual({
+				before: "60px",
+				after: "120px",
+			});
+		});
+
+		it("widens the column when its edge is dragged right", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const date = headerCell(container, "date");
+
+			await drag(date.querySelector(".col-resize-handle") as Element, 50);
+
+			expect(Number.parseInt(date.style.width, 10)).toBeGreaterThan(40);
+		});
+
+		// With a neighbour hidden, the column must still be reachable: the handle
+		// belongs to the cell it is drawn on, not to whatever follows it.
+		describe("when the neighbouring column is hidden", () => {
+			it("still resizes the author column", async () => {
+				const { container } = mountHeader({ diff: false, sha: false });
+				await flush();
+				const author = headerCell(container, "author");
+				const before = author.style.width;
+
+				await drag(author.querySelector(".col-resize-handle") as Element, 40);
+
+				expect(author.style.width).not.toBe(before);
+			});
+		});
+
+		it("shrinks the graph column to a single lane", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const graph = headerCell(container, "graph");
+
+			await drag(graph.querySelector(".col-resize-handle") as Element, -500);
+
+			expect(graph.style.width).toBe(`${LANE_WIDTH + 2 * COLUMN_PADDING_X}px`);
+		});
+
+		it("shows the header word when the column fits it", async () => {
+			const { container } = mountHeader();
+			await flush();
+
+			expect(headerCell(container, "author").textContent).toContain("Author");
+		});
+
+		// The word would otherwise be clipped mid-glyph by the cell's overflow.
+		it("swaps the word for an icon once the column is narrower than it", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const author = headerCell(container, "author");
+
+			await drag(author.querySelector(".col-resize-handle") as Element, -500);
+
+			expect(author.textContent).not.toContain("Author");
+			expect(author.querySelector("svg")).not.toBeNull();
+		});
+
+		it("names the column for assistive tech when only the icon shows", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const author = headerCell(container, "author");
+
+			await drag(author.querySelector(".col-resize-handle") as Element, -500);
+
+			expect(author.getAttribute("title")).toBe("Author");
 		});
 	});
 
