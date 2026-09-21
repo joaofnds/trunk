@@ -10,9 +10,7 @@
  * and falls to panel-only by design.
  *
  * A current-file view matches on the content pin's path instead, since a pinned
- * thread carries no OID at all. That is a branch of its own rather than a
- * widening of `resolveViewOid`, whose null fall-through is what keeps every
- * other unhandled kind empty without anyone having to remember a gate.
+ * thread carries no OID at all.
  */
 
 import type { ReviewSnapshots, Side, Thread } from "./types.js";
@@ -84,6 +82,9 @@ function rangeOn(
 		return { start: thread.anchor.start_line, end: thread.anchor.end_line };
 	}
 
+	// Loose equality on purpose: the wire declares both of these optional as
+	// well as nullable, so an absent field arrives as undefined and a strict
+	// `!== null` would let it through as a range.
 	const pin = thread.content_pin;
 	const resolved = thread.resolved_start_line;
 	if (side !== "New" || pin == null || resolved == null) return null;
@@ -105,7 +106,6 @@ export function commentsForLine(
 	return viewComments.filter((c) => rangeOn(c, side)?.end === lineno);
 }
 
-/** Whether this line falls inside some thread's range. */
 export function spannedByComment(
 	viewComments: Thread[],
 	side: Side,
