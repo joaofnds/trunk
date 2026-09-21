@@ -39,6 +39,8 @@ import {
 	graphTargetWidth,
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
+	MAX_COLUMN_WIDTH,
+	refContentWidth,
 	shaContentWidth,
 	showsHeaderLabel,
 } from "../lib/column-widths.js";
@@ -76,8 +78,10 @@ import {
 	type ColumnWidths,
 	getColumnVisibility,
 	getColumnWidths,
+	getResizedColumns,
 	setColumnVisibility,
 	setColumnWidths,
+	setResizedColumns,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -288,9 +292,18 @@ const lastVisibleColumn = $derived(
 );
 
 $effect(() => {
-	getColumnWidths().then((w) => {
-		columnWidths = w;
-	});
+	// Only the columns the user sized by hand come back from the pref file. The
+	// rest are auto-fit to the page that just loaded, and a whole-object restore
+	// here would overwrite that fit with the previous session's numbers.
+	Promise.all([getColumnWidths(), getResizedColumns()]).then(
+		([stored, resized]) => {
+			for (const column of resized) userResizedColumns.add(column);
+
+			const restored = { ...untrack(() => columnWidths) };
+			for (const column of resized) restored[column] = stored[column];
+			columnWidths = restored;
+		},
+	);
 });
 
 $effect(() => {
@@ -328,16 +341,27 @@ const floors = columnFloors();
 const userResizedColumns = new Set<keyof ColumnWidths>();
 
 // Max content widths for auto-fit (updated when commits load)
+let maxRefContentWidth = $state(0);
 let maxAuthorContentWidth = $state(0);
 let maxDateContentWidth = $state(0);
 let maxShaContentWidth = $state(0);
 
 function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	if (reset) {
+		maxRefContentWidth = 0;
 		maxAuthorContentWidth = 0;
 		maxDateContentWidth = 0;
 		maxShaContentWidth = 0;
 	}
+	const pageRefWidth = refContentWidth(
+		newCommits,
+		measureTextWidth,
+		displaySettings,
+	);
+	if (pageRefWidth > maxRefContentWidth) {
+		maxRefContentWidth = pageRefWidth;
+	}
+
 	const pageAuthorWidth = authorContentWidth(newCommits, measureTextWidth);
 	if (pageAuthorWidth > maxAuthorContentWidth) {
 		maxAuthorContentWidth = pageAuthorWidth;
@@ -360,6 +384,15 @@ $effect(() => {
 		columnWidths = { ...cur, graph: targetWidth };
 	} else if (cur.graph > targetWidth) {
 		columnWidths = { ...cur, graph: targetWidth };
+	}
+});
+
+$effect(() => {
+	const w = maxRefContentWidth;
+	if (w <= 0) return;
+	const targetWidth = Math.min(MAX_COLUMN_WIDTH, Math.max(w, floors.ref));
+	if (!userResizedColumns.has("ref")) {
+		columnWidths = { ...untrack(() => columnWidths), ref: targetWidth };
 	}
 });
 
@@ -462,6 +495,7 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 
 	function onMouseUp() {
 		setColumnWidths(columnWidths);
+		setResizedColumns(userResizedColumns);
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
 	}

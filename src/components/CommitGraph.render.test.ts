@@ -12,6 +12,23 @@ import {
 	shapeOf,
 	warmGraphComponent,
 } from "../__tests__/helpers/graph-render";
+import { refContentWidth } from "../lib/column-widths.js";
+import { COLUMN_PADDING_X } from "../lib/graph-constants.js";
+
+/** The text metric the render harness stubs in place of a real canvas. */
+const WIDE_GLYPH = /[0-9mwMW]/;
+const stubMeasure = (text: string): number =>
+	[...text].reduce((w, ch) => w + (WIDE_GLYPH.test(ch) ? 10 : 6), 0);
+
+const fixtureCommits = (name: string) => loadExport(name).layout.commits;
+
+/** Where the lanes start, which is the ref column's width plus its padding. */
+function laneOffset(svg: SVGSVGElement): number {
+	const lanes = svg.querySelector(".overlay-dots");
+	const transform = lanes?.getAttribute("transform") ?? "";
+
+	return Number(/translate\((-?[\d.]+),/.exec(transform)?.[1]);
+}
 
 describe("CommitGraph", () => {
 	beforeAll(warmGraphComponent, 30_000);
@@ -92,14 +109,41 @@ describe("CommitGraph", () => {
 		});
 	});
 
+	describe("the Branch/Tag column", () => {
+		// It was pinned at its 120px default for every repository: too narrow for a
+		// long branch name, and leaving dead space before the lanes for a repo
+		// whose refs are all short. Every other sized column fits its content.
+		// The lane group's x offset is the column's width plus its padding.
+		it("fits the widest ref the page carries rather than a fixed default", async () => {
+			const { svg } = await mountGraph(
+				loadExport("lane-09-branch-point-below-head"),
+			);
+
+			expect(laneOffset(svg)).toBe(
+				refContentWidth(
+					fixtureCommits("lane-09-branch-point-below-head"),
+					stubMeasure,
+				) + COLUMN_PADDING_X,
+			);
+		});
+
+		// A repo whose refs are all short must not keep a wide column: the fixed
+		// default was wrong in this direction too, and only ever grew.
+		it("shrinks to a page of short refs", async () => {
+			const { svg } = await mountGraph(loadExport("lane-01-behind-only"), 1);
+
+			expect(laneOffset(svg)).toBeLessThan(120 + COLUMN_PADDING_X);
+		});
+	});
+
 	describe("ref pills", () => {
-		it("truncates an overlong label and collapses the refs past the first into a badge", async () => {
+		it("shows the row's first ref and collapses the rest into a badge", async () => {
 			const { svg } = await mountGraph(loadExport("lane-10-two-remotes"));
 
-			// One character shorter than it used to read: the badge draws 26px and
-			// the layout reserved 20, so the label was being truncated against a
-			// budget 6px wider than the pill really had, and overlapped the badge.
-			expect(pillTexts(svg)).toEqual(["origin/…", "+1", "main"]);
+			// Not truncated at all any more: the column auto-fits to the widest pill
+			// its page carries, badge included, so the label it used to cut short
+			// now has the room it asks for.
+			expect(pillTexts(svg)).toEqual(["origin/main", "+1", "main"]);
 		});
 	});
 

@@ -763,14 +763,13 @@ describe("CommitGraph", () => {
 			const { container } = mountHeader();
 			await flush();
 			const author = headerCell(container, "author");
-			const before = author.style.width;
+			// Taken from the rendered column rather than written down: the width it
+			// starts at is whatever auto-fit gave this page's author names.
+			const before = Number.parseFloat(author.style.width);
 
 			await drag(author.querySelector(".col-resize-handle") as Element, 60);
 
-			expect({ before, after: author.style.width }).toEqual({
-				before: "60px",
-				after: "120px",
-			});
+			expect(author.style.width).toBe(`${before + 60}px`);
 		});
 
 		it("widens the column when its edge is dragged right", async () => {
@@ -842,9 +841,14 @@ describe("CommitGraph", () => {
 	// broken rendering; the fade says the lanes continue out of view, which is
 	// what the clip actually means.
 	describe("the graph column's right edge", () => {
+		// The width is restored only for a column the user sized by hand, so the
+		// graph counts as deliberately narrowed rather than waiting to be auto-fit.
 		function mountWithLanes(maxColumns: number, graphWidth: number) {
 			installReads({
 				override: (cmd, args) => {
+					if (cmd === "prefs_get" && args?.key === "resized_columns") {
+						return Promise.resolve(["graph"]);
+					}
 					if (cmd === "prefs_get" && args?.key === "column_widths") {
 						return Promise.resolve({
 							ref: 120,
