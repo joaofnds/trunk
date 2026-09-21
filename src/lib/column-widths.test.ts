@@ -3,6 +3,7 @@ import { makeCommit } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
+	autofitBudget,
 	type ColumnWidths,
 	columnFloors,
 	DEFAULT_WIDTHS,
@@ -15,12 +16,14 @@ import {
 	refContentWidth,
 	sanitizeColumnWidths,
 	shaContentWidth,
+	shareAutofitBudget,
 	showsHeaderLabel,
 } from "./column-widths.js";
 import {
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
 	LANE_WIDTH,
+	MESSAGE_MIN_WIDTH,
 } from "./graph-constants.js";
 import { relativeLabel } from "./relative-time.js";
 
@@ -293,6 +296,59 @@ describe("refContentWidth with an outlier ref", () => {
 		expect(refContentWidth(commits, measure)).toBeLessThan(
 			REF_AUTOFIT_MAX_WIDTH,
 		);
+	});
+});
+
+describe("autofitBudget", () => {
+	const floors = columnFloors();
+	const otherColumns = (w: ColumnWidths) => w.diff + w.author + w.date + w.sha;
+
+	// ref and graph are the two columns auto-fit can grow without bound, and
+	// they were capped independently: 240 and 200 fit each on its own but
+	// together overran the pane, which pushed the message column under its floor
+	// and clipped the date column off the right edge.
+	it("leaves the message column its floor", () => {
+		const available = 820;
+
+		const budget = autofitBudget(available, otherColumns(DEFAULT_WIDTHS));
+
+		expect(budget).toBe(
+			available - otherColumns(DEFAULT_WIDTHS) - MESSAGE_MIN_WIDTH,
+		);
+	});
+
+	it("never asks for less than the two columns' floors", () => {
+		const budget = autofitBudget(200, 600);
+
+		expect(budget).toBeGreaterThanOrEqual(floors.ref + floors.graph);
+	});
+
+	describe("when the container has not been measured yet", () => {
+		it("falls back to the independent caps", () => {
+			expect(autofitBudget(0, 246)).toBe(
+				REF_AUTOFIT_MAX_WIDTH + GRAPH_AUTOFIT_MAX_WIDTH,
+			);
+		});
+	});
+});
+
+describe("shareAutofitBudget", () => {
+	// The graph keeps what its lanes need and the ref column takes the rest, so
+	// a long branch name yields to the lanes rather than the other way round:
+	// the lanes carry information at every pixel, a truncated pill has its full
+	// name a hover away.
+	it("gives each column what it asks for when the budget covers both", () => {
+		expect(shareAutofitBudget(160, 100, 400)).toEqual({ ref: 160, graph: 100 });
+	});
+
+	it("takes the overrun out of the ref column first", () => {
+		expect(shareAutofitBudget(300, 100, 350)).toEqual({ ref: 250, graph: 100 });
+	});
+
+	it("shrinks the graph only once the ref column is at its floor", () => {
+		const { ref, graph } = shareAutofitBudget(300, 200, 120);
+
+		expect({ ref, graph }).toEqual({ ref: columnFloors().ref, graph: 100 });
 	});
 });
 

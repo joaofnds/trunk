@@ -4,6 +4,7 @@ import {
 	ICON_GAP,
 	ICON_WIDTH,
 	LANE_WIDTH,
+	MESSAGE_MIN_WIDTH,
 	PILL_FONT,
 	PILL_FONT_BOLD,
 	PILL_GAP,
@@ -204,6 +205,51 @@ export function refContentWidth(
 	}
 
 	return Math.min(widest, REF_AUTOFIT_MAX_WIDTH);
+}
+
+/**
+ * How much width auto-fit may spend on ref and graph together, given the space
+ * the list actually has. They are the only two columns auto-fit grows without a
+ * content ceiling, and capping each alone is not enough: both at their own cap
+ * overran the pane, which drove the message column under its floor and clipped
+ * the date column off the right edge.
+ *
+ * `available` of 0 means the container has not been measured yet, so the
+ * independent caps stand in until it has.
+ */
+export function autofitBudget(
+	available: number,
+	otherColumnsWidth: number,
+): number {
+	if (available <= 0) return REF_AUTOFIT_MAX_WIDTH + GRAPH_AUTOFIT_MAX_WIDTH;
+
+	const floors = columnFloors();
+	const room = available - otherColumnsWidth - MESSAGE_MIN_WIDTH;
+
+	return Math.max(floors.ref + floors.graph, room);
+}
+
+/**
+ * Fit both columns inside the budget. The graph keeps what its lanes need and
+ * the ref column gives up the overrun first: every pixel of a lane carries
+ * information, while a truncated pill has its full name a hover away. Only once
+ * the ref column is at its floor does the graph start to lose lanes, which it
+ * can afford because it pans.
+ */
+export function shareAutofitBudget(
+	refWanted: number,
+	graphWanted: number,
+	budget: number,
+): { ref: number; graph: number } {
+	if (refWanted + graphWanted <= budget) {
+		return { ref: refWanted, graph: graphWanted };
+	}
+
+	const floors = columnFloors();
+	const ref = Math.max(floors.ref, budget - graphWanted);
+	const graph = Math.max(floors.graph, budget - ref);
+
+	return { ref, graph };
 }
 
 /**

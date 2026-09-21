@@ -34,6 +34,7 @@ import {
 } from "../lib/coalesced-task.js";
 import {
 	authorContentWidth,
+	autofitBudget,
 	columnFloors,
 	dateContentWidth,
 	graphTargetWidth,
@@ -42,6 +43,7 @@ import {
 	REF_AUTOFIT_MAX_WIDTH,
 	refContentWidth,
 	shaContentWidth,
+	shareAutofitBudget,
 	showsHeaderLabel,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
@@ -335,6 +337,22 @@ $effect(() => {
 	if (graphScrollX > maxGraphScrollX) graphScrollX = maxGraphScrollX;
 });
 
+/** The width the rows actually have, so auto-fit can fit inside it rather than
+ *  assume a window size. 0 until the container is measured. */
+let listWidth = $state(0);
+
+$effect(() => {
+	const container = containerRef;
+	if (!container) return;
+
+	const observer = new ResizeObserver(([entry]) => {
+		listWidth = entry.contentRect.width;
+	});
+	observer.observe(container);
+
+	return () => observer.disconnect();
+});
+
 const headerMins = headerMinWidths(measureTextWidth);
 const floors = columnFloors();
 
@@ -378,23 +396,32 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 
 // Auto-fit column widths to content. Uses untrack on columnWidths reads to avoid
 // infinite reactive loops (each effect writes columnWidths, which would re-trigger others).
+// ref and graph are sized together: they are the two columns auto-fit grows
+// without a content ceiling, so they share one budget drawn from the width the
+// list actually has. Sizing them in separate effects let each pass its own cap
+// while the pair overran the pane.
 $effect(() => {
-	const targetWidth = graphTargetWidth(maxColumns, displaySettings.laneWidth);
+	const graphWanted = graphTargetWidth(maxColumns, displaySettings.laneWidth);
+	const refWanted = Math.min(
+		REF_AUTOFIT_MAX_WIDTH,
+		Math.max(maxRefContentWidth, floors.ref),
+	);
 	const cur = untrack(() => columnWidths);
-	if (!userResizedColumns.has("graph")) {
-		columnWidths = { ...cur, graph: targetWidth };
-	} else if (cur.graph > targetWidth) {
-		columnWidths = { ...cur, graph: targetWidth };
-	}
-});
 
-$effect(() => {
-	const w = maxRefContentWidth;
-	if (w <= 0) return;
-	const targetWidth = Math.min(REF_AUTOFIT_MAX_WIDTH, Math.max(w, floors.ref));
-	if (!userResizedColumns.has("ref")) {
-		columnWidths = { ...untrack(() => columnWidths), ref: targetWidth };
+	const budget = autofitBudget(
+		listWidth,
+		cur.diff + cur.author + cur.date + cur.sha,
+	);
+	const fitted = shareAutofitBudget(refWanted, graphWanted, budget);
+
+	const next = { ...cur };
+	if (!userResizedColumns.has("graph") || cur.graph > fitted.graph) {
+		next.graph = fitted.graph;
 	}
+	if (maxRefContentWidth > 0 && !userResizedColumns.has("ref")) {
+		next.ref = fitted.ref;
+	}
+	columnWidths = next;
 });
 
 $effect(() => {
