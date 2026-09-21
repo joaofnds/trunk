@@ -6,6 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { DEFAULT_WIDTHS } from "../lib/column-widths.js";
 import {
 	COLUMN_PADDING_X,
 	LANE_WIDTH,
@@ -760,6 +761,19 @@ describe("CommitGraph", () => {
 			await fireEvent(window, new MouseEvent("mouseup"));
 			await flush();
 		}
+
+		// The diff column is the only sized column with no auto-fit effect, so its
+		// width is the one that still carries what the component started with. A
+		// second copy of the defaults living in the component would read the same
+		// until the two drifted, and nothing would say which was in use.
+		it("starts the diff column at the declared default width", async () => {
+			const { container } = mountHeader();
+			await flush();
+
+			expect(headerCell(container, "diff").style.width).toBe(
+				`${DEFAULT_WIDTHS.diff}px`,
+			);
+		});
 
 		// A handle sits on its own cell's right edge, so the column it moves must
 		// be the one the user grabbed the edge of — not its neighbour.
