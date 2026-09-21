@@ -299,14 +299,20 @@ not on any edit elsewhere in it. Never re-anchored forward.
 
 **Content pin** — what a current-file comment is attached to: the block of text the
 user selected, which occurrence of it they picked (the ordinal), and the line range
-it covered when they wrote the comment. A different thing from a **Snapshot pin**,
-which is a ref holding a commit alive; the word "pin" carries both senses here.
+it covered when they wrote the comment. The ordinal is a display hint, not an
+identity: it clamps to the last surviving occurrence, so deleting an earlier twin
+moves the comment onto a different one rather than marking it stale. A different
+thing from a **Snapshot pin**, which is a ref holding a commit alive; the word "pin"
+carries both senses here.
 
 **Resolved line** — the line a pinned block currently starts at. Written when the
-comment is submitted and rewritten whenever the repository changes. Absent once a
-pass has found the block gone, which is the same condition as the comment reading
-stale, and also on a comment written before Trunk stored it at submit, until the
-next pass fills it in.
+comment is submitted, then rewritten by the same pass that recomputes the stale
+marker, so it is current as of that pass rather than as of the file on disk: a repo
+edited while Trunk is closed carries the line from before it. Absent for a thread
+with no pin at all, for one whose block a pass found gone (the same condition that
+raises the marker for a *pinned* thread, though a snapshot thread goes stale with no
+resolved line to lose), and for a comment written before Trunk stored it at submit,
+until the next pass fills it in.
 
 **Review CLI** — the Trunk-shipped, fully local command-line tool agents use to list
 `ready`/`settled` reviews, read one in full, reply to threads, and claim `addressed`.
