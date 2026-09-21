@@ -39,6 +39,27 @@ function commitNote(id: string): Thread {
 	return aThread({ id, text: `note ${id}` });
 }
 
+function pinnedThread(props: {
+	id: string;
+	filePath: string;
+	startLine: number;
+	endLine: number;
+	resolvedStartLine: number | null;
+}): Thread {
+	return aThread({
+		id: props.id,
+		text: `pinned ${props.id}`,
+		content_pin: {
+			file_path: props.filePath,
+			block: "pinned block",
+			ordinal: 0,
+			start_line: props.startLine,
+			end_line: props.endLine,
+		},
+		resolved_start_line: props.resolvedStartLine,
+	});
+}
+
 describe("resolveViewOid", () => {
 	it("resolves a commit view to its commitOid", () => {
 		const view: ViewDescriptor = {
@@ -289,6 +310,79 @@ describe("commentsForView", () => {
 				FILE,
 			),
 		).toEqual([match]);
+	});
+
+	describe("when the view is the file's own content", () => {
+		function currentFileView(): ViewDescriptor {
+			return {
+				kind: "current_file",
+				commitOid: null,
+				snapshots: EMPTY_SNAPSHOTS,
+			};
+		}
+
+		it("returns a thread pinned to the file being viewed", () => {
+			const c = pinnedThread({
+				id: "p1",
+				filePath: FILE,
+				startLine: 3,
+				endLine: 3,
+				resolvedStartLine: 3,
+			});
+
+			expect(commentsForView([c], currentFileView(), FILE)).toEqual([c]);
+		});
+
+		it("excludes a thread pinned to another file", () => {
+			const c = pinnedThread({
+				id: "p1",
+				filePath: "src/other.ts",
+				startLine: 3,
+				endLine: 3,
+				resolvedStartLine: 3,
+			});
+
+			expect(commentsForView([c], currentFileView(), FILE)).toEqual([]);
+		});
+
+		it("excludes a thread whose pinned block the file no longer holds", () => {
+			const c = pinnedThread({
+				id: "p1",
+				filePath: FILE,
+				startLine: 3,
+				endLine: 3,
+				resolvedStartLine: null,
+			});
+
+			expect(commentsForView([c], currentFileView(), FILE)).toEqual([]);
+		});
+
+		it("excludes an anchored thread on the same file", () => {
+			const c = lineComment(
+				"c1",
+				anchor({
+					commitOid: "deadbeef",
+					filePath: FILE,
+					side: "New",
+					startLine: 10,
+					endLine: 10,
+				}),
+			);
+
+			expect(commentsForView([c], currentFileView(), FILE)).toEqual([]);
+		});
+	});
+
+	it("keeps a pinned thread out of a commit diff of the same file", () => {
+		const c = pinnedThread({
+			id: "p1",
+			filePath: FILE,
+			startLine: 3,
+			endLine: 3,
+			resolvedStartLine: 3,
+		});
+
+		expect(commentsForView([c], commitView("deadbeef"), FILE)).toEqual([]);
 	});
 });
 

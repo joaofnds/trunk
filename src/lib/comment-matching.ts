@@ -8,6 +8,11 @@
  * are reused on an unchanged tree, so every live comment shares one OID per
  * side. A comment anchored to a superseded snapshot resolves to null OID here
  * and falls to panel-only by design.
+ *
+ * A current-file view matches on the content pin's path instead, since a pinned
+ * thread carries no OID at all. That is a branch of its own rather than a
+ * widening of `resolveViewOid`, whose null fall-through is what keeps every
+ * other unhandled kind empty without anyone having to remember a gate.
  */
 
 import type { ReviewSnapshots, Side, Thread } from "./types.js";
@@ -43,6 +48,13 @@ export function commentsForView(
 	view: ViewDescriptor,
 	filePath: string,
 ): Thread[] {
+	if (view.kind === "current_file") {
+		return comments.filter(
+			(c) =>
+				c.content_pin?.file_path === filePath && c.resolved_start_line != null,
+		);
+	}
+
 	const viewOid = resolveViewOid(view);
 	if (viewOid === null) return [];
 
