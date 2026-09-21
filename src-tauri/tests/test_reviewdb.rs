@@ -5076,6 +5076,88 @@ fn submitting_a_current_file_thread_stores_the_line_the_pin_was_found_at() {
     );
 }
 
+/// The insert and the stale pass write the same column, so the pass must leave a
+/// freshly submitted line alone and still be free to clear it when the block goes.
+#[test]
+fn a_recompute_over_an_unchanged_file_leaves_the_submitted_line_alone() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "alpha\nbravo\ncharlie\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        2,
+        2,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+
+    let changed = recompute_against_worktree(&store, &canonical, ctx.repo_path());
+
+    assert_eq!(changed, 0, "nothing moved, so nothing is written");
+    assert_eq!(only_thread(&store, &canonical).resolved_start_line, Some(2));
+}
+
+/// Losing the block clears the line as well as setting the marker: they are one
+/// condition, and the frontend renders inline on the line alone.
+#[test]
+fn losing_the_pinned_block_clears_the_resolved_line() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "alpha\nbravo\ncharlie\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        2,
+        2,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "alpha\ncharlie\n").unwrap();
+    recompute_against_worktree(&store, &canonical, ctx.repo_path());
+
+    let gone = only_thread(&store, &canonical);
+    assert_eq!((gone.resolved_start_line, gone.stale), (None, true));
+
+    std::fs::write(ctx.repo_path().join("a.txt"), "alpha\nbravo\ncharlie\n").unwrap();
+    recompute_against_worktree(&store, &canonical, ctx.repo_path());
+
+    let back = only_thread(&store, &canonical);
+    assert_eq!(
+        (back.resolved_start_line, back.stale),
+        (Some(2), false),
+        "restoring the block restores the line the frontend renders at",
+    );
+}
+
+fn recompute_against_worktree(
+    store: &reviewdb::Store,
+    canonical: &std::path::Path,
+    repo_path: &std::path::Path,
+) -> usize {
+    let repo_path = repo_path.to_path_buf();
+    reviewdb::stale::recompute(
+        store,
+        canonical,
+        &|_oid| Ok(reviewdb::stale::SnapshotStanding::Current),
+        &|path| std::fs::read_to_string(repo_path.join(path)).ok(),
+    )
+    .unwrap()
+}
+
 #[test]
 fn pinning_a_nested_file_keeps_its_full_path() {
     let ctx = TestContext::builder()
