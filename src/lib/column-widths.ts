@@ -1,7 +1,37 @@
-import { COLUMN_PADDING_X, LANE_WIDTH } from "./graph-constants.js";
+import {
+	COLUMN_PADDING_X,
+	DEFAULT_GRAPH_SETTINGS,
+	ICON_GAP,
+	ICON_WIDTH,
+	LANE_WIDTH,
+	PILL_FONT,
+	PILL_MARGIN_LEFT,
+	PILL_PADDING_X,
+} from "./graph-constants.js";
 import { WIDEST_LABELS } from "./relative-time.js";
-import type { ColumnWidths } from "./store.js";
-import type { GraphCommit } from "./types.js";
+import type { GraphCommit, GraphDisplaySettings } from "./types.js";
+
+export interface ColumnWidths {
+	ref: number;
+	graph: number;
+	diff: number;
+	author: number;
+	date: number;
+	sha: number;
+	// message is flex-1, no fixed width
+}
+
+export const DEFAULT_WIDTHS: ColumnWidths = {
+	ref: 120,
+	graph: 24,
+	diff: 96,
+	author: 60,
+	date: 40,
+	sha: 50,
+};
+
+/** The widest a column may be, by drag or by auto-fit. */
+export const MAX_COLUMN_WIDTH = 400;
 
 export type MeasureText = (text: string, font: string) => number;
 
@@ -106,4 +136,61 @@ export function graphTargetWidth(
 	laneWidth: number,
 ): number {
 	return Math.max(maxColumns, 1) * laneWidth + CELL_PAD;
+}
+
+/**
+ * Width the ref column needs to show this page's widest pill in full, or 0 when
+ * the page carries no refs. Inverts the geometry `buildRefPillData` uses to
+ * decide how much text room a pill has, so a column at this width truncates
+ * nothing. Callers keep the running maximum across pages, as the author column does.
+ */
+export function refContentWidth(
+	commits: GraphCommit[],
+	measure: MeasureText,
+	settings: GraphDisplaySettings = DEFAULT_GRAPH_SETTINGS,
+): number {
+	const dotInset = settings.laneWidth / 2 - settings.dotRadius;
+	const chrome =
+		PILL_MARGIN_LEFT +
+		COLUMN_PADDING_X +
+		dotInset +
+		2 * PILL_PADDING_X +
+		ICON_WIDTH +
+		ICON_GAP;
+
+	let widest = 0;
+	for (const commit of commits) {
+		if (commit.oid === "__wip__" || commit.is_stash) continue;
+		for (const ref of commit.refs) {
+			const width = measure(ref.short_name, PILL_FONT) + chrome;
+			if (width > widest) widest = width;
+		}
+	}
+
+	return widest;
+}
+
+/**
+ * The stored layout, made safe to lay out with. The pref file is plain JSON that
+ * nothing upstream validates, and a width that is not a usable number reached the
+ * drag clamp as NaN, which persisted itself and left the column unresizable.
+ */
+export function sanitizeColumnWidths(
+	stored: Partial<ColumnWidths> | null | undefined,
+): ColumnWidths {
+	const floors = columnFloors();
+	const widths = {} as ColumnWidths;
+
+	for (const column of Object.keys(DEFAULT_WIDTHS) as (keyof ColumnWidths)[]) {
+		const value = stored?.[column];
+		widths[column] =
+			typeof value === "number" && Number.isFinite(value) && value > 0
+				? Math.min(
+						MAX_COLUMN_WIDTH,
+						Math.max(floors[column], Math.round(value)),
+					)
+				: DEFAULT_WIDTHS[column];
+	}
+
+	return widths;
 }
