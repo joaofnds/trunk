@@ -168,9 +168,9 @@ DROP TABLE IF EXISTS pin_seq;
 /// normalised; `pin_ordinal` is which occurrence of that block the user picked,
 /// 0-based, and is a display hint only — staleness is block presence alone, so
 /// keying it on the ordinal would mark a thread stale when an EARLIER twin is
-/// deleted. `resolved_start_line` is where the block sits now, written by the
-/// stale pass and read by the frontend, so the occurrence search happens once
-/// and in Rust.
+/// deleted. `resolved_start_line` is where the block sits now, written at insert
+/// from the range the submit resolved and rewritten by every stale pass, read by
+/// the frontend so the occurrence search happens once and in Rust.
 ///
 /// The pinned file and its range at pin time reuse `file_path`, `start_line`
 /// and `end_line`, the columns every other anchor kind already fills, so the
