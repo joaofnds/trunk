@@ -35,6 +35,7 @@ import {
 import {
 	authorContentWidth,
 	columnFloors,
+	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
 	HEADER_ICON_WIDTH,
@@ -256,14 +257,7 @@ let graphActive = true;
 // refresh is active, so an older response must not overwrite that replacement.
 let refreshSeq = 0;
 
-let columnWidths = $state<ColumnWidths>({
-	ref: 120,
-	graph: 24,
-	diff: 96,
-	author: 60,
-	date: 40,
-	sha: 50,
-});
+let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
 let columnVisibility = $state<ColumnVisibility>({
 	ref: true,
 	graph: true,
