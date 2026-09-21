@@ -39,7 +39,7 @@ import {
 	graphTargetWidth,
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
-	MAX_COLUMN_WIDTH,
+	REF_AUTOFIT_MAX_WIDTH,
 	refContentWidth,
 	shaContentWidth,
 	showsHeaderLabel,
@@ -391,7 +391,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxRefContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.min(MAX_COLUMN_WIDTH, Math.max(w, floors.ref));
+	const targetWidth = Math.min(REF_AUTOFIT_MAX_WIDTH, Math.max(w, floors.ref));
 	if (!userResizedColumns.has("ref")) {
 		columnWidths = { ...untrack(() => columnWidths), ref: targetWidth };
 	}

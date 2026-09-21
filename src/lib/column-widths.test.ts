@@ -7,9 +7,11 @@ import {
 	columnFloors,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
+	GRAPH_AUTOFIT_MAX_WIDTH,
 	graphTargetWidth,
 	headerMinWidths,
 	MAX_COLUMN_WIDTH,
+	REF_AUTOFIT_MAX_WIDTH,
 	refContentWidth,
 	sanitizeColumnWidths,
 	shaContentWidth,
@@ -135,6 +137,20 @@ describe("graphTargetWidth", () => {
 	});
 });
 
+describe("graphTargetWidth with many lanes", () => {
+	// A repo with deep merge nesting reports twenty-odd lanes. Claiming one
+	// column of width per lane leaves a wide band that most rows do not draw in,
+	// and pushes the message column off to the right. The column pans, so it
+	// does not have to hold every lane at once.
+	it("stops widening at the auto-fit cap", () => {
+		expect(graphTargetWidth(24, LANE_WIDTH)).toBe(GRAPH_AUTOFIT_MAX_WIDTH);
+	});
+
+	it("still fits a graph whose lanes sit inside the cap", () => {
+		expect(graphTargetWidth(3, LANE_WIDTH)).toBe(3 * LANE_WIDTH + PADDING);
+	});
+});
+
 describe("headerMinWidths", () => {
 	it("fits each header label plus its padding and breathing room", () => {
 		expect(headerMinWidths(measure).author).toBe(
@@ -231,6 +247,52 @@ describe("refContentWidth", () => {
 		const width = refContentWidth(commits, measure, DEFAULT_GRAPH_SETTINGS);
 
 		expect(width).toBeGreaterThan(measure("backup-pre-rebase"));
+	});
+});
+
+describe("refContentWidth with an outlier ref", () => {
+	// A release or backup branch carries a timestamp and runs to 40-odd
+	// characters. Fitting it exactly is what the fixed default got wrong in the
+	// other direction: one ref dictates the column, the lanes are pushed right,
+	// and the commit message — the wider column — is squeezed to a sliver.
+	it("stops widening at the auto-fit cap", () => {
+		const commits = [
+			makeCommit({
+				oid: "a".repeat(40),
+				refs: [
+					{
+						name: "refs/heads/backup-pre-update-1.32.0-20260920T004226Z",
+						short_name: "backup-pre-update-1.32.0-20260920T004226Z",
+						ref_type: "LocalBranch",
+						is_head: false,
+						color_index: 0,
+					},
+				],
+			}),
+		];
+
+		expect(refContentWidth(commits, measure)).toBe(REF_AUTOFIT_MAX_WIDTH);
+	});
+
+	it("still fits a ref that sits inside the cap", () => {
+		const commits = [
+			makeCommit({
+				oid: "a".repeat(40),
+				refs: [
+					{
+						name: "refs/heads/main",
+						short_name: "main",
+						ref_type: "LocalBranch",
+						is_head: false,
+						color_index: 0,
+					},
+				],
+			}),
+		];
+
+		expect(refContentWidth(commits, measure)).toBeLessThan(
+			REF_AUTOFIT_MAX_WIDTH,
+		);
 	});
 });
 

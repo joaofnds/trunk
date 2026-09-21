@@ -33,8 +33,26 @@ export const DEFAULT_WIDTHS: ColumnWidths = {
 	sha: 50,
 };
 
-/** The widest a column may be, by drag or by auto-fit. */
+/** The widest a column may be dragged. */
 export const MAX_COLUMN_WIDTH = 400;
+
+/**
+ * The widest auto-fit will make the ref column on its own. A release or backup
+ * branch carries a timestamp and runs past forty characters; fitting it exactly
+ * pushes the lanes right and squeezes the message column, which is the wider
+ * one and the one worth reading. Past this the pill truncates and its full name
+ * is a hover away. A drag still reaches MAX_COLUMN_WIDTH.
+ */
+export const REF_AUTOFIT_MAX_WIDTH = 240;
+
+/**
+ * The widest auto-fit will make the graph column on its own. A repo with deep
+ * merge nesting reports twenty-odd lanes, and one column of width per lane
+ * leaves a band most rows never draw in while pushing the message column right.
+ * The column pans horizontally, so the lanes past this are reachable rather
+ * than lost. A drag still reaches MAX_COLUMN_WIDTH.
+ */
+export const GRAPH_AUTOFIT_MAX_WIDTH = 200;
 
 export type MeasureText = (text: string, font: string) => number;
 
@@ -138,7 +156,10 @@ export function graphTargetWidth(
 	maxColumns: number,
 	laneWidth: number,
 ): number {
-	return Math.max(maxColumns, 1) * laneWidth + CELL_PAD;
+	return Math.min(
+		Math.max(maxColumns, 1) * laneWidth + CELL_PAD,
+		GRAPH_AUTOFIT_MAX_WIDTH,
+	);
 }
 
 /**
@@ -182,7 +203,7 @@ export function refContentWidth(
 		if (width > widest) widest = width;
 	}
 
-	return widest;
+	return Math.min(widest, REF_AUTOFIT_MAX_WIDTH);
 }
 
 /**
