@@ -21,6 +21,11 @@ and it is not the nearest ref above: a column reused by a later branch, or a tag
 inside someone else's lane, are both nearer without owning anything. A lane claimed by a tag
 is owned by that tag, which is how a line whose branch was deleted keeps a name.
 
+**Rail** — the drawn line connecting a commit to its parent in the graph column. A rail
+runs down a lane and curves across to another when the parent sits in a different one. The
+dot marks the commit; the rail is what joins the dots, which is why a graph can lose its
+rails and keep its dots (TRUNK-255).
+
 **Linear continuation** — a commit chain connected to a given commit by unbroken first-parent
 links, with no intervening fork. A branch that is strictly ahead of another on the same line
 is a linear continuation of it; a diverged branch is not.
