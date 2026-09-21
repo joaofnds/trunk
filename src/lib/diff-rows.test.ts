@@ -803,3 +803,134 @@ describe("rowHeights", () => {
 		expect(heights[0]).toBe(FIXED_ROW_HEIGHTS.hunkHeader);
 	});
 });
+
+// A current-file diff is every line of the file as Context, and `current_file_diff`
+// gives each line the same number on both sides. A pinned thread must still land
+// once: a side-blind rule would hand two rows the same key.
+const wholeFile = file("src/main.ts", [
+	hunk("@@ -1,4 +1,4 @@", [
+		line("Context", "first", 1, 1),
+		line("Context", "second", 2, 2),
+		line("Context", "third", 3, 3),
+		line("Context", "fourth", 4, 4),
+	]),
+]);
+
+function pinned(props: {
+	id: string;
+	startLine: number;
+	endLine: number;
+	resolvedStartLine: number | null;
+}): Thread {
+	return aThread({
+		id: props.id,
+		review_id: "review-1",
+		text: props.id,
+		content_pin: {
+			file_path: "src/main.ts",
+			block: "pinned block",
+			ordinal: 0,
+			start_line: props.startLine,
+			end_line: props.endLine,
+		},
+		resolved_start_line: props.resolvedStartLine,
+	});
+}
+
+describe("a content-pinned thread in a current-file view", () => {
+	function withPin(threads: Thread[]): BuildOptions {
+		return { ...fullMode, comments: threads, reviewFilter: "all" };
+	}
+
+	it("hangs the comment row under the line the backend resolved", () => {
+		const model = buildInlineRows(
+			[wholeFile],
+			withPin([
+				pinned({ id: "p1", startLine: 2, endLine: 2, resolvedStartLine: 2 }),
+			]),
+		);
+
+		const kinds = model.rows.map((row) => row.kind);
+		expect(kinds).toEqual(["line", "line", "comment", "line", "line"]);
+	});
+
+	it("carries the thread once, not once per side", () => {
+		const p1 = pinned({
+			id: "p1",
+			startLine: 2,
+			endLine: 2,
+			resolvedStartLine: 2,
+		});
+
+		const model = buildInlineRows([wholeFile], withPin([p1]));
+
+		const comment = model.rows.find((row) => row.kind === "comment");
+		expect(comment?.kind === "comment" && comment.threads).toEqual([p1]);
+	});
+
+	it("hangs a multi-line pin on its last line, as an anchored thread does", () => {
+		const model = buildInlineRows(
+			[wholeFile],
+			withPin([
+				pinned({ id: "p1", startLine: 2, endLine: 3, resolvedStartLine: 2 }),
+			]),
+		);
+
+		const kinds = model.rows.map((row) => row.kind);
+		expect(kinds).toEqual(["line", "line", "line", "comment", "line"]);
+	});
+
+	it("follows the block down the file when the backend resolves it lower", () => {
+		const model = buildInlineRows(
+			[wholeFile],
+			withPin([
+				pinned({ id: "p1", startLine: 2, endLine: 2, resolvedStartLine: 4 }),
+			]),
+		);
+
+		const kinds = model.rows.map((row) => row.kind);
+		expect(kinds).toEqual(["line", "line", "line", "line", "comment"]);
+	});
+
+	it("emits no comment row when the file no longer holds the block", () => {
+		const model = buildInlineRows(
+			[wholeFile],
+			withPin([
+				pinned({ id: "p1", startLine: 2, endLine: 2, resolvedStartLine: null }),
+			]),
+		);
+
+		expect(model.rows.every((row) => row.kind === "line")).toBe(true);
+	});
+
+	it("marks every line of the pinned block as commented", () => {
+		const model = buildInlineRows(
+			[wholeFile],
+			withPin([
+				pinned({ id: "p1", startLine: 2, endLine: 3, resolvedStartLine: 2 }),
+			]),
+		);
+
+		const spanned = model.rows
+			.filter((row) => row.kind === "line")
+			.map((row) => row.kind === "line" && row.spanned);
+		expect(spanned).toEqual([false, true, true, false]);
+	});
+
+	it("emits the comment row once in the split model too", () => {
+		const p1 = pinned({
+			id: "p1",
+			startLine: 2,
+			endLine: 2,
+			resolvedStartLine: 2,
+		});
+
+		const model = buildSplitRows([wholeFile], withPin([p1]));
+
+		const comments = model.rows.filter((row) => row.kind === "comment");
+		expect(comments.length).toBe(1);
+		expect(comments[0]?.kind === "comment" && comments[0].threads).toEqual([
+			p1,
+		]);
+	});
+});

@@ -66,6 +66,35 @@ export function commentsForView(
 	);
 }
 
+/**
+ * The inclusive line range a thread occupies on one side, or null when it does
+ * not sit on that side at all.
+ *
+ * A pinned thread answers for "New" only. A current-file diff gives every line
+ * the same number on both sides, so a side-blind range would return the thread
+ * twice for one line and hand two rows the same key.
+ */
+function rangeOn(
+	thread: Thread,
+	side: Side,
+): { start: number; end: number } | null {
+	if (thread.anchor !== null) {
+		if (thread.anchor.side !== side) return null;
+
+		return { start: thread.anchor.start_line, end: thread.anchor.end_line };
+	}
+
+	const pin = thread.content_pin;
+	const resolved = thread.resolved_start_line;
+	if (side !== "New" || pin == null || resolved == null) return null;
+
+	return { start: resolved, end: resolved + (pin.end_line - pin.start_line) };
+}
+
+/**
+ * Which threads hang on this line. A multi-line thread hangs on its last line,
+ * so its comment row sits below the whole block rather than inside it.
+ */
 export function commentsForLine(
 	viewComments: Thread[],
 	side: Side,
@@ -73,14 +102,10 @@ export function commentsForLine(
 ): Thread[] {
 	if (lineno === null || lineno === undefined) return [];
 
-	return viewComments.filter(
-		(c) =>
-			c.anchor !== null &&
-			c.anchor.side === side &&
-			c.anchor.end_line === lineno,
-	);
+	return viewComments.filter((c) => rangeOn(c, side)?.end === lineno);
 }
 
+/** Whether this line falls inside some thread's range. */
 export function spannedByComment(
 	viewComments: Thread[],
 	side: Side,
@@ -88,11 +113,9 @@ export function spannedByComment(
 ): boolean {
 	if (lineno === null || lineno === undefined) return false;
 
-	return viewComments.some(
-		(c) =>
-			c.anchor !== null &&
-			c.anchor.side === side &&
-			c.anchor.start_line <= lineno &&
-			lineno <= c.anchor.end_line,
-	);
+	return viewComments.some((c) => {
+		const range = rangeOn(c, side);
+
+		return range !== null && range.start <= lineno && lineno <= range.end;
+	});
 }
