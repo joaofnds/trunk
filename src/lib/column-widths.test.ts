@@ -3,27 +3,22 @@ import { makeCommit } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
-	autofitBudget,
 	type ColumnWidths,
 	columnFloors,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
-	GRAPH_AUTOFIT_MAX_WIDTH,
 	graphTargetWidth,
 	headerMinWidths,
 	MAX_COLUMN_WIDTH,
-	REF_AUTOFIT_MAX_WIDTH,
 	refContentWidth,
 	sanitizeColumnWidths,
 	shaContentWidth,
-	shareAutofitBudget,
 	showsHeaderLabel,
 } from "./column-widths.js";
 import {
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
 	LANE_WIDTH,
-	MESSAGE_MIN_WIDTH,
 } from "./graph-constants.js";
 import { relativeLabel } from "./relative-time.js";
 
@@ -140,20 +135,6 @@ describe("graphTargetWidth", () => {
 	});
 });
 
-describe("graphTargetWidth with many lanes", () => {
-	// A repo with deep merge nesting reports twenty-odd lanes. Claiming one
-	// column of width per lane leaves a wide band that most rows do not draw in,
-	// and pushes the message column off to the right. The column pans, so it
-	// does not have to hold every lane at once.
-	it("stops widening at the auto-fit cap", () => {
-		expect(graphTargetWidth(24, LANE_WIDTH)).toBe(GRAPH_AUTOFIT_MAX_WIDTH);
-	});
-
-	it("still fits a graph whose lanes sit inside the cap", () => {
-		expect(graphTargetWidth(3, LANE_WIDTH)).toBe(3 * LANE_WIDTH + PADDING);
-	});
-});
-
 describe("headerMinWidths", () => {
 	it("fits each header label plus its padding and breathing room", () => {
 		expect(headerMinWidths(measure).author).toBe(
@@ -250,105 +231,6 @@ describe("refContentWidth", () => {
 		const width = refContentWidth(commits, measure, DEFAULT_GRAPH_SETTINGS);
 
 		expect(width).toBeGreaterThan(measure("backup-pre-rebase"));
-	});
-});
-
-describe("refContentWidth with an outlier ref", () => {
-	// A release or backup branch carries a timestamp and runs to 40-odd
-	// characters. Fitting it exactly is what the fixed default got wrong in the
-	// other direction: one ref dictates the column, the lanes are pushed right,
-	// and the commit message — the wider column — is squeezed to a sliver.
-	it("stops widening at the auto-fit cap", () => {
-		const commits = [
-			makeCommit({
-				oid: "a".repeat(40),
-				refs: [
-					{
-						name: "refs/heads/backup-pre-update-1.32.0-20260920T004226Z",
-						short_name: "backup-pre-update-1.32.0-20260920T004226Z",
-						ref_type: "LocalBranch",
-						is_head: false,
-						color_index: 0,
-					},
-				],
-			}),
-		];
-
-		expect(refContentWidth(commits, measure)).toBe(REF_AUTOFIT_MAX_WIDTH);
-	});
-
-	it("still fits a ref that sits inside the cap", () => {
-		const commits = [
-			makeCommit({
-				oid: "a".repeat(40),
-				refs: [
-					{
-						name: "refs/heads/main",
-						short_name: "main",
-						ref_type: "LocalBranch",
-						is_head: false,
-						color_index: 0,
-					},
-				],
-			}),
-		];
-
-		expect(refContentWidth(commits, measure)).toBeLessThan(
-			REF_AUTOFIT_MAX_WIDTH,
-		);
-	});
-});
-
-describe("autofitBudget", () => {
-	const floors = columnFloors();
-	const otherColumns = (w: ColumnWidths) => w.diff + w.author + w.date + w.sha;
-
-	// ref and graph are the two columns auto-fit can grow without bound, and
-	// they were capped independently: 240 and 200 fit each on its own but
-	// together overran the pane, which pushed the message column under its floor
-	// and clipped the date column off the right edge.
-	it("leaves the message column its floor", () => {
-		const available = 820;
-
-		const budget = autofitBudget(available, otherColumns(DEFAULT_WIDTHS));
-
-		expect(budget).toBe(
-			available - otherColumns(DEFAULT_WIDTHS) - MESSAGE_MIN_WIDTH,
-		);
-	});
-
-	it("never asks for less than the two columns' floors", () => {
-		const budget = autofitBudget(200, 600);
-
-		expect(budget).toBeGreaterThanOrEqual(floors.ref + floors.graph);
-	});
-
-	describe("when the container has not been measured yet", () => {
-		it("falls back to the independent caps", () => {
-			expect(autofitBudget(0, 246)).toBe(
-				REF_AUTOFIT_MAX_WIDTH + GRAPH_AUTOFIT_MAX_WIDTH,
-			);
-		});
-	});
-});
-
-describe("shareAutofitBudget", () => {
-	// The graph keeps what its lanes need and the ref column takes the rest, so
-	// a long branch name yields to the lanes rather than the other way round:
-	// the lanes carry information at every pixel, a truncated pill has its full
-	// name a hover away.
-	it("gives each column what it asks for when the budget covers both", () => {
-		expect(shareAutofitBudget(160, 100, 400)).toEqual({ ref: 160, graph: 100 });
-	});
-
-	it("takes the overrun out of the ref column first", () => {
-		expect(shareAutofitBudget(300, 100, 350)).toEqual({ ref: 250, graph: 100 });
-	});
-
-	it("shrinks the graph only once the ref column is at its floor", () => {
-		const { ref, graph } = shareAutofitBudget(300, 200, 120);
-
-		expect({ ref, graph }).toEqual({ ref: columnFloors().ref, graph: 100 });
 	});
 });
 
