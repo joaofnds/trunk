@@ -5103,7 +5103,10 @@ fn submitting_against_a_later_twin_stores_that_twins_line() {
     let thread = only_thread(&store, &canonical);
 
     assert_eq!(
-        (thread.resolved_start_line, thread.content_pin.map(|p| p.ordinal)),
+        (
+            thread.resolved_start_line,
+            thread.content_pin.map(|p| p.ordinal)
+        ),
         (Some(3), Some(1)),
         "the second occurrence, at line 3, not the first at line 1",
     );
