@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { aPinnedThread, aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	type BuildOptions,
 	buildInlineRows,
@@ -816,27 +816,6 @@ const wholeFile = file("src/main.ts", [
 	]),
 ]);
 
-function pinned(props: {
-	id: string;
-	startLine: number;
-	endLine: number;
-	resolvedStartLine: number | null;
-}): Thread {
-	return aThread({
-		id: props.id,
-		review_id: "review-1",
-		text: props.id,
-		content_pin: {
-			file_path: "src/main.ts",
-			block: "pinned block",
-			ordinal: 0,
-			start_line: props.startLine,
-			end_line: props.endLine,
-		},
-		resolved_start_line: props.resolvedStartLine,
-	});
-}
-
 describe("a content-pinned thread in a current-file view", () => {
 	function withPin(threads: Thread[]): BuildOptions {
 		return { ...fullMode, comments: threads, reviewFilter: "all" };
@@ -846,7 +825,13 @@ describe("a content-pinned thread in a current-file view", () => {
 		const model = buildInlineRows(
 			[wholeFile],
 			withPin([
-				pinned({ id: "p1", startLine: 2, endLine: 2, resolvedStartLine: 2 }),
+				aPinnedThread({
+					filePath: "src/main.ts",
+					id: "p1",
+					startLine: 2,
+					endLine: 2,
+					resolvedStartLine: 2,
+				}),
 			]),
 		);
 
@@ -855,7 +840,8 @@ describe("a content-pinned thread in a current-file view", () => {
 	});
 
 	it("carries the thread once, not once per side", () => {
-		const p1 = pinned({
+		const p1 = aPinnedThread({
+			filePath: "src/main.ts",
 			id: "p1",
 			startLine: 2,
 			endLine: 2,
@@ -872,7 +858,13 @@ describe("a content-pinned thread in a current-file view", () => {
 		const model = buildInlineRows(
 			[wholeFile],
 			withPin([
-				pinned({ id: "p1", startLine: 2, endLine: 3, resolvedStartLine: 2 }),
+				aPinnedThread({
+					filePath: "src/main.ts",
+					id: "p1",
+					startLine: 2,
+					endLine: 3,
+					resolvedStartLine: 2,
+				}),
 			]),
 		);
 
@@ -884,7 +876,13 @@ describe("a content-pinned thread in a current-file view", () => {
 		const model = buildInlineRows(
 			[wholeFile],
 			withPin([
-				pinned({ id: "p1", startLine: 2, endLine: 2, resolvedStartLine: 4 }),
+				aPinnedThread({
+					filePath: "src/main.ts",
+					id: "p1",
+					startLine: 2,
+					endLine: 2,
+					resolvedStartLine: 4,
+				}),
 			]),
 		);
 
@@ -896,7 +894,13 @@ describe("a content-pinned thread in a current-file view", () => {
 		const model = buildInlineRows(
 			[wholeFile],
 			withPin([
-				pinned({ id: "p1", startLine: 2, endLine: 2, resolvedStartLine: null }),
+				aPinnedThread({
+					filePath: "src/main.ts",
+					id: "p1",
+					startLine: 2,
+					endLine: 2,
+					resolvedStartLine: null,
+				}),
 			]),
 		);
 
@@ -907,7 +911,13 @@ describe("a content-pinned thread in a current-file view", () => {
 		const model = buildInlineRows(
 			[wholeFile],
 			withPin([
-				pinned({ id: "p1", startLine: 2, endLine: 3, resolvedStartLine: 2 }),
+				aPinnedThread({
+					filePath: "src/main.ts",
+					id: "p1",
+					startLine: 2,
+					endLine: 3,
+					resolvedStartLine: 2,
+				}),
 			]),
 		);
 
@@ -916,9 +926,16 @@ describe("a content-pinned thread in a current-file view", () => {
 			.map((row) => row.kind === "line" && row.spanned);
 		expect(spanned).toEqual([false, true, true, false]);
 	});
+});
 
-	it("emits the comment row once in the split model too", () => {
-		const p1 = pinned({
+describe("buildSplitRows with a content-pinned thread", () => {
+	function withPin(threads: Thread[]): BuildOptions {
+		return { ...fullMode, comments: threads, reviewFilter: "all" };
+	}
+
+	it("emits the comment row once, on the right-hand side", () => {
+		const p1 = aPinnedThread({
+			filePath: "src/main.ts",
 			id: "p1",
 			startLine: 2,
 			endLine: 2,
@@ -932,5 +949,26 @@ describe("a content-pinned thread in a current-file view", () => {
 		expect(comments[0]?.kind === "comment" && comments[0].threads).toEqual([
 			p1,
 		]);
+	});
+
+	it("marks every line of a multi-line pin on the right-hand side", () => {
+		const model = buildSplitRows(
+			[wholeFile],
+			withPin([
+				aPinnedThread({
+					filePath: "src/main.ts",
+					id: "p1",
+					startLine: 2,
+					endLine: 3,
+					resolvedStartLine: 2,
+				}),
+			]),
+		);
+
+		const spanned = model.rows
+			.filter((row) => row.kind === "pair")
+			.map((row) => row.kind === "pair" && row.spannedRight);
+
+		expect(spanned).toEqual([false, true, true, false]);
 	});
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { aPinnedThread, aThread } from "../__tests__/helpers/thread-fixture.js";
 import {
 	commentsForLine,
 	commentsForView,
@@ -37,27 +37,6 @@ function lineComment(id: string, a: Anchor): Thread {
 
 function commitNote(id: string): Thread {
 	return aThread({ id, text: `note ${id}` });
-}
-
-function pinnedThread(props: {
-	id: string;
-	filePath: string;
-	startLine: number;
-	endLine: number;
-	resolvedStartLine: number | null;
-}): Thread {
-	return aThread({
-		id: props.id,
-		text: `pinned ${props.id}`,
-		content_pin: {
-			file_path: props.filePath,
-			block: "pinned block",
-			ordinal: 0,
-			start_line: props.startLine,
-			end_line: props.endLine,
-		},
-		resolved_start_line: props.resolvedStartLine,
-	});
 }
 
 describe("resolveViewOid", () => {
@@ -322,7 +301,7 @@ describe("commentsForView", () => {
 		}
 
 		it("returns a thread pinned to the file being viewed", () => {
-			const c = pinnedThread({
+			const c = aPinnedThread({
 				id: "p1",
 				filePath: FILE,
 				startLine: 3,
@@ -334,7 +313,7 @@ describe("commentsForView", () => {
 		});
 
 		it("excludes a thread pinned to another file", () => {
-			const c = pinnedThread({
+			const c = aPinnedThread({
 				id: "p1",
 				filePath: "src/other.ts",
 				startLine: 3,
@@ -346,7 +325,7 @@ describe("commentsForView", () => {
 		});
 
 		it("excludes a thread whose pinned block the file no longer holds", () => {
-			const c = pinnedThread({
+			const c = aPinnedThread({
 				id: "p1",
 				filePath: FILE,
 				startLine: 3,
@@ -374,7 +353,7 @@ describe("commentsForView", () => {
 	});
 
 	it("keeps a pinned thread out of a commit diff of the same file", () => {
-		const c = pinnedThread({
+		const c = aPinnedThread({
 			id: "p1",
 			filePath: FILE,
 			startLine: 3,
@@ -519,7 +498,7 @@ describe("spannedByComment", () => {
 });
 
 describe("a content-pinned thread at the matcher level", () => {
-	const pin = pinnedThread({
+	const pin = aPinnedThread({
 		id: "p1",
 		filePath: "src/main.ts",
 		startLine: 10,
@@ -552,7 +531,7 @@ describe("a content-pinned thread at the matcher level", () => {
 	});
 
 	it("sits nowhere while the file no longer holds its block", () => {
-		const gone = pinnedThread({
+		const gone = aPinnedThread({
 			id: "p2",
 			filePath: "src/main.ts",
 			startLine: 10,

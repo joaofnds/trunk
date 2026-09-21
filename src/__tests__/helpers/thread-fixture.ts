@@ -25,6 +25,32 @@ export function aThread(overrides: Partial<Thread> = {}): Thread {
 	};
 }
 
+/**
+ * A Thread pinned to a file's own content, resolved to a line. `resolvedStartLine`
+ * takes null for a block the file has lost, which is what the backend stores
+ * alongside the stale marker.
+ */
+export function aPinnedThread(props: {
+	id: string;
+	filePath: string;
+	startLine: number;
+	endLine: number;
+	resolvedStartLine: number | null;
+}): Thread {
+	return aThread({
+		id: props.id,
+		text: `pinned ${props.id}`,
+		content_pin: {
+			file_path: props.filePath,
+			block: "pinned block",
+			ordinal: 0,
+			start_line: props.startLine,
+			end_line: props.endLine,
+		},
+		resolved_start_line: props.resolvedStartLine,
+	});
+}
+
 export function aReply(overrides: Partial<Reply> = {}): Reply {
 	return {
 		id: "reply-1",
