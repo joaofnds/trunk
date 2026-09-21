@@ -30,6 +30,26 @@ Message is the exception and takes what the sized columns leave. It carries a
 minimum width instead, because a column with no intrinsic width and no floor
 reaches zero before anything on screen suggests that a width is what went wrong.
 
+## Fitting the widest thing has a ceiling
+
+"Fit the widest thing found" is only right while the widest thing is
+representative. A backup branch carrying a timestamp runs past forty characters
+and took the ref column to about 360px; a history with deep merge nesting reports
+twenty-odd lanes and took the graph to nearly 400. Together they pushed Message,
+the column actually worth reading, down to a clipped sliver beside a wide band of
+empty space.
+
+Auto-fit stops at `REF_AUTOFIT_MAX_WIDTH` and `GRAPH_AUTOFIT_MAX_WIDTH`, both
+below `MAX_COLUMN_WIDTH`, which a drag still reaches. The cap bounds what the app
+decides on its own, not what the user may ask for. Past it a pill truncates with
+its full name a hover away and the graph pans to the lanes it cannot show, so the
+capped column loses nothing that cannot be recovered.
+
+This and the fixed 120px default are the same defect from opposite ends, and
+neither was visible from the test suite — the first was reported from a
+screenshot, the second only showed up on opening the built app against a real
+repository.
+
 ## What a stored width means
 
 A width in the pref file is a claim about the user's intent, and the widths alone
