@@ -297,6 +297,16 @@ file, independent of any pending change. Pins to the content at comment time; th
 stale marker arrives when that pinned block no longer occurs anywhere in the file,
 not on any edit elsewhere in it. Never re-anchored forward.
 
+**Content pin** — what a current-file comment is attached to: the block of text the
+user selected, which occurrence of it they picked (the ordinal), and the line range
+it covered when they wrote the comment. A different thing from a **Snapshot pin**,
+which is a ref holding a commit alive; the word "pin" carries both senses here.
+
+**Resolved line** — the line a pinned block currently starts at. Written when the
+comment is submitted and rewritten whenever the repository changes. Absent when the
+block no longer occurs in the file, which is the same condition as the comment
+reading stale.
+
 **Review CLI** — the Trunk-shipped, fully local command-line tool agents use to list
 `ready`/`settled` reviews, read one in full, reply to threads, and claim `addressed`.
 It inverts the integration dependency: Trunk never connects to an agent; the agent's
