@@ -31,7 +31,8 @@ pub struct Thread {
     pub content_pin: Option<ContentPin>,
     /// Where the pinned block currently sits: written at insert from the pin the
     /// submit resolved, and rewritten by every stale pass. `None` for a thread
-    /// that carries no pin, and for one whose block the file has lost.
+    /// that carries no pin, for one whose block the file has lost, and for one
+    /// written before the insert stored it, until a pass fills it in.
     pub resolved_start_line: Option<u32>,
 }
 

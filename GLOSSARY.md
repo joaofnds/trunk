@@ -303,9 +303,10 @@ it covered when they wrote the comment. A different thing from a **Snapshot pin*
 which is a ref holding a commit alive; the word "pin" carries both senses here.
 
 **Resolved line** — the line a pinned block currently starts at. Written when the
-comment is submitted and rewritten whenever the repository changes. Absent when the
-block no longer occurs in the file, which is the same condition as the comment
-reading stale.
+comment is submitted and rewritten whenever the repository changes. Absent once a
+pass has found the block gone, which is the same condition as the comment reading
+stale, and also on a comment written before Trunk stored it at submit, until the
+next pass fills it in.
 
 **Review CLI** — the Trunk-shipped, fully local command-line tool agents use to list
 `ready`/`settled` reviews, read one in full, reply to threads, and claim `addressed`.
