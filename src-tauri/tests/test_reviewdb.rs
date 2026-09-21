@@ -541,7 +541,7 @@ use trunk_lib::commands::review::{
     ensure_review_snapshot_inner, read_snapshots_inner, recompute_staleness,
     submit_current_file_thread_inner, submit_thread_into, sweep_once, sweep_unanchored_pins,
 };
-use trunk_lib::git::workdir_snapshot::SnapshotKind;
+use trunk_lib::git::workdir_snapshot::{SnapshotKind, pinned_snapshot_oids};
 
 #[test]
 fn ensure_snapshot_reuses_the_repos_prior_oid() {
@@ -3759,6 +3759,63 @@ fn a_submit_outliving_the_grace_window_restores_its_pin() {
     assert!(
         fresh.find_commit(oid).is_ok(),
         "a late submit's anchor must survive gc, not be lost silently",
+    );
+}
+
+/// The keepalive namespace names the snapshots gc must not collect. A thread
+/// anchored to a commit the user wrote names no snapshot, so the submit's pin
+/// repair must leave the namespace alone: a ref there for an ordinary commit
+/// makes `refs/trunk/review-snapshots/` stop meaning what it says, and stops it
+/// answering "was this a snapshot".
+#[test]
+fn submitting_against_a_real_commit_pins_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap().id();
+
+    let mut req = submission("a note on a real commit");
+    req.anchor = Some(Anchor {
+        commit_oid: head.to_string(),
+        ..diff_anchor()
+    });
+    submit_thread_into(&store, &canonical, Some(&repo), req, 1_000).unwrap();
+
+    assert_eq!(
+        pinned_snapshot_oids(&repo).unwrap(),
+        Vec::<git2::Oid>::new(),
+        "a commit the user wrote is not a review snapshot and must take no keepalive ref",
+    );
+}
+
+/// The commit-note route reaches the same pin repair by a different field:
+/// `add_commit_thread` sends `commit_oid` and no anchor, and the submit path
+/// falls back to it. Gating one route and not the other leaves the namespace
+/// just as polluted.
+#[test]
+fn a_commit_note_on_a_real_commit_pins_nothing() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    let repo = git2::Repository::open(ctx.path()).unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap().id();
+
+    let mut req = submission("a note on the commit itself");
+    req.anchor = None;
+    req.commit_oid = Some(head.to_string());
+    submit_thread_into(&store, &canonical, Some(&repo), req, 1_000).unwrap();
+
+    assert_eq!(
+        pinned_snapshot_oids(&repo).unwrap(),
+        Vec::<git2::Oid>::new(),
+        "a commit the user wrote is not a review snapshot and must take no keepalive ref",
     );
 }
 

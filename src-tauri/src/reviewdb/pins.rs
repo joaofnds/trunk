@@ -98,7 +98,8 @@ pub enum Anchored {
     Marked,
     /// No record: either an ordinary commit, which has no pin and needs none,
     /// or a snapshot whose pin the sweep reclaimed while this submit was in
-    /// flight. The caller re-pins to cover the second case.
+    /// flight. Nothing here can tell them apart. The caller re-pins the second
+    /// case only, separating them by the commit's own author.
     Restored,
 }
 

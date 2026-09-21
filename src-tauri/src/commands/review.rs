@@ -218,6 +218,11 @@ pub fn submit_thread_into(
 
 /// Put back the keepalive ref for a snapshot the sweep reclaimed under an
 /// in-flight submit. Reports rather than propagates: see `submit_thread_into`.
+///
+/// Only a snapshot takes a pin. The store half cannot tell "the sweep reclaimed
+/// my pin" from "this was never a snapshot", because a real commit has no
+/// `snapshot_pins` row either and both arrive here as `Restored`. The commit
+/// itself settles it.
 fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
     let parsed = match git2::Oid::from_str(oid) {
         Ok(parsed) => parsed,
@@ -226,6 +231,14 @@ fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
             return;
         }
     };
+
+    let Ok(commit) = repo.find_commit(parsed) else {
+        return;
+    };
+
+    if !crate::git::workdir_snapshot::is_snapshot_commit(&commit) {
+        return;
+    }
 
     if let Err(e) = crate::git::workdir_snapshot::keep_snapshot_ref(repo, parsed) {
         eprintln!(

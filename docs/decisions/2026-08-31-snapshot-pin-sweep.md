@@ -127,6 +127,13 @@ guarantee is that submitting a thread whose snapshot is no longer on record puts
 the record back and re-pins the ref, so a late submit repairs what the sweep
 took rather than losing its comment.
 
+The re-pin covers snapshots only. The store half of a submit cannot tell a
+reclaimed pin from an oid that was never a snapshot, since neither has a
+`snapshot_pins` row and both come back as restored. So the repair resolves the
+oid and asks the commit itself, through `is_snapshot_commit`, before it writes a
+ref. Ungated, the repair pins every commit a thread anchors to, and
+`refs/trunk/review-snapshots/` stops naming snapshots.
+
 ## What this costs
 
 A pin outlives its threads until a sweep runs, so in the common case until the

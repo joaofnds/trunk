@@ -11,10 +11,11 @@
 //! Two things this module deliberately does not decide. Whether an oid is a
 //! snapshot at all, because no store table can answer it: `pins::mark_anchored`
 //! writes a `snapshot_pins` row for whatever oid a thread names, real commits
-//! included, and the submit path's pin repair then gives that same oid a
-//! keepalive ref. And whether a snapshot is still current, because that is a
-//! question about the repository as it stands now, not about anything the store
-//! recorded. The caller answers both, and passes in the verdict.
+//! included. The keepalive refs do not share that over-reach: the submit path's
+//! pin repair reads the commit's own author before it writes one. And whether a
+//! snapshot is still current, because that is a question about the repository
+//! as it stands now, not about anything the store recorded. The caller answers
+//! both, and passes in the verdict.
 //!
 //! `repo_snapshots` is the wrong yardstick for the second question and reading
 //! it here was a defect: it moves only when a comment is submitted, so it names

@@ -223,13 +223,15 @@ const SNAPSHOT_AUTHOR_EMAIL: &str = "review@trunk.local";
 ///
 /// Read from the commit itself, because neither store table can answer it: the
 /// `snapshot_pins` row for an oid is written for whatever a thread anchors to,
-/// real commits included, and the keepalive refs inherit that same over-reach
-/// through the submit path's pin repair.
+/// real commits included.
 ///
 /// This is a heuristic, not proof. Git lets a commit claim any author, so a
-/// commit in a fetched repository can carry this one; the cost is a wrong
-/// `(stale)` marker on a thread about that commit, and nothing else, because
-/// the flag drives no write and no authority. TRUNK-193 carries the narrowing.
+/// commit in a fetched repository can carry this one. It costs a wrong
+/// `(stale)` marker on a thread about that commit, and a keepalive ref the
+/// submit path's pin repair would otherwise withhold. Neither reaches past what
+/// an ungated caller would have done anyway, since every caller here guards a
+/// write it would otherwise make unconditionally. TRUNK-193 carries the
+/// narrowing.
 ///
 /// Takes the resolved commit rather than an oid, so an oid this repository does
 /// not hold cannot be asked this question at all. It used to take an oid and
