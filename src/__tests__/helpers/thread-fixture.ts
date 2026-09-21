@@ -26,26 +26,30 @@ export function aThread(overrides: Partial<Thread> = {}): Thread {
 }
 
 /**
- * A Thread pinned to a file's own content, resolved to a line. `resolvedStartLine`
- * takes null for a block the file has lost, which is what the backend stores
- * alongside the stale marker.
+ * A Thread pinned to a file's own content. `resolvedStartLine` is where the
+ * backend last found the block and is the value the inline row renders at, so
+ * every test states it; null is a block the file has lost, and also a row
+ * written before Trunk stored the column, which is why it does not imply stale.
  */
 export function aPinnedThread(props: {
-	id: string;
-	filePath: string;
-	startLine: number;
-	endLine: number;
 	resolvedStartLine: number | null;
+	id?: string;
+	filePath?: string;
+	startLine?: number;
+	endLine?: number;
 }): Thread {
+	const id = props.id ?? "thread-1";
+	const startLine = props.startLine ?? 1;
+
 	return aThread({
-		id: props.id,
-		text: `pinned ${props.id}`,
+		id,
+		text: `pinned ${id}`,
 		content_pin: {
-			file_path: props.filePath,
+			file_path: props.filePath ?? "src/main.ts",
 			block: "pinned block",
 			ordinal: 0,
-			start_line: props.startLine,
-			end_line: props.endLine,
+			start_line: startLine,
+			end_line: props.endLine ?? startLine,
 		},
 		resolved_start_line: props.resolvedStartLine,
 	});

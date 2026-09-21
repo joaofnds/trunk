@@ -497,49 +497,59 @@ describe("spannedByComment", () => {
 	});
 });
 
-describe("a content-pinned thread at the matcher level", () => {
-	const pin = aPinnedThread({
-		id: "p1",
-		filePath: "src/main.ts",
-		startLine: 10,
-		endLine: 12,
-		resolvedStartLine: 20,
-	});
+// Resolved to line 20 while pinned at 10..12, so an assertion that passes on
+// the resolved range cannot also be passing on the pin's original lines.
+const resolvedPin = aPinnedThread({
+	id: "p1",
+	filePath: "src/main.ts",
+	startLine: 10,
+	endLine: 12,
+	resolvedStartLine: 20,
+});
 
+const lostPin = aPinnedThread({
+	id: "p2",
+	filePath: "src/main.ts",
+	startLine: 10,
+	endLine: 12,
+	resolvedStartLine: null,
+});
+
+describe("commentsForLine when the thread is content-pinned", () => {
 	it("hangs on the last line of its resolved range", () => {
-		expect(commentsForLine([pin], "New", 22)).toEqual([pin]);
+		expect(commentsForLine([resolvedPin], "New", 22)).toEqual([resolvedPin]);
 	});
 
 	it("does not hang on the first line of its resolved range", () => {
-		expect(commentsForLine([pin], "New", 20)).toEqual([]);
-	});
-
-	it("spans every line of its resolved range", () => {
-		expect(spannedByComment([pin], "New", 20)).toBe(true);
-		expect(spannedByComment([pin], "New", 21)).toBe(true);
-		expect(spannedByComment([pin], "New", 22)).toBe(true);
-	});
-
-	it("spans no line outside its resolved range", () => {
-		expect(spannedByComment([pin], "New", 19)).toBe(false);
-		expect(spannedByComment([pin], "New", 23)).toBe(false);
+		expect(commentsForLine([resolvedPin], "New", 20)).toEqual([]);
 	});
 
 	it("answers for the New side only, so a current-file diff cannot double it", () => {
-		expect(commentsForLine([pin], "Old", 22)).toEqual([]);
-		expect(spannedByComment([pin], "Old", 21)).toBe(false);
+		expect(commentsForLine([resolvedPin], "Old", 22)).toEqual([]);
 	});
 
-	it("sits nowhere while the file no longer holds its block", () => {
-		const gone = aPinnedThread({
-			id: "p2",
-			filePath: "src/main.ts",
-			startLine: 10,
-			endLine: 12,
-			resolvedStartLine: null,
-		});
+	it("hangs nowhere while the file no longer holds its block", () => {
+		expect(commentsForLine([lostPin], "New", 12)).toEqual([]);
+	});
+});
 
-		expect(commentsForLine([gone], "New", 12)).toEqual([]);
-		expect(spannedByComment([gone], "New", 11)).toBe(false);
+describe("spannedByComment when the thread is content-pinned", () => {
+	it.each([20, 21, 22])("spans line %i of its resolved range", (lineno) => {
+		expect(spannedByComment([resolvedPin], "New", lineno)).toBe(true);
+	});
+
+	it.each([19, 23])(
+		"spans no line outside its resolved range (%i)",
+		(lineno) => {
+			expect(spannedByComment([resolvedPin], "New", lineno)).toBe(false);
+		},
+	);
+
+	it("answers for the New side only, so a current-file diff cannot double it", () => {
+		expect(spannedByComment([resolvedPin], "Old", 21)).toBe(false);
+	});
+
+	it("spans nothing while the file no longer holds its block", () => {
+		expect(spannedByComment([lostPin], "New", 11)).toBe(false);
 	});
 });

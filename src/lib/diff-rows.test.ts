@@ -816,11 +816,11 @@ const wholeFile = file("src/main.ts", [
 	]),
 ]);
 
-describe("a content-pinned thread in a current-file view", () => {
-	function withPin(threads: Thread[]): BuildOptions {
-		return { ...fullMode, comments: threads, reviewFilter: "all" };
-	}
+function withPin(threads: Thread[]): BuildOptions {
+	return { ...fullMode, comments: threads, reviewFilter: "all" };
+}
 
+describe("buildInlineRows with a content-pinned thread", () => {
 	it("hangs the comment row under the line the backend resolved", () => {
 		const model = buildInlineRows(
 			[wholeFile],
@@ -929,11 +929,7 @@ describe("a content-pinned thread in a current-file view", () => {
 });
 
 describe("buildSplitRows with a content-pinned thread", () => {
-	function withPin(threads: Thread[]): BuildOptions {
-		return { ...fullMode, comments: threads, reviewFilter: "all" };
-	}
-
-	it("emits the comment row once, on the right-hand side", () => {
+	it("emits the comment row once, not once per side", () => {
 		const p1 = aPinnedThread({
 			filePath: "src/main.ts",
 			id: "p1",

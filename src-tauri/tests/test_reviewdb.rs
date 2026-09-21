@@ -5048,7 +5048,7 @@ fn pinning_a_line_range_captures_that_range_from_the_file() {
 /// what lets the comment render inline immediately, instead of waiting for the
 /// next repository change to run a stale pass.
 #[test]
-fn submitting_a_current_file_thread_stores_the_line_the_pin_was_found_at() {
+fn submitting_a_current_file_thread_stores_the_line_the_user_selected() {
     let ctx = TestContext::builder()
         .with_file("a.txt", "one\ntwo\nthree\nfour\n")
         .with_commit("c1")
@@ -5134,7 +5134,7 @@ fn a_recompute_over_an_unchanged_file_leaves_the_submitted_line_alone() {
     )
     .unwrap();
 
-    let changed = recompute_against_worktree(&store, &canonical, ctx.repo_path());
+    let changed = recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
     assert_eq!(changed, 0, "nothing moved, so nothing is written");
     assert_eq!(only_thread(&store, &canonical).resolved_start_line, Some(2));
@@ -5163,13 +5163,41 @@ fn losing_the_pinned_block_clears_the_resolved_line() {
     .unwrap();
 
     std::fs::write(ctx.repo_path().join("a.txt"), "alpha\ncharlie\n").unwrap();
-    recompute_against_worktree(&store, &canonical, ctx.repo_path());
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
     let gone = only_thread(&store, &canonical);
     assert_eq!((gone.resolved_start_line, gone.stale), (None, true));
+}
+
+/// Filling a cleared line back in is the only path that updates the column from
+/// NULL, so it is what holds `apply`'s `resolved_start_line IS ?5` to `IS`: with
+/// `=` a cleared row, and every row written before the insert stored the column,
+/// could never be filled again.
+#[test]
+fn restoring_the_pinned_block_restores_the_resolved_line() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "alpha\nbravo\ncharlie\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        2,
+        2,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+    std::fs::write(ctx.repo_path().join("a.txt"), "alpha\ncharlie\n").unwrap();
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
+    assert_eq!(only_thread(&store, &canonical).resolved_start_line, None);
 
     std::fs::write(ctx.repo_path().join("a.txt"), "alpha\nbravo\ncharlie\n").unwrap();
-    recompute_against_worktree(&store, &canonical, ctx.repo_path());
+    recompute_staleness(&store, &canonical, ctx.path()).unwrap();
 
     let back = only_thread(&store, &canonical);
     assert_eq!(
@@ -5177,21 +5205,6 @@ fn losing_the_pinned_block_clears_the_resolved_line() {
         (Some(2), false),
         "restoring the block restores the line the frontend renders at",
     );
-}
-
-fn recompute_against_worktree(
-    store: &reviewdb::Store,
-    canonical: &std::path::Path,
-    repo_path: &std::path::Path,
-) -> usize {
-    let repo_path = repo_path.to_path_buf();
-    reviewdb::stale::recompute(
-        store,
-        canonical,
-        &|_oid| Ok(reviewdb::stale::SnapshotStanding::Current),
-        &|path| std::fs::read_to_string(repo_path.join(path)).ok(),
-    )
-    .unwrap()
 }
 
 #[test]
