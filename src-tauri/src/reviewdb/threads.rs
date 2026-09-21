@@ -29,8 +29,9 @@ pub struct Thread {
     pub stale: bool,
     pub channel: Channel,
     pub content_pin: Option<ContentPin>,
-    /// Where the pinned block currently sits, written by the stale pass. `None`
-    /// until a pass has run, and for every thread that carries no pin.
+    /// Where the pinned block currently sits: written at insert from the pin the
+    /// submit resolved, and rewritten by every stale pass. `None` for a thread
+    /// that carries no pin, and for one whose block the file has lost.
     pub resolved_start_line: Option<u32>,
 }
 
@@ -72,9 +73,10 @@ pub fn insert(
     conn.execute(
         &format!(
             "INSERT INTO threads (id, review_id, body, channel, state, stale, excerpt,
-                                  {}, pin_block, pin_ordinal, created_at, updated_at)
+                                  {}, pin_block, pin_ordinal, resolved_start_line,
+                                  created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, 'open', 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                     ?13, ?14, ?15, ?15)",
+                     ?13, ?14, ?15, ?16, ?16)",
             anchor::COLUMNS
         ),
         rusqlite::params![
@@ -92,6 +94,7 @@ pub fn insert(
             cols.end_line,
             new.content_pin.as_ref().map(|p| p.block.clone()),
             new.content_pin.as_ref().map(|p| i64::from(p.ordinal)),
+            new.content_pin.as_ref().map(|p| i64::from(p.start_line)),
             now,
         ],
     )

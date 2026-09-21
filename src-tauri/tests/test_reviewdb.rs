@@ -5044,6 +5044,38 @@ fn pinning_a_line_range_captures_that_range_from_the_file() {
     );
 }
 
+/// A submit already knows where the block sits: `pin_range` found it to mint
+/// the ordinal. Storing that line at insert is what lets the comment render
+/// inline immediately, instead of waiting for the next repository change to
+/// run a stale pass.
+#[test]
+fn submitting_a_current_file_thread_stores_the_line_the_pin_was_found_at() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "one\ntwo\nthree\nfour\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        2,
+        3,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+
+    assert_eq!(
+        only_thread(&store, &canonical).resolved_start_line,
+        Some(2),
+        "the submit resolved the block to line 2 and must persist it",
+    );
+}
+
 #[test]
 fn pinning_a_nested_file_keeps_its_full_path() {
     let ctx = TestContext::builder()
