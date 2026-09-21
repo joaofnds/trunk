@@ -232,8 +232,17 @@ fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
         }
     };
 
-    let Ok(commit) = repo.find_commit(parsed) else {
-        return;
+    let commit = match repo.find_commit(parsed) {
+        Ok(commit) => commit,
+        Err(e) => {
+            eprintln!(
+                "re-pin found nothing to pin for {} in {}: {}",
+                oid,
+                canonical.display(),
+                e.message()
+            );
+            return;
+        }
     };
 
     if !crate::git::workdir_snapshot::is_snapshot_commit(&commit) {

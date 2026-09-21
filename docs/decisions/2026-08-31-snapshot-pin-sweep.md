@@ -134,6 +134,12 @@ oid and asks the commit itself, through `is_snapshot_commit`, before it writes a
 ref. Ungated, the repair pins every commit a thread anchors to, and
 `refs/trunk/review-snapshots/` stops naming snapshots.
 
+That question is answered from the commit's author, which git lets any commit
+claim, so the gate is a heuristic like the window above it, not proof. A fetched
+commit carrying the snapshot author takes a pin it should not have. The error
+only ever costs a surplus ref, never a missing one, so it cannot lose a comment.
+TRUNK-193 holds the narrowing.
+
 ## What this costs
 
 A pin outlives its threads until a sweep runs, so in the common case until the
