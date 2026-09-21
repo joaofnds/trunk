@@ -5071,7 +5071,7 @@ fn submitting_a_current_file_thread_stores_the_line_the_user_selected() {
     assert_eq!(
         only_thread(&store, &canonical).resolved_start_line,
         Some(2),
-        "the submit resolved the block to line 2 and must persist it",
+        "the user selected line 2 and the insert must persist it",
     );
 }
 
@@ -5169,10 +5169,9 @@ fn losing_the_pinned_block_clears_the_resolved_line() {
     assert_eq!((gone.resolved_start_line, gone.stale), (None, true));
 }
 
-/// Filling a cleared line back in is the only path that updates the column from
-/// NULL, so it is what holds `apply`'s `resolved_start_line IS ?5` to `IS`: with
-/// `=` a cleared row, and every row written before the insert stored the column,
-/// could never be filled again.
+/// Restoring the block restores the line, not just the marker: the frontend
+/// renders inline on the line alone, so a thread whose marker cleared while its
+/// line stayed NULL would read fresh in the panel and appear nowhere in the file.
 #[test]
 fn restoring_the_pinned_block_restores_the_resolved_line() {
     let ctx = TestContext::builder()
