@@ -375,3 +375,11 @@ Changed goldens:
      M src/__tests__/goldens/graph-render/stash-18-many-files.txt
      M src/__tests__/goldens/graph-render/stash-18-many-files.wip.txt
      M src/__tests__/goldens/graph-render/stash-19-two-backdated.txt
+
+## 2026-09-21
+
+the +N badge reserved 20px while drawing 26px, so a pill's label was truncated against a budget 6px wider than the column really left and overlapped the badge; overflowBadgeWidth is now one function for both the reservation and the render
+
+Changed goldens:
+
+     M src/__tests__/goldens/graph-render/lane-10-two-remotes.txt

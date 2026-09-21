@@ -96,7 +96,10 @@ describe("CommitGraph", () => {
 		it("truncates an overlong label and collapses the refs past the first into a badge", async () => {
 			const { svg } = await mountGraph(loadExport("lane-10-two-remotes"));
 
-			expect(pillTexts(svg)).toEqual(["origin/m…", "+1", "main"]);
+			// One character shorter than it used to read: the badge draws 26px and
+			// the layout reserved 20, so the label was being truncated against a
+			// budget 6px wider than the pill really had, and overlapped the badge.
+			expect(pillTexts(svg)).toEqual(["origin/…", "+1", "main"]);
 		});
 	});
 

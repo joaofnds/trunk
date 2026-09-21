@@ -67,7 +67,7 @@ import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneRefForRow } from "../lib/lane-ref.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
-import { buildRefPillData } from "../lib/ref-pill-data.js";
+import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
 import { edgeFadeWidth, stickyDotX } from "../lib/sticky-dot.js";
@@ -1980,8 +1980,8 @@ $effect(() => {
           {#if columnVisibility.ref}
             <g class="overlay-pills">
               {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
-                {@const overflowBadgeWidth = pill.overflowCount > 0 ? `+${pill.overflowCount}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2 : 0}
-                {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
+                {@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
+                {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
                   {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX, displaySettings)}
@@ -2070,7 +2070,7 @@ $effect(() => {
                   <rect
                     x={pill.x + pill.width + PILL_GAP}
                     y={pill.y - BADGE_HEIGHT / 2}
-                    width={overflowBadgeWidth}
+                    width={badgeWidth}
                     height={BADGE_HEIGHT}
                     rx={BADGE_HEIGHT / 2}
                     ry={BADGE_HEIGHT / 2}
@@ -2085,7 +2085,7 @@ $effect(() => {
                   <foreignObject
                     x={pill.x + pill.width + PILL_GAP}
                     y={pill.y - BADGE_HEIGHT / 2}
-                    width={overflowBadgeWidth}
+                    width={badgeWidth}
                     height={BADGE_HEIGHT}
                   >
                     <span

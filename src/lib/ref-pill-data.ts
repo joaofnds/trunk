@@ -1,4 +1,5 @@
 import {
+	BADGE_FONT_SIZE,
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
@@ -53,11 +54,15 @@ export function isRemoteOnlyRef(ref: RefLabel, allRefs: RefLabel[]): boolean {
 	);
 }
 
-/** Estimate "+N" badge width based on character count */
-function estimateBadgeWidth(count: number): number {
-	// "+N" text is small (BADGE_FONT_SIZE), estimate ~7px per char + padding
-	const chars = `+${count}`.length;
-	return chars * 7 + 6;
+/**
+ * Width of the "+N" badge, for the layout that reserves room for it and the
+ * renderer that draws it alike. Two formulas for this once disagreed on the
+ * padding, and the badge drew 6px wider than the pill had budgeted.
+ */
+export function overflowBadgeWidth(count: number): number {
+	if (count <= 0) return 0;
+
+	return `+${count}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2;
 }
 
 /**
@@ -101,7 +106,7 @@ export function buildRefPillData(
 
 		// Compute available text width
 		const badgeWidth =
-			overflowCount > 0 ? PILL_GAP + estimateBadgeWidth(overflowCount) : 0;
+			overflowCount > 0 ? PILL_GAP + overflowBadgeWidth(overflowCount) : 0;
 		// Right gap matches the dot's visual inset: COLUMN_PADDING_X + (laneWidth/2 - dotRadius)
 		// so the pill and first dot are equidistant from the column divider
 		const dotInset = settings.laneWidth / 2 - settings.dotRadius;
@@ -124,9 +129,21 @@ export function buildRefPillData(
 			measureFn,
 		);
 
-		// Compute pill width — ceil textWidth to avoid sub-pixel rounding gaps
-		const pillWidth =
-			Math.ceil(textWidth) + PILL_PADDING_X * 2 + iconWidth + ICON_GAP;
+		// Compute pill width — ceil textWidth to avoid sub-pixel rounding gaps.
+		// Capped at the room the column leaves: truncateWithEllipsis returns the
+		// bare ellipsis at its own width when nothing fits, ignoring the limit, and
+		// an uncapped pill paints over the graph, which draws no clip of its own.
+		const pillWidth = Math.min(
+			Math.ceil(textWidth) + PILL_PADDING_X * 2 + iconWidth + ICON_GAP,
+			Math.max(
+				0,
+				refColumnWidth -
+					PILL_MARGIN_LEFT -
+					COLUMN_PADDING_X -
+					dotInset -
+					badgeWidth,
+			),
+		);
 
 		pills.push({
 			x: PILL_MARGIN_LEFT,
