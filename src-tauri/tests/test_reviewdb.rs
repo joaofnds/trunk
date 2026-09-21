@@ -5044,10 +5044,9 @@ fn pinning_a_line_range_captures_that_range_from_the_file() {
     );
 }
 
-/// A submit already knows where the block sits: `pin_range` found it to mint
-/// the ordinal. Storing that line at insert is what lets the comment render
-/// inline immediately, instead of waiting for the next repository change to
-/// run a stale pass.
+/// The submit is handed the line the user selected, so storing it at insert is
+/// what lets the comment render inline immediately, instead of waiting for the
+/// next repository change to run a stale pass.
 #[test]
 fn submitting_a_current_file_thread_stores_the_line_the_pin_was_found_at() {
     let ctx = TestContext::builder()
@@ -5073,6 +5072,40 @@ fn submitting_a_current_file_thread_stores_the_line_the_pin_was_found_at() {
         only_thread(&store, &canonical).resolved_start_line,
         Some(2),
         "the submit resolved the block to line 2 and must persist it",
+    );
+}
+
+/// The stored line must be the occurrence the user picked, not the first twin.
+/// `pin_range` echoes the requested start back and searches only to mint the
+/// ordinal, so a file with an earlier identical block is what separates "we
+/// stored the selection" from "we stored whatever the search found first".
+#[test]
+fn submitting_against_a_later_twin_stores_that_twins_line() {
+    let ctx = TestContext::builder()
+        .with_file("a.txt", "dup\nother\ndup\n")
+        .with_commit("c1")
+        .build();
+    let canonical = ctx.repo_path().canonicalize().unwrap();
+    let store = reviewdb::open(ctx.data_dir()).unwrap();
+
+    submit_current_file_thread_inner(
+        &store,
+        &canonical,
+        ctx.path(),
+        "a.txt",
+        3,
+        3,
+        "look at this",
+        1_000,
+    )
+    .unwrap();
+
+    let thread = only_thread(&store, &canonical);
+
+    assert_eq!(
+        (thread.resolved_start_line, thread.content_pin.map(|p| p.ordinal)),
+        (Some(3), Some(1)),
+        "the second occurrence, at line 3, not the first at line 1",
     );
 }
 
