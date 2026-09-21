@@ -7,6 +7,7 @@ import { exactDate } from "../lib/exact-date.js";
 import {
 	COLUMN_PADDING_X,
 	LANE_WIDTH,
+	MESSAGE_MIN_WIDTH,
 	ROW_HEIGHT,
 } from "../lib/graph-constants.js";
 import { currentMinute } from "../lib/now.svelte.js";
@@ -155,7 +156,7 @@ const rowShadow = $derived(
   {/if}
 
   <!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
-  <div class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px;">
+  <div class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_MIN_WIDTH}px;">
     {#if isWip}
       <div data-testid="commit-row-summary" class="flex items-center gap-2 overflow-hidden whitespace-nowrap">
         <span class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5" style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);">{commit.summary}</span>

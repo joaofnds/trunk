@@ -6,7 +6,11 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
+import {
+	COLUMN_PADDING_X,
+	LANE_WIDTH,
+	MESSAGE_MIN_WIDTH,
+} from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { resetCache } from "../lib/text-measure.js";
@@ -824,6 +828,18 @@ describe("CommitGraph", () => {
 
 			expect(author.textContent).not.toContain("Author");
 			expect(author.querySelector("svg")).not.toBeNull();
+		});
+
+		// Message has no width of its own: it takes what the sized columns leave.
+		// At a narrow window that share reaches zero, and the commit subject — the
+		// thing the view is for — disappears before any column shows a scrollbar.
+		it("keeps a readable floor under the Message column", async () => {
+			const { container } = mountHeader();
+			await flush();
+
+			const message = headerCell(container, "message");
+
+			expect(message.style.minWidth).toBe(`${MESSAGE_MIN_WIDTH}px`);
 		});
 
 		it("names the column for assistive tech when only the icon shows", async () => {

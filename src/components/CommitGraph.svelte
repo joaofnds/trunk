@@ -57,6 +57,7 @@ import {
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
 	ICON_WIDTH,
+	MESSAGE_MIN_WIDTH,
 	PILL_FONT,
 	PILL_FONT_SIZE,
 	PILL_GAP,
@@ -1867,7 +1868,7 @@ $effect(() => {
           <div
             class="relative flex-1 overflow-hidden whitespace-nowrap"
             data-column={col.key}
-            style="padding: 0 {COLUMN_PADDING_X}px;"
+            style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_MIN_WIDTH}px;"
             title={col.label}
           >
             {col.label}
