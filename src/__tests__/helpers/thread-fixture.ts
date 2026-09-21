@@ -32,24 +32,21 @@ export function aThread(overrides: Partial<Thread> = {}): Thread {
  * written before Trunk stored the column, which is why it does not imply stale.
  */
 export function aPinnedThread(props: {
+	id: string;
+	filePath: string;
+	startLine: number;
+	endLine: number;
 	resolvedStartLine: number | null;
-	id?: string;
-	filePath?: string;
-	startLine?: number;
-	endLine?: number;
 }): Thread {
-	const id = props.id ?? "thread-1";
-	const startLine = props.startLine ?? 1;
-
 	return aThread({
-		id,
-		text: `pinned ${id}`,
+		id: props.id,
+		text: `pinned ${props.id}`,
 		content_pin: {
-			file_path: props.filePath ?? "src/main.ts",
+			file_path: props.filePath,
 			block: "pinned block",
 			ordinal: 0,
-			start_line: startLine,
-			end_line: props.endLine ?? startLine,
+			start_line: props.startLine,
+			end_line: props.endLine,
 		},
 		resolved_start_line: props.resolvedStartLine,
 	});
