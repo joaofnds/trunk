@@ -74,7 +74,7 @@ import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
 import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
-import { edgeFadeWidth } from "../lib/sticky-dot.js";
+import { edgeFadeWidth, stickyDotX } from "../lib/sticky-dot.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
@@ -1946,7 +1946,8 @@ $effect(() => {
             </clipPath>
             <!-- Rails are cut off at the column's right edge whenever lanes run
                  past it. Ending them on a hard line reads as broken rendering,
-                 so they fade over the last few pixels instead. -->
+                 so they fade over the last few pixels instead: the dots clamp to
+                 that same edge and stay solid on top. -->
             {#if lanesRunPastEdge}
               <linearGradient id="graph-edge-fade" gradientUnits="userSpaceOnUse"
                 x1={railBandX + railBandWidth - fadeWidth} x2={railBandX + railBandWidth}>
@@ -1973,19 +1974,20 @@ $effect(() => {
               {/each}
             </g>
           </g>
-          <!-- GRAPH-02: Layer B — dots, panned with their rails and clipped to
-               the same band, so a dot that scrolls out of the column leaves with
-               the rail it sits on rather than piling up on the edge. -->
-          <g class="overlay-dots" clip-path="url(#graph-clip)" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
+          <!-- GRAPH-02: Layer B — dots with "sticky" X clamping.
+               Dots slide along their horizontal line to stay visible in the viewport.
+               Viewport spans graph coordinates [scrollX, scrollX + graphColWidth].
+               Dots clamp to viewport edges (bead-on-a-string effect). -->
+          <g class="overlay-dots" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
             {#each visible.dots as node}
-              {@const dotCx = geometry.cx(node.x) - scrollX}
+              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX, displaySettings)}
               {#if node.isWip}
-                <circle cx={dotCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill="none" stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.edgeStroke} stroke-dasharray="3 3" />
               {:else if node.isStash}
                 <rect
-                  x={dotCx - displaySettings.dotRadius}
+                  x={clampedCx - displaySettings.dotRadius}
                   y={geometry.cy(node.y) - displaySettings.dotRadius}
                   width={displaySettings.dotRadius * 2}
                   height={displaySettings.dotRadius * 2}
@@ -1994,11 +1996,11 @@ $effect(() => {
                   stroke-width={displaySettings.edgeStroke}
                   stroke-dasharray="3 3" />
               {:else if node.isMerge}
-                <circle cx={dotCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill="var(--bg-1)" stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.mergeStroke} />
               {:else}
-                <circle cx={dotCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill={laneColor(node.colorIndex)} />
               {/if}
             {/each}
@@ -2009,11 +2011,10 @@ $effect(() => {
               {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
                 {@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
-                <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (follows the dot through the pan, stopping at the graph band's edge once the dot has panned out of it) -->
+                <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
-                  {@const bandStartX = refOffset + COLUMN_PADDING_X}
-                  {@const dotEndX = bandStartX + pill.dotCx - scrollX - (pill.isHollow ? displaySettings.dotRadius : 0)}
-                  {@const connectorEndX = Math.max(bandStartX, dotEndX)}
+                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX, displaySettings)}
+                  {@const connectorEndX = refOffset + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
                   <line
                     x1={pillGroupRightX}
                     y1={pill.y}

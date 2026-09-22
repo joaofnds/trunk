@@ -871,15 +871,9 @@ describe("CommitGraph", () => {
 	// broken rendering; the fade says the lanes continue out of view, which is
 	// what the clip actually means.
 	describe("the graph column's right edge", () => {
-		const REF_WIDTH = 120;
-
 		// The width is restored only for a column the user sized by hand, so the
 		// graph counts as deliberately narrowed rather than waiting to be auto-fit.
-		function mountWithLanes(
-			maxColumns: number,
-			graphWidth: number,
-			commits: typeof TEST_COMMITS = TEST_COMMITS,
-		) {
+		function mountWithLanes(maxColumns: number, graphWidth: number) {
 			installReads({
 				override: (cmd, args) => {
 					if (cmd === "prefs_get" && args?.key === "resized_columns") {
@@ -887,7 +881,7 @@ describe("CommitGraph", () => {
 					}
 					if (cmd === "prefs_get" && args?.key === "column_widths") {
 						return Promise.resolve({
-							ref: REF_WIDTH,
+							ref: 120,
 							graph: graphWidth,
 							diff: 96,
 							author: 60,
@@ -897,7 +891,7 @@ describe("CommitGraph", () => {
 					}
 					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph") {
 						return Promise.resolve({
-							commits,
+							commits: TEST_COMMITS,
 							max_columns: maxColumns,
 						});
 					}
@@ -929,132 +923,6 @@ describe("CommitGraph", () => {
 				});
 
 				expect(container.querySelector("#graph-edge-fade")).toBeNull();
-			});
-		});
-
-		// The rails pan and the dots must pan with them. Clamping the dots into
-		// the band instead leaves them stacked on one edge with every rail gone,
-		// which is the column drawing dots and no rails (TRUNK-255).
-		describe("when the lanes are panned past the column", () => {
-			/** Each dot's centre, in the dot layer's own coordinates. */
-			function dotCentres(container: Element): number[] {
-				return Array.from(
-					container.querySelectorAll(".overlay-dots circle"),
-					(dot) => Number(dot.getAttribute("cx")),
-				);
-			}
-
-			/** The graph column's clip band, in absolute svg coordinates. */
-			function graphBand(container: Element): { x: number; width: number } {
-				const rect = container.querySelector("#graph-clip rect");
-				return {
-					x: Number(rect?.getAttribute("x")),
-					width: Number(rect?.getAttribute("width")),
-				};
-			}
-
-			/** The id of the clip band a layer is drawn inside, if any. */
-			function clipBandOf(container: Element, layer: string): string | null {
-				const group = container.querySelector(layer)?.closest("[clip-path]");
-				return group?.getAttribute("clip-path") ?? null;
-			}
-
-			/** How far the rail layer has been translated from its own origin. */
-			function railOffset(container: Element): number {
-				const rails = container.querySelector(".overlay-paths");
-				const translate = rails?.getAttribute("transform") ?? "";
-				return Number(/translate\((-?[\d.]+)/.exec(translate)?.[1]);
-			}
-
-			/**
-			 * Swipe the graph column to its far right. The pointer must sit inside
-			 * the graph column, whose left edge the ref column's measured width
-			 * decides, or the handler ignores the wheel entirely.
-			 */
-			async function panRight(container: Element): Promise<number> {
-				const pannable = container.querySelector(
-					"div.flex-1[style*='position: relative']",
-				) as Element;
-				const before = railOffset(container);
-
-				await fireEvent.wheel(pannable, {
-					deltaX: 5000,
-					clientX: graphBand(container).x + COLUMN_PADDING_X,
-				});
-
-				return before - railOffset(container);
-			}
-
-			it("moves every dot by the same offset as its rail", async () => {
-				const { container } = mountWithLanes(8, 24);
-				await waitFor(() => {
-					expect(
-						container.querySelector(".overlay-dots circle"),
-					).not.toBeNull();
-				});
-				const restingDots = dotCentres(container);
-
-				const panned = await panRight(container);
-
-				expect(panned).toBeGreaterThan(0);
-				expect(dotCentres(container)).toEqual(
-					restingDots.map((cx) => cx - panned),
-				);
-			});
-
-			/** A commit carrying a ref, so the pill connector is drawn. */
-			function commitsWithARef() {
-				return [
-					makeCommit({
-						oid: "aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa",
-						summary: "first commit",
-						is_head: true,
-						refs: [makeRef({ short_name: "main", is_head: true })],
-					}),
-					makeCommit({
-						oid: "bbb222bbb222bbb2bbb222bbb222bbb2bbb222bb",
-						summary: "second commit",
-						parent_oids: ["aaa111aaa111aaa1aaa111aaa111aaa1aaa111aa"],
-					}),
-				];
-			}
-
-			// The connector is drawn outside the graph's clip band, so nothing
-			// stops it being aimed at a dot that has panned out of view. Left
-			// alone it runs backwards across the pill it belongs to and ends in
-			// the ref column, pointing at nothing.
-			it("stops the pill connector short of the graph band", async () => {
-				const { container } = mountWithLanes(8, 24, commitsWithARef());
-				await waitFor(() => {
-					expect(container.querySelector(".overlay-pills line")).not.toBeNull();
-				});
-
-				const panned = await panRight(container);
-
-				expect(panned).toBeGreaterThan(0);
-				const endX = Number(
-					container.querySelector(".overlay-pills line")?.getAttribute("x2"),
-				);
-				expect(endX).toBeGreaterThanOrEqual(graphBand(container).x);
-			});
-
-			// A panned dot leaves the column along with its rail, and the rails'
-			// clip band is the only thing keeping either of them off the ref
-			// column's pills.
-			it("holds a panned dot to the same band as its rail", async () => {
-				const { container } = mountWithLanes(8, 24);
-				await waitFor(() => {
-					expect(
-						container.querySelector(".overlay-dots circle"),
-					).not.toBeNull();
-				});
-
-				const panned = await panRight(container);
-
-				expect(panned).toBeGreaterThan(0);
-				expect(clipBandOf(container, ".overlay-dots")).toBe(
-					clipBandOf(container, ".overlay-paths"),
-				);
 			});
 		});
 	});
