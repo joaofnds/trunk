@@ -71,11 +71,26 @@ describe("truncateWithEllipsis", () => {
 		expect(result.width).toBeLessThanOrEqual(30);
 	});
 
-	it('returns just "…" when even single char exceeds maxWidth', () => {
-		// Single char + ellipsis = 14px, maxWidth = 5px
-		const result = truncateWithEllipsis("abcdef", 5, "test-font", mockMeasure);
-		expect(result.text).toBe("…");
+	it('returns just "…" when the ellipsis fits but no character beside it does', () => {
+		// "…" = 7px fits in 10px; one char + ellipsis = 14px does not
+		const result = truncateWithEllipsis("abcdef", 10, "test-font", mockMeasure);
+		expect(result).toEqual({ text: "…", width: 7 });
 	});
+
+	// Returning the ellipsis anyway drew text wider than the room it was given,
+	// which in a ref pill painted past the capsule.
+	it.each([5, 0])(
+		"returns nothing when not even the ellipsis fits in %ipx",
+		(maxWidth) => {
+			const result = truncateWithEllipsis(
+				"abcdef",
+				maxWidth,
+				"test-font",
+				mockMeasure,
+			);
+			expect(result).toEqual({ text: "", width: 0 });
+		},
+	);
 
 	it("handles empty string", () => {
 		const result = truncateWithEllipsis("", 100, "test-font", mockMeasure);
@@ -87,11 +102,5 @@ describe("truncateWithEllipsis", () => {
 		const result = truncateWithEllipsis("a", 100, "test-font", mockMeasure);
 		expect(result.text).toBe("a");
 		expect(result.width).toBe(7);
-	});
-
-	it("handles maxWidth of zero", () => {
-		// Nothing fits at width 0 — should return just ellipsis
-		const result = truncateWithEllipsis("abc", 0, "test-font", mockMeasure);
-		expect(result.text).toBe("\u2026");
 	});
 });

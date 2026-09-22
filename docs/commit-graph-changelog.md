@@ -753,3 +753,11 @@ Changed goldens:
      M src/__tests__/goldens/graph-render/stash-19-two-backdated.txt
      M src/__tests__/goldens/graph-render/stash-20-stash-on-stash.txt
      M src/__tests__/goldens/graph-render/stash-21-tagged-stash.txt
+
+## 2026-09-22
+
+Branch/Tag's fit now stops at the column's floor, HEAD's main pill whole (owner's direction 2026-09-23); lane-02's new and old pills fitted 56px, so its lanes start 6px later
+
+Changed goldens:
+
+     M src/__tests__/goldens/graph-render/lane-02-local-ahead-no-remote.txt

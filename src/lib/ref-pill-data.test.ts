@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { columnFloors } from "./column-widths.js";
 import {
+	COLUMN_PADDING_X,
+	DOT_RADIUS,
 	ICON_GAP,
 	ICON_WIDTH,
 	LANE_WIDTH,
@@ -227,11 +228,11 @@ describe("buildRefPillData", () => {
 	});
 
 	it("text truncation applied when label exceeds available width", () => {
-		// refColumnWidth = 30, "longbranchname" = 14 chars * 7 = 98px — too wide
+		// refColumnWidth = 60 leaves 26px of label, "longbranchname" = 14 chars * 7 = 98px
 		const ref = makeRef({ short_name: "longbranchname", is_head: true });
 		const nodes = [makeNode({ x: 0, y: 0 })];
 		const commits = [makeCommit({ refs: [ref] })];
-		const result = buildRefPillData(nodes, commits, 30, mockMeasure);
+		const result = buildRefPillData(nodes, commits, 60, mockMeasure);
 		expect(result[0].truncatedLabel).toContain("…");
 		expect(result[0].truncatedLabel).not.toBe("longbranchname");
 	});
@@ -291,26 +292,29 @@ describe("buildRefPillData", () => {
 	});
 });
 
-describe("buildRefPillData at a column too narrow for any label", () => {
-	// truncateWithEllipsis returns the bare ellipsis at its own width when nothing
-	// fits, ignoring the limit it was given. The pill built from it was wider than
-	// the column, and the pills group carries no clip path, so it painted over the
-	// lanes and took the pointer there.
-	it("keeps the pill inside the ref column", () => {
-		const refColumnWidth = columnFloors().ref;
-		const commits = [
-			makeCommit({
-				refs: [makeRef({ short_name: "a-branch-name-far-too-long-to-fit" })],
-			}),
-		];
+describe("buildRefPillData at a column with no room for a label", () => {
+	// Room for the capsule and its icon, and not even for an ellipsis beside it.
+	const dotInset = LANE_WIDTH / 2 - DOT_RADIUS;
+	const iconOnlyColumn =
+		PILL_MARGIN_LEFT +
+		2 * PILL_PADDING_X +
+		ICON_WIDTH +
+		COLUMN_PADDING_X +
+		dotInset;
+
+	it("draws the pill as its icon alone, capsule whole", () => {
+		const commits = [makeCommit({ refs: [makeRef({ short_name: "main" })] })];
 
 		const [pill] = buildRefPillData(
 			[makeNode({ x: 0, y: 0 })],
 			commits,
-			refColumnWidth,
+			iconOnlyColumn,
 			mockMeasure,
 		);
 
-		expect(pill.x + pill.width).toBeLessThanOrEqual(refColumnWidth);
+		expect({ label: pill.truncatedLabel, width: pill.width }).toEqual({
+			label: "",
+			width: 2 * PILL_PADDING_X + ICON_WIDTH,
+		});
 	});
 });

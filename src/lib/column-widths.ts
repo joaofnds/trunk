@@ -2,6 +2,7 @@ import {
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
 	LANE_WIDTH,
+	PILL_FONT_BOLD,
 } from "./graph-constants.js";
 import { refRowChrome, rowPill } from "./ref-pill-data.js";
 import { WIDEST_LABELS } from "./relative-time.js";
@@ -89,15 +90,21 @@ export function headerMinWidths(
 	return mins;
 }
 
+/** The narrowest each column may be. */
+export type ColumnFloors = Record<keyof ColumnWidths, number>;
+
 /**
  * The narrowest each column may be dragged. Sized for the cell's content, never
  * for the header word: a header too narrow for its word shows an icon, so the
  * word cannot be what stops the drag. The graph's floor is one lane, which is
- * the single line of commits the column exists to show.
+ * the single line of commits the column exists to show. Branch/Tag's is HEAD's
+ * `main` pill whole, its label measured in the bold font HEAD draws in and
+ * rounded up as the pill rounds its label's box; narrower, every pill is cut to a
+ * sliver of capsule and icon.
  */
-export function columnFloors(): Record<keyof ColumnWidths, number> {
+export function columnFloors(measure: MeasureText): ColumnFloors {
 	return {
-		ref: HEADER_ICON_WIDTH + CELL_PAD,
+		ref: refRowChrome(0) + Math.ceil(measure("main", PILL_FONT_BOLD)),
 		graph: LANE_WIDTH + CELL_PAD,
 		diff: HEADER_ICON_WIDTH + CELL_PAD,
 		author: HEADER_ICON_WIDTH + CELL_PAD,
@@ -222,6 +229,7 @@ export interface BudgetRequest {
 	rowWidth: number;
 	/** The part of the row the fits may not use: user widths and Message's floor. */
 	reserved: number;
+	floors: ColumnFloors;
 }
 
 /**
@@ -232,8 +240,7 @@ export interface BudgetRequest {
  * caps apply.
  */
 export function shareBudget(request: BudgetRequest): Partial<ColumnWidths> {
-	const { wanted, fitted, rowWidth, reserved } = request;
-	const floors = columnFloors();
+	const { wanted, fitted, rowWidth, reserved, floors } = request;
 	const caps = fitCaps(rowWidth);
 	const widths: Partial<ColumnWidths> = {};
 
@@ -280,8 +287,10 @@ function fitCaps(rowWidth: number): ColumnWidths {
  * drag clamp as NaN, which persisted itself and left the column unresizable.
  * A width that is merely large is not unsafe: it is the user's to choose.
  */
-export function sanitizeColumnWidths(stored: unknown): ColumnWidths {
-	const floors = columnFloors();
+export function sanitizeColumnWidths(
+	stored: unknown,
+	floors: ColumnFloors,
+): ColumnWidths {
 	const record =
 		typeof stored === "object" && stored !== null
 			? (stored as Record<string, unknown>)

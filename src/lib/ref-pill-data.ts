@@ -144,9 +144,6 @@ export function buildRefPillData(
 		const { sorted, primary, font } = rowPill(commit.refs);
 		const overflowCount = sorted.length - 1;
 
-		// All ref types include icon width (Laptop for local, Globe for remote, Tag for tag, Archive for stash)
-		const iconWidth = ICON_WIDTH;
-		const pillBody = PILL_PADDING_X * 2 + iconWidth + ICON_GAP;
 		const maxTextWidth = refColumnWidth - refRowChrome(overflowCount, settings);
 
 		// Measure and truncate text
@@ -157,14 +154,13 @@ export function buildRefPillData(
 			measureFn,
 		);
 
-		// Compute pill width — ceil textWidth to avoid sub-pixel rounding gaps.
-		// Capped at the room the column leaves: truncateWithEllipsis returns the
-		// bare ellipsis at its own width when nothing fits, ignoring the limit, and
-		// an uncapped pill paints over the lanes, which the pills do not clip.
-		const pillWidth = Math.min(
-			Math.ceil(textWidth) + pillBody,
-			Math.max(0, maxTextWidth + pillBody),
-		);
+		// Every ref type draws an icon (Laptop for local, Globe for remote, Tag for
+		// tag, Archive for stash). The label's box is rounded up so sub-pixel text
+		// leaves no gap, and a label with no room for even an ellipsis leaves the
+		// capsule to its icon.
+		const labelWidth =
+			truncatedLabel === "" ? 0 : ICON_GAP + Math.ceil(textWidth);
+		const pillWidth = PILL_PADDING_X * 2 + ICON_WIDTH + labelWidth;
 
 		pills.push({
 			x: PILL_MARGIN_LEFT,

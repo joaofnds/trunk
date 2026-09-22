@@ -303,7 +303,7 @@ const lastVisibleColumn = $derived(
 $effect(() => {
 	// Only the columns the user sized come back. The rest fit the page that just
 	// loaded, and restoring their stored numbers would overwrite that fit.
-	Promise.all([getColumnWidths(), getResizedColumns()]).then(
+	Promise.all([getColumnWidths(floors), getResizedColumns()]).then(
 		([stored, resized]) => {
 			const restored = { ...columnWidths };
 			for (const column of resized) restored[column] = stored[column];
@@ -342,7 +342,7 @@ $effect(() => {
 });
 
 const headerMins = headerMinWidths(measureTextWidth);
-const floors = columnFloors();
+const floors = columnFloors(measureTextWidth);
 
 // The columns whose width the user set, which no fit may change. Reassigned
 // rather than mutated, so the fits re-run when a column joins or leaves it.
@@ -424,6 +424,7 @@ $effect(() => {
 		fitted,
 		rowWidth,
 		reserved: userSizedWidth + (columnVisibility.message ? MESSAGE_FLOOR : 0),
+		floors,
 	});
 
 	columnWidths = { ...untrack(() => columnWidths), ...fits };

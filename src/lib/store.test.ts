@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { columnFloors } from "./column-widths.js";
 import {
 	EVERYTHING_VISIBLE,
 	toggleRef,
@@ -303,6 +304,8 @@ describe("store", () => {
 	});
 
 	describe("column widths and visibility migration", () => {
+		const floors = columnFloors((text) => text.length * 7);
+
 		it("getColumnWidths fills a default for a key missing from a legacy persisted object", async () => {
 			// A user who persisted widths before the Diff column existed.
 			backingStore.set("column_widths", {
@@ -313,7 +316,7 @@ describe("store", () => {
 				sha: 50,
 			});
 
-			const widths = await getColumnWidths();
+			const widths = await getColumnWidths(floors);
 
 			expect(widths.diff).toBe(96); // new key gets its default…
 			expect(widths.ref).toBe(200); // …without clobbering persisted values
@@ -336,7 +339,7 @@ describe("store", () => {
 		});
 
 		it("getColumnWidths returns all defaults when nothing is persisted", async () => {
-			const widths = await getColumnWidths();
+			const widths = await getColumnWidths(floors);
 			expect(widths.diff).toBe(96);
 			expect(widths.ref).toBe(120);
 		});
@@ -355,7 +358,7 @@ describe("store", () => {
 				async (_name, value) => {
 					backingStore.set("column_widths", { ref: 200, author: value });
 
-					const widths = await getColumnWidths();
+					const widths = await getColumnWidths(floors);
 
 					expect(widths.author).toBe(60);
 					expect(widths.ref).toBe(200);
@@ -368,7 +371,7 @@ describe("store", () => {
 		it("getColumnWidths returns a wide stored width as it was stored", async () => {
 			backingStore.set("column_widths", { graph: 900 });
 
-			expect((await getColumnWidths()).graph).toBe(900);
+			expect((await getColumnWidths(floors)).graph).toBe(900);
 		});
 
 		// The widths were persisted but the fact that the user chose them was not,
@@ -434,7 +437,7 @@ describe("store", () => {
 				date: 40,
 				sha: 50,
 			});
-			expect((await getColumnWidths()).diff).toBe(150);
+			expect((await getColumnWidths(floors)).diff).toBe(150);
 		});
 
 		it("round-trips persisted visibility including the diff key", async () => {

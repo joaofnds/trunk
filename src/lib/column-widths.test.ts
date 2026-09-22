@@ -38,6 +38,30 @@ function measure(text: string): number {
 
 const PADDING = 2 * COLUMN_PADDING_X;
 
+// HEAD's pill renders bold, so a metric that ignores the font cannot tell
+// whether a width was measured in the font the pill is drawn in.
+function measureByFont(text: string, font: string): number {
+	return measure(text) + (font === PILL_FONT_BOLD ? text.length : 0);
+}
+
+/** The labels the pills show when the ref column is `width` wide. */
+function pillLabels(commits: GraphCommit[], width: number): string[] {
+	const nodes = commits.map((commit, y) => ({
+		oid: commit.oid,
+		x: 0,
+		y,
+		colorIndex: 0,
+		isMerge: false,
+		isBranchTip: false,
+		isStash: false,
+		isWip: false,
+	}));
+
+	return buildRefPillData(nodes, commits, width, measureByFont).map(
+		(pill) => pill.truncatedLabel,
+	);
+}
+
 describe("authorContentWidth", () => {
 	it("fits the longest author name, with room for the avatar", () => {
 		const commits = [
@@ -162,11 +186,11 @@ describe("headerMinWidths", () => {
 
 describe("columnFloors", () => {
 	it("lets the graph shrink to a single lane of commits", () => {
-		expect(columnFloors().graph).toBe(LANE_WIDTH + PADDING);
+		expect(columnFloors(measure).graph).toBe(LANE_WIDTH + PADDING);
 	});
 
 	it("covers every resizable column", () => {
-		expect(Object.keys(columnFloors()).sort()).toEqual([
+		expect(Object.keys(columnFloors(measure)).sort()).toEqual([
 			"author",
 			"date",
 			"diff",
@@ -176,11 +200,35 @@ describe("columnFloors", () => {
 		]);
 	});
 
+	describe("for the Branch/Tag column", () => {
+		const onMain = [
+			makeCommit({
+				oid: "a".repeat(40),
+				refs: [makeRef({ short_name: "main", is_head: true })],
+			}),
+		];
+
+		beforeEach(resetCache);
+
+		// Narrower, every pill was cut to a sliver of capsule and icon.
+		it("leaves room for HEAD's `main` pill whole", () => {
+			const floor = columnFloors(measureByFont).ref;
+
+			expect(pillLabels(onMain, floor)).toEqual(["main"]);
+		});
+
+		it("leaves no more room than that", () => {
+			const floor = columnFloors(measureByFont).ref;
+
+			expect(pillLabels(onMain, floor - 1)).not.toEqual(["main"]);
+		});
+	});
+
 	// The floor is what the cell needs to show anything at all, so it must not
 	// depend on the header word — that dependency is what kept the graph two
 	// lanes wide.
 	it("is narrower than the header label needs", () => {
-		const floors = columnFloors();
+		const floors = columnFloors(measure);
 		const labelMins = headerMinWidths(measure);
 
 		for (const column of Object.keys(floors) as (keyof typeof floors)[]) {
@@ -206,30 +254,6 @@ describe("showsHeaderLabel", () => {
 });
 
 describe("refContentWidth", () => {
-	// HEAD's pill renders bold, so a metric that ignores the font cannot tell
-	// whether the fit measured it in the font it is drawn in.
-	function measureByFont(text: string, font: string): number {
-		return measure(text) + (font === PILL_FONT_BOLD ? text.length : 0);
-	}
-
-	/** The labels the pills show when the ref column is `width` wide. */
-	function pillLabels(commits: GraphCommit[], width: number): string[] {
-		const nodes = commits.map((commit, y) => ({
-			oid: commit.oid,
-			x: 0,
-			y,
-			colorIndex: 0,
-			isMerge: false,
-			isBranchTip: false,
-			isStash: false,
-			isWip: false,
-		}));
-
-		return buildRefPillData(nodes, commits, width, measureByFont).map(
-			(pill) => pill.truncatedLabel,
-		);
-	}
-
 	const head = makeRef({ short_name: "main", is_head: true });
 	const topic = makeRef({ short_name: "backup-pre-rebase" });
 	const topicRemote = makeRef({
@@ -298,7 +322,7 @@ describe("refContentWidth", () => {
 });
 
 describe("shareBudget", () => {
-	const floors = columnFloors();
+	const floors = columnFloors(measure);
 	const everyColumn = [
 		"ref",
 		"graph",
@@ -319,15 +343,21 @@ describe("shareBudget", () => {
 	const roomy = { rowWidth: 1600, reserved: MESSAGE_FLOOR };
 
 	it("gives each column its fit when the row has room for them all", () => {
-		expect(shareBudget({ wanted, fitted: everyColumn, ...roomy })).toEqual(
-			wanted,
-		);
+		expect(
+			shareBudget({
+				floors,
+				wanted,
+				fitted: everyColumn,
+				...roomy,
+			}),
+		).toEqual(wanted);
 	});
 
 	it.each(["ref", "author"] as const)(
 		"stops the %s fit at its cap",
 		(column) => {
 			const widths = shareBudget({
+				floors,
 				wanted: { ...wanted, [column]: 500 },
 				fitted: everyColumn,
 				...roomy,
@@ -339,6 +369,7 @@ describe("shareBudget", () => {
 
 	it("stops the graph fit at a third of the row", () => {
 		const widths = shareBudget({
+			floors,
 			wanted: { ...wanted, graph: 500 },
 			fitted: everyColumn,
 			rowWidth: 900,
@@ -348,8 +379,24 @@ describe("shareBudget", () => {
 		expect(widths.graph).toBe(300);
 	});
 
+	it("raises a fit narrower than its column's floor to that floor", () => {
+		const widths = shareBudget({
+			floors,
+			wanted: { ...wanted, ref: floors.ref - 10 },
+			fitted: everyColumn,
+			...roomy,
+		});
+
+		expect(widths.ref).toBe(floors.ref);
+	});
+
 	it("lays out only the columns it is given", () => {
-		const widths = shareBudget({ wanted, fitted: ["ref", "graph"], ...roomy });
+		const widths = shareBudget({
+			floors,
+			wanted,
+			fitted: ["ref", "graph"],
+			...roomy,
+		});
 
 		expect(widths).toEqual({ ref: 100, graph: 60 });
 	});
@@ -375,6 +422,7 @@ describe("shareBudget", () => {
 				const budget = wantedTotal - spare - 1;
 
 				const widths = shareBudget({
+					floors,
 					wanted,
 					fitted: everyColumn,
 					rowWidth: 1600,
@@ -391,6 +439,7 @@ describe("shareBudget", () => {
 
 		it("holds every column at its floor when even the floors overrun", () => {
 			const widths = shareBudget({
+				floors,
 				wanted,
 				fitted: everyColumn,
 				rowWidth: 1600,
@@ -404,6 +453,7 @@ describe("shareBudget", () => {
 	describe("while the list is unmeasured", () => {
 		it("applies the pixel caps alone", () => {
 			const widths = shareBudget({
+				floors,
 				wanted: { ...wanted, ref: 500, graph: 900 },
 				fitted: everyColumn,
 				rowWidth: 0,
@@ -416,10 +466,13 @@ describe("shareBudget", () => {
 });
 
 describe("sanitizeColumnWidths", () => {
-	const floors = columnFloors();
+	const floors = columnFloors(measure);
 
 	it("keeps a width the user could have set", () => {
-		const widths = sanitizeColumnWidths({ ...DEFAULT_WIDTHS, author: 180 });
+		const widths = sanitizeColumnWidths(
+			{ ...DEFAULT_WIDTHS, author: 180 },
+			floors,
+		);
 
 		expect(widths.author).toBe(180);
 	});
@@ -427,7 +480,7 @@ describe("sanitizeColumnWidths", () => {
 	it("fills a key the stored layout never had", () => {
 		const stored = { ref: 150 };
 
-		expect(sanitizeColumnWidths(stored).sha).toBe(DEFAULT_WIDTHS.sha);
+		expect(sanitizeColumnWidths(stored, floors).sha).toBe(DEFAULT_WIDTHS.sha);
 	});
 
 	// Each of these reached the layout before: a NaN width made every drag
@@ -446,32 +499,34 @@ describe("sanitizeColumnWidths", () => {
 		it.each(unusable)("falls back to the default for %s", (_name, value) => {
 			const stored = { author: value };
 
-			expect(sanitizeColumnWidths(stored).author).toBe(DEFAULT_WIDTHS.author);
+			expect(sanitizeColumnWidths(stored, floors).author).toBe(
+				DEFAULT_WIDTHS.author,
+			);
 		});
 	});
 
 	it("raises a width below the column's floor", () => {
 		const stored = { author: 2 };
 
-		expect(sanitizeColumnWidths(stored).author).toBe(floors.author);
+		expect(sanitizeColumnWidths(stored, floors).author).toBe(floors.author);
 	});
 
 	// A user width has a floor and no ceiling.
 	it("keeps a width however wide the user left it", () => {
 		const stored = { graph: 900 };
 
-		expect(sanitizeColumnWidths(stored).graph).toBe(900);
+		expect(sanitizeColumnWidths(stored, floors).graph).toBe(900);
 	});
 
 	it("rounds a fractional width to whole pixels", () => {
 		const stored = { author: 120.6 };
 
-		expect(sanitizeColumnWidths(stored).author).toBe(121);
+		expect(sanitizeColumnWidths(stored, floors).author).toBe(121);
 	});
 
 	describe("when there is no stored layout at all", () => {
 		it("returns the defaults", () => {
-			expect(sanitizeColumnWidths(undefined)).toEqual(DEFAULT_WIDTHS);
+			expect(sanitizeColumnWidths(undefined, floors)).toEqual(DEFAULT_WIDTHS);
 		});
 	});
 });

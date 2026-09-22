@@ -55,7 +55,7 @@ its zones and NSTableView's sequential style does, with two moves: Diff yields a
 of Date and Author because its bar scales where their text is cut, and Branch/Tag
 ahead of Graph because a cut pill's name is a hover away while a lane past the edge
 is not. A layout the app chose therefore fits the list whenever the row, the list
-less its two 4px gutters, holds the six floors and Message's floor, 304px today;
+less its two 4px gutters, holds the six floors and Message's floor, 346px on macOS;
 below that the row is wider than the list and the columns right of Message clip.
 
 MUI's outlier exclusion was considered and rejected: a page with three refs has no
@@ -70,6 +70,32 @@ then we should let'em." The caps and the budget bound what the app decides on it
 own. A drag has only the column's floor, a stored width comes back as wide as it was
 left, and a user width sits outside the budget: the fits yield to make room for it,
 and once they are at their floors a wider drag pushes the row past the list.
+
+## Branch/Tag's floor is a `main` pill
+
+The product owner's direction, 2026-09-23, after seeing the column dragged to a 20px
+floor: "let's allow the minimum width to be the width of the main pill with the icon and
+everything." The screenshot beside those words showed HEAD's `main` pill alone, with no
+`+N` badge. A narrower column cut every pill to a sliver of capsule and icon. The floor
+is that pill whole: its capsule, icon and name, with the column's padding and the gap
+that mirrors the dot's inset. The name is measured at runtime in the bold font HEAD
+draws in, as every fit is. The app bundles no font: the pills ask for Inter and fall
+back to the system font, so a declared width holds `main` whole on one machine only.
+On macOS the floor is 62px.
+
+It bounds the column however its width is set: a drag, a stored width, the budget, and
+a fit. A page whose refs are all shorter than `main`, one whose only ref is `dev`, shows
+them with room to spare rather than fitting below the floor. A fit under the floor made
+the first move of a drag jump the column wider, since a drag stops at the floor, and a
+third of a very narrow row capped Graph under its one lane. GitKraken's graph component
+(11.3.0) stops this zone at 32px, which in this pill's geometry holds the icon alone;
+that was the look ruled out.
+
+At the floor a row whose `+N` badge leaves no room for even an ellipsis draws its pill
+as the icon alone, capsule whole, beside the badge. A two-digit badge, on a commit
+carrying eleven refs or more, is itself cut at the column's edge. A label never draws
+wider than the room it was given, and whatever a pill draws is clipped to the column, so
+only its connector reaches the lanes.
 
 ## Message has a floor
 

@@ -43,7 +43,8 @@ export function measureTextWidth(
  *
  * - If text fits: returns { text, width }
  * - If text too long: progressively trims and appends "…" (U+2026)
- * - If even "…" alone exceeds: returns { text: "…", width: ellipsisWidth }
+ * - If only "…" fits: returns { text: "…", width: ellipsisWidth }
+ * - If not even "…" fits: returns { text: "", width: 0 }
  * - If empty string: returns { text: "", width: 0 }
  */
 export function truncateWithEllipsis(
@@ -67,8 +68,9 @@ export function truncateWithEllipsis(
 		if (w <= maxWidth) return { text: candidate, width: w };
 	}
 
-	// Even single char + ellipsis doesn't fit — return just ellipsis
 	const ellipsisWidth = measure(ellipsis);
+	if (ellipsisWidth > maxWidth) return { text: "", width: 0 };
+
 	return { text: ellipsis, width: ellipsisWidth };
 }
 
