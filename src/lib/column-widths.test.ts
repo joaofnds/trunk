@@ -3,14 +3,23 @@ import { makeCommit } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
+	type ColumnWidths,
 	columnFloors,
+	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
 	headerMinWidths,
+	MAX_COLUMN_WIDTH,
+	refContentWidth,
+	sanitizeColumnWidths,
 	shaContentWidth,
 	showsHeaderLabel,
 } from "./column-widths.js";
-import { COLUMN_PADDING_X, LANE_WIDTH } from "./graph-constants.js";
+import {
+	COLUMN_PADDING_X,
+	DEFAULT_GRAPH_SETTINGS,
+	LANE_WIDTH,
+} from "./graph-constants.js";
 import { relativeLabel } from "./relative-time.js";
 
 // A proportional font, faked: digits and round glyphs are wider than the rest,
@@ -187,5 +196,100 @@ describe("showsHeaderLabel", () => {
 	// minimum means.
 	it("shows the word at exactly its minimum", () => {
 		expect(showsHeaderLabel(50, 50)).toBe(true);
+	});
+});
+
+describe("refContentWidth", () => {
+	it("fits the widest pill the page holds", () => {
+		const commits = [
+			makeCommit({
+				oid: "a".repeat(40),
+				refs: [
+					{
+						name: "refs/heads/main",
+						short_name: "main",
+						ref_type: "LocalBranch",
+						is_head: true,
+						color_index: 0,
+					},
+				],
+			}),
+			makeCommit({
+				oid: "b".repeat(40),
+				refs: [
+					{
+						name: "refs/heads/backup-pre-rebase",
+						short_name: "backup-pre-rebase",
+						ref_type: "LocalBranch",
+						is_head: false,
+						color_index: 1,
+					},
+				],
+			}),
+		];
+
+		const width = refContentWidth(commits, measure, DEFAULT_GRAPH_SETTINGS);
+
+		expect(width).toBeGreaterThan(measure("backup-pre-rebase"));
+	});
+});
+
+describe("sanitizeColumnWidths", () => {
+	const floors = columnFloors();
+
+	it("keeps a width the user could have set", () => {
+		const widths = sanitizeColumnWidths({ ...DEFAULT_WIDTHS, author: 180 });
+
+		expect(widths.author).toBe(180);
+	});
+
+	it("fills a key the stored layout never had", () => {
+		const stored = { ref: 150 } as Partial<ColumnWidths>;
+
+		expect(sanitizeColumnWidths(stored).sha).toBe(DEFAULT_WIDTHS.sha);
+	});
+
+	// Each of these reached the layout before: a NaN width made every drag
+	// produce NaN and persisted it, so the column could not be dragged back.
+	describe("when the stored value is not a usable width", () => {
+		const unusable = [
+			["null", null],
+			["a string", "120"],
+			["NaN", Number.NaN],
+			["infinity", Number.POSITIVE_INFINITY],
+			["negative", -40],
+			["zero", 0],
+			["an object", {}],
+		] as const;
+
+		it.each(unusable)("falls back to the default for %s", (_name, value) => {
+			const stored = { author: value } as unknown as Partial<ColumnWidths>;
+
+			expect(sanitizeColumnWidths(stored).author).toBe(DEFAULT_WIDTHS.author);
+		});
+	});
+
+	it("raises a width below the column's floor", () => {
+		const stored = { author: 2 } as Partial<ColumnWidths>;
+
+		expect(sanitizeColumnWidths(stored).author).toBe(floors.author);
+	});
+
+	it("caps a width beyond what a drag could reach", () => {
+		const stored = { author: 99_999 } as Partial<ColumnWidths>;
+
+		expect(sanitizeColumnWidths(stored).author).toBe(MAX_COLUMN_WIDTH);
+	});
+
+	it("rounds a fractional width to whole pixels", () => {
+		const stored = { author: 120.6 } as Partial<ColumnWidths>;
+
+		expect(sanitizeColumnWidths(stored).author).toBe(121);
+	});
+
+	describe("when there is no stored layout at all", () => {
+		it("returns the defaults", () => {
+			expect(sanitizeColumnWidths(undefined)).toEqual(DEFAULT_WIDTHS);
+		});
 	});
 });

@@ -1,3 +1,4 @@
+import { type ColumnWidths, sanitizeColumnWidths } from "./column-widths.js";
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
 import { isValidReviewFilter } from "./review-filter.js";
@@ -102,34 +103,16 @@ export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
 	await setPref(OPEN_REPO_KEY, repo);
 }
 
-export interface ColumnWidths {
-	ref: number;
-	graph: number;
-	diff: number;
-	author: number;
-	date: number;
-	sha: number;
-	// message is flex-1, no fixed width
-}
+export type { ColumnWidths };
 
 const COLUMN_WIDTHS_KEY = "column_widths";
 
-const DEFAULT_WIDTHS: ColumnWidths = {
-	ref: 120,
-	graph: 24,
-	diff: 96,
-	author: 60,
-	date: 40,
-	sha: 50,
-};
-
 export async function getColumnWidths(): Promise<ColumnWidths> {
-	// Spread-merge so a key added after a user first persisted their widths
-	// (e.g. `diff`) picks up its default instead of arriving as undefined → NaN.
-	return {
-		...DEFAULT_WIDTHS,
-		...(await getPref<ColumnWidths>(COLUMN_WIDTHS_KEY)),
-	};
+	// The pref file is plain JSON on disk and nothing upstream checks its shape,
+	// so every stored value is treated as untrusted here.
+	return sanitizeColumnWidths(
+		await getPref<Partial<ColumnWidths>>(COLUMN_WIDTHS_KEY),
+	);
 }
 
 export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
