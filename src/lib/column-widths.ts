@@ -1,16 +1,9 @@
 import {
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
-	ICON_GAP,
-	ICON_WIDTH,
 	LANE_WIDTH,
-	PILL_FONT,
-	PILL_FONT_BOLD,
-	PILL_GAP,
-	PILL_MARGIN_LEFT,
-	PILL_PADDING_X,
 } from "./graph-constants.js";
-import { overflowBadgeWidth, sortRefs } from "./ref-pill-data.js";
+import { refRowChrome, rowPill } from "./ref-pill-data.js";
 import { WIDEST_LABELS } from "./relative-time.js";
 import type { GraphCommit, GraphDisplaySettings } from "./types.js";
 
@@ -52,9 +45,9 @@ export function columnWidthProperty(column: keyof ColumnWidths): string {
 
 /** The commit list root's style: every sized column's width, declared once. */
 export function columnWidthDeclarations(widths: ColumnWidths): string {
-	return (Object.keys(DEFAULT_WIDTHS) as (keyof ColumnWidths)[])
-		.map((column) => `${columnWidthProperty(column)}: ${widths[column]}px;`)
-		.join(" ");
+	return SIZED_COLUMNS.map(
+		(column) => `${columnWidthProperty(column)}: ${widths[column]}px;`,
+	).join(" ");
 }
 
 export type MeasureText = (text: string, font: string) => number;
@@ -171,41 +164,24 @@ export function graphTargetWidth(
 
 /**
  * Width the ref column needs to show this page's widest pill in full, or 0 when
- * the page carries no refs. Inverts the geometry `buildRefPillData` uses to
- * decide how much text room a pill has, so a column at this width truncates
- * nothing. Callers keep the running maximum across pages, as the author column does.
+ * the page carries no refs: the widest label plus the row chrome
+ * `buildRefPillData` subtracts from the column, so a column at this width
+ * truncates nothing. Callers keep the running maximum across pages, as the author column does.
  */
 export function refContentWidth(
 	commits: GraphCommit[],
 	measure: MeasureText,
 	settings: GraphDisplaySettings = DEFAULT_GRAPH_SETTINGS,
 ): number {
-	const dotInset = settings.laneWidth / 2 - settings.dotRadius;
-	const chrome =
-		PILL_MARGIN_LEFT +
-		COLUMN_PADDING_X +
-		dotInset +
-		2 * PILL_PADDING_X +
-		ICON_WIDTH +
-		ICON_GAP;
-
 	let widest = 0;
 	for (const commit of commits) {
 		if (commit.oid === "__wip__" || commit.is_stash) continue;
 		if (commit.refs.length === 0) continue;
 
-		// A row shows its highest-priority ref and folds the rest into a "+N"
-		// badge, so that pill is the one to fit, and it shares the row with the
-		// badge. Sizing for the label alone truncated it by the badge's width.
-		const [primary] = sortRefs(commit.refs);
-		const badge = overflowBadgeWidth(commit.refs.length - 1);
+		const { primary, font } = rowPill(commit.refs);
 		const width =
-			measure(
-				primary.short_name,
-				primary.is_head ? PILL_FONT_BOLD : PILL_FONT,
-			) +
-			chrome +
-			(badge > 0 ? PILL_GAP + badge : 0);
+			measure(primary.short_name, font) +
+			refRowChrome(commit.refs.length - 1, settings);
 
 		if (width > widest) widest = width;
 	}
@@ -273,8 +249,8 @@ export function shareBudget(request: BudgetRequest): Partial<ColumnWidths> {
 		Object.values(widths).reduce((sum, width) => sum + width, 0) -
 		(rowWidth - reserved);
 	for (const column of YIELD_ORDER) {
-		const width = widths[column];
 		if (overrun <= 0) break;
+		const width = widths[column];
 		if (width === undefined) continue;
 
 		const given = Math.min(overrun, width - floors[column]);
@@ -312,7 +288,7 @@ export function sanitizeColumnWidths(stored: unknown): ColumnWidths {
 			: {};
 	const widths = {} as ColumnWidths;
 
-	for (const column of Object.keys(DEFAULT_WIDTHS) as (keyof ColumnWidths)[]) {
+	for (const column of SIZED_COLUMNS) {
 		const value = record[column];
 		widths[column] =
 			typeof value === "number" && Number.isFinite(value) && value > 0

@@ -66,6 +66,50 @@ export function overflowBadgeWidth(count: number): number {
 }
 
 /**
+ * The pill a row draws: its highest-priority ref, in the font that ref renders
+ * in, with the rest folded into its badge.
+ */
+export function rowPill(refs: RefLabel[]): {
+	sorted: RefLabel[];
+	primary: RefLabel;
+	font: string;
+} {
+	const sorted = sortRefs(refs);
+	const [primary] = sorted;
+
+	return {
+		sorted,
+		primary,
+		font: primary.is_head ? PILL_FONT_BOLD : PILL_FONT,
+	};
+}
+
+/**
+ * Everything on a ref row but the label's text: the margin, the column's padding,
+ * the gap that mirrors the dot's inset, the pill's padding, its icon, and the
+ * "+N" badge when `overflowCount` refs are folded into one. A column this much
+ * wider than a label shows that label whole.
+ */
+export function refRowChrome(
+	overflowCount: number,
+	settings: GraphDisplaySettings = DEFAULT_GRAPH_SETTINGS,
+): number {
+	const dotInset = settings.laneWidth / 2 - settings.dotRadius;
+	const badge =
+		overflowCount > 0 ? PILL_GAP + overflowBadgeWidth(overflowCount) : 0;
+
+	return (
+		PILL_MARGIN_LEFT +
+		COLUMN_PADDING_X +
+		dotInset +
+		PILL_PADDING_X * 2 +
+		ICON_WIDTH +
+		ICON_GAP +
+		badge
+	);
+}
+
+/**
  * Build ref pill data from overlay nodes and graph commits.
  *
  * Pure function that transforms overlay graph data into positioned, sized,
@@ -97,31 +141,15 @@ export function buildRefPillData(
 		const commit = commits[node.y];
 		if (!commit || commit.refs.length === 0) continue;
 
-		const sorted = sortRefs(commit.refs);
-		const primary = sorted[0];
+		const { sorted, primary, font } = rowPill(commit.refs);
 		const overflowCount = sorted.length - 1;
 
 		// All ref types include icon width (Laptop for local, Globe for remote, Tag for tag, Archive for stash)
 		const iconWidth = ICON_WIDTH;
-
-		// Compute available text width
-		const badgeWidth =
-			overflowCount > 0 ? PILL_GAP + overflowBadgeWidth(overflowCount) : 0;
-		// Right gap matches the dot's visual inset: COLUMN_PADDING_X + (laneWidth/2 - dotRadius)
-		// so the pill and first dot are equidistant from the column divider
-		const dotInset = settings.laneWidth / 2 - settings.dotRadius;
-		const maxTextWidth =
-			refColumnWidth -
-			PILL_MARGIN_LEFT -
-			COLUMN_PADDING_X -
-			dotInset -
-			PILL_PADDING_X * 2 -
-			iconWidth -
-			ICON_GAP -
-			badgeWidth;
+		const pillBody = PILL_PADDING_X * 2 + iconWidth + ICON_GAP;
+		const maxTextWidth = refColumnWidth - refRowChrome(overflowCount, settings);
 
 		// Measure and truncate text
-		const font = primary.is_head ? PILL_FONT_BOLD : PILL_FONT;
 		const { text: truncatedLabel, width: textWidth } = truncateWithEllipsis(
 			primary.short_name,
 			maxTextWidth,
@@ -134,15 +162,8 @@ export function buildRefPillData(
 		// bare ellipsis at its own width when nothing fits, ignoring the limit, and
 		// an uncapped pill paints over the lanes, which the pills do not clip.
 		const pillWidth = Math.min(
-			Math.ceil(textWidth) + PILL_PADDING_X * 2 + iconWidth + ICON_GAP,
-			Math.max(
-				0,
-				refColumnWidth -
-					PILL_MARGIN_LEFT -
-					COLUMN_PADDING_X -
-					dotInset -
-					badgeWidth,
-			),
+			Math.ceil(textWidth) + pillBody,
+			Math.max(0, maxTextWidth + pillBody),
 		);
 
 		pills.push({
