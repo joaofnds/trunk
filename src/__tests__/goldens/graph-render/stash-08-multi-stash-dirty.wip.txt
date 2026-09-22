@@ -1,48 +1,21 @@
-<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="168">
+<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="176">
   <defs>
     <clipPath id="graph-clip-g42">
-      <rect height="4000" width="16" x="124" y="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-0-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-0)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-0)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-0)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-1-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-1)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-1)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-1)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-2-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-2)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-2)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-2)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-3-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-3)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-3)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-3)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-4-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-4)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-4)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-4)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-5-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-5)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-5)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-5)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-6-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-6)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-6)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-6)" stop-opacity="0">
-    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-7-g42" x1="0" x2="16">
-      <stop offset="0" stop-color="var(--lane-7)" stop-opacity="1">
-      <stop offset="0.6875" stop-color="var(--lane-7)" stop-opacity="0">
-      <stop offset="1" stop-color="var(--lane-7)" stop-opacity="0">
+      <rect height="4000" width="48" x="124" y="0">
     <clipPath id="graph-dot-clip-g42">
-      <rect height="4000" width="28" x="118" y="0">
+      <rect height="4000" width="60" x="118" y="0">
   <g clip-path="url(#graph-clip-g42)">
     <g class="overlay-paths" transform="translate(124, 0)">
+      <path d="M 8 23 V 98" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 24 51 V 90 C 24 94.41827799864635 19.58172200135365 98 16 98 H 8" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
+      <path d="M 40 79 V 90 C 40 94.41827799864635 35.581722001353654 98 32 98 H 8" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
+      <path d="M 8 98 V 126" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
+      <path d="M 8 126 V 154" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g clip-path="url(#graph-dot-clip-g42)">
     <g class="overlay-dots" transform="translate(124, 0)">
       <circle cx="8" cy="14" fill="none" r="5.25" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)">
-      <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-1)" width="10.5" x="2.75" y="36.75">
-      <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-2)" width="10.5" x="2.75" y="64.75">
+      <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-1)" width="10.5" x="18.75" y="36.75">
+      <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-2)" width="10.5" x="34.75" y="64.75">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="154" fill="var(--lane-0)" r="6">

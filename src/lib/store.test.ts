@@ -27,6 +27,8 @@ vi.mock("./invoke.js", () => ({
 	}),
 }));
 
+const { safeInvoke } = await import("./invoke.js");
+
 // Import store functions after mocking so store.ts binds the mocked safeInvoke
 const {
 	addRecentRepo,
@@ -52,6 +54,7 @@ const {
 	getColumnVisibility,
 	setColumnWidths,
 	setResizedColumns,
+	saveColumnLayout,
 	setColumnVisibility,
 	getRefVisibility,
 	setRefVisibility,
@@ -388,6 +391,36 @@ describe("store", () => {
 
 		it("treats a stored value that is not a list as nobody having resized anything", async () => {
 			backingStore.set("resized_columns", { ref: true });
+
+			expect(await getResizedColumns()).toEqual(new Set());
+		});
+
+		// Each pref write is its own IPC call and nothing on the Rust side orders
+		// them, so a save made second must still be the one that lands.
+		it("lands column layout saves in the order they were made", async () => {
+			let release = () => {};
+			const held = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const invoke = vi.mocked(safeInvoke);
+			const direct = invoke.getMockImplementation();
+			invoke.mockImplementationOnce(async (cmd, args) => {
+				await held;
+				return direct?.(cmd, args);
+			});
+			const dragged = {
+				ref: 120,
+				graph: 24,
+				diff: 96,
+				author: 213,
+				date: 40,
+				sha: 50,
+			};
+
+			const first = saveColumnLayout(dragged, new Set(["author"] as const));
+			const second = saveColumnLayout(dragged, new Set());
+			release();
+			await Promise.all([first, second]);
 
 			expect(await getResizedColumns()).toEqual(new Set());
 		});

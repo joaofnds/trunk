@@ -81,8 +81,9 @@ import {
 	type ColumnWidths,
 	getColumnVisibility,
 	getColumnWidths,
+	getResizedColumns,
+	saveColumnLayout,
 	setColumnVisibility,
-	setColumnWidths,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -297,9 +298,16 @@ const lastVisibleColumn = $derived(
 );
 
 $effect(() => {
-	getColumnWidths().then((w) => {
-		columnWidths = w;
-	});
+	// Only the columns the user sized come back. The rest fit the page that just
+	// loaded, and restoring their stored numbers would overwrite that fit.
+	Promise.all([getColumnWidths(), getResizedColumns()]).then(
+		([stored, resized]) => {
+			const restored = { ...columnWidths };
+			for (const column of resized) restored[column] = stored[column];
+			columnWidths = restored;
+			userSizedColumns = new Set([...userSizedColumns, ...resized]);
+		},
+	);
 });
 
 $effect(() => {
@@ -333,8 +341,9 @@ $effect(() => {
 const headerMins = headerMinWidths(measureTextWidth);
 const floors = columnFloors();
 
-// Track which columns the user has explicitly resized this session.
-const userResizedColumns = new Set<keyof ColumnWidths>();
+// The columns whose width the user set, which no fit may change. Reassigned
+// rather than mutated, so the fits re-run when a column joins or leaves it.
+let userSizedColumns = $state<ReadonlySet<keyof ColumnWidths>>(new Set());
 
 // Max content widths for auto-fit (updated when commits load)
 let maxAuthorContentWidth = $state(0);
@@ -364,11 +373,8 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 // infinite reactive loops (each effect writes columnWidths, which would re-trigger others).
 $effect(() => {
 	const targetWidth = graphTargetWidth(maxColumns, displaySettings.laneWidth);
-	const cur = untrack(() => columnWidths);
-	if (!userResizedColumns.has("graph")) {
-		columnWidths = { ...cur, graph: targetWidth };
-	} else if (cur.graph > targetWidth) {
-		columnWidths = { ...cur, graph: targetWidth };
+	if (!userSizedColumns.has("graph")) {
+		columnWidths = { ...untrack(() => columnWidths), graph: targetWidth };
 	}
 });
 
@@ -376,7 +382,7 @@ $effect(() => {
 	const w = maxAuthorContentWidth;
 	if (w <= 0) return;
 	const targetWidth = Math.max(w, floors.author);
-	if (!userResizedColumns.has("author")) {
+	if (!userSizedColumns.has("author")) {
 		columnWidths = { ...untrack(() => columnWidths), author: targetWidth };
 	}
 });
@@ -385,7 +391,7 @@ $effect(() => {
 	const w = maxDateContentWidth;
 	if (w <= 0) return;
 	const targetWidth = Math.max(w, floors.date);
-	if (!userResizedColumns.has("date")) {
+	if (!userSizedColumns.has("date")) {
 		columnWidths = { ...untrack(() => columnWidths), date: targetWidth };
 	}
 });
@@ -394,7 +400,7 @@ $effect(() => {
 	const w = maxShaContentWidth;
 	if (w <= 0) return;
 	const targetWidth = Math.max(w, floors.sha);
-	if (!userResizedColumns.has("sha")) {
+	if (!userSizedColumns.has("sha")) {
 		columnWidths = { ...untrack(() => columnWidths), sha: targetWidth };
 	}
 });
@@ -448,19 +454,25 @@ const stashMapRefresh = createCoalescedTask(scheduler, loadStashMap);
 
 function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	e.preventDefault();
-	userResizedColumns.add(column);
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
+	let moved = false;
 
 	function onMouseMove(ev: MouseEvent) {
-		const newWidth = Math.max(floors[column], startWidth + ev.clientX - startX);
-		columnWidths = { ...columnWidths, [column]: newWidth };
+		const width = Math.max(floors[column], startWidth + ev.clientX - startX);
+		if (width === columnWidths[column]) return;
+
+		if (!moved) userSizedColumns = new Set([...userSizedColumns, column]);
+		moved = true;
+		columnWidths = { ...columnWidths, [column]: width };
 	}
 
 	function onMouseUp() {
-		setColumnWidths(columnWidths);
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
+		if (!moved) return;
+
+		saveColumnLayout(columnWidths, userSizedColumns);
 	}
 
 	window.addEventListener("mousemove", onMouseMove);

@@ -141,6 +141,28 @@ export async function setResizedColumns(
 	await setPref(RESIZED_COLUMNS_KEY, [...columns]);
 }
 
+let columnLayoutSaved: Promise<void> = Promise.resolve();
+
+/**
+ * Stores the widths and which columns the user sized, once every earlier save
+ * has landed. Pref writes run concurrently on the Rust side, so two saves made
+ * a moment apart, a drag's and then a double-click's, could land in either
+ * order and bring back the width the double-click handed back.
+ */
+export function saveColumnLayout(
+	widths: ColumnWidths,
+	userSized: ReadonlySet<keyof ColumnWidths>,
+): Promise<void> {
+	const snapshot = { widths: { ...widths }, userSized: new Set(userSized) };
+	const save = columnLayoutSaved.then(async () => {
+		await setColumnWidths(snapshot.widths);
+		await setResizedColumns(snapshot.userSized);
+	});
+	columnLayoutSaved = save.catch(() => {});
+
+	return save;
+}
+
 export interface ColumnVisibility {
 	ref: boolean;
 	graph: boolean;

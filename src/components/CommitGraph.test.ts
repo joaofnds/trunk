@@ -766,20 +766,114 @@ describe("CommitGraph", () => {
 			await flush();
 		}
 
+		// The pref file, kept across mounts the way the app keeps it across
+		// launches.
+		function mountWithPrefs(
+			prefs: Map<string, unknown>,
+			commits = TEST_COMMITS,
+		) {
+			installReads({
+				commits,
+				override: (cmd, args) => {
+					const key = args?.key as string;
+					if (cmd === "prefs_get")
+						return Promise.resolve(prefs.get(key) ?? null);
+					if (cmd === "prefs_set") {
+						prefs.set(key, args?.value);
+						return Promise.resolve(undefined);
+					}
+					return undefined;
+				},
+			});
+
+			return render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+		}
+
+		function resizeHandle(container: HTMLElement, column: string): Element {
+			return headerCell(container, column).querySelector(
+				".col-resize-handle",
+			) as Element;
+		}
+
+		describe("across a mount", () => {
+			it("keeps the width of a column the user dragged", async () => {
+				const prefs = new Map<string, unknown>();
+				const first = mountWithPrefs(prefs);
+				await flush();
+				await drag(resizeHandle(first.container, "author"), 60);
+				const dragged = renderedWidth(headerCell(first.container, "author"));
+				first.unmount();
+
+				const second = mountWithPrefs(prefs);
+				await flush();
+
+				expect(renderedWidth(headerCell(second.container, "author"))).toBe(
+					dragged,
+				);
+			});
+
+			// Every column's width used to be stored and restored, so a width the
+			// app had fitted came back as though the user had chosen it.
+			it("fits a column the user never dragged, whatever width was stored for it", async () => {
+				const fresh = mountWithPrefs(new Map());
+				await flush();
+				const fit = renderedWidth(headerCell(fresh.container, "author"));
+				fresh.unmount();
+
+				const stale = mountWithPrefs(
+					new Map([["column_widths", { author: 281 }]]),
+				);
+				await flush();
+
+				expect(renderedWidth(headerCell(stale.container, "author"))).toBe(fit);
+			});
+
+			// A click on a divider is not a drag: the column goes on fitting what
+			// the next repository shows.
+			it("keeps fitting a column whose divider was only clicked", async () => {
+				const prefs = new Map<string, unknown>();
+				const first = mountWithPrefs(prefs);
+				await flush();
+				await drag(resizeHandle(first.container, "author"), 0);
+				first.unmount();
+
+				const second = mountWithPrefs(prefs, [
+					makeCommit({
+						oid: "c".repeat(40),
+						author_name: "Grace Brewster Hopper",
+					}),
+				]);
+				await flush();
+				const clicked = renderedWidth(headerCell(second.container, "author"));
+				second.unmount();
+
+				const fresh = mountWithPrefs(new Map(), [
+					makeCommit({
+						oid: "c".repeat(40),
+						author_name: "Grace Brewster Hopper",
+					}),
+				]);
+				await flush();
+
+				expect(clicked).toBe(
+					renderedWidth(headerCell(fresh.container, "author")),
+				);
+			});
+		});
+
 		// A handle sits on its own cell's right edge, so the column it moves must
 		// be the one the user grabbed the edge of — not its neighbour.
 		it("resizes the column whose edge the handle sits on", async () => {
 			const { container } = mountHeader();
 			await flush();
 			const author = headerCell(container, "author");
-			const before = renderedWidth(author);
+			const before = Number.parseFloat(renderedWidth(author));
 
 			await drag(author.querySelector(".col-resize-handle") as Element, 60);
 
-			expect({ before, after: renderedWidth(author) }).toEqual({
-				before: "60px",
-				after: "120px",
-			});
+			expect(renderedWidth(author)).toBe(`${before + 60}px`);
 		});
 
 		it("widens the column when its edge is dragged right", async () => {
