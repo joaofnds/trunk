@@ -807,6 +807,22 @@ describe("CommitGraph", () => {
 			});
 		});
 
+		// A user width has a floor and no ceiling: however wide the user asks for,
+		// the column follows.
+		it.each(["author", "graph"] as const)(
+			"lets a drag widen the %s column as far as the pointer goes",
+			async (column) => {
+				const { container } = mountHeader();
+				await flush();
+				const cell = headerCell(container, column);
+				const before = Number.parseFloat(renderedWidth(cell));
+
+				await drag(cell.querySelector(".col-resize-handle") as Element, 500);
+
+				expect(renderedWidth(cell)).toBe(`${before + 500}px`);
+			},
+		);
+
 		it("shrinks the graph column to a single lane", async () => {
 			const { container } = mountHeader();
 			await flush();

@@ -78,8 +78,9 @@ drag produced `NaN` and persisted it. The column could not be dragged back and
 there is no in-app reset.
 
 Widths are sanitized on the way in: a value survives only if it is a finite
-positive number, then it is rounded and clamped to that column's floor and
-`MAX_COLUMN_WIDTH`. Anything else falls back to that column's default.
+positive number, then it is rounded and raised to that column's floor, and
+nothing else: a width that is merely large is the user's to choose. Anything else
+falls back to that column's default.
 
 ## Why auto-fit measures only the loaded page
 

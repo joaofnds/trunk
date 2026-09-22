@@ -10,7 +10,6 @@ import {
 	dateContentWidth,
 	graphTargetWidth,
 	headerMinWidths,
-	MAX_COLUMN_WIDTH,
 	refContentWidth,
 	sanitizeColumnWidths,
 	shaContentWidth,
@@ -336,10 +335,11 @@ describe("sanitizeColumnWidths", () => {
 		expect(sanitizeColumnWidths(stored).author).toBe(floors.author);
 	});
 
-	it("caps a width beyond what a drag could reach", () => {
-		const stored = { author: 99_999 };
+	// A user width has a floor and no ceiling.
+	it("keeps a width however wide the user left it", () => {
+		const stored = { graph: 900 };
 
-		expect(sanitizeColumnWidths(stored).author).toBe(MAX_COLUMN_WIDTH);
+		expect(sanitizeColumnWidths(stored).graph).toBe(900);
 	});
 
 	it("rounds a fractional width to whole pixels", () => {

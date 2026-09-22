@@ -450,21 +450,9 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	userResizedColumns.add(column);
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
-	const maxWidths: Record<keyof ColumnWidths, number> = {
-		ref: 400,
-		graph: naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
-		diff: 400,
-		author: 400,
-		date: 400,
-		sha: 400,
-	};
 
 	function onMouseMove(ev: MouseEvent) {
-		const delta = ev.clientX - startX;
-		const newWidth = Math.max(
-			floors[column],
-			Math.min(maxWidths[column], startWidth + delta),
-		);
+		const newWidth = Math.max(floors[column], startWidth + ev.clientX - startX);
 		columnWidths = { ...columnWidths, [column]: newWidth };
 	}
 

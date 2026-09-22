@@ -358,6 +358,14 @@ describe("store", () => {
 			);
 		});
 
+		// A user width has no ceiling, so a stored one must not come back
+		// narrower than the user left it, however wide that was.
+		it("getColumnWidths returns a wide stored width as it was stored", async () => {
+			backingStore.set("column_widths", { graph: 900 });
+
+			expect((await getColumnWidths()).graph).toBe(900);
+		});
+
 		it("round-trips persisted widths including the diff key", async () => {
 			await setColumnWidths({
 				ref: 120,
