@@ -1,4 +1,8 @@
-import { type ColumnWidths, sanitizeColumnWidths } from "./column-widths.js";
+import {
+	type ColumnWidths,
+	isSizedColumn,
+	sanitizeColumnWidths,
+} from "./column-widths.js";
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
 import { isValidReviewFilter } from "./review-filter.js";
@@ -115,6 +119,26 @@ export async function getColumnWidths(): Promise<ColumnWidths> {
 
 export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
 	await setPref(COLUMN_WIDTHS_KEY, widths);
+}
+
+const RESIZED_COLUMNS_KEY = "resized_columns";
+
+/**
+ * The columns whose width the user set. A stored width looks the same whether
+ * the user dragged it or a fit computed it, so this is what says which ones to
+ * restore; every other column fits its content again.
+ */
+export async function getResizedColumns(): Promise<Set<keyof ColumnWidths>> {
+	const stored = await getPref<unknown>(RESIZED_COLUMNS_KEY);
+	if (!Array.isArray(stored)) return new Set();
+
+	return new Set(stored.filter(isSizedColumn));
+}
+
+export async function setResizedColumns(
+	columns: ReadonlySet<keyof ColumnWidths>,
+): Promise<void> {
+	await setPref(RESIZED_COLUMNS_KEY, [...columns]);
 }
 
 export interface ColumnVisibility {

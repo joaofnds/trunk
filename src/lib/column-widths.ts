@@ -33,6 +33,10 @@ export const DEFAULT_WIDTHS: ColumnWidths = {
 	sha: 50,
 };
 
+export function isSizedColumn(name: unknown): name is keyof ColumnWidths {
+	return typeof name === "string" && Object.hasOwn(DEFAULT_WIDTHS, name);
+}
+
 /**
  * The custom property on the commit list's root that holds a column's width.
  * Header cells and row cells both read it, so neither can keep a width of its own.

@@ -48,8 +48,10 @@ const {
 	setCommitDraft,
 	clearCommitDraft,
 	getColumnWidths,
+	getResizedColumns,
 	getColumnVisibility,
 	setColumnWidths,
+	setResizedColumns,
 	setColumnVisibility,
 	getRefVisibility,
 	setRefVisibility,
@@ -364,6 +366,30 @@ describe("store", () => {
 			backingStore.set("column_widths", { graph: 900 });
 
 			expect((await getColumnWidths()).graph).toBe(900);
+		});
+
+		// The widths were persisted but the fact that the user chose them was not,
+		// so a fresh mount could not tell a width the user set from a stale fit.
+		it("round-trips which columns the user resized", async () => {
+			await setResizedColumns(new Set(["ref", "author"] as const));
+
+			expect(await getResizedColumns()).toEqual(new Set(["ref", "author"]));
+		});
+
+		it("treats a missing resized set as nobody having resized anything", async () => {
+			expect(await getResizedColumns()).toEqual(new Set());
+		});
+
+		it("drops a stored name that is not a sized column", async () => {
+			backingStore.set("resized_columns", ["ref", "message", "nonsense", 7]);
+
+			expect(await getResizedColumns()).toEqual(new Set(["ref"]));
+		});
+
+		it("treats a stored value that is not a list as nobody having resized anything", async () => {
+			backingStore.set("resized_columns", { ref: true });
+
+			expect(await getResizedColumns()).toEqual(new Set());
 		});
 
 		it("round-trips persisted widths including the diff key", async () => {
