@@ -71,6 +71,13 @@ share of the list for Graph. It bounds what the app decides on its own and never
 width, because the app must not lay out a column badly by itself while the user may make
 any width they ask for (João, 2026-09-22).
 
+**Floor** — the narrowest a sized column may be, however its width is set: a fit, a drag, a
+stored width, or the budget's yield. It is sized for what the cell must show, never for the
+header word, which gives way to an icon when the column is too narrow for it: Graph's floor
+is one lane, Branch/Tag's is HEAD's `main` pill whole, measured in the font it is drawn in
+(João, 2026-09-23), and each other sized column's is the width of its header icon. The
+slack column has a floor of its own.
+
 **Budget** — the width the sized columns' fits share: the list's width less the slack
 column's floor. Each fit is laid into it in order up to its cap, and when the fits together
 exceed it they yield toward their floors, rightmost first, so a layout the app chose fits
