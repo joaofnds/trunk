@@ -871,6 +871,8 @@ describe("CommitGraph", () => {
 	// broken rendering; the fade says the lanes continue out of view, which is
 	// what the clip actually means.
 	describe("the graph column's right edge", () => {
+		const REF_WIDTH = 120;
+
 		// The width is restored only for a column the user sized by hand, so the
 		// graph counts as deliberately narrowed rather than waiting to be auto-fit.
 		function mountWithLanes(maxColumns: number, graphWidth: number) {
@@ -881,7 +883,7 @@ describe("CommitGraph", () => {
 					}
 					if (cmd === "prefs_get" && args?.key === "column_widths") {
 						return Promise.resolve({
-							ref: 120,
+							ref: REF_WIDTH,
 							graph: graphWidth,
 							diff: 96,
 							author: 60,
@@ -923,6 +925,85 @@ describe("CommitGraph", () => {
 				});
 
 				expect(container.querySelector("#graph-edge-fade")).toBeNull();
+			});
+		});
+
+		// The rails pan and the dots must pan with them. Clamping the dots into
+		// the band instead leaves them stacked on one edge with every rail gone,
+		// which is the column drawing dots and no rails (TRUNK-255).
+		describe("when the lanes are panned past the column", () => {
+			/** Each dot's centre, in the dot layer's own coordinates. */
+			function dotCentres(container: Element): number[] {
+				return Array.from(
+					container.querySelectorAll(".overlay-dots circle"),
+					(dot) => Number(dot.getAttribute("cx")),
+				);
+			}
+
+			/** The id of the clip band a layer is drawn inside, if any. */
+			function clipBandOf(container: Element, layer: string): string | null {
+				const group = container.querySelector(layer)?.closest("[clip-path]");
+				return group?.getAttribute("clip-path") ?? null;
+			}
+
+			/** How far the rail layer has been translated from its own origin. */
+			function railOffset(container: Element): number {
+				const rails = container.querySelector(".overlay-paths");
+				const translate = rails?.getAttribute("transform") ?? "";
+				return Number(/translate\((-?[\d.]+)/.exec(translate)?.[1]);
+			}
+
+			/**
+			 * Swipe the graph column to its far right. The pointer must sit inside
+			 * the graph column, past the ref column's width, or the handler ignores
+			 * the wheel entirely.
+			 */
+			async function panRight(container: Element) {
+				const pannable = container.querySelector(
+					"div.flex-1[style*='position: relative']",
+				) as Element;
+
+				await fireEvent.wheel(pannable, {
+					deltaX: 5000,
+					clientX: REF_WIDTH + COLUMN_PADDING_X + 1,
+				});
+			}
+
+			it("moves every dot by the same offset as its rail", async () => {
+				const { container } = mountWithLanes(8, 24);
+				await waitFor(() => {
+					expect(
+						container.querySelector(".overlay-dots circle"),
+					).not.toBeNull();
+				});
+				const restingDots = dotCentres(container);
+				const restingRails = railOffset(container);
+
+				await panRight(container);
+
+				const panned = restingRails - railOffset(container);
+				expect(panned).toBeGreaterThan(0);
+				expect(dotCentres(container)).toEqual(
+					restingDots.map((cx) => cx - panned),
+				);
+			});
+
+			// A panned dot leaves the column along with its rail, and the rails'
+			// clip band is the only thing keeping either of them off the ref
+			// column's pills.
+			it("holds a panned dot to the same band as its rail", async () => {
+				const { container } = mountWithLanes(8, 24);
+				await waitFor(() => {
+					expect(
+						container.querySelector(".overlay-dots circle"),
+					).not.toBeNull();
+				});
+
+				await panRight(container);
+
+				expect(clipBandOf(container, ".overlay-dots")).toBe(
+					clipBandOf(container, ".overlay-paths"),
+				);
 			});
 		});
 	});
