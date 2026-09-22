@@ -23,12 +23,11 @@ is owned by that tag, which is how a line whose branch was deleted keeps a name.
 
 **Rail** — the drawn line connecting a commit to its parent in the graph column. A rail
 runs down a lane and curves across to another when the parent sits in a different one. The
-dot marks the commit; the rail is what joins the dots, which is why a graph can lose its
-rails and keep its dots (TRUNK-255).
+dot marks the commit; the rail is what joins one dot to the next.
 
 **Graph pan** — the horizontal offset that scrolls the graph column through lanes too far
-right to fit in it, so no lane is unreachable when the column is narrow. It moves the rails;
-the dots are positioned against it separately, and the two disagreeing is TRUNK-255.
+right to fit in it, so no lane is unreachable when the column is narrow. Rails and dots both
+move with it, and a commit whose lane has panned out of the column leaves the view entirely.
 
 **Linear continuation** — a commit chain connected to a given commit by unbroken first-parent
 links, with no intervening fork. A branch that is strictly ahead of another on the same line
