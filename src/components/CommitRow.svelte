@@ -1,5 +1,6 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
+import { columnWidthProperty } from "../lib/column-widths.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
@@ -12,7 +13,7 @@ import {
 import { currentMinute } from "../lib/now.svelte.js";
 import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
-import type { ColumnVisibility, ColumnWidths } from "../lib/store.js";
+import type { ColumnVisibility } from "../lib/store.js";
 import { tooltip } from "../lib/tooltip.js";
 import type {
 	DiffStat,
@@ -29,7 +30,6 @@ interface Props {
 	onselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
 	maxColumns?: number;
-	columnWidths: ColumnWidths;
 	columnVisibility: ColumnVisibility;
 	selected?: boolean;
 	/** Row height in px. Defaults to ROW_HEIGHT constant.
@@ -62,7 +62,6 @@ let {
 	onselect,
 	oncontextmenu,
 	maxColumns = 1,
-	columnWidths,
 	columnVisibility,
 	selected = false,
 	rowHeight = ROW_HEIGHT,
@@ -145,17 +144,17 @@ const rowShadow = $derived(
 >
   <!-- Column 1: Branch/Tag refs spacer (SVG overlay handles rendering) -->
   {#if columnVisibility.ref}
-    <div class="flex-shrink-0" style="width: {columnWidths.ref}px; padding: 0 {COLUMN_PADDING_X}px;"></div>
+    <div data-column="ref" class="flex-shrink-0" style="width: var({columnWidthProperty('ref')}); padding: 0 {COLUMN_PADDING_X}px;"></div>
   {/if}
 
   <!-- Column 2: Graph -->
   {#if columnVisibility.graph}
-    <div class="relative z-[1] flex items-center flex-shrink-0 overflow-hidden" style="width: {columnWidths.graph}px; padding: 0 {COLUMN_PADDING_X}px;">
+    <div data-column="graph" class="relative z-[1] flex items-center flex-shrink-0 overflow-hidden" style="width: var({columnWidthProperty('graph')}); padding: 0 {COLUMN_PADDING_X}px;">
     </div>
   {/if}
 
   <!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
-  <div class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px;">
+  <div data-column="message" class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px;">
     {#if isWip}
       <div data-testid="commit-row-summary" class="flex items-center gap-2 overflow-hidden whitespace-nowrap">
         <span class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5" style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);">{commit.summary}</span>
@@ -181,8 +180,9 @@ const rowShadow = $derived(
   {#if columnVisibility.diff}
     <div
       data-testid="diff-stat"
+      data-column="diff"
       class="flex-shrink-0 flex items-center overflow-hidden"
-      style="width: {columnWidths.diff}px; padding: 0 {COLUMN_PADDING_X}px;"
+      style="width: var({columnWidthProperty('diff')}); padding: 0 {COLUMN_PADDING_X}px;"
       use:tooltip={diffTitle}
     >
       {#if diffStat && (diffBar.addFrac > 0 || diffBar.delFrac > 0)}
@@ -219,21 +219,21 @@ const rowShadow = $derived(
 
   <!-- Column 5: Author -->
   {#if columnVisibility.author}
-    <div class="flex-shrink-0 flex items-center gap-2 text-[12px]" style="width: {columnWidths.author}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
+    <div data-column="author" class="flex-shrink-0 flex items-center gap-2 text-[12px]" style="width: var({columnWidthProperty('author')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}<Avatar name={commit.author_name} /><span class="overflow-hidden text-ellipsis whitespace-nowrap">{commit.author_name}</span>{/if}
     </div>
   {/if}
 
   <!-- Column 6: Date -->
   {#if columnVisibility.date}
-    <div class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: {columnWidths.date}px; color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
+    <div data-column="date" class="flex-shrink-0 overflow-hidden whitespace-nowrap text-[11px]" style="width: var({columnWidthProperty('date')}); color: var(--color-text-muted); padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}<span data-testid="commit-date" use:exactDate={commit.author_timestamp}>{dateLabel}</span>{/if}
     </div>
   {/if}
 
   <!-- Column 7: SHA — click to copy the full oid (stops row select on click + keydown) -->
   {#if columnVisibility.sha}
-    <div class="flex-shrink-0" style="width: {columnWidths.sha}px; padding: 0 {COLUMN_PADDING_X}px;">
+    <div data-column="sha" class="flex-shrink-0" style="width: var({columnWidthProperty('sha')}); padding: 0 {COLUMN_PADDING_X}px;">
       {#if !isWip && !isStash}
         <button
           type="button"

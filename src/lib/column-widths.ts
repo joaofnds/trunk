@@ -30,6 +30,21 @@ export const DEFAULT_WIDTHS: ColumnWidths = {
 	sha: 50,
 };
 
+/**
+ * The custom property on the commit list's root that holds a column's width.
+ * Header cells and row cells both read it, so neither can keep a width of its own.
+ */
+export function columnWidthProperty(column: keyof ColumnWidths): string {
+	return `--column-${column}-width`;
+}
+
+/** The commit list root's style: every sized column's width, declared once. */
+export function columnWidthDeclarations(widths: ColumnWidths): string {
+	return (Object.keys(DEFAULT_WIDTHS) as (keyof ColumnWidths)[])
+		.map((column) => `${columnWidthProperty(column)}: ${widths[column]}px;`)
+		.join(" ");
+}
+
 /** The widest a column may be, by drag or by auto-fit. */
 export const MAX_COLUMN_WIDTH = 400;
 

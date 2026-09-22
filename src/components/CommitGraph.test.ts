@@ -6,6 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
+import { columnWidthProperty } from "../lib/column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
@@ -182,6 +183,14 @@ function installReads(
 async function flush() {
 	await new Promise((r) => setTimeout(r, 0));
 	await tick();
+}
+
+// jsdom inherits custom properties but never substitutes var(), so a cell's
+// width is resolved here the way the engine would resolve it.
+function renderedWidth(cell: HTMLElement): string {
+	const reference = /^var\((--[\w-]+)\)$/.exec(cell.style.width);
+	if (!reference) return cell.style.width;
+	return getComputedStyle(cell).getPropertyValue(reference[1]).trim();
 }
 
 beforeEach(() => {
@@ -763,11 +772,11 @@ describe("CommitGraph", () => {
 			const { container } = mountHeader();
 			await flush();
 			const author = headerCell(container, "author");
-			const before = author.style.width;
+			const before = renderedWidth(author);
 
 			await drag(author.querySelector(".col-resize-handle") as Element, 60);
 
-			expect({ before, after: author.style.width }).toEqual({
+			expect({ before, after: renderedWidth(author) }).toEqual({
 				before: "60px",
 				after: "120px",
 			});
@@ -780,7 +789,7 @@ describe("CommitGraph", () => {
 
 			await drag(date.querySelector(".col-resize-handle") as Element, 50);
 
-			expect(Number.parseInt(date.style.width, 10)).toBeGreaterThan(40);
+			expect(Number.parseInt(renderedWidth(date), 10)).toBeGreaterThan(40);
 		});
 
 		// With a neighbour hidden, the column must still be reachable: the handle
@@ -790,11 +799,11 @@ describe("CommitGraph", () => {
 				const { container } = mountHeader({ diff: false, sha: false });
 				await flush();
 				const author = headerCell(container, "author");
-				const before = author.style.width;
+				const before = renderedWidth(author);
 
 				await drag(author.querySelector(".col-resize-handle") as Element, 40);
 
-				expect(author.style.width).not.toBe(before);
+				expect(renderedWidth(author)).not.toBe(before);
 			});
 		});
 
@@ -805,7 +814,9 @@ describe("CommitGraph", () => {
 
 			await drag(graph.querySelector(".col-resize-handle") as Element, -500);
 
-			expect(graph.style.width).toBe(`${LANE_WIDTH + 2 * COLUMN_PADDING_X}px`);
+			expect(renderedWidth(graph)).toBe(
+				`${LANE_WIDTH + 2 * COLUMN_PADDING_X}px`,
+			);
 		});
 
 		it("shows the header word when the column fits it", async () => {
@@ -835,6 +846,35 @@ describe("CommitGraph", () => {
 			await drag(author.querySelector(".col-resize-handle") as Element, -500);
 
 			expect(author.getAttribute("title")).toBe("Author");
+		});
+
+		// Header and rows are sibling flex containers; they line up only while
+		// both read one width per column. A cell holding its own copy moves apart
+		// from the other the first time the two are written differently.
+		describe("and the rows beneath them", () => {
+			function rowCell(container: HTMLElement, column: string): HTMLElement {
+				const cell = container.querySelector(
+					`[data-testid=commit-row] [data-column=${column}]`,
+				);
+				if (!cell) throw new Error(`no row cell for "${column}"`);
+				return cell as HTMLElement;
+			}
+
+			it.each(["ref", "graph", "diff", "author", "date", "sha"] as const)(
+				"size the %s column from one declaration on the list root",
+				async (column) => {
+					const { container } = mountHeader();
+					await flush();
+					const root = container.querySelector("[role=listbox]") as HTMLElement;
+
+					root.style.setProperty(columnWidthProperty(column), "177px");
+
+					expect({
+						header: renderedWidth(headerCell(container, column)),
+						row: renderedWidth(rowCell(container, column)),
+					}).toEqual({ header: "177px", row: "177px" });
+				},
+			);
 		});
 	});
 
@@ -1408,7 +1448,7 @@ describe("CommitGraph", () => {
 				(el) => el.firstChild?.textContent?.trim() === "Author",
 			) as HTMLElement | undefined;
 			if (!header) throw new Error("author header cell not found");
-			return Number.parseFloat(header.style.width);
+			return Number.parseFloat(renderedWidth(header));
 		}
 
 		// Page one holds narrow authors; page two, paged in through loadMore, holds

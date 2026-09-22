@@ -93,6 +93,30 @@ This is the same limit AG Grid documents for its own content auto-size: with
 and the alternative — measuring rows that are not on screen — costs more than the
 occasional column that grows once when a wider value pages in.
 
+## Each width is declared once
+
+The header and the rows are sibling flex containers, and they line up only while
+every cell in a column is the same width. So each sized column's width is declared
+once, as a custom property on the list's root (`columnWidthProperty` names it), and
+every header cell and every row cell takes its width from that property. A cell
+that computed its own width from the same number would line up today too; the one
+declaration is what stops a later change from writing one side and not the other.
+
+A drag therefore writes one style attribute on the root rather than a width on
+every cell of every rendered row, and a row the virtual list mounts later reads the
+current width without being handed it. TanStack Table's column sizing guide gives
+the same advice: "Use CSS variables to communicate column widths to your table
+cells." VS Code's table (`src/vs/base/browser/ui/table/tableWidget.ts`) reads the
+size through a callback when it builds a row, then writes every rendered cell's
+width on each resize, which is the per-row cost this avoids. A grid template shared
+through `subgrid` would declare all the columns in one place, but the virtual
+list's viewport and items container are absolutely positioned, so the rows are not
+grid items of anything the header belongs to.
+
+The graph overlay positions its lanes and pills in script, so it reads the ref and
+graph widths from the component state that writes the declarations, not from the
+custom properties.
+
 ## What this does not solve
 
 Widths are absolute pixels and carry no record of the lane pitch they were chosen

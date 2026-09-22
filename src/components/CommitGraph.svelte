@@ -35,6 +35,8 @@ import {
 import {
 	authorContentWidth,
 	columnFloors,
+	columnWidthDeclarations,
+	columnWidthProperty,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
@@ -1814,7 +1816,7 @@ $effect(() => {
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="h-full overflow-hidden flex flex-col"
-  style="background: var(--bg-1); outline: none;"
+  style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)}"
   tabindex="0"
   role="listbox"
   bind:this={containerRef}
@@ -1834,7 +1836,7 @@ $effect(() => {
           <div
             class="relative flex-shrink-0 overflow-hidden whitespace-nowrap"
             data-column={col.key}
-            style="width: {width}px; padding: 0 {COLUMN_PADDING_X}px;"
+            style="width: var({columnWidthProperty(col.key)}); padding: 0 {COLUMN_PADDING_X}px;"
             title={col.label}
           >
             {#if showsHeaderLabel(width, headerMins[col.key])}
@@ -2274,7 +2276,7 @@ $effect(() => {
         {#snippet renderItem(commit, index)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
-          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
+          <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
           </div>
         {/snippet}
       </VirtualList>

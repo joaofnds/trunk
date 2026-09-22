@@ -6,22 +6,13 @@ import CommitRow from "./CommitRow.svelte";
 import "../__tests__/helpers/tauri-mock";
 import { makeCommit } from "../__tests__/helpers/factories";
 import { exactLabel } from "../lib/relative-time.js";
-import type { ColumnVisibility, ColumnWidths } from "../lib/store";
+import type { ColumnVisibility } from "../lib/store";
 import { SHOW_DELAY_MS } from "../lib/tooltip.js";
 
 vi.mock("../lib/toast.svelte.js", () => ({ showToast: vi.fn() }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
 	writeText: vi.fn().mockResolvedValue(undefined),
 }));
-
-const defaultWidths: ColumnWidths = {
-	ref: 120,
-	graph: 24,
-	diff: 96,
-	author: 60,
-	date: 40,
-	sha: 50,
-};
 
 const allVisible: ColumnVisibility = {
 	ref: true,
@@ -40,7 +31,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 			},
 		});
@@ -58,7 +48,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 			},
 		});
@@ -74,7 +63,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: { ...allVisible, author: false },
 			},
 		});
@@ -87,7 +75,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 			},
 		});
@@ -103,7 +90,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 			},
 		});
@@ -118,7 +104,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				wipStats: {
 					modified: 5,
@@ -144,7 +129,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 			},
 		});
@@ -161,7 +145,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				onselect,
 			},
@@ -187,7 +170,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 				},
 			});
@@ -204,7 +186,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 					onselect,
 				},
@@ -222,7 +203,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: { ...allVisible, sha: false },
 			},
 		});
@@ -238,7 +218,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 					diffStat: stat,
 				},
@@ -261,7 +240,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 					diffStat: stat, // both add + delete
 				},
@@ -287,7 +265,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 					diffStat: { insertions: 50, deletions: 0, files_changed: 1 },
 				},
@@ -308,7 +285,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 					diffStat: { insertions: 0, deletions: 0, files_changed: 3 },
 				},
@@ -325,7 +301,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 					diffStat: { insertions: 0, deletions: 0, files_changed: 0 },
 				},
@@ -343,7 +318,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 				},
 			});
@@ -359,7 +333,6 @@ describe("CommitRow", () => {
 					props: {
 						commit,
 						rowIndex: 0,
-						columnWidths: defaultWidths,
 						columnVisibility: allVisible,
 						diffStat: stat,
 					},
@@ -387,7 +360,6 @@ describe("CommitRow", () => {
 				props: {
 					commit,
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: { ...allVisible, diff: false },
 					diffStat: stat,
 				},
@@ -402,7 +374,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				inSession: true,
 			},
@@ -420,7 +391,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				inSession: false,
 			},
@@ -435,7 +405,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				isPendingBase: true,
 			},
@@ -453,7 +422,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				isPendingBase: false,
 			},
@@ -468,7 +436,6 @@ describe("CommitRow", () => {
 			props: {
 				commit,
 				rowIndex: 0,
-				columnWidths: defaultWidths,
 				columnVisibility: allVisible,
 				inSession: true,
 				isPendingBase: true,
@@ -492,7 +459,6 @@ describe("CommitRow", () => {
 						author_timestamp: pinnedNow.getTime() / 1000,
 					}),
 					rowIndex: 0,
-					columnWidths: defaultWidths,
 					columnVisibility: allVisible,
 				},
 			});
