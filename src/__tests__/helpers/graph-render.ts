@@ -503,11 +503,17 @@ export function shapeOf(dot: Element) {
 
 /** Every ref pill's rendered text, in document order, overflow badges included. */
 export function pillTexts(svg: SVGSVGElement): string[] {
-	const pills = svg.querySelector(".overlay-pills")?.children ?? [];
+	return [...svg.querySelectorAll(".overlay-pills foreignObject")].map(
+		(label) => label.textContent?.trim() ?? "",
+	);
+}
 
-	return [...pills]
-		.filter((child) => child.tagName === "foreignObject")
-		.map((label) => label.textContent?.trim() ?? "");
+/** Where the lanes start: the Branch/Tag column's width plus the list's gutter. */
+export function laneOffset(svg: SVGSVGElement): number {
+	const transform =
+		svg.querySelector(".overlay-dots")?.getAttribute("transform") ?? "";
+
+	return Number(/translate\((-?[\d.]+),/.exec(transform)?.[1]);
 }
 
 export function dashedPaths(svg: SVGSVGElement): Element[] {

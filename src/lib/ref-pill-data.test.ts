@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { columnFloors } from "./column-widths.js";
 import {
 	ICON_GAP,
 	ICON_WIDTH,
@@ -287,5 +288,29 @@ describe("buildRefPillData", () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].rowIndex).toBe(3);
+	});
+});
+
+describe("buildRefPillData at a column too narrow for any label", () => {
+	// truncateWithEllipsis returns the bare ellipsis at its own width when nothing
+	// fits, ignoring the limit it was given. The pill built from it was wider than
+	// the column, and the pills group carries no clip path, so it painted over the
+	// lanes and took the pointer there.
+	it("keeps the pill inside the ref column", () => {
+		const refColumnWidth = columnFloors().ref;
+		const commits = [
+			makeCommit({
+				refs: [makeRef({ short_name: "a-branch-name-far-too-long-to-fit" })],
+			}),
+		];
+
+		const [pill] = buildRefPillData(
+			[makeNode({ x: 0, y: 0 })],
+			commits,
+			refColumnWidth,
+			mockMeasure,
+		);
+
+		expect(pill.x + pill.width).toBeLessThanOrEqual(refColumnWidth);
 	});
 });

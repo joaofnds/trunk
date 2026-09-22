@@ -1,4 +1,5 @@
 import {
+	BADGE_FONT_SIZE,
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
@@ -53,13 +54,15 @@ export function isRemoteOnlyRef(ref: RefLabel, allRefs: RefLabel[]): boolean {
 	);
 }
 
-/** Width reserved for the "+N" badge that folds `count` more refs, 0 for none */
+/**
+ * Width of the "+N" badge that folds `count` more refs, 0 for none. The layout
+ * reserves this and the renderer draws it, so the badge always fits the room
+ * the pill left for it.
+ */
 export function overflowBadgeWidth(count: number): number {
 	if (count <= 0) return 0;
 
-	// "+N" text is small (BADGE_FONT_SIZE), estimate ~7px per char + padding
-	const chars = `+${count}`.length;
-	return chars * 7 + 6;
+	return `+${count}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2;
 }
 
 /**
@@ -126,9 +129,21 @@ export function buildRefPillData(
 			measureFn,
 		);
 
-		// Compute pill width — ceil textWidth to avoid sub-pixel rounding gaps
-		const pillWidth =
-			Math.ceil(textWidth) + PILL_PADDING_X * 2 + iconWidth + ICON_GAP;
+		// Compute pill width — ceil textWidth to avoid sub-pixel rounding gaps.
+		// Capped at the room the column leaves: truncateWithEllipsis returns the
+		// bare ellipsis at its own width when nothing fits, ignoring the limit, and
+		// an uncapped pill paints over the lanes, which the pills do not clip.
+		const pillWidth = Math.min(
+			Math.ceil(textWidth) + PILL_PADDING_X * 2 + iconWidth + ICON_GAP,
+			Math.max(
+				0,
+				refColumnWidth -
+					PILL_MARGIN_LEFT -
+					COLUMN_PADDING_X -
+					dotInset -
+					badgeWidth,
+			),
+		);
 
 		pills.push({
 			x: PILL_MARGIN_LEFT,

@@ -4,6 +4,7 @@ import {
 	dots,
 	expectMatchesGolden,
 	goldenNames,
+	laneOffset,
 	loadExport,
 	mountGraph,
 	pillTexts,
@@ -12,6 +13,7 @@ import {
 	shapeOf,
 	warmGraphComponent,
 } from "../__tests__/helpers/graph-render";
+import { BADGE_HEIGHT, COLUMN_PADDING_X } from "../lib/graph-constants.js";
 
 describe("CommitGraph", () => {
 	beforeAll(warmGraphComponent, 30_000);
@@ -96,7 +98,41 @@ describe("CommitGraph", () => {
 		it("truncates an overlong label and collapses the refs past the first into a badge", async () => {
 			const { svg } = await mountGraph(loadExport("lane-10-two-remotes"));
 
-			expect(pillTexts(svg)).toEqual(["origin/m…", "+1", "main"]);
+			// One character shorter than it read while the layout reserved 20px for
+			// a badge the renderer drew 26px wide: the label now fits the room it
+			// really has.
+			expect(pillTexts(svg)).toEqual(["origin/…", "+1", "main"]);
+		});
+
+		// The label was sized against the badge width the layout reserved, and the
+		// badge drew wider, so it ran past the room the pill was given, toward the
+		// lanes.
+		it("keeps the +N badge inside the Branch/Tag column's padding", async () => {
+			const { svg } = await mountGraph(loadExport("lane-10-two-remotes"));
+
+			const [badge] = [...svg.querySelectorAll(".overlay-pills rect")].filter(
+				(rect) => Number(rect.getAttribute("height")) === BADGE_HEIGHT,
+			);
+			const right =
+				Number(badge.getAttribute("x")) + Number(badge.getAttribute("width"));
+
+			expect(right).toBeLessThanOrEqual(laneOffset(svg) - 2 * COLUMN_PADDING_X);
+		});
+
+		// A column narrower than a pill, which the budget reaches on a narrow list,
+		// left the icon, the label and the badge painting over the lanes and
+		// taking the pointer there.
+		it("cuts what a pill draws at the Branch/Tag column's padding", async () => {
+			const { svg } = await mountGraph(loadExport("lane-10-two-remotes"));
+
+			const label = svg.querySelector(".overlay-pills foreignObject");
+			const clip = label?.closest("[clip-path]")?.getAttribute("clip-path");
+			const id = /url\(#(.+)\)/.exec(clip ?? "")?.[1];
+			const bound = svg.querySelector(`clipPath[id="${id}"] rect`);
+
+			expect(Number(bound?.getAttribute("width"))).toBe(
+				laneOffset(svg) - 2 * COLUMN_PADDING_X,
+			);
 		});
 	});
 
