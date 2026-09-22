@@ -4,6 +4,8 @@ import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
 	columnFloors,
+	columnWidthDeclarations,
+	columnWidthProperty,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
@@ -291,4 +293,28 @@ describe("sanitizeColumnWidths", () => {
 			expect(sanitizeColumnWidths(undefined)).toEqual(DEFAULT_WIDTHS);
 		});
 	});
+});
+
+describe("columnWidthDeclarations", () => {
+	const widths = {
+		ref: 101,
+		graph: 102,
+		diff: 103,
+		author: 104,
+		date: 105,
+		sha: 106,
+	};
+
+	it.each(["ref", "graph", "diff", "author", "date", "sha"] as const)(
+		"declares the %s width under that column's property",
+		(column) => {
+			const style = document.createElement("div").style;
+
+			style.cssText = columnWidthDeclarations(widths);
+
+			expect(style.getPropertyValue(columnWidthProperty(column))).toBe(
+				`${widths[column]}px`,
+			);
+		},
+	);
 });
