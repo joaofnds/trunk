@@ -209,6 +209,91 @@ export function refContentWidth(
 }
 
 /**
+ * The most a fit may claim on its own. A user width is never held to it, and
+ * Graph's cap is a share of the row rather than a pixel count.
+ */
+export const FIT_CAPS = { ref: 240, author: 160 } as const;
+
+/** Graph fits at most this share of the row, the cap Git Graph's auto layout uses. */
+const GRAPH_CAP_SHARE = 1 / 3;
+
+/**
+ * The order fits give up width in when together they overrun the budget:
+ * rightmost first, with Diff ahead of Date and Author because its bar scales and
+ * loses no text while theirs are cut, and Branch/Tag ahead of Graph because a cut
+ * pill's name is a hover away while a lane past the edge is not.
+ */
+const YIELD_ORDER: readonly (keyof ColumnWidths)[] = [
+	"sha",
+	"diff",
+	"date",
+	"author",
+	"ref",
+	"graph",
+];
+
+export interface BudgetRequest {
+	/** What each column's fit asks for, before its cap. */
+	wanted: ColumnWidths;
+	/** The columns the app lays out: shown, and not carrying a user width. */
+	fitted: readonly (keyof ColumnWidths)[];
+	/** The width the row lays its cells out in, 0 while the list is unmeasured. */
+	rowWidth: number;
+	/** The part of the row the fits may not use: user widths and Message's floor. */
+	reserved: number;
+}
+
+/**
+ * The widths of the fitted columns. Each takes its fit up to its cap, and when
+ * together they overrun the budget they yield toward their floors in
+ * YIELD_ORDER, so a layout the app chose fits the list whenever the list has
+ * room for the floors. An unmeasured list has no budget, and only the pixel
+ * caps apply.
+ */
+export function shareBudget(request: BudgetRequest): Partial<ColumnWidths> {
+	const { wanted, fitted, rowWidth, reserved } = request;
+	const floors = columnFloors();
+	const caps = fitCaps(rowWidth);
+	const widths: Partial<ColumnWidths> = {};
+
+	for (const column of fitted) {
+		widths[column] = Math.max(
+			floors[column],
+			Math.min(caps[column], wanted[column]),
+		);
+	}
+	if (rowWidth <= 0) return widths;
+
+	let overrun =
+		Object.values(widths).reduce((sum, width) => sum + width, 0) -
+		(rowWidth - reserved);
+	for (const column of YIELD_ORDER) {
+		const width = widths[column];
+		if (overrun <= 0) break;
+		if (width === undefined) continue;
+
+		const given = Math.min(overrun, width - floors[column]);
+		widths[column] = width - given;
+		overrun -= given;
+	}
+
+	return widths;
+}
+
+function fitCaps(rowWidth: number): ColumnWidths {
+	const uncapped = Number.POSITIVE_INFINITY;
+
+	return {
+		ref: FIT_CAPS.ref,
+		graph: rowWidth > 0 ? Math.floor(rowWidth * GRAPH_CAP_SHARE) : uncapped,
+		diff: uncapped,
+		author: FIT_CAPS.author,
+		date: uncapped,
+		sha: uncapped,
+	};
+}
+
+/**
  * The stored layout, made safe to lay out with. The pref file is plain JSON that
  * nothing upstream validates, and a width that is not a usable number reached the
  * drag clamp as NaN, which persisted itself and left the column unresizable.

@@ -8,11 +8,14 @@ import {
 	columnWidthProperty,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
+	FIT_CAPS,
 	graphTargetWidth,
 	headerMinWidths,
+	MESSAGE_FLOOR,
 	refContentWidth,
 	sanitizeColumnWidths,
 	shaContentWidth,
+	shareBudget,
 	showsHeaderLabel,
 } from "./column-widths.js";
 import {
@@ -290,6 +293,124 @@ describe("refContentWidth", () => {
 			const bare = [makeCommit({ oid: "a".repeat(40) })];
 
 			expect(refContentWidth(bare, measureByFont)).toBe(0);
+		});
+	});
+});
+
+describe("shareBudget", () => {
+	const floors = columnFloors();
+	const everyColumn = [
+		"ref",
+		"graph",
+		"diff",
+		"author",
+		"date",
+		"sha",
+	] as const;
+	const wanted = {
+		ref: 100,
+		graph: 60,
+		diff: 96,
+		author: 90,
+		date: 50,
+		sha: 56,
+	};
+	const wantedTotal = 452;
+	const roomy = { rowWidth: 1600, reserved: MESSAGE_FLOOR };
+
+	it("gives each column its fit when the row has room for them all", () => {
+		expect(shareBudget({ wanted, fitted: everyColumn, ...roomy })).toEqual(
+			wanted,
+		);
+	});
+
+	it.each(["ref", "author"] as const)(
+		"stops the %s fit at its cap",
+		(column) => {
+			const widths = shareBudget({
+				wanted: { ...wanted, [column]: 500 },
+				fitted: everyColumn,
+				...roomy,
+			});
+
+			expect(widths[column]).toBe(FIT_CAPS[column]);
+		},
+	);
+
+	it("stops the graph fit at a third of the row", () => {
+		const widths = shareBudget({
+			wanted: { ...wanted, graph: 500 },
+			fitted: everyColumn,
+			rowWidth: 900,
+			reserved: 0,
+		});
+
+		expect(widths.graph).toBe(300);
+	});
+
+	it("lays out only the columns it is given", () => {
+		const widths = shareBudget({ wanted, fitted: ["ref", "graph"], ...roomy });
+
+		expect(widths).toEqual({ ref: 100, graph: 60 });
+	});
+
+	describe("when the fits overrun the budget", () => {
+		const yieldOrder = [
+			"sha",
+			"diff",
+			"date",
+			"author",
+			"ref",
+			"graph",
+		] as const;
+
+		// One pixel more than the columns ahead of it can give, so those reach
+		// their floors and this one gives exactly that pixel.
+		it.each(
+			yieldOrder.map((column, i) => [column, yieldOrder.slice(0, i)] as const),
+		)(
+			"takes from %s only once the columns ahead of it are at their floors",
+			(column, ahead) => {
+				const spare = ahead.reduce((sum, c) => sum + wanted[c] - floors[c], 0);
+				const budget = wantedTotal - spare - 1;
+
+				const widths = shareBudget({
+					wanted,
+					fitted: everyColumn,
+					rowWidth: 1600,
+					reserved: 1600 - budget,
+				});
+
+				expect(widths).toEqual({
+					...wanted,
+					...Object.fromEntries(ahead.map((c) => [c, floors[c]])),
+					[column]: wanted[column] - 1,
+				});
+			},
+		);
+
+		it("holds every column at its floor when even the floors overrun", () => {
+			const widths = shareBudget({
+				wanted,
+				fitted: everyColumn,
+				rowWidth: 1600,
+				reserved: 1590,
+			});
+
+			expect(widths).toEqual(floors);
+		});
+	});
+
+	describe("while the list is unmeasured", () => {
+		it("applies the pixel caps alone", () => {
+			const widths = shareBudget({
+				wanted: { ...wanted, ref: 500, graph: 900 },
+				fitted: everyColumn,
+				rowWidth: 0,
+				reserved: MESSAGE_FLOOR,
+			});
+
+			expect(widths).toEqual({ ...wanted, ref: FIT_CAPS.ref, graph: 900 });
 		});
 	});
 });
