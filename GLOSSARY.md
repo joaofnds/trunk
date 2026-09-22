@@ -45,7 +45,31 @@ the name.
 
 **Solo** — GitKraken's inverse of hide: show only the soloed refs. Not built; a follow-up card if wanted.
 
-**Auto-fit** — a commit-graph column sizing itself to the widest content it has seen, rather than to a fixed width. The author column is the only one whose target depends on the commits on screen; the date column sizes for the widest label the relative clock can ever produce and the sha column for a seven-character sha, so neither moves as pages load. Auto-fit keeps a running maximum across loaded pages, so scrolling into a wider author widens the column and scrolling on never narrows it. Narrowing is correct only when the commits themselves changed, as a visibility toggle can do by hiding the widest author's commit. A column the user has dragged is exempt from auto-fit (TRUNK-133).
+**Fit** — the width a sized column computes for what it draws, in the font it draws it in,
+from the rows that have loaded (earlier cards say auto-fit). Graph fits its lane count, Date
+the widest label the relative clock can ever produce, SHA seven characters, so neither moves
+as pages load; Branch/Tag fits the widest pill on a loaded row, badge included, and Author
+the widest name. A fit keeps a running maximum across loaded pages, so scrolling into a
+wider author widens the column and scrolling on never narrows it. Narrowing is correct only
+when the commits themselves changed, as a visibility toggle can do by hiding the widest
+author's commit (TRUNK-133). A fit is bounded by its cap and by the list: the sized columns'
+fits share the list's width less the slack column's floor, and when they do not all fit
+they yield toward their floors, rightmost first. A column with a user width is exempt from
+fitting.
+
+**User width** — a width the user set by dragging a column's divider. It replaces the
+column's fit, has a floor and no ceiling, is stored by column id, and holds until a
+double-click on the divider hands the column back to its fit. The width alone cannot say
+whether the user chose it, so which columns carry one is recorded beside the widths.
+
+**Slack column** — Message: the column with no fit and no user width, which takes what the
+sized columns leave, down to a floor. Past that floor the row is wider than the list and the
+surplus scrolls.
+
+**Cap** — the most a fit may claim, per column: a fixed width for Branch/Tag and Author, a
+share of the list for Graph. It bounds what the app decides on its own and never a user
+width, because the app must not lay out a column badly by itself while the user may make
+any width they ask for (João, 2026-09-22).
 
 **Graph snapshot** — what the commit cache holds for one repository: the capture a walk read from it, the ref visibility that walk was laid out under, and the resulting layout. A visibility toggle re-lays out the cached capture and never opens the repository, and the visibility travels with the layout it produced, so the cache cannot serve a layout built under a different hidden set (TRUNK-129, TRUNK-120).
 
