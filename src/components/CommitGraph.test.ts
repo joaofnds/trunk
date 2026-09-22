@@ -737,7 +737,7 @@ describe("CommitGraph", () => {
 
 		function headerCell(container: HTMLElement, label: string): HTMLElement {
 			const header = container.querySelector(
-				"[role=listbox] > div",
+				"[role=listbox] > div > div",
 			) as HTMLElement;
 			const cell = [...header.children].find(
 				(c) => c.getAttribute("data-column") === label,
@@ -838,6 +838,23 @@ describe("CommitGraph", () => {
 			expect(Number.parseFloat(author.style.width)).toBeGreaterThan(
 				MAX_AUTOFIT_WIDTH,
 			);
+		});
+
+		// Dragging a column past the point where message hits its floor pushes the
+		// columns on its right off the viewport. They stay reachable only if the
+		// row is laid out wider than the viewport, which is what scrolls.
+		it("lays the row out wider than the viewport once message is at its floor", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const header = container.querySelector(
+				"[role=listbox] > div > div",
+			) as HTMLElement;
+			const before = Number.parseFloat(header.style.width);
+			const author = headerCell(container, "author");
+
+			await drag(author.querySelector(".col-resize-handle") as Element, 2000);
+
+			expect(Number.parseFloat(header.style.width)).toBeGreaterThan(before);
 		});
 
 		it("shrinks the graph column to a single lane", async () => {

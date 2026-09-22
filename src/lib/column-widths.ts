@@ -4,6 +4,7 @@ import {
 	ICON_GAP,
 	ICON_WIDTH,
 	LANE_WIDTH,
+	MESSAGE_MIN_WIDTH,
 	PILL_FONT,
 	PILL_FONT_BOLD,
 	PILL_GAP,
@@ -211,4 +212,26 @@ export function sanitizeColumnWidths(
 	}
 
 	return widths;
+}
+
+/**
+ * How wide the header and every row must be laid out, given the space the list
+ * has. Normally that is the container: the message column absorbs the slack and
+ * the row fits. Once the sized columns leave message less than its floor, the
+ * row is wider than the container and the difference is what scrolls, which is
+ * the only way a column dragged past the right edge stays reachable.
+ */
+export function tableOverflowWidth(
+	widths: ColumnWidths,
+	visible: Record<keyof ColumnWidths | "message", boolean>,
+	containerWidth: number,
+): number {
+	let sized = 0;
+	for (const column of Object.keys(widths) as (keyof ColumnWidths)[]) {
+		if (visible[column]) sized += widths[column];
+	}
+
+	const messageFloor = visible.message ? MESSAGE_MIN_WIDTH : 0;
+
+	return Math.max(containerWidth, sized + messageFloor);
 }

@@ -44,6 +44,7 @@ import {
 	refContentWidth,
 	shaContentWidth,
 	showsHeaderLabel,
+	tableOverflowWidth,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import {
@@ -327,6 +328,21 @@ const maxGraphScrollX = $derived(
 // Clamp graphScrollX when maxGraphScrollX shrinks (e.g. column widened or fewer lanes)
 $effect(() => {
 	if (graphScrollX > maxGraphScrollX) graphScrollX = maxGraphScrollX;
+});
+
+let listViewportWidth = $state(0);
+let tableScrollX = $state(0);
+
+// The width header and rows lay out at. Equal to the viewport until the sized
+// columns squeeze message past its floor, past which the row is wider than the
+// viewport and the surplus scrolls.
+const tableWidth = $derived(
+	tableOverflowWidth(columnWidths, columnVisibility, listViewportWidth),
+);
+const maxTableScrollX = $derived(Math.max(0, tableWidth - listViewportWidth));
+
+$effect(() => {
+	if (tableScrollX > maxTableScrollX) tableScrollX = maxTableScrollX;
 });
 
 const headerMins = headerMinWidths(measureTextWidth);
@@ -1822,9 +1838,10 @@ $effect(() => {
 >
   <!-- Header row (always visible) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="flex-shrink-0 overflow-hidden" style="background: var(--bg-1);">
   <div
-    class="flex items-center flex-shrink-0"
-    style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
+    class="flex items-center"
+    style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px; width: {tableWidth}px; margin-left: {-tableScrollX}px;"
     oncontextmenu={showHeaderContextMenu}
   >
     {#each columnLabels as col (col.key)}
@@ -1860,19 +1877,29 @@ $effect(() => {
       {/if}
     {/each}
   </div>
+  </div>
 
   <!-- Content area (grows to fill remaining space) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={(e) => {
+  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" bind:clientWidth={listViewportWidth} onwheel={(e) => {
+    if (e.deltaX === 0) return;
+
     // GRAPH-02: horizontal pan on trackpad swipe or shift+wheel — only when pointer is over the graph column
-    if (maxGraphScrollX > 0 && e.deltaX !== 0) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const pointerX = e.clientX - rect.left - COLUMN_PADDING_X;
-      const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
-      const graphEnd = graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
-      if (pointerX >= graphStart && pointerX <= graphEnd) {
-        graphScrollX = Math.max(0, Math.min(maxGraphScrollX, graphScrollX + e.deltaX));
-      }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pointerX = e.clientX - rect.left - COLUMN_PADDING_X + tableScrollX;
+    const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
+    const graphEnd = graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
+    const overGraph = pointerX >= graphStart && pointerX <= graphEnd;
+
+    if (maxGraphScrollX > 0 && overGraph) {
+      graphScrollX = Math.max(0, Math.min(maxGraphScrollX, graphScrollX + e.deltaX));
+      return;
+    }
+
+    // Anywhere else, the gesture scrolls the table to the columns the drag
+    // pushed past the right edge.
+    if (maxTableScrollX > 0) {
+      tableScrollX = Math.max(0, Math.min(maxTableScrollX, tableScrollX + e.deltaX));
     }
   }}>
     {#if searchOpen}
@@ -1918,7 +1945,7 @@ $effect(() => {
           class="absolute top-0"
           width={refOffset + Math.max(graphColWidth, naturalGraphWidth)}
           height={contentHeight}
-          style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
+          style="left: {-tableScrollX}px; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
         >
           <!-- Layers A and B live in the Graph column's band; with the column
                hidden CommitRow drops that cell and the Message text slides into
@@ -2208,7 +2235,7 @@ $effect(() => {
       >
         {#snippet renderItem(commit, index)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
+          <div style="width: {tableWidth}px; margin-left: {-tableScrollX}px;" onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
           <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
           </div>
         {/snippet}

@@ -13,11 +13,13 @@ import {
 	sanitizeColumnWidths,
 	shaContentWidth,
 	showsHeaderLabel,
+	tableOverflowWidth,
 } from "./column-widths.js";
 import {
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
 	LANE_WIDTH,
+	MESSAGE_MIN_WIDTH,
 } from "./graph-constants.js";
 import { relativeLabel } from "./relative-time.js";
 
@@ -290,5 +292,59 @@ describe("sanitizeColumnWidths", () => {
 		it("returns the defaults", () => {
 			expect(sanitizeColumnWidths(undefined)).toEqual(DEFAULT_WIDTHS);
 		});
+	});
+});
+
+describe("tableOverflowWidth", () => {
+	const visible = {
+		ref: true,
+		graph: true,
+		message: true,
+		diff: true,
+		author: true,
+		date: true,
+		sha: true,
+	};
+
+	it("is the container width when the columns fit inside it", () => {
+		expect(tableOverflowWidth(DEFAULT_WIDTHS, visible, 1200)).toBe(1200);
+	});
+
+	// Message is the column that absorbs slack, so the row only outgrows the
+	// container once Message has been squeezed to its floor.
+	it("grows past the container once message is at its floor", () => {
+		const wide = { ...DEFAULT_WIDTHS, ref: 900 };
+
+		const width = tableOverflowWidth(wide, visible, 800);
+
+		expect(width).toBeGreaterThan(800);
+	});
+
+	it("reserves the message floor beyond the sized columns", () => {
+		const wide = { ...DEFAULT_WIDTHS, ref: 900 };
+		const sized =
+			900 +
+			DEFAULT_WIDTHS.graph +
+			DEFAULT_WIDTHS.diff +
+			DEFAULT_WIDTHS.author +
+			DEFAULT_WIDTHS.date +
+			DEFAULT_WIDTHS.sha;
+
+		expect(tableOverflowWidth(wide, visible, 800)).toBe(
+			sized + MESSAGE_MIN_WIDTH,
+		);
+	});
+
+	it("ignores a hidden column's width", () => {
+		const wide = { ...DEFAULT_WIDTHS, ref: 900 };
+		const withRef = tableOverflowWidth(wide, visible, 800);
+
+		const withoutRef = tableOverflowWidth(
+			wide,
+			{ ...visible, ref: false },
+			800,
+		);
+
+		expect(withoutRef).toBeLessThan(withRef);
 	});
 });
