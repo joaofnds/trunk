@@ -336,6 +336,28 @@ describe("store", () => {
 			expect(widths.ref).toBe(120);
 		});
 
+		describe("when a persisted width is not a usable number", () => {
+			const unusable = [
+				["null", null],
+				["a string", "120"],
+				["NaN", Number.NaN],
+				["negative", -40],
+				["zero", 0],
+			] as const;
+
+			it.each(unusable)(
+				"getColumnWidths falls back to the default for %s",
+				async (_name, value) => {
+					backingStore.set("column_widths", { ref: 200, author: value });
+
+					const widths = await getColumnWidths();
+
+					expect(widths.author).toBe(60);
+					expect(widths.ref).toBe(200);
+				},
+			);
+		});
+
 		it("round-trips persisted widths including the diff key", async () => {
 			await setColumnWidths({
 				ref: 120,
