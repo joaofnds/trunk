@@ -8,91 +8,127 @@ Decided 2026-09-21, after the Branch/Tag column shipped pinned at 120px.
 
 ## What went wrong
 
-Graph, author, date and sha each measured their content and auto-fit. Branch/Tag
+Graph, author, date and sha each measured their content and fitted it. Branch/Tag
 had neither a content-width function nor an effect, so it alone kept its default
 for every repository.
 
 One number could not be right for both directions at once. `backup-pre-rebase`
 needs about 138px and truncated at 120. A repository whose only ref is `main`
-needs about 58 and spent the remaining 62 on dead space before the lanes. Because
-the lanes begin at exactly the ref column's width, that single number produced
-both the truncation and the misalignment in the same screenshot.
+needs about 61 and spent the rest on dead space before the lanes. Because the
+lanes begin at exactly the ref column's width, that single number produced both
+the truncation and the misalignment in the same screenshot.
 
-## The rule
+## A fit measures what it draws
 
-A sized column's width comes from measuring the thing it draws, in the font it
-draws it in, including any chrome that shares the cell. Sizing for the label alone
-is the failure this rule exists to prevent: the ref column measured its pill's
-text but not the `+N` badge beside it, and a branch called `feature` rendered as
-`f…` on any row carrying two refs.
+A sized column's fit comes from measuring the thing it draws, in the font it draws
+it in, including any chrome that shares the cell. Sizing for the label alone is the
+failure this rule exists to prevent. A row's Branch/Tag cell draws its
+highest-priority ref, bold when it is HEAD, beside a `+N` badge that folds the rest,
+so `refContentWidth` measures exactly that pill: measuring every ref's name sized
+the column to names the row never shows, and leaving out the badge cut a label that
+shared its row with one. The badge's width comes from `overflowBadgeWidth`, the one
+function both the layout and the renderer call; two formulas for it once disagreed
+by 6px and the badge drew past the room it was given.
 
-Message is the exception and takes what the sized columns leave. It carries a
-minimum width instead, because a column with no intrinsic width and no floor
-reaches zero before anything on screen suggests that a width is what went wrong.
+Graph fits its lane count, Date the widest label the relative clock can produce,
+SHA seven characters, Author the widest name. Diff draws a bar with no intrinsic
+width, so its fit is its default.
 
-## Fitting the widest thing has a ceiling
+## A fit has a cap, and the fits share the list
 
 "Fit the widest thing found" is only right while the widest thing is
-representative. A backup branch carrying a timestamp runs past forty characters
-and took the ref column to about 360px; a history with deep merge nesting reports
-twenty-odd lanes and took the graph to nearly 400. Together they pushed Message,
-the column actually worth reading, down to a clipped sliver beside a wide band of
-empty space.
+representative. A backup branch carrying a timestamp runs past forty characters,
+and a contributor's full name can too. Fitted exactly, they push Message, the
+column worth reading, down to a sliver.
 
-Auto-fit stops at `REF_AUTOFIT_MAX_WIDTH` and `GRAPH_AUTOFIT_MAX_WIDTH`, both
-below `MAX_COLUMN_WIDTH`, which a drag still reaches. The cap bounds what the app
-decides on its own, not what the user may ask for. Past it a pill truncates with
-its full name a hover away and the graph pans to the lanes it cannot show, so the
-capped column loses nothing that cannot be recovered.
+So each fit stops at a cap: 240px for Branch/Tag, 160px for Author, and a third of
+the row for Graph, the share Git Graph's auto layout gives its graph. The pixel
+caps are starting values, not measurements.
 
-This and the fixed 120px default are the same defect from opposite ends, and
-neither was visible from the test suite — the first was reported from a
-screenshot, the second only showed up on opening the built app against a real
-repository.
+Caps alone cannot keep the layout inside the list. At the 720px window minimum with
+the default side panes the list is 244px, while the default sized columns alone sum
+to 390. So the fits share a budget: the row's width less Message's floor and less
+every user width. `shareBudget` lays each capped fit into it, and when together they
+overrun it they yield toward their floors in this order: SHA, Diff, Date, Author,
+Branch/Tag, Graph. That is rightmost first, as GitKraken's graph component shrinks
+its zones and NSTableView's sequential style does, with two moves: Diff yields ahead
+of Date and Author because its bar scales where their text is cut, and Branch/Tag
+ahead of Graph because a cut pill's name is a hover away while a lane past the edge
+is not. A layout the app chose therefore fits the list whenever the row, the list
+less its two 4px gutters, holds the six floors and Message's floor, 304px today;
+below that the row is wider than the list and the columns right of Message clip.
+
+MUI's outlier exclusion was considered and rejected: a page with three refs has no
+distribution to exclude from.
+
+## A user width has a floor and no ceiling
+
+The product owner's rule, 2026-09-22: "you should have like reasonable defaults for
+when a graph is open and of course we should not auto-layout in a way that makes
+those like columns that look terrible but if the user wants to do that by itself
+then we should let'em." The caps and the budget bound what the app decides on its
+own. A drag has only the column's floor, a stored width comes back as wide as it was
+left, and a user width sits outside the budget: the fits yield to make room for it,
+and once they are at their floors a wider drag pushes the row past the list.
+
+## Message has a floor
+
+Message is the slack column: it has no fit and no user width, and takes what the
+sized columns leave. Without a floor a narrow list drives it to zero before
+anything on screen says a width is what went wrong, so the header cell and the row
+cell both carry `MESSAGE_FLOOR`, 180px, as their minimum width.
 
 ## What a stored width means
 
 A width in the pref file is a claim about the user's intent, and the widths alone
 cannot carry it: every column's number looks the same whether the user dragged it
-or auto-fit computed it. `resized_columns` records which ones the user chose, and
-only those are restored. Everything else re-fits to the page that just loaded.
+or a fit computed it. `resized_columns` records which ones the user chose, and only
+those are restored. Everything else fits the page that just loaded. A pref file
+written before `resized_columns` existed reads as nobody having sized anything.
+
+A column joins that set only when a drag moves it. A click on a divider sizes
+nothing, and the pref writes are not ordered against each other, so a click that
+wrote the set could land after a double-click that had just cleared it.
 
 A restored width does not grow to meet content. The user's number wins until they
-change it, which is what GitKraken does and what AG Grid's grid documents as
-exempting user-resized columns from later auto-fits.
+double-click the column's divider, which hands the column back to its fit and drops
+it from `resized_columns`. That is the one way back, which is what makes a stored
+user width safe to keep; AG Grid and MUI both refit on a divider double-click.
 
-Before this, the restore replaced the whole object after the auto-fits had already
-run. Those effects untrack the widths they write, so nothing re-ran to correct it
-and every auto-fit result was discarded in favour of the previous session's
-numbers — including for columns the user had never touched. The graph column was
-affected too, which is why 39 render goldens were drawing the edge-fade mask that
-says the lanes run past the column when they did not.
+Before this, the restore replaced the whole object after the fits had already run.
+Those effects read the widths untracked, so nothing re-ran to correct it, and every
+fit was discarded in favour of the previous session's numbers, or of the defaults
+when nothing was stored.
 
 ## The pref file is untrusted
 
 Nothing upstream validates it: `prefs_get` hands back whatever JSON the file holds,
 and the widths were spread over the defaults unchecked. A stored `null`, string or
-`NaN` became the live width, and `NaN` was unrecoverable — the drag clamp is
-`max(floor, min(max, start + delta))`, which is `NaN` for a `NaN` start, so every
-drag produced `NaN` and persisted it. The column could not be dragged back and
-there is no in-app reset.
+`NaN` became the live width, and `NaN` was unrecoverable, because a drag computes
+from the width it starts at, so every drag produced `NaN` and persisted it.
 
 Widths are sanitized on the way in: a value survives only if it is a finite
 positive number, then it is rounded and raised to that column's floor, and
 nothing else: a width that is merely large is the user's to choose. Anything else
-falls back to that column's default.
+falls back to that column's default. `resized_columns` keeps only the names of
+sized columns.
 
-## Why auto-fit measures only the loaded page
+## When a fit is measured and when the budget applies
 
-The list is virtualized, so most rows have never been measured. Fitting "the
-content" would mean fitting whatever the scroll position happened to have
-rendered, which is not stable across launches. Each column keeps a running maximum
-over the pages that have loaded, reset when the graph is replaced.
+Content is measured when a page loads and when the graph is replaced, never on
+scroll. The list is virtualized, so most rows have never been measured, and
+fitting "the content" would mean fitting whatever the scroll position happened to
+render. Each column keeps a running maximum over the pages that have loaded,
+reset when the graph is replaced. AG Grid documents the same limit for its own
+content auto-size: with 10,000 rows and 50 rendered, only those 50 are measured.
 
-This is the same limit AG Grid documents for its own content auto-size: with
-10,000 rows and 50 rendered, only those 50 are measured. It is an approximation,
-and the alternative — measuring rows that are not on screen — costs more than the
-occasional column that grows once when a wider value pages in.
+The budget re-applies whenever the list's width changes, read from a
+`ResizeObserver` on the list's root, and whenever a column is shown, hidden, sized
+by the user or handed back. A user width is never changed by that pass. While the
+list is unmeasured there is no budget and only the pixel caps apply.
+
+All of this runs in one effect. The fits share one budget, and separate writers of
+the same object cannot share anything.
 
 ## Header and rows read one width per column
 
@@ -129,12 +165,13 @@ belongs to.
 
 ## What this does not solve
 
-Widths are absolute pixels and carry no record of the lane pitch they were chosen
-under. Nothing writes `displaySettings` today, so a persisted graph width cannot
-yet disagree with `laneWidth`. When a display-settings pref lands, it will, and
-the graph column's auto-fit already shrinks a width that exceeds its target.
+A row wider than the list clips the columns right of Message; nothing scrolls it
+horizontally yet.
 
-Nothing validates the widths against the container. The window has a floor and
-Message has a minimum, so the failure is now clipping rather than a column
-squeezed to nothing, but a sum wider than the viewport still overflows rather than
-redistributing.
+User widths are one set for every repository, so a graph narrowed for a forty-lane
+repository stays narrow on a one-lane one.
+
+Widths are absolute pixels and carry no record of the lane pitch they were chosen
+under. Nothing writes `displaySettings` today, so a stored graph width cannot yet
+disagree with `laneWidth`. When a display-settings pref lands, a user-sized graph
+width will keep its pixels while the lanes change pitch.

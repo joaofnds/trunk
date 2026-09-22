@@ -797,6 +797,139 @@ describe("CommitGraph", () => {
 			) as Element;
 		}
 
+		// The one way back from a user width to the column's fit.
+		it("hands a double-clicked column back to its fit", async () => {
+			const { container } = mountWithPrefs(new Map());
+			await flush();
+			const fit = renderedWidth(headerCell(container, "author"));
+			await drag(resizeHandle(container, "author"), 60);
+
+			await fireEvent.dblClick(resizeHandle(container, "author"));
+			await flush();
+
+			expect(renderedWidth(headerCell(container, "author"))).toBe(fit);
+		});
+
+		describe("inside a list of known width", () => {
+			// Reports the commit list at a width the test sets, and nothing else,
+			// so the virtual list keeps the observer it gets everywhere else.
+			const unobservedResizeObserver = globalThis.ResizeObserver;
+
+			afterEach(() => {
+				globalThis.ResizeObserver = unobservedResizeObserver;
+			});
+
+			function observeListAt(width: number) {
+				const lists: { callback: ResizeObserverCallback; list: Element }[] = [];
+				const report = (
+					target: { callback: ResizeObserverCallback; list: Element },
+					w: number,
+				) =>
+					target.callback(
+						[
+							{
+								target: target.list,
+								contentRect: { width: w },
+							} as ResizeObserverEntry,
+						],
+						{} as ResizeObserver,
+					);
+
+				globalThis.ResizeObserver = class {
+					constructor(private readonly callback: ResizeObserverCallback) {}
+					observe(target: Element) {
+						if (target.getAttribute("role") !== "listbox") return;
+						const observed = { callback: this.callback, list: target };
+						lists.push(observed);
+						queueMicrotask(() => report(observed, width));
+					}
+					unobserve() {}
+					disconnect() {}
+				} as unknown as typeof ResizeObserver;
+
+				return {
+					resize: async (w: number) => {
+						for (const observed of lists) report(observed, w);
+						await flush();
+					},
+				};
+			}
+
+			const everyColumnShown = {
+				ref: true,
+				graph: true,
+				message: true,
+				diff: true,
+				author: true,
+				date: true,
+				sha: true,
+			};
+
+			function sizedTotal(container: HTMLElement): number {
+				return (["ref", "graph", "diff", "author", "date", "sha"] as const)
+					.map((column) =>
+						Number.parseFloat(renderedWidth(headerCell(container, column))),
+					)
+					.reduce((sum, width) => sum + width, 0);
+			}
+
+			it("fits the sized columns into what Message's floor leaves of the row", async () => {
+				observeListAt(408);
+				const { container } = mountWithPrefs(new Map());
+				await flush();
+
+				expect(sizedTotal(container)).toBe(
+					408 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+				);
+			});
+
+			// A user width sits outside the budget, so the fits yield to it
+			// rather than pushing Message under its floor.
+			it("narrows the fits to make room for a dragged column", async () => {
+				observeListAt(608);
+				const { container } = mountWithPrefs(new Map());
+				await flush();
+
+				await drag(resizeHandle(container, "author"), 60);
+
+				expect(sizedTotal(container)).toBe(
+					608 - 2 * COLUMN_PADDING_X - MESSAGE_FLOOR,
+				);
+			});
+
+			it("leaves a hidden column out of the budget", async () => {
+				observeListAt(1608);
+				const wide = mountWithPrefs(new Map());
+				await flush();
+				const shaFit = renderedWidth(headerCell(wide.container, "sha"));
+				wide.unmount();
+				observeListAt(608);
+				const refHidden = new Map<string, unknown>([
+					["column_visibility", { ...everyColumnShown, ref: false }],
+				]);
+
+				const { container } = mountWithPrefs(refHidden);
+				await flush();
+
+				expect(renderedWidth(headerCell(container, "sha"))).toBe(shaFit);
+			});
+
+			it("gives the columns back their fits when the list widens", async () => {
+				observeListAt(1608);
+				const wide = mountWithPrefs(new Map());
+				await flush();
+				const fits = sizedTotal(wide.container);
+				wide.unmount();
+				const list = observeListAt(408);
+				const { container } = mountWithPrefs(new Map());
+				await flush();
+
+				await list.resize(1608);
+
+				expect(sizedTotal(container)).toBe(fits);
+			});
+		});
+
 		describe("across a mount", () => {
 			it("keeps the width of a column the user dragged", async () => {
 				const prefs = new Map<string, unknown>();
@@ -828,6 +961,21 @@ describe("CommitGraph", () => {
 				await flush();
 
 				expect(renderedWidth(headerCell(stale.container, "author"))).toBe(fit);
+			});
+
+			it("fits a double-clicked column again on the next mount", async () => {
+				const prefs = new Map<string, unknown>();
+				const first = mountWithPrefs(prefs);
+				await flush();
+				const fit = renderedWidth(headerCell(first.container, "author"));
+				await drag(resizeHandle(first.container, "author"), 60);
+				await fireEvent.dblClick(resizeHandle(first.container, "author"));
+				first.unmount();
+
+				const second = mountWithPrefs(prefs);
+				await flush();
+
+				expect(renderedWidth(headerCell(second.container, "author"))).toBe(fit);
 			});
 
 			// A click on a divider is not a drag: the column goes on fitting what
@@ -903,7 +1051,7 @@ describe("CommitGraph", () => {
 
 		// A user width has a floor and no ceiling: however wide the user asks for,
 		// the column follows.
-		it.each(["author", "graph"] as const)(
+		it.each(["ref", "author", "graph"] as const)(
 			"lets a drag widen the %s column as far as the pointer goes",
 			async (column) => {
 				const { container } = mountHeader();

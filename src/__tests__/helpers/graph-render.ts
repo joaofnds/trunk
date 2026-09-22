@@ -49,7 +49,8 @@ export function loadExport(name: string): LayoutExport {
 
 const WIDE_GLYPH = /[0-9mwMW]/;
 
-function stubTextWidth(text: string): number {
+/** The text metric every mount measures with, in place of a real canvas. */
+export function stubTextWidth(text: string): number {
 	return [...text].reduce((w, ch) => w + (WIDE_GLYPH.test(ch) ? 10 : 6), 0);
 }
 

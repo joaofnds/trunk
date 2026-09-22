@@ -1,24 +1,24 @@
-<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
+<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="86">
   <defs>
     <clipPath id="graph-clip-g7">
-      <rect height="4000" width="16" x="124" y="0">
+      <rect height="4000" width="16" x="66" y="0">
     <clipPath id="graph-dot-clip-g7">
-      <rect height="4000" width="28" x="118" y="0">
+      <rect height="4000" width="28" x="60" y="0">
   <g clip-path="url(#graph-clip-g7)">
-    <g class="overlay-paths" transform="translate(124, 0)">
+    <g class="overlay-paths" transform="translate(66, 0)">
       <path d="M 8 14 V 42" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 42 V 70" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g clip-path="url(#graph-dot-clip-g7)">
-    <g class="overlay-dots" transform="translate(124, 0)">
+    <g class="overlay-dots" transform="translate(66, 0)">
       <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
     <clipPath id="ref-clip-g7">
-      <rect height="4000" width="116" x="0" y="0">
-    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="14" y2="14">
+      <rect height="4000" width="58" x="0" y="0">
+    <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="74" y1="14" y2="14">
     <g clip-path="url(#ref-clip-g7)">
       <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="4">
       <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 9)">

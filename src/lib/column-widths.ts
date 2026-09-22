@@ -33,6 +33,11 @@ export const DEFAULT_WIDTHS: ColumnWidths = {
 	sha: 50,
 };
 
+/** Every column with a width of its own, which is every column but Message. */
+export const SIZED_COLUMNS: readonly (keyof ColumnWidths)[] = Object.keys(
+	DEFAULT_WIDTHS,
+) as (keyof ColumnWidths)[];
+
 export function isSizedColumn(name: unknown): name is keyof ColumnWidths {
 	return typeof name === "string" && Object.hasOwn(DEFAULT_WIDTHS, name);
 }

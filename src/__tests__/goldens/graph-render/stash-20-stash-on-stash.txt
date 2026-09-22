@@ -1,24 +1,24 @@
-<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
+<svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="86">
   <defs>
     <clipPath id="graph-clip-g57">
-      <rect height="4000" width="16" x="124" y="0">
+      <rect height="4000" width="16" x="66" y="0">
     <clipPath id="graph-dot-clip-g57">
-      <rect height="4000" width="28" x="118" y="0">
+      <rect height="4000" width="28" x="60" y="0">
   <g clip-path="url(#graph-clip-g57)">
-    <g class="overlay-paths" transform="translate(124, 0)">
+    <g class="overlay-paths" transform="translate(66, 0)">
       <path d="M 8 23 V 42" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 42 V 70" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
   <g clip-path="url(#graph-dot-clip-g57)">
-    <g class="overlay-dots" transform="translate(124, 0)">
+    <g class="overlay-dots" transform="translate(66, 0)">
       <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)" width="10.5" x="2.75" y="8.75">
       <rect fill="none" height="10.5" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)" width="10.5" x="2.75" y="36.75">
       <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
       <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
     <clipPath id="ref-clip-g57">
-      <rect height="4000" width="116" x="0" y="0">
-    <line opacity="1" stroke-width="1" stroke="var(--lane-0)" style="filter: brightness(0.75);" x1="56" x2="132" y1="70" y2="70">
+      <rect height="4000" width="58" x="0" y="0">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-0)" style="filter: brightness(0.75);" x1="56" x2="74" y1="70" y2="70">
     <g clip-path="url(#ref-clip-g57)">
       <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="60">
       <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 65)">

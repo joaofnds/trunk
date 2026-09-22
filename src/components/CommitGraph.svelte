@@ -43,7 +43,10 @@ import {
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
 	MESSAGE_FLOOR,
+	refContentWidth,
+	SIZED_COLUMNS,
 	shaContentWidth,
+	shareBudget,
 	showsHeaderLabel,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
@@ -345,17 +348,43 @@ const floors = columnFloors();
 // rather than mutated, so the fits re-run when a column joins or leaves it.
 let userSizedColumns = $state<ReadonlySet<keyof ColumnWidths>>(new Set());
 
+/** The width the rows lay their cells out in, 0 until the list is measured. */
+let rowWidth = $state(0);
+
+$effect(() => {
+	const list = containerRef;
+	if (!list) return;
+
+	const observer = new ResizeObserver(([entry]) => {
+		rowWidth = entry.contentRect.width - 2 * COLUMN_PADDING_X;
+	});
+	observer.observe(list);
+
+	return () => observer.disconnect();
+});
+
 // Max content widths for auto-fit (updated when commits load)
+let maxRefContentWidth = $state(0);
 let maxAuthorContentWidth = $state(0);
 let maxDateContentWidth = $state(0);
 let maxShaContentWidth = $state(0);
 
 function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	if (reset) {
+		maxRefContentWidth = 0;
 		maxAuthorContentWidth = 0;
 		maxDateContentWidth = 0;
 		maxShaContentWidth = 0;
 	}
+	const pageRefWidth = refContentWidth(
+		newCommits,
+		measureTextWidth,
+		displaySettings,
+	);
+	if (pageRefWidth > maxRefContentWidth) {
+		maxRefContentWidth = pageRefWidth;
+	}
+
 	const pageAuthorWidth = authorContentWidth(newCommits, measureTextWidth);
 	if (pageAuthorWidth > maxAuthorContentWidth) {
 		maxAuthorContentWidth = pageAuthorWidth;
@@ -369,40 +398,35 @@ function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	}
 }
 
-// Auto-fit column widths to content. Uses untrack on columnWidths reads to avoid
-// infinite reactive loops (each effect writes columnWidths, which would re-trigger others).
-$effect(() => {
-	const targetWidth = graphTargetWidth(maxColumns, displaySettings.laneWidth);
-	if (!userSizedColumns.has("graph")) {
-		columnWidths = { ...untrack(() => columnWidths), graph: targetWidth };
-	}
-});
+const userSizedWidth = $derived(
+	[...userSizedColumns]
+		.filter((column) => columnVisibility[column])
+		.reduce((total, column) => total + columnWidths[column], 0),
+);
 
+// Every fit is laid out by one effect because they share one budget, which
+// separate writers of the same object cannot do. It writes columnWidths, so it
+// reads it untracked; the user widths it leaves room for arrive through
+// userSizedWidth, which changes only when those widths do.
 $effect(() => {
-	const w = maxAuthorContentWidth;
-	if (w <= 0) return;
-	const targetWidth = Math.max(w, floors.author);
-	if (!userSizedColumns.has("author")) {
-		columnWidths = { ...untrack(() => columnWidths), author: targetWidth };
-	}
-});
+	const fitted = SIZED_COLUMNS.filter(
+		(column) => columnVisibility[column] && !userSizedColumns.has(column),
+	);
+	const fits = shareBudget({
+		wanted: {
+			ref: maxRefContentWidth || DEFAULT_WIDTHS.ref,
+			graph: graphTargetWidth(maxColumns, displaySettings.laneWidth),
+			diff: DEFAULT_WIDTHS.diff,
+			author: maxAuthorContentWidth || DEFAULT_WIDTHS.author,
+			date: maxDateContentWidth || DEFAULT_WIDTHS.date,
+			sha: maxShaContentWidth || DEFAULT_WIDTHS.sha,
+		},
+		fitted,
+		rowWidth,
+		reserved: userSizedWidth + (columnVisibility.message ? MESSAGE_FLOOR : 0),
+	});
 
-$effect(() => {
-	const w = maxDateContentWidth;
-	if (w <= 0) return;
-	const targetWidth = Math.max(w, floors.date);
-	if (!userSizedColumns.has("date")) {
-		columnWidths = { ...untrack(() => columnWidths), date: targetWidth };
-	}
-});
-
-$effect(() => {
-	const w = maxShaContentWidth;
-	if (w <= 0) return;
-	const targetWidth = Math.max(w, floors.sha);
-	if (!userSizedColumns.has("sha")) {
-		columnWidths = { ...untrack(() => columnWidths), sha: targetWidth };
-	}
+	columnWidths = { ...untrack(() => columnWidths), ...fits };
 });
 
 let stashOids = $state<Set<string>>(new Set());
@@ -477,6 +501,14 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 
 	window.addEventListener("mousemove", onMouseMove);
 	window.addEventListener("mouseup", onMouseUp);
+}
+
+/** Hands a column back to its fit, the one way out of a user width. */
+function refitColumn(column: keyof ColumnWidths) {
+	const remaining = new Set(userSizedColumns);
+	remaining.delete(column);
+	userSizedColumns = remaining;
+	saveColumnLayout(columnWidths, remaining);
 }
 
 /**
@@ -1847,7 +1879,7 @@ $effect(() => {
             {/if}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             {#if col.key !== lastVisibleColumn}
-              <div class="col-resize-handle" onmousedown={(e) => startColumnResize(col.key, e)}></div>
+              <div class="col-resize-handle" onmousedown={(e) => startColumnResize(col.key, e)} ondblclick={() => refitColumn(col.key)}></div>
             {/if}
           </div>
         {:else}
