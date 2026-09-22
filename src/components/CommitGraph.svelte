@@ -2009,9 +2009,11 @@ $effect(() => {
               {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
                 {@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
                 {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
-                <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (follows the dot through the pan) -->
+                <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (follows the dot through the pan, stopping at the graph band's edge once the dot has panned out of it) -->
                 {#if columnVisibility.graph}
-                  {@const connectorEndX = refOffset + COLUMN_PADDING_X + pill.dotCx - scrollX - (pill.isHollow ? displaySettings.dotRadius : 0)}
+                  {@const bandStartX = refOffset + COLUMN_PADDING_X}
+                  {@const dotEndX = bandStartX + pill.dotCx - scrollX - (pill.isHollow ? displaySettings.dotRadius : 0)}
+                  {@const connectorEndX = Math.max(bandStartX, dotEndX)}
                   <line
                     x1={pillGroupRightX}
                     y1={pill.y}
