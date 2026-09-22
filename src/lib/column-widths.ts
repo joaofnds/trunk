@@ -5,9 +5,12 @@ import {
 	ICON_WIDTH,
 	LANE_WIDTH,
 	PILL_FONT,
+	PILL_FONT_BOLD,
+	PILL_GAP,
 	PILL_MARGIN_LEFT,
 	PILL_PADDING_X,
 } from "./graph-constants.js";
+import { overflowBadgeWidth, sortRefs } from "./ref-pill-data.js";
 import { WIDEST_LABELS } from "./relative-time.js";
 import type { GraphCommit, GraphDisplaySettings } from "./types.js";
 
@@ -176,10 +179,22 @@ export function refContentWidth(
 	let widest = 0;
 	for (const commit of commits) {
 		if (commit.oid === "__wip__" || commit.is_stash) continue;
-		for (const ref of commit.refs) {
-			const width = measure(ref.short_name, PILL_FONT) + chrome;
-			if (width > widest) widest = width;
-		}
+		if (commit.refs.length === 0) continue;
+
+		// A row shows its highest-priority ref and folds the rest into a "+N"
+		// badge, so that pill is the one to fit, and it shares the row with the
+		// badge. Sizing for the label alone truncated it by the badge's width.
+		const [primary] = sortRefs(commit.refs);
+		const badge = overflowBadgeWidth(commit.refs.length - 1);
+		const width =
+			measure(
+				primary.short_name,
+				primary.is_head ? PILL_FONT_BOLD : PILL_FONT,
+			) +
+			chrome +
+			(badge > 0 ? PILL_GAP + badge : 0);
+
+		if (width > widest) widest = width;
 	}
 
 	return widest;

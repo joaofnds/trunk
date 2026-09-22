@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { makeCommit } from "../__tests__/helpers/factories";
+import { beforeEach, describe, expect, it } from "vitest";
+import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
@@ -18,10 +18,13 @@ import {
 } from "./column-widths.js";
 import {
 	COLUMN_PADDING_X,
-	DEFAULT_GRAPH_SETTINGS,
 	LANE_WIDTH,
+	PILL_FONT_BOLD,
 } from "./graph-constants.js";
+import { buildRefPillData } from "./ref-pill-data.js";
 import { relativeLabel } from "./relative-time.js";
+import { resetCache } from "./text-measure.js";
+import type { GraphCommit } from "./types.js";
 
 // A proportional font, faked: digits and round glyphs are wider than the rest,
 // so two strings of equal length can still measure differently — as they do on
@@ -201,37 +204,94 @@ describe("showsHeaderLabel", () => {
 });
 
 describe("refContentWidth", () => {
-	it("fits the widest pill the page holds", () => {
-		const commits = [
+	// HEAD's pill renders bold, so a metric that ignores the font cannot tell
+	// whether the fit measured it in the font it is drawn in.
+	function measureByFont(text: string, font: string): number {
+		return measure(text) + (font === PILL_FONT_BOLD ? text.length : 0);
+	}
+
+	/** The labels the pills show when the ref column is `width` wide. */
+	function pillLabels(commits: GraphCommit[], width: number): string[] {
+		const nodes = commits.map((commit, y) => ({
+			oid: commit.oid,
+			x: 0,
+			y,
+			colorIndex: 0,
+			isMerge: false,
+			isBranchTip: false,
+			isStash: false,
+			isWip: false,
+		}));
+
+		return buildRefPillData(nodes, commits, width, measureByFont).map(
+			(pill) => pill.truncatedLabel,
+		);
+	}
+
+	const head = makeRef({ short_name: "main", is_head: true });
+	const topic = makeRef({ short_name: "backup-pre-rebase" });
+	const topicRemote = makeRef({
+		short_name: "origin/backup-pre-rebase",
+		ref_type: "RemoteBranch",
+	});
+	const page = [
+		makeCommit({ oid: "a".repeat(40), refs: [head] }),
+		makeCommit({ oid: "b".repeat(40), refs: [topic, topicRemote] }),
+	];
+
+	beforeEach(resetCache);
+
+	it("gives every pill on the page room for its whole label", () => {
+		const width = refContentWidth(page, measureByFont);
+
+		expect(pillLabels(page, width)).toEqual(["main", "backup-pre-rebase"]);
+	});
+
+	// A row draws its highest-priority ref and folds the rest into a badge, so
+	// the column is sized to that pill, not to the longest name the row holds.
+	it("leaves the widest pill no room to spare", () => {
+		const width = refContentWidth(page, measureByFont);
+
+		expect(pillLabels(page, width - 1)).not.toContain("backup-pre-rebase");
+	});
+
+	it("fits HEAD's pill in the bold font it is drawn in", () => {
+		const onlyHead = [
 			makeCommit({
 				oid: "a".repeat(40),
-				refs: [
-					{
-						name: "refs/heads/main",
-						short_name: "main",
-						ref_type: "LocalBranch",
-						is_head: true,
-						color_index: 0,
-					},
-				],
-			}),
-			makeCommit({
-				oid: "b".repeat(40),
-				refs: [
-					{
-						name: "refs/heads/backup-pre-rebase",
-						short_name: "backup-pre-rebase",
-						ref_type: "LocalBranch",
-						is_head: false,
-						color_index: 1,
-					},
-				],
+				refs: [makeRef({ short_name: "backup-pre-rebase", is_head: true })],
 			}),
 		];
 
-		const width = refContentWidth(commits, measure, DEFAULT_GRAPH_SETTINGS);
+		const width = refContentWidth(onlyHead, measureByFont);
 
-		expect(width).toBeGreaterThan(measure("backup-pre-rebase"));
+		expect(pillLabels(onlyHead, width)).toEqual(["backup-pre-rebase"]);
+	});
+
+	// The WIP row and stash rows draw no pill in this column.
+	it.each([
+		["the WIP row", { oid: "__wip__" }],
+		["a stash row", { oid: "c".repeat(40), is_stash: true }],
+	])("ignores %s", (_name, row) => {
+		const withRow = [
+			...page,
+			makeCommit({
+				...row,
+				refs: [makeRef({ short_name: "a-far-longer-name-than-any-other" })],
+			}),
+		];
+
+		expect(refContentWidth(withRow, measureByFont)).toBe(
+			refContentWidth(page, measureByFont),
+		);
+	});
+
+	describe("when the page carries no refs", () => {
+		it("asks for no width", () => {
+			const bare = [makeCommit({ oid: "a".repeat(40) })];
+
+			expect(refContentWidth(bare, measureByFont)).toBe(0);
+		});
 	});
 });
 

@@ -53,8 +53,10 @@ export function isRemoteOnlyRef(ref: RefLabel, allRefs: RefLabel[]): boolean {
 	);
 }
 
-/** Estimate "+N" badge width based on character count */
-function estimateBadgeWidth(count: number): number {
+/** Width reserved for the "+N" badge that folds `count` more refs, 0 for none */
+export function overflowBadgeWidth(count: number): number {
+	if (count <= 0) return 0;
+
 	// "+N" text is small (BADGE_FONT_SIZE), estimate ~7px per char + padding
 	const chars = `+${count}`.length;
 	return chars * 7 + 6;
@@ -101,7 +103,7 @@ export function buildRefPillData(
 
 		// Compute available text width
 		const badgeWidth =
-			overflowCount > 0 ? PILL_GAP + estimateBadgeWidth(overflowCount) : 0;
+			overflowCount > 0 ? PILL_GAP + overflowBadgeWidth(overflowCount) : 0;
 		// Right gap matches the dot's visual inset: COLUMN_PADDING_X + (laneWidth/2 - dotRadius)
 		// so the pill and first dot are equidistant from the column divider
 		const dotInset = settings.laneWidth / 2 - settings.dotRadius;
