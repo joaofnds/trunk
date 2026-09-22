@@ -1,8 +1,10 @@
 <svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
   <defs>
-    <clipPath id="graph-clip">
+    <clipPath id="graph-clip-g15">
       <rect height="4000" width="16" x="124" y="0">
-  <g clip-path="url(#graph-clip)">
+    <clipPath id="graph-dot-clip-g15">
+      <rect height="4000" width="28" x="118" y="0">
+  <g clip-path="url(#graph-clip-g15)">
     <g class="overlay-paths" transform="translate(124, 0)">
       <path d="M 8 14 V 42" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 42 V 70" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
@@ -33,37 +35,38 @@
       <path d="M 8 742 V 770" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 770 V 798" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 798 V 826" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-  <g class="overlay-dots" transform="translate(124, 0)">
-    <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="182" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="210" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="238" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="266" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="294" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="322" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="350" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="378" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="406" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="434" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="462" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="490" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="518" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="546" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="574" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="602" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="630" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="658" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="686" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="714" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="742" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="770" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="798" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="826" fill="var(--lane-0)" r="6">
+  <g clip-path="url(#graph-dot-clip-g15)">
+    <g class="overlay-dots" transform="translate(124, 0)">
+      <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="182" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="210" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="238" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="266" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="294" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="322" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="350" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="378" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="406" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="434" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="462" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="490" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="518" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="546" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="574" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="602" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="630" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="658" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="686" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="714" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="742" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="770" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="798" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="826" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
     <line opacity="1" stroke-width="2" stroke="var(--lane-0)" style="" x1="56" x2="132" y1="14" y2="14">
     <rect fill-opacity="0.14" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="52" x="4" y="4">

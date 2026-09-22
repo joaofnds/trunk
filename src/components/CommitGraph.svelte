@@ -53,8 +53,10 @@ import {
 	BADGE_HEIGHT,
 	COLUMN_PADDING_X,
 	DEFAULT_GRAPH_SETTINGS,
+	EDGE_FADE_WIDTH,
 	ICON_GAP,
 	ICON_WIDTH,
+	nextGraphInstanceId,
 	PILL_FONT,
 	PILL_FONT_SIZE,
 	PILL_GAP,
@@ -163,6 +165,17 @@ let {
 	visibilityResolved: refVisibilityResolved = true,
 }: Props = $props();
 const scheduler = getScheduler();
+
+/**
+ * Every open repository keeps its CommitGraph mounted, hidden by visibility
+ * rather than removed, so a clip path named the same in two of them is one id
+ * twice in one document. The browser resolves such a reference to whichever
+ * came first, which clipped a wide graph to a collapsed one in another tab.
+ *
+ * Counted rather than random so a render is reproducible: the goldens compare
+ * the markup, and a random id would differ on every run.
+ */
+const clipScope = `g${nextGraphInstanceId()}`;
 
 // Per-row comment badge count. Gated on the toggle + an active session so the
 // badge's self-hide at 0 also enforces the gate (children stay dumb). The WIP
@@ -1279,12 +1292,11 @@ const geometry = $derived(makePathContext(svgSettings));
 // (bead-on-a-string). `graphX` is the dot's unscrolled centre — from the node
 // for the dots layer, from the pill for its connector.
 function stickyDotX(graphX: number, colWidth: number, scroll: number): number {
+	const halfLane = displaySettings.laneWidth / 2;
+
 	return Math.max(
-		displaySettings.laneWidth / 2,
-		Math.min(
-			colWidth - 2 * COLUMN_PADDING_X - displaySettings.dotRadius,
-			graphX - scroll,
-		),
+		halfLane,
+		Math.min(colWidth - 2 * COLUMN_PADDING_X - halfLane, graphX - scroll),
 	);
 }
 
@@ -1918,19 +1930,96 @@ $effect(() => {
                hidden CommitRow drops that cell and the Message text slides into
                the band, so anything painted here lands on top of it. -->
           {#if columnVisibility.graph}
+          {@const railBandWidth = graphColWidth - 2 * COLUMN_PADDING_X}
+          <!-- A dot whose lane sits past an edge is clamped inward, away from
+               the lane its rail still runs down, so the rail shows past the dot
+               on the far side. The hug band hides the rails behind those dots.
+
+               It grows with the hug rather than appearing at full width: its
+               width is how far the lanes overrun the edge, so it arrives as the
+               first dot starts being pulled in and stops at a dot's width plus
+               padding, which is all a pile of hugged dots ever covers. Below
+               that the rails would be cut before the dots that hide them.
+
+               Measured from the column and the lane count, never from the dots
+               on screen: reading it from the rendered rows made it appear and
+               vanish as the list scrolled, and the rails were clipped to
+               whatever it happened to be at the time. -->
+          {@const hugMax = 2 * displaySettings.dotRadius + COLUMN_PADDING_X}
+          <!-- Where the fade reaches zero, measured in from the band's edge. A
+               hugged dot sits half a lane in, and the rail carries on half a
+               radius past its centre before it is gone: enough to read as the
+               line ending under the dot, not so much that it stops short of it
+               and leaves a gap. -->
+          {@const fadeEndInset =
+            displaySettings.laneWidth / 2 - displaySettings.dotRadius / 2}
+          {@const hugRight = Math.min(
+            hugMax,
+            Math.max(0, naturalGraphWidth - scrollX - railBandWidth),
+          )}
+          {@const hugLeft = Math.min(hugMax, Math.max(0, scrollX))}
+          <!-- Once the hug takes the whole band there is no stretch of rail left
+               to fade from, and a gradient across it leaves the rail opaque at
+               one edge: the faint line that still showed through a fully
+               collapsed column. Nothing is drawable there, so nothing is drawn. -->
+          {@const railsHidden = railBandWidth - hugLeft - hugRight <= 0}
           <!-- GRAPH-02: clip graph content to column width -->
           <defs>
-            <clipPath id="graph-clip">
-              <rect x={refOffset + COLUMN_PADDING_X} y="0" width={graphColWidth - 2 * COLUMN_PADDING_X} height={contentHeight} />
+            <clipPath id="graph-clip-{clipScope}">
+              <rect x={refOffset + COLUMN_PADDING_X} y="0" width={railBandWidth} height={contentHeight} />
+            </clipPath>
+            <!-- A dot clamped to an edge is where its line ends, but the rail
+                 behind it keeps drawing and shows past the dot on the far side.
+                 Each lane colour gets a gradient that fades it out across the
+                 hug band, so the rail dies under the dots rather than stopping
+                 at a hard line short of them.
+
+                 Painted on each rail's own stroke. A mask over the layer would
+                 be rasterized at the full scroll height, which is the whole
+                 history rather than the rows on screen. -->
+            {#if hugRight > 0 || hugLeft > 0}
+              {#each { length: 8 } as _, lane}
+                <!-- Authored in the rails group's own space: userSpaceOnUse
+                     resolves against the element that references the gradient,
+                     and that group carries the column offset and the pan. Using
+                     absolute coordinates here put the fade a whole column to
+                     the right of the band, where it never touched a rail. -->
+                <linearGradient id="rail-fade-{lane}-{clipScope}" gradientUnits="userSpaceOnUse"
+                  x1={scrollX} x2={scrollX + railBandWidth}>
+                  {#if hugLeft > 0}
+                    <stop offset="0" stop-color="var(--lane-{lane})" stop-opacity="0" />
+                    <stop offset={fadeEndInset / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="0" />
+                    <stop offset={hugLeft / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="1" />
+                  {/if}
+                  {#if hugRight > 0}
+                    <stop offset={(railBandWidth - hugRight) / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="1" />
+                    <stop offset={(railBandWidth - fadeEndInset) / railBandWidth} stop-color="var(--lane-{lane})" stop-opacity="0" />
+                    <stop offset="1" stop-color="var(--lane-{lane})" stop-opacity="0" />
+                  {/if}
+                </linearGradient>
+              {/each}
+            {/if}
+            <!-- The dots' own band. A dot is clamped to a lane centre, so half of
+                 it sits outside the rail band at either edge; cutting it there
+                 would slice every hugged dot in half. It is the rail band grown
+                 by a radius, which still ends inside the column's padding. -->
+            <clipPath id="graph-dot-clip-{clipScope}">
+              <rect
+                x={refOffset + COLUMN_PADDING_X - displaySettings.dotRadius}
+                y="0"
+                width={railBandWidth + 2 * displaySettings.dotRadius}
+                height={contentHeight} />
             </clipPath>
           </defs>
           <!-- GRAPH-02: Layer A — rails + connections, scrolled and clipped.
                Translated left by scrollX to pan through lanes. -->
-          <g clip-path="url(#graph-clip)">
+          <g clip-path="url(#graph-clip-{clipScope})">
             <g class="overlay-paths" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
-              {#each visible.paths as path}
+              {#each railsHidden ? [] : visible.paths as path}
                 <path d={path.d} fill="none"
-                  stroke={laneColor(path.colorIndex)}
+                  stroke={hugRight > 0 || hugLeft > 0
+                    ? `url(#rail-fade-${path.colorIndex % 8}-${clipScope})`
+                    : laneColor(path.colorIndex)}
                   stroke-width={displaySettings.edgeStroke}
                   stroke-linecap="round"
                   stroke-dasharray={path.dashed ? '3 3' : 'none'} />
@@ -1941,25 +2030,32 @@ $effect(() => {
                Dots slide along their horizontal line to stay visible in the viewport.
                Viewport spans graph coordinates [scrollX, scrollX + graphColWidth].
                Dots clamp to viewport edges (bead-on-a-string effect). -->
+          <g clip-path="url(#graph-dot-clip-{clipScope})">
           <g class="overlay-dots" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
             {#each visible.dots as node}
               {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
+              <!-- A stroke straddles the path it is drawn on, so half of it falls
+                   outside. Every stroked marker is inset by half its stroke, which
+                   makes all four kinds occupy the same width as the filled dot:
+                   without it a merge read 14px against a solid 12 and sat visibly
+                   off the line its lane shares. -->
+              {@const strokeInset = displaySettings.edgeStroke / 2}
               {#if node.isWip}
-                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius - strokeInset}
                   fill="none" stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.edgeStroke} stroke-dasharray="3 3" />
               {:else if node.isStash}
                 <rect
-                  x={clampedCx - displaySettings.dotRadius}
-                  y={geometry.cy(node.y) - displaySettings.dotRadius}
-                  width={displaySettings.dotRadius * 2}
-                  height={displaySettings.dotRadius * 2}
+                  x={clampedCx - displaySettings.dotRadius + strokeInset}
+                  y={geometry.cy(node.y) - displaySettings.dotRadius + strokeInset}
+                  width={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
+                  height={displaySettings.dotRadius * 2 - displaySettings.edgeStroke}
                   fill="none"
                   stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.edgeStroke}
                   stroke-dasharray="3 3" />
               {:else if node.isMerge}
-                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
+                <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius - displaySettings.mergeStroke / 2}
                   fill="var(--bg-1)" stroke={laneColor(node.colorIndex)}
                   stroke-width={displaySettings.mergeStroke} />
               {:else}
@@ -1967,6 +2063,7 @@ $effect(() => {
                   fill={laneColor(node.colorIndex)} />
               {/if}
             {/each}
+          </g>
           </g>
           {/if}
           {#if columnVisibility.ref}

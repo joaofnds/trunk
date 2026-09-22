@@ -1,17 +1,20 @@
 <svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
   <defs>
-    <clipPath id="graph-clip">
+    <clipPath id="graph-clip-g12">
       <rect height="4000" width="16" x="124" y="0">
-  <g clip-path="url(#graph-clip)">
+    <clipPath id="graph-dot-clip-g12">
+      <rect height="4000" width="28" x="118" y="0">
+  <g clip-path="url(#graph-clip-g12)">
     <g class="overlay-paths" transform="translate(124, 0)">
       <path d="M 8 14 V 42" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 42 V 70" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-  <g class="overlay-dots" transform="translate(124, 0)">
-    <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
+  <g clip-path="url(#graph-dot-clip-g12)">
+    <g class="overlay-dots" transform="translate(124, 0)">
+      <circle cx="8" cy="14" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
     <line opacity="0.67" stroke-width="1" stroke="var(--lane-0)" style="" x1="116" x2="132" y1="14" y2="14">
     <line opacity="0.67" stroke-width="1" stroke="var(--lane-0)" style="" x1="86" x2="90" y1="14" y2="14">

@@ -10,6 +10,13 @@ export const EDGE_STROKE = 1.5;
 export const MERGE_STROKE = 2;
 export const PILL_STROKE = 1;
 
+/**
+ * How far a rail fades out before the graph column's right edge. A dot clamped
+ * to that edge is the end of its line, so the rail behind it has to stop there
+ * rather than carry on and show past the dot.
+ */
+export const EDGE_FADE_WIDTH = 3 * UNIT;
+
 /** Default graph display settings. Pass to buildOverlayPaths / buildRefPillData.
  *  When a settings page is added, load user prefs and spread over these defaults. */
 export const DEFAULT_GRAPH_SETTINGS: GraphDisplaySettings = {
@@ -37,3 +44,15 @@ export const BADGE_HEIGHT = 4 * UNIT;
 export const BADGE_FONT_SIZE = 10;
 export const ICON_WIDTH = 10;
 export const ICON_GAP = 2; // flex gap between icon and text in pill foreignObject
+
+let graphInstanceCount = 0;
+
+/**
+ * A number unique to one mounted commit graph, for scoping the ids of the SVG
+ * definitions it references. Several repositories stay mounted at once and a
+ * duplicated id resolves to the wrong one.
+ */
+export function nextGraphInstanceId(): number {
+	graphInstanceCount += 1;
+	return graphInstanceCount;
+}

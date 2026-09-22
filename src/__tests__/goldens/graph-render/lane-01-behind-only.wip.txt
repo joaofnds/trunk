@@ -1,8 +1,10 @@
 <svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="144">
   <defs>
-    <clipPath id="graph-clip">
+    <clipPath id="graph-clip-g2">
       <rect height="4000" width="16" x="124" y="0">
-  <g clip-path="url(#graph-clip)">
+    <clipPath id="graph-dot-clip-g2">
+      <rect height="4000" width="28" x="118" y="0">
+  <g clip-path="url(#graph-clip-g2)">
     <g class="overlay-paths" transform="translate(124, 0)">
       <path d="M 8 23 V 42" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 42 V 70" fill="none" stroke-dasharray="3 3" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
@@ -12,13 +14,14 @@
       <path d="M 8 70 V 98" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 98 V 126" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
       <path d="M 8 126 V 154" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-  <g class="overlay-dots" transform="translate(124, 0)">
-    <circle cx="8" cy="14" fill="none" r="6" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)">
-    <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
+  <g clip-path="url(#graph-dot-clip-g2)">
+    <g class="overlay-dots" transform="translate(124, 0)">
+      <circle cx="8" cy="14" fill="none" r="5.25" stroke-dasharray="3 3" stroke-width="1.5" stroke="var(--lane-0)">
+      <circle cx="8" cy="42" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="70" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="98" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
     <line opacity="0.67" stroke-width="1" stroke="var(--lane-0)" style="" x1="98" x2="132" y1="42" y2="42">
     <rect fill-opacity="0.1" fill="var(--lane-0)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-0)" style="cursor: pointer;" width="94" x="4" y="32">

@@ -1,44 +1,74 @@
 <svg class="absolute top-0" height="4000" style="left: 0px; pointer-events: none; z-index: 1;" width="200">
   <defs>
-    <clipPath id="graph-clip">
+    <clipPath id="graph-clip-g19">
       <rect height="4000" width="16" x="124" y="0">
-  <g clip-path="url(#graph-clip)">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-0-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-0)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-0)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-0)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-1-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-1)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-1)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-1)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-2-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-2)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-2)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-2)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-3-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-3)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-3)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-3)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-4-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-4)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-4)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-4)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-5-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-5)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-5)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-5)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-6-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-6)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-6)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-6)" stop-opacity="0">
+    <linearGradient gradientUnits="userSpaceOnUse" id="rail-fade-7-g19" x1="0" x2="16">
+      <stop offset="0" stop-color="var(--lane-7)" stop-opacity="1">
+      <stop offset="0.6875" stop-color="var(--lane-7)" stop-opacity="0">
+      <stop offset="1" stop-color="var(--lane-7)" stop-opacity="0">
+    <clipPath id="graph-dot-clip-g19">
+      <rect height="4000" width="28" x="118" y="0">
+  <g clip-path="url(#graph-clip-g19)">
     <g class="overlay-paths" transform="translate(124, 0)">
-      <path d="M 24 14 V 146 C 24 150.41827799864635 19.58172200135365 154 16 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-1)">
-      <path d="M 40 42 V 146 C 40 150.41827799864635 35.581722001353654 154 32 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-2)">
-      <path d="M 56 70 V 146 C 56 150.41827799864635 51.581722001353654 154 48 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-3)">
-      <path d="M 72 98 V 146 C 72 150.41827799864635 67.58172200135365 154 64 154 H 8" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-4)">
-      <path d="M 8 126 V 154" fill="none" stroke-dasharray="none" stroke-linecap="round" stroke-width="1.5" stroke="var(--lane-0)">
-  <g class="overlay-dots" transform="translate(124, 0)">
-    <circle cx="10" cy="14" fill="var(--lane-1)" r="6">
-    <circle cx="10" cy="42" fill="var(--lane-2)" r="6">
-    <circle cx="10" cy="70" fill="var(--lane-3)" r="6">
-    <circle cx="10" cy="98" fill="var(--lane-4)" r="6">
-    <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
-    <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
+  <g clip-path="url(#graph-dot-clip-g19)">
+    <g class="overlay-dots" transform="translate(124, 0)">
+      <circle cx="8" cy="14" fill="var(--lane-1)" r="6">
+      <circle cx="8" cy="42" fill="var(--lane-2)" r="6">
+      <circle cx="8" cy="70" fill="var(--lane-3)" r="6">
+      <circle cx="8" cy="98" fill="var(--lane-4)" r="6">
+      <circle cx="8" cy="126" fill="var(--lane-0)" r="6">
+      <circle cx="8" cy="154" fill="var(--lane-0)" r="6">
   <g class="overlay-pills">
-    <line opacity="1" stroke-width="1" stroke="var(--lane-1)" style="filter: brightness(0.75);" x1="88" x2="134" y1="14" y2="14">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-1)" style="filter: brightness(0.75);" x1="88" x2="132" y1="14" y2="14">
     <rect fill-opacity="0.14" fill="var(--lane-1)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-1)" style="cursor: pointer;" width="84" x="4" y="4">
     <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 9)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
     <foreignObject height="20" width="60" x="22" y="4">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-1); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-four"
-    <line opacity="1" stroke-width="1" stroke="var(--lane-2)" style="filter: brightness(0.75);" x1="94" x2="134" y1="42" y2="42">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-2)" style="filter: brightness(0.75);" x1="94" x2="132" y1="42" y2="42">
     <rect fill-opacity="0.14" fill="var(--lane-2)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-2)" style="cursor: pointer;" width="90" x="4" y="32">
     <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 37)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
     <foreignObject height="20" width="66" x="22" y="32">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-2); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-three"
-    <line opacity="1" stroke-width="1" stroke="var(--lane-3)" style="filter: brightness(0.75);" x1="86" x2="134" y1="70" y2="70">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-3)" style="filter: brightness(0.75);" x1="86" x2="132" y1="70" y2="70">
     <rect fill-opacity="0.14" fill="var(--lane-3)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-3)" style="cursor: pointer;" width="82" x="4" y="60">
     <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 65)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">
     <foreignObject height="20" width="58" x="22" y="60">
       <SPAN style="display: block; line-height: 20px; color: var(--lane-3); font-size: 11px; font-family: var(--font-sans); font-weight: 500; white-space: nowrap; overflow: hidden; cursor: pointer;">
         "topic-two"
-    <line opacity="1" stroke-width="1" stroke="var(--lane-4)" style="filter: brightness(0.75);" x1="82" x2="134" y1="98" y2="98">
+    <line opacity="1" stroke-width="1" stroke="var(--lane-4)" style="filter: brightness(0.75);" x1="82" x2="132" y1="98" y2="98">
     <rect fill-opacity="0.14" fill="var(--lane-4)" height="20" pointer-events="auto" rx="10" ry="10" stroke-opacity="0.5" stroke="var(--lane-4)" style="cursor: pointer;" width="78" x="4" y="88">
     <g opacity="0.9" style="pointer-events: auto; cursor: pointer;" transform="translate(10, 93)">
       <svg aria-hidden="true" class="lucide-icon lucide lucide-laptop" fill="none" height="10" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="currentColor" viewBox="0 0 24 24" width="10" xmlns="http://www.w3.org/2000/svg">

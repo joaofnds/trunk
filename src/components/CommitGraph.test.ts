@@ -1524,4 +1524,46 @@ describe("CommitGraph", () => {
 			expect(authorHeaderWidth(rendered.container)).toBeLessThan(widened);
 		});
 	});
+
+	// Every open repository keeps its graph mounted, hidden rather than removed.
+	// Two of them declaring the same clip-path id put that id in the document
+	// twice, and a reference resolves to whichever came first: collapsing the
+	// graph in one tab clipped away another tab's rails, and no amount of
+	// scrolling brought them back.
+	describe("two graphs mounted at once", () => {
+		it("gives each its own clip-path ids", async () => {
+			const first = render(CommitGraph, {
+				props: { repoPath: "/first", wipCount: 0, tabActive: true },
+			});
+			const second = render(CommitGraph, {
+				props: { repoPath: "/second", wipCount: 0, tabActive: true },
+			});
+			await flush();
+
+			const ids = (root: HTMLElement) =>
+				[...root.querySelectorAll("clipPath")].map((node) => node.id);
+
+			expect(ids(first.container)).not.toHaveLength(0);
+			expect(ids(first.container)).not.toEqual(
+				expect.arrayContaining(ids(second.container)),
+			);
+		});
+
+		it("points each graph at its own clip path", async () => {
+			const { container } = render(CommitGraph, {
+				props: { repoPath: "/only", wipCount: 0, tabActive: true },
+			});
+			await flush();
+
+			const declared = [...container.querySelectorAll("clipPath")].map(
+				(n) => n.id,
+			);
+			const referenced = [...container.querySelectorAll("[clip-path]")].map(
+				(n) => n.getAttribute("clip-path")?.slice(5, -1) ?? "",
+			);
+
+			expect(referenced).not.toHaveLength(0);
+			for (const ref of referenced) expect(declared).toContain(ref);
+		});
+	});
 });
