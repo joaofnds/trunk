@@ -26,8 +26,9 @@ runs down a lane and curves across to another when the parent sits in a differen
 dot marks the commit; the rail is what joins one dot to the next.
 
 **Graph pan** — the horizontal offset that scrolls the graph column through lanes too far
-right to fit in it, so no lane is unreachable when the column is narrow. Rails and dots both
-move with it, and a commit whose lane has panned out of the column leaves the view entirely.
+right to fit in it, so no lane is unreachable when the column is narrow. Rails move with it
+and fade at the column's edges; a dot whose lane has panned past an edge stays visible,
+pulled in to that edge, so every commit on screen keeps its mark.
 
 **Linear continuation** — a commit chain connected to a given commit by unbroken first-parent
 links, with no intervening fork. A branch that is strictly ahead of another on the same line
