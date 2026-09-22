@@ -5,11 +5,7 @@ import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
 import { exactDate } from "../lib/exact-date.js";
-import {
-	COLUMN_PADDING_X,
-	LANE_WIDTH,
-	ROW_HEIGHT,
-} from "../lib/graph-constants.js";
+import { COLUMN_PADDING_X, ROW_HEIGHT } from "../lib/graph-constants.js";
 import { currentMinute } from "../lib/now.svelte.js";
 import { relativeLabel } from "../lib/relative-time.js";
 import { STATUS_BADGES, WIP_BADGE_ORDER } from "../lib/status-badges.js";
@@ -29,7 +25,6 @@ interface Props {
 	rowIndex: number;
 	onselect?: (oid: string, mods?: SelectModifiers) => void;
 	oncontextmenu?: (e: MouseEvent, commit: GraphCommit) => void;
-	maxColumns?: number;
 	columnVisibility: ColumnVisibility;
 	selected?: boolean;
 	/** Row height in px. Defaults to ROW_HEIGHT constant.
@@ -61,7 +56,6 @@ let {
 	rowIndex,
 	onselect,
 	oncontextmenu,
-	maxColumns = 1,
 	columnVisibility,
 	selected = false,
 	rowHeight = ROW_HEIGHT,
