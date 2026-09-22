@@ -71,6 +71,12 @@ share of the list for Graph. It bounds what the app decides on its own and never
 width, because the app must not lay out a column badly by itself while the user may make
 any width they ask for (João, 2026-09-22).
 
+**Budget** — the width the sized columns' fits share: the list's width less the slack
+column's floor. Each fit is laid into it in order up to its cap, and when the fits together
+exceed it they yield toward their floors, rightmost first, so a layout the app chose fits
+the list whenever the list is at least the floors' sum. A user width sits outside the
+budget, which is how a dragged column can push the row past the list and into a scroll.
+
 **Graph snapshot** — what the commit cache holds for one repository: the capture a walk read from it, the ref visibility that walk was laid out under, and the resulting layout. A visibility toggle re-lays out the cached capture and never opens the repository, and the visibility travels with the layout it produced, so the cache cannot serve a layout built under a different hidden set (TRUNK-129, TRUNK-120).
 
 **Page** — one fixed-size slice of the laid-out graph the frontend fetches at a time,
