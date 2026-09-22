@@ -26,6 +26,10 @@ runs down a lane and curves across to another when the parent sits in a differen
 dot marks the commit; the rail is what joins the dots, which is why a graph can lose its
 rails and keep its dots (TRUNK-255).
 
+**Graph pan** — the horizontal offset that scrolls the graph column through lanes too far
+right to fit in it, so no lane is unreachable when the column is narrow. It moves the rails;
+the dots are positioned against it separately, and the two disagreeing is TRUNK-255.
+
 **Linear continuation** — a commit chain connected to a given commit by unbroken first-parent
 links, with no intervening fork. A branch that is strictly ahead of another on the same line
 is a linear continuation of it; a diverged branch is not.
