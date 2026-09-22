@@ -25,6 +25,26 @@ fn repo_changed_events<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> Recei
     rx
 }
 
+fn await_event_naming(events: &Receiver<String>, relative_path: &str) -> RepoChanged {
+    let deadline = std::time::Instant::now() + EVENT_TIMEOUT;
+    let mut seen: Vec<Vec<String>> = Vec::new();
+
+    while let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) {
+        let Ok(payload) = events.recv_timeout(remaining) else {
+            break;
+        };
+        let emitted: RepoChanged = serde_json::from_str(&payload).unwrap();
+
+        if emitted.paths.iter().any(|path| path == relative_path) {
+            return emitted;
+        }
+
+        seen.push(emitted.paths);
+    }
+
+    panic!("no repo-changed event named {relative_path}; saw {seen:?}");
+}
+
 #[test]
 fn watcher_names_the_repository_for_rapid_nested_writes() {
     let app = tauri::test::mock_app();
@@ -68,14 +88,7 @@ fn watcher_names_the_written_file_relative_to_the_repository() {
 
     start_watcher(dir.path(), handle, &watcher_state);
     std::fs::write(nested_dir.join("only.txt"), "content").unwrap();
-    let payload = events
-        .recv_timeout(EVENT_TIMEOUT)
-        .expect("repo-changed should fire once the debounce window closes");
-    let emitted: RepoChanged = serde_json::from_str(&payload).unwrap();
+    let emitted = await_event_naming(&events, "nested/only.txt");
 
-    assert!(
-        emitted.paths.contains(&"nested/only.txt".to_string()),
-        "expected the written file among {:?}",
-        emitted.paths
-    );
+    assert_eq!(emitted.repo, dir.path().to_string_lossy());
 }
