@@ -33,8 +33,11 @@ export const DEFAULT_WIDTHS: ColumnWidths = {
 	sha: 50,
 };
 
-/** The widest a column may be, by drag or by auto-fit. */
-export const MAX_COLUMN_WIDTH = 400;
+/**
+ * The widest auto-fit may make a column on its own. A drag is not bound by it:
+ * the user asking for a width is the one case where a width needs no defending.
+ */
+export const MAX_AUTOFIT_WIDTH = 400;
 
 export type MeasureText = (text: string, font: string) => number;
 
@@ -189,6 +192,9 @@ export function refContentWidth(
  * The stored layout, made safe to lay out with. The pref file is plain JSON that
  * nothing upstream validates, and a width that is not a usable number reached the
  * drag clamp as NaN, which persisted itself and left the column unresizable.
+ *
+ * A width that is merely large is not unsafe. Only the floor is enforced, so a
+ * width the user dragged comes back as they left it however wide that was.
  */
 export function sanitizeColumnWidths(
 	stored: Partial<ColumnWidths> | null | undefined,
@@ -200,10 +206,7 @@ export function sanitizeColumnWidths(
 		const value = stored?.[column];
 		widths[column] =
 			typeof value === "number" && Number.isFinite(value) && value > 0
-				? Math.min(
-						MAX_COLUMN_WIDTH,
-						Math.max(floors[column], Math.round(value)),
-					)
+				? Math.max(floors[column], Math.round(value))
 				: DEFAULT_WIDTHS[column];
 	}
 

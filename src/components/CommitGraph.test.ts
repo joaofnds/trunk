@@ -6,7 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { DEFAULT_WIDTHS } from "../lib/column-widths.js";
+import { DEFAULT_WIDTHS, MAX_AUTOFIT_WIDTH } from "../lib/column-widths.js";
 import {
 	COLUMN_PADDING_X,
 	LANE_WIDTH,
@@ -813,6 +813,31 @@ describe("CommitGraph", () => {
 
 				expect(author.style.width).not.toBe(before);
 			});
+		});
+
+		// The graph column was capped at its lane count plus one lane, so a
+		// single-lane repository could not be dragged past 40px however hard the
+		// user pulled.
+		it("widens the graph column past the width its lanes need", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const graph = headerCell(container, "graph");
+
+			await drag(graph.querySelector(".col-resize-handle") as Element, 600);
+
+			expect(Number.parseFloat(graph.style.width)).toBeGreaterThan(400);
+		});
+
+		it("widens a column past the width auto-fit would choose", async () => {
+			const { container } = mountHeader();
+			await flush();
+			const author = headerCell(container, "author");
+
+			await drag(author.querySelector(".col-resize-handle") as Element, 800);
+
+			expect(Number.parseFloat(author.style.width)).toBeGreaterThan(
+				MAX_AUTOFIT_WIDTH,
+			);
 		});
 
 		it("shrinks the graph column to a single lane", async () => {

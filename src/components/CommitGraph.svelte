@@ -40,7 +40,7 @@ import {
 	graphTargetWidth,
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
-	MAX_COLUMN_WIDTH,
+	MAX_AUTOFIT_WIDTH,
 	refContentWidth,
 	shaContentWidth,
 	showsHeaderLabel,
@@ -385,7 +385,7 @@ $effect(() => {
 $effect(() => {
 	const w = maxRefContentWidth;
 	if (w <= 0) return;
-	const targetWidth = Math.min(MAX_COLUMN_WIDTH, Math.max(w, floors.ref));
+	const targetWidth = Math.min(MAX_AUTOFIT_WIDTH, Math.max(w, floors.ref));
 	if (!userResizedColumns.has("ref")) {
 		columnWidths = { ...untrack(() => columnWidths), ref: targetWidth };
 	}
@@ -470,21 +470,10 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	userResizedColumns.add(column);
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
-	const maxWidths: Record<keyof ColumnWidths, number> = {
-		ref: 400,
-		graph: naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
-		diff: 400,
-		author: 400,
-		date: 400,
-		sha: 400,
-	};
 
 	function onMouseMove(ev: MouseEvent) {
 		const delta = ev.clientX - startX;
-		const newWidth = Math.max(
-			floors[column],
-			Math.min(maxWidths[column], startWidth + delta),
-		);
+		const newWidth = Math.max(floors[column], startWidth + delta);
 		columnWidths = { ...columnWidths, [column]: newWidth };
 	}
 

@@ -9,7 +9,6 @@ import {
 	dateContentWidth,
 	graphTargetWidth,
 	headerMinWidths,
-	MAX_COLUMN_WIDTH,
 	refContentWidth,
 	sanitizeColumnWidths,
 	shaContentWidth,
@@ -275,10 +274,10 @@ describe("sanitizeColumnWidths", () => {
 		expect(sanitizeColumnWidths(stored).author).toBe(floors.author);
 	});
 
-	it("caps a width beyond what a drag could reach", () => {
-		const stored = { author: 99_999 } as Partial<ColumnWidths>;
+	it("restores a width wider than auto-fit would ever choose", () => {
+		const stored = { author: 900 } as Partial<ColumnWidths>;
 
-		expect(sanitizeColumnWidths(stored).author).toBe(MAX_COLUMN_WIDTH);
+		expect(sanitizeColumnWidths(stored).author).toBe(900);
 	});
 
 	it("rounds a fractional width to whole pixels", () => {
