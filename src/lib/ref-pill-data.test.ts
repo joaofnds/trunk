@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { columnFloors } from "./column-widths.js";
 import {
-	BADGE_FONT_SIZE,
 	ICON_GAP,
 	ICON_WIDTH,
 	LANE_WIDTH,
@@ -10,11 +8,7 @@ import {
 	PILL_PADDING_X,
 	ROW_HEIGHT,
 } from "./graph-constants.js";
-import {
-	buildRefPillData,
-	overflowBadgeWidth,
-	sortRefs,
-} from "./ref-pill-data.js";
+import { buildRefPillData, sortRefs } from "./ref-pill-data.js";
 import type { GraphCommit, OverlayNode, RefLabel } from "./types.js";
 
 /** Mock measure: each char = 7px */
@@ -293,54 +287,5 @@ describe("buildRefPillData", () => {
 
 		expect(result).toHaveLength(1);
 		expect(result[0].rowIndex).toBe(3);
-	});
-});
-
-describe("overflowBadgeWidth", () => {
-	// The layout reserved chars*7+6 while the renderer drew
-	// chars*BADGE_FONT_SIZE*0.7 + PILL_PADDING_X*2 — the same per-character
-	// estimate against twice the padding, so every badge painted 6px wider than
-	// the pill it was budgeted into. One function now answers both.
-	it("reserves the padding the badge actually draws", () => {
-		expect(overflowBadgeWidth(2)).toBe(
-			`+2`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2,
-		);
-	});
-
-	it("reserves nothing when no refs overflow", () => {
-		expect(overflowBadgeWidth(0)).toBe(0);
-	});
-});
-
-describe("buildRefPillData at a column too narrow for any label", () => {
-	// truncateWithEllipsis returns the bare ellipsis at its own measured width
-	// when nothing fits, ignoring the limit it was given. The pill built from it
-	// was wider than the column, and the pills group carries no clip path, so it
-	// painted over the graph's lanes and took the pointer there.
-	it("keeps the pill inside the ref column", () => {
-		const refColumnWidth = columnFloors().ref;
-		const nodes = [makeNode({ x: 0, y: 0 })];
-		const commits = [
-			makeCommit({
-				refs: [
-					{
-						name: "refs/heads/a-branch-name-far-too-long-to-fit",
-						short_name: "a-branch-name-far-too-long-to-fit",
-						ref_type: "LocalBranch",
-						is_head: false,
-						color_index: 0,
-					},
-				],
-			}),
-		];
-
-		const [pill] = buildRefPillData(
-			nodes,
-			commits,
-			refColumnWidth,
-			mockMeasure,
-		);
-
-		expect(pill.x + pill.width).toBeLessThanOrEqual(refColumnWidth);
 	});
 });

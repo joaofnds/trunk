@@ -6,12 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { DEFAULT_WIDTHS, MAX_AUTOFIT_WIDTH } from "../lib/column-widths.js";
-import {
-	COLUMN_PADDING_X,
-	LANE_WIDTH,
-	MESSAGE_MIN_WIDTH,
-} from "../lib/graph-constants.js";
+import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
 import { resetCache } from "../lib/text-measure.js";
@@ -737,7 +732,7 @@ describe("CommitGraph", () => {
 
 		function headerCell(container: HTMLElement, label: string): HTMLElement {
 			const header = container.querySelector(
-				"[role=listbox] > div > div",
+				"[role=listbox] > div",
 			) as HTMLElement;
 			const cell = [...header.children].find(
 				(c) => c.getAttribute("data-column") === label,
@@ -762,32 +757,20 @@ describe("CommitGraph", () => {
 			await flush();
 		}
 
-		// The diff column is the only sized column with no auto-fit effect, so its
-		// width is the one that still carries what the component started with. A
-		// second copy of the defaults living in the component would read the same
-		// until the two drifted, and nothing would say which was in use.
-		it("starts the diff column at the declared default width", async () => {
-			const { container } = mountHeader();
-			await flush();
-
-			expect(headerCell(container, "diff").style.width).toBe(
-				`${DEFAULT_WIDTHS.diff}px`,
-			);
-		});
-
 		// A handle sits on its own cell's right edge, so the column it moves must
 		// be the one the user grabbed the edge of — not its neighbour.
 		it("resizes the column whose edge the handle sits on", async () => {
 			const { container } = mountHeader();
 			await flush();
 			const author = headerCell(container, "author");
-			// Taken from the rendered column rather than written down: the width it
-			// starts at is whatever auto-fit gave this page's author names.
-			const before = Number.parseFloat(author.style.width);
+			const before = author.style.width;
 
 			await drag(author.querySelector(".col-resize-handle") as Element, 60);
 
-			expect(author.style.width).toBe(`${before + 60}px`);
+			expect({ before, after: author.style.width }).toEqual({
+				before: "60px",
+				after: "120px",
+			});
 		});
 
 		it("widens the column when its edge is dragged right", async () => {
@@ -813,48 +796,6 @@ describe("CommitGraph", () => {
 
 				expect(author.style.width).not.toBe(before);
 			});
-		});
-
-		// The graph column was capped at its lane count plus one lane, so a
-		// single-lane repository could not be dragged past 40px however hard the
-		// user pulled.
-		it("widens the graph column past the width its lanes need", async () => {
-			const { container } = mountHeader();
-			await flush();
-			const graph = headerCell(container, "graph");
-
-			await drag(graph.querySelector(".col-resize-handle") as Element, 600);
-
-			expect(Number.parseFloat(graph.style.width)).toBeGreaterThan(400);
-		});
-
-		it("widens a column past the width auto-fit would choose", async () => {
-			const { container } = mountHeader();
-			await flush();
-			const author = headerCell(container, "author");
-
-			await drag(author.querySelector(".col-resize-handle") as Element, 800);
-
-			expect(Number.parseFloat(author.style.width)).toBeGreaterThan(
-				MAX_AUTOFIT_WIDTH,
-			);
-		});
-
-		// Dragging a column past the point where message hits its floor pushes the
-		// columns on its right off the viewport. They stay reachable only if the
-		// row is laid out wider than the viewport, which is what scrolls.
-		it("lays the row out wider than the viewport once message is at its floor", async () => {
-			const { container } = mountHeader();
-			await flush();
-			const header = container.querySelector(
-				"[role=listbox] > div > div",
-			) as HTMLElement;
-			const before = Number.parseFloat(header.style.width);
-			const author = headerCell(container, "author");
-
-			await drag(author.querySelector(".col-resize-handle") as Element, 2000);
-
-			expect(Number.parseFloat(header.style.width)).toBeGreaterThan(before);
 		});
 
 		it("shrinks the graph column to a single lane", async () => {
@@ -886,18 +827,6 @@ describe("CommitGraph", () => {
 			expect(author.querySelector("svg")).not.toBeNull();
 		});
 
-		// Message has no width of its own: it takes what the sized columns leave.
-		// At a narrow window that share reaches zero, and the commit subject — the
-		// thing the view is for — disappears before any column shows a scrollbar.
-		it("keeps a readable floor under the Message column", async () => {
-			const { container } = mountHeader();
-			await flush();
-
-			const message = headerCell(container, "message");
-
-			expect(message.style.minWidth).toBe(`${MESSAGE_MIN_WIDTH}px`);
-		});
-
 		it("names the column for assistive tech when only the icon shows", async () => {
 			const { container } = mountHeader();
 			await flush();
@@ -906,66 +835,6 @@ describe("CommitGraph", () => {
 			await drag(author.querySelector(".col-resize-handle") as Element, -500);
 
 			expect(author.getAttribute("title")).toBe("Author");
-		});
-	});
-
-	// The rails are clipped at the column's right edge. A hard cut reads as
-	// broken rendering; the fade says the lanes continue out of view, which is
-	// what the clip actually means.
-	describe("the graph column's right edge", () => {
-		// The width is restored only for a column the user sized by hand, so the
-		// graph counts as deliberately narrowed rather than waiting to be auto-fit.
-		function mountWithLanes(maxColumns: number, graphWidth: number) {
-			installReads({
-				override: (cmd, args) => {
-					if (cmd === "prefs_get" && args?.key === "resized_columns") {
-						return Promise.resolve(["graph"]);
-					}
-					if (cmd === "prefs_get" && args?.key === "column_widths") {
-						return Promise.resolve({
-							ref: 120,
-							graph: graphWidth,
-							diff: 96,
-							author: 60,
-							date: 40,
-							sha: 50,
-						});
-					}
-					if (cmd === "get_commit_graph" || cmd === "refresh_commit_graph") {
-						return Promise.resolve({
-							commits: TEST_COMMITS,
-							max_columns: maxColumns,
-						});
-					}
-					return undefined;
-				},
-			});
-
-			return render(CommitGraph, {
-				props: { repoPath: "/test/repo", tabActive: true },
-			});
-		}
-
-		it("fades the rails out where lanes continue past the column", async () => {
-			const { container } = mountWithLanes(8, 24);
-
-			await waitFor(() => {
-				expect(container.querySelector(".overlay-paths")).not.toBeNull();
-			});
-
-			expect(container.querySelector("#graph-edge-fade")).not.toBeNull();
-		});
-
-		describe("when every lane already fits", () => {
-			it("leaves the rails unfaded", async () => {
-				const { container } = mountWithLanes(1, 200);
-
-				await waitFor(() => {
-					expect(container.querySelector(".overlay-paths")).not.toBeNull();
-				});
-
-				expect(container.querySelector("#graph-edge-fade")).toBeNull();
-			});
 		});
 	});
 

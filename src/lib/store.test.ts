@@ -48,10 +48,8 @@ const {
 	setCommitDraft,
 	clearCommitDraft,
 	getColumnWidths,
-	getResizedColumns,
 	getColumnVisibility,
 	setColumnWidths,
-	setResizedColumns,
 	setColumnVisibility,
 	getRefVisibility,
 	setRefVisibility,
@@ -330,25 +328,6 @@ describe("store", () => {
 
 			expect(visibility.diff).toBe(true); // new key defaults visible…
 			expect(visibility.author).toBe(false); // …without clobbering persisted values
-		});
-
-		// The widths were persisted but the fact that the user chose them was not,
-		// so on a fresh mount every column read as never-resized and auto-fit
-		// overwrote the restored width.
-		it("round-trips which columns the user resized", async () => {
-			await setResizedColumns(["ref", "author"]);
-
-			expect(await getResizedColumns()).toEqual(new Set(["ref", "author"]));
-		});
-
-		it("treats a missing resized set as nobody having resized anything", async () => {
-			expect(await getResizedColumns()).toEqual(new Set());
-		});
-
-		it("ignores a stored name that is not a resizable column", async () => {
-			backingStore.set("resized_columns", ["ref", "nonsense", 7]);
-
-			expect(await getResizedColumns()).toEqual(new Set(["ref"]));
 		});
 
 		it("getColumnWidths returns all defaults when nothing is persisted", async () => {

@@ -1,8 +1,3 @@
-import {
-	type ColumnWidths,
-	DEFAULT_WIDTHS,
-	sanitizeColumnWidths,
-} from "./column-widths.js";
 import { safeInvoke } from "./invoke.js";
 import { EVERYTHING_VISIBLE, type RefVisibility } from "./ref-visibility.js";
 import { isValidReviewFilter } from "./review-filter.js";
@@ -107,46 +102,38 @@ export async function setOpenRepo(repo: RecentRepo | null): Promise<void> {
 	await setPref(OPEN_REPO_KEY, repo);
 }
 
-export type { ColumnWidths };
+export interface ColumnWidths {
+	ref: number;
+	graph: number;
+	diff: number;
+	author: number;
+	date: number;
+	sha: number;
+	// message is flex-1, no fixed width
+}
 
 const COLUMN_WIDTHS_KEY = "column_widths";
 
+const DEFAULT_WIDTHS: ColumnWidths = {
+	ref: 120,
+	graph: 24,
+	diff: 96,
+	author: 60,
+	date: 40,
+	sha: 50,
+};
+
 export async function getColumnWidths(): Promise<ColumnWidths> {
-	// The pref file is plain JSON on disk and nothing upstream checks its shape,
-	// so every stored value is treated as untrusted here.
-	return sanitizeColumnWidths(
-		await getPref<Partial<ColumnWidths>>(COLUMN_WIDTHS_KEY),
-	);
+	// Spread-merge so a key added after a user first persisted their widths
+	// (e.g. `diff`) picks up its default instead of arriving as undefined → NaN.
+	return {
+		...DEFAULT_WIDTHS,
+		...(await getPref<ColumnWidths>(COLUMN_WIDTHS_KEY)),
+	};
 }
 
 export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
 	await setPref(COLUMN_WIDTHS_KEY, widths);
-}
-
-const RESIZED_COLUMNS_KEY = "resized_columns";
-
-/**
- * The columns the user set the width of by hand. Persisted beside the widths
- * because the widths alone cannot say who chose them: without this, a fresh
- * mount read every column as never-resized and auto-fit overwrote the restored
- * width. A column named here keeps the width the user gave it.
- */
-export async function getResizedColumns(): Promise<Set<keyof ColumnWidths>> {
-	const stored = await getPref<unknown>(RESIZED_COLUMNS_KEY);
-	if (!Array.isArray(stored)) return new Set();
-
-	return new Set(
-		stored.filter(
-			(name): name is keyof ColumnWidths =>
-				typeof name === "string" && name in DEFAULT_WIDTHS,
-		),
-	);
-}
-
-export async function setResizedColumns(
-	columns: Iterable<keyof ColumnWidths>,
-): Promise<void> {
-	await setPref(RESIZED_COLUMNS_KEY, [...columns]);
 }
 
 export interface ColumnVisibility {

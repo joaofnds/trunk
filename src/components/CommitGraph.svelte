@@ -35,16 +35,12 @@ import {
 import {
 	authorContentWidth,
 	columnFloors,
-	DEFAULT_WIDTHS,
 	dateContentWidth,
 	graphTargetWidth,
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
-	MAX_AUTOFIT_WIDTH,
-	refContentWidth,
 	shaContentWidth,
 	showsHeaderLabel,
-	tableOverflowWidth,
 } from "../lib/column-widths.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import {
@@ -59,7 +55,6 @@ import {
 	DEFAULT_GRAPH_SETTINGS,
 	ICON_GAP,
 	ICON_WIDTH,
-	MESSAGE_MIN_WIDTH,
 	PILL_FONT,
 	PILL_FONT_SIZE,
 	PILL_GAP,
@@ -72,19 +67,16 @@ import { focusInEditable, keyChord } from "../lib/keyboard.js";
 import { laneRefForRow } from "../lib/lane-ref.js";
 import { buildOverlayPaths, makePathContext } from "../lib/overlay-paths.js";
 import { getVisibleOverlayElements } from "../lib/overlay-visible.js";
-import { buildRefPillData, overflowBadgeWidth } from "../lib/ref-pill-data.js";
+import { buildRefPillData } from "../lib/ref-pill-data.js";
 import type { ReviewCommentsManager } from "../lib/review-comments.svelte.js";
 import { getScheduler } from "../lib/scheduler.js";
-import { edgeFadeWidth, stickyDotX } from "../lib/sticky-dot.js";
 import {
 	type ColumnVisibility,
 	type ColumnWidths,
 	getColumnVisibility,
 	getColumnWidths,
-	getResizedColumns,
 	setColumnVisibility,
 	setColumnWidths,
-	setResizedColumns,
 } from "../lib/store.js";
 import { measureTextWidth } from "../lib/text-measure.js";
 import { showToast } from "../lib/toast.svelte.js";
@@ -258,7 +250,14 @@ let graphActive = true;
 // refresh is active, so an older response must not overwrite that replacement.
 let refreshSeq = 0;
 
-let columnWidths = $state<ColumnWidths>({ ...DEFAULT_WIDTHS });
+let columnWidths = $state<ColumnWidths>({
+	ref: 120,
+	graph: 24,
+	diff: 96,
+	author: 60,
+	date: 40,
+	sha: 50,
+});
 let columnVisibility = $state<ColumnVisibility>({
 	ref: true,
 	graph: true,
@@ -288,18 +287,9 @@ const lastVisibleColumn = $derived(
 );
 
 $effect(() => {
-	// Only the columns the user sized by hand come back from the pref file. The
-	// rest are auto-fit to the page that just loaded, and a whole-object restore
-	// here would overwrite that fit with the previous session's numbers.
-	Promise.all([getColumnWidths(), getResizedColumns()]).then(
-		([stored, resized]) => {
-			for (const column of resized) userResizedColumns.add(column);
-
-			const restored = { ...untrack(() => columnWidths) };
-			for (const column of resized) restored[column] = stored[column];
-			columnWidths = restored;
-		},
-	);
+	getColumnWidths().then((w) => {
+		columnWidths = w;
+	});
 });
 
 $effect(() => {
@@ -330,21 +320,6 @@ $effect(() => {
 	if (graphScrollX > maxGraphScrollX) graphScrollX = maxGraphScrollX;
 });
 
-let listViewportWidth = $state(0);
-let tableScrollX = $state(0);
-
-// The width header and rows lay out at. Equal to the viewport until the sized
-// columns squeeze message past its floor, past which the row is wider than the
-// viewport and the surplus scrolls.
-const tableWidth = $derived(
-	tableOverflowWidth(columnWidths, columnVisibility, listViewportWidth),
-);
-const maxTableScrollX = $derived(Math.max(0, tableWidth - listViewportWidth));
-
-$effect(() => {
-	if (tableScrollX > maxTableScrollX) tableScrollX = maxTableScrollX;
-});
-
 const headerMins = headerMinWidths(measureTextWidth);
 const floors = columnFloors();
 
@@ -352,27 +327,16 @@ const floors = columnFloors();
 const userResizedColumns = new Set<keyof ColumnWidths>();
 
 // Max content widths for auto-fit (updated when commits load)
-let maxRefContentWidth = $state(0);
 let maxAuthorContentWidth = $state(0);
 let maxDateContentWidth = $state(0);
 let maxShaContentWidth = $state(0);
 
 function updateContentWidths(newCommits: GraphCommit[], reset = false) {
 	if (reset) {
-		maxRefContentWidth = 0;
 		maxAuthorContentWidth = 0;
 		maxDateContentWidth = 0;
 		maxShaContentWidth = 0;
 	}
-	const pageRefWidth = refContentWidth(
-		newCommits,
-		measureTextWidth,
-		displaySettings,
-	);
-	if (pageRefWidth > maxRefContentWidth) {
-		maxRefContentWidth = pageRefWidth;
-	}
-
 	const pageAuthorWidth = authorContentWidth(newCommits, measureTextWidth);
 	if (pageAuthorWidth > maxAuthorContentWidth) {
 		maxAuthorContentWidth = pageAuthorWidth;
@@ -395,15 +359,6 @@ $effect(() => {
 		columnWidths = { ...cur, graph: targetWidth };
 	} else if (cur.graph > targetWidth) {
 		columnWidths = { ...cur, graph: targetWidth };
-	}
-});
-
-$effect(() => {
-	const w = maxRefContentWidth;
-	if (w <= 0) return;
-	const targetWidth = Math.min(MAX_AUTOFIT_WIDTH, Math.max(w, floors.ref));
-	if (!userResizedColumns.has("ref")) {
-		columnWidths = { ...untrack(() => columnWidths), ref: targetWidth };
 	}
 });
 
@@ -486,16 +441,26 @@ function startColumnResize(column: keyof ColumnWidths, e: MouseEvent) {
 	userResizedColumns.add(column);
 	const startX = e.clientX;
 	const startWidth = columnWidths[column];
+	const maxWidths: Record<keyof ColumnWidths, number> = {
+		ref: 400,
+		graph: naturalGraphWidth + displaySettings.laneWidth + 2 * COLUMN_PADDING_X,
+		diff: 400,
+		author: 400,
+		date: 400,
+		sha: 400,
+	};
 
 	function onMouseMove(ev: MouseEvent) {
 		const delta = ev.clientX - startX;
-		const newWidth = Math.max(floors[column], startWidth + delta);
+		const newWidth = Math.max(
+			floors[column],
+			Math.min(maxWidths[column], startWidth + delta),
+		);
 		columnWidths = { ...columnWidths, [column]: newWidth };
 	}
 
 	function onMouseUp() {
 		setColumnWidths(columnWidths);
-		setResizedColumns(userResizedColumns);
 		window.removeEventListener("mousemove", onMouseMove);
 		window.removeEventListener("mouseup", onMouseUp);
 	}
@@ -1310,6 +1275,19 @@ const laneColor = (idx: number) => `var(--lane-${idx % 8})`;
 const svgSettings = $derived({ ...displaySettings, rowHeight: svgRowHeight });
 const geometry = $derived(makePathContext(svgSettings));
 
+// A dot slides along its horizontal line to stay inside the panned viewport
+// (bead-on-a-string). `graphX` is the dot's unscrolled centre — from the node
+// for the dots layer, from the pill for its connector.
+function stickyDotX(graphX: number, colWidth: number, scroll: number): number {
+	return Math.max(
+		displaySettings.laneWidth / 2,
+		Math.min(
+			colWidth - 2 * COLUMN_PADDING_X - displaySettings.dotRadius,
+			graphX - scroll,
+		),
+	);
+}
+
 const graphData = $derived.by(() => buildGraphData(displayItems, maxColumns));
 const paths = $derived.by(() => buildOverlayPaths(graphData, svgSettings));
 const pillData = $derived.by(() =>
@@ -1838,10 +1816,9 @@ $effect(() => {
 >
   <!-- Header row (always visible) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-shrink-0 overflow-hidden" style="background: var(--bg-1);">
   <div
-    class="flex items-center"
-    style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px; width: {tableWidth}px; margin-left: {-tableScrollX}px;"
+    class="flex items-center flex-shrink-0"
+    style="height: var(--bar-h); background: var(--bg-1); box-shadow: inset 0 -1px 0 var(--line); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); padding: 0 {COLUMN_PADDING_X}px;"
     oncontextmenu={showHeaderContextMenu}
   >
     {#each columnLabels as col (col.key)}
@@ -1868,7 +1845,7 @@ $effect(() => {
           <div
             class="relative flex-1 overflow-hidden whitespace-nowrap"
             data-column={col.key}
-            style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_MIN_WIDTH}px;"
+            style="padding: 0 {COLUMN_PADDING_X}px;"
             title={col.label}
           >
             {col.label}
@@ -1877,29 +1854,19 @@ $effect(() => {
       {/if}
     {/each}
   </div>
-  </div>
 
   <!-- Content area (grows to fill remaining space) -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" bind:clientWidth={listViewportWidth} onwheel={(e) => {
-    if (e.deltaX === 0) return;
-
+  <div class="flex-1 overflow-hidden" style="position: relative; padding: 0 {COLUMN_PADDING_X}px;" onwheel={(e) => {
     // GRAPH-02: horizontal pan on trackpad swipe or shift+wheel — only when pointer is over the graph column
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pointerX = e.clientX - rect.left - COLUMN_PADDING_X + tableScrollX;
-    const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
-    const graphEnd = graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
-    const overGraph = pointerX >= graphStart && pointerX <= graphEnd;
-
-    if (maxGraphScrollX > 0 && overGraph) {
-      graphScrollX = Math.max(0, Math.min(maxGraphScrollX, graphScrollX + e.deltaX));
-      return;
-    }
-
-    // Anywhere else, the gesture scrolls the table to the columns the drag
-    // pushed past the right edge.
-    if (maxTableScrollX > 0) {
-      tableScrollX = Math.max(0, Math.min(maxTableScrollX, tableScrollX + e.deltaX));
+    if (maxGraphScrollX > 0 && e.deltaX !== 0) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pointerX = e.clientX - rect.left - COLUMN_PADDING_X;
+      const graphStart = columnVisibility.ref ? columnWidths.ref : 0;
+      const graphEnd = graphStart + (columnVisibility.graph ? columnWidths.graph : 0);
+      if (pointerX >= graphStart && pointerX <= graphEnd) {
+        graphScrollX = Math.max(0, Math.min(maxGraphScrollX, graphScrollX + e.deltaX));
+      }
     }
   }}>
     {#if searchOpen}
@@ -1945,41 +1912,21 @@ $effect(() => {
           class="absolute top-0"
           width={refOffset + Math.max(graphColWidth, naturalGraphWidth)}
           height={contentHeight}
-          style="left: {-tableScrollX}px; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
+          style="left: 0; pointer-events: none; z-index: 1; {searchDimmingActive ? 'opacity: var(--opacity-search-dim);' : ''}"
         >
           <!-- Layers A and B live in the Graph column's band; with the column
                hidden CommitRow drops that cell and the Message text slides into
                the band, so anything painted here lands on top of it. -->
           {#if columnVisibility.graph}
-          {@const railBandX = refOffset + COLUMN_PADDING_X}
-          {@const railBandWidth = graphColWidth - 2 * COLUMN_PADDING_X}
-          {@const lanesRunPastEdge = maxGraphScrollX > 0}
-          {@const fadeWidth = edgeFadeWidth(railBandWidth)}
           <!-- GRAPH-02: clip graph content to column width -->
           <defs>
             <clipPath id="graph-clip">
-              <rect x={railBandX} y="0" width={railBandWidth} height={contentHeight} />
+              <rect x={refOffset + COLUMN_PADDING_X} y="0" width={graphColWidth - 2 * COLUMN_PADDING_X} height={contentHeight} />
             </clipPath>
-            <!-- Rails are cut off at the column's right edge whenever lanes run
-                 past it. Ending them on a hard line reads as broken rendering,
-                 so they fade over the last few pixels instead: the dots clamp to
-                 that same edge and stay solid on top. -->
-            {#if lanesRunPastEdge}
-              <linearGradient id="graph-edge-fade" gradientUnits="userSpaceOnUse"
-                x1={railBandX + railBandWidth - fadeWidth} x2={railBandX + railBandWidth}>
-                <stop offset="0" stop-color="white" stop-opacity="1" />
-                <stop offset="1" stop-color="white" stop-opacity="0" />
-              </linearGradient>
-              <mask id="graph-edge-mask" maskUnits="userSpaceOnUse"
-                x={railBandX} y="0" width={railBandWidth} height={contentHeight}>
-                <rect x={railBandX} y="0" width={railBandWidth - fadeWidth} height={contentHeight} fill="white" />
-                <rect x={railBandX + railBandWidth - fadeWidth} y="0" width={fadeWidth} height={contentHeight} fill="url(#graph-edge-fade)" />
-              </mask>
-            {/if}
           </defs>
           <!-- GRAPH-02: Layer A — rails + connections, scrolled and clipped.
                Translated left by scrollX to pan through lanes. -->
-          <g clip-path="url(#graph-clip)" mask={lanesRunPastEdge ? 'url(#graph-edge-mask)' : undefined}>
+          <g clip-path="url(#graph-clip)">
             <g class="overlay-paths" transform="translate({refOffset + COLUMN_PADDING_X - scrollX}, 0)">
               {#each visible.paths as path}
                 <path d={path.d} fill="none"
@@ -1996,7 +1943,7 @@ $effect(() => {
                Dots clamp to viewport edges (bead-on-a-string effect). -->
           <g class="overlay-dots" transform="translate({refOffset + COLUMN_PADDING_X}, 0)">
             {#each visible.dots as node}
-              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX, displaySettings)}
+              {@const clampedCx = stickyDotX(geometry.cx(node.x), graphColWidth, scrollX)}
               {#if node.isWip}
                 <circle cx={clampedCx} cy={geometry.cy(node.y)} r={displaySettings.dotRadius}
                   fill="none" stroke={laneColor(node.colorIndex)}
@@ -2025,11 +1972,11 @@ $effect(() => {
           {#if columnVisibility.ref}
             <g class="overlay-pills">
               {#each ghostPill ? [...visible.pills, ghostPill] : visible.pills as pill}
-                {@const badgeWidth = overflowBadgeWidth(pill.overflowCount)}
-                {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + badgeWidth : 0)}
+                {@const overflowBadgeWidth = pill.overflowCount > 0 ? `+${pill.overflowCount}`.length * BADGE_FONT_SIZE * 0.7 + PILL_PADDING_X * 2 : 0}
+                {@const pillGroupRightX = pill.x + pill.width + (pill.overflowCount > 0 ? PILL_GAP + overflowBadgeWidth : 0)}
                 <!-- Connector from the pill group's right edge (past the +N badge) to the commit dot, plus a short stub linking the named pill to the badge. The badge sits between the two segments with no line behind it, so it reads as solid yet stays connected to the pill (uses sticky X position, scroll-adjusted) -->
                 {#if columnVisibility.graph}
-                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX, displaySettings)}
+                  {@const stickyDotCx = stickyDotX(pill.dotCx, graphColWidth, scrollX)}
                   {@const connectorEndX = refOffset + COLUMN_PADDING_X + stickyDotCx - (pill.isHollow ? displaySettings.dotRadius : 0)}
                   <line
                     x1={pillGroupRightX}
@@ -2115,7 +2062,7 @@ $effect(() => {
                   <rect
                     x={pill.x + pill.width + PILL_GAP}
                     y={pill.y - BADGE_HEIGHT / 2}
-                    width={badgeWidth}
+                    width={overflowBadgeWidth}
                     height={BADGE_HEIGHT}
                     rx={BADGE_HEIGHT / 2}
                     ry={BADGE_HEIGHT / 2}
@@ -2130,7 +2077,7 @@ $effect(() => {
                   <foreignObject
                     x={pill.x + pill.width + PILL_GAP}
                     y={pill.y - BADGE_HEIGHT / 2}
-                    width={badgeWidth}
+                    width={overflowBadgeWidth}
                     height={BADGE_HEIGHT}
                   >
                     <span
@@ -2235,7 +2182,7 @@ $effect(() => {
       >
         {#snippet renderItem(commit, index)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div style="width: {tableWidth}px; margin-left: {-tableScrollX}px;" onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
+          <div onmouseenter={() => (hoveredRow = index)} onmouseleave={() => (hoveredRow = null)}>
           <CommitRow {commit} rowIndex={index} onselect={commit.oid === '__wip__' ? () => onWipClick?.() : oncommitselect} oncontextmenu={handleRowContextMenu} {maxColumns} {columnWidths} {columnVisibility} selected={(commit.oid === selectedCommitOid || compareOids.has(commit.oid)) && commit.oid !== '__wip__'} rowHeight={displaySettings.rowHeight} isSearchMatch={searchMatchOids.has(commit.oid)} isCurrentMatch={commit.oid === searchCurrentOid} isSearchActive={searchOpen && searchQuery.length > 0 && searchResults.length > 0} inSession={reviewOids.has(commit.oid)} isPendingBase={pendingBase === commit.oid} commentCount={commentCountFor(commit.oid)} commentTone={commentToneFor(commit.oid)} wipStats={commit.oid === '__wip__' ? wipStats : undefined} diffStat={commit.oid === '__wip__' ? wipDiffStat : commitStats.get(commit.oid)} />
           </div>
         {/snippet}

@@ -23,12 +23,6 @@ export const DEFAULT_GRAPH_SETTINGS: GraphDisplaySettings = {
 
 // Column layout constants
 export const COLUMN_PADDING_X = 4;
-/** The narrowest the Message column may be squeezed to. It has no width of its
- *  own — it takes what the sized columns leave — and without a floor a narrow
- *  window drives the commit subject, the point of the view, to nothing. */
-export const MESSAGE_MIN_WIDTH = 180;
-/** How far the rails fade before the graph column's right edge. */
-export const EDGE_FADE_WIDTH = 3 * UNIT;
 
 // Ref pill constants
 export const PILL_HEIGHT = 5 * UNIT;
