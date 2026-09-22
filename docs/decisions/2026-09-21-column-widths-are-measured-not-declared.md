@@ -93,29 +93,38 @@ This is the same limit AG Grid documents for its own content auto-size: with
 and the alternative — measuring rows that are not on screen — costs more than the
 occasional column that grows once when a wider value pages in.
 
-## Each width is declared once
+## Header and rows read one width per column
 
-The header and the rows are sibling flex containers, and they line up only while
-every cell in a column is the same width. So each sized column's width is declared
-once, as a custom property on the list's root (`columnWidthProperty` names it), and
-every header cell and every row cell takes its width from that property. A cell
-that computed its own width from the same number would line up today too; the one
-declaration is what stops a later change from writing one side and not the other.
+The header is one flex row and every commit row is another, inside the virtual
+list, so a header cell sits over its row cells only while they are the same width.
+Each sized column's width reaches the cells through one custom property on the
+list's root: `columnWidthProperty` names it, `columnWidthDeclarations` writes all
+six, and every header cell and row cell takes its width from it. A test in
+`CommitGraph.test.ts` sets the property on the root and expects a header cell and a
+row cell to follow, so a cell that takes a width of its own fails it.
 
-A drag therefore writes one style attribute on the root rather than a width on
-every cell of every rendered row, and a row the virtual list mounts later reads the
-current width without being handed it. TanStack Table's column sizing guide gives
-the same advice: "Use CSS variables to communicate column widths to your table
-cells." VS Code's table (`src/vs/base/browser/ui/table/tableWidget.ts`) reads the
-size through a callback when it builds a row, then writes every rendered cell's
-width on each resize, which is the per-row cost this avoids. A grid template shared
-through `subgrid` would declare all the columns in one place, but the virtual
-list's viewport and items container are absolutely positioned, so the rows are not
-grid items of anything the header belongs to.
+The widths themselves are the component's `columnWidths` state, and the properties
+are how the cells receive it. Script reads the state directly wherever it needs a
+number: the graph overlay's geometry, the header's choice between its word and its
+icon, and the graph pan's hit test and limit.
 
-The graph overlay positions its lanes and pills in script, so it reads the ref and
-graph widths from the component state that writes the declarations, not from the
-custom properties.
+Two other inputs to alignment are still written on both sides. The header row and
+the list's content area each apply the `COLUMN_PADDING_X` gutter, and the header
+orders its cells from `columnLabels` while `CommitRow` fixes its order in markup.
+Changing either on one side moves every column.
+
+On a drag, script writes one style attribute, the root's, where it used to write the
+dragged column's cell in every rendered row, and a row the virtual list mounts later
+reads the current width without being handed it. TanStack Table's column sizing
+guide recommends CSS variables for column widths as React performance advice and
+says of its Svelte adapter that "similar principles apply". VS Code's table
+(`src/vs/base/browser/ui/table/tableWidget.ts`) reads the size through a callback
+when it builds a row and, on each resize, writes the resized column's cell in every
+rendered row, the per-row write this avoids. A grid template shared through
+`subgrid` would declare every column in one place, but the virtual list's viewport
+and items container are absolutely positioned, and an absolutely positioned child of
+a grid container is not a grid item, so the rows cannot join a grid the header
+belongs to.
 
 ## What this does not solve
 

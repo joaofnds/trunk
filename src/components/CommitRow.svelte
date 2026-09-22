@@ -130,6 +130,8 @@ const rowShadow = $derived(
 );
 </script>
 
+<!-- Sized cells read their widths from the properties CommitGraph declares on the list
+     root; mounted outside it, every sized cell collapses to its content. -->
 <div
   data-testid="commit-row"
   role="row"
