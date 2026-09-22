@@ -1,6 +1,6 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
-import { columnWidthProperty } from "../lib/column-widths.js";
+import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
@@ -150,7 +150,7 @@ const rowShadow = $derived(
   {/if}
 
   <!-- Column 3: Message (flex-1, always visible) + WIP file badges + trailing comment badge -->
-  <div data-column="message" class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px;">
+  <div data-column="message" class="flex-1 flex items-center gap-2 overflow-hidden" style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;">
     {#if isWip}
       <div data-testid="commit-row-summary" class="flex items-center gap-2 overflow-hidden whitespace-nowrap">
         <span class="overflow-hidden text-ellipsis italic rounded px-2 py-0.5" style="min-width: 6rem; background: var(--bg-2); color: var(--color-text-muted);">{commit.summary}</span>

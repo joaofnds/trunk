@@ -42,6 +42,7 @@ import {
 	graphTargetWidth,
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
+	MESSAGE_FLOOR,
 	shaContentWidth,
 	showsHeaderLabel,
 } from "../lib/column-widths.js";
@@ -1841,7 +1842,7 @@ $effect(() => {
           <div
             class="relative flex-1 overflow-hidden whitespace-nowrap"
             data-column={col.key}
-            style="padding: 0 {COLUMN_PADDING_X}px;"
+            style="padding: 0 {COLUMN_PADDING_X}px; min-width: {MESSAGE_FLOOR}px;"
             title={col.label}
           >
             {col.label}

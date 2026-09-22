@@ -6,7 +6,7 @@ import { FakeScheduler } from "../../tests/app/fakes/scheduler.js";
 import { makeCommit, makeRef } from "../__tests__/helpers/factories";
 import { createFakeReviewComments } from "../__tests__/helpers/fake-review-comments.svelte.js";
 import { aThread } from "../__tests__/helpers/thread-fixture.js";
-import { columnWidthProperty } from "../lib/column-widths.js";
+import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
 import { COLUMN_PADDING_X, LANE_WIDTH } from "../lib/graph-constants.js";
 import { safeInvoke } from "../lib/invoke.js";
 import { SCHEDULER } from "../lib/scheduler.js";
@@ -875,6 +875,21 @@ describe("CommitGraph", () => {
 				if (!cell) throw new Error(`no row cell for "${column}"`);
 				return cell as HTMLElement;
 			}
+
+			// Message takes what the sized columns leave, so without a floor a
+			// narrow list squeezes the commit subject to nothing.
+			it("hold Message at its floor", async () => {
+				const { container } = mountHeader();
+				await flush();
+
+				expect({
+					header: headerCell(container, "message").style.minWidth,
+					row: rowCell(container, "message").style.minWidth,
+				}).toEqual({
+					header: `${MESSAGE_FLOOR}px`,
+					row: `${MESSAGE_FLOOR}px`,
+				});
+			});
 
 			it.each(["ref", "graph", "diff", "author", "date", "sha"] as const)(
 				"size the %s column from one declaration on the list root",

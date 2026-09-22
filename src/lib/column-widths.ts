@@ -108,6 +108,13 @@ export function columnFloors(): Record<keyof ColumnWidths, number> {
 	};
 }
 
+/**
+ * The narrowest Message may be squeezed to. It has no width of its own and takes
+ * what the sized columns leave, so without a floor a narrow list drives the commit
+ * subject, the column worth reading, to nothing.
+ */
+export const MESSAGE_FLOOR = 180;
+
 /** Whether a header of this width has room for its word rather than its icon. */
 export function showsHeaderLabel(width: number, labelMin: number): boolean {
 	return width >= labelMin;
