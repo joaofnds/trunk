@@ -175,14 +175,16 @@ export function refContentWidth(
  * nothing upstream validates, and a width that is not a usable number reached the
  * drag clamp as NaN, which persisted itself and left the column unresizable.
  */
-export function sanitizeColumnWidths(
-	stored: Partial<ColumnWidths> | null | undefined,
-): ColumnWidths {
+export function sanitizeColumnWidths(stored: unknown): ColumnWidths {
 	const floors = columnFloors();
+	const record =
+		typeof stored === "object" && stored !== null
+			? (stored as Record<string, unknown>)
+			: {};
 	const widths = {} as ColumnWidths;
 
 	for (const column of Object.keys(DEFAULT_WIDTHS) as (keyof ColumnWidths)[]) {
-		const value = stored?.[column];
+		const value = record[column];
 		widths[column] =
 			typeof value === "number" && Number.isFinite(value) && value > 0
 				? Math.min(

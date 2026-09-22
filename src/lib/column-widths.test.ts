@@ -3,7 +3,6 @@ import { makeCommit } from "../__tests__/helpers/factories";
 import {
 	AUTHOR_AVATAR_WIDTH,
 	authorContentWidth,
-	type ColumnWidths,
 	columnFloors,
 	DEFAULT_WIDTHS,
 	dateContentWidth,
@@ -244,7 +243,7 @@ describe("sanitizeColumnWidths", () => {
 	});
 
 	it("fills a key the stored layout never had", () => {
-		const stored = { ref: 150 } as Partial<ColumnWidths>;
+		const stored = { ref: 150 };
 
 		expect(sanitizeColumnWidths(stored).sha).toBe(DEFAULT_WIDTHS.sha);
 	});
@@ -263,26 +262,26 @@ describe("sanitizeColumnWidths", () => {
 		] as const;
 
 		it.each(unusable)("falls back to the default for %s", (_name, value) => {
-			const stored = { author: value } as unknown as Partial<ColumnWidths>;
+			const stored = { author: value };
 
 			expect(sanitizeColumnWidths(stored).author).toBe(DEFAULT_WIDTHS.author);
 		});
 	});
 
 	it("raises a width below the column's floor", () => {
-		const stored = { author: 2 } as Partial<ColumnWidths>;
+		const stored = { author: 2 };
 
 		expect(sanitizeColumnWidths(stored).author).toBe(floors.author);
 	});
 
 	it("caps a width beyond what a drag could reach", () => {
-		const stored = { author: 99_999 } as Partial<ColumnWidths>;
+		const stored = { author: 99_999 };
 
 		expect(sanitizeColumnWidths(stored).author).toBe(MAX_COLUMN_WIDTH);
 	});
 
 	it("rounds a fractional width to whole pixels", () => {
-		const stored = { author: 120.6 } as Partial<ColumnWidths>;
+		const stored = { author: 120.6 };
 
 		expect(sanitizeColumnWidths(stored).author).toBe(121);
 	});

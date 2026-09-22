@@ -110,9 +110,7 @@ const COLUMN_WIDTHS_KEY = "column_widths";
 export async function getColumnWidths(): Promise<ColumnWidths> {
 	// The pref file is plain JSON on disk and nothing upstream checks its shape,
 	// so every stored value is treated as untrusted here.
-	return sanitizeColumnWidths(
-		await getPref<Partial<ColumnWidths>>(COLUMN_WIDTHS_KEY),
-	);
+	return sanitizeColumnWidths(await getPref<unknown>(COLUMN_WIDTHS_KEY));
 }
 
 export async function setColumnWidths(widths: ColumnWidths): Promise<void> {
