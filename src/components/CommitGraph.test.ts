@@ -37,6 +37,14 @@ if (typeof globalThis.OffscreenCanvas === "undefined") {
 	} as unknown as typeof OffscreenCanvas;
 }
 
+// jsdom lays out no text, so a range's width is the stubbed font's measure of
+// what it holds. The Message pan measures each summary this way.
+if (typeof Range.prototype.getBoundingClientRect === "undefined") {
+	Range.prototype.getBoundingClientRect = function (this: Range) {
+		return { width: stubTextWidth(this.toString()) } as DOMRect;
+	};
+}
+
 // Stub Element.scrollTo for jsdom — VirtualList uses viewport.scrollTo()
 if (typeof Element.prototype.scrollTo === "undefined") {
 	Element.prototype.scrollTo = () => {};
@@ -1059,6 +1067,207 @@ describe("CommitGraph", () => {
 					prevented: event.defaultPrevented,
 					lanes: lanesOffset(container),
 				}).toEqual({ prevented: false, lanes: before - 10 });
+			});
+		});
+	});
+
+	// Branch/Tag and Graph are hidden, so Message starts at the list's left edge.
+	// jsdom lays nothing out: the list is unmeasured, so Message is at its
+	// floor, and each summary is told how wide it shows.
+	describe("a sideways wheel over Message", () => {
+		// 50 narrow glyphs measure 300px in the stubbed font and 20 measure 120.
+		const LONG = "a".repeat(50);
+		const SHORT = "b".repeat(20);
+		const SHOWN = 100;
+
+		function mountMessages(summaries: string[], stashes: string[] = []) {
+			const commits = [
+				...summaries.map((summary) => ({ summary, is_stash: false })),
+				...stashes.map((summary) => ({ summary, is_stash: true })),
+			].map(({ summary, is_stash }, i) =>
+				makeCommit({
+					oid: `${i}`.repeat(40).slice(0, 40),
+					summary,
+					is_stash,
+					parent_oids: [],
+				}),
+			);
+			installReads({
+				commits,
+				override: (cmd, args) =>
+					cmd === "prefs_get" && args?.key === "column_visibility"
+						? Promise.resolve({
+								ref: false,
+								graph: false,
+								message: true,
+								diff: true,
+								author: true,
+								date: true,
+								sha: true,
+							})
+						: undefined,
+			});
+
+			return render(CommitGraph, {
+				props: { repoPath: "/test/repo", tabActive: true },
+			});
+		}
+
+		function summaries(container: HTMLElement): HTMLElement[] {
+			return [
+				...container.querySelectorAll<HTMLElement>(
+					"[data-testid=commit-row-summary]",
+				),
+			];
+		}
+
+		function showEachSummaryIn(container: HTMLElement, width: number) {
+			for (const summary of summaries(container)) {
+				Object.defineProperty(summary, "clientWidth", { value: width });
+			}
+		}
+
+		// How far a summary's text is moved left. jsdom inherits custom
+		// properties but never substitutes var(), so it is resolved here.
+		function summaryShift(summary: HTMLElement): number {
+			const reference = /var\((--[\w-]+)/.exec(summary.style.textIndent);
+			if (!reference) {
+				throw new Error(`no indent on "${summary.textContent}"`);
+			}
+			const value = getComputedStyle(summary).getPropertyValue(reference[1]);
+			return 0 - Number.parseFloat(value || "0");
+		}
+
+		function wheelOverMessage(
+			container: HTMLElement,
+			deltas: { deltaX: number; deltaY?: number },
+		): WheelEvent {
+			const event = new WheelEvent("wheel", {
+				bubbles: true,
+				cancelable: true,
+				clientX: COLUMN_PADDING_X + 50,
+				...deltas,
+			});
+			container.querySelector(".virtual-list-viewport")?.dispatchEvent(event);
+			return event;
+		}
+
+		it("moves every summary by the swipe, a stash's too", async () => {
+			const { container } = mountMessages([LONG, SHORT], [SHORT]);
+			await flush();
+			showEachSummaryIn(container, SHOWN);
+
+			wheelOverMessage(container, { deltaX: 30 });
+			await tick();
+
+			expect(summaries(container).map(summaryShift)).toEqual([30, 30, 30]);
+		});
+
+		// 300px of text shown in 100px runs 200px past its row.
+		it("stops where the longest cut summary on screen ends", async () => {
+			const { container } = mountMessages([LONG, SHORT]);
+			await flush();
+			showEachSummaryIn(container, SHOWN);
+
+			wheelOverMessage(container, { deltaX: 1000 });
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(200);
+		});
+
+		it("leaves the gesture alone when every summary on screen fits", async () => {
+			const { container } = mountMessages([SHORT]);
+			await flush();
+			showEachSummaryIn(container, 200);
+
+			const event = wheelOverMessage(container, { deltaX: 30 });
+			await tick();
+
+			expect({
+				prevented: event.defaultPrevented,
+				shift: summaryShift(summaries(container)[0]),
+			}).toEqual({ prevented: false, shift: 0 });
+		});
+
+		// Message is at its 180px floor, so a pointer 185px in is over Diff.
+		it("leaves the summaries still under a swipe over the next column", async () => {
+			const { container } = mountMessages([LONG]);
+			await flush();
+			showEachSummaryIn(container, SHOWN);
+
+			container.querySelector(".virtual-list-viewport")?.dispatchEvent(
+				new WheelEvent("wheel", {
+					bubbles: true,
+					cancelable: true,
+					clientX: COLUMN_PADDING_X + MESSAGE_FLOOR + 5,
+					deltaX: 30,
+				}),
+			);
+			await tick();
+
+			expect(summaryShift(summaries(container)[0])).toBe(0);
+		});
+
+		describe("when the table scrolls sideways", () => {
+			it("hands the gesture on to the table once the summaries reach their end", async () => {
+				const { container } = mountMessages([LONG]);
+				await flush();
+				showEachSummaryIn(container, SHOWN);
+				const viewport = container.querySelector(
+					".virtual-list-viewport",
+				) as HTMLElement;
+				Object.defineProperty(viewport, "scrollWidth", { value: 900 });
+				Object.defineProperty(viewport, "clientWidth", { value: 700 });
+				wheelOverMessage(container, { deltaX: 1000 });
+				await tick();
+
+				const event = wheelOverMessage(container, { deltaX: 10 });
+
+				expect(event.defaultPrevented).toBe(false);
+			});
+		});
+
+		describe("with the scrollbar tracker running", () => {
+			let stopTracking: () => void;
+
+			beforeEach(() => {
+				stopTracking = trackScrollActivity();
+			});
+
+			afterEach(() => {
+				stopTracking();
+			});
+
+			function sidewaysThumb(): HTMLElement | null {
+				return document.querySelector(`.${THUMB_CLASS}[data-axis=horizontal]`);
+			}
+
+			it("shows a sideways thumb while it pans the summaries", async () => {
+				const { container } = mountMessages([LONG]);
+				await flush();
+				showEachSummaryIn(container, SHOWN);
+
+				wheelOverMessage(container, { deltaX: 30 });
+
+				expect(sidewaysThumb()).not.toBeNull();
+			});
+
+			it("moves the summaries to their end when the thumb is dragged past it", async () => {
+				const { container } = mountMessages([LONG]);
+				await flush();
+				showEachSummaryIn(container, SHOWN);
+				wheelOverMessage(container, { deltaX: 30 });
+
+				sidewaysThumb()?.dispatchEvent(
+					new MouseEvent("pointerdown", { bubbles: true, clientX: 0 }),
+				);
+				window.dispatchEvent(
+					new MouseEvent("pointermove", { bubbles: true, clientX: 1000 }),
+				);
+				window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+				await tick();
+
+				expect(summaryShift(summaries(container)[0])).toBe(200);
 			});
 		});
 	});

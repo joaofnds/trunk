@@ -125,10 +125,26 @@ not tried, would move the list by the line count in pixels. A table that fits ha
 nothing to move sideways, and the engine keeps the gesture. The pointer is read in table
 coordinates, past however far the table has scrolled.
 
+Message pans its summaries under the same rule, on the product owner's direction of
+2026-09-23: a summary cut off at the column's edge is read by swiping over it, not by
+widening the column. The pan is a negative `text-indent` on every commit's and stash's
+summary, read from one custom property on the list's root, so a swipe is one style
+write and a row the virtual list mounts later arrives already moved. An indent keeps the
+text inline, so the trailing ellipsis stays while the text still overflows and goes once
+its end is in view; a transform would need an inline-block, which `text-overflow` treats
+as one box to hide whole. The pan ends where the longest cut summary on screen ends,
+measured at each wheel event, as VS Code's lists measure only the rows they render. The
+measure is each summary's own laid-out text, through a `Range`, and not a canvas: a
+canvas needs the font as a string, WebKit serializes a computed `font` as an empty
+string, and a canvas handed one keeps whatever font it had last, which measured a 747px
+summary at 546px. Every summary moves by the same offset, so a short one slides out of
+view as a long one is read. The product owner asked for this and for each summary moving
+only as far as it is cut, to try both in the app and keep one; this is the first.
+
 The sideways thumb is the scrollbar tracker's, shown only while the table scrolls, as
-`docs/architecture/scrollbars.md` settles for every thumb. The pan gets a thumb of its
-own, along the Graph column's width at the list's bottom edge, which the component
-announces to the tracker because no scroll event reports a pan.
+`docs/architecture/scrollbars.md` settles for every thumb. Each pan gets a thumb of its
+own, along its column's width at the list's bottom edge, which the component announces
+to the tracker because no scroll event reports a pan.
 
 Not taken: shrinking user widths to fit, which is the ceiling the product owner refused
 above; pinning Graph or Branch/Tag while the rest scrolls, since once Message is at its

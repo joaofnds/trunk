@@ -67,31 +67,32 @@ thickness by that name, so a thumb without it paints nothing.
 
 ## A pan the engine does not run
 
-The commit list's Graph column pans its lanes with an offset the component keeps itself
-(GLOSSARY "Graph pan"). No `scroll` event reports it, so the component announces a move
-with `announcePan(pane, pan)`: a DOM event on the pane it pans inside, which the tracker
+The commit list pans two of its columns by offsets the component keeps itself: the Graph
+column's lanes (GLOSSARY "Graph pan") and Message's summaries (GLOSSARY "Message pan").
+No `scroll` event reports either, so the component announces a move with
+`announcePan(pane, pan)`: a DOM event on the pane it pans inside, which the tracker
 catches in the capture phase as it catches `scroll`. The `Pan` it carries says where its
 track lies and how far it has gone, as a `ScrollAxisExtent`, and how to move it, so the
 thumb is painted along the pane's bottom edge under the pane's shared linger, and dragged
 through `dragScrollPosition()` into the pan's own `scrollTo`.
 
-Only the moves the component announces bring a thumb, and the Graph pan announces the
-wheel's. The drag repaints its own thumb. A divider double-click that returns the pan to
-its start, and the clamp that shortens it when the column widens or the lanes fall, move
-it without a thumb, so a thumb still up from a swipe keeps its old place until it fades
-or the pane scrolls. The two narrowings above are a pane's own sideways scroll's and do
-not apply: a pan's thumb shows whenever a pan is announced.
+Only the moves the component announces bring a thumb, and both pans announce the
+wheel's. The drag repaints its own thumb. A Graph divider double-click that returns the
+Graph pan to its start, and the clamp that shortens it when the column widens or the
+lanes fall, move it without a thumb, so a thumb still up from a swipe keeps its old
+place until it fades or the pane scrolls. The two narrowings above are a pane's own
+sideways scroll's and do not apply: a pan's thumb shows whenever a pan is announced.
 
 A pan's track is a column of the table its pane scrolls sideways, so whenever the pane
 scrolls, a pan's thumb that is up is repainted and follows its column. The column can
 run past the pane's edges, partly or wholly scrolled out of view, and the thumb is cut
 off at the pane's edge as the column is, down to nothing once the column has left.
 
-A pane can then hold three thumbs. The Graph pan's thumb and the table's own sideways
-thumb share the bottom edge, both named `horizontal`, and a swipe that carries on past
-the pan's end scrolls the table, so both can be up at once: side by side when the table
-has scrolled far, overlapping when it has not, and where they overlap the one created
-later lies on top and takes the pointer.
+A pane can then hold a thumb for each pan besides its own two. A pan's thumb and the
+table's own sideways thumb share the bottom edge, all named `horizontal`, and a swipe
+that carries on past a pan's end scrolls the table, so both can be up at once: side by
+side when the table has scrolled far, overlapping when it has not, and where they
+overlap the one created later lies on top and takes the pointer.
 
 The other shape, the pan as a real horizontal scroll container, is not taken: the rails
 and dots are one SVG as tall as the list inside the virtual list's content, and a

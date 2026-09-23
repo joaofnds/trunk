@@ -43,6 +43,7 @@ import {
 	HEADER_ICON_WIDTH,
 	headerMinWidths,
 	MESSAGE_FLOOR,
+	MESSAGE_INDENT_PROPERTY,
 	messageReserve,
 	refContentWidth,
 	SIZED_COLUMNS,
@@ -419,7 +420,46 @@ const graphPan = columnPan({
 	},
 });
 
-const columnPans: readonly ColumnPan[] = [graphPan];
+let messageScrollX = $state(0);
+
+/** How far the longest cut summary on screen runs past what its row shows. */
+function messageOverrun(): number {
+	const shown =
+		containerRef?.querySelectorAll<HTMLElement>("[data-message-summary]") ?? [];
+
+	let widest = 0;
+	for (const summary of shown) {
+		// The text as laid out, which no indent changes. A canvas measure needs
+		// the font as a string, and WebKit serializes a computed `font` as "".
+		const text = document.createRange();
+		text.selectNodeContents(summary);
+		widest = Math.max(
+			widest,
+			text.getBoundingClientRect().width - summary.clientWidth,
+		);
+	}
+
+	return Math.ceil(widest);
+}
+
+const messagePan = columnPan({
+	band: () => {
+		const sized = tableMinWidth(columnWidths, columnVisibility) - MESSAGE_FLOOR;
+		return {
+			start: graphStart + (columnVisibility.graph ? columnWidths.graph : 0),
+			width: columnVisibility.message
+				? Math.max(MESSAGE_FLOOR, rowWidth - sized)
+				: 0,
+		};
+	},
+	offset: () => messageScrollX,
+	range: messageOverrun,
+	scrollTo(offset) {
+		messageScrollX = offset;
+	},
+});
+
+const columnPans: readonly ColumnPan[] = [graphPan, messagePan];
 
 // GRAPH-02: a sideways gesture over a column that pans pans it until its
 // content reaches its end in the gesture's direction, and from there, or
@@ -1963,7 +2003,7 @@ $effect(() => {
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   class="h-full overflow-hidden flex flex-col"
-  style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)}"
+  style="background: var(--bg-1); outline: none; {columnWidthDeclarations(columnWidths)} {MESSAGE_INDENT_PROPERTY}: {-messageScrollX}px;"
   tabindex="0"
   role="listbox"
   bind:this={containerRef}

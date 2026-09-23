@@ -1,6 +1,10 @@
 <script lang="ts">
 import { copySha } from "../lib/clipboard.js";
-import { columnWidthProperty, MESSAGE_FLOOR } from "../lib/column-widths.js";
+import {
+	columnWidthProperty,
+	MESSAGE_FLOOR,
+	MESSAGE_INDENT_PROPERTY,
+} from "../lib/column-widths.js";
 import { parseSummary, prefixToneVar } from "../lib/commit-prefix.js";
 import type { SelectModifiers } from "../lib/compare-select.js";
 import { diffBarFractions } from "../lib/diff-stat.js";
@@ -163,9 +167,9 @@ const rowShadow = $derived(
         {/if}
       </div>
     {:else if isStash}
-      <span data-testid="commit-row-summary" class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted);">{commit.summary}</span>
+      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap italic" style="color: var(--color-text-muted); text-indent: var({MESSAGE_INDENT_PROPERTY});">{commit.summary}</span>
     {:else}
-      <span data-testid="commit-row-summary" class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+      <span data-testid="commit-row-summary" data-message-summary class="flex-1 overflow-hidden text-ellipsis whitespace-nowrap" style="text-indent: var({MESSAGE_INDENT_PROPERTY});"
       >{#if parsed.prefix}<span style="color: {prefixToneVar(parsed.prefix)};">{parsed.prefix}{parsed.scope}{parsed.bang}</span><span style="color: var(--fg-2);">{": "}</span>{parsed.rest}{:else}{commit.summary}{/if}</span>
     {/if}
     <CommentBadge count={commentCount} tone={commentTone} />

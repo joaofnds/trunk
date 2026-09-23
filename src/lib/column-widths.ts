@@ -45,6 +45,12 @@ export function columnWidthProperty(column: keyof ColumnWidths): string {
 	return `--column-${column}-width`;
 }
 
+/**
+ * The custom property on the commit list's root that moves every summary in
+ * Message left by the column's pan, as a negative indent.
+ */
+export const MESSAGE_INDENT_PROPERTY = "--message-indent";
+
 /** The commit list root's style: every sized column's width, declared once. */
 export function columnWidthDeclarations(widths: ColumnWidths): string {
 	return SIZED_COLUMNS.map(
