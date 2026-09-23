@@ -16,10 +16,10 @@
 //! the tree, so reverting the working tree does hand the same oid out twice.
 
 use super::{repo_key, sqlite_error};
-use crate::error::TrunkError;
 use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashSet;
 use std::path::Path;
+use trunk_git::error::TrunkError;
 
 /// Record a snapshot as handed out. Called in the same transaction that stores
 /// the snapshot oid, before the oid reaches any caller.

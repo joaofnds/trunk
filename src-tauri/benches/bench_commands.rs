@@ -166,7 +166,7 @@ fn bench_diff_unstaged(c: &mut Criterion) {
                 &path,
                 "README.md",
                 &state_map,
-                &trunk_lib::git::types::DiffRequestOptions::default(),
+                &trunk_git::types::DiffRequestOptions::default(),
             )
             .unwrap();
         });
@@ -196,7 +196,7 @@ fn bench_stage_hunk(c: &mut Criterion) {
                     "README.md",
                     0,
                     &state_map,
-                    &trunk_lib::git::types::DiffRequestOptions::default(),
+                    &trunk_git::types::DiffRequestOptions::default(),
                 )
                 .unwrap();
                 // _dir dropped here, cleaning up temp directory
@@ -359,7 +359,7 @@ fn bench_diff_code_file(c: &mut Criterion) {
                 &path,
                 "diff-utils.ts",
                 &state_map,
-                &trunk_lib::git::types::DiffRequestOptions::default(),
+                &trunk_git::types::DiffRequestOptions::default(),
             )
             .unwrap()
         });
@@ -378,7 +378,7 @@ fn bench_enrich_new(c: &mut Criterion) {
         &path,
         "diff-utils.ts",
         &state_map,
-        &trunk_lib::git::types::DiffRequestOptions::default(),
+        &trunk_git::types::DiffRequestOptions::default(),
     )
     .unwrap();
 
@@ -542,7 +542,7 @@ fn bench_diff_large_file(c: &mut Criterion) {
                     &path,
                     "large.ts",
                     &state_map,
-                    &trunk_lib::git::types::DiffRequestOptions::default(),
+                    &trunk_git::types::DiffRequestOptions::default(),
                 )
                 .unwrap()
             });
@@ -566,7 +566,7 @@ fn bench_diff_large_file(c: &mut Criterion) {
         let path = bench_repo.path.display().to_string();
         let file = bench_repo.path.join("large.ts");
         let state_map = OpenRepos::from_iter([(path.clone(), bench_repo.path.clone())]);
-        let options = trunk_lib::git::types::DiffRequestOptions::default();
+        let options = trunk_git::types::DiffRequestOptions::default();
         let mut nonce = 0usize;
 
         group.bench_function(id, |b| {

@@ -2,12 +2,12 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use crate::error::TrunkError;
-use crate::git::graph_input::GraphSource;
-use crate::git::{graph, types::StashEntry};
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::GraphSource;
+use trunk_git::{graph, types::StashEntry};
 
 /// Kept apart: only pop can leave an entry behind, so only pop's message may say so.
 const POP_CONFLICT_MESSAGE: &str = "Stash applied with conflicts — resolve conflicts before continuing. Note: stash was NOT removed.";
@@ -152,7 +152,7 @@ pub fn stash_save_inner(
         ));
     }
 
-    let mut status_opts = crate::git::status::dirty_status_options();
+    let mut status_opts = trunk_git::status::dirty_status_options();
     let statuses = repo
         .statuses(Some(&mut status_opts))
         .map_err(TrunkError::from)?;
@@ -162,14 +162,14 @@ pub fn stash_save_inner(
 
     for entry in statuses.iter() {
         let status = entry.status();
-        if !status.intersects(crate::git::status::STAGED_BITS) {
+        if !status.intersects(trunk_git::status::STAGED_BITS) {
             continue;
         }
         let Ok(rel_path) = entry.path() else {
             continue;
         };
 
-        let wt_diverges = status.intersects(crate::git::status::UNSTAGED_BITS);
+        let wt_diverges = status.intersects(trunk_git::status::UNSTAGED_BITS);
 
         if wt_diverges {
             // Worktree diverges from index: three-way merge
@@ -414,7 +414,7 @@ pub fn stash_pop_inner(
             TrunkError::from(e)
         }
     })?;
-    if crate::git::repository::has_unmerged_paths(&repo)? {
+    if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", POP_CONFLICT_MESSAGE));
     }
     repo.stash_drop(index).map_err(TrunkError::from)?;
@@ -442,7 +442,7 @@ pub fn stash_apply_inner(
             TrunkError::from(e)
         }
     })?;
-    if crate::git::repository::has_unmerged_paths(&repo)? {
+    if trunk_git::repository::has_unmerged_paths(&repo)? {
         return Err(TrunkError::new("conflict_state", APPLY_CONFLICT_MESSAGE));
     }
     graph::capture(&mut repo)

@@ -18,11 +18,11 @@
 //! `thread` verb print the same bytes the document carries rather than a
 //! second implementation that has to agree.
 
-use crate::error::TrunkError;
 use crate::review::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
 use crate::review::types::{Anchor, ContentPin, Side, Source};
 use crate::review::types::{Channel, ThreadState};
 use std::path::{Path, PathBuf};
+use trunk_git::error::TrunkError;
 
 /// What the renderer needs from one review.
 ///

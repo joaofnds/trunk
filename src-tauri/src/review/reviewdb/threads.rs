@@ -8,7 +8,6 @@
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
 use super::{anchor, repo_key, sqlite_error};
-use crate::error::TrunkError;
 use crate::review::types::{Anchor, ContentPin};
 use crate::review::types::{Channel, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
@@ -16,6 +15,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
+use trunk_git::error::TrunkError;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Thread {

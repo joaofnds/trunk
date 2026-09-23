@@ -1,9 +1,9 @@
 use crate::common::context::TestContext;
 use std::sync::Mutex;
 use tauri::test::MockRuntime;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::GraphSnapshot;
 use trunk_lib::commands::remote;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::GraphSnapshot;
 use trunk_lib::state::{CommitCache, GraphCache, RemoteOps, RunningOp};
 
 /// Drives the remote commands against a real `git` subprocess and a real bare

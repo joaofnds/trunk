@@ -22,7 +22,6 @@
 //! sidecar — never deleted — and the store proceeds empty (D-15 posture).
 
 use super::resolve_data_dir;
-use crate::error::TrunkError;
 use crate::storage::{atomic_write_json, quarantine_corrupt};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -30,6 +29,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, Runtime};
+use trunk_git::error::TrunkError;
 
 const PREFS_FILE: &str = "trunk-prefs.json";
 

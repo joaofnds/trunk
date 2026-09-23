@@ -2,8 +2,8 @@
 //! unambiguous prefix (D12). One scheme for reviews and threads.
 
 use super::{Store, sqlite_error};
-use crate::error::TrunkError;
 use rusqlite::Connection;
+use trunk_git::error::TrunkError;
 
 /// Crockford base32: the digits plus the letters, minus `I`, `L`, `O` and `U`.
 /// `I`/`L` read as `1` and `O` as `0`, which is what `normalize` folds; `U` is

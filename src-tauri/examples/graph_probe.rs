@@ -7,9 +7,9 @@
 //! be diffed. Shares `layout_dump` with the golden suite, so a manual QA diff
 //! and a red golden read the same.
 
-use trunk_lib::git::graph::snapshot;
-use trunk_lib::git::graph_input::RefVisibility;
-use trunk_lib::git::layout_dump;
+use trunk_git::graph::snapshot;
+use trunk_git::graph_input::RefVisibility;
+use trunk_git::layout_dump;
 
 fn main() {
     let mut args = std::env::args().skip(1);

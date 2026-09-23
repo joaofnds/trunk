@@ -2,8 +2,8 @@ mod common;
 
 use common::context::TestContext;
 use std::fmt::Write as _;
-use trunk_lib::git::types::LinePairing;
-use trunk_lib::git::types::{DiffOrigin, DiffRequestOptions, DiffStatus};
+use trunk_git::types::LinePairing;
+use trunk_git::types::{DiffOrigin, DiffRequestOptions, DiffStatus};
 
 // -- diff_unstaged tests --
 
@@ -327,7 +327,7 @@ fn diff_unstaged_ignores_whitespace_when_enabled() {
         .filter(|l| {
             matches!(
                 l.origin,
-                trunk_lib::git::types::DiffOrigin::Add | trunk_lib::git::types::DiffOrigin::Delete
+                trunk_git::types::DiffOrigin::Add | trunk_git::types::DiffOrigin::Delete
             )
         })
         .count();
@@ -367,7 +367,7 @@ fn diff_unstaged_ignores_indentation_whitespace() {
         .filter(|l| {
             matches!(
                 l.origin,
-                trunk_lib::git::types::DiffOrigin::Add | trunk_lib::git::types::DiffOrigin::Delete
+                trunk_git::types::DiffOrigin::Add | trunk_git::types::DiffOrigin::Delete
             )
         })
         .count();
@@ -388,7 +388,7 @@ fn diff_unstaged_ignores_indentation_whitespace() {
         .filter(|l| {
             matches!(
                 l.origin,
-                trunk_lib::git::types::DiffOrigin::Add | trunk_lib::git::types::DiffOrigin::Delete
+                trunk_git::types::DiffOrigin::Add | trunk_git::types::DiffOrigin::Delete
             )
         })
         .count();
@@ -458,7 +458,7 @@ fn ambiguous_slider_lands_on_the_boundary_git_cli_picks() {
         .hunks
         .iter()
         .flat_map(|h| h.lines.iter())
-        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Add))
+        .filter(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Add))
         .map(|l| l.content.trim_end_matches('\n'))
         .collect();
 
@@ -484,7 +484,7 @@ fn reflowed_paragraph_lines_carry_their_partner() {
     let pairings: Vec<_> = file_diffs[0].hunks[0]
         .lines
         .iter()
-        .filter(|l| !matches!(l.origin, trunk_lib::git::types::DiffOrigin::Context))
+        .filter(|l| !matches!(l.origin, trunk_git::types::DiffOrigin::Context))
         .map(|l| l.pairing)
         .collect();
 
@@ -521,12 +521,12 @@ fn word_span_basic_pair() {
     let del_line = hunk
         .lines
         .iter()
-        .find(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Delete))
+        .find(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Delete))
         .expect("expected a Delete line");
     let add_line = hunk
         .lines
         .iter()
-        .find(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Add))
+        .find(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Add))
         .expect("expected an Add line");
 
     // Both should have non-empty spans (merged spans always cover content)
@@ -595,7 +595,7 @@ fn word_span_unpaired_add_has_no_emphasis() {
     let add_lines: Vec<_> = hunk
         .lines
         .iter()
-        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Add))
+        .filter(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Add))
         .collect();
     assert!(!add_lines.is_empty(), "expected Add lines");
 
@@ -628,7 +628,7 @@ fn word_span_long_line_skipped() {
     for line in &hunk.lines {
         if matches!(
             line.origin,
-            trunk_lib::git::types::DiffOrigin::Delete | trunk_lib::git::types::DiffOrigin::Add
+            trunk_git::types::DiffOrigin::Delete | trunk_git::types::DiffOrigin::Add
         ) {
             assert!(
                 !line.spans.iter().any(|s| s.emphasized),
@@ -659,7 +659,7 @@ fn word_span_dissimilar_skipped() {
     for line in &hunk.lines {
         if matches!(
             line.origin,
-            trunk_lib::git::types::DiffOrigin::Delete | trunk_lib::git::types::DiffOrigin::Add
+            trunk_git::types::DiffOrigin::Delete | trunk_git::types::DiffOrigin::Add
         ) {
             assert!(
                 !line.spans.iter().any(|s| s.emphasized),
@@ -699,7 +699,7 @@ fn word_span_context_lines_have_no_emphasis() {
     let context_lines: Vec<_> = hunk
         .lines
         .iter()
-        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Context))
+        .filter(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Context))
         .collect();
     assert!(!context_lines.is_empty(), "expected Context lines");
 
@@ -878,7 +878,7 @@ fn syntax_and_word_diff_coexist() {
         .filter(|l| {
             matches!(
                 l.origin,
-                trunk_lib::git::types::DiffOrigin::Add | trunk_lib::git::types::DiffOrigin::Delete
+                trunk_git::types::DiffOrigin::Add | trunk_git::types::DiffOrigin::Delete
             )
         })
         .collect();
@@ -1095,7 +1095,7 @@ fn unstaged_diff_highlights_an_untracked_rust_file_with_no_old_side() {
     assert!(
         hunk.lines
             .iter()
-            .all(|l| !matches!(l.origin, trunk_lib::git::types::DiffOrigin::Delete)),
+            .all(|l| !matches!(l.origin, trunk_git::types::DiffOrigin::Delete)),
         "an untracked file's diff should have no Delete lines"
     );
 
@@ -1180,9 +1180,9 @@ fn compare_across_divergent_branches_lists_tree_differences() {
     paths.sort_unstable();
     assert_eq!(paths, vec!["a.txt", "f.txt"]);
     let a = files.iter().find(|f| f.path == "a.txt").unwrap();
-    assert_eq!(a.status, trunk_lib::git::types::DiffStatus::Modified);
+    assert_eq!(a.status, trunk_git::types::DiffStatus::Modified);
     let f = files.iter().find(|f| f.path == "f.txt").unwrap();
-    assert_eq!(f.status, trunk_lib::git::types::DiffStatus::Added);
+    assert_eq!(f.status, trunk_git::types::DiffStatus::Added);
 }
 
 /// The single-file compare reads old lines from Base and new lines from Target:
@@ -1222,13 +1222,13 @@ fn compare_file_diff_direction_is_base_to_target() {
     let deleted: Vec<&str> = hunk
         .lines
         .iter()
-        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Delete))
+        .filter(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Delete))
         .map(|l| l.content.as_str())
         .collect();
     let added: Vec<&str> = hunk
         .lines
         .iter()
-        .filter(|l| matches!(l.origin, trunk_lib::git::types::DiffOrigin::Add))
+        .filter(|l| matches!(l.origin, trunk_git::types::DiffOrigin::Add))
         .map(|l| l.content.as_str())
         .collect();
     assert_eq!(deleted, vec!["two\n"]);
@@ -1281,7 +1281,7 @@ fn compare_with_no_base_diffs_against_the_empty_tree() {
 
     let files = ctx.list_compare_files(None, &tip).expect("compare failed");
     assert_eq!(files.len(), 1);
-    assert_eq!(files[0].status, trunk_lib::git::types::DiffStatus::Added);
+    assert_eq!(files[0].status, trunk_git::types::DiffStatus::Added);
 }
 
 /// The compare stats summarize the whole two-tree diff: Base has a.txt="two",

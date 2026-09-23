@@ -1,9 +1,9 @@
-use crate::error::TrunkError;
-use crate::git::graph;
-use crate::git::types::MergeSides;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::graph;
+use trunk_git::types::MergeSides;
 
 /// The file's conflict entry, or `not_conflicted` when the index holds none for
 /// it. Both the read and the write path ask this first: the editor outlives the

@@ -1,13 +1,13 @@
-use crate::error::TrunkError;
-use crate::git::graph_input::GraphSnapshot;
-use crate::git::{
-    graph,
-    types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
-};
 use crate::state::{CommitCache, CommitStatsCache, OpenRepos, RepoState};
 use serde::Serialize;
 use std::collections::HashMap;
 use tauri::State;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::GraphSnapshot;
+use trunk_git::{
+    graph,
+    types::{DiffStat, GraphCommit, GraphResult, MatchType, SearchResult},
+};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct GraphResponse {
@@ -117,7 +117,7 @@ pub async fn refresh_commit_graph(
 #[tauri::command]
 pub async fn set_ref_visibility(
     path: String,
-    visibility: crate::git::graph_input::RefVisibility,
+    visibility: trunk_git::graph_input::RefVisibility,
     loaded: usize,
     state: State<'_, RepoState>,
     cache: State<'_, CommitCache>,
@@ -155,7 +155,7 @@ pub async fn set_ref_visibility(
 /// given, and the git error when the walk fails.
 pub fn set_ref_visibility_inner(
     path: &str,
-    visibility: &crate::git::graph_input::RefVisibility,
+    visibility: &trunk_git::graph_input::RefVisibility,
     cached: Option<&GraphSnapshot>,
     state_map: &OpenRepos,
 ) -> Result<GraphSnapshot, TrunkError> {

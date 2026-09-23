@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::types::RefsResponse;
 use trunk_lib::commands::branches;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::RefsResponse;
 
 impl TestContext {
     /// List all refs (branches, tags, stashes) in the test repo
@@ -21,7 +21,7 @@ impl TestContext {
             name,
             &self.state_map,
             &mut self.cache_map,
-            &trunk_lib::git::graph_input::RefVisibility::default(),
+            &trunk_git::graph_input::RefVisibility::default(),
         )
     }
 
@@ -32,7 +32,7 @@ impl TestContext {
             name,
             &self.state_map,
             &mut self.cache_map,
-            &trunk_lib::git::graph_input::RefVisibility::default(),
+            &trunk_git::graph_input::RefVisibility::default(),
         )
     }
 
@@ -44,7 +44,7 @@ impl TestContext {
             new,
             &self.state_map,
             &mut self.cache_map,
-            &trunk_lib::git::graph_input::RefVisibility::default(),
+            &trunk_git::graph_input::RefVisibility::default(),
         )
     }
 
@@ -55,7 +55,7 @@ impl TestContext {
             target_oid,
             &self.state_map,
             &mut self.cache_map,
-            &trunk_lib::git::graph_input::RefVisibility::default(),
+            &trunk_git::graph_input::RefVisibility::default(),
         )
     }
 
@@ -67,7 +67,7 @@ impl TestContext {
             from_oid,
             &self.state_map,
             &mut self.cache_map,
-            &trunk_lib::git::graph_input::RefVisibility::default(),
+            &trunk_git::graph_input::RefVisibility::default(),
         )
     }
 }

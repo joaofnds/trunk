@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use git2::Oid;
-use trunk_lib::git::placement::{Layout, PlacementInput, assign_lanes};
+use trunk_git::placement::{Layout, PlacementInput, assign_lanes};
 
 fn oid(n: u8) -> Oid {
     Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")

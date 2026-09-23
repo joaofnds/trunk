@@ -6,7 +6,7 @@ use common::context::TestContext;
 fn open_invalid_path_returns_error() {
     let dir = tempfile::tempdir().unwrap();
     // dir is a real directory but NOT a git repo
-    let result = trunk_lib::git::repository::validate_and_open(dir.path());
+    let result = trunk_git::repository::validate_and_open(dir.path());
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().code, "not_a_git_repo");
 }

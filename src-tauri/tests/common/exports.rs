@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use trunk_lib::git::types::GraphResult;
+use trunk_git::types::GraphResult;
 
 /// One fixture's layout as the app receives it over IPC, plus the `wipCount`
 /// `RepoView` derives alongside it. The TypeScript render goldens mount the

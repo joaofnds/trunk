@@ -3,11 +3,11 @@ mod common;
 use common::context::TestContext;
 use std::ffi::OsStr;
 use std::path::Path;
+use trunk_git::types::OperationType;
 use trunk_lib::commands::operation_state::{
     MergeBeginOutcome, MergeBeginResult, merge_branch_begin_inner, rebase_branch_inner,
     rebase_command,
 };
-use trunk_lib::git::types::OperationType;
 
 /// `GIT_EDITOR` outranks every git config key, so no repo-local or global
 /// discriminator can prove the pin is in place — only the built command can.

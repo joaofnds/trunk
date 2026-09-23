@@ -1,13 +1,13 @@
-use crate::error::TrunkError;
-use crate::git::{
-    graph,
-    types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry},
-};
 use crate::shell_env;
 use crate::state::{CommitCache, GraphCache, OpenRepos, RepoState};
 use crate::watcher::RepoChanged;
 use git2::BranchType;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::{
+    graph,
+    types::{BranchInfo, RefLabel, RefType, RefsResponse, StashEntry},
+};
 
 /// Inner implementation of `list_refs` — separated for testability without Tauri state.
 ///
@@ -142,7 +142,7 @@ pub fn delete_branch_inner(
     branch_name: &str,
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
-    visibility: &crate::git::graph_input::RefVisibility,
+    visibility: &trunk_git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -184,7 +184,7 @@ pub fn rename_branch_inner(
     new_name: &str,
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
-    visibility: &crate::git::graph_input::RefVisibility,
+    visibility: &trunk_git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -284,7 +284,7 @@ pub fn checkout_branch_inner(
     branch_name: &str,
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
-    visibility: &crate::git::graph_input::RefVisibility,
+    visibility: &trunk_git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -355,7 +355,7 @@ pub fn fast_forward_to_inner(
     target_oid: &str,
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
-    visibility: &crate::git::graph_input::RefVisibility,
+    visibility: &trunk_git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
 
@@ -430,7 +430,7 @@ pub fn create_branch_inner(
     from_oid: Option<&str>,
     state_map: &OpenRepos,
     cache_map: &mut GraphCache,
-    visibility: &crate::git::graph_input::RefVisibility,
+    visibility: &trunk_git::graph_input::RefVisibility,
 ) -> Result<(), TrunkError> {
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
@@ -449,7 +449,7 @@ pub fn create_branch_inner(
     drop(target_commit);
 
     // Check dirty workdir before checkout (branch already created above)
-    if crate::git::repository::is_repo_dirty(&repo)? {
+    if trunk_git::repository::is_repo_dirty(&repo)? {
         drop(repo);
         // Rebuild cache even though checkout didn't happen — branch was created
         let mut repo2 = git2::Repository::open(path_buf)?;

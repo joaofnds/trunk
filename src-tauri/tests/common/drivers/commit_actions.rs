@@ -1,15 +1,15 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, RefVisibility};
+use trunk_git::types::UndoResult;
 use trunk_lib::commands::commit_actions::{self, RevertBeginResult};
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::{GraphSnapshot, RefVisibility};
-use trunk_lib::git::types::UndoResult;
 
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default
 /// (nothing hidden) visibility here is what keeps that contract, now that `*_inner` returns
 /// the bare capture (TRUNK-125).
 fn snapshot(
-    source: Result<trunk_lib::git::graph_input::GraphSource, TrunkError>,
+    source: Result<trunk_git::graph_input::GraphSource, TrunkError>,
 ) -> Result<GraphSnapshot, TrunkError> {
     source.map(|source| GraphSnapshot::new(source, RefVisibility::default()))
 }

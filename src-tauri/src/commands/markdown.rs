@@ -1,13 +1,11 @@
 // Markdown rendering, plus the Tauri-facing half of the blob reads it depends on.
 // The sandboxed resolver itself — `RevSpec` and the working-tree path-escape
-// guard — is `git::blob_reader`, so the security boundary can be read on its own.
+// guard — is `trunk_git::blob_reader`, so the security boundary can be read on its own.
 // What stays here needs the adapter layer: `read_file_at_from_state` resolves an
 // open repo out of `RepoState`, and `parse_asset_uri` / `resolve_trunk_asset`
 // decode the `trunk-asset://` URLs the protocol handler (wired in lib.rs) serves
 // for local images.
 
-use crate::error::TrunkError;
-use crate::git::blob_reader::{RevSpec, read_file_at_inner};
 use crate::state::{OpenRepos, RepoState};
 use crate::syntax;
 use comrak::adapters::SyntaxHighlighterAdapter;
@@ -19,6 +17,8 @@ use std::fmt::Write as FmtWrite;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::State;
+use trunk_git::blob_reader::{RevSpec, read_file_at_inner};
+use trunk_git::error::TrunkError;
 
 /// Block-diff cache keyed `(repo, file, before-oid, after-oid)`.
 ///
@@ -3131,10 +3131,10 @@ fn sanitize_html(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::blob_reader::test_repo::{sig, with_three_revs};
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
+    use trunk_git::blob_reader::test_repo::{sig, with_three_revs};
 
     fn no_rewrite(_: &str) -> Option<String> {
         None

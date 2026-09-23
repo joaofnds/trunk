@@ -11,7 +11,7 @@
 //! rest of the app calls a change.
 
 use crate::error::TrunkError;
-use crate::git::status::{DIRTY_BITS, dirty_status_options};
+use crate::status::{DIRTY_BITS, dirty_status_options};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 

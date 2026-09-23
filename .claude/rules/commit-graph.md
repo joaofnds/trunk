@@ -1,11 +1,11 @@
 ---
 paths:
-  - "src-tauri/src/git/graph.rs"
-  - "src-tauri/src/git/placement.rs"
-  - "src-tauri/src/git/graph_input.rs"
-  - "src-tauri/src/git/layout_dump.rs"
-  - "src-tauri/src/git/status.rs"
-  - "src-tauri/src/git/types.rs"
+  - "src-tauri/git/src/graph.rs"
+  - "src-tauri/git/src/placement.rs"
+  - "src-tauri/git/src/graph_input.rs"
+  - "src-tauri/git/src/layout_dump.rs"
+  - "src-tauri/git/src/status.rs"
+  - "src-tauri/git/src/types.rs"
   - "src/lib/types.ts"
   - "src/lib/active-lanes.ts"
   - "src/lib/wip-row.ts"
@@ -135,7 +135,7 @@ then mirror the same edit into the changelog.
   while the worktree is dirty. The frontend prepends the WIP row at the head-chain column
   whenever `wipCount > 0`, and an inline stash lands in that same column. Do not drop **or
   narrow** either worktree-state guard — their dirtiness stays the shared
-  `git::status::worktree_dirty` definition the WIP row is gated on, staged, unstaged,
+  `trunk_git::status::worktree_dirty` definition the WIP row is gated on, staged, unstaged,
   conflicted and untracked alike; a tighter predicate keeps both guards and still collides
   (amended 2026-08-02, after a
   TypeScript-only fix for the same collision was reverted; the counterexample was refuted

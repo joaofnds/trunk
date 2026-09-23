@@ -1,12 +1,12 @@
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
-use crate::error::TrunkError;
 use crate::review::types::Channel;
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::str::FromStr;
+use trunk_git::error::TrunkError;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Reply {

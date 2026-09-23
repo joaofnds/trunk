@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::types::MergeSides;
 use trunk_lib::commands::merge_editor;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::MergeSides;
 
 impl TestContext {
     pub fn get_merge_sides(&self, file: &str) -> Result<MergeSides, TrunkError> {

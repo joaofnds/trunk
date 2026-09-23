@@ -8,7 +8,6 @@
 //! Canonical-path keying: the repo's `PathBuf` is canonicalized so a repo opened
 //! via a symlink or alias reaches the same reviews.
 
-use crate::error::TrunkError;
 use crate::review::range::{compute_range_oids, intersect_graph_order, validate_range};
 use crate::review::resolution::{CommentResolution, resolve_all};
 use crate::review::reviewdb::{Store, commits, drafts, pins, replies, reviews, snapshots, threads};
@@ -19,6 +18,7 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
 
 /// Look the repo up in `RepoState`'s map and canonicalize its `PathBuf`.
 /// Returns `not_open` when the path is not a currently-open repo.
@@ -245,11 +245,11 @@ fn repin_restored(repo: &git2::Repository, oid: &str, canonical: &Path) {
         }
     };
 
-    if !crate::git::workdir_snapshot::is_snapshot_commit(&commit) {
+    if !trunk_git::workdir_snapshot::is_snapshot_commit(&commit) {
         return;
     }
 
-    if let Err(e) = crate::git::workdir_snapshot::keep_snapshot_ref(repo, parsed) {
+    if let Err(e) = trunk_git::workdir_snapshot::keep_snapshot_ref(repo, parsed) {
         eprintln!(
             "re-pin failed for {} in {}: {}",
             oid,
@@ -480,7 +480,7 @@ pub fn submit_current_file_thread_inner(
     now: i64,
 ) -> Result<String, TrunkError> {
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
-    let bytes = crate::git::blob_reader::read_tracked_working_tree_file(&repo, file_path)?;
+    let bytes = trunk_git::blob_reader::read_tracked_working_tree_file(&repo, file_path)?;
     let text_of_file = String::from_utf8(bytes)
         .map_err(|_| TrunkError::new("not_found", format!("{file_path} is not text")))?;
 
@@ -1261,7 +1261,7 @@ pub async fn add_review_commit<R: Runtime>(
 /// repository open (D13), and a snapshot gc later collects keeps the label it
 /// was added under (ruling 2026-08-31).
 fn member_subject(repo: &git2::Repository, snaps: &snapshots::RepoSnapshots, oid: &str) -> String {
-    use crate::git::workdir_snapshot::SnapshotKind;
+    use trunk_git::workdir_snapshot::SnapshotKind;
 
     for kind in [SnapshotKind::Workdir, SnapshotKind::Index] {
         if snaps.for_kind(kind) == Some(oid) {
@@ -1382,10 +1382,10 @@ pub fn ensure_review_snapshot_inner(
     store: &Store,
     canonical: &Path,
     repo_path: &str,
-    kind: crate::git::workdir_snapshot::SnapshotKind,
+    kind: trunk_git::workdir_snapshot::SnapshotKind,
     now: i64,
 ) -> Result<String, TrunkError> {
-    use crate::git::workdir_snapshot::{decide_snapshot, keep_snapshot_ref};
+    use trunk_git::workdir_snapshot::{decide_snapshot, keep_snapshot_ref};
 
     let prior = store.read(|conn| {
         Ok(snapshots::get(conn, canonical)?
@@ -1446,11 +1446,11 @@ pub fn recompute_staleness(
     canonical: &Path,
     repo_path: &str,
 ) -> Result<usize, TrunkError> {
-    use crate::git::workdir_snapshot::{
-        in_memory_workdir_tree_oid, is_snapshot_commit, tree_matches_index,
-    };
     use crate::review::reviewdb::stale::SnapshotStanding;
     use std::cell::RefCell;
+    use trunk_git::workdir_snapshot::{
+        in_memory_workdir_tree_oid, is_snapshot_commit, tree_matches_index,
+    };
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
     let current_workdir_tree = RefCell::new(None);
@@ -1494,7 +1494,7 @@ pub fn recompute_staleness(
     // text, and an unavailable or non-text file simply reads as absent, which
     // marks the pin stale.
     let read_working_tree_file = |file_path: &str| {
-        crate::git::blob_reader::read_working_tree_file_without_links(&repo, file_path)
+        trunk_git::blob_reader::read_working_tree_file_without_links(&repo, file_path)
             .ok()
             .and_then(|bytes| String::from_utf8(bytes).ok())
     };
@@ -1541,7 +1541,7 @@ pub fn sweep_unanchored_pins(
     repo_path: &str,
     now: i64,
 ) -> Result<usize, TrunkError> {
-    use crate::git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
+    use trunk_git::workdir_snapshot::{pinned_snapshot_oids, prune_snapshot_ref};
 
     let repo = git2::Repository::open(repo_path).map_err(TrunkError::from)?;
 
@@ -1607,7 +1607,7 @@ pub async fn ensure_review_snapshot<R: Runtime>(
     store: State<'_, ReviewStoreState>,
     app: AppHandle<R>,
 ) -> Result<String, String> {
-    use crate::git::workdir_snapshot::SnapshotKind;
+    use trunk_git::workdir_snapshot::SnapshotKind;
     let snapshot_kind = match kind.as_str() {
         "workdir" => SnapshotKind::Workdir,
         "index" => SnapshotKind::Index,

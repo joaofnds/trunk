@@ -7,10 +7,10 @@
 
 use super::ids::{self, IdKind};
 use super::{repo_key, sqlite_error};
-use crate::error::TrunkError;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
+use trunk_git::error::TrunkError;
 
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

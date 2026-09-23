@@ -282,7 +282,7 @@ fn revert_abort_restores_the_reverted_file() {
 /// was a terminal.
 mod cherry_pick_lifecycle {
     use super::*;
-    use trunk_lib::git::types::OperationType;
+    use trunk_git::types::OperationType;
 
     /// Two commits changing the same file from a shared base, so cherry-picking
     /// the one that is not on HEAD's line conflicts.

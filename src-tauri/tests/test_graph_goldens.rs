@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use common::{exports, goldens};
-use trunk_lib::git::graph_input::{self, FixtureInput};
-use trunk_lib::git::layout_dump;
-use trunk_lib::git::types::GraphResult;
+use trunk_git::graph_input::{self, FixtureInput};
+use trunk_git::layout_dump;
+use trunk_git::types::GraphResult;
 
 /// Fixtures that pin a paginated slice as well as the full walk, and the skip and
 /// limit that cuts a fork and a merge mid-shape. `layout` lays out the whole

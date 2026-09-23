@@ -16,11 +16,11 @@
 //! so (the Windows console path itself is still CI-verified only).
 
 use super::schema;
-use crate::error::TrunkError;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
+use trunk_git::error::TrunkError;
 
 /// Socket directory under the store's data dir. Short on purpose: unix
 /// socket paths cap near 104 bytes on macOS.

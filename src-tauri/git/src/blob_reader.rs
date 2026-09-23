@@ -168,7 +168,7 @@ fn read_working_tree_file(repo: &git2::Repository, file_path: &str) -> Result<Ve
 /// Returns `not_found` for an invalid or missing path and for a refused link,
 /// `bare_repo` when the repository has no workdir, and `io_error` for other
 /// filesystem failures or a final object that is not a regular file.
-pub(crate) fn read_working_tree_file_without_links(
+pub fn read_working_tree_file_without_links(
     repo: &git2::Repository,
     file_path: &str,
 ) -> Result<Vec<u8>, TrunkError> {
@@ -230,7 +230,7 @@ fn no_link_open_options() -> OpenOptions {
 /// Returns `not_found` when the path is not an admissible index path or its
 /// index entry is absent or non-regular. Filesystem errors come from
 /// [`read_working_tree_file_without_links`].
-pub(crate) fn read_tracked_working_tree_file(
+pub fn read_tracked_working_tree_file(
     repo: &git2::Repository,
     file_path: &str,
 ) -> Result<Vec<u8>, TrunkError> {
@@ -335,21 +335,32 @@ fn read_tree_blob(
     Ok(blob.content().to_vec())
 }
 
-/// The one-file-at-three-revs fixture. Lives here because it is a blob-reading
-/// fixture; `commands/markdown.rs`'s renderer tests share it rather than keeping
-/// a second copy in step with this one.
-#[cfg(test)]
-pub(crate) mod test_repo {
+/// The one-file-at-three-revs fixture.
+///
+/// Lives here because it is a blob-reading fixture. The app's `commands/markdown.rs`
+/// renderer tests share it through the `test-util` feature rather than keeping a
+/// second copy in step with this one.
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_repo {
     use std::fs;
     use std::path::Path;
     use tempfile::TempDir;
 
+    /// # Panics
+    ///
+    /// Never in practice: the name and email are valid literals.
+    #[must_use]
     pub fn sig() -> git2::Signature<'static> {
         git2::Signature::new("Test", "test@example.com", &git2::Time::new(0, 0)).unwrap()
     }
 
     /// Repo with `doc.md` committed as "committed", staged as "staged", and left
     /// as "workdir" in the working tree — so each rev returns a distinct value.
+    ///
+    /// # Panics
+    ///
+    /// When the temporary directory or any git write fails.
+    #[must_use]
     pub fn with_three_revs() -> (TempDir, git2::Repository, git2::Oid) {
         let dir = TempDir::new().unwrap();
         let repo = git2::Repository::init(dir.path()).unwrap();

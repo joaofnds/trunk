@@ -83,9 +83,9 @@ fn bench_snapshot(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let mut repo = git2::Repository::open(path).unwrap();
-                    trunk_lib::git::graph::snapshot(
+                    trunk_git::graph::snapshot(
                         &mut repo,
-                        &trunk_lib::git::graph_input::RefVisibility::default(),
+                        &trunk_git::graph_input::RefVisibility::default(),
                     )
                     .unwrap()
                 });
@@ -101,7 +101,7 @@ static TOGGLE_REPO_10K: OnceLock<BenchRepo> = OnceLock::new();
 /// A sidebar toggle against a walk of the same repository: the toggle re-lays out the
 /// cached capture, so its cost is the visibility pass plus placement, never git.
 fn bench_toggle_visibility(c: &mut Criterion) {
-    use trunk_lib::git::graph_input::RefVisibility;
+    use trunk_git::graph_input::RefVisibility;
 
     let mut group = c.benchmark_group("toggle_visibility");
     group.warm_up_time(Duration::from_secs(3));
@@ -118,7 +118,7 @@ fn bench_toggle_visibility(c: &mut Criterion) {
         hidden.hidden_refs.insert("refs/heads/side".to_owned());
         let cached = {
             let mut repo = git2::Repository::open(&bench_repo.path).unwrap();
-            trunk_lib::git::graph::snapshot(&mut repo, &RefVisibility::default()).unwrap()
+            trunk_git::graph::snapshot(&mut repo, &RefVisibility::default()).unwrap()
         };
 
         if size >= 10_000 {
@@ -131,7 +131,7 @@ fn bench_toggle_visibility(c: &mut Criterion) {
             |b, path| {
                 b.iter(|| {
                     let mut repo = git2::Repository::open(path).unwrap();
-                    trunk_lib::git::graph::snapshot(&mut repo, &hidden).unwrap()
+                    trunk_git::graph::snapshot(&mut repo, &hidden).unwrap()
                 });
             },
         );

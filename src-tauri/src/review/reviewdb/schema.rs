@@ -5,8 +5,8 @@
 //! newer build migrated the store must refuse that operation too (D4).
 
 use super::sqlite_error;
-use crate::error::TrunkError;
 use rusqlite::Connection;
+use trunk_git::error::TrunkError;
 
 pub const CURRENT_VERSION: i64 = 8;
 

@@ -13,9 +13,9 @@ use std::path::Path;
 use common::context::TestContext;
 use common::graph_shapes;
 use common::rule_inputs;
+use trunk_git::graph::capture;
+use trunk_git::graph_input::{CapturedGraph, FixtureInput};
 use trunk_lib::commands::staging::get_dirty_counts_inner;
-use trunk_lib::git::graph::capture;
-use trunk_lib::git::graph_input::{CapturedGraph, FixtureInput};
 
 /// Set by `just graph-capture`, never by an ordinary test recipe. An input that rewrites
 /// itself as a side effect of running the suite pins nothing.

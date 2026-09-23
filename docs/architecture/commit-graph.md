@@ -175,7 +175,7 @@ consuming no new lane and no new colour — when all of these hold:
 
 1. it is a stash;
 2. **the worktree is clean** (`!worktree_dirty`, read once per walk via
-   `git::status::worktree_dirty`);
+   `trunk_git::status::worktree_dirty`);
 3. **the HEAD lane has no upward extension, or the stash's first parent is the
    extension's topmost row** (`head_lane_ext.is_empty() || ext_tip == parent_oid`, where
    `ext_tip` is `head_lane_ext.first().copied()` — both `head_lane_extension` arms return
@@ -613,12 +613,12 @@ Key test cases to maintain (in `src-tauri/tests/test_graph.rs` unless a bullet n
 
 | File | Role |
 |---|---|
-| `src-tauri/src/git/graph.rs` | `capture()` — every git2 read the pipeline makes, into the algorithm's inputs |
-| `src-tauri/src/git/placement.rs` | `assign_lanes()` — the pure lane algorithm, all column/color/edge computation |
-| `src-tauri/src/git/graph_input.rs` | `GraphSource`, `RefVisibility`, `apply_visibility()`, `layout()`, the committed input format the golden suite reads, and `GraphSnapshot`, the capture kept beside its layout so a visibility change re-lays out without a walk |
-| `src-tauri/src/git/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
-| `src-tauri/src/git/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
-| `src-tauri/src/git/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
+| `src-tauri/git/src/graph.rs` | `capture()` — every git2 read the pipeline makes, into the algorithm's inputs |
+| `src-tauri/git/src/placement.rs` | `assign_lanes()` — the pure lane algorithm, all column/color/edge computation |
+| `src-tauri/git/src/graph_input.rs` | `GraphSource`, `RefVisibility`, `apply_visibility()`, `layout()`, the committed input format the golden suite reads, and `GraphSnapshot`, the capture kept beside its layout so a visibility change re-lays out without a walk |
+| `src-tauri/git/src/layout_dump.rs` | Renders a `GraphResult` as the deterministic text the committed layout text goldens (`goldens/graph/*.txt`) are pinned against; the JSON exports and the frontend render goldens have their own renderers |
+| `src-tauri/git/src/status.rs` | The one definition of worktree dirtiness, shared with the dirty counters |
+| `src-tauri/git/src/types.rs` | Rust types: `GraphCommit`, `GraphEdge`, `EdgeType` |
 | `src/lib/types.ts` | TS mirror types + overlay types (`OverlayNode`, `OverlayConnection`, `OverlayPath`) |
 | `src/lib/wip-row.ts` | `withWipRow()` — prepends the WIP row at index 0 while the worktree is dirty |
 | `src/lib/active-lanes.ts` | `buildGraphData()` — per-parent connections, off-page lane continuation, WIP sentinel |

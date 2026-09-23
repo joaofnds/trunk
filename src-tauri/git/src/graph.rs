@@ -1,8 +1,8 @@
 use crate::error::TrunkError;
-use crate::git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
-use crate::git::placement::PlacementInput;
-use crate::git::repository;
-use crate::git::status;
+use crate::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
+use crate::placement::PlacementInput;
+use crate::repository;
+use crate::status;
 use std::collections::HashMap;
 use std::collections::HashSet;
 

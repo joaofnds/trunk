@@ -1,7 +1,5 @@
 pub mod cli;
 pub mod commands;
-pub mod error;
-pub mod git;
 pub mod launch;
 #[cfg(target_os = "macos")]
 mod macos_traffic_lights;

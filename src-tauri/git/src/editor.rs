@@ -13,7 +13,7 @@
 //! # Usage (Phase 76)
 //!
 //! ```ignore
-//! let handle = trunk_lib::git::editor::prepare("Merge branch 'foo'")?;
+//! let handle = trunk_git::editor::prepare("Merge branch 'foo'")?;
 //! std::process::Command::new("git")
 //!     .env("GIT_EDITOR", handle.script_path())
 //!     .args(["merge", "--continue"])
@@ -175,7 +175,8 @@ pub fn keyed_rebase_editor() -> Result<KeyedEditor, TrunkError> {
 /// Used by both `prepare()` here and `interactive_rebase` for shell-script
 /// interpolation of paths rooted at `$TMPDIR`, which a user could in principle
 /// set to a path containing `"` or `'`.
-pub(crate) fn shell_single_quote(s: &str) -> String {
+#[must_use]
+pub fn shell_single_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 

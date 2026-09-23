@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use git2::Oid;
-use trunk_lib::git::graph_input::{
+use trunk_git::graph_input::{
     CapturedGraph, CommitFacts, GraphSnapshot, GraphSource, RefVisibility, apply_visibility, layout,
 };
-use trunk_lib::git::layout_dump;
-use trunk_lib::git::placement::PlacementInput;
-use trunk_lib::git::types::{RefLabel, RefType};
+use trunk_git::layout_dump;
+use trunk_git::placement::PlacementInput;
+use trunk_git::types::{RefLabel, RefType};
 
 fn oid(n: u8) -> Oid {
     Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")

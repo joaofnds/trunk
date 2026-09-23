@@ -21,12 +21,12 @@ pub mod snapshots;
 pub mod stale;
 pub mod threads;
 
-use crate::error::TrunkError;
 use crate::review::types::Channel;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Mutex;
+use trunk_git::error::TrunkError;
 
 const BUSY_TIMEOUT_MS: u32 = 5000;
 

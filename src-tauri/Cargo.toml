@@ -34,9 +34,10 @@ test-util = []
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 git2 = { workspace = true }
+trunk-git = { path = "git" }
 notify = "8"
 notify-debouncer-mini = "0.7"
 tauri-plugin-window-state = "2"
@@ -46,18 +47,16 @@ tauri-plugin-single-instance = "2"
 comrak = "0.54"
 clap = { version = "4", features = ["derive"] }
 ammonia = "4"
-cap-std = "4.0.3"
-cap-fs-ext = "4.0.3"
 # Already in the tree via syntect; used here to parse markdown front matter into a
 # diffable key/value table. Pinned to the version syntect resolves so nothing new
 # is pulled in.
 yaml-rust = "0.4"
 tokio = { version = "1", features = ["process", "io-util"] }
-libc = "0.2"
+libc = { workspace = true }
 similar = { version = "3.1", features = ["unicode", "inline"] }
 syntect = { version = "5", default-features = false, features = ["default-onig"] }
 two-face = "0.5"
-tempfile = "3"
+tempfile = { workspace = true }
 rusqlite = { version = "0.40", features = ["bundled"] }
 # Already compiled in the tree (three versions resolve today); declaring it adds
 # no new compiled dependency, which is why id minting samples it directly.
@@ -67,7 +66,7 @@ getrandom = "0.4"
 # AttachConsole for the `trunk review` argv branch: the release binary is
 # windows_subsystem = "windows", so an interactive invocation has no console
 # until it attaches to its parent's.
-windows-sys = { version = "0.61", features = [
+windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_System_Console",
 ] }
@@ -93,6 +92,7 @@ block2 = "0.6"
 # Depend on ourselves with the feature on: the documented way to enable a
 # crate's own feature for its test targets only.
 trunk = { path = ".", features = ["test-util"] }
+trunk-git = { path = "git", features = ["test-util"] }
 tauri = { version = "2", features = ["test"] }
 criterion = { version = "0.8", features = ["html_reports"] }
 
@@ -108,11 +108,19 @@ harness = false
 name = "bench_ipc"
 harness = false
 
+[lints]
+workspace = true
+
 [workspace]
-members = ["fixtures"]
+members = ["fixtures", "git"]
 
 [workspace.dependencies]
 git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+tempfile = "3"
+windows-sys = "0.61"
 
 # Every clippy lint is denied except the ones listed below, and the exceptions
 # live here rather than as `#[allow]` in the source. An allow next to code reads
@@ -120,7 +128,7 @@ git2 = { version = "0.21", features = ["vendored-libgit2", "vendored-openssl"] }
 #
 # Each exception names the constraint that makes the lint unsatisfiable, not a
 # preference. Delete one and fix the code the moment its constraint goes away.
-[lints.clippy]
+[workspace.lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 
@@ -157,7 +165,7 @@ struct_excessive_bools = "allow"
 # fall-through arm takes `Invoke` by value, so two generated handlers cannot be
 # chained. Whatever function holds that list is over the limit by construction.
 #
-# `assign_lanes` in `git/placement.rs` is 231 lines, and 30 of the commit-graph
+# `assign_lanes` in `git/src/placement.rs` is 231 lines, and 30 of the commit-graph
 # mutation ledger's 65 anchors are exact source lines inside it, each carrying a
 # measured killed/survives verdict. Extracting those lines invalidates the anchors
 # and the evidence behind them. Splitting it is its own task, with the re-anchor

@@ -1,9 +1,9 @@
 //! The `watch` verb: blocks on the store's doorbell (`reviewdb::events`) and
 //! streams changes to published reviews through the caller's sink.
 
-use crate::error::TrunkError;
 use crate::review::reviewdb;
 use std::io::Write;
+use trunk_git::error::TrunkError;
 
 /// Block on the store's doorbell and stream changes to published reviews.
 ///

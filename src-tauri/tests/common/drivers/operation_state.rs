@@ -1,9 +1,9 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
+use trunk_git::types::OperationInfo;
 use trunk_lib::commands::operation_state;
 use trunk_lib::commands::operation_state::MergeBeginResult;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
-use trunk_lib::git::types::OperationInfo;
 
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default

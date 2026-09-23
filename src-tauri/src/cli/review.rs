@@ -8,12 +8,12 @@
 //! (`std::fs::canonicalize`) or the `repo_path` keys miss.
 
 use crate::cli::lookup::{RepoPaths, discover_repo, published_review, published_thread};
-use crate::error::TrunkError;
 use crate::review::reviewdb::{self, reviews};
 use crate::review::types::ThreadState;
 use clap::Subcommand;
 use std::io::Write;
 use std::path::PathBuf;
+use trunk_git::error::TrunkError;
 
 #[derive(Subcommand, Debug, PartialEq, Eq)]
 pub enum ReviewCmd {

@@ -1,6 +1,6 @@
 use crate::common::context::TestContext;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::repository;
+use trunk_git::error::TrunkError;
+use trunk_git::repository;
 
 impl TestContext {
     /// Validate that the repo path is a valid git repository

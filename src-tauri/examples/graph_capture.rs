@@ -7,8 +7,8 @@
 //! writes `src-tauri/tests/inputs/`. The golden suite reads those files instead of building
 //! repositories, so this is the only place a built fixture still reaches the graph suites.
 
-use trunk_lib::git::graph::capture;
-use trunk_lib::git::graph_input::{CapturedGraph, FixtureInput};
+use trunk_git::graph::capture;
+use trunk_git::graph_input::{CapturedGraph, FixtureInput};
 use trunk_lib::state::OpenRepos;
 
 /// The count `RepoView.svelte` passes as `wipCount`. A bare repository has no worktree, so

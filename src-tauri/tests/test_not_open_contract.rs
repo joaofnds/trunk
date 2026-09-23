@@ -5,6 +5,8 @@
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::Manager;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::RefVisibility;
 use trunk_lib::commands::branches::{
     checkout_branch_inner, create_branch_inner, delete_branch_inner, fast_forward_to_inner,
     rename_branch_inner,
@@ -23,8 +25,6 @@ use trunk_lib::commands::operation_state::{
     rebase_branch_inner, rebase_continue_inner, rebase_skip_inner,
 };
 use trunk_lib::commands::remote::{git_pull_inner, git_push_force_inner, git_push_inner};
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::RefVisibility;
 use trunk_lib::state::{
     CommitCache, GraphCache, OpenRepos, RefVisibilityState, RemoteOps, RepoState,
 };

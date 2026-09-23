@@ -1,9 +1,9 @@
-use crate::error::TrunkError;
-use crate::git::graph_input::GraphSource;
-use crate::git::{graph, repository};
 use crate::state::{CommitCache, CommitStatsCache, RepoState, RunningOp, kill_process};
 use crate::watcher::{self, WatcherState};
 use tauri::{AppHandle, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::GraphSource;
+use trunk_git::{graph, repository};
 
 /// Open a repository, cache its first graph, and start watching it.
 ///

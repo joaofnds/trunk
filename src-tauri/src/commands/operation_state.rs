@@ -1,13 +1,13 @@
-use crate::error::TrunkError;
-use crate::git::graph_input::{GraphSnapshot, GraphSource};
-use crate::git::{
-    graph,
-    types::{OperationInfo, OperationType},
-};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, GraphSource};
+use trunk_git::{
+    graph,
+    types::{OperationInfo, OperationType},
+};
 
 /// Outcome of a two-step merge begin.
 ///
@@ -246,7 +246,7 @@ pub fn merge_abort_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSourc
 /// returns. `true` accepts whatever message git has already staged.
 /// `--abort` reaches no editor at all — the pin is inert there, not load-bearing.
 ///
-/// Resuming steps override the pin with `git::editor::keyed_rebase_editor`, which
+/// Resuming steps override the pin with `trunk_git::editor::keyed_rebase_editor`, which
 /// is equally TTY-free but also delivers the messages an interactive rebase filed
 /// before it stopped. `true` would drop every one of them silently.
 #[must_use]
@@ -288,7 +288,7 @@ pub fn rebase_continue_inner(
         }
     }
 
-    let editor = crate::git::editor::keyed_rebase_editor()?;
+    let editor = trunk_git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--continue")
         .env("GIT_EDITOR", editor.script_path())
         .output()
@@ -314,7 +314,7 @@ pub fn rebase_continue_inner(
 /// own message when `git` will not run or the skip fails.
 pub fn rebase_skip_inner(path: &str, state_map: &OpenRepos) -> Result<GraphSource, TrunkError> {
     let path_buf = state_map.path_for(path)?;
-    let editor = crate::git::editor::keyed_rebase_editor()?;
+    let editor = trunk_git::editor::keyed_rebase_editor()?;
     let output = rebase_command(path_buf, "--skip")
         .env("GIT_EDITOR", editor.script_path())
         .output()
@@ -494,7 +494,7 @@ pub async fn get_operation_state(
 
 /// Find a branch's `color_index` by searching ref labels in the cached graph.
 fn find_branch_color(
-    commits: &[crate::git::types::GraphCommit],
+    commits: &[trunk_git::types::GraphCommit],
     branch_name: &str,
 ) -> Option<usize> {
     for commit in commits {
@@ -741,11 +741,11 @@ pub async fn rebase_branch<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::graph_input::RefVisibility;
     use git2::{Repository, Signature};
     use std::path::PathBuf;
     use std::process::Command;
     use tempfile::TempDir;
+    use trunk_git::graph_input::RefVisibility;
 
     // Temp-repo harness (mirrors review/doc.rs make_repo). Real git2 +
     // tempfile, no mocks (classical TDD). The code-under-test shells out to

@@ -1,4 +1,4 @@
-// All TypeScript DTO interfaces mirroring Rust DTOs in src-tauri/src/git/types.rs
+// All TypeScript DTO interfaces mirroring Rust DTOs in src-tauri/git/src/types.rs
 // Use string literal unions (not enum) — matches serde default serialization
 
 export type EdgeType =
@@ -345,7 +345,7 @@ export interface OverlayRefPill {
 	isHollow: boolean; // true for merge/stash/WIP dots (stroke-only, no fill)
 }
 
-// Interactive rebase types (mirrors src-tauri/src/git/types.rs RebaseTodoItem)
+// Interactive rebase types (mirrors src-tauri/git/src/types.rs RebaseTodoItem)
 export interface RebaseTodoItem {
 	oid: string;
 	short_oid: string;
@@ -362,7 +362,7 @@ export interface RebaseTodo {
 	items: RebaseTodoItem[];
 }
 
-// Review session schema (mirrors src-tauri/src/git/types.rs Phase 65 keystone)
+// Review session schema (mirrors src-tauri/src/review/types.rs Phase 65 keystone)
 // String-for-string with the Rust on-wire shape: PascalCase enum strings,
 // snake_case fields, nullable optionals for Rust Option<T>.
 export type Source = "Diff" | "FullFile";

@@ -123,9 +123,9 @@ fn bench_ipc_get_graph(c: &mut Criterion) {
     group.bench_function("get_commit_graph", |b| {
         b.iter(|| {
             let mut repo = git2::Repository::open(&bench_repo.path).unwrap();
-            let result = trunk_lib::git::graph::snapshot(
+            let result = trunk_git::graph::snapshot(
                 &mut repo,
-                &trunk_lib::git::graph_input::RefVisibility::default(),
+                &trunk_git::graph_input::RefVisibility::default(),
             )
             .unwrap()
             .layout;
@@ -175,7 +175,7 @@ fn bench_ipc_diff_unstaged(c: &mut Criterion) {
                 &path,
                 "file0.txt",
                 &state_map,
-                &trunk_lib::git::types::DiffRequestOptions::default(),
+                &trunk_git::types::DiffRequestOptions::default(),
             )
             .unwrap();
             serde_json::to_string(&result).unwrap()
@@ -210,9 +210,9 @@ fn bench_startup_sequence(c: &mut Criterion) {
                     let mut repo = git2::Repository::open(repo_path).unwrap();
 
                     // 2. Walk commits (populates graph cache in real app)
-                    let graph = trunk_lib::git::graph::snapshot(
+                    let graph = trunk_git::graph::snapshot(
                         &mut repo,
-                        &trunk_lib::git::graph_input::RefVisibility::default(),
+                        &trunk_git::graph_input::RefVisibility::default(),
                     )
                     .unwrap()
                     .layout;

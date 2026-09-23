@@ -1,0 +1,30 @@
+[package]
+name = "trunk-git"
+version = "0.1.0"
+description = "Trunk's libgit2 plumbing: repository reads, the commit graph pipeline, and the DTOs the app sends to its frontend"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+bench = false
+
+[features]
+# The blob-reading fixture the app's markdown tests share, compiled out of the
+# shipped library (docs/decisions/2026-08-31-test-only-api-on-production-types.md).
+test-util = []
+
+[dependencies]
+git2 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+libc = { workspace = true }
+tempfile = { workspace = true }
+cap-std = "4.0.3"
+cap-fs-ext = "4.0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation"] }
+
+[lints]
+workspace = true

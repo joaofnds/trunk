@@ -27,7 +27,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 P, G, I = "placement.rs", "graph.rs", "graph_input.rs"
 SOURCES = {
-    name: ROOT / "src-tauri" / "src" / "git" / name for name in (P, G, I)
+    name: ROOT / "src-tauri" / "git" / "src" / name for name in (P, G, I)
 }
 
 # The measured ceiling is 82s (grill §3.5, mean ~24s). A timeout that fires on an honest

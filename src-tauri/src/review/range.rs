@@ -4,8 +4,8 @@
 //! logic is provable against an in-process test repo; `commands/review.rs`
 //! wraps them.
 
-use crate::error::TrunkError;
 use crate::review::types::SessionCommit;
+use trunk_git::error::TrunkError;
 
 /// Validate that `[base..tip]` is a meaningful inclusive range (SEL-01).
 ///
@@ -74,7 +74,7 @@ pub(crate) fn compute_range_oids(
 /// summary rather than silently dropped (Phase 65 "never silently destroy").
 pub(crate) fn intersect_graph_order(
     commits: &[String],
-    graph: &crate::git::types::GraphResult,
+    graph: &trunk_git::types::GraphResult,
     repo: &git2::Repository,
 ) -> Vec<SessionCommit> {
     let want: std::collections::HashSet<&String> = commits.iter().collect();
@@ -297,8 +297,8 @@ mod tests {
 
     /// A minimal `GraphCommit` for fixtures — only the fields `SessionCommit`
     /// copies (oid, `short_oid`, summary) carry meaning; the rest are inert.
-    fn graph_commit(oid: &str, summary: &str) -> crate::git::types::GraphCommit {
-        crate::git::types::GraphCommit {
+    fn graph_commit(oid: &str, summary: &str) -> trunk_git::types::GraphCommit {
+        trunk_git::types::GraphCommit {
             oid: oid.to_string(),
             short_oid: oid.chars().take(7).collect(),
             summary: summary.to_string(),
@@ -324,7 +324,7 @@ mod tests {
     fn list_session_commits_graph_order() {
         let t = make_repo();
         // Graph order: D, C, B (newest-first slice of the cached graph).
-        let graph = crate::git::types::GraphResult {
+        let graph = trunk_git::types::GraphResult {
             commits: vec![
                 graph_commit(&t.d.to_string(), "D"),
                 graph_commit(&t.c.to_string(), "C"),
@@ -350,7 +350,7 @@ mod tests {
         let t = make_repo();
         // Graph contains only D; the session also selects A (absent from graph but
         // resolvable via find_commit) and a bogus OID (truly unresolvable).
-        let graph = crate::git::types::GraphResult {
+        let graph = trunk_git::types::GraphResult {
             commits: vec![graph_commit(&t.d.to_string(), "D")],
             max_columns: 1,
         };

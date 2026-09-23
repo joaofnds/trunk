@@ -1,5 +1,5 @@
 use crate::error::TrunkError;
-use crate::git::types::{RefLabel, RefType};
+use crate::types::{RefLabel, RefType};
 use std::collections::HashMap;
 
 /// Returns true if the repo has any tracked modifications that would block checkout.

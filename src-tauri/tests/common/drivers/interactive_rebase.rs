@@ -1,9 +1,9 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, RefVisibility};
 use trunk_lib::commands::interactive_rebase::{
     self, RebaseStartResult, RebaseTodo, RebaseTodoAction,
 };
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::{GraphSnapshot, RefVisibility};
 
 impl TestContext {
     pub fn get_rebase_todo(

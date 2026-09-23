@@ -1,8 +1,8 @@
 //! Review-domain vocabulary shared across the store (`reviewdb`), the doc renderer
 //! (`doc`) and the command layer (`commands::review`).
 
-use crate::error::TrunkError;
 use serde::{Deserialize, Serialize};
+use trunk_git::error::TrunkError;
 
 /// The thread state matrix's closed set (spec §2).
 ///
@@ -152,7 +152,7 @@ pub struct SessionCommit {
 
 // ── Review session schema (Phase 65 keystone) ────────────────────────────────
 // Persisted to disk and read back, so every type derives Deserialize (unlike the
-// write-only DTOs in `git::types`, and like its DiffStatus). Enums serialize as PascalCase
+// write-only DTOs in `trunk_git::types`, and like its DiffStatus). Enums serialize as PascalCase
 // strings with NO rename_all (like RefType). Struct fields stay snake_case.
 // The Anchor NEVER carries hunk_index/line_index/context_lines/ignore_whitespace
 // (D-01): it stores source coordinates only, never diff-array positions.

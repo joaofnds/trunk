@@ -104,14 +104,28 @@ fn rust_sources(root: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// The root package and every member crate beside it, found by their manifests so a
+/// crate added to the workspace is scanned without editing this file.
+fn workspace_crate_roots(manifest: &Path) -> Vec<PathBuf> {
+    let mut roots = vec![manifest.to_path_buf()];
+    for entry in std::fs::read_dir(manifest).expect("read the workspace directory") {
+        let path = entry.expect("a directory entry").path();
+        if path.join("Cargo.toml").is_file() {
+            roots.push(path);
+        }
+    }
+    roots
+}
+
 #[test]
 fn no_doc_comment_carries_a_runnable_example() {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut sources = Vec::new();
-    // Both library crates in the workspace: a doctest in either is one `--doc` would
+    // Every crate in the workspace: a doctest in any of them is one `--doc` would
     // have run and nextest will not.
-    rust_sources(&manifest.join("src"), &mut sources);
-    rust_sources(&manifest.join("fixtures/src"), &mut sources);
+    for crate_root in workspace_crate_roots(manifest) {
+        rust_sources(&crate_root.join("src"), &mut sources);
+    }
     assert!(
         !sources.is_empty(),
         "found no Rust sources to scan; this guard would pass vacuously",

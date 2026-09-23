@@ -1,7 +1,7 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::types::{CommitDetail, DiffRequestOptions, FileDiff};
 use trunk_lib::commands::diff;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::types::{CommitDetail, DiffRequestOptions, FileDiff};
 
 impl TestContext {
     pub fn diff_unstaged(&self, file_path: &str) -> Result<Vec<FileDiff>, TrunkError> {
@@ -130,7 +130,7 @@ impl TestContext {
         &self,
         base_oid: Option<&str>,
         target_oid: &str,
-    ) -> Result<trunk_lib::git::types::DiffStat, TrunkError> {
+    ) -> Result<trunk_git::types::DiffStat, TrunkError> {
         diff::compare_stat_inner(self.path(), base_oid, target_oid, self.state_map())
     }
 }

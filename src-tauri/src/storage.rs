@@ -2,10 +2,10 @@
 //! quarantine. Both the review-session store and the prefs store persist
 //! JSON files; this module keeps the durability behavior in one place.
 
-use crate::error::TrunkError;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
+use trunk_git::error::TrunkError;
 
 /// Atomic write: tmp-in-same-dir + `sync_all` + `rename` (D-10, Pitfall 5).
 /// `rename` is only atomic within a filesystem, so the tmp file lives next to

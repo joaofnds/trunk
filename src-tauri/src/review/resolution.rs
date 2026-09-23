@@ -101,7 +101,7 @@ fn classify_pin(
     pin: &crate::review::types::ContentPin,
     repo: &git2::Repository,
 ) -> Result<(), OrphanReason> {
-    let bytes = crate::git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
+    let bytes = trunk_git::blob_reader::read_working_tree_file_without_links(repo, &pin.file_path)
         .map_err(|_| OrphanReason::FileGone)?;
     let text = String::from_utf8(bytes).map_err(|_| OrphanReason::FileGone)?;
 

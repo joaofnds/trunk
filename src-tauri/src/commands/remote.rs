@@ -5,12 +5,12 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-use crate::error::TrunkError;
-use crate::git::graph;
-use crate::git::graph_input::GraphSource;
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RemoteOps, RepoState, RunningOp, kill_process};
 use crate::watcher::RepoChanged;
+use trunk_git::error::TrunkError;
+use trunk_git::graph;
+use trunk_git::graph_input::GraphSource;
 
 /// git's own stderr lines, with the ones the remote wrote dropped. Scoping the lease
 /// markers to these is what keeps a hook printing either phrase from turning every
@@ -361,7 +361,7 @@ pub async fn git_pull_inner<R: Runtime>(
     let probe_path = path_buf.clone();
     let conflicted = tauri::async_runtime::spawn_blocking(move || {
         let repo = git2::Repository::open(&probe_path).map_err(TrunkError::from)?;
-        crate::git::repository::has_unmerged_paths(&repo)
+        trunk_git::repository::has_unmerged_paths(&repo)
     })
     .await
     .map_err(|e| TrunkError::new("spawn_error", e.to_string()))??;
@@ -550,7 +550,7 @@ pub async fn git_push_force_inner<R: Runtime>(
         let repo = git2::Repository::open(&target_path).map_err(TrunkError::from)?;
         // Guarding here rather than in the caller: a frontend gate can be stale or
         // skipped, and this rewrites remote history.
-        if crate::git::repository::is_mid_operation(&repo)? {
+        if trunk_git::repository::is_mid_operation(&repo)? {
             return Err(TrunkError::new(
                 "op_in_progress_local",
                 "Finish or abort the merge, rebase or cherry-pick in progress, and resolve any conflicted files, before force pushing.",

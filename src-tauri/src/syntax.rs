@@ -3,7 +3,7 @@ use syntect::easy::HighlightLines;
 use syntect::highlighting::{Color, ThemeSet};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 
-use crate::git::types::{MergedSpan, SyntaxToken, WordSpan};
+use trunk_git::types::{MergedSpan, SyntaxToken, WordSpan};
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(two_face::syntax::extra_newlines);
 

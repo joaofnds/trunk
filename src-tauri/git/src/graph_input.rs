@@ -11,8 +11,8 @@ use std::sync::Arc;
 use git2::Oid;
 use serde::{Deserialize, Serialize};
 
-use crate::git::placement::{self, PlacementInput};
-use crate::git::types::{GraphCommit, GraphResult, RefLabel, RefType};
+use crate::placement::{self, PlacementInput};
+use crate::types::{GraphCommit, GraphResult, RefLabel, RefType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitFacts {

@@ -1,10 +1,10 @@
-use crate::error::TrunkError;
-use crate::git::graph_input::{GraphSnapshot, GraphSource};
-use crate::git::{graph, types::UndoResult};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::watcher::RepoChanged;
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, GraphSource};
+use trunk_git::{graph, types::UndoResult};
 
 /// Outcome of a clean two-step revert begin.
 ///
@@ -33,7 +33,7 @@ pub fn checkout_commit_inner(
     let path_buf = state_map.path_for(path)?;
     let repo = git2::Repository::open(path_buf)?;
 
-    if crate::git::repository::is_repo_dirty(&repo)? {
+    if trunk_git::repository::is_repo_dirty(&repo)? {
         return Err(TrunkError::new(
             "dirty_workdir",
             "Working tree has uncommitted changes",
@@ -1072,7 +1072,7 @@ mod tests {
             "revert --abort clears REVERT_HEAD"
         );
         assert!(
-            !crate::git::repository::is_repo_dirty(&repo).unwrap(),
+            !trunk_git::repository::is_repo_dirty(&repo).unwrap(),
             "revert --abort must leave a clean tree"
         );
     }

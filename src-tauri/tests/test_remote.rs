@@ -2,10 +2,10 @@ mod common;
 
 use common::context::TestContext;
 use std::path::Path;
+use trunk_git::repository::has_unmerged_paths;
 use trunk_lib::commands::remote::{
     FORCE_PUSH_ARGS, classify_git_error, get_push_target_inner, resolve_push_target,
 };
-use trunk_lib::git::repository::has_unmerged_paths;
 
 fn set_config(ctx: &TestContext, pairs: &[(&str, &str)]) {
     let repo = ctx.repo();

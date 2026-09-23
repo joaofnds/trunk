@@ -7,9 +7,9 @@ use common::graph_shapes::{
     track_origin_main, two_backdated_stashes_repo,
 };
 use common::rule_inputs;
-use trunk_lib::git::graph::snapshot;
-use trunk_lib::git::graph_input::RefVisibility;
-use trunk_lib::git::types::EdgeType;
+use trunk_git::graph::snapshot;
+use trunk_git::graph_input::RefVisibility;
+use trunk_git::types::EdgeType;
 
 // ============================================================
 // Tests
@@ -583,7 +583,7 @@ fn stash_inline_with_topic_branch() {
     );
 }
 
-fn stash_and_parent(commits: &[trunk_lib::git::types::GraphCommit]) -> (usize, usize) {
+fn stash_and_parent(commits: &[trunk_git::types::GraphCommit]) -> (usize, usize) {
     let stash_idx = commits
         .iter()
         .position(|c| c.is_stash)
@@ -748,7 +748,7 @@ fn topic_layout_clean_then_dirty(
     ctx: &TestContext,
 ) -> ((usize, usize, usize), (usize, usize, usize)) {
     let mut repo = ctx.repo();
-    let read = |result: &trunk_lib::git::types::GraphResult| {
+    let read = |result: &trunk_git::types::GraphResult| {
         let t1 = result
             .commits
             .iter()
@@ -947,14 +947,14 @@ fn detached_head_marks_first_parent_chain() {
     );
 }
 
-fn row_of(commits: &[trunk_lib::git::types::GraphCommit], summary: &str) -> usize {
+fn row_of(commits: &[trunk_git::types::GraphCommit], summary: &str) -> usize {
     commits
         .iter()
         .position(|c| c.summary == summary)
         .unwrap_or_else(|| panic!("{summary} not found in {:?}", summaries(commits)))
 }
 
-fn summaries(commits: &[trunk_lib::git::types::GraphCommit]) -> Vec<&str> {
+fn summaries(commits: &[trunk_git::types::GraphCommit]) -> Vec<&str> {
     commits.iter().map(|c| c.summary.as_str()).collect()
 }
 
@@ -985,7 +985,7 @@ fn backdated_stash_sorts_above_its_parent() {
     assert_no_stash_internals(commits);
 }
 
-fn assert_no_stash_internals(commits: &[trunk_lib::git::types::GraphCommit]) {
+fn assert_no_stash_internals(commits: &[trunk_git::types::GraphCommit]) {
     for c in commits {
         assert!(
             !c.summary.starts_with("index on ") && !c.summary.starts_with("untracked files on "),
@@ -1238,16 +1238,16 @@ fn unreadable_stash_index_commit_is_skipped() {
 // coincidentally-correct layout.
 
 fn row<'a>(
-    commits: &'a [trunk_lib::git::types::GraphCommit],
+    commits: &'a [trunk_git::types::GraphCommit],
     summary: &str,
-) -> &'a trunk_lib::git::types::GraphCommit {
+) -> &'a trunk_git::types::GraphCommit {
     commits
         .iter()
         .find(|c| c.summary == summary)
         .unwrap_or_else(|| panic!("no row {summary} in {:?}", summaries(commits)))
 }
 
-fn walk(ctx: &TestContext) -> Vec<trunk_lib::git::types::GraphCommit> {
+fn walk(ctx: &TestContext) -> Vec<trunk_git::types::GraphCommit> {
     let mut repo = ctx.repo();
     snapshot(&mut repo, &RefVisibility::default())
         .map(|s| s.layout)
@@ -1255,7 +1255,7 @@ fn walk(ctx: &TestContext) -> Vec<trunk_lib::git::types::GraphCommit> {
         .commits
 }
 
-fn has_fork_right(c: &trunk_lib::git::types::GraphCommit) -> bool {
+fn has_fork_right(c: &trunk_git::types::GraphCommit) -> bool {
     c.edges
         .iter()
         .any(|e| matches!(e.edge_type, EdgeType::ForkRight))
@@ -1545,7 +1545,7 @@ fn a_stash_on_the_upstream_extension_tip_inlines_end_to_end() {
 }
 
 /// (column, colour) for one row — the pair the rule file's dirty-path bullet demands.
-fn place(commits: &[trunk_lib::git::types::GraphCommit], summary: &str) -> (usize, usize) {
+fn place(commits: &[trunk_git::types::GraphCommit], summary: &str) -> (usize, usize) {
     let c = row(commits, summary);
 
     (c.column, c.color_index)

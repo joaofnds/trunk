@@ -10,8 +10,8 @@
 //! gc later collects keeps the label it was added under (ruling 2026-08-31).
 
 use super::sqlite_error;
-use crate::error::TrunkError;
 use rusqlite::Connection;
+use trunk_git::error::TrunkError;
 
 /// One member of the set: the oid plus the subject it was added under.
 #[derive(Debug, Clone, PartialEq, Eq)]

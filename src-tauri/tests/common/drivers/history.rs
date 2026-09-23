@@ -1,9 +1,9 @@
 use crate::common::context::TestContext;
 use std::collections::HashMap;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::RefVisibility;
+use trunk_git::types::{DiffStat, SearchResult};
 use trunk_lib::commands::history;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::RefVisibility;
-use trunk_lib::git::types::{DiffStat, SearchResult};
 
 impl TestContext {
     /// Search commits by query string (matches SHA, message, ref, author).
@@ -35,7 +35,7 @@ impl TestContext {
     /// Must be called before `search_commits` to have data to search.
     pub fn populate_cache(&mut self) {
         let mut repo = self.repo();
-        let result = trunk_lib::git::graph::snapshot(&mut repo, &RefVisibility::default())
+        let result = trunk_git::graph::snapshot(&mut repo, &RefVisibility::default())
             .expect("snapshot failed");
         self.cache_map.insert(self.path.clone(), result);
     }

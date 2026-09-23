@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use git2::Oid;
 
-use crate::git::types::{EdgeType, GraphEdge};
+use crate::types::{EdgeType, GraphEdge};
 
 /// Lane slot: (occupant OID, dashed).
 /// The dashed flag is set by the commit that creates/takes over the lane:

@@ -3,7 +3,7 @@ created: 2026-08-03T00:00:00.000Z
 title: An unreadable-but-present file renders as a whole-file deletion in the markdown diff
 area: backend
 files:
-  - src-tauri/src/git/blob_reader.rs
+  - src-tauri/git/src/blob_reader.rs
   - src-tauri/src/commands/markdown.rs
 ---
 
@@ -26,7 +26,7 @@ let target = root
     .map_err(|e| TrunkError::new("not_found", format!("{file_path}: {e}")))?;
 ```
 
-`src-tauri/src/git/blob_reader.rs:119-122`. `read_side`
+`src-tauri/git/src/blob_reader.rs:119-122`. `read_side`
 (`src-tauri/src/commands/markdown.rs:925-928`) then treats `not_found` as "the file is
 absent at this rev" and returns `Ok(None)`, which the block differ renders as the whole
 file removed.

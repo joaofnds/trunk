@@ -1,7 +1,7 @@
 ---
 paths:
   - "src-tauri/src/commands/markdown.rs"
-  - "src-tauri/src/git/blob_reader.rs"
+  - "src-tauri/git/src/blob_reader.rs"
   - "src/lib/markdown.ts"
   - "src/lib/markdown.test.ts"
   - "src/components/diff/RenderedDiff.svelte"

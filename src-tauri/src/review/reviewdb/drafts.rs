@@ -6,11 +6,11 @@
 //! why this cannot be solved by moving auto-creation back to composer open.
 
 use super::{anchor, repo_key, sqlite_error};
-use crate::error::TrunkError;
 use crate::review::types::Anchor;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
+use trunk_git::error::TrunkError;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Draft {

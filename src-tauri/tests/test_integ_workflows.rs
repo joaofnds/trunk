@@ -4,8 +4,8 @@
 
 mod common;
 use common::context::TestContext;
+use trunk_git::types::OperationType;
 use trunk_lib::commands::operation_state::MergeBeginResult;
-use trunk_lib::git::types::OperationType;
 
 // -- Workflow tests --
 

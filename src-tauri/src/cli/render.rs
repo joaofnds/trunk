@@ -5,10 +5,10 @@
 //! field vocabulary.
 
 use crate::cli::lookup::RepoPaths;
-use crate::error::TrunkError;
 use crate::review::reviewdb::{self, reviews};
 use crate::review::types::{Channel, ThreadState};
 use std::fmt::Write as _;
+use trunk_git::error::TrunkError;
 
 /// One markdown bullet per published review, in the store's list order.
 /// `composing` reviews are absent by contract: the CLI does not serve them,

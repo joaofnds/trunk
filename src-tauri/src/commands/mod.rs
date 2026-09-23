@@ -1,6 +1,6 @@
-use crate::error::TrunkError;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
+use trunk_git::error::TrunkError;
 
 /// Resolve `app_data_dir`, JSON-stringifying the error like the other commands.
 pub(crate) fn resolve_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {

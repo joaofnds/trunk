@@ -23,12 +23,12 @@
 //! superseded.
 
 use super::{Store, repo_key, sqlite_error};
-use crate::error::TrunkError;
 use crate::review::types::ContentPin;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
+use trunk_git::error::TrunkError;
 
 type RecomputeGenerations = Mutex<HashMap<GenerationKey, Weak<Mutex<u64>>>>;
 

@@ -5256,8 +5256,6 @@ version = "0.50.0"
 dependencies = [
  "ammonia",
  "block2",
- "cap-fs-ext",
- "cap-std",
  "clap",
  "comrak",
  "criterion",
@@ -5284,6 +5282,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "trunk",
+ "trunk-git",
  "two-face",
  "windows-sys 0.61.2",
  "yaml-rust",
@@ -5295,6 +5294,20 @@ version = "0.1.0"
 dependencies = [
  "git2",
  "tempfile",
+]
+
+[[package]]
+name = "trunk-git"
+version = "0.1.0"
+dependencies = [
+ "cap-fs-ext",
+ "cap-std",
+ "git2",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

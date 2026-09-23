@@ -1,8 +1,8 @@
 use crate::common::context::TestContext;
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
+use trunk_git::types::StashEntry;
 use trunk_lib::commands::stash;
-use trunk_lib::error::TrunkError;
-use trunk_lib::git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
-use trunk_lib::git::types::StashEntry;
 
 /// A driver method's contract predates `GraphRebuild`'s capture/lay-out split: it hands back
 /// a laid-out `GraphSnapshot`, same as before. Laying the capture out under the default

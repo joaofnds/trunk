@@ -2,8 +2,8 @@
 //! canonical repo root the store keys by, and resolving a user-typed id
 //! against the published rows the CLI may serve (§5.1).
 
-use crate::error::TrunkError;
 use std::path::PathBuf;
+use trunk_git::error::TrunkError;
 
 /// The renderer's two path facts, derived from the canonical workdir the
 /// store keys by. Deriving them at each render site let the CLI's answer for
@@ -129,7 +129,7 @@ pub(crate) fn resolve_unique<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::TrunkError;
+    use trunk_git::error::TrunkError;
 
     fn resolve(candidates: &[&str], raw: &str) -> Result<String, TrunkError> {
         let owned: Vec<String> = candidates.iter().map(|s| (*s).to_string()).collect();

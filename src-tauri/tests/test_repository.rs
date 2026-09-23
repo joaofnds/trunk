@@ -1,8 +1,8 @@
 mod common;
 
 use common::context::TestContext;
-use trunk_lib::git::repository::{build_ref_map, has_unmerged_paths};
-use trunk_lib::git::types::RefType;
+use trunk_git::repository::{build_ref_map, has_unmerged_paths};
+use trunk_git::types::RefType;
 
 #[test]
 fn ref_map_head() {

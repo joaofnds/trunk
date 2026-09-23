@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use crate::error::TrunkError;
-use crate::git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::{GraphSnapshot, GraphSource, RefVisibility};
 
 /// The repositories the app currently has open, keyed by the path the frontend
 /// addresses them with.
@@ -170,17 +170,17 @@ pub fn kill_process(pid: u32) {
 /// A rebuild writes a whole entry rather than mutating one, so a reader either
 /// sees the graph as it was or the graph as it now is, never a half-updated one.
 #[derive(Clone, Debug, Default)]
-pub struct GraphCache(HashMap<String, crate::git::graph_input::GraphSnapshot>);
+pub struct GraphCache(HashMap<String, trunk_git::graph_input::GraphSnapshot>);
 
 impl GraphCache {
     /// The cached graph for `path`, or `None` when nothing has been built yet.
     #[must_use]
-    pub fn get(&self, path: &str) -> Option<&crate::git::graph_input::GraphSnapshot> {
+    pub fn get(&self, path: &str) -> Option<&trunk_git::graph_input::GraphSnapshot> {
         self.0.get(path)
     }
 
     /// Store `snapshot` as the graph for `path`, replacing any earlier one.
-    pub fn insert(&mut self, path: String, snapshot: crate::git::graph_input::GraphSnapshot) {
+    pub fn insert(&mut self, path: String, snapshot: trunk_git::graph_input::GraphSnapshot) {
         self.0.insert(path, snapshot);
     }
 
@@ -300,12 +300,12 @@ impl CommitCache {
 /// dropped wholesale when its repository closes. Filled lazily by the Diff
 /// column and only while that column is visible.
 #[derive(Debug, Default)]
-pub struct StatsCache(HashMap<String, HashMap<String, crate::git::types::DiffStat>>);
+pub struct StatsCache(HashMap<String, HashMap<String, trunk_git::types::DiffStat>>);
 
 impl StatsCache {
     /// The stat held for `oid` in `path`, if one has been computed.
     #[must_use]
-    pub fn get(&self, path: &str, oid: &str) -> Option<&crate::git::types::DiffStat> {
+    pub fn get(&self, path: &str, oid: &str) -> Option<&trunk_git::types::DiffStat> {
         self.0.get(path)?.get(oid)
     }
 
@@ -313,7 +313,7 @@ impl StatsCache {
     pub fn extend(
         &mut self,
         path: String,
-        stats: impl IntoIterator<Item = (String, crate::git::types::DiffStat)>,
+        stats: impl IntoIterator<Item = (String, trunk_git::types::DiffStat)>,
     ) {
         self.0.entry(path).or_default().extend(stats);
     }
@@ -409,7 +409,7 @@ impl SweptRepos {
 /// A repository absent from the map has hidden nothing, which is what an unopened one and
 /// one with no stored preference both get.
 #[derive(Default)]
-pub struct RefVisibilityState(Arc<Mutex<HashMap<String, crate::git::graph_input::RefVisibility>>>);
+pub struct RefVisibilityState(Arc<Mutex<HashMap<String, trunk_git::graph_input::RefVisibility>>>);
 
 impl RefVisibilityState {
     /// The refs `path` has hidden. A repository with none gets the empty set.
@@ -418,7 +418,7 @@ impl RefVisibilityState {
     ///
     /// Panics when the lock is poisoned.
     #[must_use]
-    pub fn get(&self, path: &str) -> crate::git::graph_input::RefVisibility {
+    pub fn get(&self, path: &str) -> trunk_git::graph_input::RefVisibility {
         self.0
             .lock()
             .unwrap()
@@ -432,7 +432,7 @@ impl RefVisibilityState {
     /// # Panics
     ///
     /// Panics when the lock is poisoned.
-    pub fn set(&self, path: String, visibility: crate::git::graph_input::RefVisibility) {
+    pub fn set(&self, path: String, visibility: trunk_git::graph_input::RefVisibility) {
         self.0.lock().unwrap().insert(path, visibility);
     }
 
@@ -570,13 +570,13 @@ impl<'a> GraphRebuild<'a> {
 #[cfg(test)]
 mod tests {
     use super::{CommitCache, GraphCache, GraphRebuild, OpenRepos, RefVisibilityState};
-    use crate::error::TrunkError;
-    use crate::git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
-    use crate::git::placement::PlacementInput;
-    use crate::git::types::{RefLabel, RefType};
     use std::collections::{HashMap, HashSet};
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
+    use trunk_git::error::TrunkError;
+    use trunk_git::graph_input::{CommitFacts, GraphSnapshot, GraphSource, RefVisibility};
+    use trunk_git::placement::PlacementInput;
+    use trunk_git::types::{RefLabel, RefType};
 
     fn oid(n: u8) -> git2::Oid {
         git2::Oid::from_str(&format!("{n:040x}")).expect("build a hex oid")

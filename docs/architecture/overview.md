@@ -33,7 +33,7 @@
 │                                                                      │
 │  src-tauri/src/lib.rs — app setup, plugin registration, invoke table │
 │  src-tauri/src/commands/ — one file per domain (12 command modules)  │
-│  src-tauri/src/git/ — git2-based logic (graph, repository, types)    │
+│  src-tauri/git/src/ — git2-based logic (graph, repository, types)    │
 │  src-tauri/src/state.rs — Tauri-managed shared state (Mutex-wrapped) │
 │  src-tauri/src/watcher.rs — notify-based fs watcher                  │
 │  src-tauri/src/shell_env.rs — macOS PATH resolution                  │
@@ -78,11 +78,11 @@
 | `commands/operation_state.rs` | `get_operation_state`, `merge_continue/abort`, `rebase_continue/skip/abort`, `merge_branch`, `rebase_branch` | `src-tauri/src/commands/operation_state.rs` |
 | `commands/interactive_rebase.rs` | `get_rebase_todo`, `get_fork_point`, `start_interactive_rebase` | `src-tauri/src/commands/interactive_rebase.rs` |
 | `commands/merge_editor.rs` | `get_merge_sides`, `save_merge_result` | `src-tauri/src/commands/merge_editor.rs` |
-| `git/graph.rs` | `snapshot()` = `capture()` piped into `graph_input::apply_visibility()` and `layout()`, kept as a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/src/git/graph.rs` |
-| `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/src/git/placement.rs` |
-| `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/src/git/graph_input.rs` |
-| `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/src/git/repository.rs` |
-| `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/src/git/types.rs` |
+| `git/graph.rs` | `snapshot()` = `capture()` piped into `graph_input::apply_visibility()` and `layout()`, kept as a `GraphSnapshot` — commit ordering and every git2 read the pipeline makes | `src-tauri/git/src/graph.rs` |
+| `git/placement.rs` | `assign_lanes()` — the pure lane assignment algorithm, columns, colours and edges | `src-tauri/git/src/placement.rs` |
+| `git/graph_input.rs` | `layout()` — page slice and row hydration, and the committed capture format the golden suite reads | `src-tauri/git/src/graph_input.rs` |
+| `git/repository.rs` | `validate_and_open()`, `build_ref_map()` | `src-tauri/git/src/repository.rs` |
+| `git/types.rs` | All Rust DTOs (`GraphCommit`, `FileDiff`, `WorkingTreeStatus`, etc.) — no git2 types, all owned | `src-tauri/git/src/types.rs` |
 | `state.rs` | `RepoState`, `CommitCache`, `RunningOp` — all `Mutex<HashMap<String, …>>` keyed by repo path; `GraphRebuild` bundles `CommitCache` and `RefVisibilityState` behind the one method every rebuild site calls instead of repeating the read-visibility/walk/write-cache triple | `src-tauri/src/state.rs` |
 | `watcher.rs` | `start_watcher` / `stop_watcher` — `notify_debouncer_mini` emitting `"repo-changed"` events; `RepoChanged` carries the changed paths; `WatcherState::disabled()` turns the watch off | `src-tauri/src/watcher.rs` |
 
@@ -126,14 +126,14 @@
 - Purpose: Receive IPC calls, validate state, dispatch to git layer
 - Location: `src-tauri/src/commands/`
 - Contains: 12 command modules, each a thin coordinator (open repo from state, call git fn, update cache, emit events)
-- Depends on: `src-tauri/src/git/`, `src-tauri/src/state.rs`
+- Depends on: `src-tauri/git/src/`, `src-tauri/src/state.rs`
 - Used by: Frontend via `invoke()`
 
 **Git Abstraction Layer:**
 - Purpose: All git2-based logic — pure functions operating on `git2::Repository`
-- Location: `src-tauri/src/git/`
-- Contains: `graph.rs` (the repository read), `placement.rs` (the pure lane algorithm), `graph_input.rs` (page hydration), `repository.rs` (shared helpers), `types.rs` (DTOs), `syntax.rs` (syntax highlighting)
-- Depends on: `git2` crate, `syntect` (for syntax highlighting)
+- Location: `src-tauri/git/src/`, the `trunk-git` crate
+- Contains: `graph.rs` (the repository read), `placement.rs` (the pure lane algorithm), `graph_input.rs` (page hydration), `repository.rs` (shared helpers), `types.rs` (DTOs), `error.rs` (`TrunkError`)
+- Depends on: `git2` crate. Not on Tauri or the review domain, which its manifest does not list
 - Used by: `src-tauri/src/commands/`
 
 **Managed State Layer:**
@@ -214,13 +214,13 @@ established.
 
 **`TrunkError` (Rust + TypeScript mirror):**
 - Purpose: Typed error transport across IPC boundary
-- Rust: `src-tauri/src/error.rs` — `{ code: String, message: String }`, serialized as JSON string (not Tauri's native error type)
+- Rust: `src-tauri/git/src/error.rs` — `{ code: String, message: String }`, serialized as JSON string (not Tauri's native error type)
 - TypeScript: `src/lib/invoke.ts:5` — `safeInvoke` parses the JSON string back into `TrunkError`
 - Pattern: All commands return `Result<T, String>` where `Err` is `serde_json::to_string(&TrunkError{...})`
 
 **`GraphCommit` DTO:**
 - Purpose: Complete per-commit graph data crossing the IPC boundary
-- Rust: `src-tauri/src/git/types.rs`, `GraphCommit` — owned types only, no git2 lifetimes
+- Rust: `src-tauri/git/src/types.rs`, `GraphCommit` — owned types only, no git2 lifetimes
 - TypeScript mirror: `src/lib/types.ts`, `GraphCommit`
 - Contains: OID, summary, author, column assignment, color index, edges, ref labels, flags (is_head, is_merge, is_stash)
 

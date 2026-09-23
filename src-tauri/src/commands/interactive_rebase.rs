@@ -1,11 +1,11 @@
-use crate::error::TrunkError;
-use crate::git::graph_input::GraphSource;
-use crate::git::{graph, types::RebaseTodoItem};
 use crate::shell_env;
 use crate::state::{CommitCache, OpenRepos, RepoState};
 use crate::watcher::RepoChanged;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Runtime, State};
+use trunk_git::error::TrunkError;
+use trunk_git::graph_input::GraphSource;
+use trunk_git::{graph, types::RebaseTodoItem};
 
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -168,10 +168,10 @@ pub fn start_interactive_rebase_blocking(
     // 2. Write GIT_SEQUENCE_EDITOR script (script file for reliable $1 handling)
     let seq_editor_path = session_dir.join("trunk-seq-editor.sh");
     // T-75-T04 parity: POSIX single-quote the path so $TMPDIR-controlled `"` or `'` cannot
-    // terminate the quoted segment. Shared helper lives in `git::editor`.
+    // terminate the quoted segment. Shared helper lives in `trunk_git::editor`.
     let seq_editor_script = format!(
         "#!/bin/sh\ncp {} \"$1\"\n",
-        crate::git::editor::shell_single_quote(&todo_path.display().to_string()),
+        trunk_git::editor::shell_single_quote(&todo_path.display().to_string()),
     );
     std::fs::write(&seq_editor_path, &seq_editor_script)
         .map_err(|e| TrunkError::new("io_error", e.to_string()))?;
@@ -188,7 +188,7 @@ pub fn start_interactive_rebase_blocking(
     //    `rebase --continue` still has messages left to deliver.
     let msg_dir = {
         let repo = git2::Repository::open(path_buf)?;
-        repo.path().join(crate::git::editor::MESSAGE_DIR)
+        repo.path().join(trunk_git::editor::MESSAGE_DIR)
     };
     // Clearing first is load-bearing: a message left over from an earlier rebase is
     // named for a commit this one could touch without editing.
@@ -204,7 +204,7 @@ pub fn start_interactive_rebase_blocking(
     }
 
     // 4. The editor that reads them, keyed by the commit git is working on.
-    let editor = crate::git::editor::keyed_rebase_editor()?;
+    let editor = trunk_git::editor::keyed_rebase_editor()?;
 
     // 5. Run git rebase -i (blocking — waits for completion)
     let mut args = vec!["rebase", "-i"];

@@ -1,5 +1,5 @@
-use crate::error::TrunkError;
-use crate::git::repository;
+use trunk_git::error::TrunkError;
+use trunk_git::repository;
 
 /// Best-effort check that a recents-list entry is still a valid git repo.
 ///

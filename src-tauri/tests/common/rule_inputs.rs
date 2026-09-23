@@ -8,8 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
-use trunk_lib::git::graph_input::{self, FixtureInput};
-use trunk_lib::git::types::{GraphCommit, GraphResult};
+use trunk_git::graph_input::{self, FixtureInput};
+use trunk_git::types::{GraphCommit, GraphResult};
 
 pub fn dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/rule-inputs")
