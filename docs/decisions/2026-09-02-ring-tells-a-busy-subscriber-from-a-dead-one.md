@@ -1,7 +1,7 @@
 # `ring` tells a busy subscriber from a dead one by pid, not by error
 
 Date: 2026-09-02
-Where: `src-tauri/src/reviewdb/events.rs`, `ring` / `abandoned`
+Where: `src-tauri/review/src/reviewdb/events.rs`, `ring` / `abandoned`
 Supersedes: `known-issues/2026-08-31-a-busy-subscriber-looks-dead-to-ring.md`
 
 ## The problem

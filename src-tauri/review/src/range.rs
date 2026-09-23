@@ -11,8 +11,7 @@ use trunk_git::error::TrunkError;
 ///
 /// Order matters: `graph_descendant_of(x, x)` is `false`, so the `base == tip`
 /// case (valid under D-02 inclusive semantics → set `{base}`) MUST short-circuit
-/// before the descendant check. Unrelated histories surface as a `merge_base`
-/// error; a base that is not an ancestor of the tip is a `bad_range`.
+/// before the descendant check.
 ///
 /// # Errors
 ///

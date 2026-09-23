@@ -1705,7 +1705,7 @@ pub async fn resolve_threads<R: Runtime>(
 }
 
 /// Open `repo_path` for its two path facts and assemble the review doc from
-/// store rows; see `git::review::render_review_doc` for the assembly itself.
+/// store rows; see `trunk_review::doc::render_review_doc` for the assembly itself.
 ///
 /// # Errors
 ///

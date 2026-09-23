@@ -301,7 +301,7 @@ audit:
 
 # Report which mutations the Rust tests miss (slow; needs: cargo install cargo-mutants)
 mutants *args:
-    cargo mutants --manifest-path {{manifest}} {{args}}
+    cargo mutants --manifest-path {{manifest}} -p trunk -p trunk-git -p trunk-review {{args}}
 
 # ── Commit graph goldens ─────────────────────────────
 

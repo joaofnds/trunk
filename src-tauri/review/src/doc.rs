@@ -19,8 +19,7 @@
 //! agree.
 
 use crate::reviewdb::{Store, commits, replies, reviews, snapshots, threads};
-use crate::types::{Anchor, ContentPin, Side, Source};
-use crate::types::{Channel, ThreadState};
+use crate::types::{Anchor, Channel, ContentPin, Side, Source, ThreadState};
 use std::path::{Path, PathBuf};
 use trunk_git::error::TrunkError;
 

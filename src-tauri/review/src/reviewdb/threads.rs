@@ -8,8 +8,7 @@
 use super::ids::{self, IdKind};
 use super::replies::{self, Reply};
 use super::{anchor, repo_key, sqlite_error};
-use crate::types::{Anchor, ContentPin};
-use crate::types::{Channel, ThreadState};
+use crate::types::{Anchor, Channel, ContentPin, ThreadState};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashSet;

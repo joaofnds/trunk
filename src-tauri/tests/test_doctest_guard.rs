@@ -104,8 +104,8 @@ fn rust_sources(root: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The root package and every member crate beside it, found by their manifests so a
-/// crate added to the workspace is scanned without editing this file.
+/// The root package and every crate directory beside it, found by their manifests, so
+/// a crate added next to the others is scanned without editing this file.
 fn workspace_crate_roots(manifest: &Path) -> Vec<PathBuf> {
     let mut roots = vec![manifest.to_path_buf()];
     for entry in std::fs::read_dir(manifest).expect("read the workspace directory") {
